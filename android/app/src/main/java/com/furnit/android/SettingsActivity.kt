@@ -436,7 +436,8 @@ class SettingsActivity : AppCompatActivity() {
         val part1OnlyTitle = TextView(this).apply { text = "Part1 only test"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
         val part1OnlyDesc = TextView(this).apply {
             text = "Run: one forward + golden stats. Benchmark 3×: same Module, same patch, logs P1_BENCH durations (Vulkan perf). " +
-                "Portable .pte = fast CPU baseline. adb: adb logcat -d | grep P1_BENCH"
+                "Investigate all 3 logs current room routing, forced Vulkan Part1 3×, forced CPU-sidecar Part1 3×, and ETDump commands. " +
+                "adb: adb logcat -d | grep P1_BENCH"
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
         }
@@ -464,11 +465,29 @@ class SettingsActivity : AppCompatActivity() {
             text = "Benchmark 3×"
             textSize = 14f
             setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
             setOnClickListener {
                 lifecycleScope.launch(Dispatchers.Default) {
                     val msg = Part1OnlyTest.runTripleForwardBenchmark(this@SettingsActivity)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part1OnlyButtons.addView(TextView(this).apply {
+            text = "Investigate all 3"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part1OnlyTest.runInvestigation(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("Part1 Investigation")
+                            .setMessage(msg)
+                            .setPositiveButton("OK", null)
+                            .show()
                     }
                 }
             }

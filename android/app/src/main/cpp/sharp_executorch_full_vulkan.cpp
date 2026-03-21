@@ -132,6 +132,7 @@ if (!modelDirPath || !imageNCHW) {
             ? 0
             : ((part1MaxPatches05x > 0) ? std::min(9, part1MaxPatches05x) : 9);
     const bool skip05xAnd025x = (part12_25Only == JNI_TRUE);
+    const bool needMultiscalePatchPrep = !skip05xAnd025x;
     const int chunk1x = (part12Chunk1x > 0) ? std::min(25, part12Chunk1x) : 0;
     const int chunk05x = (part12Chunk05x > 0) ? std::min(9, part12Chunk05x) : 0;
     const int yieldMs = (part12YieldMsBetweenChunks > 0) ? part12YieldMsBetweenChunks : 0;
@@ -170,10 +171,14 @@ if (!modelDirPath || !imageNCHW) {
     if (!imageData) return nullptr;
 
     // ── Downsample for 0.5x and 0.25x patches ───────────────────────────────
-    long long tDown = nowMs();
-    downsample2x(imageData, imageSize, imageSize, 3, g_workspace.halfImg);
-    downsample4x(imageData, imageSize, imageSize, 3, g_workspace.quarterImg);
-    LOGD("Downsample 2x+4x: %lldms", nowMs() - tDown);
+    if (needMultiscalePatchPrep) {
+        long long tDown = nowMs();
+        downsample2x(imageData, imageSize, imageSize, 3, g_workspace.halfImg);
+        downsample4x(imageData, imageSize, imageSize, 3, g_workspace.quarterImg);
+        LOGD("Downsample 2x+4x: %lldms", nowMs() - tDown);
+    } else {
+        LOGD("Skipped 0.5x+0.25x image downsample prep (part12_25_only)");
+    }
 
     // ── Part1 + Part2 (singleton cache) ──────────────────────────────────────
     // When part12OnCpu we load portable Part1+2; only require Vulkan Part1 file when useVulkanForPart12.
@@ -257,13 +262,10 @@ if (!modelDirPath || !imageNCHW) {
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                 return nullptr;
             }
-            LOGD("Part1 1x (%d,%d): getting output tensors (readback may sync Vulkan fence)", ii, jj);
             const auto& tokT = (*out1)[0].toTensor();
             const auto& spaT = (*out1)[1].toTensor();
             const float* tokPtr = tokT.const_data_ptr<float>();
-            LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
             const float* spaPtr = spaT.const_data_ptr<float>();
-            LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
             if (!tokPtr || !spaPtr) {
                 LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
@@ -296,9 +298,7 @@ if (!modelDirPath || !imageNCHW) {
             std::memcpy(ws_tokens, tokSlice, tokenSliceSz * sizeof(float));
             auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
             std::vector<EValue> in2 = {*tokInput};
-            LOGD("Part1 1x (%d,%d): calling Part2 forward", ii, jj);
             auto out2 = m2_only->forward(in2);
-            LOGD("Part1 1x (%d,%d): Part2 forward returned", ii, jj);
             if (!out2.ok() || out2->empty()) {
                 LOGE("Part2 fail 1x (%d,%d)", ii, jj);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
@@ -461,13 +461,10 @@ if (!modelDirPath || !imageNCHW) {
                         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                         return nullptr;
                     }
-                    LOGD("Part1 1x (%d,%d): getting output tensors (readback may sync Vulkan fence)", ii, jj);
                     const auto& tokT = (*out1)[0].toTensor();
                     const auto& spaT = (*out1)[1].toTensor();
                     const float* tokPtr = tokT.const_data_ptr<float>();
-                    LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
                     const float* spaPtr = spaT.const_data_ptr<float>();
-                    LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
                     if (!tokPtr || !spaPtr) {
                         LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
                         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
@@ -485,11 +482,9 @@ if (!modelDirPath || !imageNCHW) {
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                     return nullptr;
                 }
-                LOGD("Part1 1x (%d,%d): calling Part2 forward", ii, jj);
                 auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
                 std::vector<EValue> in2 = {*tokInput};
                 auto out2 = m2->forward(in2);
-                LOGD("Part1 1x (%d,%d): Part2 forward returned", ii, jj);
                 if (!out2.ok() || out2->empty()) {
                     LOGE("Part2 fail 1x (%d,%d)", ii, jj);
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);

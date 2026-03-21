@@ -138,6 +138,7 @@ if (!modelDirPath || !imageNCHW) {
     const int chunk1x = (part12Chunk1x > 0) ? std::min(25, part12Chunk1x) : 0;
     const int chunk05x = (part12Chunk05x > 0) ? std::min(9, part12Chunk05x) : 0;
     const int yieldMs = (part12YieldMsBetweenChunks > 0) ? part12YieldMsBetweenChunks : 0;
+    const bool needMultiscalePatchPrep = (part12_25Only != JNI_TRUE);
     LOGD("runFullPipelineInt8 (CPU): modelDir=%s part1Limits 1x=%d 0.5x=%d chunk1x=%d chunk05x=%d yieldMs=%d preferSingleP4b=%d swapTileNdc=%d",
          modelDir.c_str(), limit1x, limit05x, chunk1x, chunk05x, yieldMs,
          useSinglePart4bOnly ? 1 : 0, swapTileNdc ? 1 : 0);
@@ -172,10 +173,14 @@ if (!modelDirPath || !imageNCHW) {
     if (!imageData) return nullptr;
 
     // ── Downsample for 0.5x and 0.25x patches ───────────────────────────────
-    long long tDown = nowMs();
-    downsample2x(imageData, imageSize, imageSize, 3, g_workspace.halfImg);
-    downsample4x(imageData, imageSize, imageSize, 3, g_workspace.quarterImg);
-    LOGD("Downsample 2x+4x: %lldms", nowMs() - tDown);
+    if (needMultiscalePatchPrep) {
+        long long tDown = nowMs();
+        downsample2x(imageData, imageSize, imageSize, 3, g_workspace.halfImg);
+        downsample4x(imageData, imageSize, imageSize, 3, g_workspace.quarterImg);
+        LOGD("Downsample 2x+4x: %lldms", nowMs() - tDown);
+    } else {
+        LOGD("Skipped 0.5x+0.25x image downsample prep (part12_25_only)");
+    }
 
     long long tLoad12 = nowMs();
     if (!g_moduleCache.ensureLoaded(modelDir, false)) {
@@ -325,13 +330,10 @@ if (!modelDirPath || !imageNCHW) {
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                     return nullptr;
                 }
-                LOGD("Part1 1x (%d,%d): getting output tensors (CPU readback)", ii, jj);
                 const auto& tokT = (*out1)[0].toTensor();
                 const auto& spaT = (*out1)[1].toTensor();
                 const float* tokPtr = tokT.const_data_ptr<float>();
-                LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
                 const float* spaPtr = spaT.const_data_ptr<float>();
-                LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
                 if (!tokPtr || !spaPtr) {
                     LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
@@ -342,11 +344,9 @@ if (!modelDirPath || !imageNCHW) {
                 reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
                 mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
                 std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
-                LOGD("Part1 1x (%d,%d): calling Part2 forward", ii, jj);
                 auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
                 std::vector<EValue> in2 = {*tokInput};
                 auto out2 = m2->forward(in2);
-                LOGD("Part1 1x (%d,%d): Part2 forward returned", ii, jj);
                 if (!out2.ok() || out2->empty()) {
                     LOGE("Part2 fail 1x (%d,%d)", ii, jj);
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);

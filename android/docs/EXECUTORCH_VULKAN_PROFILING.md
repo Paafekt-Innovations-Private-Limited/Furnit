@@ -74,6 +74,200 @@ To profile a **single .pte** (e.g. one Part4b or Part1 model) without the app:
    python devtools/inspector/inspector_cli.py --etdump_path part4b.etdp
    ```
 
+## 3. Concrete profiling plan for slow Part1+2
+
+This is the concrete workflow to use when Part1+2 is the long pole.
+
+### One-tap in-app investigation
+
+The Android app now has a single in-app action for the three checks above:
+
+- `Profile -> Settings -> Developer -> Part1 only test -> Investigate all 3`
+
+That action logs:
+
+- the current room-routing decision
+- forced Vulkan Part1 `3x` on the same patch
+- forced CPU-sidecar Part1 `3x` on the same patch
+- exact `executor_runner` / ETDump commands for standalone Part1 and Part2 artifacts
+
+Use these grep markers after running it:
+
+```bash
+adb logcat -d | grep P1_ROUTE
+adb logcat -d | grep P1_INVESTIGATE
+adb logcat -d | grep P12_ETDUMP
+```
+
+Read them this way:
+
+- `P1_ROUTE`: proves whether normal room creation is effectively hybrid or true Vulkan for Part1+2
+- `P1_INVESTIGATE`: lists which candidate `.pte` files were found and prints timed `3x` forwards for forced Vulkan and forced CPU-sidecar paths
+- `P12_ETDUMP`: prints ready-to-run shell commands for standalone ETDump collection
+
+### Step 0: first verify which backend you are actually measuring
+
+Before doing any Vulkan diagnosis, inspect the room-creation log line:
+
+```text
+runFullPipelineInt8: modelDir=... useVulkan=1 part12OnCpu=...
+```
+
+Read it this way:
+
+- `part12OnCpu=1` means the room run is **hybrid**, not Vulkan Part1+2.
+- `part12OnCpu=0` means the room run is attempting true Vulkan Part1+2.
+
+This matters because a `30s+` Part1+2 block in a hybrid run is **not evidence of a Vulkan Part1 bottleneck**.
+
+In the current app, hybrid Part1+2 can be auto-enabled when CPU Part1/2 sidecar models exist under `models_cpu`. So if you want to measure true Vulkan Part1+2 in the room pipeline, make sure the run actually logs `part12OnCpu=0`.
+
+### Step 1: measure standalone Part1 first inside the app
+
+Use the existing in-app Part1 benchmark path before going deeper into ETDump.
+
+In `Profile -> Settings -> Developer`:
+
+1. Tap `Release Part1 cache`.
+2. Tap `Warmup`.
+3. Run `Benchmark 3×`.
+
+Capture:
+
+```bash
+adb logcat -d | grep P1_BENCH
+adb logcat -d | grep PART1_RUN
+adb logcat -d | grep PART1_ARTIFACT
+```
+
+What this gives you:
+
+- `P1_BENCH session_ensure_ms=...` shows load + 2x warmup if the session was cold.
+- `P1_BENCH timed_forward 1/3`, `2/3`, `3/3` shows steady forward time on the same module and same patch.
+- `PART1_ARTIFACT` confirms which `.pte` file was actually used.
+
+Interpretation:
+
+- `run1` much larger than `run2` / `run3` means pipeline/shader setup dominates the first call.
+- all three runs similarly high means the real cost is steady-state execution.
+
+### Step 2: get the portable CPU baseline
+
+Run the same Part1 benchmark using the portable / CPU artifact and compare it to the Vulkan artifact on the same device.
+
+For Part1 diagnosis, the most useful comparison is:
+
+- Vulkan Part1: `sharp_split_part1_vulkan_fp32.pte` or `_fp16.pte`
+- Portable Part1: `sharp_split_part1.pte`
+
+Why this matters:
+
+- If Vulkan is only slightly better or worse than portable, the delegated graph may be suffering from layout churn or graph breaks.
+- If Vulkan is much faster on the same patch, then room-level slowness may be elsewhere.
+
+### Step 3: collect ETDump for standalone Part1 and Part2
+
+Once you know a standalone forward is still slow, use `executor_runner` + ETDump on the individual artifacts.
+
+Part1:
+
+```bash
+adb shell mkdir -p /data/local/tmp/etvk/models /data/local/tmp/etvk/etdumps
+adb push sharp_split_part1_vulkan_fp32.pte /data/local/tmp/etvk/models/
+adb shell /data/local/tmp/etvk/executor_runner \
+  --model_path /data/local/tmp/etvk/models/sharp_split_part1_vulkan_fp32.pte \
+  --num_executions=3 \
+  --etdump_path /data/local/tmp/etvk/etdumps/part1_vulkan.etdp
+adb pull /data/local/tmp/etvk/etdumps/part1_vulkan.etdp ./
+python devtools/inspector/inspector_cli.py --etdump_path part1_vulkan.etdp
+```
+
+Part2:
+
+```bash
+adb push sharp_split_part2_vulkan_fp32.pte /data/local/tmp/etvk/models/
+adb shell /data/local/tmp/etvk/executor_runner \
+  --model_path /data/local/tmp/etvk/models/sharp_split_part2_vulkan_fp32.pte \
+  --num_executions=3 \
+  --etdump_path /data/local/tmp/etvk/etdumps/part2_vulkan.etdp
+adb pull /data/local/tmp/etvk/etdumps/part2_vulkan.etdp ./
+python devtools/inspector/inspector_cli.py --etdump_path part2_vulkan.etdp
+```
+
+Also run the portable equivalents for baseline if needed.
+
+### Step 4: read the Inspector output the right way
+
+The main question is whether time is inside the delegate’s real math kernels or in graph/layout overhead.
+
+#### Case A: `DELEGATE_CALL` is almost the whole `Method::execute`
+
+This means most time is inside the delegated region itself.
+
+Then inspect the expensive ops:
+
+- If a few large ops dominate, such as `bmm`, `softmax`, `linear`, or other attention-heavy math, the next lever is usually **splitting / repartitioning around the attention-heavy blocks**.
+- If the largest ops are conv-heavy and stable, the next lever is usually **graph-specific export work**, not app-side code.
+
+#### Case B: many small conversion / layout ops show up
+
+This usually means layout or storage churn is stealing time.
+
+Common warning signs are many ops with names like:
+
+- `view_*`
+- `permute_*`
+- `concat_*`
+- `image_to_nchw_*`
+- `nchw_to_image_*`
+- `texture3d_*`
+
+If the dump looks like that, the next lever is usually:
+
+- fewer delegated regions
+- re-export with different partitioning
+- split the model around the transition-heavy area
+
+This matches the official Vulkan troubleshooting guidance: poor performance often comes from extra copies inserted to satisfy layout/storage requirements.
+
+#### Case C: lots of graph breaks / CPU fallback
+
+If the profile or logs suggest unsupported ops are forcing frequent exits from Vulkan, the next lever is:
+
+- reduce the Vulkan partition size
+- change the export/lowering so unsupported boundaries are cleaner
+- test whether a smaller delegated region is actually faster than “maximum Vulkan”
+
+### Step 5: what not to expect from current Vulkan
+
+Do not assume the fix will be “turn on quantized Vulkan convs”.
+
+Per the official Vulkan backend overview:
+
+- Vulkan already supports quantized **linear** paths
+- broader quantized operator support such as quantized **convolution** is still evolving
+
+So for SHARP Part1, a large win is more likely to come from:
+
+- reducing layout churn
+- reducing graph-break overhead
+- splitting around attention-heavy regions
+
+not from a generic switch that suddenly makes all Part1 convolutions fast on Vulkan.
+
+### Step 6: decision rule after profiling
+
+Use this decision table:
+
+- standalone Part1 Vulkan slow, ETDump dominated by `view` / `concat` / `texture3d` conversions:
+  - prioritize repartitioning and export-side layout cleanup
+- standalone Part1 Vulkan slow, ETDump dominated by a few big attention/math ops:
+  - prioritize Part1a / Part1b split experiments around attention-heavy blocks
+- standalone Part1 Vulkan okay, but room pipeline still slow:
+  - the long pole is probably not standalone Part1 math; check Part2, room-level routing, or hybrid CPU behavior
+- room log shows `part12OnCpu=1`:
+  - do not treat that run as evidence about Vulkan Part1 performance
+
 ## Inspector output
 
 The Inspector prints a table with columns such as:

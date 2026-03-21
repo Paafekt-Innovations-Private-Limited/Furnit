@@ -141,23 +141,12 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Auto-initialize with the best available backend.
-     * Tries NCNN first, then ONNX, then TFLite.
+     * Auto-initialize with the best available backend (ONNX Runtime, then TFLite).
      */
     fun initializeAuto(): Boolean {
         LogUtil.i("FurnitureFitManager", "Auto-initializing with best available backend...")
 
-        // Try NCNN first (best performance) — disabled by default.
-        if (BackendConfig.ENABLE_NCNN) {
-            if (initializeNcnn()) {
-                LogUtil.i("FurnitureFitManager", "Using NCNN backend")
-                return true
-            }
-        } else {
-            LogUtil.i("FurnitureFitManager", "NCNN backend disabled; skipping")
-        }
-
-        // Fall back to ONNX Runtime
+        // ONNX Runtime
         try {
             initializeOnnx()
             if (ortSession != null) {

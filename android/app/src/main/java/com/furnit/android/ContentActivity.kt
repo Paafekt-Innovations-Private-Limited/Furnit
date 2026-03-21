@@ -21,7 +21,6 @@ import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
-import com.furnit.android.services.BackendConfig
 import java.io.File
 
 class ContentActivity : AppCompatActivity() {

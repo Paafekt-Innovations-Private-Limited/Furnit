@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import com.furnit.android.services.ExecutorchFixedSettings
+import com.furnit.android.services.SharpExecuTorchSplitModelNames
 import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
@@ -30,6 +32,12 @@ object Part1OnlyTest {
     private const val TAG = "Part1Test"
     /** Grep: `adb logcat -d | grep P1_BENCH` — three timed forwards, same session. */
     const val P1_BENCH_MARKER = "P1_BENCH"
+    /** Grep: `adb logcat -d | grep P1_ROUTE` — current room-creation routing summary. */
+    const val P1_ROUTE_MARKER = "P1_ROUTE"
+    /** Grep: `adb logcat -d | grep P1_INVESTIGATE` — forced Vulkan vs CPU-sidecar Part1 benchmarks. */
+    const val P1_INVESTIGATE_MARKER = "P1_INVESTIGATE"
+    /** Grep: `adb logcat -d | grep P12_ETDUMP` — executor_runner ETDump copy/run commands for Part1+2. */
+    const val P12_ETDUMP_MARKER = "P12_ETDUMP"
     /** Startup background warmup — adb: adb logcat -s ExecuTorchWarmup:I */
     const val WARMUP_TAG = "ExecuTorchWarmup"
     /**
@@ -47,6 +55,7 @@ object Part1OnlyTest {
 
     private val manualWarmupInProgress = AtomicBoolean(false)
     private val tripleBenchmarkInProgress = AtomicBoolean(false)
+    private val investigationInProgress = AtomicBoolean(false)
     private val startupWarmupSuppressed = AtomicBoolean(false)
 
     /** Same-process cache: survives Warmup → Run; lost on new PID or [releaseCachedPart1Module]. */
@@ -65,6 +74,22 @@ object Part1OnlyTest {
         0.01150f, -0.01246f, -0.08190f, 0.01107f, -0.03018f, 0.09403f, 0.06268f, -0.00204f
     )
     private const val GOLDEN_FIRST8_TOLERANCE = 2e-4f
+
+    private enum class ArtifactMode { VULKAN, CPU_SIDECAR }
+
+    private data class RoomRouteState(
+        val useCpuStable: Boolean,
+        val part12OnCpuRequested: Boolean,
+        val hasCpuPart1Sidecar: Boolean,
+        val hasCpuPart2Sidecar: Boolean,
+        val effectivePart12OnCpu: Boolean,
+    )
+
+    private data class TimedBenchmarkResult(
+        val chosenPte: File,
+        val ensureMs: Long,
+        val durationsMs: LongArray,
+    )
 
     data class WarmupResult(val success: Boolean, val durationMs: Long, val userMessage: String)
 
@@ -123,6 +148,21 @@ object Part1OnlyTest {
             .getBoolean(KEY_STARTUP_WARMUP_ENABLED, false)
     }
 
+    private fun modelDirsForSubdir(context: Context, subdir: String): List<File> {
+        val list = mutableListOf<File>()
+        list.add(File(context.filesDir, subdir).also { it.mkdirs() })
+        context.getExternalFilesDir(subdir)?.let { list.add(it) }
+        return list
+    }
+
+    private fun legacyModelsDirs(context: Context): List<File> {
+        val list = mutableListOf<File>()
+        list.add(File(context.filesDir, "models").also { it.mkdirs() })
+        context.getExternalFilesDir("models")?.let { list.add(it) }
+        list.add(File("/data/local/tmp/furnit"))
+        return list
+    }
+
     private fun modelsDirs(context: Context): List<File> {
         val list = mutableListOf<File>()
         // etVulkan: models_vulkan first (push Vulkan .pte there via push_sharp_vulkan_only.sh)
@@ -140,12 +180,52 @@ object Part1OnlyTest {
         return list
     }
 
+    private fun modelDirsForMode(context: Context, mode: ArtifactMode): List<File> {
+        val ordered = when (mode) {
+            ArtifactMode.VULKAN -> modelDirsForSubdir(context, "models_vulkan") + legacyModelsDirs(context)
+            ArtifactMode.CPU_SIDECAR -> modelDirsForSubdir(context, "models_cpu") + legacyModelsDirs(context)
+        }
+        val out = mutableListOf<File>()
+        val seen = HashSet<String>()
+        for (dir in ordered) {
+            val key = dir.absolutePath
+            if (seen.add(key)) out.add(dir)
+        }
+        return out
+    }
+
     /** Preferred Part1 filenames in order (first existing file is attempted first). */
     private fun part1PteCandidateNames(): List<String> {
         return if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
             listOf("sharp_split_part1_vulkan_fp32.pte", "sharp_split_part1_vulkan_fp16.pte", "sharp_split_part1.pte")
         } else {
             listOf("sharp_split_part1.pte", "sharp_split_part1_fp16.pte", "sharp_split_part1_int8.pte")
+        }
+    }
+
+    private fun part1PteCandidateNamesForMode(mode: ArtifactMode): List<String> {
+        return when (mode) {
+            ArtifactMode.VULKAN ->
+                listOf("sharp_split_part1_vulkan_fp32.pte", "sharp_split_part1_vulkan_fp16.pte")
+            ArtifactMode.CPU_SIDECAR ->
+                listOf(
+                    SharpExecuTorchSplitModelNames.PART1_INT8,
+                    SharpExecuTorchSplitModelNames.PART1_FP32,
+                    SharpExecuTorchSplitModelNames.PART1_FP16,
+                )
+        }
+    }
+
+    private fun part2PteCandidateNamesForMode(mode: ArtifactMode): List<String> {
+        return when (mode) {
+            ArtifactMode.VULKAN ->
+                listOf("sharp_split_part2_vulkan_fp32.pte", "sharp_split_part2_vulkan_fp16.pte")
+            ArtifactMode.CPU_SIDECAR ->
+                listOf(
+                    SharpExecuTorchSplitModelNames.PART2_INT8,
+                    SharpExecuTorchSplitModelNames.PART2_FP32,
+                    SharpExecuTorchSplitModelNames.PART2_FP16,
+                )
         }
     }
 
@@ -164,6 +244,27 @@ object Part1OnlyTest {
         return out
     }
 
+    private fun findCandidatesInDirs(dirs: List<File>, candidateNames: List<String>): List<File> {
+        val out = mutableListOf<File>()
+        val seen = HashSet<String>()
+        for (name in candidateNames) {
+            for (dir in dirs) {
+                val file = File(dir, name)
+                if (!file.exists() || file.length() <= 0L) continue
+                val key = file.absolutePath
+                if (seen.add(key)) out.add(file)
+                break
+            }
+        }
+        return out
+    }
+
+    private fun findExplicitPart1PteCandidates(context: Context, mode: ArtifactMode): List<File> =
+        findCandidatesInDirs(modelDirsForMode(context, mode), part1PteCandidateNamesForMode(mode))
+
+    private fun findExplicitPart2PteCandidates(context: Context, mode: ArtifactMode): List<File> =
+        findCandidatesInDirs(modelDirsForMode(context, mode), part2PteCandidateNamesForMode(mode))
+
     private fun findFile(context: Context, filename: String): File? {
         for (dir in modelsDirs(context)) {
             val f = File(dir, filename)
@@ -171,6 +272,56 @@ object Part1OnlyTest {
         }
         return null
     }
+
+    private fun describeCandidateFiles(files: List<File>): String =
+        if (files.isEmpty()) "(none)"
+        else files.joinToString { "${it.name}@${it.parentFile?.name ?: "?"}(${it.length() / 1024}KB)" }
+
+    private fun logCandidateSet(marker: String, mode: ArtifactMode, files: List<File>, dirs: List<File>) {
+        val modeLabel = if (mode == ArtifactMode.VULKAN) "vulkan" else "cpu_sidecar"
+        Log.i(
+            TAG,
+            "$marker mode=$modeLabel count=${files.size} candidates=${describeCandidateFiles(files)} " +
+                "searched_dirs=${dirs.joinToString { it.absolutePath }}"
+        )
+        files.forEachIndexed { index, file ->
+            Log.i(
+                TAG,
+                "$marker mode=$modeLabel candidate[$index]=${file.absolutePath} size_bytes=${file.length()} mtime=${file.lastModified()}"
+            )
+        }
+    }
+
+    private fun readCurrentRoomRoute(context: Context): RoomRouteState {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        ExecutorchFixedSettings.syncToPrefs(prefs)
+        val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+        val part12OnCpuRequested = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
+        val hasCpuPart1Sidecar = findExplicitPart1PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
+        val hasCpuPart2Sidecar = findExplicitPart2PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
+        val effectivePart12OnCpu = !useCpuStable && (part12OnCpuRequested || (hasCpuPart1Sidecar && hasCpuPart2Sidecar))
+        return RoomRouteState(
+            useCpuStable = useCpuStable,
+            part12OnCpuRequested = part12OnCpuRequested,
+            hasCpuPart1Sidecar = hasCpuPart1Sidecar,
+            hasCpuPart2Sidecar = hasCpuPart2Sidecar,
+            effectivePart12OnCpu = effectivePart12OnCpu,
+        )
+    }
+
+    private fun logCurrentRoomRoute(context: Context) {
+        val route = readCurrentRoomRoute(context)
+        Log.i(
+            TAG,
+            "$P1_ROUTE_MARKER build_vulkan_aar=${BuildConfig.EXECUTORCH_USE_VULKAN_AAR} " +
+                "useCpuStable=${route.useCpuStable} part12OnCpuRequested=${route.part12OnCpuRequested} " +
+                "hasCpuPart1Sidecar=${route.hasCpuPart1Sidecar} hasCpuPart2Sidecar=${route.hasCpuPart2Sidecar} " +
+                "effectivePart12OnCpu=${route.effectivePart12OnCpu}"
+        )
+    }
+
+    private fun formatDurations(durationsMs: LongArray): String =
+        durationsMs.joinToString(prefix = "[", postfix = "]")
 
     /**
      * Classify ExecuTorch/Vulkan failure for diagnostics. Log kind= in warmup/run paths.
@@ -244,8 +395,17 @@ object Part1OnlyTest {
         context: Context,
         patchBin: File,
         logLabel: String
+    ): File = ensureSessionLoadedAndDoubleWarmupWithFallback(
+        candidates = findPart1PteCandidates(context),
+        patchBin = patchBin,
+        logLabel = logLabel,
+    )
+
+    private fun ensureSessionLoadedAndDoubleWarmupWithFallback(
+        candidates: List<File>,
+        patchBin: File,
+        logLabel: String
     ): File {
-        val candidates = findPart1PteCandidates(context)
         if (candidates.isEmpty()) {
             throw IllegalStateException("No Part1 .pte found (expected ${expectedPart1PteHint()})")
         }
@@ -385,6 +545,104 @@ object Part1OnlyTest {
         }
     }
 
+    private fun runTimedBenchmarkForCandidates(
+        patchBin: File,
+        candidates: List<File>,
+        modeLabel: String,
+        logLabel: String,
+        marker: String,
+    ): TimedBenchmarkResult {
+        val pid = Process.myPid()
+        Log.i(TAG, "$marker mode=$modeLabel pid=$pid pte_candidates=${candidates.joinToString { it.name }}")
+        Log.i(TAG, "$marker mode=$modeLabel shape=[1,3,$PATCH_SIZE,$PATCH_SIZE] dtype=float32 same_patch_blob=1 timed_forwards=3")
+        val tEnsure = SystemClock.elapsedRealtime()
+        val chosenPte = ensureSessionLoadedAndDoubleWarmupWithFallback(candidates, patchBin, logLabel)
+        val ensureMs = SystemClock.elapsedRealtime() - tEnsure
+        Log.i(
+            TAG,
+            "$marker mode=$modeLabel using_pte=${chosenPte.name} path=${chosenPte.absolutePath} " +
+                "session_ensure_ms=$ensureMs"
+        )
+
+        val patchData = readF32Bin(patchBin, PATCH_FLOATS)
+        val durationsMs = LongArray(3)
+        for (i in 0 until 3) {
+            Log.i(TAG, "$marker mode=$modeLabel timed_forward ${i + 1}/3 start")
+            durationsMs[i] = forwardOnceDurationMs(patchData)
+            Log.i(TAG, "$marker mode=$modeLabel timed_forward ${i + 1}/3 duration_ms=${durationsMs[i]}")
+        }
+
+        val d1 = durationsMs[0]
+        val d2 = durationsMs[1]
+        val d3 = durationsMs[2]
+        val ratio21 = if (d1 > 0) d2.toDouble() / d1 else 0.0
+        val ratio31 = if (d1 > 0) d3.toDouble() / d1 else 0.0
+        Log.i(
+            TAG,
+            "$marker mode=$modeLabel summary duration_ms=${formatDurations(durationsMs)} " +
+                "ratio_2_over_1=$ratio21 ratio_3_over_1=$ratio31"
+        )
+        return TimedBenchmarkResult(
+            chosenPte = chosenPte,
+            ensureMs = ensureMs,
+            durationsMs = durationsMs,
+        )
+    }
+
+    private fun logEtdumpCommand(context: Context, label: String, file: File?, dumpName: String) {
+        if (file == null) {
+            Log.i(TAG, "$P12_ETDUMP_MARKER label=$label missing=1")
+            return
+        }
+        val modelTarget = "/data/local/tmp/etvk/models/${file.name}"
+        val etdumpTarget = "/data/local/tmp/etvk/etdumps/$dumpName"
+        val hostModelCopyCmd = if (file.absolutePath.startsWith(context.filesDir.absolutePath + File.separator)) {
+            "adb exec-out run-as ${context.packageName} cat ${file.absolutePath} > ./${file.name}"
+        } else {
+            null
+        }
+        Log.i(TAG, "$P12_ETDUMP_MARKER label=$label path=${file.absolutePath} size_bytes=${file.length()}")
+        Log.i(TAG, "$P12_ETDUMP_MARKER label=$label prep_cmd=adb shell mkdir -p /data/local/tmp/etvk/models /data/local/tmp/etvk/etdumps")
+        hostModelCopyCmd?.let {
+            Log.i(TAG, "$P12_ETDUMP_MARKER label=$label host_copy_cmd=$it")
+            Log.i(TAG, "$P12_ETDUMP_MARKER label=$label push_cmd=adb push ./${file.name} $modelTarget")
+        } ?: Log.i(TAG, "$P12_ETDUMP_MARKER label=$label push_cmd=adb push ${file.absolutePath} $modelTarget")
+        Log.i(
+            TAG,
+            "$P12_ETDUMP_MARKER label=$label runner_cmd=adb shell /data/local/tmp/etvk/executor_runner " +
+                "--model_path $modelTarget --num_executions=3 --etdump_path $etdumpTarget"
+        )
+        Log.i(TAG, "$P12_ETDUMP_MARKER label=$label pull_cmd=adb pull $etdumpTarget ./")
+        Log.i(TAG, "$P12_ETDUMP_MARKER label=$label inspect_cmd=python devtools/inspector/inspector_cli.py --etdump_path $dumpName")
+    }
+
+    private fun logEtdumpCommands(context: Context) {
+        logEtdumpCommand(
+            context,
+            "part1_vulkan",
+            findExplicitPart1PteCandidates(context, ArtifactMode.VULKAN).firstOrNull(),
+            "part1_vulkan.etdp",
+        )
+        logEtdumpCommand(
+            context,
+            "part2_vulkan",
+            findExplicitPart2PteCandidates(context, ArtifactMode.VULKAN).firstOrNull(),
+            "part2_vulkan.etdp",
+        )
+        logEtdumpCommand(
+            context,
+            "part1_cpu_sidecar",
+            findExplicitPart1PteCandidates(context, ArtifactMode.CPU_SIDECAR).firstOrNull(),
+            "part1_cpu_sidecar.etdp",
+        )
+        logEtdumpCommand(
+            context,
+            "part2_cpu_sidecar",
+            findExplicitPart2PteCandidates(context, ArtifactMode.CPU_SIDECAR).firstOrNull(),
+            "part2_cpu_sidecar.etdp",
+        )
+    }
+
     /**
      * Part1 only: same process, same cached [Module], same `part1_test_patch_f32.bin` bytes, **three** timed
      * [forward]s in a row. Does **not** replace Warmup — calls [ensureSessionLoadedAndDoubleWarmup] first if cold
@@ -456,6 +714,73 @@ object Part1OnlyTest {
             return "Part1 benchmark failed: ${e.message ?: e}"
         } finally {
             tripleBenchmarkInProgress.set(false)
+        }
+    }
+
+    @JvmStatic
+    fun runInvestigation(context: Context): String {
+        if (!investigationInProgress.compareAndSet(false, true)) {
+            return "Part1 investigation: already running"
+        }
+        try {
+            val app = context.applicationContext
+            val patchBin = findFile(app, "part1_test_patch_f32.bin")
+            if (patchBin == null) {
+                Log.e(TAG, "$P1_INVESTIGATE_MARKER missing part1_test_patch_f32.bin")
+                return "Part1 investigation: part1_test_patch_f32.bin not found"
+            }
+
+            logCurrentRoomRoute(app)
+
+            val vulkanDirs = modelDirsForMode(app, ArtifactMode.VULKAN)
+            val cpuDirs = modelDirsForMode(app, ArtifactMode.CPU_SIDECAR)
+            val vulkanCandidates = findExplicitPart1PteCandidates(app, ArtifactMode.VULKAN)
+            val cpuCandidates = findExplicitPart1PteCandidates(app, ArtifactMode.CPU_SIDECAR)
+            logCandidateSet(P1_INVESTIGATE_MARKER, ArtifactMode.VULKAN, vulkanCandidates, vulkanDirs)
+            logCandidateSet(P1_INVESTIGATE_MARKER, ArtifactMode.CPU_SIDECAR, cpuCandidates, cpuDirs)
+
+            val summaries = mutableListOf<String>()
+
+            releaseCachedPart1Module()
+            if (vulkanCandidates.isNotEmpty()) {
+                val result = runTimedBenchmarkForCandidates(
+                    patchBin = patchBin,
+                    candidates = vulkanCandidates,
+                    modeLabel = "vulkan",
+                    logLabel = "investigate_vulkan",
+                    marker = P1_INVESTIGATE_MARKER,
+                )
+                summaries += "vulkan=${formatDurations(result.durationsMs)}"
+            } else {
+                Log.w(TAG, "$P1_INVESTIGATE_MARKER mode=vulkan skipped=no_candidate")
+                summaries += "vulkan=missing"
+            }
+
+            releaseCachedPart1Module()
+            if (cpuCandidates.isNotEmpty()) {
+                val result = runTimedBenchmarkForCandidates(
+                    patchBin = patchBin,
+                    candidates = cpuCandidates,
+                    modeLabel = "cpu_sidecar",
+                    logLabel = "investigate_cpu_sidecar",
+                    marker = P1_INVESTIGATE_MARKER,
+                )
+                summaries += "cpu_sidecar=${formatDurations(result.durationsMs)}"
+            } else {
+                Log.w(TAG, "$P1_INVESTIGATE_MARKER mode=cpu_sidecar skipped=no_candidate")
+                summaries += "cpu_sidecar=missing"
+            }
+
+            releaseCachedPart1Module()
+            logEtdumpCommands(app)
+            return "Part1 investigation logged: ${summaries.joinToString(" | ")}. " +
+                "Grep $P1_ROUTE_MARKER, $P1_INVESTIGATE_MARKER, $P12_ETDUMP_MARKER."
+        } catch (e: Throwable) {
+            Log.e(TAG, "$P1_INVESTIGATE_MARKER failed", e)
+            return "Part1 investigation failed: ${e.message ?: e}"
+        } finally {
+            releaseCachedPart1Module()
+            investigationInProgress.set(false)
         }
     }
 

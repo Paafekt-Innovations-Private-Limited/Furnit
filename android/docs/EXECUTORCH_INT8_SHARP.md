@@ -41,6 +41,23 @@ These tables describe the **current app/runtime flow**, not just every filename 
 
 `sharp_split_part4b_vulkan.pte` still exists as a fallback single-decoder file, but it is **not** the current known-good Vulkan route.
 
+#### Why the current Vulkan Part4 route is split this way
+
+The current Vulkan Part4 flow is split for a technical reason, not just for convenience.
+
+- Older monolithic / legacy Part4b Vulkan routes were brittle around late decoder packing and concat-heavy shape paths.
+- In this repo, the old `tile_full` Vulkan path can abort in `libexecutorch.so` during graph init with `sizes_.size() <= 4`, which points to a Vulkan lowering / tensor-shape limitation rather than an app bug.
+- The current fine-split `tile_00` route avoids that boundary by keeping the shape-fragile stages off Vulkan.
+
+Current routing rationale:
+
+- `stage_pre`, `decoder_head`, and `raw_heads` stay on Vulkan because they are the conv-heavy compute path and benefit most from GPU execution.
+- `init_base` and `compose` stay portable because those stages create **rank-5 tensors** / shape-sensitive packing logic that are not safe to rely on in the current Vulkan delegate path used by this app.
+
+The native C++ path also copies each split-stage output into owned CPU buffers and validates expected shapes before feeding the next stage. That makes the Vulkan/portable handoff explicit and robust instead of chaining delegate-owned tensors across stage boundaries.
+
+After the route was stable, the main Part4 hotspot (`decoder_head`) was optimized with grouped-conv hot-path surgery (`groups=4`, `43` touched layers, about `74.95%` estimated touched-parameter reduction). That is why the current known-good Vulkan path is both split **and** hot-path-optimized.
+
 #### CPU flow (`etCpu` or CPU ExecuTorch INT8, `files/models_cpu`)
 
 | Stage | Model file(s) used in the current flow | Notes |
