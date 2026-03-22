@@ -996,8 +996,9 @@ class SharpRoomActivity : AppCompatActivity() {
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x808080);
 
-        // Camera
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Camera — landscape infinite pinch: smaller near (see iOS INFINITE_ZOOM) so close dollying still draws; portrait keeps 0.1.
+        const cameraNear = isPortrait ? 0.1 : 0.001;
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, cameraNear, 1000);
         camera.position.set(0, 0, 5);
         camera.up.set(0, 1, 0);
 
@@ -1024,17 +1025,32 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
-        // Match SharpRoomView.swift: portrait allows closer zoom than landscape
-        controls.minDistance = isPortrait ? 0.001 : 0.01;
-        // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
+        // Portrait: small minDistance + capped max (room stays framed). Landscape: infinite dolly — minDistance 0 lets
+        // pinch-zoom pass through the target / walls along the view axis (matches iOS INFINITE_ZOOM idea).
         const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
-        controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
+        if (isPortrait) {
+            controls.minDistance = 0.001;
+            controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
+        } else {
+            controls.minDistance = 0;
+            controls.maxDistance = 1e6;
+            controls.zoomSpeed = 2.0;
+            // Built-in OrbitControls dolly only moves camera toward a fixed target → stalls ~0.02m and cannot pass
+            // through walls. Same as iOS INFINITE_ZOOM zoomCamera: move camera + target together along view ray.
+            controls.enableZoom = false;
+        }
         controls.target.set(0, 0, 0);
         controls.minAzimuthAngle = -Infinity;
         controls.maxAzimuthAngle = Infinity;
-        // Slightly relax polar limits so portrait "zoom into wall" views are not clamped (was 0.01 / PI-0.01)
-        controls.minPolarAngle = 0.001;
-        controls.maxPolarAngle = Math.PI - 0.001;
+        // Portrait: narrow polar cone (comfortable tilt). Landscape: full 0..π — tight min/max polar was still clamping
+        // spherical phi when dollying through the target (pinch “infinite” felt stuck at the wall).
+        if (isPortrait) {
+            controls.minPolarAngle = 0.001;
+            controls.maxPolarAngle = Math.PI - 0.001;
+        } else {
+            controls.minPolarAngle = 0;
+            controls.maxPolarAngle = Math.PI;
+        }
 
         let initialCameraPosition = camera.position.clone();
         let initialControlsTarget = controls.target.clone();
@@ -1072,6 +1088,63 @@ class SharpRoomActivity : AppCompatActivity() {
                 console.log('[BENCHMARK_CAMERA] portrait=' + (isPortrait ? 1 : 0) + ' posX=' + p.x.toFixed(4) + ' posY=' + p.y.toFixed(4) + ' posZ=' + p.z.toFixed(4) + ' tgtX=' + t.x.toFixed(4) + ' tgtY=' + t.y.toFixed(4) + ' tgtZ=' + t.z.toFixed(4) + ' distance=' + dist.toFixed(4) + ' roomW=' + currentRoomW.toFixed(4) + ' roomH=' + currentRoomH.toFixed(4) + ' roomD=' + currentRoomD.toFixed(4));
             }, 500);
         });
+
+        if (!isPortrait) {
+            const LANDSCAPE_DOLLY_SENS = 4.0;
+            const LANDSCAPE_DOLLY_STEP = 0.22;
+            const PINCH_THRESHOLD = 0.012;
+            function landscapeDollyAlongView(scale) {
+                if (typeof scale !== 'number' || !isFinite(scale) || scale <= 0) return;
+                let forward = new THREE.Vector3().subVectors(controls.target, camera.position);
+                if (forward.lengthSq() < 1e-14) {
+                    camera.getWorldDirection(forward);
+                    forward.negate();
+                } else {
+                    forward.normalize();
+                }
+                const step = (scale - 1) * LANDSCAPE_DOLLY_STEP * LANDSCAPE_DOLLY_SENS;
+                camera.position.addScaledVector(forward, step);
+                controls.target.addScaledVector(forward, step);
+                controls.update();
+                needsRender = true;
+                autoOrbitEnabled = false;
+                const dist = camera.position.distanceTo(controls.target);
+                const line = '[LANDSCAPE_DOLLY] scale=' + scale.toFixed(4) + ' step=' + step.toFixed(5) + ' dist=' + dist.toFixed(5) +
+                    ' cam=' + camera.position.x.toFixed(3) + ',' + camera.position.y.toFixed(3) + ',' + camera.position.z.toFixed(3) +
+                    ' tgt=' + controls.target.x.toFixed(3) + ',' + controls.target.y.toFixed(3) + ',' + controls.target.z.toFixed(3);
+                _sharpConsoleLog(line);
+                sharpAndroidLog(line);
+            }
+            let lastPinchDist = 0;
+            const canvas = renderer.domElement;
+            canvas.addEventListener('touchstart', function(ev) {
+                if (ev.touches.length === 2) {
+                    const dx = ev.touches[0].clientX - ev.touches[1].clientX;
+                    const dy = ev.touches[0].clientY - ev.touches[1].clientY;
+                    lastPinchDist = Math.hypot(dx, dy);
+                }
+            }, { passive: true });
+            canvas.addEventListener('touchmove', function(ev) {
+                if (ev.touches.length !== 2 || lastPinchDist <= 0) return;
+                const dx = ev.touches[0].clientX - ev.touches[1].clientX;
+                const dy = ev.touches[0].clientY - ev.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const scale = dist / lastPinchDist;
+                lastPinchDist = dist;
+                if (Math.abs(scale - 1) < PINCH_THRESHOLD) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                landscapeDollyAlongView(scale);
+            }, { passive: false, capture: true });
+            canvas.addEventListener('touchend', function(ev) {
+                if (ev.touches.length < 2) lastPinchDist = 0;
+            }, { passive: true });
+            canvas.addEventListener('wheel', function(ev) {
+                ev.preventDefault();
+                const scale = ev.deltaY > 0 ? 1.07 : 0.93;
+                landscapeDollyAlongView(scale);
+            }, { passive: false });
+        }
 
         let splatMesh = null;
 

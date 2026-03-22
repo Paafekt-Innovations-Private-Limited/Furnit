@@ -1387,9 +1387,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
                 controls.maxAzimuthAngle =  Infinity;
-                // Relax polar limits so zoom-into-wall works (match Android)
-                controls.minPolarAngle = 0.001;
-                controls.maxPolarAngle = Math.PI - 0.001;
+                // Infinite zoom: full polar range — tight min/max polar still clamps spherical phi when dollying through
+                // the target (pinch stops at the wall). Bounded zoom: keep a narrow cone.
+                if (INFINITE_ZOOM) {
+                    controls.minPolarAngle = 0;
+                    controls.maxPolarAngle = Math.PI;
+                } else {
+                    controls.minPolarAngle = 0.001;
+                    controls.maxPolarAngle = Math.PI - 0.001;
+                }
 
                 // Camera clamping disabled for train-style free orbit
                 // Re-enable if needed for room boundary constraints
