@@ -1,15 +1,15 @@
 package com.furnit.android
 
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.SharpService
-import java.io.InputStream
 
 /**
  * Runs SHARP inference on an image provided by another app (e.g. BeeWare).
@@ -33,11 +33,16 @@ class SharpInferenceActivity : AppCompatActivity() {
             return
         }
         val bitmap = when {
-            imageUri != null -> loadBitmapFromUri(imageUri)
-            else -> BitmapFactory.decodeFile(imagePath)
+            imageUri != null -> PhotoOrientation.loadBitmapApplyingExif(this, imageUri)
+            else -> PhotoOrientation.loadBitmapApplyingExifFromFile(imagePath!!)
         }
         if (bitmap == null) {
             Toast.makeText(this, getString(R.string.failed_load_image), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(
+                this,
+                IllegalStateException("loadBitmapApplyingExif returned null"),
+                "Sharp inference — load image",
+            )
             setResult(RESULT_CANCELED)
             finish()
             return
@@ -62,6 +67,11 @@ class SharpInferenceActivity : AppCompatActivity() {
                 runOnUiThread {
                     LogUtil.e(TAG, "Sharp inference error: $message")
                     Toast.makeText(this@SharpInferenceActivity, message, Toast.LENGTH_LONG).show()
+                    CrashReporter.report(
+                        this@SharpInferenceActivity,
+                        RuntimeException(message),
+                        "Sharp inference — SHARP generation",
+                    )
                     setResult(RESULT_CANCELED)
                     finish()
                 }
@@ -69,18 +79,7 @@ class SharpInferenceActivity : AppCompatActivity() {
         })
     }
 
-    private fun loadBitmapFromUri(uri: Uri): android.graphics.Bitmap? {
-        return try {
-            contentResolver.openInputStream(uri).use { stream: InputStream? ->
-                stream?.let { BitmapFactory.decodeStream(it) }
-            }
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to load image from URI", e)
-            null
-        }
-    }
-
-        companion object {
+    companion object {
         private const val TAG = "SharpInference"
         const val EXTRA_IMAGE_URI = "image_uri"
         const val EXTRA_IMAGE_PATH = "image_path"

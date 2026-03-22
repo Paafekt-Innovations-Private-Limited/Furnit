@@ -72,8 +72,8 @@ class SharpService private constructor(private val context: Context) {
         val backend = prefs.getString("inference_backend", "executorch_int8") ?: "executorch_int8"
         val effective = BackendConfig.normalize(backend)
         if (effective == "executorch_int8") {
-            LogUtil.d(TAG, "ExecuTorch INT8 – sync models from external if present")
-            executorchInt8Sharp.syncModelsFromExternal()
+            LogUtil.d(TAG, "ExecuTorch INT8 – hydrate APK assets + sync external models if present")
+            executorchInt8Sharp.hydrateBundledAndExternalModels()
         }
     }
 
@@ -202,7 +202,8 @@ class SharpService private constructor(private val context: Context) {
             }
 
             if (result == null) {
-                callback.onError("SHARP ExecuTorch INT8 inference failed")
+                val detail = executorchInt8Sharp.consumeInferStreamingFailureDetail()
+                callback.onError(detail ?: "SHARP ExecuTorch INT8 inference failed")
                 return
             }
 

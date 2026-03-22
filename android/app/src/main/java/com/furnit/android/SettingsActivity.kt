@@ -236,7 +236,7 @@ class SettingsActivity : AppCompatActivity() {
         developerSection.addView(backendTitle)
 
         migrateBackendPref()
-        // Choice: ExecuTorch INT8 (Vulkan) vs CPU ExecuTorch INT8 — both C++, single Part4b
+        // Choice: ExecuTorch INT8 (Part1+2 + Vulkan hybrid) vs CPU ExecuTorch INT8 — both C++, single Part4b
         val executorchChoiceLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 16) }
         val executorchChoiceRg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding(0, 8, 0, 0) }
         val vulkanId = View.generateViewId()
@@ -244,7 +244,7 @@ class SettingsActivity : AppCompatActivity() {
         val useCpuExecutorch = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
         val vulkanRb = RadioButton(this).apply {
             id = vulkanId
-            text = "ExecuTorch INT8 (Vulkan)"
+            text = getString(R.string.settings_executorch_int8_vulkan_hybrid_label)
             setTextColor(Color.parseColor("#333333"))
         }
         val cpuRb = RadioButton(this).apply {
@@ -260,7 +260,8 @@ class SettingsActivity : AppCompatActivity() {
         }
         executorchChoiceLayout.addView(executorchChoiceRg)
         val executorchChoiceDesc = TextView(this).apply {
-            text = "Vulkan = GPU; CPU = portable Part1/2/3/4. Both C++ only."
+            text = getString(R.string.settings_executorch_int8_vulkan_hybrid_footer) +
+                " CPU = full portable Part1–4 in models_cpu only."
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(0, 8, 0, 0)
@@ -287,12 +288,12 @@ class SettingsActivity : AppCompatActivity() {
         maxGaussRg.addView(mg300k)
         maxGaussRg.addView(mg500k)
 
-        val currentMaxG = prefs.getInt("executorch_int8_max_gaussians", 500000)
+        val currentMaxG = prefs.getInt("executorch_int8_max_gaussians", 0)
         when (currentMaxG) {
             300000 -> maxGaussRg.check(mg300kId)
             500000 -> maxGaussRg.check(mg500kId)
             0 -> maxGaussRg.check(mgUnlimitedId)
-            else -> maxGaussRg.check(mg500kId)
+            else -> maxGaussRg.check(mgUnlimitedId)
         }
         maxGaussRg.setOnCheckedChangeListener { _, checkedId ->
             val v = when (checkedId) {
@@ -304,6 +305,30 @@ class SettingsActivity : AppCompatActivity() {
         }
         maxGaussLayout.addView(maxGaussRg)
         developerSection.addView(maxGaussLayout)
+
+        val part12Layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        part12Layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_part12_on_cpu)
+                textSize = 14f
+                setTextColor(Color.parseColor("#222222"))
+            },
+        )
+        part12Layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_part12_on_cpu_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+                setPadding(0, 4, 0, 8)
+            },
+        )
+        val part12OnCpuPref = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
+        part12Layout.addView(
+            createStyledSwitch(part12OnCpuPref) { isChecked ->
+                prefs.edit().putBoolean("executorch_int8_part12_on_cpu", isChecked).apply()
+            },
+        )
+        developerSection.addView(part12Layout)
 
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
 

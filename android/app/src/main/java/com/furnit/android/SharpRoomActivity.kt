@@ -35,6 +35,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Dispatchers
@@ -871,6 +872,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 runOnUiThread {
                     hideBrainProgressOverlay()
                     Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                    CrashReporter.report(this@SharpRoomActivity, e, "Sharp room brain / camera bind")
                 }
             }
         }, ContextCompat.getMainExecutor(this))
@@ -1559,6 +1561,7 @@ class SharpRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             DebugLogger.eDebugMode(TAG, "Failed to save room", e)
             Toast.makeText(this, getString(R.string.sharp_room_save_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Sharp room save")
         }
     }
 
@@ -1597,6 +1600,7 @@ class SharpRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             DebugLogger.eDebugMode(TAG, "Failed to share PLY file", e)
             Toast.makeText(this, getString(R.string.sharp_room_share_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Sharp room share PLY")
         }
     }
 

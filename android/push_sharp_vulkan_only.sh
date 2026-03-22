@@ -1,8 +1,11 @@
 #!/bin/bash
-# Push Vulkan-only SHARP .pte files from sharp_vulkan_only/ to device.
+# Push SHARP .pte from sharp_vulkan_only/ (or backup folder) to device.
+# Put **hybrid** INT8 sidecars here too: sharp_split_part1_int8.pte + sharp_split_part2_int8.pte
+# (same directory as Vulkan Part3/4 — no separate models_cpu push required).
 #
 # Usage:
 #   ./push_sharp_vulkan_only.sh
+#   ./push_sharp_vulkan_only.sh /path/to/folder
 #
 # Destination: models_vulkan (etVulkan APK)
 set -euo pipefail

@@ -6,7 +6,7 @@ This creates an untrained model with random weights - for testing the pipeline.
 For production, train the model first using train_gaussian_head.py.
 
 Usage:
-    python export_gaussian_head.py --output_dir ../app/src/main/assets/models
+    python export_gaussian_head.py --output_dir ../app/src/main/assets/models_cpu
 """
 
 import torch
@@ -206,7 +206,7 @@ def main():
         print("\nTo deploy to Android, copy:")
         print(f"  {param_path}")
         print(f"  {bin_path}")
-        print("to app/src/main/assets/models/")
+        print("to app/src/main/assets/models_cpu/ (or models_vulkan for Vulkan exports)")
     else:
         print("\nONNX export complete. Manual NCNN conversion needed.")
 

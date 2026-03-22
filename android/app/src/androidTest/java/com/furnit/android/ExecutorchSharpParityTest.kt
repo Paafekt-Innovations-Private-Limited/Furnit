@@ -63,9 +63,9 @@ class ExecutorchSharpParityTest {
 
     @Test
     fun testPart1OnePatchParityWithPython() {
-        val modelsDir = File(context.filesDir, "models")
-        val ptePath = File(modelsDir, "sharp_split_part1.pte").takeIf { it.exists() }
-            ?: context.getExternalFilesDir("models")?.let { File(it, "sharp_split_part1.pte").takeIf { f -> f.exists() } }
+        val cpuInternal = File(context.filesDir, "models_cpu")
+        val ptePath = File(cpuInternal, "sharp_split_part1.pte").takeIf { it.exists() }
+            ?: context.getExternalFilesDir("models_cpu")?.let { File(it, "sharp_split_part1.pte").takeIf { f -> f.exists() } }
             ?: run {
                 Log.w(TAG, "SKIP: sharp_split_part1.pte not found. Push via: ./push_sharp_executorch_models.sh executorch_models")
                 return

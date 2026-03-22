@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.LinearLayout
@@ -537,6 +538,7 @@ class ContentActivity : AppCompatActivity() {
             refreshRoomsList()
         } catch (e: Exception) {
             Toast.makeText(this, getString(R.string.home_failed_delete, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Content — delete room")
         }
     }
 }

@@ -484,7 +484,7 @@ def main():
     print(f"Trained model: {args.output_dir}/best_model.pth")
     print(f"NCNN model: {args.output_dir}/gaussian_head.ncnn.param")
     print(f"\nTo deploy to Android:")
-    print(f"  cp {args.output_dir}/gaussian_head.ncnn.* app/src/main/assets/models/")
+    print(f"  cp {args.output_dir}/gaussian_head.ncnn.* app/src/main/assets/models_cpu/")
 
 
 if __name__ == "__main__":

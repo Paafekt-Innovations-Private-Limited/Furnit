@@ -155,12 +155,8 @@ object Part1OnlyTest {
         return list
     }
 
-    private fun legacyModelsDirs(context: Context): List<File> {
-        val list = mutableListOf<File>()
-        list.add(File(context.filesDir, "models").also { it.mkdirs() })
-        context.getExternalFilesDir("models")?.let { list.add(it) }
-        list.add(File("/data/local/tmp/furnit"))
-        return list
+    private fun extraProbeDirs(context: Context): List<File> {
+        return listOf(File("/data/local/tmp/furnit"))
     }
 
     private fun modelsDirs(context: Context): List<File> {
@@ -174,16 +170,14 @@ object Part1OnlyTest {
             list.add(File(context.filesDir, "models_cpu").also { it.mkdirs() })
             context.getExternalFilesDir("models_cpu")?.let { list.add(it) }
         }
-        list.add(File(context.filesDir, "models").also { it.mkdirs() })
-        context.getExternalFilesDir("models")?.let { list.add(it) }
         list.add(File("/data/local/tmp/furnit"))
         return list
     }
 
     private fun modelDirsForMode(context: Context, mode: ArtifactMode): List<File> {
         val ordered = when (mode) {
-            ArtifactMode.VULKAN -> modelDirsForSubdir(context, "models_vulkan") + legacyModelsDirs(context)
-            ArtifactMode.CPU_SIDECAR -> modelDirsForSubdir(context, "models_cpu") + legacyModelsDirs(context)
+            ArtifactMode.VULKAN -> modelDirsForSubdir(context, "models_vulkan") + extraProbeDirs(context)
+            ArtifactMode.CPU_SIDECAR -> modelDirsForSubdir(context, "models_cpu") + extraProbeDirs(context)
         }
         val out = mutableListOf<File>()
         val seen = HashSet<String>()
@@ -197,9 +191,17 @@ object Part1OnlyTest {
     /** Preferred Part1 filenames in order (first existing file is attempted first). */
     private fun part1PteCandidateNames(): List<String> {
         return if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
-            listOf("sharp_split_part1_vulkan_fp32.pte", "sharp_split_part1_vulkan_fp16.pte", "sharp_split_part1.pte")
+            listOf(
+                SharpExecuTorchSplitModelNames.PART1_VULKAN_FP32,
+                SharpExecuTorchSplitModelNames.PART1_VULKAN_FP16,
+                SharpExecuTorchSplitModelNames.PART1_FP32,
+            )
         } else {
-            listOf("sharp_split_part1.pte", "sharp_split_part1_fp16.pte", "sharp_split_part1_int8.pte")
+            listOf(
+                SharpExecuTorchSplitModelNames.PART1_FP32,
+                SharpExecuTorchSplitModelNames.PART1_FP16,
+                SharpExecuTorchSplitModelNames.PART1_INT8,
+            )
         }
     }
 
@@ -219,7 +221,10 @@ object Part1OnlyTest {
     private fun part2PteCandidateNamesForMode(mode: ArtifactMode): List<String> {
         return when (mode) {
             ArtifactMode.VULKAN ->
-                listOf("sharp_split_part2_vulkan_fp32.pte", "sharp_split_part2_vulkan_fp16.pte")
+                listOf(
+                    SharpExecuTorchSplitModelNames.PART2_VULKAN_FP32,
+                    SharpExecuTorchSplitModelNames.PART2_VULKAN_FP16,
+                )
             ArtifactMode.CPU_SIDECAR ->
                 listOf(
                     SharpExecuTorchSplitModelNames.PART2_INT8,
@@ -299,7 +304,9 @@ object Part1OnlyTest {
         val part12OnCpuRequested = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
         val hasCpuPart1Sidecar = findExplicitPart1PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
         val hasCpuPart2Sidecar = findExplicitPart2PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
-        val effectivePart12OnCpu = !useCpuStable && (part12OnCpuRequested || (hasCpuPart1Sidecar && hasCpuPart2Sidecar))
+        // Match ExecutorchInt8Sharp: hybrid only when INT8/portable Part1+2 exist; setting alone does not force hybrid.
+        val effectivePart12OnCpu =
+            !useCpuStable && hasCpuPart1Sidecar && hasCpuPart2Sidecar
         return RoomRouteState(
             useCpuStable = useCpuStable,
             part12OnCpuRequested = part12OnCpuRequested,
@@ -350,7 +357,7 @@ object Part1OnlyTest {
 
     private fun expectedPart1PteHint(): String {
         val names = part1PteCandidateNames().joinToString(" | ")
-        val dirHint = if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) "models_vulkan (or models)" else "models_cpu (or models)"
+        val dirHint = if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) "models_vulkan" else "models_cpu"
         return "$names in $dirHint"
     }
 

@@ -2,15 +2,28 @@
 
 Android app for Furnit (3D room models, SHARP inference, etc.).
 
+## SHARP models: local (fast) vs friend APK (bundled)
+
+**Default (`skipExecutorchAssets=true` in `gradle.properties`):** Android Studio Run is **fast**; the APK does **not** include `.pte`. Push models to the device (below) for SHARP.
+
+**Friend APK with models inside:** from `android/` run:
+```bash
+./assemble_friend_apk_with_models.sh
+# or: ./gradlew :app:assembleEtVulkanDebug -PskipExecutorchAssets=false
+```
+The script also **copies** the built APK(s) to **`friend-apk-dist/`** with a timestamp (`friend-YYYYMMDD-HHMMSS-*.apk`) so **Studio’s** output under `app/build/outputs/apk/` stays the one you use for Run/Debug.
+
+See `docs/MODELS_APK_BUNDLE_TESTING.md` for hybrid/minimal flags and Zip32 limits.
+
 ## Smaller APK for sharing (arm64-only, no embedded SHARP models)
 
-The default build embeds **ExecuTorch SHARP .pte models** (~1.9 GB) in assets, so the APK is **~2.3 GB**. To build a **much smaller APK** (e.g. ~300–400 MB) for a friend to install:
+Typical **local debug** APK is already small because models are **not** bundled by default. To force a build **without** embedding even when you temporarily set `skipExecutorchAssets=false`:
 
 1. **Build without embedding the SHARP models:**
    ```bash
-   ./gradlew assembleDebug -PskipExecutorchAssets
+   ./gradlew :app:assembleEtVulkanDebug -PskipExecutorchAssets=true
    ```
-   Output: `app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk`
+   Output under `app/build/outputs/apk/etVulkan/debug/`
 
 2. **On the device**, SHARP (AI room from photo) will need the models pushed once. **etCpu** APK uses **`files/models_cpu/`**; **etVulkan** uses **`files/models_vulkan/`** (see `docs/TEST_INT8_IN_APP.md`). Stage copies under repo **`android/models_cpu/`** (see `models_cpu/README.md`) then push. Example for **CPU** / portable `.pte`:
    ```bash

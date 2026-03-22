@@ -146,10 +146,11 @@ cd android
 ./gradlew installDebug
 ```
 
-Note: This repo is configured to build **ONNX-only by default**. To also build the native NCNN libraries, run:
+Note: This repo is configured to build **ONNX-only by default**. To build **YOLOE** (`libyoloe_ncnn.so`), run with **`-Pfurnit.enableNative=true`**. Legacy **NCNN SHARP** (`libsharp_ncnn.so`) is **off** unless you add **`-Pfurnit.enableNcnnSharp=true`** (SHARP in-app is normally **ExecuTorch**).
 ```bash
 cd android
 ./gradlew installDebug -Pfurnit.enableNative=true
+# Optional legacy NCNN SHARP (rare): also pass -Pfurnit.enableNcnnSharp=true
 ```
 
 ### Step 2: Get Model Files

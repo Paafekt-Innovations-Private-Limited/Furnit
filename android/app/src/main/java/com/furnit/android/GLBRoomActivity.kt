@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
@@ -698,6 +699,7 @@ class GLBRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to save room", e)
             Toast.makeText(this, getString(R.string.glb_room_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "GLB room — save room")
         }
     }
 
@@ -730,6 +732,7 @@ class GLBRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to take screenshot", e)
             Toast.makeText(this, getString(R.string.glb_room_screenshot_failed), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "GLB room — screenshot / share")
         }
     }
 
@@ -749,6 +752,11 @@ class GLBRoomActivity : AppCompatActivity() {
                 loadingOverlay.visibility = View.GONE
                 Toast.makeText(this@GLBRoomActivity, message, Toast.LENGTH_LONG).show()
                 LogUtil.e(TAG, "WebGL error: $message")
+                CrashReporter.report(
+                    this@GLBRoomActivity,
+                    RuntimeException(message),
+                    "GLB room — WebGL viewer",
+                )
             }
         }
 

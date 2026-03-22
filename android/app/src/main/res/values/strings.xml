@@ -115,6 +115,10 @@
     <string name="settings_executorch_int8_use_b4_description">Use batch-4 models for faster 1x patches. Disable if app crashes after "Part1+Part2 ready".</string>
     <string name="settings_max_gaussians">Max Gaussians</string>
     <string name="settings_max_gaussians_description">Limit splat count (0 = unlimited). 300k saves ~10s PLY write + faster viewer. 1.18M = full quality.</string>
+    <string name="settings_executorch_int8_vulkan_hybrid_label">ExecuTorch INT8 (Part1+2 + Vulkan — Hybrid)</string>
+    <string name="settings_executorch_int8_vulkan_hybrid_footer">GPU Part3/4 on Vulkan; Part1+2 can run on CPU (INT8) when enabled below. Put all .pte in files/models_vulkan/ for one-folder sideload.</string>
+    <string name="settings_part12_on_cpu">Part 1+2 on CPU (hybrid)</string>
+    <string name="settings_part12_on_cpu_description">Recommended on Google Pixel: run the patch encoder on CPU (XNNPACK INT8) and Part3/4 on Vulkan. Place sharp_split_part1_int8.pte and sharp_split_part2_int8.pte in the same folder as your Vulkan models: files/models_vulkan/ (models_cpu is optional legacy).</string>
     <string name="settings_debug_mode">Debug Mode</string>
     <string name="settings_debug_mode_description">Show detection boxes and timing information</string>
     <string name="settings_current_value">Current value:</string>

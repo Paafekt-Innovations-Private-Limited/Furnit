@@ -37,7 +37,7 @@ iOS uses USDZ format, Android needs GLB. To convert:
 2. **Reality Converter (macOS)**: Download from Apple Developer, open USDZ, export as GLB
 3. **Online**: https://products.aspose.app/3d/conversion/usdz-to-glb
 
-Place GLB files in `app/src/main/assets/models/`:
+Place GLB files in `app/src/main/assets/bundled_rooms/`:
 - `vintage.glb` (from vintage_living_room.usdz)
 - `cozy_room.glb` (from cozy_living_room_baked.usdz)
 

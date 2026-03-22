@@ -219,8 +219,15 @@ if (!modelDirPath || !imageNCHW) {
     // Run all Part1 patches first, cache token outputs, release Part1 modules, then run Part2.
     if (useVulkanForPart12 && skip05xAnd025x && limit05x == 0) {
         usedTwoPassVulkan25Only = true;
+        const int totalPart12ProgressUnits = limit1x + limit05x + 1;
         long long t1x = nowMs();
         std::vector<float> cachedTokens((size_t)limit1x * tokenSliceSz);
+        // Part1 runs all patches before Part2; without callbacks the UI stays at Kotlin's ~20% until Part1
+        // finishes — first Vulkan forward often blocks on shader compile (minutes on some devices).
+        if (progressReporter && reportProgressMethodId) {
+            reportProgress(env, progressReporter, reportProgressMethodId, 0.21f,
+                           "Part 1 (Vulkan): starting — first GPU forward may compile shaders (slow)…");
+        }
         for (int patchIdx = 0; patchIdx < limit1x; ++patchIdx) {
             const int ii = patchIdx / GRID_1X;
             const int jj = patchIdx % GRID_1X;
@@ -276,6 +283,13 @@ if (!modelDirPath || !imageNCHW) {
             reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
             mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
             std::memcpy(cachedTokens.data() + (size_t)patchIdx * tokenSliceSz, tokPtr, tokenSliceSz * sizeof(float));
+            if (progressReporter && reportProgressMethodId) {
+                const int patchesDone = patchIdx + 1;
+                const float p = (patchesDone / (float)totalPart12ProgressUnits) * 0.25f;
+                char buf[96];
+                snprintf(buf, sizeof(buf), "Part 1 (Vulkan): patch %d/%d…", patchesDone, limit1x);
+                reportProgress(env, progressReporter, reportProgressMethodId, p, buf);
+            }
         }
         LOGD("1x Part1 pass (%d): %lldms", limit1x, nowMs() - t1x);
 
@@ -313,11 +327,10 @@ if (!modelDirPath || !imageNCHW) {
             reshapeToSpatial(featPtr, (*out2)[0].toTensor().numel(), ws_temp);
             mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
             if (progressReporter && reportProgressMethodId) {
-                const int totalPart1Patches = limit1x + limit05x + 1;
                 const int patchesDone = patchIdx + 1;
-                float p = (patchesDone / (float)totalPart1Patches) * 0.5f;
-                char buf[64];
-                snprintf(buf, sizeof(buf), "Part 1+2: patch %d/%d…", patchesDone, totalPart1Patches);
+                const float p = 0.25f + (patchesDone / (float)totalPart12ProgressUnits) * 0.25f;
+                char buf[96];
+                snprintf(buf, sizeof(buf), "Part 2 (Vulkan): patch %d/%d…", patchesDone, limit1x);
                 reportProgress(env, progressReporter, reportProgressMethodId, p, buf);
             }
         }

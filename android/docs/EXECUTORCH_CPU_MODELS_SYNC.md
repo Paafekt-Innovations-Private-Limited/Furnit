@@ -5,11 +5,11 @@ The C++ full pipeline (`sharp_executorch_full`) loads **Part3 → Part4a → Par
 ## Where files live on device
 
 - **etCpu** flavor: `Android/data/com.furnit.android/files/models_cpu/` (external) and app **internal** `files/models_cpu/` after sync.
-- The app copies `sharp_split*.pte` from external → internal on startup (`ExecutorchInt8Sharp.syncExternalSharpSplitPteToInternal`).
+- The app copies `sharp_split*.pte` from APK assets (when bundled) and from scoped external → internal (`hydrateBundledAndExternalModels` / `initialize`).
 
-### etCpu no longer uses legacy `files/models` for `sharp_split*.pte`
+### No legacy `files/models` for `sharp_split*.pte`
 
-If an old **`.../files/models/sharp_split_part4b.pte`** exists (e.g. Vulkan-exported), it used to win after flavor dirs and broke XNNPACK (`VulkanBackend is not registered`, error 32 / NotFound). **etCpu** now resolves **`sharp_split*.pte` only under `models_cpu`** (internal then external). Remove or ignore stale copies under `models/`; push the working set to **`models_cpu`**.
+**`sharp_split*.pte` are only read under `models_cpu` / `models_vulkan`** (internal then external). Stale copies under `files/models/` are ignored. Push the working set to **`models_cpu`** or **`models_vulkan`**.
 
 ## Required workflow (recommended)
 

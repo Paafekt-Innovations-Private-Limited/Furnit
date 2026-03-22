@@ -7,6 +7,8 @@ plugins {
 
 // ONNX-only by default: skip native (NCNN) builds unless explicitly enabled.
 def enableNative = (project.findProperty("furnit.enableNative") ?: "false").toBoolean()
+// Legacy SHARP via NCNN (libsharp_ncnn). YOLOE only needs furnit.enableNative=true; keep this false for ExecuTorch + YOLOE.
+def enableNcnnSharp = (project.findProperty("furnit.enableNcnnSharp") ?: "false").toString().toBoolean()
 
 android {
     namespace 'com.furnit.android'
@@ -17,9 +19,9 @@ android {
         buildConfig true
     }
 
-    // Keep ExecuTorch .pte models uncompressed (smaller heap during build, faster load at runtime)
-    aaptOptions {
-        noCompress 'pte'
+    // AGP 8+: use androidResources (aaptOptions noCompress may not apply to merged assets → OOM in compress*Assets).
+    androidResources {
+        noCompress.add('pte')
     }
 
     defaultConfig {
@@ -38,12 +40,15 @@ android {
         //     pip { install "numpy"; install "Pillow" }
         // }
 
-        // CMake: always build ExecuTorch C++ tiles (sharp_executorch_tiles); NCNN opt-in via furnit.enableNative
+        // CMake: always build ExecuTorch C++ tiles (sharp_executorch_tiles); NCNN (YOLOE) opt-in via furnit.enableNative
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17 -frtti -fexceptions"
                 def cmakeArgs = ["-DANDROID_STL=c++_shared"]
-                if (enableNative) cmakeArgs.add("-DENABLE_NCNN=ON")
+                if (enableNative) {
+                    cmakeArgs.add("-DENABLE_NCNN=ON")
+                    if (enableNcnnSharp) cmakeArgs.add("-DENABLE_NCNN_SHARP=ON")
+                }
                 arguments(*cmakeArgs)
             }
         }
@@ -90,6 +95,8 @@ android {
 
     sourceSets {
         main {
+            // Generated .pte live under build/ (not src/) so AGP/IDE “ignored file” rules do not drop them from the APK.
+            assets.srcDirs += "$buildDir/bundled-pte-assets"
             jniLibs {
                 srcDirs = enableNative ? ['src/main/jniLibs'] : []
                 // Keep bundled NCNN libs, but do not let stale vendored ExecuTorch binaries override
@@ -142,24 +149,69 @@ android {
     }
 }
 
-// Package SHARP / ExecuTorch .pte into assets/models for test APKs (sideload to friends). Prod: use -PskipExecutorchAssets + adb push.
+// Package SHARP / ExecuTorch .pte into assets/models_cpu and assets/models_vulkan for test APKs (sideload). Prod: -PskipExecutorchAssets + adb push.
 // Full android/sharp_vulkan_only is ~5+ GB — huge APK; backup before relying on this (see android/docs/MODELS_APK_BUNDLE_TESTING.md).
 def execInt8Dir = project.file("../executorch_int8_models")
 def execChunkedDir = project.file("../executorch_models")
-def sharpVulkanOnlyDir = project.file("sharp_vulkan_only")
-def assetsModelsDir = project.file("src/main/assets/models")
-def skipExecutorchAssets = project.hasProperty("skipExecutorchAssets")
+// Same level as app/ (android/sharp_vulkan_only), not inside app/ — was wrongly app/sharp_vulkan_only before.
+def sharpVulkanOnlyDir = project.file("../sharp_vulkan_only")
+// Staging root: models_cpu/*.pte and models_vulkan/*.pte → APK assets (matches on-device files/models_cpu | models_vulkan).
+def bundledPteAssetsRoot = file("$buildDir/bundled-pte-assets")
+// Default true when unset: fast local / Android Studio Run (adb push models). Friend APK: -PskipExecutorchAssets=false or ./assemble_friend_apk_with_models.sh
+def skipExecutorchAssets = (findProperty("skipExecutorchAssets") ?: "true").toString().toBoolean()
 // Part4b 16 tiles from int8/chunked dirs only (when present). sharp_vulkan_only exports usually include tiles already.
-def includePart4bTilesInAssets = project.hasProperty("includePart4bTilesInAssets")
-// Omit ~5GB Vulkan folder for faster local builds: ./gradlew ... -PskipSharpVulkanOnlyInAssets
-def skipSharpVulkanOnlyInAssets = project.hasProperty("skipSharpVulkanOnlyInAssets")
+def includePart4bTilesInAssets = (findProperty("includePart4bTilesInAssets") ?: "false").toString().toBoolean()
+// Omit ~5GB Vulkan folder for faster local builds: ./gradlew ... -PskipSharpVulkanOnlyInAssets=true
+def skipSharpVulkanOnlyInAssets = (findProperty("skipSharpVulkanOnlyInAssets") ?: "false").toString().toBoolean()
+// Omit ../executorch_models copy when you only need sharp_vulkan_only (avoids ~1.4GB duplicate chunk + part4b names).
+def skipExecutorchChunkedDirInAssets = (findProperty("skipExecutorchChunkedDirInAssets") ?: "false").toString().toBoolean()
+// Omit ../executorch_int8_models (CPU Part1–3 INT8 + optional tiles). Not used when etVulkan runs full Vulkan hybrid path.
+def skipExecutorchInt8DirInAssets = (findProperty("skipExecutorchInt8DirInAssets") ?: "false").toString().toBoolean()
+// One flag: Vulkan hybrid friend APK — skip int8 + executorch_models, only minimal Vulkan *.pte from sharp_vulkan_only.
+def bundleSharpVulkanHybridApk = (findProperty("bundleSharpVulkanHybridApk") ?: "false").toString().toBoolean()
+// APK Zip32 limit ~4GiB — full sharp_vulkan_only *.pte (~6–7GB) cannot fit in one installable APK.
+def bundleSharpVulkanOnlyMinimal = (findProperty("bundleSharpVulkanOnlyMinimal") ?: "false").toString().toBoolean()
+// Expert-only: copy every *.pte from sharp_vulkan_only (almost always exceeds Zip32 — build will fail). Default false.
+def includeAllSharpVulkanPteInAssets = (findProperty("includeAllSharpVulkanPteInAssets") ?: "false").toString().toBoolean()
+def bundleSharpVulkanPrecision = (findProperty("bundleSharpVulkanPrecision") ?: "fp16").toString().trim().toLowerCase()
+// Part4a 65-token chunk is required by ExecutorchInt8Sharp.inferStreaming (hasPart4a65); omit only if you patch Kotlin/C++.
+def bundleSharpVulkanIncludeChunk65 = (findProperty("bundleSharpVulkanIncludeChunk65") ?: "true").toString().toBoolean()
+// Legacy monolithic sharp_split_part4.pte (~755MB) — not loaded by C++ Vulkan split (part4a/4b chunks only). Rarely needed.
+def bundleSharpVulkanMinimalIncludePart4Monolith = (findProperty("bundleSharpVulkanMinimalIncludePart4Monolith") ?: "false").toString().toBoolean()
+def sharpVkPrecSuffix = (bundleSharpVulkanPrecision in ["fp16", "fp32"]) ? bundleSharpVulkanPrecision : "fp16"
+
+// When bundling into APK, prefer minimal Vulkan filenames from sharp_vulkan_only so Android Studio / Gradle
+// does not pull ~6GB of duplicate FP16+FP32+tiles (Zip32 APK hard limit ~4GiB). Opt out with -PincludeAllSharpVulkanPteInAssets=true.
+def autoMinimalSharpVulkanForZip32 =
+        !skipExecutorchAssets &&
+                sharpVulkanOnlyDir.exists() &&
+                !skipSharpVulkanOnlyInAssets &&
+                !includeAllSharpVulkanPteInAssets
+
+def effectiveSkipExecutorchInt8Dir = skipExecutorchInt8DirInAssets || bundleSharpVulkanHybridApk
+def effectiveSkipExecutorchChunkedDir = skipExecutorchChunkedDirInAssets || bundleSharpVulkanHybridApk
+def effectiveBundleSharpVulkanMinimal =
+        bundleSharpVulkanOnlyMinimal || bundleSharpVulkanHybridApk || autoMinimalSharpVulkanForZip32
 
 tasks.register("copyExecutorchModelsIntoAssets", Copy) {
-    description = "Copy .pte to assets/models from executorch_* dirs and sharp_vulkan_only (unless -PskipSharpVulkanOnlyInAssets)."
+    description = "Copy .pte into build/bundled-pte-assets/models_cpu|models_vulkan (APK assets). Not under src/ — see .gitignore *.pte."
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    into assetsModelsDir
+    into bundledPteAssetsRoot
+    doFirst {
+        // Gradle Copy does not delete stale outputs: a prior "copy all *.pte" run can leave 6GB+ files here forever,
+        // so the next "minimal" build still packages them → Zip32 error. Wipe staging every time.
+        project.delete(bundledPteAssetsRoot)
+        bundledPteAssetsRoot.mkdirs()
+        if (autoMinimalSharpVulkanForZip32 && !bundleSharpVulkanOnlyMinimal && !bundleSharpVulkanHybridApk) {
+            logger.lifecycle(
+                    "copyExecutorchModelsIntoAssets: using minimal sharp_vulkan_only list (Zip32 APK ~4GiB limit). " +
+                            "CPU models from executorch_int8_models / executorch_models still copy if present. " +
+                            "Smallest friend APK: add -PbundleSharpVulkanHybridApk=true. Full Vulkan folder: -PincludeAllSharpVulkanPteInAssets=true."
+            )
+        }
+    }
     // Only add from() for dirs that exist — avoids Gradle errors when only sharp_vulkan_only is present.
-    if (execInt8Dir.exists()) {
+    if (execInt8Dir.exists() && !effectiveSkipExecutorchInt8Dir) {
         from(execInt8Dir) {
             include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
             if (includePart4bTilesInAssets) {
@@ -169,9 +221,15 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
                 include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
                 include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
             }
+            into "models_cpu"
+        }
+        // Hybrid etVulkan: same INT8 Part1+2 beside Vulkan .pte so one assets/models_vulkan tree / one adb push dir.
+        from(execInt8Dir) {
+            include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte"
+            into "models_vulkan"
         }
     }
-    if (execChunkedDir.exists()) {
+    if (execChunkedDir.exists() && !effectiveSkipExecutorchChunkedDir) {
         from(execChunkedDir) {
             include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
             // Optional INT8 decoder for C++ full pipeline; when present next to sharp_split_part4b.pte,
@@ -184,22 +242,86 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
                 include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
                 include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
             }
+            into "models_cpu"
         }
     }
     if (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists()) {
         from(sharpVulkanOnlyDir) {
-            include "*.pte"
+            if (effectiveBundleSharpVulkanMinimal) {
+                def minimalVk = [
+                        "sharp_split_part1_vulkan_${sharpVkPrecSuffix}.pte",
+                        "sharp_split_part2_vulkan_${sharpVkPrecSuffix}.pte",
+                        "sharp_split_part3_vulkan_${sharpVkPrecSuffix}.pte",
+                        "sharp_split_part4a_chunk_512_vulkan.pte",
+                        "sharp_split_part4b_vulkan.pte",
+                ]
+                if (bundleSharpVulkanMinimalIncludePart4Monolith) {
+                    minimalVk.add(3, "sharp_split_part4.pte")
+                }
+                if (bundleSharpVulkanIncludeChunk65) {
+                    // Insert before part4b so order matches export expectations; required for inferStreaming requiredSatisfied.
+                    minimalVk.add(4, "sharp_split_part4a_chunk_65_vulkan.pte")
+                }
+                minimalVk.each { include it }
+            } else {
+                include "*.pte"
+            }
+            into "models_vulkan"
         }
     }
     onlyIf {
-        !skipExecutorchAssets && (
-                execInt8Dir.exists() ||
-                execChunkedDir.exists() ||
+        def hasModelSources =
+                (execInt8Dir.exists() && !effectiveSkipExecutorchInt8Dir) ||
+                (execChunkedDir.exists() && !effectiveSkipExecutorchChunkedDir) ||
                 (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists())
-        )
+        def shouldRun = !skipExecutorchAssets && hasModelSources
+        if (!shouldRun) {
+            logger.lifecycle(
+                    "copyExecutorchModelsIntoAssets SKIPPED: skipExecutorchAssets=${skipExecutorchAssets} " +
+                            "(override: -PskipExecutorchAssets=false), hasModelSources=${hasModelSources} " +
+                            "[int8Dir=${execInt8Dir.exists()}, skipInt8=${effectiveSkipExecutorchInt8Dir}, chunkedDir=${execChunkedDir.exists()}, skipChunked=${effectiveSkipExecutorchChunkedDir}, " +
+                            "sharpVulkanOnly=${sharpVulkanOnlyDir.exists()}, skipSharpVulkanOnlyInAssets=${skipSharpVulkanOnlyInAssets}]"
+            )
+        }
+        return shouldRun
+    }
+    doLast {
+        def tree = fileTree(bundledPteAssetsRoot).include("**/*.pte")
+        def totalBytes = (tree.files.sum { it.length() } ?: 0L) as long
+        println "copyExecutorchModelsIntoAssets: ${tree.files.size()} .pte → ${bundledPteAssetsRoot} (models_cpu + models_vulkan, ~${String.format("%.2f", totalBytes / 1e9)} GB)"
+        // Zip32 APK ~4GiB — packaging fails with "Zip32 cannot place CD entry … MAX=4294967295". Fail early with a fix.
+        def docHint = " See android/docs/MODELS_APK_BUNDLE_TESTING.md."
+        if (totalBytes > 3_900_000_000L) {
+            throw new GradleException(
+                    "Bundled .pte ~${String.format("%.2f", totalBytes / 1e9)} GB exceeds Zip32-safe APK budget (~4GiB). " +
+                            "Remove -PincludeAllSharpVulkanPteInAssets, use -PbundleSharpVulkanHybridApk=true, or adb push models." + docHint)
+        }
+        if (totalBytes > 2_800_000_000L && !effectiveBundleSharpVulkanMinimal) {
+            throw new GradleException(
+                    "Bundled .pte ~${String.format("%.2f", totalBytes / 1e9)} GB: full sharp_vulkan_only/*.pte cannot fit in one installable APK (Zip32). " +
+                            "Do not use -PincludeAllSharpVulkanPteInAssets=true unless files are small; default is minimal Vulkan list." + docHint)
+        }
+        if (totalBytes > 3_400_000_000L) {
+            logger.lifecycle(
+                    "WARNING: Bundled .pte ~${String.format("%.2f", totalBytes / 1e9)} GB is close to Zip32 ~4GiB APK limit." + docHint)
+        }
     }
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
+
+// When skipExecutorchAssets=true, copy task does not run — old huge trees under bundled-pte-assets would still merge into APK.
+tasks.register("clearBundledPteAssetsWhenSkipped") {
+    onlyIf { skipExecutorchAssets }
+    doLast {
+        if (bundledPteAssetsRoot.exists()) {
+            logger.lifecycle(
+                    "clearBundledPteAssetsWhenSkipped: removing ${bundledPteAssetsRoot} (skipExecutorchAssets=true; stale .pte must not ship in APK)"
+            )
+            project.delete(bundledPteAssetsRoot)
+        }
+    }
+}
+preBuild.dependsOn clearBundledPteAssetsWhenSkipped
 
 // libsharp_executorch_tiles.so and libsharp_executorch_full.so link against libexecutorch.
 // Two extract dirs so etVulkan and etCpu variants never overwrite each other's libexecutorch.so.

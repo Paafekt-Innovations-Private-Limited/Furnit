@@ -29,10 +29,10 @@ Logcat on init: `BUILD_CONFIG EXECUTORCH_USE_VULKAN_AAR=…` under tag `Executor
 | **etVulkan** | `/sdcard/Android/data/com.furnit.android/files/models_vulkan/` |
 
 The app also mirrors into internal storage under the same subdir name (`files/models_cpu` or `files/models_vulkan`). Logcat prints both paths: `ExecuTorch model roots: internal=… external=…`.  
-Legacy pushes to `files/models/` still work as a **fallback** `findFile()` search.
+**Legacy `files/models/` is not used** — push only to `models_cpu` / `models_vulkan`.
 
 Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_vulkan_only.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_vulkan`.  
-To split an old `files/models/` tree in place on a device: `android/migrate_legacy_models_to_cpu_vulkan.sh` (copies `sharp_split*.pte` by `*vulkan*` in the filename).
+To migrate an old `files/models/` tree on device: `android/migrate_legacy_models_to_cpu_vulkan.sh`.
 
 ---
 

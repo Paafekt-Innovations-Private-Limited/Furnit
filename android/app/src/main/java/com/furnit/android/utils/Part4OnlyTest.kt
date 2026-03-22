@@ -3,6 +3,7 @@ package com.furnit.android.utils
 import android.content.Context
 import android.util.Log
 import com.furnit.android.BuildConfig
+import com.furnit.android.services.SharpExecuTorchSplitModelNames
 import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
@@ -85,8 +86,6 @@ object Part4OnlyTest {
         context.getExternalFilesDir("models_vulkan")?.let { list.add(it) }
         list.add(File(context.filesDir, "models_cpu").also { it.mkdirs() })
         context.getExternalFilesDir("models_cpu")?.let { list.add(it) }
-        list.add(File(context.filesDir, "models").also { it.mkdirs() })
-        context.getExternalFilesDir("models")?.let { list.add(it) }
         list.add(File("/data/local/tmp/furnit"))
         return list
     }
@@ -103,28 +102,42 @@ object Part4OnlyTest {
         if (!BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
             return Result.failure(IllegalStateException("Vulkan Part4 test only applies to the etVulkan APK"))
         }
-        val stagePre = findFile(context, "sharp_split_part4b_tile_00_stage_pre_vulkan.pte")
-            ?: return Result.failure(IllegalStateException("Missing sharp_split_part4b_tile_00_stage_pre_vulkan.pte"))
-        val decoderOnly = findFile(context, "sharp_split_part4b_tile_00_decoder_only.pte")
-        val disparityHead = findFile(context, "sharp_split_part4b_tile_00_disparity_head.pte")
-        val decoderSeed = findFile(context, "sharp_split_part4b_tile_00_decoder_seed.pte")
-        val decoderMergeX1 = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_x1.pte")
-        val decoderMergeX0 = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_x0.pte")
-        val decoderMergeLatent1 = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent1.pte")
-        val decoderMergeLatent0 = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent0.pte")
-        val decoderMergeLatent0Prefuse = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent0_prefuse.pte")
-        val decoderMergeLatent0Postfuse = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent0_postfuse.pte")
-        val decoderMergeLatent0PrefusePortable = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent0_prefuse_portable.pte")
-        val decoderMergeLatent0PostfusePortable = findFile(context, "sharp_split_part4b_tile_00_decoder_merge_latent0_postfuse_portable.pte")
-        val decoderHead = findFile(context, "sharp_split_part4b_tile_00_decoder_head.pte")
-            ?: return Result.failure(IllegalStateException("Missing sharp_split_part4b_tile_00_decoder_head.pte"))
-        val decoderHeadPortable = findFile(context, "sharp_split_part4b_tile_00_decoder_head_portable.pte")
-        val initBase = findFile(context, "sharp_split_part4b_tile_00_init_base.pte")
-            ?: return Result.failure(IllegalStateException("Missing sharp_split_part4b_tile_00_init_base.pte"))
-        val rawHeads = findFile(context, "sharp_split_part4b_tile_00_raw_heads_vulkan.pte")
-            ?: return Result.failure(IllegalStateException("Missing sharp_split_part4b_tile_00_raw_heads_vulkan.pte"))
-        val compose = findFile(context, "sharp_split_part4b_tile_00_compose.pte")
-            ?: return Result.failure(IllegalStateException("Missing sharp_split_part4b_tile_00_compose.pte"))
+        val stagePre = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)
+            ?: return Result.failure(
+                IllegalStateException("Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN}"),
+            )
+        val decoderOnly = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_ONLY)
+        val disparityHead = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DISPARITY_HEAD)
+        val decoderSeed = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_SEED)
+        val decoderMergeX1 = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_X1)
+        val decoderMergeX0 = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_X0)
+        val decoderMergeLatent1 = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT1)
+        val decoderMergeLatent0 = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0)
+        val decoderMergeLatent0Prefuse =
+            findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_PREFUSE)
+        val decoderMergeLatent0Postfuse =
+            findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_POSTFUSE)
+        val decoderMergeLatent0PrefusePortable =
+            findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_PREFUSE_PORTABLE)
+        val decoderMergeLatent0PostfusePortable =
+            findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_POSTFUSE_PORTABLE)
+        val decoderHead = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_HEAD)
+            ?: return Result.failure(
+                IllegalStateException("Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_HEAD}"),
+            )
+        val decoderHeadPortable = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_HEAD_PORTABLE)
+        val initBase = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_INIT_BASE)
+            ?: return Result.failure(
+                IllegalStateException("Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_INIT_BASE}"),
+            )
+        val rawHeads = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_RAW_HEADS_VULKAN)
+            ?: return Result.failure(
+                IllegalStateException("Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_RAW_HEADS_VULKAN}"),
+            )
+        val compose = findFile(context, SharpExecuTorchSplitModelNames.PART4B_TILE_00_COMPOSE)
+            ?: return Result.failure(
+                IllegalStateException("Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_COMPOSE}"),
+            )
         return Result.success(
             ModelPaths(
                 stagePre = stagePre,
@@ -625,7 +638,7 @@ object Part4OnlyTest {
         return runExclusive("compareDecoderHeadBackends") {
             val modelPaths = resolveModelPaths(context).getOrElse { return@runExclusive it.message ?: "Part4 model resolution failed" }
             val portablePath = modelPaths.decoderHeadPortable
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_head_portable.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_HEAD_PORTABLE}"
             var stagePreModule: Module? = null
             var decoderHeadVulkanModule: Module? = null
             var decoderHeadPortableModule: Module? = null
@@ -710,21 +723,21 @@ object Part4OnlyTest {
         return runExclusive("compareLatent0MergeBackends") {
             val modelPaths = resolveModelPaths(context).getOrElse { return@runExclusive it.message ?: "Part4 model resolution failed" }
             val decoderSeedPath = modelPaths.decoderSeed
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_seed.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_SEED}"
             val decoderMergeX1Path = modelPaths.decoderMergeX1
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_x1.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_X1}"
             val decoderMergeX0Path = modelPaths.decoderMergeX0
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_x0.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_X0}"
             val decoderMergeLatent1Path = modelPaths.decoderMergeLatent1
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_latent1.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT1}"
             val decoderMergeLatent0PrefusePath = modelPaths.decoderMergeLatent0Prefuse
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_latent0_prefuse.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_PREFUSE}"
             val decoderMergeLatent0PostfusePath = modelPaths.decoderMergeLatent0Postfuse
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_latent0_postfuse.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_POSTFUSE}"
             val decoderMergeLatent0PrefusePortablePath = modelPaths.decoderMergeLatent0PrefusePortable
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_latent0_prefuse_portable.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_PREFUSE_PORTABLE}"
             val decoderMergeLatent0PostfusePortablePath = modelPaths.decoderMergeLatent0PostfusePortable
-                ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_merge_latent0_postfuse_portable.pte"
+                ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_MERGE_LATENT0_POSTFUSE_PORTABLE}"
             var stagePreModule: Module? = null
             var decoderSeedModule: Module? = null
             var decoderMergeX1Module: Module? = null
@@ -1255,9 +1268,9 @@ object Part4OnlyTest {
                 }
             } else {
                 val decoderOnlyPath = modelPaths.decoderOnly
-                    ?: return@runExclusive "Missing sharp_split_part4b_tile_00_decoder_only.pte"
+                    ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DECODER_ONLY}"
                 val disparityHeadPath = modelPaths.disparityHead
-                    ?: return@runExclusive "Missing sharp_split_part4b_tile_00_disparity_head.pte"
+                    ?: return@runExclusive "Missing ${SharpExecuTorchSplitModelNames.PART4B_TILE_00_DISPARITY_HEAD}"
                 var stagePreModule: Module? = null
                 var decoderOnlyModule: Module? = null
                 var disparityHeadModule: Module? = null

@@ -93,8 +93,11 @@ endif()
 
 # ============================================================================
 # NCNN libraries (opt-in: -DENABLE_NCNN=ON when furnit.enableNative=true)
+# - yoloe_ncnn: segmentation (always when ENABLE_NCNN=ON)
+# - sharp_ncnn: legacy SHARP via NCNN (opt-in ENABLE_NCNN_SHARP=ON, furnit.enableNcnnSharp=true)
 # ============================================================================
-option(ENABLE_NCNN "Build NCNN libraries (yoloe_ncnn, sharp_ncnn)" OFF)
+option(ENABLE_NCNN "Build NCNN libraries (yoloe_ncnn; sharp_ncnn if ENABLE_NCNN_SHARP)" OFF)
+option(ENABLE_NCNN_SHARP "Build libsharp_ncnn (SHARP NCNN path; ExecuTorch is separate)" OFF)
 
 if(ENABLE_NCNN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fexceptions")
@@ -125,9 +128,11 @@ if(ENABLE_NCNN)
     target_link_libraries(yoloe_ncnn ncnn glslang SPIRV glslang-default-resource-limits GenericCodeGen MachineIndependent OSDependent OpenMP::OpenMP_CXX ${log-lib} ${android-lib} ${jnigraphics-lib})
     target_include_directories(yoloe_ncnn PRIVATE ${NCNN_DIR}/include)
 
-    add_library(sharp_ncnn SHARED sharp_ncnn.cpp)
-    target_link_libraries(sharp_ncnn ncnn glslang SPIRV glslang-default-resource-limits GenericCodeGen MachineIndependent OSDependent OpenMP::OpenMP_CXX ${log-lib} ${android-lib} ${jnigraphics-lib})
-    target_include_directories(sharp_ncnn PRIVATE ${NCNN_DIR}/include)
+    if(ENABLE_NCNN_SHARP)
+        add_library(sharp_ncnn SHARED sharp_ncnn.cpp)
+        target_link_libraries(sharp_ncnn ncnn glslang SPIRV glslang-default-resource-limits GenericCodeGen MachineIndependent OSDependent OpenMP::OpenMP_CXX ${log-lib} ${android-lib} ${jnigraphics-lib})
+        target_include_directories(sharp_ncnn PRIVATE ${NCNN_DIR}/include)
+    endif()
 endif()
 
 # ============================================================================

@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import android.view.*
 import android.widget.FrameLayout
@@ -31,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
 import io.github.sceneview.SceneView
@@ -374,6 +376,7 @@ class FurnitureFitFragment : Fragment() {
         } catch (e: Exception) {
             LogUtil.e("FurnitureFit", "Screenshot failed", e)
             Toast.makeText(requireContext(), getString(R.string.smartypants_screenshot_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Furniture fit — screenshot capture")
         }
     }
 
@@ -417,6 +420,7 @@ class FurnitureFitFragment : Fragment() {
             LogUtil.e("FurnitureFit", "Save screenshot failed", e)
             activity?.runOnUiThread {
                 Toast.makeText(requireContext(), getString(R.string.smartypants_failed_save, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                CrashReporter.report(this@FurnitureFitFragment, e, "Furniture fit — save screenshot to gallery")
             }
         }
     }
@@ -467,6 +471,7 @@ class FurnitureFitFragment : Fragment() {
             LogUtil.e("FurnitureFit", "bindToLifecycle failed", e)
             activity?.runOnUiThread {
                 statusLabel.text = getString(R.string.smartypants_camera_error, e.message ?: "")
+                CrashReporter.report(this@FurnitureFitFragment, e, "Furniture fit — camera bind")
             }
         }
     }
@@ -650,7 +655,7 @@ class FurnitureFitFragment : Fragment() {
                 val modelInstance = when {
                     // Bundled rooms in assets
                     roomId == "vintage" || roomId == "cozy_room" -> {
-                        val assetPath = "models/$roomId.glb"
+                        val assetPath = "${ModelManager.BUNDLED_ROOM_ASSETS_DIR}/$roomId.glb"
                         LogUtil.d("FurnitureFit", "Using assets: $assetPath")
                         roomSceneView.modelLoader.createModelInstance(assetFileLocation = assetPath)
                     }
@@ -753,6 +758,9 @@ class FurnitureFitFragment : Fragment() {
                 }
             } catch (e: Exception) {
                 LogUtil.e("FurnitureFit", "Failed to load 3D room", e)
+                activity?.runOnUiThread {
+                    CrashReporter.report(this@FurnitureFitFragment, e, "Furniture fit — load 3D room (SceneView)")
+                }
             }
         }
     }
@@ -769,6 +777,7 @@ class FurnitureFitFragment : Fragment() {
             LogUtil.d("FurnitureFit", "Copied PLY for background: ${destPly.absolutePath}")
         } catch (e: Exception) {
             LogUtil.e("FurnitureFit", "Failed to copy PLY for background", e)
+            CrashReporter.report(this, e, "Furniture fit — copy PLY for WebView background")
             return
         }
         val assetLoader = WebViewAssetLoader.Builder()

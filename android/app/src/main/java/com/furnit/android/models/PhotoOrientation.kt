@@ -1,7 +1,9 @@
 package com.furnit.android.models
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 
@@ -41,6 +43,23 @@ enum class PhotoOrientation(val value: String) {
          * 3) Derive display aspect; if still landscape-encoded with **no** rotation, prefer **portrait**
          *    for this app’s primary use case (phone held straight).
          */
+        /**
+         * Orientation implied by **pixel layout** of the bitmap actually passed to SHARP / saved as thumbnail.
+         *
+         * Use this for room **metadata and SharpRoom viewer** after decode (and optional EXIF rotation).
+         * [detect] on the file URI can disagree: e.g. portrait-first bias when EXIF rotation is 0 but the
+         * buffer is still landscape-wide — that caused ~90° tilt (viewer thought portrait, PLY from landscape tensor).
+         */
+        fun fromBitmapDimensions(bitmap: Bitmap): PhotoOrientation {
+            val w = bitmap.width
+            val h = bitmap.height
+            return when {
+                h > w -> PORTRAIT
+                w > h -> LANDSCAPE
+                else -> SQUARE
+            }
+        }
+
         fun detect(context: Context, uri: Uri): PhotoOrientation {
             var rawWidth = 0
             var rawHeight = 0
@@ -78,6 +97,47 @@ enum class PhotoOrientation(val value: String) {
             }
         }
 
+        /**
+         * Decode a full-resolution bitmap and apply JPEG/WebP **EXIF orientation** so pixels match what
+         * the user sees in the gallery (upright portrait, etc.).
+         *
+         * [BitmapFactory.decodeStream] ignores EXIF; Vulkan / ExecuTorch SHARP were fed the raw sensor
+         * buffer while [SharpRoomActivity] rotated the PLY for **display** orientation → ~90° mismatch
+         * for typical portrait camera JPEGs.
+         */
+        fun loadBitmapApplyingExif(context: Context, uri: Uri): Bitmap? {
+            val bitmap = context.contentResolver.openInputStream(uri).use { stream ->
+                if (stream == null) null else BitmapFactory.decodeStream(stream)
+            } ?: return null
+            val rotation = try {
+                context.contentResolver.openInputStream(uri).use { stream ->
+                    if (stream == null) 0 else ExifInterface(stream).rotationDegrees
+                }
+            } catch (_: Exception) {
+                0
+            }
+            return applyExifRotation(bitmap, rotation)
+        }
+
+        /** Same as [loadBitmapApplyingExif] for a filesystem path (e.g. SharpInferenceActivity). */
+        fun loadBitmapApplyingExifFromFile(imagePath: String): Bitmap? {
+            val bitmap = BitmapFactory.decodeFile(imagePath) ?: return null
+            val rotation = try {
+                ExifInterface(imagePath).rotationDegrees
+            } catch (_: Exception) {
+                0
+            }
+            return applyExifRotation(bitmap, rotation)
+        }
+
+        private fun applyExifRotation(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
+            val r = ((rotationDegrees % 360) + 360) % 360
+            if (r == 0) return bitmap
+            val matrix = Matrix().apply { postRotate(r.toFloat()) }
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (!bitmap.isRecycled && rotated != bitmap) bitmap.recycle()
+            return rotated
+        }
     }
 
     val isLandscape: Boolean

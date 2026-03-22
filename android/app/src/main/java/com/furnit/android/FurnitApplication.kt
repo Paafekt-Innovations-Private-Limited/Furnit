@@ -4,8 +4,12 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.os.Process
+import com.furnit.android.services.BackendConfig
+import com.furnit.android.services.ExecutorchInt8Sharp
+import com.furnit.android.services.SharpExecuTorchSplitModelNames
 import com.furnit.android.services.SharpService
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.DeviceHeuristics
 import com.furnit.android.utils.ExecutorchNativeLoader
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.Part1OnlyTest
@@ -21,6 +25,51 @@ class FurnitApplication : Application() {
 
     companion object {
         private const val TAG = "FurnitApp"
+        private const val PREFS = "furnit_prefs"
+        private const val KEY_PART12_CPU = "executorch_int8_part12_on_cpu"
+        /** One-shot so we only apply the Pixel default when the key has never been set. */
+        private const val KEY_PART12_PIXEL_MIGRATION = "executorch_int8_part12_pixel_default_v1"
+    }
+
+    /**
+     * Pixel / Tensor: Vulkan Part1+2 often hits GPU timeout or device lost. Default "Part1+2 on CPU" ON when the user
+     * has never changed it, so hybrid mode is used as soon as INT8 sidecars exist (models_vulkan or models_cpu).
+     */
+    private fun migratePixelHybridPart12Default() {
+        if (!DeviceHeuristics.isGooglePixelFamily()) return
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_PART12_PIXEL_MIGRATION, false)) return
+        val editor = prefs.edit().putBoolean(KEY_PART12_PIXEL_MIGRATION, true)
+        if (!prefs.contains(KEY_PART12_CPU)) {
+            editor.putBoolean(KEY_PART12_CPU, true)
+            LogUtil.i(
+                TAG,
+                "Pixel-family device: defaulting Part1+2 on CPU (hybrid). Push ${SharpExecuTorchSplitModelNames.PART1_INT8} + " +
+                    "${SharpExecuTorchSplitModelNames.PART2_INT8} to files/models_vulkan/ (with other Vulkan .pte) if inference still fails.",
+            )
+        }
+        editor.apply()
+    }
+
+    /**
+     * Friend APKs bundle .pte under assets/models_cpu + assets/models_vulkan. On first launch, internal dirs are
+     * empty — copy from assets (and sync scoped external) on a background thread so SHARP works without adb push.
+     */
+    private fun scheduleHydrateSharpModelsFromApkAssetsIfNeeded() {
+        if (!BackendConfig.ENABLE_EXECUTORCH_INT8) return
+        Thread(
+            {
+                try {
+                    val sharp = ExecutorchInt8Sharp.getInstance(this@FurnitApplication)
+                    if (!sharp.internalSplitSharpModelsAbsent()) return@Thread
+                    sharp.hydrateBundledAndExternalModels()
+                    LogUtil.d(TAG, "Startup: hydrated SHARP models from APK assets / external (if any)")
+                } catch (e: Throwable) {
+                    LogUtil.d(TAG, "Startup SHARP model hydrate skipped: ${e.message}")
+                }
+            },
+            "SharpAssetHydrate",
+        ).start()
     }
 
     override fun onCreate() {
@@ -28,6 +77,9 @@ class FurnitApplication : Application() {
 
         DebugLogger.init(this)
         LogUtil.init(this)
+
+        migratePixelHybridPart12Default()
+        scheduleHydrateSharpModelsFromApkAssetsIfNeeded()
 
         // ExecuTorch: register Vulkan/backend early. Background Part1 warmup is opt-in and disabled by default.
         try {

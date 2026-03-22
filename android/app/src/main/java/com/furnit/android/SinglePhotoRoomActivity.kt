@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -12,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.DebugLogger
 import android.view.Gravity
 import android.view.View
@@ -28,7 +28,6 @@ import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
 import org.json.JSONObject
 import java.io.File
-import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -577,6 +576,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Error launching camera", e)
             Toast.makeText(this, "Error opening camera: ${e.message}", Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Single photo room — launch camera")
         }
     }
 
@@ -598,17 +598,18 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun loadImageFromUri(uri: Uri) {
         try {
-            val inputStream: InputStream? = contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            val bitmap = PhotoOrientation.loadBitmapApplyingExif(this, uri)
 
             if (bitmap != null) {
                 selectedBitmap = bitmap
                 selectedImageView.setImageBitmap(bitmap)
 
-                // Auto-detect orientation from EXIF or dimensions
-                detectedOrientation = PhotoOrientation.detect(this, uri)
-                DebugLogger.d("SinglePhotoRoom", "Detected orientation: ${detectedOrientation.value}")
+                // Must match bitmap pixels fed to SHARP (see PhotoOrientation.fromBitmapDimensions KDoc).
+                detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
+                DebugLogger.d(
+                    "SinglePhotoRoom",
+                    "Orientation from bitmap ${bitmap.width}x${bitmap.height}: ${detectedOrientation.value}"
+                )
                 updateOrientationIndicator()
 
                 // Start AI generation in background immediately (ONNX or Native Pt)
@@ -619,10 +620,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             } else {
                 DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                CrashReporter.report(this, IllegalStateException("Bitmap decode returned null"), "Single photo room — decode image")
             }
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Error loading image", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Single photo room — load image")
         }
     }
 
@@ -690,6 +693,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     hideProgressOverlay()
                     Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
                     DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
+                    CrashReporter.report(
+                        this@SinglePhotoRoomActivity,
+                        RuntimeException(message),
+                        "Single photo room — AI / SHARP generation",
+                    )
                 }
             }
         },

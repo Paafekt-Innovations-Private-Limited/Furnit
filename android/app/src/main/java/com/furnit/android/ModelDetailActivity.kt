@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import android.view.PixelCopy
 import android.view.View
@@ -171,7 +172,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     if (f.isFile) f.parent else f.absolutePath
                 }
                 // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
-                // Bundled assets (models/vintage.glb) have parent "models" - no room.glb there, so omit to use ROOM_ID.
+                // Bundled assets (bundled_rooms/vintage.glb) use a relative asset path — no room folder; omit ROOM_FOLDER to use ROOM_ID.
                 val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
                 LogUtil.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
                 val intent = Intent(this, FurnitureFitActivity::class.java)
@@ -265,6 +266,7 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to save room", e)
             Toast.makeText(this, getString(R.string.photo_room_error_load, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Model detail — save room")
         }
     }
 
@@ -287,6 +289,7 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to share room", e)
             Toast.makeText(this, getString(R.string.model_detail_failed_share), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Model detail — share room")
         }
     }
 
@@ -310,6 +313,7 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             LogUtil.e(TAG, "Screenshot failed", e)
             Toast.makeText(this, getString(R.string.model_detail_screenshot_failed), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "Model detail — screenshot capture")
         }
     }
 
@@ -354,6 +358,7 @@ class ModelDetailActivity : AppCompatActivity() {
             LogUtil.e(TAG, "Failed to save screenshot", e)
             runOnUiThread {
                 Toast.makeText(this, getString(R.string.model_detail_failed_save_screenshot_message, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                CrashReporter.report(this@ModelDetailActivity, e, "Model detail — save/share screenshot")
             }
         }
     }
@@ -515,6 +520,9 @@ class ModelDetailActivity : AppCompatActivity() {
                 e.printStackTrace()
                 loadingIndicator.visibility = View.GONE
                 modelTitle.text = getString(R.string.model_detail_failed_load, e.message ?: "")
+                runOnUiThread {
+                    CrashReporter.report(this@ModelDetailActivity, e, "Model detail — load 3D model")
+                }
             }
         }
     }

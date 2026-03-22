@@ -12,6 +12,8 @@ class ModelManager(private val context: Context) {
         private const val TAG = "ModelManager"
         private const val ROOMS_DIR = "rooms"
         private const val SHARP_ROOMS_DIR = "sharp_rooms"
+        /** Built-in demo GLBs under `assets/bundled_rooms/` (SHARP `.pte` use assets/models_cpu + models_vulkan via Gradle). */
+        const val BUNDLED_ROOM_ASSETS_DIR = "bundled_rooms"
     }
 
     init {
@@ -25,8 +27,12 @@ class ModelManager(private val context: Context) {
         loadUserCreatedRooms()
 
         // Add bundled models at the bottom
-        models.add(Model("vintage", "Vintage Living Room", "models/vintage.glb", createdAt = 0L))
-        models.add(Model("cozy_room", "Cozy Living Room", "models/cozy_room.glb", createdAt = 0L))
+        models.add(
+            Model("vintage", "Vintage Living Room", "$BUNDLED_ROOM_ASSETS_DIR/vintage.glb", createdAt = 0L),
+        )
+        models.add(
+            Model("cozy_room", "Cozy Living Room", "$BUNDLED_ROOM_ASSETS_DIR/cozy_room.glb", createdAt = 0L),
+        )
     }
 
     private fun loadUserCreatedRooms() {

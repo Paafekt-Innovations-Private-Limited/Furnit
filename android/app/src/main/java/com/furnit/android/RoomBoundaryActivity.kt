@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import android.view.*
 import android.widget.*
@@ -111,6 +112,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
             LogUtil.d("RoomBoundary", "Image loaded: ${imageBitmap?.width}x${imageBitmap?.height}")
         } catch (e: Exception) {
             LogUtil.e("RoomBoundary", "Failed to load image", e)
+            CrashReporter.report(this, e, "Room boundary — load image")
         }
     }
 
