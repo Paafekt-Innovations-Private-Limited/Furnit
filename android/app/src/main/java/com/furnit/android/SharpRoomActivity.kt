@@ -1095,12 +1095,17 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // PLY from ExecuTorch SHARP is already in the coordinate system we want: **no mesh rotation or mirror scale.**
-            // Portrait vs landscape only changes camera framing and UI (isPortrait below), not an extra π/2 spin.
+            // Portrait: identity. Landscape: 180° in place, then 180° about local Y (both at mesh origin).
             scene.add(splatMesh);
-            splatMesh.rotation.set(0, 0, 0);
             splatMesh.scale.set(1, 1, 1);
-            console.log('[WebGL] SplatMesh: identity rotation & scale; isPortrait=' + (isPortrait ? 'true' : 'false'));
+            if (isPortrait) {
+                splatMesh.rotation.set(0, 0, 0);
+            } else {
+                splatMesh.rotation.x = Math.PI;
+                splatMesh.rotation.y = Math.PI;
+                splatMesh.rotation.z = 0;
+            }
+            console.log('[WebGL] SplatMesh: portrait RxRyRz=0; landscape Rx=π Ry=π Rz=0 (in-place 180 + Y-180)');
             setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
