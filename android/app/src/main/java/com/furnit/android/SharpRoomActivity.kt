@@ -1095,17 +1095,15 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // Portrait: identity. Landscape: 180° in place, then 180° about local Y (both at mesh origin).
+            // Portrait: identity. Landscape: 180° about local Y only (fixes upside-down from Rx+Ry combo).
             scene.add(splatMesh);
             splatMesh.scale.set(1, 1, 1);
             if (isPortrait) {
                 splatMesh.rotation.set(0, 0, 0);
             } else {
-                splatMesh.rotation.x = Math.PI;
-                splatMesh.rotation.y = Math.PI;
-                splatMesh.rotation.z = 0;
+                splatMesh.rotation.set(0, Math.PI, 0);
             }
-            console.log('[WebGL] SplatMesh: portrait RxRyRz=0; landscape Rx=π Ry=π Rz=0 (in-place 180 + Y-180)');
+            console.log('[WebGL] SplatMesh: portrait identity; landscape Ry=π only');
             setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
