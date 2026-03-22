@@ -917,9 +917,10 @@ class SharpRoomActivity : AppCompatActivity() {
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
         DebugLogger.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
-        // Which end of the room slab we place the camera on Z (camera + target only; room mesh is not moved).
-        // true = outside min-Z (camera at minZ - dist, target minZ, look +Z). false = outside max-Z (Swift-style).
-        // To zoom in/out: edit distInFront in frameFromWorldBox() in the JS below — not this flag.
+        // Which end of the room slab we place the camera on Z for **landscape** (portrait overrides in JS — see below).
+        // true = min-Z rail (camera at minZ - dist, target minZ). Needed for landscape: mesh uses Rx=0/Rz=0 (WebView
+        // upside-down fix) so "front" maps to this side; matches current good landscape behavior.
+        // Portrait uses the same Rx+Rz as iOS; frameFromWorldBox uses Swift SharpRoomView rule (front at maxZ).
         val webglEntranceMinZ = true
         val fallbackW = roomWidth.toDouble()
         val fallbackH = roomHeight.toDouble()
@@ -1094,20 +1095,15 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // Match Furnit/SharpRoomView.swift (SparkJS): classic PLY = 180° about X; portrait adds 90° about Z.
-            // Android portrait used Y=π + X=0 which does NOT match that basis; landscape used X=π only like iOS but
-            // WebView GL often shows floor/ceiling inverted — landscape uses X=0 (no classic X flip) so "up" reads correctly.
-            splatMesh.rotation.y = 0;
-            if (isPortrait) {
-                splatMesh.rotation.x = Math.PI;
-                splatMesh.rotation.z = Math.PI / 2;
-                console.log('[WebGL] SplatMesh: portrait X=π + Z=π/2 (match iOS)');
-            } else {
-                splatMesh.rotation.x = 0;
-                splatMesh.rotation.z = 0;
-                console.log('[WebGL] SplatMesh: landscape X=0 Z=0 (fix upside-down vs WebView; iOS uses X=π only)');
-            }
+            // Portrait: identity. Landscape: 180° about local Y only (fixes upside-down from Rx+Ry combo).
             scene.add(splatMesh);
+            splatMesh.scale.set(1, 1, 1);
+            if (isPortrait) {
+                splatMesh.rotation.set(0, 0, 0);
+            } else {
+                splatMesh.rotation.set(0, Math.PI, 0);
+            }
+            console.log('[WebGL] SplatMesh: portrait identity; landscape Ry=π only');
             setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
@@ -1141,7 +1137,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         /**
          * ROOM: splatMesh position stays (0,0,0) + load-time rotation only — we do NOT slide the room for framing.
-         * CAMERA: position + OrbitControls.target are set here (just outside inner AABB on Z).
+         * CAMERA: portrait → SharpRoomView.swift (outside maxZ, target maxZ). landscape → min-Z rail (WebView/identity mesh).
          * Zoom / step back along view: change distInFront (metres). Smaller = closer to wall; larger = farther in front.
          */
         function frameFromWorldBox(box, frameSource) {
@@ -1211,24 +1207,40 @@ class SharpRoomActivity : AppCompatActivity() {
             let wallSide;
             let distInFront;
             if (thinZSlab) {
-                // Same idea as manual orbit in logs: target ~innerZ, camera ~0.8–1.3m back along -Z (look +Z).
-                wallSide = 'thinZ_centerRail';
-                const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
-                distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
-                const targetZ = innerCenterZ + Math.min(0.12, Math.max(zSpanRaw, 0.02));
-                entranceZ = targetZ;
-                cameraZ = targetZ - distInFront;
+                if (isPortrait) {
+                    // Match SharpRoomView.swift when Z span is tiny: still put camera outside maxZ (front wall).
+                    wallSide = 'thinZ_portrait_maxZ_swift';
+                    const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
+                    distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                    const frontWallZ = maxZ;
+                    entranceZ = frontWallZ;
+                    cameraZ = frontWallZ + distInFront;
+                } else {
+                    // Landscape: keep center-rail (look +Z); works with identity mesh rotation + minZ convention.
+                    wallSide = 'thinZ_centerRail';
+                    const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
+                    distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                    const targetZ = innerCenterZ + Math.min(0.12, Math.max(zSpanRaw, 0.02));
+                    entranceZ = targetZ;
+                    cameraZ = targetZ - distInFront;
+                }
             } else {
                 const FRONT_DIST_K = 0.28;
                 const FRONT_DIST_CAP = 1.2;
                 const depthForStandoff = Math.max(roomDepth, fallbackRoomDepth, zSpanRaw, 0.15);
                 const depthProduct = depthForStandoff * FRONT_DIST_K;
                 distInFront = Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP));
-                wallSide = entranceUseMinZ ? 'minZ' : 'maxZ';
-                if (entranceUseMinZ) {
+                if (isPortrait) {
+                    // SharpRoomView.swift: frontWallZ = maxZ, camera at maxZ+dist, target maxZ (look into room -Z).
+                    wallSide = 'maxZ_front_swift_portrait';
+                    entranceZ = maxZ;
+                    cameraZ = maxZ + distInFront;
+                } else if (entranceUseMinZ) {
+                    wallSide = 'minZ';
                     entranceZ = minZ;
                     cameraZ = minZ - distInFront;
                 } else {
+                    wallSide = 'maxZ';
                     entranceZ = maxZ;
                     cameraZ = maxZ + distInFront;
                 }
@@ -1378,8 +1390,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 const marginBack = 0.02;
                 newX = Math.max(roomBoundsForClamping.minX + marginSide,
                     Math.min(roomBoundsForClamping.maxX - marginSide, newX));
-                newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
-                    Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+                // Portrait starts outside maxZ (Swift front-wall view); do not clamp Z down to maxZ (SharpRoomView.swift).
+                if (isPortrait && camera.position.z > roomBoundsForClamping.maxZ) {
+                    newZ = Math.max(roomBoundsForClamping.minZ + marginSide, newZ);
+                } else {
+                    newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                        Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+                }
             }
             const actualDx = newX - camera.position.x;
             const actualDz = newZ - camera.position.z;

@@ -49,7 +49,9 @@ class SharpInferenceActivity : AppCompatActivity() {
         }
 
         statusText.text = getString(R.string.sharp_inference_loading_model)
-        SharpService.getInstance(this).generateGaussians(bitmap, object : SharpService.ProgressCallback {
+        SharpService.getInstance(this).generateGaussians(
+            bitmap,
+            object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
                     progressBar.progress = (progress * 100).toInt().coerceIn(0, 100)
@@ -76,7 +78,10 @@ class SharpInferenceActivity : AppCompatActivity() {
                     finish()
                 }
             }
-        })
+        },
+            sourcePhotoUri = imageUri,
+            sourcePhotoPath = imagePath,
+        )
     }
 
     companion object {
