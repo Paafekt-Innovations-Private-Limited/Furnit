@@ -103,7 +103,8 @@ if (!modelDirPath || !imageNCHW) {
         }
     }
     const int maxG = static_cast<int>(maxGaussians);
-    bool useSinglePart4bOnly = (preferSinglePart4b == JNI_TRUE);
+    // JNI keeps preferSinglePart4b for the shared CPU/Vulkan signature; Vulkan Part4b is always tiled-first here.
+    (void)preferSinglePart4b;
     const bool swapTileNdc = (swapTileNdcXY == JNI_TRUE);
     const bool useVulkanBackend = true;
     const bool part12Cpu = (part12OnCpu == JNI_TRUE);
@@ -136,9 +137,9 @@ if (!modelDirPath || !imageNCHW) {
     const int chunk1x = (part12Chunk1x > 0) ? std::min(25, part12Chunk1x) : 0;
     const int chunk05x = (part12Chunk05x > 0) ? std::min(9, part12Chunk05x) : 0;
     const int yieldMs = (part12YieldMsBetweenChunks > 0) ? part12YieldMsBetweenChunks : 0;
-    LOGD("runFullPipelineInt8: modelDir=%s useVulkan=%d part12OnCpu=%d part1Limits 1x=%d 0.5x=%d chunk1x=%d chunk05x=%d yieldMs=%d preferSingleP4b=%d swapTileNdc=%d",
+    LOGD("runFullPipelineInt8: modelDir=%s useVulkan=%d part12OnCpu=%d part1Limits 1x=%d 0.5x=%d chunk1x=%d chunk05x=%d yieldMs=%d preferSingleP4b=%d (Vulkan ignores; tiled-first) swapTileNdc=%d",
          modelDir.c_str(), useVulkanBackend ? 1 : 0, part12Cpu ? 1 : 0, limit1x, limit05x, chunk1x, chunk05x, yieldMs,
-         useSinglePart4bOnly ? 1 : 0, swapTileNdc ? 1 : 0);
+         0, swapTileNdc ? 1 : 0);
 
     // Full image: 1536x1536 or 1280x1280 NCHW. Part1 is fed 384x384 patches only.
     jsize imageLen = env->GetArrayLength(imageNCHW);
@@ -156,9 +157,6 @@ if (!modelDirPath || !imageNCHW) {
         LOGE("bad image length %d (expected %d or %d for 1536/1280 NCHW)", (int)imageLen, 3 * IMAGE_SIZE * IMAGE_SIZE, 3 * IMAGE_SIZE_1280 * IMAGE_SIZE_1280);
         return nullptr;
     }
-    // Tiled Part4b path expects 1536; use single Part4b only when 1280
-    if (imageSize != IMAGE_SIZE) useSinglePart4bOnly = true;
-
     // Allocate workspace (reused across calls; only first call mallocs)
     if (!g_workspace.allocate()) {
         LOGE("workspace alloc failed");
@@ -743,10 +741,10 @@ if (!modelDirPath || !imageNCHW) {
     const std::string path4a65 = useVulkanBackend
             ? pathJoin(modelDir, "sharp_split_part4a_chunk_65_vulkan.pte")
             : pathJoin(modelDir, "sharp_split_part4a_chunk_65.pte");
+    // Vulkan: Part4b is **tiled-only** (batched → full tiled in common.cpp). No sharp_split_part4b_vulkan.pte path.
+    // CPU (non-Vulkan) branch below: single portable Part4b .pte.
     std::string path4bSingle;
-    if (useVulkanBackend) {
-        path4bSingle = pathJoin(modelDir, "sharp_split_part4b_vulkan.pte");
-    } else {
+    if (!useVulkanBackend) {
         // Prefer FP32 Part4b for clean output; INT8 can be foggy.
         const char* cpuPart4bNames[] = {
                 "sharp_split_part4b.pte",       // FP32 — clean results
@@ -768,7 +766,7 @@ if (!modelDirPath || !imageNCHW) {
          path3.c_str(),
          path4a512.c_str(),
          path4a65.c_str(),
-         path4bSingle.empty() ? "(none yet / tiled path)" : path4bSingle.c_str());
+         useVulkanBackend ? "(Vulkan tiled-only)" : (path4bSingle.empty() ? "(none yet / tiled path)" : path4bSingle.c_str()));
     LOGD("[MEM] combinedTokens planned ~%zuMB image=%dx%d", ((size_t)TOKENS_577 * FEATURE_DIM * sizeof(float)) / (1024 * 1024), imageSize, imageSize);
     logProcessMemory("before Part3 load");
 
@@ -814,7 +812,7 @@ if (!modelDirPath || !imageNCHW) {
     if (!useVulkanBackend) {
         LOGI("Part4a/512: portable CPU/XNNPACK — forward may take longer than Part3; timing follows in log.");
         LOGW("Part4a/512: CPU INT8 ViT is often many minutes on phone SoCs. For ~2–3 min total, use etVulkan build + "
-             "Vulkan Part3/4 .pte in models_vulkan (logcat showed 400s+ on one device before OMP tuning).");
+             "Vulkan Part3/4 .pte in models_cpuvulkan_hybrid (logcat showed 400s+ on one device before OMP tuning).");
     }
     logProcessMemory("before Part4a/512 load");
     long long tLoad512 = nowMs();
@@ -910,140 +908,10 @@ if (!modelDirPath || !imageNCHW) {
     LOGD("Part4a/65: %lldms. Part4a total: %lldms", nowMs() - tP4a65, nowMs() - tP4a);
     logProcessMemory("after Part4a/65 reset");
 
-    // ── Part4b: Stable ON → single in modelDir first; else tiled → seq tiled → single fallback
+    // ── Part4b: Vulkan — batched tiled → sequential tiled only (no single-decoder .pte)
     g_moduleCache.release();
     LOGD("Released Part1+Part2 cache before Part4b to free memory");
     logProcessMemory("before Part4b routing");
-
-    bool part4bSingleEarlyAttempted = false;
-    if (useSinglePart4bOnly && !path4bSingle.empty()) {
-        part4bSingleEarlyAttempted = true;
-        long long tP4b = nowMs();
-        const std::string& path4b = path4bSingle;
-        bool runEarlySingleFile = true;
-        if (useVulkanBackend) {
-            std::ifstream fv(path4b);
-            if (!fv.good()) {
-                LOGE("Part4b single: missing %s — trying tiled", path4b.c_str());
-                runEarlySingleFile = false;
-            }
-        } else if (path4b.empty()) {
-            runEarlySingleFile = false;
-        }
-        if (runEarlySingleFile) {
-            if (progressReporter && reportProgressMethodId) {
-                const char* msg = useVulkanBackend
-                    ? "Part 4b: loading Gaussian decoder…"
-                    : "Part 4b: Gaussian decoder on CPU…";
-                reportProgress(env, progressReporter, reportProgressMethodId, 0.75f, msg);
-            }
-            LOGI("Part4b single (Stable, try first): %s", path4b.c_str());
-            logProcessMemory("Part4b single early: before module load");
-            long long tLoad4b = nowMs();
-#if defined(EXECUTORCH_HAS_ETDUMP)
-            std::unique_ptr<ETModule> mod4b = (!etdumpPath.empty())
-                ? std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap, std::make_unique<executorch::etdump::ETDumpGen>())
-                : std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
-#else
-            auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
-#endif
-            if (mod4b->load() != Error::Ok) {
-                LOGE("Part4b single load fail: %s — trying tiled", path4b.c_str());
-            } else {
-                LOGI("Part4b: load OK in %lldms; forward(7 inputs) starting…", nowMs() - tLoad4b);
-                logProcessMemory("Part4b single early: after module load");
-                auto tokens4b = from_blob(combinedTokens.data(), {1, TOKENS_577, FEATURE_DIM});
-                auto img4b    = from_blob(imageData, {1, 3, imageSize, imageSize});
-                auto lat0_4b  = from_blob(g_workspace.latent0, {1, FEATURE_DIM, M_1X, M_1X});
-                auto lat1_4b  = from_blob(g_workspace.latent1, {1, FEATURE_DIM, M_1X, M_1X});
-                auto x0_4b    = from_blob(g_workspace.x0Feat, {1, FEATURE_DIM, M_1X, M_1X});
-                auto x1_4b    = from_blob(g_workspace.x1Feat, {1, FEATURE_DIM, M_05X, M_05X});
-                auto x2_4b    = from_blob(g_workspace.x2Feat, {1, FEATURE_DIM, SPATIAL_SIZE, SPATIAL_SIZE});
-                std::vector<EValue> in4b;
-                in4b.reserve(7);
-                in4b.push_back(*tokens4b);
-                in4b.push_back(*img4b);
-                in4b.push_back(*lat0_4b);
-                in4b.push_back(*lat1_4b);
-                in4b.push_back(*x0_4b);
-                in4b.push_back(*x1_4b);
-                in4b.push_back(*x2_4b);
-                long long tFwd4b = nowMs();
-                LOGI("Part4b forward running (single decoder)…");
-                auto out4b = mod4b->forward(in4b);
-                LOGI("Part4b forward finished in %lldms", nowMs() - tFwd4b);
-#if defined(EXECUTORCH_HAS_ETDUMP)
-                if (!etdumpPath.empty()) {
-                    if (auto* etdump = dynamic_cast<executorch::etdump::ETDumpGen*>(mod4b->event_tracer())) {
-                        executorch::etdump::ETDumpResult result = etdump->get_etdump_data();
-                        if (result.buf != nullptr && result.size > 0) {
-                            std::ofstream f(etdumpPath, std::ios::binary);
-                            if (f) {
-                                f.write(static_cast<const char*>(result.buf), static_cast<std::streamsize>(result.size));
-                                LOGI("ETDump written to %s (%zu bytes)", etdumpPath.c_str(), result.size);
-                            }
-                            free(result.buf);
-                        }
-                    }
-                }
-#endif
-                if (!out4b.ok() || out4b->empty()) {
-                    if (!out4b.ok()) {
-                        int err = static_cast<int>(out4b.error());
-                        LOGE("Part4b forward fail: error %d %s (path=%s) — trying tiled",
-                             err, executorchErrorStr(err), path4b.c_str());
-                    } else {
-                        LOGE("Part4b forward fail: empty outputs (path=%s) — trying tiled", path4b.c_str());
-                    }
-                } else {
-                    const auto& gaussianTensor = (*out4b)[0].toTensor();
-                    if (gaussianTensor.dim() != 3) {
-                        LOGE("Part4b AOT shape: dim=%ld expected 3 [1,N,14] — trying tiled", (long)gaussianTensor.dim());
-                    } else {
-                        const int64_t rawNumel = gaussianTensor.numel();
-                        if (rawNumel <= 0 || (rawNumel % PARAMS_PER_GAUSSIAN) != 0) {
-                            LOGE("Part4b output invalid: numel=%lld — trying tiled", (long long)rawNumel);
-                        } else {
-                            const int64_t nG = rawNumel / PARAMS_PER_GAUSSIAN;
-                            if (nG > 2000000) {
-                                LOGE("Part4b AOT shape: N=%lld too large — trying tiled", (long long)nG);
-                            } else {
-                                const int validatedNumFloats = static_cast<int>(nG) * PARAMS_PER_GAUSSIAN;
-                                const float* gaussianPtr = gaussianTensor.const_data_ptr<float>();
-                                if (!gaussianPtr) {
-                                    LOGE("Part4b output tensor data null — trying tiled");
-                                } else {
-                                    std::vector<float> safeCopy;
-                                    try {
-                                        safeCopy.resize(static_cast<size_t>(validatedNumFloats));
-                                    } catch (const std::bad_alloc&) {
-                                        LOGE("Part4b safeCopy alloc fail: %d floats — trying tiled", validatedNumFloats);
-                                    }
-                                    if (safeCopy.size() == (size_t)validatedNumFloats) {
-                                        std::memcpy(safeCopy.data(), gaussianPtr, (size_t)validatedNumFloats * sizeof(float));
-                                        std::vector<float> prunedBuf;
-                                        const int finalGaussians = pruneGaussiansFromPtr(
-                                            safeCopy.data(), static_cast<int>(nG), maxG, prunedBuf);
-                                        const int numFloats = finalGaussians * PARAMS_PER_GAUSSIAN;
-                                        long long tTotal = nowMs() - t0;
-                                        LOGD("Part4b (single Stable): %lldms. TOTAL pipeline: %lldms. Gaussians=%d",
-                                             nowMs() - tP4b, tTotal, numFloats / PARAMS_PER_GAUSSIAN);
-                                        logProcessMemory("Part4b single early: completed");
-                                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                                        jfloatArray jResult = env->NewFloatArray(numFloats);
-                                        if (!jResult) { LOGE("result array alloc fail"); return nullptr; }
-                                        env->SetFloatArrayRegion(jResult, 0, numFloats, prunedBuf.data());
-                                        LOGD("JNI RETURN: size=%d validated (single Stable)", numFloats);
-                                        return jResult;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     std::vector<float> tiledGaussians;
     if (runPart4bBatchedTiledPipeline(modelDir,
@@ -1097,31 +965,22 @@ if (!modelDirPath || !imageNCHW) {
         return jResult;
     }
 
-    if (part4bSingleEarlyAttempted) {
+    if (useVulkanBackend) {
+        LOGE("Part4b Vulkan: batched tiled and full tiled pipelines failed; tiled Part4b .pte set is missing or incomplete "
+             "(see sharp_executorch_full_common.cpp: tile_b2/tile_b4, split tile_b2/tile_00, fine-split tile_00, …).");
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-        LOGE("Part4b: tiled paths failed after Stable single attempt (modelDir=%s)", modelDir.c_str());
         return nullptr;
     }
 
     long long tP4b = nowMs();
     std::string path4b = path4bSingle;
-    if (useVulkanBackend) {
-        std::ifstream fv(path4b);
-        if (!fv.good()) {
-            LOGE("Part4b single: missing %s", path4b.c_str());
-            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-            return nullptr;
-        }
-    } else if (path4b.empty()) {
+    if (path4b.empty()) {
         LOGE("Part4b single: no sharp_split_part4b_int8/fp16/.pte in %s", modelDir.c_str());
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
     }
     if (progressReporter && reportProgressMethodId) {
-        const char* msg = useVulkanBackend
-            ? "Part 4b: loading Gaussian decoder…"
-            : "Part 4b: Gaussian decoder on CPU…";
-        reportProgress(env, progressReporter, reportProgressMethodId, 0.75f, msg);
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.75f, "Part 4b: Gaussian decoder on CPU…");
     }
     LOGI("Part4b single load: %s", path4b.c_str());
     logProcessMemory("Part4b single fallback: before module load");

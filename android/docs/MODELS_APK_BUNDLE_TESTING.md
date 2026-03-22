@@ -1,6 +1,6 @@
 # Bundling SHARP / ExecuTorch `.pte` in the test APK
 
-For **friend testing** (sideload), Gradle copies `*.pte` from `android/sharp_vulkan_only/` into **`app/build/bundled-pte-assets/models_vulkan/`**, and CPU splits from `executorch_int8_models` / `executorch_models` into **`models_cpu/`**. That tree is merged as an extra asset source — **not** under `src/main/`, so repo `.gitignore` rules for `*.pte` cannot strip them from the APK. The app copies bundled `sharp_split*.pte` from `assets/models_cpu` and `assets/models_vulkan` into internal storage during **`ExecutorchInt8Sharp.initialize()`** and **`hydrateBundledAndExternalModels()`** (also when opening the SHARP flow). **Default dev workflow:** `skipExecutorchAssets=true` in `gradle.properties` (fast Android Studio Run; use **adb push** for models). **Friend APK with models inside:** run **`android/assemble_friend_apk_with_models.sh`** or `./gradlew :app:assembleEtVulkanDebug -PskipExecutorchAssets=false`. On first launch, if internal **`models_cpu`** / **`models_vulkan`** have no `sharp_split*.pte`, the app copies from bundled assets (see `FurnitApplication` / `hydrateBundledAndExternalModels`).
+For **friend testing** (sideload), Gradle copies `*.pte` from `android/sharp_vulkan_only/` into **`app/build/bundled-pte-assets/models_cpuvulkan_hybrid/`**, and CPU splits from `executorch_int8_models` / `executorch_models` into **`models_cpu/`**. That tree is merged as an extra asset source — **not** under `src/main/`, so repo `.gitignore` rules for `*.pte` cannot strip them from the APK. The app copies bundled `sharp_split*.pte` from `assets/models_cpu` and `assets/models_cpuvulkan_hybrid` into internal storage during **`ExecutorchInt8Sharp.initialize()`** and **`hydrateBundledAndExternalModels()`** (also when opening the SHARP flow). **Default dev workflow:** `skipExecutorchAssets=true` in `gradle.properties` (fast Android Studio Run; use **adb push** for models). **Friend APK with models inside:** run **`android/assemble_friend_apk_with_models.sh`** or `./gradlew :app:assembleEtVulkanDebug -PskipExecutorchAssets=false`. On first launch, if internal **`models_cpu`** / **`models_cpuvulkan_hybrid`** have no `sharp_split*.pte`, the app copies from bundled assets (see `FurnitApplication` / `hydrateBundledAndExternalModels`).
 
 ## Backup first
 
@@ -24,25 +24,39 @@ A full `sharp_vulkan_only` tree is often **~6–7+ GB** of `.pte` alone. **Insta
 So you **cannot** ship “copy every `*.pte`” + `executorch_models` duplicates in one sideload APK. For friend testing you must either:
 
 - **Bundle a minimal Vulkan set** (Gradle flags below), **or**
-- **`-PskipExecutorchAssets=true`** and **`adb push`** models to `files/models_vulkan/` (or use Play Asset Delivery, etc.).
+- **`-PskipExecutorchAssets=true`** and **`adb push`** models to `files/models_cpuvulkan_hybrid/` (or use Play Asset Delivery, etc.).
 
 This is **not** suitable for Play Store as a single monolithic multi‑GB APK; it is for **curated test builds or external delivery** only.
+
+### ~2 GiB sideload / “invalid package” (not a corrupt APK)
+
+After bundling **fp32 Vulkan Part1–3** plus Part4a/4b, the debug APK is often **~3–3.7 GiB** (still under the Zip32 **~4 GiB** archive limit, so Gradle can build it). Many **phone installers** still fail around **~2 GiB** because parts of the stack treat sizes as **signed 32‑bit** (`Integer.MAX_VALUE`). Symptoms: *There was a problem with this app*, *package appears to be invalid*, etc.
+
+**Mitigations**
+
+- Install with **`adb install -r`** from a PC/Mac.
+- Prefer **`assemble_friend_apk_shell_only.sh`** + **`push_sharp_vulkan_only.sh`** so the installable APK stays small.
+- If you must stay under ~2 GiB in one APK, you need **smaller exports** (e.g. **FP16** Part1–3 if your device supports them) and/or fewer bundled modules — there is no Gradle flag to bypass the platform installer limit.
 
 ## Gradle properties
 
 | Property | Effect |
 |----------|--------|
-| `-PskipExecutorchAssets` | Disables **all** model copy into assets (smallest APK; use adb push to `files/models_vulkan` or `models_cpu`). |
+| `-PskipExecutorchAssets` | Disables **all** model copy into assets (smallest APK; use adb push to `files/models_cpuvulkan_hybrid` or `models_cpu`). |
 | `-PskipSharpVulkanOnlyInAssets` | Still copies from `../executorch_int8_models` and `../executorch_models` if present, but **omits** `android/sharp_vulkan_only` (faster dev builds). |
 | `-PincludePart4bTilesInAssets` | Also copies 16 tile `.pte` from the int8/chunked dirs when those dirs exist (redundant if tiles already live under `sharp_vulkan_only`). |
 | `-PskipExecutorchChunkedDirInAssets=true` | Skips **`../executorch_models`** (CPU-named `part4a_chunk_*.pte`, `sharp_split_part4b.pte`, etc.). Use when **etVulkan** loads only Vulkan `.pte` from `sharp_vulkan_only`. |
 | `-PskipExecutorchInt8DirInAssets=true` | Skips **`../executorch_int8_models`** (CPU INT8 Part1–3). Not needed for **full Vulkan hybrid** (`sharp_executorch_full_vulkan.cpp` uses `*_vulkan_*.pte` for Part1–3). |
 | *(default when bundling)* | If `skipExecutorchAssets=false` and `sharp_vulkan_only` exists, **minimal Vulkan list** is used automatically (unless `includeAll…` below). |
 | `-PincludeAllSharpVulkanPteInAssets=true` | **Expert / avoid:** copy **every** `*.pte` from `sharp_vulkan_only` — usually **>4 GiB** and **`package*` fails**. |
-| `-PbundleSharpVulkanHybridApk=true` | **Smallest friend APK:** skips **both** int8 + `executorch_models` trees **and** uses the **minimal Vulkan file list** (Vulkan-only sideload). |
+| `-PbundleSharpVulkanHybridApk=true` | Friend APK: skips int8 + `executorch_models`; bundles **core Vulkan Part1–3 + Part4a** plus **Part4b splits / tiles** (single `part4b_vulkan`, portable fallbacks, split `tile_b2`, fine-split / split `tile_00`, legacy `tile_b2` / `tile_b4` / `tile_00` / `tile_full`). Gradle **only copies files that exist**. Build **fails** if **no** complete Part4b strategy is present after copy. |
+| `-PbundleSharpVulkanFriendIncludeLegacyTileGrid=true` | Also try to bundle **`sharp_split_part4b_tile_01.pte` … `tile_15.pte`** (large; can push **Zip32 ~4 GiB** APK over the limit if many exist). Default **false**. |
+| `-PbundleSharpVulkanHybridFriendBundleAllPart4bSlices=true` | If `sharp_split_part4b_vulkan.pte` **exists**, still bundle **all** extra Part4b tile/split names below (for debugging or forced tiled routing). Default **false** — when the single Vulkan decoder is present, extras are **skipped** so the friend APK does not balloon past Zip32. |
+
+**Hybrid friend Part4b logic (important):** If **`sharp_split_part4b_vulkan.pte`** is in `sharp_vulkan_only/`, the friend build bundles **only** the core 6–7 files (Part1–3 + Part4a + that decoder). If you rely on **split/tiled** Part4b **and** that file is missing from the folder, Gradle adds the split/tile filename list (except legacy `tile_01…15` unless `-PbundleSharpVulkanFriendIncludeLegacyTileGrid=true`). If you **need** both single + many slices in one APK, use `-PbundleSharpVulkanHybridFriendBundleAllPart4bSlices=true` and accept Zip32 / size risk or use **adb push**.
 | `-PbundleSharpVulkanOnlyMinimal=true` | Same minimal Vulkan list as above, but **does not** skip int8/chunked dirs unless you also set skip flags. |
 | `-PbundleSharpVulkanMinimalIncludePart4Monolith=true` | Adds **`sharp_split_part4.pte`** (~755 MB) to the minimal set — only if you still need the old monolithic Part4 export; normal Vulkan hybrid does **not**. |
-| `-PbundleSharpVulkanPrecision=fp16` or `fp32` | Used with **minimal** / **hybrid** mode; default **`fp16`** (smaller). Native code tries **fp32 first** at runtime when present; use **fp32** here if your Vulkan runtime lacks FP16 shaders. |
+| `-PbundleSharpVulkanPrecision=fp16` or `fp32` | Used with **minimal** / **hybrid** mode; default **`fp16`** (smaller). If `sharp_split_part1_vulkan_fp16.pte` is **missing** but **fp32** exists, Gradle **auto-picks fp32** for Part1–3 so friend APKs are not empty for those layers. Native (etVulkan) resolves **fp32 before fp16** at runtime. |
 | `-PbundleSharpVulkanIncludeChunk65=true` / `false` | Include `sharp_split_part4a_chunk_65_vulkan.pte` (~+600 MB). **Default `true`** — [ExecutorchInt8Sharp] requires `hasPart4a65()` for the Vulkan full pipeline; omitting it causes *Missing models: part4a_65_vulkan*. Set **`false`** only for custom builds that change Kotlin/C++. |
 
 **Example (Vulkan hybrid friend APK — no CPU Part3/4 `.pte`, fits Zip32):**
@@ -79,7 +93,7 @@ Same as minimal + skip CPU dirs, if you prefer explicit flags:
 
 ## Git
 
-`*.pte` is listed in `.gitignore`; copied files under `build/bundled-pte-assets/models_cpu|models_vulkan` are not meant to be committed. Demo GLBs (if any) live under `app/src/main/assets/bundled_rooms/`.
+`*.pte` is listed in `.gitignore`; copied files under `build/bundled-pte-assets/models_cpu|models_cpuvulkan_hybrid` are not meant to be committed. Demo GLBs (if any) live under `app/src/main/assets/bundled_rooms/`.
 
 ## Prod
 
@@ -100,3 +114,15 @@ If you still hit **Java heap space**:
 The APK grew past the **Zip32 ~4 GiB** limit. Use **`-PbundleSharpVulkanHybridApk=true`** (or minimal + skip int8 + skip chunked), prefer **`fp16`** for size, and omit chunk_65 unless you need it. If you still exceed 4 GiB, stop bundling assets and use **adb push** instead.
 
 **Still failing after switching to minimal?** An older build may have copied **all** `sharp_vulkan_only/*.pte` into **`app/build/bundled-pte-assets/`**; Gradle’s Copy task **does not remove** files that are no longer part of the copy spec, so huge stale `.pte` can remain until you clean. Fix: **Build → Clean Project** in Android Studio, or delete `android/app/build/bundled-pte-assets/`. Current `app/build.gradle` wipes that folder at the start of each `copyExecutorchModelsIntoAssets` run so this should not recur.
+
+### Friend APK shows “Missing models” but the APK is ~1–2 GB
+
+That size is **normal** for a Vulkan hybrid bundle: six to seven large `.pte` files (Part1–3 Vulkan, Part4a 512 + 65, Part4b Vulkan) often total **~1.5–2 GB** uncompressed in the APK.
+
+If inference still says models are missing:
+
+1. **Clear scoped external models** on the test device: delete or empty  
+   `Android/data/com.furnit.android/files/models_cpuvulkan_hybrid/`  
+   Old **adb push** leftovers (one or two `.pte` files) used to trigger an over-aggressive **prune** that removed the copies hydrated from the APK. Current app versions **skip** that prune unless external looks like a **full** push (see `ExecutorchInt8Sharp.syncExternalSharpSplitPteToInternal`).
+2. **Clear app data** or reinstall the friend APK so internal `files/models_cpuvulkan_hybrid` is re-copied from assets.
+3. Confirm **logcat** after launch: `hydrateBundledAndExternalModels` should report a non-zero `models_cpuvulkan_hybrid` `sharp_split*.pte` count.

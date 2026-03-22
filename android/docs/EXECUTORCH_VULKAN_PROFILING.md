@@ -120,7 +120,7 @@ Read it this way:
 
 This matters because a `30s+` Part1+2 block in a hybrid run is **not evidence of a Vulkan Part1 bottleneck**.
 
-In the current app, hybrid Part1+2 can be auto-enabled when CPU Part1/2 sidecar models exist under `models_cpu`. So if you want to measure true Vulkan Part1+2 in the room pipeline, make sure the run actually logs `part12OnCpu=0`.
+In the current app, **Vulkan hybrid requires** CPU/portable Part1+2 sidecars in `models_cpuvulkan_hybrid` (and `models_cpu`); the room pipeline **does not run** without them. To benchmark **Vulkan Part1+2 in isolation**, use the in-app Part1 test / explicit Vulkan `.pte` candidates (or temporarily use **CPU ExecuTorch INT8** in Settings), not the full hybrid room path.
 
 ### Step 1: measure standalone Part1 first inside the app
 

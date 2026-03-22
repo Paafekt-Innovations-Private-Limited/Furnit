@@ -33,6 +33,23 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var authManager: AuthenticationManager
     private lateinit var part1WarmupStatusView: TextView
 
+    companion object {
+        /**
+         * Logged-in phone ([AuthenticationManager.getUserPhone]) must normalize (digits only) to one of these
+         * to see ETDump, Vulkan 1536 test, Part1 warmup/cache release, Part1-only test, Part4 tile_00 fine split test.
+         */
+        private val INTERNAL_ML_DIAGNOSTICS_PHONE_DIGITS = setOf(
+            "917795002599", // +91 7795002599
+            "18588595200", // +1 8588595200
+        )
+    }
+
+    /** True when the signed-in user's phone matches [INTERNAL_ML_DIAGNOSTICS_PHONE_DIGITS] (digits-only). */
+    private fun isUserAllowlistedForInternalMlDiagnostics(): Boolean {
+        val digits = authManager.getUserPhone().filter { it.isDigit() }
+        return digits.isNotEmpty() && digits in INTERNAL_ML_DIAGNOSTICS_PHONE_DIGITS
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
@@ -267,7 +284,7 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 0)
         }
         executorchChoiceLayout.addView(executorchChoiceDesc)
-        // CPU ExecuTorch INT8: fixed behavior — single Part4b FP32, single-patch Part1+2, 25 patches only.
+        // CPU ExecuTorch INT8: fixed behavior — single Part4b, single-patch Part1+2, 25 patches only.
         developerSection.addView(executorchChoiceLayout)
 
         // Max Gaussians (splat count limit)
@@ -306,32 +323,10 @@ class SettingsActivity : AppCompatActivity() {
         maxGaussLayout.addView(maxGaussRg)
         developerSection.addView(maxGaussLayout)
 
-        val part12Layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
-        part12Layout.addView(
-            TextView(this).apply {
-                text = getString(R.string.settings_part12_on_cpu)
-                textSize = 14f
-                setTextColor(Color.parseColor("#222222"))
-            },
-        )
-        part12Layout.addView(
-            TextView(this).apply {
-                text = getString(R.string.settings_part12_on_cpu_description)
-                textSize = 12f
-                setTextColor(Color.parseColor("#666666"))
-                setPadding(0, 4, 0, 8)
-            },
-        )
-        val part12OnCpuPref = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
-        part12Layout.addView(
-            createStyledSwitch(part12OnCpuPref) { isChecked ->
-                prefs.edit().putBoolean("executorch_int8_part12_on_cpu", isChecked).apply()
-            },
-        )
-        developerSection.addView(part12Layout)
-
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        val showInternalMlDiagnostics = isUserAllowlistedForInternalMlDiagnostics()
 
+        if (showInternalMlDiagnostics) {
         // Record ETDump on next room creation (Vulkan Part4b profiling; pull .etdp and run inspector_cli.py)
         val recordEtdump = prefs.getBoolean("executorch_record_etdump_next_run", false)
         val recordEtdumpLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
@@ -379,6 +374,7 @@ class SettingsActivity : AppCompatActivity() {
         vulkanTestLayout.addView(vulkanTestLabel)
         vulkanTestLayout.addView(vulkanTestBtn)
         implLayout.addView(vulkanTestLayout)
+        }
 
         // Vulkan & ExecuTorch diagnostics: device, extensions, sync (synchronization2), shader note
         val vulkanDiagLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
@@ -401,6 +397,7 @@ class SettingsActivity : AppCompatActivity() {
         vulkanDiagLayout.addView(vulkanDiagBtn)
         implLayout.addView(vulkanDiagLayout)
 
+        if (showInternalMlDiagnostics) {
         // Part1 warmup (manual): run one forward first; status line updates when done (prefs + Part1Warmup logcat)
         val part1WarmupVertical = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 0) }
         val part1WarmupRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -632,6 +629,7 @@ class SettingsActivity : AppCompatActivity() {
         part4OnlyLayout.addView(part4OnlyLabel)
         part4OnlyLayout.addView(part4OnlyButtons)
         implLayout.addView(part4OnlyLayout)
+        }
 
         developerSection.addView(implLayout)
 

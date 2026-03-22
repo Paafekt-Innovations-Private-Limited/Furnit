@@ -9,7 +9,7 @@ The C++ full pipeline (`sharp_executorch_full`) loads **Part3 → Part4a → Par
 
 ### No legacy `files/models` for `sharp_split*.pte`
 
-**`sharp_split*.pte` are only read under `models_cpu` / `models_vulkan`** (internal then external). Stale copies under `files/models/` are ignored. Push the working set to **`models_cpu`** or **`models_vulkan`**.
+**`sharp_split*.pte` are only read under `models_cpu` / `models_cpuvulkan_hybrid`** (internal then external). Stale copies under `files/models/` are ignored. Push the working set to **`models_cpu`** or **`models_cpuvulkan_hybrid`**.
 
 ## Required workflow (recommended)
 

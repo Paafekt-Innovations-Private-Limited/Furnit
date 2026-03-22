@@ -13,7 +13,7 @@ This is the flow that currently gives:
 ## Build and model set
 
 - APK flavor: `etVulkan`
-- Models directory on device: `files/models_vulkan`
+- Models directory on device: `files/models_cpuvulkan_hybrid`
 - Active Part4 route:
   - `stage_pre` on Vulkan
   - `decoder_head` on Vulkan
@@ -130,7 +130,7 @@ Notes:
 ## Working flow
 
 1. Build and install the `etVulkan` APK.
-2. Push the Vulkan SHARP model pack to `models_vulkan`.
+2. Push the Vulkan SHARP model pack to `models_cpuvulkan_hybrid`.
 3. In Settings, select the backend and confirm `Max Gaussians`. The three hidden ExecuTorch values above are already fixed by the app.
 4. Create a room from a single photo as usual in the app.
 5. Let the pipeline complete without changing backend toggles mid-run.
@@ -140,7 +140,7 @@ Notes:
 The important routing lines are:
 
 ```text
-runFullPipelineInt8: modelDir=.../models_vulkan useVulkan=1 ... preferSingleP4b=0
+runFullPipelineInt8: modelDir=.../models_cpuvulkan_hybrid useVulkan=1 ... preferSingleP4b=0
 runPart4bBatchedTiledPipeline: fine split tile_00 artifacts present, preferring sequential tile_00 path
 runPart4bTiledFullPipeline: using fine split tile_00 path ...
 runPart4bTiledFullPipeline: loaded fine split tile_00 modules

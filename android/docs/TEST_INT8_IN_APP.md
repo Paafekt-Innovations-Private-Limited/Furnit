@@ -26,12 +26,13 @@ Logcat on init: `BUILD_CONFIG EXECUTORCH_USE_VULKAN_AAR=…` under tag `Executor
 | APK flavor | External app folder (adb push) |
 |------------|--------------------------------|
 | **etCpu** | `/sdcard/Android/data/com.furnit.android/files/models_cpu/` |
-| **etVulkan** | `/sdcard/Android/data/com.furnit.android/files/models_vulkan/` |
+| **etVulkan** | `/sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid/` |
 
-The app also mirrors into internal storage under the same subdir name (`files/models_cpu` or `files/models_vulkan`). Logcat prints both paths: `ExecuTorch model roots: internal=… external=…`.  
-**Legacy `files/models/` is not used** — push only to `models_cpu` / `models_vulkan`.
+The app also mirrors into internal storage under the same subdir name (`files/models_cpu` or `files/models_cpuvulkan_hybrid`). Logcat prints both paths: `ExecuTorch model roots: internal=… external=…`.  
+**Legacy `files/models/` is not used** — push only to `models_cpu` / `models_cpuvulkan_hybrid`.  
+**Legacy `files/models_vulkan/`:** on launch the app copies `sharp_split*.pte` into `models_cpuvulkan_hybrid`, removes matching sources, and deletes the old folder when empty.
 
-Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_vulkan_only.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_vulkan`.  
+Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_vulkan_only.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_cpuvulkan_hybrid`.  
 To migrate an old `files/models/` tree on device: `android/migrate_legacy_models_to_cpu_vulkan.sh`.
 
 ---
@@ -52,7 +53,9 @@ To migrate an old `files/models/` tree on device: `android/migrate_legacy_models
 | **Swap tile NDC X/Y** | **OFF** unless misaligned | Passed into C++ tiled path only; fixes transposed tile layout. |
 | **Debug mode** | Optional | For logcat (`PART4B_ROUTING`, `runPart4bTiledFullPipeline`). |
 
-**Routing:** `adb logcat -s ExecutorchInt8Sharp:I | grep PART4B_ROUTING` — fields `prefer_single=`, `path=single_decoder|tiled_16x`. **Stable ON + single .pte present → single.** **Stable OFF + tile models present → tiled** (even if single .pte exists — use this to A/B test). **Stable ON + only tiles on disk → tiled** (no choice).
+**Vulkan hybrid requirement:** With **ExecuTorch INT8 (Part1+2 + Vulkan — Hybrid)** selected (`executorch_int8_use_cpu_stable=false`), the app **refuses to initialize or infer** unless **portable Part1+2** sidecars exist (e.g. `sharp_split_part1_int8.pte` + `sharp_split_part2_int8.pte`, or matching `*_fp16` / `*_fp32` pairs). There is **no** Vulkan-only Part1+2 fallback.
+
+**Routing:** `adb logcat -s ExecutorchInt8Sharp:I | grep PART4B_ROUTING` — fields `prefer_single=`, `path=…`. **Vulkan / hybrid (GPU Part4):** `prefer_single=false` always; native runs **tiled-first** (batched → sequential → single `part4b_vulkan` fallback). **CPU ExecuTorch stable (`executorch_int8_use_cpu_stable`):** `prefer_single=true` — **single .pte present → single first**; **only tiles on disk → tiled** (no choice).
 
 Keep **Stable ON** and deploy a **single** Part4b `.pte` to avoid 16-tile INT8 fog when APK also ships `tile_00`.
 
@@ -106,6 +109,6 @@ adb logcat -s sharp_executorch_full:D ExecutorchInt8Sharp:D SharpService:D -v ti
 **If you have multiple devices:** use one target, e.g.  
 `adb -s <device_id> install -r app/build/outputs/apk/etVulkan/debug/app-etVulkan-arm64-v8a-debug.apk`  
 (or `.../etCpu/debug/app-etCpu-arm64-v8a-debug.apk` for CPU / XNNPACK)  
-Then push models to **`models_vulkan`** or **`models_cpu`** as in the table above (not the old single `models/` folder, unless you rely on legacy fallback).  
+Then push models to **`models_cpuvulkan_hybrid`** or **`models_cpu`** as in the table above (not the old single `models/` folder, unless you rely on legacy fallback).  
 and  
 `adb -s <device_id> push ...` or `adb -s <device_id> logcat ...`.

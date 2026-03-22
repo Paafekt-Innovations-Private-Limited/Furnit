@@ -2280,8 +2280,8 @@ def main():
     print(f"  Gaussians: {gaussianCount:,}")
     print(f"\nPush to device (match APK flavor):")
     print("  etCpu:    adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_cpu")
-    print("  etVulkan: adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_vulkan")
-    sub = "models_vulkan" if backend == "vulkan" else "models_cpu"
+    print("  etVulkan: adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid")
+    sub = "models_cpuvulkan_hybrid" if backend == "vulkan" else "models_cpu"
     for pte in sorted(output_dir.glob("sharp_split_part*.pte")):
         print(f"  adb push {pte} /sdcard/Android/data/com.furnit.android/files/{sub}/")
 

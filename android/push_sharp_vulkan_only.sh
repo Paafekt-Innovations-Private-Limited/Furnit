@@ -7,12 +7,12 @@
 #   ./push_sharp_vulkan_only.sh
 #   ./push_sharp_vulkan_only.sh /path/to/folder
 #
-# Destination: models_vulkan (etVulkan APK)
+# Destination: models_cpuvulkan_hybrid (etVulkan APK; legacy models_vulkan is auto-migrated by the app)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL_DIR="${1:-$SCRIPT_DIR/sharp_vulkan_only}"
-DEST="/sdcard/Android/data/com.furnit.android/files/models_vulkan"
+DEST="/sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid"
 
 if ! command -v adb &> /dev/null; then
   echo "Error: adb not found in PATH"

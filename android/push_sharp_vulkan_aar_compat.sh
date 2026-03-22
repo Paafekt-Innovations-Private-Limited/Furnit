@@ -5,7 +5,7 @@
 set -euo pipefail
 
 DIR="${1:-sharp_vulkan_aar_compat}"
-DEST="/sdcard/Android/data/com.furnit.android/files/models_vulkan"
+DEST="/sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid"
 
 [ -d "$DIR" ] || { echo "Error: $DIR not found. Run export with --vulkan-aar-compat --output-dir $DIR"; exit 1; }
 command -v adb &>/dev/null || { echo "Error: adb not found"; exit 1; }

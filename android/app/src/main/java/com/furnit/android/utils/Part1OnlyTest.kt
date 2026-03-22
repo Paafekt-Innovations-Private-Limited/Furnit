@@ -6,6 +6,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import com.furnit.android.services.ExecutorchFixedSettings
+import com.furnit.android.services.ExecutorchInt8Sharp
 import com.furnit.android.services.SharpExecuTorchSplitModelNames
 import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
@@ -79,7 +80,6 @@ object Part1OnlyTest {
 
     private data class RoomRouteState(
         val useCpuStable: Boolean,
-        val part12OnCpuRequested: Boolean,
         val hasCpuPart1Sidecar: Boolean,
         val hasCpuPart2Sidecar: Boolean,
         val effectivePart12OnCpu: Boolean,
@@ -161,10 +161,10 @@ object Part1OnlyTest {
 
     private fun modelsDirs(context: Context): List<File> {
         val list = mutableListOf<File>()
-        // etVulkan: models_vulkan first (push Vulkan .pte there via push_sharp_vulkan_only.sh)
+        // etVulkan: hybrid dir first (push Vulkan + portable Part1+2 there via push_sharp_vulkan_only.sh)
         if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
-            list.add(File(context.filesDir, "models_vulkan").also { it.mkdirs() })
-            context.getExternalFilesDir("models_vulkan")?.let { list.add(it) }
+            list.add(File(context.filesDir, ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID).also { it.mkdirs() })
+            context.getExternalFilesDir(ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { list.add(it) }
         } else {
             // etCpu: models_cpu first (push via push_sharp_executorch_cpu_models.sh)
             list.add(File(context.filesDir, "models_cpu").also { it.mkdirs() })
@@ -176,7 +176,8 @@ object Part1OnlyTest {
 
     private fun modelDirsForMode(context: Context, mode: ArtifactMode): List<File> {
         val ordered = when (mode) {
-            ArtifactMode.VULKAN -> modelDirsForSubdir(context, "models_vulkan") + extraProbeDirs(context)
+            ArtifactMode.VULKAN ->
+                modelDirsForSubdir(context, ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID) + extraProbeDirs(context)
             ArtifactMode.CPU_SIDECAR -> modelDirsForSubdir(context, "models_cpu") + extraProbeDirs(context)
         }
         val out = mutableListOf<File>()
@@ -301,15 +302,13 @@ object Part1OnlyTest {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         ExecutorchFixedSettings.syncToPrefs(prefs)
         val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
-        val part12OnCpuRequested = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
         val hasCpuPart1Sidecar = findExplicitPart1PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
         val hasCpuPart2Sidecar = findExplicitPart2PteCandidates(context, ArtifactMode.CPU_SIDECAR).isNotEmpty()
-        // Match ExecutorchInt8Sharp: hybrid only when INT8/portable Part1+2 exist; setting alone does not force hybrid.
+        // Match ExecutorchInt8Sharp: hybrid when INT8/portable Part1+2 sidecars exist (no separate Settings flag).
         val effectivePart12OnCpu =
             !useCpuStable && hasCpuPart1Sidecar && hasCpuPart2Sidecar
         return RoomRouteState(
             useCpuStable = useCpuStable,
-            part12OnCpuRequested = part12OnCpuRequested,
             hasCpuPart1Sidecar = hasCpuPart1Sidecar,
             hasCpuPart2Sidecar = hasCpuPart2Sidecar,
             effectivePart12OnCpu = effectivePart12OnCpu,
@@ -321,7 +320,7 @@ object Part1OnlyTest {
         Log.i(
             TAG,
             "$P1_ROUTE_MARKER build_vulkan_aar=${BuildConfig.EXECUTORCH_USE_VULKAN_AAR} " +
-                "useCpuStable=${route.useCpuStable} part12OnCpuRequested=${route.part12OnCpuRequested} " +
+                "useCpuStable=${route.useCpuStable} " +
                 "hasCpuPart1Sidecar=${route.hasCpuPart1Sidecar} hasCpuPart2Sidecar=${route.hasCpuPart2Sidecar} " +
                 "effectivePart12OnCpu=${route.effectivePart12OnCpu}"
         )
@@ -357,7 +356,8 @@ object Part1OnlyTest {
 
     private fun expectedPart1PteHint(): String {
         val names = part1PteCandidateNames().joinToString(" | ")
-        val dirHint = if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) "models_vulkan" else "models_cpu"
+        val dirHint =
+            if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID else "models_cpu"
         return "$names in $dirHint"
     }
 

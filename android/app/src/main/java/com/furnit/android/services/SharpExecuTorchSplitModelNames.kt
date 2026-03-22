@@ -59,6 +59,7 @@ object SharpExecuTorchSplitModelNames {
     const val PART4_1280_VULKAN_FP16 = "sharp_split_part4_1280_vulkan_fp16.pte"
     const val PART4A_CHUNK_512_VULKAN = "sharp_split_part4a_chunk_512_vulkan.pte"
     const val PART4A_CHUNK_65_VULKAN = "sharp_split_part4a_chunk_65_vulkan.pte"
+    /** Legacy filename; **not** loaded by `sharp_executorch_full_vulkan.cpp` (tiled Part4b only). Kept for tooling / old docs. */
     const val PART4B_VULKAN = "sharp_split_part4b_vulkan.pte"
 
     // --- Tiled / fine-split Part4b — sharp_executorch_full_common.cpp + Kotlin routing ---
@@ -107,7 +108,7 @@ object SharpExecuTorchSplitModelNames {
         PART4B_VULKAN,
     )
 
-    /** Optional `.pte` names that Gradle may copy into `assets/models_vulkan` for local testing. */
+    /** Optional `.pte` names that Gradle may copy into `assets/models_cpuvulkan_hybrid` for local testing. */
     val ASSET_OFFLOADABLE_VULKAN_PTES: Array<String> = arrayOf(
         PART1_VULKAN_FP32,
         PART2_VULKAN_FP32,

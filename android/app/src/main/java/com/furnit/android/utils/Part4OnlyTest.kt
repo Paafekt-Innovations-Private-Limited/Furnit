@@ -3,6 +3,7 @@ package com.furnit.android.utils
 import android.content.Context
 import android.util.Log
 import com.furnit.android.BuildConfig
+import com.furnit.android.services.ExecutorchInt8Sharp
 import com.furnit.android.services.SharpExecuTorchSplitModelNames
 import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
@@ -82,8 +83,8 @@ object Part4OnlyTest {
 
     private fun modelsDirs(context: Context): List<File> {
         val list = mutableListOf<File>()
-        list.add(File(context.filesDir, "models_vulkan").also { it.mkdirs() })
-        context.getExternalFilesDir("models_vulkan")?.let { list.add(it) }
+        list.add(File(context.filesDir, ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID).also { it.mkdirs() })
+        context.getExternalFilesDir(ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { list.add(it) }
         list.add(File(context.filesDir, "models_cpu").also { it.mkdirs() })
         context.getExternalFilesDir("models_cpu")?.let { list.add(it) }
         list.add(File("/data/local/tmp/furnit"))

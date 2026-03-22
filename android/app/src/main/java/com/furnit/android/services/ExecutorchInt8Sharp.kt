@@ -87,7 +87,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
         private const val MODEL_FILENAME = "sharp_full_vulkan.pte"
         private val SPLIT_FILENAMES = SharpExecuTorchSplitModelNames.VULKAN_SPLIT_CORE_PTES
-        /** Names of .pte files that may be packaged in assets (models_cpu / models_vulkan) for testing. */
+        /** Names of .pte files that may be packaged in assets (models_cpu / models_cpuvulkan_hybrid) for testing. */
         private val ASSET_MODEL_FILENAMES = SharpExecuTorchSplitModelNames.ASSET_OFFLOADABLE_VULKAN_PTES
         private const val PART4B_TILED_GRID = 4
         private const val PART4B_TILED_NUM = PART4B_TILED_GRID * PART4B_TILED_GRID // 16
@@ -95,9 +95,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         /** When true, native C++ may use 2 modules in parallel (ignored in C++ for stability); read from prefs in inferStreaming. */
         @JvmField
         var PARALLEL_TILES: Boolean = false
-        /** External + internal storage subdir per Gradle flavor: keeps CPU vs Vulkan .pte separate on device. */
+        /** External + internal storage subdir per Gradle flavor: keeps CPU vs hybrid Vulkan .pte separate on device. */
         const val MODELS_SUBDIR_CPU = "models_cpu"
-        const val MODELS_SUBDIR_VULKAN = "models_vulkan"
+        /** etVulkan: CPU Part1+2 + Vulkan Part3/4 in one folder (internal + scoped external). */
+        const val MODELS_SUBDIR_CPU_VULKAN_HYBRID = "models_cpuvulkan_hybrid"
+        /** Legacy dir name; files are migrated into [MODELS_SUBDIR_CPU_VULKAN_HYBRID] on startup, then removed when empty. */
+        private const val LEGACY_MODELS_SUBDIR_VULKAN = "models_vulkan"
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -108,6 +111,15 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         private const val LN_LUT_SIZE = 2048
         private const val LN_LUT_MIN = 0.001f
         private const val LN_LUT_MAX = 5.0f
+
+        /**
+         * After copying external hybrid dir → internal, we optionally prune internal `sharp_split*.pte` that are
+         * not listed on external (v2 adb push). **Never prune** when external has only a few stray files: that used to
+         * wipe a full friend-APK bundle from internal storage and produced "Missing models" despite a multi‑GB APK.
+         * Require at least this many `sharp_split*.pte` on external before pruning, unless external already has
+         * at least as many files as internal did before sync (full replacement).
+         */
+        private const val MIN_EXTERNAL_SHARP_SPLIT_COUNT_FOR_STALE_PRUNE = 7
         private val LN_LUT_SCALE = (LN_LUT_SIZE - 1).toFloat() / (LN_LUT_MAX - LN_LUT_MIN)
         private val LN_LUT = FloatArray(LN_LUT_SIZE) { i -> ln(LN_LUT_MIN + (LN_LUT_MAX - LN_LUT_MIN) * i / (LN_LUT_SIZE - 1)) }
 
@@ -191,9 +203,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     private val mutex = Mutex()
     private var isInitialized = false
-    /** Matches etVulkan vs etCpu APK: `files/models_vulkan` or `files/models_cpu` (+ scoped external storage). */
+    /** Matches etVulkan vs etCpu APK: `files/models_cpuvulkan_hybrid` or `files/models_cpu` (+ scoped external storage). */
     private val executorchModelsSubdir: String =
-        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) MODELS_SUBDIR_VULKAN else MODELS_SUBDIR_CPU
+        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) MODELS_SUBDIR_CPU_VULKAN_HYBRID else MODELS_SUBDIR_CPU
     /** External dir for adb push: try type first, then base + subdir (some devices return null for type). */
     private val externalModelsDir: File?
         get() = context.getExternalFilesDir(executorchModelsSubdir)
@@ -209,10 +221,32 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     @Volatile
     private var inferStreamingFailureDetail: String? = null
 
+    /** Set when [initialize] returns false (e.g. Vulkan hybrid without CPU Part1+2 sidecars). */
+    @Volatile
+    private var initializeFailureDetail: String? = null
+
     fun consumeInferStreamingFailureDetail(): String? {
         val message = inferStreamingFailureDetail
         inferStreamingFailureDetail = null
         return message
+    }
+
+    fun consumeInitializeFailureDetail(): String? {
+        val message = initializeFailureDetail
+        initializeFailureDetail = null
+        return message
+    }
+
+    /** User-facing text when ExecuTorch Vulkan hybrid is selected but portable Part1+2 are missing. */
+    private fun missingVulkanHybridPart12SidecarsUserMessage(): String {
+        val n = SharpExecuTorchSplitModelNames
+        return buildString {
+            append("Vulkan hybrid requires CPU Part1+2 models: ")
+            append("${n.PART1_INT8} and ${n.PART2_INT8} ")
+            append("(or matching portable *_fp16 / *_fp32 pairs for both parts), ")
+            append("in the same folder as your Vulkan Part3/4 stack (e.g. files/models_cpuvulkan_hybrid/). ")
+            append("Or choose CPU ExecuTorch INT8 in Settings.")
+        }
     }
 
     private val plyBatch = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
@@ -241,8 +275,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     fun initialize(): Boolean = runBlocking {
         mutex.withLock {
-            isInitialized = true
-            // 1) Extract APK assets → files/models_cpu + files/models_vulkan (when Gradle bundled .pte).
+            initializeFailureDetail = null
+            // 1) Extract APK assets → files/models_cpu + files/models_cpuvulkan_hybrid (when Gradle bundled .pte).
             // 2) Copy adb-pushed files from scoped external storage into the same internal dirs.
             hydrateBundledAndExternalModels()
             if (NATIVE_FULL_AVAILABLE) {
@@ -258,19 +292,15 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                             "and the required FP16 shaders are not bundled. Falling back to FP32-safe Vulkan models."
                     )
                 }
-                val part12OnCpuRequested = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
                 val hasP12Sidecars = hasCpuPart12SidecarModels()
-                // Hybrid only when INT8/portable Part1+2 exist on disk; setting alone cannot force a broken hybrid.
-                // When sidecars exist, hybrid runs even if the switch were off (matches Part1OnlyTest route logic).
-                val effectivePart12OnCpu = !useCpuStable && hasP12Sidecars
-                if (!useCpuStable && part12OnCpuRequested && !hasP12Sidecars) {
-                    LogUtil.i(
-                        TAG,
-                        "[HYBRID] Part1+2 on CPU is enabled but INT8/portable Part1+2 files are missing — " +
-                            "using Vulkan Part1+2. Push ${SharpExecuTorchSplitModelNames.PART1_INT8} + ${SharpExecuTorchSplitModelNames.PART2_INT8} to " +
-                            "models_vulkan or turn the switch off in Settings.",
-                    )
+                if (!useCpuStable && !hasP12Sidecars) {
+                    val msg = missingVulkanHybridPart12SidecarsUserMessage()
+                    initializeFailureDetail = msg
+                    LogUtil.e(TAG, "[INIT] $msg")
+                    return@withLock false
                 }
+                // Vulkan hybrid: CPU Part1+2 sidecars required (checked above). CPU-stable: portable Part1+2 under models_cpu.
+                val effectivePart12OnCpu = !useCpuStable && hasP12Sidecars
                 val cppModelDir = if (useCpuStable) {
                     findSinglePart4bCpuPte()?.parent
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2)?.parent
@@ -280,16 +310,24 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         ?: findFile(SharpExecuTorchSplitModelNames.PART1_INT8)?.parent
                         ?: findFile(SharpExecuTorchSplitModelNames.PART1_FP32)?.parent
                 } else {
-                    // Hybrid: Part3/4 Vulkan .pte under models_vulkan; Part1+2 INT8/portable in same dir (or models_cpu).
-                    findVulkanPart1Pte(preferVulkanFp16)?.parent
-                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_VULKAN)?.parent
+                    // Same folder as Vulkan stack; sidecar Part1 path anchors dir when no Vulkan Part1 .pte exists.
+                    findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_INT8)?.parent
+                        ?: findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP32)?.parent
+                        ?: findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP16)?.parent
+                        ?: findVulkanPart3Pte(preferVulkanFp16)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2_STAGE_A_VULKAN)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)?.parent
                 } ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
                 val useVulkanForPart12 = !useCpuStable && !effectivePart12OnCpu
                 syncSharpNativeVerboseLogging()
                 val preloaded = preloadCppModules(cppModelDir, useVulkanForPart12)
                 LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$effectivePart12OnCpu)")
                 if (!useCpuStable && effectivePart12OnCpu) {
-                    LogUtil.i(TAG, "[C++ FULL] Hybrid active: Part1+2 INT8/portable (models_vulkan), Part3/4 Vulkan")
+                    LogUtil.i(TAG, "[C++ FULL] Hybrid active: Part1+2 INT8/portable (models_cpuvulkan_hybrid), Part3/4 Vulkan")
                 }
                 LogUtil.i(
                     TAG,
@@ -298,7 +336,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 )
                 val rootsHint =
                     if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
-                        "etVulkan: push all SHARP .pte (Vulkan + optional INT8 Part1+2) to .../files/$MODELS_SUBDIR_VULKAN/"
+                        "etVulkan: push Vulkan Part3/4 + required portable Part1+2 (INT8 or fp16/fp32) to .../files/$MODELS_SUBDIR_CPU_VULKAN_HYBRID/"
                     } else {
                         "etCpu: push portable .pte to .../files/$MODELS_SUBDIR_CPU/"
                     }
@@ -314,6 +352,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     )
                 }
             }
+            isInitialized = true
             true
         }
     }
@@ -381,20 +420,83 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     }
 
     /**
-     * Copy packaged .pte from `assets/models_cpu` and `assets/models_vulkan` into internal storage
+     * Copy `sharp_split*.pte` from legacy `files/.../models_vulkan` into [MODELS_SUBDIR_CPU_VULKAN_HYBRID],
+     * delete sources when the copy matches size, remove empty legacy dirs. Safe to run every launch.
+     */
+    private fun migrateLegacyModelsVulkanDirectoryToHybrid() {
+        if (!BuildConfig.EXECUTORCH_USE_VULKAN_AAR) return
+        val hybridName = MODELS_SUBDIR_CPU_VULKAN_HYBRID
+        val pairs = LinkedHashSet<Pair<File, File>>()
+        fun addPair(old: File, newDir: File) {
+            if (old.absolutePath != newDir.absolutePath) {
+                newDir.mkdirs()
+                pairs.add(old to newDir)
+            }
+        }
+        addPair(File(context.filesDir, LEGACY_MODELS_SUBDIR_VULKAN), File(context.filesDir, hybridName))
+        context.getExternalFilesDir(LEGACY_MODELS_SUBDIR_VULKAN)?.let { oldExt ->
+            val newExt =
+                context.getExternalFilesDir(hybridName)
+                    ?: context.getExternalFilesDir(null)?.let { root ->
+                        File(root, hybridName).also { it.mkdirs() }
+                    }
+            if (newExt != null) addPair(oldExt, newExt)
+        }
+        context.getExternalFilesDir(null)?.let { base ->
+            addPair(File(base, LEGACY_MODELS_SUBDIR_VULKAN), File(base, hybridName))
+        }
+        for ((oldDir, newDir) in pairs) {
+            if (!oldDir.exists() || !oldDir.isDirectory) continue
+            newDir.mkdirs()
+            val pteFiles = oldDir.listFiles()?.filter { f ->
+                f.isFile && f.name.startsWith("sharp_split", ignoreCase = true) && f.name.endsWith(".pte", ignoreCase = true)
+            }.orEmpty()
+            for (src in pteFiles) {
+                val dst = File(newDir, src.name)
+                try {
+                    if (!dst.exists() || dst.length() == 0L) {
+                        src.copyTo(dst, overwrite = true)
+                        LogUtil.i(
+                            TAG,
+                            "[MODELS] Migrated ${src.name}: $LEGACY_MODELS_SUBDIR_VULKAN → $hybridName (${oldDir.absolutePath})",
+                        )
+                    }
+                    if (dst.exists() && dst.length() > 0L && dst.length() == src.length()) {
+                        if (src.delete()) {
+                            LogUtil.d(TAG, "[MODELS] Removed legacy ${src.name} from ${oldDir.absolutePath}")
+                        }
+                    }
+                } catch (e: Throwable) {
+                    LogUtil.w(TAG, "[MODELS] Migrate ${src.name} failed: ${e.message}")
+                }
+            }
+            try {
+                val rest = oldDir.listFiles()
+                if (rest.isNullOrEmpty()) {
+                    if (oldDir.delete()) {
+                        LogUtil.i(TAG, "[MODELS] Removed empty legacy directory ${oldDir.absolutePath}")
+                    }
+                }
+            } catch (_: Throwable) { }
+        }
+    }
+
+    /**
+     * Copy packaged .pte from `assets/models_cpu` and `assets/models_cpuvulkan_hybrid` into internal storage
      * so mmap loads work. Hybrid APKs need both trees when bundled.
      */
     private fun ensureModelsFromAssets() {
+        migrateLegacyModelsVulkanDirectoryToHybrid()
         val internalCpu = File(context.filesDir, MODELS_SUBDIR_CPU).also { it.mkdirs() }
-        val internalVulkan = File(context.filesDir, MODELS_SUBDIR_VULKAN).also { it.mkdirs() }
+        val internalVulkan = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID).also { it.mkdirs() }
         copySharpSplitPteFromAssetSubdirToInternal(MODELS_SUBDIR_CPU, internalCpu)
-        copySharpSplitPteFromAssetSubdirToInternal(MODELS_SUBDIR_VULKAN, internalVulkan)
+        copySharpSplitPteFromAssetSubdirToInternal(MODELS_SUBDIR_CPU_VULKAN_HYBRID, internalVulkan)
         syncExternalSharpSplitPteToInternal()
         syncExternalCpuSharpSplitPteToInternal()
     }
 
     /**
-     * Copy bundled `sharp_split*.pte` from APK assets (`assets/models_cpu`, `assets/models_vulkan`) into app
+     * Copy bundled `sharp_split*.pte` from APK assets (`assets/models_cpu`, `assets/models_cpuvulkan_hybrid`) into app
      * internal storage, then overlay anything pushed to scoped external storage.
      * **Idempotent** — safe to call on every cold start / SHARP screen open. When `skipExecutorchAssets=true`
      * (default for fast local builds), APK assets have no .pte: use adb push, or build a friend APK with
@@ -411,7 +513,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         } ?: 0
 
     /**
-     * True when neither internal `files/models_cpu` nor `files/models_vulkan` contains any `sharp_split*.pte`.
+     * True when neither internal `files/models_cpu` nor `files/models_cpuvulkan_hybrid` contains any `sharp_split*.pte`.
      * Used at app startup to decide whether to run [hydrateBundledAndExternalModels] (friend APK / first install).
      */
     fun internalSplitSharpModelsAbsent(): Boolean {
@@ -420,8 +522,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 f.isFile && f.name.startsWith("sharp_split") && f.name.endsWith(".pte", ignoreCase = true)
             } ?: 0
         val cpuDir = File(context.filesDir, MODELS_SUBDIR_CPU)
-        val vkDir = File(context.filesDir, MODELS_SUBDIR_VULKAN)
-        return countSplit(cpuDir) == 0 && countSplit(vkDir) == 0
+        val hybridDir = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID)
+        return countSplit(cpuDir) == 0 && countSplit(hybridDir) == 0
     }
 
     private fun logInternalSplitPteCounts(reason: String) {
@@ -430,12 +532,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 f.isFile && f.name.startsWith("sharp_split") && f.name.endsWith(".pte", ignoreCase = true)
             } ?: 0
         val cpuDir = File(context.filesDir, MODELS_SUBDIR_CPU)
-        val vkDir = File(context.filesDir, MODELS_SUBDIR_VULKAN)
+        val hybridDir = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID)
         val cpuN = countSplit(cpuDir)
-        val vkN = countSplit(vkDir)
+        val hybridN = countSplit(hybridDir)
         LogUtil.i(
             TAG,
-            "$reason: internal sharp_split*.pte count models_cpu=$cpuN models_vulkan=$vkN " +
+            "$reason: internal sharp_split*.pte count models_cpu=$cpuN models_cpuvulkan_hybrid=$hybridN " +
                 "(if 0: enable bundling with skipExecutorchAssets=false or adb push to external files/)",
         )
     }
@@ -447,7 +549,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /**
      * Copy `sharp_split*.pte` from flavor-scoped external dir (adb push target) into internal storage
-     * so mmap loads are fast. etCpu: .../files/models_cpu/ ; etVulkan: .../files/models_vulkan/ .
+     * so mmap loads are fast. etCpu: .../files/models_cpu/ ; etVulkan: .../files/models_cpuvulkan_hybrid/ .
      */
     private fun syncExternalSharpSplitPteToInternal() {
         val externalDir = externalModelsDir ?: return
@@ -460,6 +562,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (!src.name.startsWith("sharp_split")) continue
             externalSharpSplitNames.add(src.name)
         }
+        val internalSplitCountBefore =
+            internalModelsDir.listFiles()?.count { f ->
+                f.isFile && f.name.startsWith("sharp_split") && f.name.endsWith(".pte", ignoreCase = true)
+            } ?: 0
+        val externalSplitCount = externalSharpSplitNames.size
         var anyCopied = false
         for (src in sources) {
             if (!src.isFile || !src.name.endsWith(".pte", ignoreCase = true)) continue
@@ -474,22 +581,39 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 LogUtil.e(TAG, "Sync ${src.name} from external failed: ${e.message}")
             }
         }
-        // After a v2-only push, external may have only 6 files — drop stale internal sharp_split*.pte (e.g. old part4b.pte).
+        // After a full adb push, drop stale internal sharp_split*.pte (e.g. old part4b.pte). Do not prune when
+        // external has fewer files than a plausible full stack and fewer than we already had internally — that
+        // indicates leftover/partial files, not an intentional replacement (friend APK hydrate would be wiped).
+        val shouldPruneStaleInternal =
+            externalSharpSplitNames.isNotEmpty() &&
+                (
+                    externalSplitCount >= internalSplitCountBefore ||
+                        (
+                            externalSplitCount >= MIN_EXTERNAL_SHARP_SPLIT_COUNT_FOR_STALE_PRUNE &&
+                                externalSplitCount < internalSplitCountBefore
+                            )
+                    )
         var anyPruned = false
-        if (externalSharpSplitNames.isNotEmpty()) {
+        if (shouldPruneStaleInternal) {
             internalModelsDir.listFiles()?.forEach { internalFile ->
                 if (!internalFile.isFile || !internalFile.name.endsWith(".pte", ignoreCase = true)) return@forEach
                 if (!internalFile.name.startsWith("sharp_split")) return@forEach
                 if (externalSharpSplitNames.contains(internalFile.name)) return@forEach
                 try {
                     if (internalFile.delete()) {
-                        LogUtil.i(TAG, "Pruned internal models_cpu (not on external): ${internalFile.name}")
+                        LogUtil.i(TAG, "Pruned internal ${executorchModelsSubdir} (not on external): ${internalFile.name}")
                         anyPruned = true
                     }
                 } catch (e: Exception) {
                     LogUtil.w(TAG, "Could not prune ${internalFile.name}: ${e.message}")
                 }
             }
+        } else if (externalSharpSplitNames.isNotEmpty()) {
+            LogUtil.w(
+                TAG,
+                "sync: skip internal prune (partial external push: external sharp_split*.pte=$externalSplitCount, " +
+                    "internal before sync=$internalSplitCountBefore). Clear $externalDir or push a full model set to replace bundled files.",
+            )
         } else {
             LogUtil.d(TAG, "sync: no sharp_split*.pte on external — skip internal prune")
         }
@@ -540,8 +664,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private fun part4bThreadCount(): Int = 2
 
     /**
-     * Resolve a model file under flavor dirs only: [internalModelsDir] then [modelsDir] (`models_cpu` or `models_vulkan`).
-     * Use scoped external `files/models_cpu` / `files/models_vulkan` (adb push); legacy `files/models` is not used.
+     * Resolve a model file under flavor dirs only: [internalModelsDir] then [modelsDir] (`models_cpu` or hybrid dir).
+     * Use scoped external `files/models_cpu` / `files/models_cpuvulkan_hybrid` (adb push); legacy `files/models` is not used.
      */
     private fun findFile(filename: String): File? {
         File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
@@ -551,13 +675,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /**
      * Part1+2 portable/INT8 weights for hybrid Vulkan runs.
-     * **Prefer `models_vulkan`** (same folder as Vulkan Part3/4 + adb `push_sharp_vulkan_only.sh`), then `models_cpu` (legacy).
+     * **Prefer `models_cpuvulkan_hybrid`** (same folder as Vulkan Part3/4 + adb `push_sharp_vulkan_only.sh`), then `models_cpu` (legacy).
      */
     private fun findCpuSidecarFile(filename: String): File? {
         if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
-            val internalVk = File(context.filesDir, MODELS_SUBDIR_VULKAN)
+            val internalVk = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID)
             File(internalVk, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
-            context.getExternalFilesDir(MODELS_SUBDIR_VULKAN)?.let { dir ->
+            context.getExternalFilesDir(MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { dir ->
                 File(dir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
             }
         }
@@ -644,7 +768,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * or null if not implemented or on error (caller falls back to Kotlin pipeline).
      *
      * @param maxGaussians Upper bound on number of Gaussians to keep (0 = unlimited).
-     * @param preferSinglePart4b When true, forces single Part4b decoder instead of tiled paths for stability.
+     * @param preferSinglePart4b CPU-stable only: when true, native may try single Part4b before tiled. Vulkan ignores (tiled-first).
      * @param useVulkan When true, allows C++ pipeline to prefer Vulkan-backed ExecuTorch load modes when available.
      * Part1 patch limits / chunking: native still takes ints; Kotlin always passes 0 = full 25+9 grid, no chunking.
      */
@@ -905,36 +1029,31 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 )
             }
             val hasP12SidecarsInfer = hasCpuPart12SidecarModels()
-            val part12OnCpu = !useCpuStable && hasP12SidecarsInfer
-            if (DeviceHeuristics.isGooglePixelFamily() && !useCpuStable && !part12OnCpu) {
-                LogUtil.w(
-                    TAG,
-                    "[PIXEL] Running Part1+2 fully on Vulkan — often hits GPU timeout/device lost on Tensor. " +
-                        "Turn on Part 1+2 on CPU in Settings and place ${SharpExecuTorchSplitModelNames.PART1_INT8} + ${SharpExecuTorchSplitModelNames.PART2_INT8} in files/models_vulkan/.",
-                )
+            if (!useCpuStable && !hasP12SidecarsInfer) {
+                val msg = missingVulkanHybridPart12SidecarsUserMessage()
+                inferStreamingFailureDetail = msg
+                LogUtil.e(TAG, "[C++ FULL] $msg")
+                return@withContext null
             }
-            // Hybrid: Part1+2 INT8/portable from models_vulkan (preferred) or models_cpu; Part3/4 Vulkan from models_vulkan.
+            val part12OnCpu = !useCpuStable && hasP12SidecarsInfer
+            // Vulkan hybrid: Part1+2 portable sidecars only (no Vulkan Part1+2 fallback). CPU-stable: models_cpu.
             fun hasPart1() = if (useCpuStable) {
                 findFile(SharpExecuTorchSplitModelNames.PART1_INT8) != null ||
                     findFile(SharpExecuTorchSplitModelNames.PART1_FP32) != null ||
                     findFile(SharpExecuTorchSplitModelNames.PART1_FP16) != null
-            } else if (part12OnCpu) {
+            } else {
                 findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_INT8) != null ||
                     findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP32) != null ||
                     findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP16) != null
-            } else {
-                findVulkanPart1Pte(preferVulkanFp16) != null
             }
             fun hasPart2() = if (useCpuStable) {
                 findFile(SharpExecuTorchSplitModelNames.PART2_INT8) != null ||
                     findFile(SharpExecuTorchSplitModelNames.PART2_FP32) != null ||
                     findFile(SharpExecuTorchSplitModelNames.PART2_FP16) != null
-            } else if (part12OnCpu) {
+            } else {
                 findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART2_INT8) != null ||
                     findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART2_FP32) != null ||
                     findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART2_FP16) != null
-            } else {
-                findVulkanPart2Pte(preferVulkanFp16) != null
             }
             val allCpu = useCpuStable
             fun hasPart3() = if (useCpuStable) {
@@ -948,10 +1067,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_512_VULKAN) != null
             fun hasPart4a65() = if (allCpu) findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65) != null
             else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65_VULKAN) != null
-            val part4bFile = if (useCpuStable) {
-                findSinglePart4bCpuPte()
-            } else {
-                findFile(SharpExecuTorchSplitModelNames.PART4B_VULKAN)
+            // Vulkan / hybrid: Part4b is tiled-only in native (no sharp_split_part4b_vulkan.pte).
+            val part4bFile = if (useCpuStable) findSinglePart4bCpuPte() else null
+            /** Matches C++ `runPart4bTiledFullPipeline` / batched: fine-split tile_00 (stage_pre + decoder_head + shared stack). */
+            fun hasFineSplitTile00Part4bVulkan(): Boolean {
+                if (useCpuStable) return false
+                val n = SharpExecuTorchSplitModelNames
+                return findFile(n.PART4B_TILE_00_STAGE_PRE_VULKAN) != null &&
+                    findFile(n.PART4B_TILE_00_DECODER_HEAD) != null &&
+                    findFile(n.PART4B_TILE_00_INIT_BASE) != null &&
+                    findFile(n.PART4B_TILE_00_RAW_HEADS_VULKAN) != null &&
+                    findFile(n.PART4B_TILE_00_COMPOSE) != null
             }
             fun hasSplitTile00Part4bVulkan(): Boolean {
                 if (useCpuStable) return false
@@ -961,6 +1087,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     findFile(n.PART4B_TILE_00_RAW_HEADS_VULKAN) != null &&
                     findFile(n.PART4B_TILE_00_COMPOSE) != null
             }
+            /** Matches C++ batched path: fine-split tile_b2 (no stage_a). */
+            fun hasFineSplitTileB2Part4bVulkan(): Boolean {
+                if (useCpuStable) return false
+                val n = SharpExecuTorchSplitModelNames
+                return findFile(n.PART4B_TILE_B2_STAGE_PRE_VULKAN) != null &&
+                    findFile(n.PART4B_TILE_B2_DECODER_HEAD) != null &&
+                    findFile(n.PART4B_TILE_B2_INIT_BASE) != null &&
+                    findFile(n.PART4B_TILE_B2_RAW_HEADS_VULKAN) != null &&
+                    findFile(n.PART4B_TILE_B2_COMPOSE) != null
+            }
             fun hasSplitTileB2Part4bVulkan(): Boolean {
                 if (useCpuStable) return false
                 val n = SharpExecuTorchSplitModelNames
@@ -969,12 +1105,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     findFile(n.PART4B_TILE_B2_RAW_HEADS_VULKAN) != null &&
                     findFile(n.PART4B_TILE_B2_COMPOSE) != null
             }
-            // Non-single Part4b: batched tile_b2/tile_b4, split tile_00 / tile_full sequential fallback, or 16× per-tile exports.
-            // Vulkan C++ now tries split tile_b2 first when available, then legacy tile_b2/tile_b4,
-            // then split tile_00 / tile_full, then single part4b.
+            // Any one complete strategy matches native (sharp_executorch_full_common.cpp): see README models_cpuvulkan_hybrid.
+            // Vulkan C++ order: batched tiled → sequential tiled (fine tile_00 first); no single part4b_vulkan .pte.
             fun hasPart4bNonSingleDecoder(): Boolean {
                 val n = SharpExecuTorchSplitModelNames
-                return hasSplitTileB2Part4bVulkan() ||
+                return hasFineSplitTile00Part4bVulkan() ||
+                    hasFineSplitTileB2Part4bVulkan() ||
+                    hasSplitTileB2Part4bVulkan() ||
                     hasSplitTile00Part4bVulkan() ||
                     findFile(n.PART4B_TILE_B2) != null ||
                     findFile(n.PART4B_TILE_B4) != null ||
@@ -983,18 +1120,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             val hasPart4bTiled = hasPart4bNonSingleDecoder()
             val part4bSatisfied = part4bFile != null || hasPart4bTiled
-            // Vulkan: keep tiled Part4b when tiled exports exist to avoid the single-decoder memory peak.
-            // CPU stable mode can still force the single decoder because the CPU tiled path is much slower on some devices.
-            val preferSinglePart4bExplicit = ExecutorchFixedSettings.PREFER_SINGLE_PART4B
-            val forceTiledPart4bOnVulkan = !useCpuStable && hasPart4bTiled && preferSinglePart4bExplicit
-            if (forceTiledPart4bOnVulkan) {
-                LogUtil.w(
-                    TAG,
-                    "Ignoring Prefer single Part4b on Vulkan because tiled Part4b exports are present " +
-                        "and the single Vulkan decoder is memory-unstable on this path"
-                )
-            }
-            val preferSinglePart4b = useCpuStable || (!forceTiledPart4bOnVulkan && (preferSinglePart4bExplicit || !hasPart4bTiled))
+            // Vulkan / hybrid Vulkan: Part4b is tiled-only in native (batched → sequential).
+            // CPU-stable full pipeline still passes preferSinglePart4b=true so C++ may try single decoder first.
+            val preferSinglePart4b = useCpuStable
             // Effective Gaussian cap for full C++ pipeline. 0 = All (unlimited, no pruning).
             var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", DEFAULT_MAX_GAUSSIANS_ALL)
             val availMem = getAvailMemBytes()
@@ -1006,8 +1134,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val requiredSatisfied = hasPart1() && hasPart2() && hasPart3() && hasPart4a512() && hasPart4a65() && part4bSatisfied
             if (!requiredSatisfied) {
                 val missing = mutableListOf<String>()
-                if (!hasPart1()) missing.add(if (useCpuStable || part12OnCpu) "part1 portable" else "part1 vulkan")
-                if (!hasPart2()) missing.add(if (useCpuStable || part12OnCpu) "part2 portable" else "part2 vulkan")
+                if (!hasPart1()) {
+                    missing.add(
+                        if (useCpuStable) "part1 portable" else "part1 portable sidecar (int8/fp16/fp32) for hybrid",
+                    )
+                }
+                if (!hasPart2()) {
+                    missing.add(
+                        if (useCpuStable) "part2 portable" else "part2 portable sidecar (int8/fp16/fp32) for hybrid",
+                    )
+                }
                 if (!hasPart3()) missing.add(if (useCpuStable) "part3 portable" else "part3 vulkan")
                 if (!hasPart4a512()) missing.add(if (useCpuStable) "part4a_512" else "part4a_512_vulkan")
                 if (!hasPart4a65()) missing.add(if (useCpuStable) "part4a_65" else "part4a_65_vulkan")
@@ -1016,13 +1152,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         if (useCpuStable) {
                             "part4b_int8 / part4b_fp16 / part4b.pte / part4b_tile_b2 / part4b_tile_b4 / tile_00 / tile_full"
                         } else {
-                            "part4b_vulkan.pte / split tile_b2 or tile_00 (stage_a + init_base + raw_heads + compose)"
+                            "complete Part4b set: fine-split tile_00 (5), split tile_00 (4), fine/split tile_b2 (5/4), legacy tile_b2.pte/tile_b4.pte, or tile_00.pte/tile_full.pte"
                         }
                     )
                 }
                 val dirHint = modelsDir?.absolutePath ?: internalModelsDir.absolutePath
                 val hybridHint = if (!useCpuStable && part12OnCpu) {
-                    "$dirHint (put INT8 Part1+2 and Vulkan Part3/4 in this models_vulkan folder; models_cpu optional)"
+                    "$dirHint (put INT8 Part1+2 and Vulkan Part3/4 in this models_cpuvulkan_hybrid folder; models_cpu optional)"
                 } else {
                     dirHint
                 }
@@ -1035,7 +1171,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     append(missing.joinToString(", "))
                     append(". ")
                     if (!useCpuStable && part12OnCpu) {
-                        append("Hybrid: push all .pte to models_vulkan (INT8 Part1+2 + Vulkan stack). ")
+                        append("Hybrid: push all .pte to models_cpuvulkan_hybrid (INT8 Part1+2 + Vulkan stack). ")
                     }
                     append("Path: ")
                     append(hybridHint)
@@ -1045,8 +1181,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             LogUtil.i(
                 TAG,
                 "PART4B_ROUTING prefer_single=$preferSinglePart4b " +
-                    "prefer_single_explicit=$preferSinglePart4bExplicit " +
-                    "force_tiled_vulkan=$forceTiledPart4bOnVulkan " +
                     "has_single_pte=${part4bFile != null} has_alt_part4b=${hasPart4bNonSingleDecoder()} " +
                     "has_split_tileb2=${hasSplitTileB2Part4bVulkan()} " +
                     "has_split_tile00=${hasSplitTile00Part4bVulkan()} " +
@@ -1080,7 +1214,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     "(C++ only, ${if (useCpuStable) "CPU" else "Vulkan"}${if (!useCpuStable && part12OnCpu) ", Part1+2 on CPU" else ""})"
             )
             if (!useCpuStable && part12OnCpu) {
-                LogUtil.i(TAG, "[C++ FULL] Hybrid mode active: Part1+2 INT8/portable (models_vulkan preferred), Part3/4 Vulkan")
+                LogUtil.i(TAG, "[C++ FULL] Hybrid mode active: Part1+2 INT8/portable (models_cpuvulkan_hybrid preferred), Part3/4 Vulkan")
             }
             Part1OnlyTest.suppressStartupWarmupForCurrentProcess("full_cpp_pipeline")
 
@@ -1130,10 +1264,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)
                 part4bOrTileFile?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
             } else {
-                findVulkanPart1Pte(preferVulkanFp16)?.parent
+                findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_INT8)?.parent
+                    ?: findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP32)?.parent
+                    ?: findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP16)?.parent
+                    ?: findVulkanPart3Pte(preferVulkanFp16)?.parent
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2)?.parent
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)?.parent
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)?.parent
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)?.parent
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2_STAGE_A_VULKAN)?.parent
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_A_VULKAN)?.parent
-                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_VULKAN)?.parent
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)?.parent
                     ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
             }
             LogUtil.d(TAG, "[C++ FULL] modelDir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$part12OnCpu use1280=$use1280")
@@ -1147,8 +1288,14 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 }
                 val a512 = if (vk) findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_512_VULKAN) else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_512)
                 val a65 = if (vk) findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65_VULKAN) else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65)
-                val b4 = if (vk) findFile(SharpExecuTorchSplitModelNames.PART4B_VULKAN)
-                else {
+                val b4 = if (vk) {
+                    findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2_STAGE_A_VULKAN)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)
+                } else {
                     findSinglePart4bCpuPte()
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2)
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)
@@ -1195,7 +1342,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         cppModelDir,
                         imageNCHW,
                         effectiveMaxGaussians,
-                        preferSinglePart4b,  // mirrors Settings Stable Part4b; native tries single on disk first
+                        preferSinglePart4b,  // true only for CPU-stable; Vulkan always tiled-first in native
                         !useCpuStable,       // useVulkan (Part4 on Vulkan)
                         part12OnCpuRun,      // Part1+2 on CPU when true to avoid VK_ERROR_DEVICE_LOST
                         part12ForceSingle,   // Part1+2 single-patch only; avoids batch-4 SIGSEGV on some devices
@@ -1220,9 +1367,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 }
                 inferStreamingFailureDetail = buildString {
                     append("SHARP GPU pipeline failed. ")
-                    if (DeviceHeuristics.isGooglePixelFamily() && !useCpuStable) {
-                        append("On Pixel: enable Part 1+2 on CPU in Settings and push INT8 Part1/2 into models_vulkan, or use CPU ExecuTorch. ")
-                    }
                     append("Log: adb logcat -d -s sharp_executorch_full:E ExecutorchInt8Sharp:E | tail -80")
                 }
                 LogUtil.e(TAG, "[C++ FULL] Native returned null (no fallback). $inferStreamingFailureDetail")

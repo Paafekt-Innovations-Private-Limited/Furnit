@@ -149,13 +149,13 @@ android {
     }
 }
 
-// Package SHARP / ExecuTorch .pte into assets/models_cpu and assets/models_vulkan for test APKs (sideload). Prod: -PskipExecutorchAssets + adb push.
+// Package SHARP / ExecuTorch .pte into assets/models_cpu and assets/models_cpuvulkan_hybrid for test APKs (sideload). Prod: -PskipExecutorchAssets + adb push.
 // Full android/sharp_vulkan_only is ~5+ GB — huge APK; backup before relying on this (see android/docs/MODELS_APK_BUNDLE_TESTING.md).
 def execInt8Dir = project.file("../executorch_int8_models")
 def execChunkedDir = project.file("../executorch_models")
 // Same level as app/ (android/sharp_vulkan_only), not inside app/ — was wrongly app/sharp_vulkan_only before.
 def sharpVulkanOnlyDir = project.file("../sharp_vulkan_only")
-// Staging root: models_cpu/*.pte and models_vulkan/*.pte → APK assets (matches on-device files/models_cpu | models_vulkan).
+// Staging root: models_cpu/*.pte and models_cpuvulkan_hybrid/*.pte → APK assets (matches on-device files/models_cpu | models_cpuvulkan_hybrid).
 def bundledPteAssetsRoot = file("$buildDir/bundled-pte-assets")
 // Default true when unset: fast local / Android Studio Run (adb push models). Friend APK: -PskipExecutorchAssets=false or ./assemble_friend_apk_with_models.sh
 def skipExecutorchAssets = (findProperty("skipExecutorchAssets") ?: "true").toString().toBoolean()
@@ -167,8 +167,19 @@ def skipSharpVulkanOnlyInAssets = (findProperty("skipSharpVulkanOnlyInAssets") ?
 def skipExecutorchChunkedDirInAssets = (findProperty("skipExecutorchChunkedDirInAssets") ?: "false").toString().toBoolean()
 // Omit ../executorch_int8_models (CPU Part1–3 INT8 + optional tiles). Not used when etVulkan runs full Vulkan hybrid path.
 def skipExecutorchInt8DirInAssets = (findProperty("skipExecutorchInt8DirInAssets") ?: "false").toString().toBoolean()
-// One flag: Vulkan hybrid friend APK — skip int8 + executorch_models, only minimal Vulkan *.pte from sharp_vulkan_only.
+// One flag: Vulkan hybrid friend APK — skip executorch_models; SHARP .pte live under models_cpuvulkan_hybrid only (no models_cpu).
 def bundleSharpVulkanHybridApk = (findProperty("bundleSharpVulkanHybridApk") ?: "false").toString().toBoolean()
+// Pre-staged hybrid tree (android/models_cpuvulkan_hybrid/*.pte). When non-empty and hybrid APK: copy ONLY this dir (no sharp_vulkan_only / no duplicate int8 from executorch_int8_models).
+def modelsCpuVulkanHybridStagingDir = project.file("../models_cpuvulkan_hybrid")
+def useModelsCpuVulkanHybridStagingForFriendApk =
+        (findProperty("useModelsCpuVulkanHybridStagingForFriendApk") ?: "true").toString().toBoolean()
+def hybridStagingHasPte =
+        modelsCpuVulkanHybridStagingDir.exists() &&
+                (modelsCpuVulkanHybridStagingDir.listFiles() ?: []).any {
+                    it.isFile() && it.name.endsWith(".pte") && it.length() > 0L
+                }
+def useHybridStagingOnly =
+        bundleSharpVulkanHybridApk && useModelsCpuVulkanHybridStagingForFriendApk && hybridStagingHasPte
 // APK Zip32 limit ~4GiB — full sharp_vulkan_only *.pte (~6–7GB) cannot fit in one installable APK.
 def bundleSharpVulkanOnlyMinimal = (findProperty("bundleSharpVulkanOnlyMinimal") ?: "false").toString().toBoolean()
 // Expert-only: copy every *.pte from sharp_vulkan_only (almost always exceeds Zip32 — build will fail). Default false.
@@ -188,13 +199,75 @@ def autoMinimalSharpVulkanForZip32 =
                 !skipSharpVulkanOnlyInAssets &&
                 !includeAllSharpVulkanPteInAssets
 
-def effectiveSkipExecutorchInt8Dir = skipExecutorchInt8DirInAssets || bundleSharpVulkanHybridApk
+// Hybrid APK: skip copying whole int8 tree only when staging dir already supplies Part1+2 INT8 (avoid duplicates).
+def effectiveSkipExecutorchInt8Dir = skipExecutorchInt8DirInAssets || (bundleSharpVulkanHybridApk && useHybridStagingOnly)
 def effectiveSkipExecutorchChunkedDir = skipExecutorchChunkedDirInAssets || bundleSharpVulkanHybridApk
 def effectiveBundleSharpVulkanMinimal =
         bundleSharpVulkanOnlyMinimal || bundleSharpVulkanHybridApk || autoMinimalSharpVulkanForZip32
 
+// Minimal bundle uses Part1–3 names sharp_split_part{1,2,3}_vulkan_fp16|fp32.pte. Many trees only export fp32;
+// default property is fp16 — without this, Copy includes miss files and friend APKs ship without Part1/2/3.
+def resolvedSharpVkPrecSuffixForMinimalBundle = sharpVkPrecSuffix
+if (effectiveBundleSharpVulkanMinimal && sharpVulkanOnlyDir.exists() && !includeAllSharpVulkanPteInAssets) {
+    def part1Fp16 = new File(sharpVulkanOnlyDir, "sharp_split_part1_vulkan_fp16.pte")
+    def part1Fp32 = new File(sharpVulkanOnlyDir, "sharp_split_part1_vulkan_fp32.pte")
+    if (sharpVkPrecSuffix == "fp16" && !part1Fp16.exists() && part1Fp32.exists()) {
+        resolvedSharpVkPrecSuffixForMinimalBundle = "fp32"
+        logger.lifecycle(
+                "copyExecutorchModelsIntoAssets: sharp_split_part1_vulkan_fp16.pte missing under sharp_vulkan_only/; " +
+                        "minimal bundle will use fp32 Part1–3 (override with -PbundleSharpVulkanPrecision=fp32)."
+        )
+    } else if (sharpVkPrecSuffix == "fp32" && !part1Fp32.exists() && part1Fp16.exists()) {
+        resolvedSharpVkPrecSuffixForMinimalBundle = "fp16"
+        logger.lifecycle(
+                "copyExecutorchModelsIntoAssets: sharp_split_part1_vulkan_fp32.pte missing; minimal bundle will use fp16 Part1–3."
+        )
+    }
+}
+
+// Part4b: Vulkan C++ uses batched tile_b2/b4, multi-file split tile_b2 / fine-split tile_00 / split tile_00,
+// or legacy tile_00 / tile_full / 16× grid (see sharp_executorch_full_common.cpp). No single part4b_vulkan.pte.
+// Vulkan Part4b in native is tiled-only; minimal list uses sharp_split_part4b_tile_b2.pte (not single part4b_vulkan).
+// Do NOT default-include tile_01…15 — on a full export tree that duplicates ~16× large decoders and breaks Zip32 (~4GiB).
+def bundleSharpVulkanFriendIncludeLegacyTileGrid =
+        (findProperty("bundleSharpVulkanFriendIncludeLegacyTileGrid") ?: "false").toString().toBoolean()
+// When true, bundle all hybridFriendExtraVulkanPteNames even if sharp_split_part4b_tile_b2.pte already exists (Zip32 risk).
+def bundleSharpVulkanHybridFriendBundleAllPart4bSlices =
+        (findProperty("bundleSharpVulkanHybridFriendBundleAllPart4bSlices") ?: "false").toString().toBoolean()
+def hybridFriendExtraVulkanPteNames = []
+hybridFriendExtraVulkanPteNames.addAll([
+        "sharp_split_part1_b2_vulkan_fp16.pte",
+        "sharp_split_part1_b2_vulkan_fp32.pte",
+        "sharp_split_part2_b2_vulkan_fp16.pte",
+        "sharp_split_part2_b2_vulkan_fp32.pte",
+        "sharp_split_part4b.pte",
+        "sharp_split_part4b_fp16.pte",
+        "sharp_split_part4b_int8.pte",
+        "sharp_split_part4b_tile_b2.pte",
+        "sharp_split_part4b_tile_b4.pte",
+        "sharp_split_part4b_tile_full.pte",
+        "sharp_split_part4b_tile_00.pte",
+        "sharp_split_part4b_tile_b2_stage_pre_vulkan.pte",
+        "sharp_split_part4b_tile_b2_decoder_head.pte",
+        "sharp_split_part4b_tile_b2_stage_a_vulkan.pte",
+        "sharp_split_part4b_tile_b2_init_base.pte",
+        "sharp_split_part4b_tile_b2_raw_heads_vulkan.pte",
+        "sharp_split_part4b_tile_b2_compose.pte",
+        "sharp_split_part4b_tile_00_stage_pre_vulkan.pte",
+        "sharp_split_part4b_tile_00_decoder_head.pte",
+        "sharp_split_part4b_tile_00_stage_a_vulkan.pte",
+        "sharp_split_part4b_tile_00_init_base.pte",
+        "sharp_split_part4b_tile_00_raw_heads_vulkan.pte",
+        "sharp_split_part4b_tile_00_compose.pte",
+])
+if (bundleSharpVulkanFriendIncludeLegacyTileGrid) {
+    (1..15).each { i ->
+        hybridFriendExtraVulkanPteNames.add(String.format("sharp_split_part4b_tile_%02d.pte", i))
+    }
+}
+
 tasks.register("copyExecutorchModelsIntoAssets", Copy) {
-    description = "Copy .pte into build/bundled-pte-assets/models_cpu|models_vulkan (APK assets). Not under src/ — see .gitignore *.pte."
+    description = "Copy .pte into build/bundled-pte-assets/models_cpu|models_cpuvulkan_hybrid (APK assets). Hybrid friend: optional android/models_cpuvulkan_hybrid/ only. Not under src/ — see .gitignore *.pte."
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     into bundledPteAssetsRoot
     doFirst {
@@ -209,24 +282,45 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
                             "Smallest friend APK: add -PbundleSharpVulkanHybridApk=true. Full Vulkan folder: -PincludeAllSharpVulkanPteInAssets=true."
             )
         }
+        if (useHybridStagingOnly) {
+            logger.lifecycle(
+                    "copyExecutorchModelsIntoAssets: hybrid friend — using ONLY ${modelsCpuVulkanHybridStagingDir} → models_cpuvulkan_hybrid " +
+                            "(no models_cpu .pte; no sharp_vulkan_only merge). Override: -PuseModelsCpuVulkanHybridStagingForFriendApk=false."
+            )
+        }
+    }
+    // Friend hybrid (pre-staged): single source of truth under android/models_cpuvulkan_hybrid/.
+    if (useHybridStagingOnly) {
+        from(modelsCpuVulkanHybridStagingDir) {
+            include "*.pte"
+            into "models_cpuvulkan_hybrid"
+        }
     }
     // Only add from() for dirs that exist — avoids Gradle errors when only sharp_vulkan_only is present.
-    if (execInt8Dir.exists() && !effectiveSkipExecutorchInt8Dir) {
-        from(execInt8Dir) {
-            include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
-            if (includePart4bTilesInAssets) {
-                include "sharp_split_part4b_tile_full.pte"
-                include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
-                include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
-                include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
-                include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+    if (execInt8Dir.exists() && !skipExecutorchInt8DirInAssets) {
+        if (!bundleSharpVulkanHybridApk) {
+            from(execInt8Dir) {
+                include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
+                if (includePart4bTilesInAssets) {
+                    include "sharp_split_part4b_tile_full.pte"
+                    include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
+                    include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
+                    include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
+                    include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+                }
+                into "models_cpu"
             }
-            into "models_cpu"
-        }
-        // Hybrid etVulkan: same INT8 Part1+2 beside Vulkan .pte so one assets/models_vulkan tree / one adb push dir.
-        from(execInt8Dir) {
-            include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte"
-            into "models_vulkan"
+            // Hybrid etVulkan (non-friend): INT8 Part1+2 beside Vulkan .pte in one adb push dir.
+            from(execInt8Dir) {
+                include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte"
+                into "models_cpuvulkan_hybrid"
+            }
+        } else if (!useHybridStagingOnly) {
+            // Hybrid friend APK without pre-staged tree: INT8 Part1+2 only into hybrid (never models_cpu for SHARP).
+            from(execInt8Dir) {
+                include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte"
+                into "models_cpuvulkan_hybrid"
+            }
         }
     }
     if (execChunkedDir.exists() && !effectiveSkipExecutorchChunkedDir) {
@@ -245,15 +339,16 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
             into "models_cpu"
         }
     }
-    if (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists()) {
+    if (!useHybridStagingOnly && !skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists()) {
         from(sharpVulkanOnlyDir) {
             if (effectiveBundleSharpVulkanMinimal) {
+                // Part4b: native Vulkan path is tiled-only (no sharp_split_part4b_vulkan.pte). Default minimal = legacy batched tile_b2.
                 def minimalVk = [
-                        "sharp_split_part1_vulkan_${sharpVkPrecSuffix}.pte",
-                        "sharp_split_part2_vulkan_${sharpVkPrecSuffix}.pte",
-                        "sharp_split_part3_vulkan_${sharpVkPrecSuffix}.pte",
+                        "sharp_split_part1_vulkan_${resolvedSharpVkPrecSuffixForMinimalBundle}.pte",
+                        "sharp_split_part2_vulkan_${resolvedSharpVkPrecSuffixForMinimalBundle}.pte",
+                        "sharp_split_part3_vulkan_${resolvedSharpVkPrecSuffixForMinimalBundle}.pte",
                         "sharp_split_part4a_chunk_512_vulkan.pte",
-                        "sharp_split_part4b_vulkan.pte",
+                        "sharp_split_part4b_tile_b2.pte",
                 ]
                 if (bundleSharpVulkanMinimalIncludePart4Monolith) {
                     minimalVk.add(3, "sharp_split_part4.pte")
@@ -262,35 +357,162 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
                     // Insert before part4b so order matches export expectations; required for inferStreaming requiredSatisfied.
                     minimalVk.add(4, "sharp_split_part4a_chunk_65_vulkan.pte")
                 }
-                minimalVk.each { include it }
+                if (bundleSharpVulkanHybridApk) {
+                    def p4CompactTiled = new File(sharpVulkanOnlyDir, "sharp_split_part4b_tile_b2.pte")
+                    def skipExtrasDueToCompactPart4b =
+                            p4CompactTiled.exists() &&
+                                    p4CompactTiled.length() > 0L &&
+                                    !bundleSharpVulkanHybridFriendBundleAllPart4bSlices
+                    if (skipExtrasDueToCompactPart4b) {
+                        logger.lifecycle(
+                                "copyExecutorchModelsIntoAssets: hybrid friend: sharp_split_part4b_tile_b2.pte found — " +
+                                        "not bundling extra Part4b split/fine-split slices (saves APK size). " +
+                                        "Override: -PbundleSharpVulkanHybridFriendBundleAllPart4bSlices=true"
+                        )
+                    } else {
+                        minimalVk.addAll(hybridFriendExtraVulkanPteNames)
+                    }
+                }
+                minimalVk.unique(false).each { include it }
             } else {
                 include "*.pte"
             }
-            into "models_vulkan"
+            into "models_cpuvulkan_hybrid"
         }
     }
     onlyIf {
+        def hasInt8ForCopy =
+                execInt8Dir.exists() && !skipExecutorchInt8DirInAssets &&
+                        (!bundleSharpVulkanHybridApk || !useHybridStagingOnly)
         def hasModelSources =
-                (execInt8Dir.exists() && !effectiveSkipExecutorchInt8Dir) ||
+                useHybridStagingOnly ||
+                hasInt8ForCopy ||
                 (execChunkedDir.exists() && !effectiveSkipExecutorchChunkedDir) ||
-                (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists())
+                (!useHybridStagingOnly && !skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists())
         def shouldRun = !skipExecutorchAssets && hasModelSources
         if (!shouldRun) {
             logger.lifecycle(
                     "copyExecutorchModelsIntoAssets SKIPPED: skipExecutorchAssets=${skipExecutorchAssets} " +
                             "(override: -PskipExecutorchAssets=false), hasModelSources=${hasModelSources} " +
-                            "[int8Dir=${execInt8Dir.exists()}, skipInt8=${effectiveSkipExecutorchInt8Dir}, chunkedDir=${execChunkedDir.exists()}, skipChunked=${effectiveSkipExecutorchChunkedDir}, " +
+                            "[hybridStagingOnly=${useHybridStagingOnly}, int8Dir=${execInt8Dir.exists()}, skipInt8=${effectiveSkipExecutorchInt8Dir}, " +
+                            "chunkedDir=${execChunkedDir.exists()}, skipChunked=${effectiveSkipExecutorchChunkedDir}, " +
                             "sharpVulkanOnly=${sharpVulkanOnlyDir.exists()}, skipSharpVulkanOnlyInAssets=${skipSharpVulkanOnlyInAssets}]"
             )
         }
         return shouldRun
     }
     doLast {
+        def docHint = " See android/docs/MODELS_APK_BUNDLE_TESTING.md, android/sharp_vulkan_only/REQUIRED_FOR_MINIMAL_APK.md, android/models_cpuvulkan_hybrid/README.md."
+        // Enforce: core Part1–3 + Part4a always; Part4b = at least one complete strategy (single, split, tiled, or legacy).
+        if (effectiveBundleSharpVulkanMinimal && !skipExecutorchAssets) {
+            def m = { String basename ->
+                def f = new File(bundledPteAssetsRoot, "models_cpuvulkan_hybrid/${basename}")
+                f.exists() && f.length() > 0L
+            }
+            def portable = m("sharp_split_part4b.pte") || m("sharp_split_part4b_fp16.pte") || m("sharp_split_part4b_int8.pte")
+            def fine00 = m("sharp_split_part4b_tile_00_stage_pre_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_00_decoder_head.pte") &&
+                    m("sharp_split_part4b_tile_00_init_base.pte") &&
+                    m("sharp_split_part4b_tile_00_raw_heads_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_00_compose.pte")
+            def split00 = m("sharp_split_part4b_tile_00_stage_a_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_00_init_base.pte") &&
+                    m("sharp_split_part4b_tile_00_raw_heads_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_00_compose.pte")
+            def splitB2 = m("sharp_split_part4b_tile_b2_stage_pre_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_b2_decoder_head.pte") &&
+                    m("sharp_split_part4b_tile_b2_stage_a_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_b2_init_base.pte") &&
+                    m("sharp_split_part4b_tile_b2_raw_heads_vulkan.pte") &&
+                    m("sharp_split_part4b_tile_b2_compose.pte")
+            def legB2 = m("sharp_split_part4b_tile_b2.pte")
+            def legB4 = m("sharp_split_part4b_tile_b4.pte")
+            def leg00 = m("sharp_split_part4b_tile_00.pte")
+            def legFull = m("sharp_split_part4b_tile_full.pte")
+            def legGrid = (0..15).every { i -> m(String.format("sharp_split_part4b_tile_%02d.pte", i)) }
+            // Vulkan runtime does not load single sharp_split_part4b_vulkan.pte; tiled / split / legacy sets only.
+            def part4Ok = portable || fine00 || split00 || splitB2 || legB2 || legB4 || leg00 || legFull || legGrid
+            def part4bHint =
+                    "Vulkan bundle: no usable Part4b set under models_cpuvulkan_hybrid/. Need at least one of:\\n" +
+                            "  • portable part4b / fp16 / int8 (unusual for Vulkan flavor)\\n" +
+                            "  • split tile_b2: six sharp_split_part4b_tile_b2_* files (stage_pre, decoder_head, stage_a_vulkan, init_base, raw_heads_vulkan, compose)\\n" +
+                            "  • fine-split tile_00: tile_00_stage_pre_vulkan + decoder_head + init_base + raw_heads_vulkan + compose\\n" +
+                            "  • split tile_00: tile_00_stage_a_vulkan + init_base + raw_heads_vulkan + compose\\n" +
+                            "  • legacy sharp_split_part4b_tile_b2.pte and/or tile_b4, or tile_00.pte, or tile_full.pte, or full 16× tile_00…15\\n"
+
+            if (useHybridStagingOnly) {
+                def missingHybrid = [] as List<String>
+                if (!m("sharp_split_part1_int8.pte")) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part1_int8.pte")
+                }
+                if (!m("sharp_split_part2_int8.pte")) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part2_int8.pte")
+                }
+                def part3VulkanOk = m("sharp_split_part3_vulkan_fp32.pte") || m("sharp_split_part3_vulkan_fp16.pte")
+                if (!part3VulkanOk) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part3_vulkan_fp32 or _fp16.pte")
+                }
+                if (!m("sharp_split_part4a_chunk_512_vulkan.pte")) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part4a_chunk_512_vulkan.pte")
+                }
+                if (bundleSharpVulkanIncludeChunk65 && !m("sharp_split_part4a_chunk_65_vulkan.pte")) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part4a_chunk_65_vulkan.pte")
+                }
+                if (bundleSharpVulkanMinimalIncludePart4Monolith && !m("sharp_split_part4.pte")) {
+                    missingHybrid.add("models_cpuvulkan_hybrid/sharp_split_part4.pte (required when -PbundleSharpVulkanMinimalIncludePart4Monolith=true)")
+                }
+                if (!missingHybrid.isEmpty()) {
+                    throw new GradleException(
+                            "Hybrid staged SHARP bundle (android/models_cpuvulkan_hybrid): missing:\\n" +
+                                    missingHybrid.collect { "  - ${it}" }.join("\\n") +
+                                    "\\nRun android/populate_models_cpuvulkan_hybrid_from_backups.sh or copy exports into that folder." + docHint
+                    )
+                }
+                if (!part4Ok) {
+                    throw new GradleException(part4bHint + "Populate android/models_cpuvulkan_hybrid/ and rebuild." + docHint)
+                }
+            } else if (sharpVulkanOnlyDir.exists()) {
+                def suf = resolvedSharpVkPrecSuffixForMinimalBundle
+                def int8Part12InHybrid = m("sharp_split_part1_int8.pte") && m("sharp_split_part2_int8.pte")
+                def requiredCore = [] as List<String>
+                if (!int8Part12InHybrid) {
+                    requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part1_vulkan_${suf}.pte")
+                    requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part2_vulkan_${suf}.pte")
+                }
+                requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part3_vulkan_${suf}.pte")
+                requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part4a_chunk_512_vulkan.pte")
+                if (bundleSharpVulkanMinimalIncludePart4Monolith) {
+                    requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part4.pte")
+                }
+                if (bundleSharpVulkanIncludeChunk65) {
+                    requiredCore.add("models_cpuvulkan_hybrid/sharp_split_part4a_chunk_65_vulkan.pte")
+                }
+                def missingCore = requiredCore.findAll { rel ->
+                    def f = new File(bundledPteAssetsRoot, rel)
+                    !f.exists() || f.length() == 0L
+                }
+                if (!missingCore.isEmpty()) {
+                    throw new GradleException(
+                            "Vulkan minimal bundle: missing core .pte in staging:\\n" +
+                                    missingCore.collect { "  - ${it}" }.join("\\n") +
+                                    "\\nExport into android/sharp_vulkan_only/ (fp32 auto-detected if fp16 missing), or use android/models_cpuvulkan_hybrid/ for full hybrid staging." + docHint
+                    )
+                }
+                if (!part4Ok) {
+                    throw new GradleException(
+                            part4bHint + "Place exports under android/sharp_vulkan_only/ and rebuild." + docHint
+                    )
+                }
+            }
+        }
         def tree = fileTree(bundledPteAssetsRoot).include("**/*.pte")
         def totalBytes = (tree.files.sum { it.length() } ?: 0L) as long
-        println "copyExecutorchModelsIntoAssets: ${tree.files.size()} .pte → ${bundledPteAssetsRoot} (models_cpu + models_vulkan, ~${String.format("%.2f", totalBytes / 1e9)} GB)"
+        def layoutNote =
+                useHybridStagingOnly
+                        ? "models_cpuvulkan_hybrid only (from android/models_cpuvulkan_hybrid)"
+                        : "models_cpu + models_cpuvulkan_hybrid"
+        println "copyExecutorchModelsIntoAssets: ${tree.files.size()} .pte → ${bundledPteAssetsRoot} (${layoutNote}, ~${String.format("%.2f", totalBytes / 1e9)} GB)"
         // Zip32 APK ~4GiB — packaging fails with "Zip32 cannot place CD entry … MAX=4294967295". Fail early with a fix.
-        def docHint = " See android/docs/MODELS_APK_BUNDLE_TESTING.md."
         if (totalBytes > 3_900_000_000L) {
             throw new GradleException(
                     "Bundled .pte ~${String.format("%.2f", totalBytes / 1e9)} GB exceeds Zip32-safe APK budget (~4GiB). " +

@@ -206,7 +206,7 @@ def main():
         print("\nTo deploy to Android, copy:")
         print(f"  {param_path}")
         print(f"  {bin_path}")
-        print("to app/src/main/assets/models_cpu/ (or models_vulkan for Vulkan exports)")
+        print("to app/src/main/assets/models_cpu/ (or models_cpuvulkan_hybrid for Vulkan exports)")
     else:
         print("\nONNX export complete. Manual NCNN conversion needed.")
 

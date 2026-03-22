@@ -24,7 +24,7 @@ The change was app-layer only:
 
 These tables describe the **current app/runtime flow**, not just every filename the code can recognize.
 
-#### Vulkan flow (`etVulkan`, `files/models_vulkan`)
+#### Vulkan flow (`etVulkan`, `files/models_cpuvulkan_hybrid`)
 
 | Stage | Model file(s) used in the current flow | Notes |
 |---|---|---|
@@ -75,7 +75,7 @@ After the route was stable, the main Part4 hotspot (`decoder_head`) was optimize
 
 The ExecuTorch INT8 backend expects split `.pte` files under the app’s **`models_cpu`** directory (etCpu flavor): internal and external `files/models_cpu/`. See **`docs/EXECUTORCH_CPU_MODELS_SYNC.md`** for clear + push scripts and Part4b mismatch (error 18).
 
-Use **`models_cpu`** (etCpu) or **`models_vulkan`** (etVulkan) only; legacy **`files/models/`** is not searched.
+Use **`models_cpu`** (etCpu) or **`models_cpuvulkan_hybrid`** (etVulkan) only; legacy **`files/models/`** is not searched.
 
 - **Encoder / feature stages (INT8):**
   - `sharp_split_part1_int8.pte`
@@ -88,7 +88,7 @@ Use **`models_cpu`** (etCpu) or **`models_vulkan`** (etVulkan) only; legacy **`f
   - `sharp_split_part4b_fp16.pte` (FP16, optional single-decoder fallback)
   - `sharp_split_part4b_int8.pte` (INT8, optional single-decoder fallback)
 
-`ExecutorchInt8Sharp` resolves `.pte` under flavor dirs: internal **`filesDir/models_cpu`** or **`models_vulkan`**, then matching **`getExternalFilesDir(...)`**. External `sharp_split*.pte` are synced into internal storage for fast mmap. Bundled friend APKs hydrate from **`assets/models_cpu`** / **`assets/models_vulkan`** on first launch when internal dirs are empty.
+`ExecutorchInt8Sharp` resolves `.pte` under flavor dirs: internal **`filesDir/models_cpu`** or **`models_cpuvulkan_hybrid`**, then matching **`getExternalFilesDir(...)`**. External `sharp_split*.pte` are synced into internal storage for fast mmap. Bundled friend APKs hydrate from **`assets/models_cpu`** / **`assets/models_cpuvulkan_hybrid`** on first launch when internal dirs are empty.
 
 ### High‑level pipeline
 
@@ -184,11 +184,11 @@ The core implementation lives in `ExecutorchInt8Sharp`:
    Export or place `sharp_split_part4b_int8.pte` into the same `executorch_models/` (or `executorch_int8_models/`) folder. On device, when this file is present next to `sharp_split_part4b.pte`, the C++ full INT8 pipeline will automatically run INT8 Part 4b; when it is absent, the FP32 `sharp_split_part4b.pte` is used as a safe fallback.
 
 2. **Push models to device** (optional if using packaged APK)  
-   Use **`files/models_cpu/`** (etCpu) or **`files/models_vulkan/`** (etVulkan), e.g. `push_sharp_executorch_cpu_models.sh` / `push_sharp_vulkan_only.sh` (see `docs/TEST_INT8_IN_APP.md`).
+   Use **`files/models_cpu/`** (etCpu) or **`files/models_cpuvulkan_hybrid/`** (etVulkan), e.g. `push_sharp_executorch_cpu_models.sh` / `push_sharp_vulkan_only.sh` (see `docs/TEST_INT8_IN_APP.md`).
 
    **Or package in APK for testing:**  
    Before building, ensure the 6 .pte files exist in `executorch_int8_models/` and `executorch_models/`.  
-   The Gradle task `copyExecutorchModelsIntoAssets` runs before each build and copies them into `app/build/bundled-pte-assets/models_cpu/` and `.../models_vulkan/` (merged into APK assets).  
+   The Gradle task `copyExecutorchModelsIntoAssets` runs before each build and copies them into `app/build/bundled-pte-assets/models_cpu/` and `.../models_cpuvulkan_hybrid/` (merged into APK assets).  
    The app copies from assets to internal storage on first run, so a friend can install the APK and use **Settings → ExecuTorch INT8** without pushing models manually. (APK size increases.)
 
 3. **Build and install**  

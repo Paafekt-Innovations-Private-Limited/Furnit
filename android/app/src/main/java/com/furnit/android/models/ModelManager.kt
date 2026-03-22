@@ -12,7 +12,7 @@ class ModelManager(private val context: Context) {
         private const val TAG = "ModelManager"
         private const val ROOMS_DIR = "rooms"
         private const val SHARP_ROOMS_DIR = "sharp_rooms"
-        /** Built-in demo GLBs under `assets/bundled_rooms/` (SHARP `.pte` use assets/models_cpu + models_vulkan via Gradle). */
+        /** Built-in demo GLBs under `assets/bundled_rooms/` (SHARP `.pte` use assets/models_cpu + models_cpuvulkan_hybrid via Gradle). */
         const val BUNDLED_ROOM_ASSETS_DIR = "bundled_rooms"
     }
 

@@ -43,7 +43,7 @@ Single Part4b replaces the **~112 s** tiled block with one forward (duration dep
 INT8 **tiled** Part4b (`tile_b4`) can look like **hazy squares** aligned with the 384×384 tile grid — quantization + per-tile decoding, not necessarily a bug in stitching. Mitigations:
 
 1. **Add a single Part4b** (`sharp_split_part4b_int8.pte` or FP32/FP16 `sharp_split_part4b*.pte`) beside the v2 files; leave **Stable Part4b (single)** ON so the native path prefers the single decoder (higher RAM, usually clearer).
-2. **ExecuTorch Vulkan** + Vulkan Part3/4 `.pte` in `models_vulkan` for faster, often cleaner Part4.
+2. **ExecuTorch Vulkan** + Vulkan Part3/4 `.pte` in `models_cpuvulkan_hybrid` for faster, often cleaner Part4.
 3. If patches look **shifted / sheared** (not foggy), try Settings **Swap tile NDC X/Y** — transposed exports need `swapTileNdcXY` passed into `runFullPipelineInt8Native`.
 
 See also `docs/TEST_INT8_IN_APP.md` (tiled vs single).

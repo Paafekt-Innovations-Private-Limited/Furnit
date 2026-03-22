@@ -8,7 +8,7 @@ namespace {
 std::vector<std::string> candidatePart12CpuDirs(const std::string& dir) {
     std::vector<std::string> dirs;
     dirs.push_back(dir);
-    const std::string suffix = "/models_vulkan";
+    const std::string suffix = "/models_cpuvulkan_hybrid";
     if (dir.size() >= suffix.size() && dir.compare(dir.size() - suffix.size(), suffix.size(), suffix) == 0) {
         dirs.push_back(dir.substr(0, dir.size() - suffix.size()) + "/models_cpu");
     }
@@ -619,7 +619,7 @@ if (!modelDirPath || !imageNCHW) {
     }
     LOGI("Part4a/512: portable CPU/XNNPACK — forward may take longer than Part3; timing follows in log.");
     LOGW("Part4a/512: CPU INT8 ViT is often many minutes on phone SoCs. For ~2–3 min total, use etVulkan build + "
-         "Vulkan Part3/4 .pte in models_vulkan (logcat showed 400s+ on one device before OMP tuning).");
+         "Vulkan Part3/4 .pte in models_cpuvulkan_hybrid (logcat showed 400s+ on one device before OMP tuning).");
     long long tLoad512 = nowMs();
     auto mod4a512 = std::make_unique<ETModule>(path4a512, ETModule::LoadMode::Mmap);
     if (mod4a512->load() != Error::Ok) {

@@ -125,7 +125,8 @@ class SharpService private constructor(private val context: Context) {
         }
         LogUtil.e(TAG, "ExecuTorch INT8 SHARP init failed")
         lastInitFailureMessage =
-            "ExecuTorch INT8 init failed. Push split .pte models to device storage (see android push scripts / README)."
+            executorchInt8Sharp.consumeInitializeFailureDetail()
+                ?: "ExecuTorch INT8 init failed. Push split .pte models to device storage (see android push scripts / README)."
         return false
     }
 

@@ -10,7 +10,7 @@ object DeviceHeuristics {
 
     /**
      * Google Pixel phones / tablets (Tensor). Full Vulkan Part1+2 is fragile here (timeouts, device lost);
-     * hybrid Part1+2 on CPU + Part3/4 on Vulkan is the supported path when INT8 sidecars exist (prefer models_vulkan).
+     * hybrid Part1+2 on CPU + Part3/4 on Vulkan is the supported path when INT8 sidecars exist (prefer models_cpuvulkan_hybrid).
      */
     fun isGooglePixelFamily(): Boolean {
         if (!Build.MANUFACTURER.equals("Google", ignoreCase = true)) return false

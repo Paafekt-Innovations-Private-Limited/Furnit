@@ -25,7 +25,7 @@ Typical **local debug** APK is already small because models are **not** bundled 
    ```
    Output under `app/build/outputs/apk/etVulkan/debug/`
 
-2. **On the device**, SHARP (AI room from photo) will need the models pushed once. **etCpu** APK uses **`files/models_cpu/`**; **etVulkan** uses **`files/models_vulkan/`** (see `docs/TEST_INT8_IN_APP.md`). Stage copies under repo **`android/models_cpu/`** (see `models_cpu/README.md`) then push. Example for **CPU** / portable `.pte`:
+2. **On the device**, SHARP (AI room from photo) will need the models pushed once. **etCpu** APK uses **`files/models_cpu/`**; **etVulkan** uses **`files/models_cpuvulkan_hybrid/`** (see `docs/TEST_INT8_IN_APP.md`). Stage copies under repo **`android/models_cpu/`** (see `models_cpu/README.md`) then push. Example for **CPU** / portable `.pte`:
    ```bash
    adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_cpu
    adb push executorch_int8_models/*.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/

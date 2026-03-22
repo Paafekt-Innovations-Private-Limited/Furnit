@@ -60,7 +60,7 @@ If logcat shows **Vulkan Fence: Device lost** or **VK_ERROR_DEVICE_LOST** at `Fe
 
 ### In-app workaround
 
-In Settings, enable **Part1+2 on CPU (when Vulkan)**. Part1 and Part2 then run on CPU (portable models); Part4a and Part4b stay on Vulkan. The model dir must contain both portable Part1+2 (e.g. `sharp_split_part1_int8.pte`, `sharp_split_part2_int8.pte`) and the Vulkan Part4* files. This option is **off by default** (Part1+2 use Vulkan by default).
+Use the **ExecuTorch INT8 (Part1+2 + Vulkan — Hybrid)** backend and place **INT8 Part1+2 sidecars** next to your Vulkan stack (same folder, usually `files/models_cpuvulkan_hybrid/`): `sharp_split_part1_int8.pte` and `sharp_split_part2_int8.pte`. The app then runs Part1+2 on CPU automatically; Part4a/Part4b stay on Vulkan. If those sidecars are **missing**, **init / room creation fails** (no Vulkan-only Part1+2 fallback). Legacy `files/models_vulkan/` is migrated into `models_cpuvulkan_hybrid` on launch when possible.
 
 ### Confirmed fixes (device / workload)
 
@@ -93,7 +93,7 @@ In **Settings** → **Vulkan & ExecuTorch diagnostics** → tap **Run**. The app
 adb logcat -s VulkanDiag:D Vulkan1536Test:D
 ```
 
-**If Sync shows VK_KHR_synchronization2=YES and you still get device-lost or crash during Part1:** the driver exposes sync2, so the cause is not “missing sync extension”. It is then likely **GPU timeout (TDR)** on Mali for long-running Part1 compute, or the **prebuilt ExecuTorch Vulkan AAR** (limited shaders / sync paths). Use **Part1+2 on CPU** as workaround, or build ExecuTorch from source with full Vulkan.
+**If Sync shows VK_KHR_synchronization2=YES and you still get device-lost or crash during Part1:** the driver exposes sync2, so the cause is not “missing sync extension”. It is then likely **GPU timeout (TDR)** on Mali for long-running Part1 compute, or the **prebuilt ExecuTorch Vulkan AAR** (limited shaders / sync paths). Add **INT8 Part1+2 sidecars** next to Vulkan models for automatic hybrid (CPU Part1+2), or build ExecuTorch from source with full Vulkan.
 
 Clear logcat first then tap Run, or run the command and then tap **Run** in Settings to see the lines appear. For a one-shot capture after tapping Run:
 
@@ -106,14 +106,14 @@ adb logcat -d -s VulkanDiag:D Vulkan1536Test:D
 If logcat shows **BEFORE_PART1_FORWARD** (and optionally "calling m1->forward") but **never** "AFTER_PART1_FORWARD":
 
 - **Crash location:** The process dies **inside** the Vulkan Part1 forward — i.e. during the GPU compute for the first 384×384 patch. This is typically **GPU timeout / device-lost** (Mali driver) or a Vulkan dispatch crash, not readback.
-- **Workaround:** In Settings, enable **Part1+2 on CPU (when Vulkan)**. Part1 and Part2 then run on CPU (portable .pte); Part4 stays on Vulkan. The pipeline will complete.
+- **Workaround:** Deploy **INT8 Part1+2** `.pte` beside your Vulkan models so the hybrid path runs Part1+2 on CPU; Part4 stays on Vulkan. The pipeline should complete.
 
 ## Slow Part1 (~16s) and crash after AFTER_PART1_FORWARD
 
 If logcat shows Vulkan Part1 completing successfully but taking ~16 seconds per patch, followed by **PROCESS ENDED** (no Fatal signal in log):
 
 - **Crash location:** The process dies immediately after `AFTER_PART1_FORWARD 1x (0,0) status=ok`. The next step in code is reading Part1’s output tensors (`const_data_ptr<float>()`), which triggers a **Vulkan sync** (GPU→CPU readback). The crash is almost certainly either (1) during that readback (fence wait / device-lost) or (2) at Part2’s first forward.
-- **Workaround:** In Settings, enable **Part1+2 on CPU (when Vulkan)**. Part1 and Part2 then run on CPU (portable .pte); Part4 stays on Vulkan. The pipeline will complete; only Part1+2 are moved off GPU.
+- **Workaround:** Deploy **INT8 Part1+2** `.pte` beside your Vulkan models for automatic hybrid (CPU Part1+2); Part4 stays on Vulkan. The pipeline should complete; only Part1+2 are moved off GPU.
 
 If logcat shows Vulkan Part1 completing successfully but taking ~16 seconds per patch, followed by a crash (SIGABRT or missing shader):
 
@@ -165,8 +165,7 @@ ActivityManager: Scheduling restart of crashed service ... for connection
 
 **Mitigations:**
 
-- **Part1+2 on CPU (when Vulkan):** Frees GPU memory and reduces peak (Settings).
-- **Part1+2 in chunks (yield between):** Processes patches in smaller chunks with 50 ms sleep between chunks to ease GPU/RAM pressure (Settings).
+- **Hybrid (INT8 Part1+2 sidecars):** Frees GPU memory and reduces peak — no separate Settings toggle; sidecars in `models_cpuvulkan_hybrid` enable CPU Part1+2 automatically.
 - **Part1 test: fewer patches (5+2+1)** or **minimal (1+0+1):** Fewer Part1 forwards for testing (Settings).
 - **Close other apps** before a long scan to free RAM.
 - **onTrimMemory:** The app already registers `onTrimMemory` (FurnitApplication) to release native caches on `TRIM_MEMORY_RUNNING_*` / `TRIM_MEMORY_COMPLETE`; this helps when the system is reclaiming memory.
