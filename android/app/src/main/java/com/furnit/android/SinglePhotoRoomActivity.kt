@@ -1,6 +1,9 @@
 package com.furnit.android
 
 import android.Manifest
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -16,6 +19,7 @@ import com.furnit.android.utils.DebugLogger
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.core.content.FileProvider
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
@@ -48,9 +53,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var initialView: LinearLayout
     private lateinit var methodPickerView: LinearLayout
     private lateinit var progressOverlay: FrameLayout
-    private lateinit var progressBar: ProgressBar
+    private lateinit var progressRing: CircularProgressIndicator
     private lateinit var progressText: TextView
     private lateinit var progressPercent: TextView
+    /** Host of the ring — subtle pulse animation. */
+    private var progressRingHost: View? = null
+    private var progressOverlayPulse: AnimatorSet? = null
+    private var phaseStripViews: Array<TextView> = emptyArray()
     private lateinit var selectedImageView: ImageView
     private lateinit var orientationIndicator: LinearLayout
     private lateinit var orientationIcon: TextView
@@ -860,96 +869,239 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun phasePillDrawable(active: Boolean): GradientDrawable {
+        val density = resources.displayMetrics.density
+        val strokeW = (1.5f * density).toInt().coerceAtLeast(1)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 999f
+            if (active) {
+                setColor(Color.parseColor("#6A1B9A"))
+            } else {
+                setColor(Color.WHITE)
+                setStroke(strokeW, Color.parseColor("#E1BEE7"))
+            }
+        }
+    }
+
+    private fun setPhaseStripForPercent(percent: Int) {
+        if (phaseStripViews.isEmpty()) return
+        val activeIdx = when {
+            percent < 26 -> 0
+            percent < 88 -> 1
+            else -> 2
+        }
+        phaseStripViews.forEachIndexed { index, textView ->
+            val active = index == activeIdx
+            textView.background = phasePillDrawable(active)
+            textView.setTextColor(if (active) Color.WHITE else Color.parseColor("#6A1B9A"))
+        }
+    }
+
+    private fun startProgressOverlayPulse() {
+        val host = progressRingHost ?: return
+        progressOverlayPulse?.cancel()
+        val scaleX = ObjectAnimator.ofFloat(host, View.SCALE_X, 1f, 1.045f).apply {
+            duration = 1400
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+        val scaleY = ObjectAnimator.ofFloat(host, View.SCALE_Y, 1f, 1.045f).apply {
+            duration = 1400
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+        progressOverlayPulse = AnimatorSet().apply {
+            playTogether(scaleX, scaleY)
+            start()
+        }
+    }
+
+    private fun stopProgressOverlayPulse() {
+        progressOverlayPulse?.cancel()
+        progressOverlayPulse = null
+        progressRingHost?.apply {
+            scaleX = 1f
+            scaleY = 1f
+        }
+    }
+
     private fun createProgressOverlay(): FrameLayout {
+        val density = resources.displayMetrics.density
+        val padH = (40 * density).toInt()
+        val padVTop = (44 * density).toInt()
+        val padVBottom = (48 * density).toInt()
+        val ringSize = (196 * density).toInt()
+
+        val screenH = resources.displayMetrics.heightPixels
+        val screenW = resources.displayMetrics.widthPixels
+        val marginOuter = (20 * density).toInt()
+        val maxPanelHeight = (screenH * 0.88f).toInt().coerceAtLeast((280 * density).toInt())
+
         return FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#CC000000"))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            clipChildren = false
 
             val content = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(64, 48, 64, 48)
-                setBackgroundColor(Color.parseColor("#FFFFFF"))
-
-                // Icon/animation container
-                val iconContainer = FrameLayout(this@SinglePhotoRoomActivity).apply {
-                    val circleSize = 120
-                    layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
-                        gravity = Gravity.CENTER
-                    }
-
-                    // Background circle
-                    val bgCircle = View(this@SinglePhotoRoomActivity).apply {
-                        setBackgroundColor(Color.parseColor("#E1BEE7"))
-                    }
-                    addView(bgCircle, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    ))
-
-                    // Magic wand icon
-                    val icon = TextView(this@SinglePhotoRoomActivity).apply {
-                        text = "\uD83E\uDE84"
-                        textSize = 40f
-                        gravity = Gravity.CENTER
-                    }
-                    addView(icon, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    ).apply { gravity = Gravity.CENTER })
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(padH, padVTop, padH, padVBottom)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 28f * density
+                    setColor(Color.WHITE)
                 }
-                addView(iconContainer)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    elevation = 14f * density
+                }
 
-                // Progress text
-                progressText = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "Creating your 3D room…"
-                    textSize = 18f
+                addView(TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "✨  3D room"
+                    textSize = 14f
                     setTypeface(null, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#333333"))
+                    setTextColor(Color.parseColor("#7B1FA2"))
                     gravity = Gravity.CENTER
-                    setPadding(0, 32, 0, 16)
-                }
-                addView(progressText)
+                })
 
-                // Progress bar
-                progressBar = ProgressBar(this@SinglePhotoRoomActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                addView(TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Neural reconstruction"
+                    textSize = 11f
+                    setTextColor(Color.parseColor("#9E9E9E"))
+                    gravity = Gravity.CENTER
+                    setPadding(0, (6 * density).toInt(), 0, 0)
+                })
+
+                val ringFrame = FrameLayout(this@SinglePhotoRoomActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(ringSize, ringSize).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        topMargin = (18 * density).toInt()
+                    }
+                }
+                progressRingHost = ringFrame
+
+                progressRing = CircularProgressIndicator(this@SinglePhotoRoomActivity).apply {
                     max = 100
-                    progress = 0
+                    isIndeterminate = false
+                    indicatorSize = ringSize
+                    trackThickness = (9 * density).toInt()
+                    setIndicatorColor(
+                        Color.parseColor("#AB47BC"),
+                        Color.parseColor("#8E24AA"),
+                        Color.parseColor("#6A1B9A"),
+                    )
+                    setTrackColor(Color.parseColor("#F3E5F5"))
+                    layoutParams = FrameLayout.LayoutParams(ringSize, ringSize).apply {
+                        gravity = Gravity.CENTER
+                    }
+                    setProgress(0, false)
+                }
+                ringFrame.addView(progressRing)
+
+                progressPercent = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "0%"
+                    textSize = 36f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#4A148C"))
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    ).apply { gravity = Gravity.CENTER }
+                }
+                ringFrame.addView(progressPercent)
+                addView(ringFrame)
+
+                val phaseStrip = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { setMargins(0, 0, 0, 16) }
+                    ).apply { topMargin = (22 * density).toInt() }
                 }
-                addView(progressBar)
+                val phaseNames = listOf("Prepare", "SHARP", "Save")
+                phaseStripViews = Array(phaseNames.size) { index ->
+                    TextView(this@SinglePhotoRoomActivity).apply {
+                        text = phaseNames[index]
+                        textSize = 11f
+                        setTypeface(null, Typeface.BOLD)
+                        setPadding(
+                            (14 * density).toInt(),
+                            (8 * density).toInt(),
+                            (14 * density).toInt(),
+                            (8 * density).toInt(),
+                        )
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            if (index < phaseNames.lastIndex) {
+                                marginEnd = (8 * density).toInt()
+                            }
+                        }
+                        background = phasePillDrawable(false)
+                        setTextColor(Color.parseColor("#6A1B9A"))
+                    }.also { phaseStrip.addView(it) }
+                }
+                setPhaseStripForPercent(0)
+                addView(phaseStrip)
 
-                // Percentage text
-                progressPercent = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "0%"
-                    textSize = 24f
+                progressText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Creating your 3D room…"
+                    textSize = 16f
                     setTypeface(null, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#9C27B0"))
+                    setTextColor(Color.parseColor("#424242"))
                     gravity = Gravity.CENTER
+                    setPadding(0, (20 * density).toInt(), 0, (10 * density).toInt())
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
                 }
-                addView(progressPercent)
+                addView(progressText)
 
-                // Subtitle — engaging, sets expectation for ~2 min
-                val subtitle = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "This usually takes about 2 minutes. Hang tight — we're building something nice for you."
-                    textSize = 13f
-                    setTextColor(Color.parseColor("#666666"))
+                addView(TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Usually ~2 minutes. You can leave anytime.\nWork continues in the background."
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#757575"))
                     gravity = Gravity.CENTER
-                    setPadding(0, 16, 0, 0)
-                }
-                addView(subtitle)
+                    setLineSpacing(3f * density, 1f)
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        bottomMargin = (16 * density).toInt()
+                    }
+                })
             }
 
-            addView(content, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.CENTER })
+            // Card was taller than many phones — bottom text was cut off. Scroll so "background" is always reachable.
+            val scrollView = ScrollView(this@SinglePhotoRoomActivity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    screenW - 2 * marginOuter,
+                    maxPanelHeight,
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setMargins(marginOuter, (24 * density).toInt(), marginOuter, (24 * density).toInt())
+                }
+                isFillViewport = false
+                isVerticalScrollBarEnabled = true
+                scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+            }
+            scrollView.addView(
+                content,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(scrollView)
         }
     }
 
@@ -986,23 +1138,28 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ))
         }
         progressOverlay.visibility = View.VISIBLE
-        progressBar.progress = (displayProgress * 100).toInt()
-        progressPercent.text = "${(displayProgress * 100).toInt()}%"
+        val pct = (displayProgress * 100).toInt().coerceIn(0, 100)
+        progressRing.setProgress(pct, false)
+        progressPercent.text = "$pct%"
         progressText.text = displayMessage
+        setPhaseStripForPercent(pct)
+        startProgressOverlayPulse()
     }
 
     private fun hideProgressOverlay() {
+        stopProgressOverlayPulse()
         progressOverlay.visibility = View.GONE
     }
 
     private fun updateProgressOverlay(progress: Float, message: String) {
-        val percent = (progress * 100).toInt()
+        val percent = (progress * 100).toInt().coerceIn(0, 100)
         val friendly = toFriendlyMessage(progress, message)
         logProgress0("SinglePhotoRoomActivity.kt:updateProgressOverlay", "updating UI", mapOf(
             "progress" to progress, "percent" to percent, "message" to message
         ))
-        progressBar.progress = percent
+        progressRing.setProgress(percent, true)
         progressPercent.text = "$percent%"
         progressText.text = friendly
+        setPhaseStripForPercent(percent)
     }
 }

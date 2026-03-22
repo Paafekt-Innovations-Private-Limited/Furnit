@@ -5,4 +5,7 @@
     <color name="purple_700">#FF3700B3</color>
     <color name="teal_200">#FF03DAC5</color>
     <color name="teal_700">#FF018786</color>
+    <!-- SHARP / AI room progress (Material indicators) -->
+    <color name="sharp_ai_progress_indicator">#9C27B0</color>
+    <color name="sharp_ai_progress_track">#EDE7F6</color>
 </resources>

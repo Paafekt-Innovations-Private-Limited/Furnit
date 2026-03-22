@@ -4,10 +4,10 @@ import android.net.Uri
 import android.os.Bundle
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.services.SharpService
 
@@ -21,7 +21,7 @@ class SharpInferenceActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_sharp_inference)
-        val progressBar = findViewById<ProgressBar>(R.id.sharp_progress)
+        val progressBar = findViewById<LinearProgressIndicator>(R.id.sharp_progress)
         val statusText = findViewById<TextView>(R.id.sharp_status)
 
         val imageUri = intent.getStringExtra(EXTRA_IMAGE_URI)?.let { Uri.parse(it) }
@@ -54,7 +54,7 @@ class SharpInferenceActivity : AppCompatActivity() {
             object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
-                    progressBar.progress = (progress * 100).toInt().coerceIn(0, 100)
+                    progressBar.setProgress((progress * 100).toInt().coerceIn(0, 100), true)
                     statusText.text = message
                 }
             }
