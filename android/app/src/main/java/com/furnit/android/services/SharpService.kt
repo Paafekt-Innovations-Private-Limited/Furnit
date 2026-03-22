@@ -2,6 +2,8 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
+import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomFolderMetadata
 import kotlinx.coroutines.Dispatchers
@@ -130,14 +132,20 @@ class SharpService private constructor(private val context: Context) {
     private val generationCancelled = AtomicBoolean(false)
 
     /**
-     * @param viewerPhotoOrientation "portrait" / "landscape" from SinglePhoto (EXIF display); when null, falls back to bitmap width/height.
-     * @param viewerPhotoWideAngle matches viewer / SharpRoom framing.
+     * @param viewerPhotoOrientation "portrait" / "landscape" from SinglePhoto / EXIF fallback.
+     * @param viewerPhotoWideAngle 0.5× ultra-wide; with [orientationLockedByUser] false, automatic landscape → portrait in metadata.
+     * @param orientationLockedByUser True after user tapped the orientation row (do not apply ultra-wide portrait coercion for explicit landscape).
+     * @param sourcePhotoUri Original image URI for [PhotoOrientation.detect] when orientation is null.
+     * @param sourcePhotoPath Original file path for [PhotoOrientation.detectFromFile] when URI is unavailable.
      */
     fun startGenerationInBackground(
         image: Bitmap,
         callback: ProgressCallback,
         viewerPhotoOrientation: String? = null,
-        viewerPhotoWideAngle: Boolean = false
+        viewerPhotoWideAngle: Boolean = false,
+        orientationLockedByUser: Boolean = false,
+        sourcePhotoUri: Uri? = null,
+        sourcePhotoPath: String? = null,
     ): GenerationHandle {
         generationCancelled.set(false)
         val handle = object : GenerationHandle {
@@ -152,7 +160,10 @@ class SharpService private constructor(private val context: Context) {
                 callback,
                 { generationCancelled.get() },
                 viewerPhotoOrientation,
-                viewerPhotoWideAngle
+                viewerPhotoWideAngle,
+                orientationLockedByUser,
+                sourcePhotoUri,
+                sourcePhotoPath,
             )
         }.start()
         return handle
@@ -162,11 +173,23 @@ class SharpService private constructor(private val context: Context) {
         image: Bitmap,
         callback: ProgressCallback,
         viewerPhotoOrientation: String? = null,
-        viewerPhotoWideAngle: Boolean = false
+        viewerPhotoWideAngle: Boolean = false,
+        orientationLockedByUser: Boolean = false,
+        sourcePhotoUri: Uri? = null,
+        sourcePhotoPath: String? = null,
     ) {
         generationCancelled.set(false)
         Thread {
-            generateGaussiansInternal(image, callback, { false }, viewerPhotoOrientation, viewerPhotoWideAngle)
+            generateGaussiansInternal(
+                image,
+                callback,
+                { false },
+                viewerPhotoOrientation,
+                viewerPhotoWideAngle,
+                orientationLockedByUser,
+                sourcePhotoUri,
+                sourcePhotoPath,
+            )
         }.start()
     }
 
@@ -175,9 +198,22 @@ class SharpService private constructor(private val context: Context) {
         callback: ProgressCallback,
         isCancelled: () -> Boolean,
         viewerPhotoOrientation: String? = null,
-        viewerPhotoWideAngle: Boolean = false
+        viewerPhotoWideAngle: Boolean = false,
+        orientationLockedByUser: Boolean = false,
+        sourcePhotoUri: Uri? = null,
+        sourcePhotoPath: String? = null,
     ) {
         LogUtil.d(TAG, "Starting generation: ${image.width}x${image.height}")
+        LogUtil.d(
+            TAG,
+            "[SHARP_ORIENTATION] ExecuTorch generation start " +
+                "bitmap=${image.width}x${image.height} " +
+                "viewerPhotoOrientation=${viewerPhotoOrientation ?: "null"} " +
+                "photoWideAngle=$viewerPhotoWideAngle " +
+                "orientationLockedByUser=$orientationLockedByUser " +
+                "sourceUri=${if (sourcePhotoUri != null) "yes" else "no"} " +
+                "sourcePath=${if (sourcePhotoPath.isNullOrBlank()) "no" else "yes"}",
+        )
 
         try {
             callback.onProgress(0.1f, "Preparing...")
@@ -209,22 +245,30 @@ class SharpService private constructor(private val context: Context) {
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
             LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
-            val isPortraitFeed = image.height > image.width
+            val feedOrientation = PhotoOrientation.fromBitmapDimensions(image)
             LogUtil.d(
                 TAG,
-                "VIEWER_FEED isPortrait=$isPortraitFeed roomWidth=${result.roomWidth} roomHeight=${result.roomHeight} roomDepth=${result.roomDepth} path=${result.plyFile.parentFile?.absolutePath}"
+                "[SHARP_ORIENTATION] post-infer bitmap_layout=${feedOrientation.value} " +
+                    "(SHARP input pixels ${image.width}x${image.height}) " +
+                    "room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
+                    "path=${result.plyFile.parentFile?.absolutePath}",
             )
 
             saveMetadata(
-                result.plyFile.parentFile!!,
-                image,
-                "sharp_executorch_int8",
-                result.roomWidth,
-                result.roomHeight,
-                result.roomDepth,
-                result.roomCenterX,
-                result.roomCenterY,
-                result.roomCenterZ
+                roomFolder = result.plyFile.parentFile!!,
+                image = image,
+                modelType = "sharp_executorch_int8",
+                roomWidth = result.roomWidth,
+                roomHeight = result.roomHeight,
+                roomDepth = result.roomDepth,
+                roomCenterX = result.roomCenterX,
+                roomCenterY = result.roomCenterY,
+                roomCenterZ = result.roomCenterZ,
+                viewerPhotoOrientation = viewerPhotoOrientation,
+                viewerPhotoWideAngle = viewerPhotoWideAngle,
+                orientationLockedByUser = orientationLockedByUser,
+                sourcePhotoUri = sourcePhotoUri,
+                sourcePhotoPath = sourcePhotoPath,
             )
 
             callback.onProgress(1.0f, "Done!")
@@ -250,6 +294,18 @@ class SharpService private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Writes room `metadata.txt` + [RoomFolderMetadata].
+     *
+     * **Orientation in metadata (Swift parity):**
+     * 1) Non-null [viewerPhotoOrientation] (`portrait` / `landscape`) — e.g. SinglePhotoRoom user toggle; wins.
+     * 2) Else [PhotoOrientation.detect] / [PhotoOrientation.detectFromFile] on [sourcePhotoUri] or [sourcePhotoPath]
+     *    (encoded dimensions + EXIF rotation + portrait-first bias when rotation is 0).
+     * 3) Else [PhotoOrientation.fromBitmapDimensions] (synthetic bitmaps / tests with no file source).
+     *
+     * **0.5× ultra-wide:** When [viewerPhotoWideAngle] is true and orientation was **not** locked by the user,
+     * [PhotoOrientation.coercePortraitForUltraWide] maps automatic landscape → portrait (sensor buffer quirk).
+     */
     private fun saveMetadata(
         roomFolder: File,
         image: Bitmap,
@@ -261,7 +317,10 @@ class SharpService private constructor(private val context: Context) {
         roomCenterY: Float? = null,
         roomCenterZ: Float? = null,
         viewerPhotoOrientation: String? = null,
-        viewerPhotoWideAngle: Boolean = false
+        viewerPhotoWideAngle: Boolean = false,
+        orientationLockedByUser: Boolean = false,
+        sourcePhotoUri: Uri? = null,
+        sourcePhotoPath: String? = null,
     ) {
         val thumbnailFile = File(roomFolder, "thumbnail.png")
         FileOutputStream(thumbnailFile).use { out ->
@@ -272,11 +331,65 @@ class SharpService private constructor(private val context: Context) {
         val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val roomName = "AI Room ${dateFormat.format(Date())}"
         val normalizedViewer = viewerPhotoOrientation?.trim()?.lowercase()
-        val photoOrientation = when (normalizedViewer) {
-            "landscape" -> "landscape"
-            "portrait" -> "portrait"
-            else -> if (image.height > image.width) "portrait" else "landscape"
+        val bitmapLayoutOrientation = PhotoOrientation.fromBitmapDimensions(image)
+        fun orientationEnumToMetadataString(o: PhotoOrientation): String {
+            val adjusted = if (orientationLockedByUser) {
+                o
+            } else {
+                PhotoOrientation.coercePortraitForUltraWide(o, viewerPhotoWideAngle)
+            }
+            return when (adjusted) {
+                PhotoOrientation.LANDSCAPE -> "landscape"
+                PhotoOrientation.PORTRAIT -> "portrait"
+                PhotoOrientation.SQUARE -> "portrait"
+            }
         }
+        val photoOrientation: String
+        val orientationDecisionSource: String
+        val exifDetectOrientation: PhotoOrientation?
+        when (normalizedViewer) {
+            "landscape", "portrait" -> {
+                exifDetectOrientation = null
+                val coercedUltraWide = !orientationLockedByUser &&
+                    viewerPhotoWideAngle &&
+                    normalizedViewer == "landscape"
+                photoOrientation = if (coercedUltraWide) "portrait" else normalizedViewer!!
+                orientationDecisionSource = if (coercedUltraWide) {
+                    "explicit_viewer_ultrawide_to_portrait"
+                } else {
+                    "explicit_viewer"
+                }
+            }
+            else -> {
+                exifDetectOrientation = when {
+                    sourcePhotoUri != null -> runCatching {
+                        PhotoOrientation.detect(context, sourcePhotoUri)
+                    }.getOrNull()
+                    !sourcePhotoPath.isNullOrBlank() -> runCatching {
+                        PhotoOrientation.detectFromFile(sourcePhotoPath.trim())
+                    }.getOrNull()
+                    else -> null
+                }
+                val inferredEnum = exifDetectOrientation ?: bitmapLayoutOrientation
+                photoOrientation = orientationEnumToMetadataString(inferredEnum)
+                orientationDecisionSource = when {
+                    exifDetectOrientation != null && sourcePhotoUri != null -> "exif_content_uri"
+                    exifDetectOrientation != null -> "exif_file_path"
+                    else -> "bitmap_pixels_only"
+                }
+            }
+        }
+        LogUtil.d(
+            TAG,
+            "[SHARP_ORIENTATION] room metadata written " +
+                "final=$photoOrientation " +
+                "decision=$orientationDecisionSource " +
+                "bitmap_layout=${bitmapLayoutOrientation.value} " +
+                "exif_detect=${exifDetectOrientation?.value ?: "n/a"} " +
+                "viewer_raw=${viewerPhotoOrientation ?: "null"} " +
+                "wide=$viewerPhotoWideAngle locked=$orientationLockedByUser " +
+                "image=${image.width}x${image.height}",
+        )
         val createdAtMillis = System.currentTimeMillis()
         val sb = StringBuilder()
         sb.append("name=$roomName\n")
@@ -307,7 +420,11 @@ class SharpService private constructor(private val context: Context) {
                 roomCenterZ = roomCenterZ,
             )
         )
-        LogUtil.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
+        LogUtil.d(
+            TAG,
+            "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} " +
+                "dims=${roomWidth}x${roomHeight}x${roomDepth} photoOrientation=$photoOrientation wide=$viewerPhotoWideAngle",
+        )
     }
 
     /**

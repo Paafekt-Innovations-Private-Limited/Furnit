@@ -17,6 +17,10 @@ import androidx.exifinterface.media.ExifInterface
  * (width > height), we still treat as **portrait** — typical for upright phone captures when OEM/camera
  * strips or omits orientation. Users can tap the indicator to switch (SinglePhotoRoom). True landscape
  * shots without EXIF can be corrected with the same tap.
+ *
+ * **Ultra-wide (0.5×) lens:** Many devices store a **landscape-wide** buffer even for upright shots.
+ * When the user marks the photo as 0.5× wide-angle, we coerce [LANDSCAPE] → [PORTRAIT] unless they
+ * explicitly overrode orientation (SinglePhotoRoom).
  */
 enum class PhotoOrientation(val value: String) {
     PORTRAIT("portrait"),
@@ -60,6 +64,39 @@ enum class PhotoOrientation(val value: String) {
             }
         }
 
+        /**
+         * Ultra-wide (0.5×) photos are often encoded wider than tall while the user held the phone vertically.
+         * When [ultraWideLens] is true, treat an automatic [LANDSCAPE] classification as [PORTRAIT].
+         * Do **not** use this when the user explicitly chose landscape (see SinglePhotoRoom orientation tap).
+         */
+        fun coercePortraitForUltraWide(orientation: PhotoOrientation, ultraWideLens: Boolean): PhotoOrientation {
+            if (!ultraWideLens) return orientation
+            return if (orientation == LANDSCAPE) PORTRAIT else orientation
+        }
+
+        /**
+         * Same EXIF + encoded-dimension rules as [detect], for a filesystem path (gallery export, SharpInference, temp camera file).
+         */
+        fun detectFromFile(imagePath: String): PhotoOrientation {
+            var rawWidth = 0
+            var rawHeight = 0
+            var rotationDegrees = 0
+            try {
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(imagePath, options)
+                rawWidth = options.outWidth
+                rawHeight = options.outHeight
+                rotationDegrees = try {
+                    ExifInterface(imagePath).rotationDegrees
+                } catch (_: Exception) {
+                    0
+                }
+            } catch (_: Exception) {
+                return PORTRAIT
+            }
+            return orientationFromEncodedPixels(rawWidth, rawHeight, rotationDegrees)
+        }
+
         fun detect(context: Context, uri: Uri): PhotoOrientation {
             var rawWidth = 0
             var rawHeight = 0
@@ -80,6 +117,14 @@ enum class PhotoOrientation(val value: String) {
                 return PORTRAIT
             }
 
+            return orientationFromEncodedPixels(rawWidth, rawHeight, rotationDegrees)
+        }
+
+        /**
+         * Classify from **stored** JPEG/WebP pixel dimensions and EXIF rotation (before decode rotates pixels).
+         * Matches iOS / Swift metadata path where gallery orientation comes from EXIF, not from decoded bitmap size alone.
+         */
+        private fun orientationFromEncodedPixels(rawWidth: Int, rawHeight: Int, rotationDegrees: Int): PhotoOrientation {
             if (rawWidth <= 0 || rawHeight <= 0) return PORTRAIT
 
             var (displayWidth, displayHeight) = displayDimensions(rawWidth, rawHeight, rotationDegrees)

@@ -59,6 +59,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
     private var detectedOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
+    /** True after user tapped the orientation row — keeps true landscape for 0.5× shots when needed. */
+    private var orientationUserOverridden: Boolean = false
     /** True when the user indicates the photo was taken with the wide-angle (0.5x) lens; fixes camera position in the 3D viewer. */
     private var photoWideAngle: Boolean = false
 
@@ -362,9 +364,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
+                    orientationUserOverridden = true
                     detectedOrientation = if (detectedOrientation.isLandscape) PhotoOrientation.PORTRAIT else PhotoOrientation.LANDSCAPE
                     updateOrientationIndicator()
                     DebugLogger.d("SinglePhotoRoom", "User overrode orientation to: ${detectedOrientation.value}")
+                    if (aiGenerationRunning && selectedBitmap != null) {
+                        startAIGenerationInBackground(selectedBitmap!!)
+                    }
                 }
 
                 orientationIcon = TextView(this@SinglePhotoRoomActivity).apply {
@@ -396,8 +402,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener {
                     photoWideAngle = !photoWideAngle
+                    if (photoWideAngle && !orientationUserOverridden) {
+                        detectedOrientation = PhotoOrientation.coercePortraitForUltraWide(detectedOrientation, true)
+                        updateOrientationIndicator()
+                    }
                     updateWideAngleIndicator(this)
                     DebugLogger.d("SinglePhotoRoom", "Wide angle (0.5x): $photoWideAngle")
+                    if (aiGenerationRunning && selectedBitmap != null) {
+                        startAIGenerationInBackground(selectedBitmap!!)
+                    }
                 }
                 val wideIcon = TextView(this@SinglePhotoRoomActivity).apply {
                     text = "\uD83D\uDCF8"
@@ -603,6 +616,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             if (bitmap != null) {
                 selectedBitmap = bitmap
                 selectedImageView.setImageBitmap(bitmap)
+                orientationUserOverridden = false
+                photoWideAngle = false
 
                 // Must match bitmap pixels fed to SHARP (see PhotoOrientation.fromBitmapDimensions KDoc).
                 detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
@@ -629,6 +644,16 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
+    /** Matches room metadata / SharpService (ultra-wide portrait bias unless user locked orientation). */
+    private fun metadataOrientationStringForViewer(): String {
+        val o = if (orientationUserOverridden) {
+            detectedOrientation
+        } else {
+            PhotoOrientation.coercePortraitForUltraWide(detectedOrientation, photoWideAngle)
+        }
+        return if (o.isLandscape) "landscape" else "portrait"
+    }
+
     private fun updateOrientationIndicator() {
         orientationIcon.text = "\uD83D\uDCF1" // Phone icon
         orientationIcon.rotation = if (detectedOrientation.isLandscape) 90f else 0f
@@ -653,7 +678,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiGenerationResult = null
         aiGenerationRunning = true
         val sharpService = SharpService.getInstance(this)
-        val orientationForMetadata = if (detectedOrientation.isLandscape) "landscape" else "portrait"
+        val orientationForMetadata = metadataOrientationStringForViewer()
         aiGenerationHandle = sharpService.startGenerationInBackground(
             bitmap,
             object : SharpService.ProgressCallback {
@@ -702,7 +727,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             }
         },
             viewerPhotoOrientation = orientationForMetadata,
-            viewerPhotoWideAngle = photoWideAngle
+            viewerPhotoWideAngle = photoWideAngle,
+            orientationLockedByUser = orientationUserOverridden,
+            sourcePhotoUri = selectedImageUri,
         )
     }
 
@@ -774,7 +801,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             result.roomCenterY?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
             result.roomCenterZ?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
             putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
-            putExtra("photo_orientation", detectedOrientation.value)
+            putExtra("photo_orientation", metadataOrientationStringForViewer())
             putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
         }
         startActivity(intent)
@@ -791,7 +818,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
         val intent = Intent(this, RoomBoundaryActivity::class.java).apply {
             putExtra(RoomBoundaryActivity.EXTRA_IMAGE_URI, uri.toString())
-            putExtra(RoomBoundaryActivity.EXTRA_PHOTO_ORIENTATION, detectedOrientation.value)
+            putExtra(RoomBoundaryActivity.EXTRA_PHOTO_ORIENTATION, metadataOrientationStringForViewer())
         }
         boundaryActivityLauncher.launch(intent)
     }
@@ -802,6 +829,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         initialView.visibility = View.VISIBLE
         selectedBitmap = null
         selectedImageUri = null
+        orientationUserOverridden = false
+        photoWideAngle = false
     }
 
     /**
