@@ -2,6 +2,56 @@ import Foundation
 import UIKit
 import SceneKit
 
+// MARK: - Saved room .meta JSON (room dims + optional YOLO ratios)
+
+private struct SavedRoomDiskMetadata {
+    let orientation: PhotoOrientation
+    let width: Float?
+    let height: Float?
+    let depth: Float?
+    let yoloWallHeightFrac: Float?
+    let yoloFurnitureHeightFracByClass: [String: Float]?
+    let yoloRefImageHeightPx: Int?
+    let sharpRoomHeightAtYoloCapture: Float?
+
+    static let empty = SavedRoomDiskMetadata(
+        orientation: .portrait,
+        width: nil,
+        height: nil,
+        depth: nil,
+        yoloWallHeightFrac: nil,
+        yoloFurnitureHeightFracByClass: nil,
+        yoloRefImageHeightPx: nil,
+        sharpRoomHeightAtYoloCapture: nil
+    )
+
+    static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
+        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
+        let width = metadata["roomWidth"].flatMap { Float($0) }
+        let height = metadata["roomHeight"].flatMap { Float($0) }
+        let depth = metadata["roomDepth"].flatMap { Float($0) }
+        let yoloWall = metadata["yoloWallHeightFrac"].flatMap { Float($0) }
+        let yoloRefH = metadata["yoloRefImageHeightPx"].flatMap { Int($0) }
+        let sharpCap = metadata["sharpRoomHeightAtYoloCapture"].flatMap { Float($0) }
+        var furnMap: [String: Float]?
+        if let json = metadata["yoloFurnitureHeightFracByClass"],
+           let data = json.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String: Float].self, from: data) {
+            furnMap = decoded
+        }
+        return SavedRoomDiskMetadata(
+            orientation: orientation,
+            width: width,
+            height: height,
+            depth: depth,
+            yoloWallHeightFrac: yoloWall,
+            yoloFurnitureHeightFracByClass: furnMap,
+            yoloRefImageHeightPx: yoloRefH,
+            sharpRoomHeightAtYoloCapture: sharpCap
+        )
+    }
+}
+
 class USDZModelManager: ObservableObject {
     @Published var models: [USDZModel] = []
     
@@ -13,6 +63,9 @@ class USDZModelManager: ObservableObject {
     private var modelsDirectory: URL {
         documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
     }
+
+    /// Exposed for `RoomYoloRatioCapture` reference image lookup (same folder as room files).
+    var savedRoomsDirectoryURL: URL { modelsDirectory }
     
     init() {
         if AppStateManager.shared.qualitySettings.debugMode {
@@ -137,7 +190,7 @@ class USDZModelManager: ObservableObject {
                 }
 
                 // Load metadata based on file type
-                let metadata: (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?)
+                let metadata: SavedRoomDiskMetadata
                 switch fileType {
                 case .ply:
                     metadata = loadPLYMetadata(for: fileName)
@@ -146,7 +199,7 @@ class USDZModelManager: ObservableObject {
                 case .glb:
                     metadata = loadGLBMetadata(for: fileName)
                 default:
-                    metadata = (orientation: .portrait, width: nil, height: nil, depth: nil)
+                    metadata = .empty
                 }
 
                 if debugMode {
@@ -162,7 +215,11 @@ class USDZModelManager: ObservableObject {
                     photoOrientation: metadata.orientation,
                     roomWidth: metadata.width,
                     roomHeight: metadata.height,
-                    roomDepth: metadata.depth
+                    roomDepth: metadata.depth,
+                    yoloWallHeightFrac: metadata.yoloWallHeightFrac,
+                    yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
+                    yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
+                    sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture
                 )
                 savedRoomModels.append(model)
             }
@@ -191,6 +248,37 @@ class USDZModelManager: ObservableObject {
         return models.first { $0.fileName == fileName }
     }
     
+    /// Merges YOLO ratio calibration keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
+    func mergeYoloCalibrationMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        wallHeightFrac: Float,
+        furnitureFractionsByClass: [String: Float],
+        referenceImageHeightPx: Int,
+        sharpRoomHeightAtCapture: Float?
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+
+        dict["yoloWallHeightFrac"] = String(format: "%.6f", wallHeightFrac)
+        dict["yoloRefImageHeightPx"] = String(referenceImageHeightPx)
+        if let h = sharpRoomHeightAtCapture {
+            dict["sharpRoomHeightAtYoloCapture"] = String(format: "%.4f", h)
+        }
+        if let jsonData = try? JSONEncoder().encode(furnitureFractionsByClass),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            dict["yoloFurnitureHeightFracByClass"] = jsonString
+        }
+
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
     func refreshModels() {
         if AppStateManager.shared.qualitySettings.debugMode {
             logDebug("🔄 [USDZModelManager] Refreshing models...")
@@ -442,22 +530,17 @@ class USDZModelManager: ObservableObject {
         }
     }
 
-    /// Load all metadata from PLY metadata file (orientation, dimensions)
-    private func loadPLYMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    /// Load all metadata from PLY metadata file (orientation, dimensions, optional YOLO ratios)
+    private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)  // Default if no metadata
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
-
-        return (orientation: orientation, width: width, height: height, depth: depth)
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 
     /// Save a mesh room (image + metadata) to SavedRooms directory
@@ -516,21 +599,16 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Load metadata from mesh room metadata file
-    private func loadMeshRoomMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    private func loadMeshRoomMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).meshroom.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
-
-        return (orientation: orientation, width: width, height: height, depth: depth)
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 
     /// Save a GLB (GLTF binary) room to SavedRooms directory
@@ -585,20 +663,15 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Load metadata from GLB metadata file
-    private func loadGLBMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    private func loadGLBMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).glb.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
-
-        return (orientation: orientation, width: width, height: height, depth: depth)
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 }

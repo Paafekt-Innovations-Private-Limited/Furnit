@@ -176,6 +176,8 @@ struct GLBRoomView: View {
     let photoOrientation: PhotoOrientation
     let roomWidth: Float?
     let roomHeight: Float?
+    /// When opening a saved GLB from Home (YOLO ratio calibration + FurnitureFit).
+    var savedRoomModel: USDZModel? = nil
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
@@ -184,6 +186,14 @@ struct GLBRoomView: View {
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @StateObject private var savedRoomsModelManager = USDZModelManager()
+
+    private var furnitureFitDefaultTargetFrac: Float {
+        if let wall = savedRoomModel?.yoloWallHeightFrac {
+            return min(0.6, max(0.08, wall * 0.35))
+        }
+        return 0.26
+    }
 
     var body: some View {
         ZStack {
@@ -244,6 +254,8 @@ struct GLBRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth ?? 4.0,
                     roomHeightMeters: roomHeight ?? 3.0,
+                    ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
+                    defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
                     onFurnitureSizeEstimated: { _, _ in }
                 )
                 .ignoresSafeArea()
@@ -289,6 +301,15 @@ struct GLBRoomView: View {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
                 OrientationLockManager.shared.lockToPortrait()
+            }
+            if let sm = savedRoomModel {
+                Task {
+                    await RoomYoloRatioCapture.captureIfMissing(
+                        savedModel: sm,
+                        modelManager: savedRoomsModelManager,
+                        sharpRoomHeightMeters: sm.roomHeight ?? roomHeight
+                    )
+                }
             }
         }
         .onDisappear {

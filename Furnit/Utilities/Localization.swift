@@ -141,6 +141,10 @@ enum L10n {
         static let multiFurniView = "settings.multiFurniView".localized
         static let multiFurniViewDescription = "settings.multiFurniViewDescription".localized
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
+        static let ratioBasedFurnitureFit = "settings.ratioBasedFurnitureFit".localized
+        static let ratioBasedFurnitureFitDescription = "settings.ratioBasedFurnitureFitDescription".localized
+        static let ratioBasedOverlayResize = "settings.ratioBasedOverlayResize".localized
+        static let ratioBasedOverlayResizeDescription = "settings.ratioBasedOverlayResizeDescription".localized
     }
 
     // MARK: Licenses & Attributions

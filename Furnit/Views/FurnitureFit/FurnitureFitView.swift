@@ -182,14 +182,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var roomWidthMeters: Float = 4.0   // Default fallback
     var roomHeightMeters: Float = 3.0  // Default fallback
 
+    // MARK: Ratio-based ROI (saved-room calibration → live FurnitureFit)
+    /// Canonical furniture label → target bbox height / frame height (from room `.meta`).
+    var ratioTargetsByLabel: [String: Float] = [:]
+    /// Used when the calibration map is non-empty but a class has no entry (room wall / fallback hint). If the map is empty, ratio overlay uses r_curr instead (pre-ratio behavior).
+    var defaultTargetHeightFrac: Float = 0.26
+    var ratioTolerance: Float = 0.04
+
     // Callback for reporting estimated furniture size (width, height in meters)
     var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
 
     // Sizing calculator (created when room dimensions are set)
     private var sizingCalculator: FurnitureSizingCalculator?
-
-    // Last detected primary class (for sizing)
-    private var lastPrimaryClassIdx: Int = -1
 
     // Debug mode - read from settings
     var debugMode: Bool {
@@ -256,7 +260,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }()
     
     private var hasFirstDetection = false
-    private var currentScale: CGFloat = 1.0
+
+    // MARK: - Overlay scale (room calibration × ratio × user pinch)
+    /// From `FurnitureSizingCalculator` (real-world proportions vs detected bbox in model space).
+    private var autoScaleFromRoom: CGFloat = 1.0
+    /// From YOLO room ratio targets: shrink/expand overlay so bbox height fraction → r_target.
+    private var autoScaleFromRatio: CGFloat = 1.0
+    /// User pinch multiplier (reset when primary class changes).
+    private var userPinchScale: CGFloat = 1.0
+    /// Smoothed ratio scale to avoid jitter frame-to-frame.
+    private var smoothedRatioOverlayScale: CGFloat = 1.0
+    /// After user pinches, stop updating ratio auto-scale until primary class changes.
+    private var userLockedRatioOverlayScale: Bool = false
+    /// Last primary class used for overlay ratio / pinch reset.
+    private var lastOverlayPrimaryClassIdx: Int = -1
+
+    private let minCombinedOverlayScale: CGFloat = 0.3
+    private let maxCombinedOverlayScale: CGFloat = 3.0
+    private let minRatioOverlayScale: CGFloat = 0.4
+    private let maxRatioOverlayScale: CGFloat = 2.5
+    private let ratioOverlaySmoothingAlpha: CGFloat = 0.28
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
@@ -500,27 +523,75 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         )
     }
 
-    /// Apply automatic sizing based on detected furniture class and room dimensions
-    private func applyFurnitureSizing(classIdx: Int, detectedWidth: CGFloat, detectedHeight: CGFloat) {
+    /// Updates room-based auto scale from standard furniture dimensions vs detection (model input pixels).
+    /// Does not set `transform`; call `applyCurrentOverlayScaleTransform()` after ratio (or alone).
+    private func updateAutoScaleFromRoom(classIdx: Int, detectedWidth: CGFloat, detectedHeight: CGFloat) {
         guard let calculator = sizingCalculator else {
-            if debugMode { logDebug("📏 [Sizing] No calculator available") }
+            autoScaleFromRoom = 1.0
             return
         }
-
-        let scaleFactor = calculator.calculateScaleFactor(
+        autoScaleFromRoom = calculator.calculateScaleFactor(
             classIdx: classIdx,
             detectedWidthPixels: detectedWidth,
             detectedHeightPixels: detectedHeight
         )
+    }
 
-        // Apply scale transform to maskImageView
-        if scaleFactor != 1.0 {
-            currentScale = scaleFactor
-            maskImageView.transform = CGAffineTransform(scaleX: scaleFactor, y: scaleFactor)
-            if debugMode {
-                logDebug("📏 [Sizing] Applied scale \(String(format: "%.2f", scaleFactor)) for class \(classIdx)")
-            }
+    /// Combined overlay transform: room × ratio × pinch (clamped).
+    private func applyCurrentOverlayScaleTransform() {
+        let product = autoScaleFromRoom * autoScaleFromRatio * userPinchScale
+        let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
+        maskImageView.transform = CGAffineTransform(scaleX: clamped, y: clamped)
+    }
+
+    /// Call on main after each successful frame with ratio metrics (replaces second CoreML pass).
+    private func updateRatioOverlayScaleFromCalibration(
+        featureOn: Bool,
+        withinTolerance: Bool,
+        rCurrent: Float,
+        rTarget: Float,
+        primaryClassIdx: Int
+    ) {
+        if primaryClassIdx != lastOverlayPrimaryClassIdx {
+            lastOverlayPrimaryClassIdx = primaryClassIdx
+            userPinchScale = 1.0
+            userLockedRatioOverlayScale = false
+            smoothedRatioOverlayScale = 1.0
+            autoScaleFromRatio = 1.0
         }
+
+        let targetRatioScale: CGFloat
+        if !featureOn || withinTolerance {
+            targetRatioScale = 1.0
+        } else {
+            let rc = max(rCurrent, 1e-4)
+            let raw = CGFloat(rTarget) / CGFloat(rc)
+            targetRatioScale = min(max(raw, minRatioOverlayScale), maxRatioOverlayScale)
+        }
+
+        if !userLockedRatioOverlayScale {
+            let alpha = ratioOverlaySmoothingAlpha
+            smoothedRatioOverlayScale = smoothedRatioOverlayScale * (1.0 - alpha) + targetRatioScale * alpha
+            autoScaleFromRatio = smoothedRatioOverlayScale
+        }
+
+        applyCurrentOverlayScaleTransform()
+
+        if debugMode {
+            let product = autoScaleFromRoom * autoScaleFromRatio * userPinchScale
+            let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
+            logDebug("📐 [RATIO] overlay scale room=\(String(format: "%.3f", autoScaleFromRoom)) ratio=\(String(format: "%.3f", autoScaleFromRatio)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) (targetRatio=\(String(format: "%.3f", targetRatioScale)) r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) locked=\(userLockedRatioOverlayScale))")
+        }
+    }
+
+    private func resetOverlayScalesForEmptyMask() {
+        autoScaleFromRoom = 1.0
+        autoScaleFromRatio = 1.0
+        userPinchScale = 1.0
+        smoothedRatioOverlayScale = 1.0
+        userLockedRatioOverlayScale = false
+        lastOverlayPrimaryClassIdx = -1
+        maskImageView.transform = .identity
     }
     
     override func didMoveToSuperview() {
@@ -867,7 +938,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
         
         // Debug: print actual tensor shapes
-        let dim1 = detArray.shape[1].intValue
         let dim2 = detArray.shape[2].intValue
         if debugMode {
             logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
@@ -884,151 +954,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   Format detected: \(isNewFormat ? "NEW (detections×features)" : "OLD (features×anchors)")")
         }
 
-        let totalCount = detArray.count
-
-        // Model must be float32 - no allocation needed, just alias CoreML's buffer
+        // Model must be float32
         guard detArray.dataType == .float32 else {
             logDebug("❌ STAGE 3 FAILED: Model must output float32, got \(detArray.dataType)")
             resetProcessingFlag()
             return
         }
 
-        let detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
-
         setProgress(0.55, text: "Parsing detections…")
 
-        var allDets: [UnionDet] = []
-        allDets.reserveCapacity(512)
+        let allDets = YoloEDetectionParser.parseDetections(
+            detArray: detArray,
+            confidenceThreshold: confidenceThreshold,
+            classBlacklist: clsToIgnore
+        )
 
-        if isNewFormat {
-            // NEW FORMAT: [1, numDetections, featuresPerDetection]
-            // featuresPerDetection = 38 = 4 (bbox) + 1 (conf) + 1 (class) + 32 (mask coeffs)
-            // IMPORTANT: YOLO-E outputs bbox in XYXY format (x1,y1,x2,y2), NOT XYWH!
-            let numDetections = dim1
-            let featuresPerDet = dim2
-
-            // IMPORTANT: Use actual strides from MLMultiArray, not shape dimensions!
-            // Shape [1, 300, 38] might have strides [14400, 48, 1] due to memory alignment
-            let strides = detArray.strides.map { $0.intValue }
-            let detStride = strides.count >= 2 ? strides[1] : featuresPerDet  // stride between detections
-            let featStride = strides.count >= 3 ? strides[2] : 1              // stride between features
-
-            if debugMode {
-                logDebug("   NEW FORMAT: numDetections=\(numDetections), featuresPerDet=\(featuresPerDet)")
-                logDebug("   Strides: \(strides), detStride=\(detStride), featStride=\(featStride)")
-                // Print first detection's raw values using correct strides
-                if numDetections > 0 {
-                    var rawVals: [Float] = []
-                    for f in 0..<min(10, featuresPerDet) {
-                        let idx = 0 * detStride + f * featStride
-                        rawVals.append(detBuf[idx])
-                    }
-                    logDebug("   First det raw[0..9] (xyxy,conf,cls,...): \(rawVals.map { String(format: "%.2f", $0) })")
-                }
-            }
-
-            // Layout: [x1, y1, x2, y2, conf, class_id, coeff0..coeff31]
-            // YOLO-E post-NMS export: bbox in xyxy corner format
-
-            for detIdx in 0..<numDetections {
-                // Use actual strides for memory access
-                let base = detIdx * detStride
-
-                // Read xyxy corner coordinates
-                let x1 = detBuf[base + 0 * featStride]
-                let y1 = detBuf[base + 1 * featStride]
-                let x2 = detBuf[base + 2 * featStride]
-                let y2 = detBuf[base + 3 * featStride]
-                let confidence = detBuf[base + 4 * featStride]
-                let classIdxFloat = detBuf[base + 5 * featStride]
-
-                // Skip if any value is NaN or Inf
-                guard x1.isFinite, y1.isFinite, x2.isFinite, y2.isFinite, confidence.isFinite, classIdxFloat.isFinite else { continue }
-
-                // Convert xyxy to xywh (center format)
-                let w = x2 - x1
-                let h = y2 - y1
-                let x = (x1 + x2) / 2.0  // center x
-                let y = (y1 + y2) / 2.0  // center y
-
-                // Validate ranges - confidence should be 0-1, bbox should be reasonable
-                guard confidence > confidenceThreshold, confidence <= 1.0 else { continue }
-                guard w > 0, h > 0, w < 2000, h < 2000 else { continue }  // Max reasonable size for 1280 input
-
-                let classIdx = Int(classIdxFloat)
-
-                // Bounds checking for mask coefficients
-                var coeffs = [Float](repeating: 0, count: 32)
-                var validCoeffs = true
-                for k in 0..<32 {
-                    let coeffIndex = base + (6 + k) * featStride
-                    if coeffIndex < totalCount {
-                        let val = detBuf[coeffIndex]
-                        if val.isFinite {
-                            coeffs[k] = val
-                        } else {
-                            if debugMode { logDebug("⚠️ Coefficient NaN/Inf for k=\(k), detIdx=\(detIdx)") }
-                            validCoeffs = false
-                            break
-                        }
-                    } else {
-                        if debugMode { logDebug("⚠️ Coefficient bounds check failed for k=\(k), detIdx=\(detIdx)") }
-                        validCoeffs = false
-                        break
-                    }
-                }
-
-                guard validCoeffs else { continue }
-                guard classIdx >= 0, !clsToIgnore.contains(classIdx) else { continue }
-
-                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: confidence, classIdx: classIdx, coeffs: coeffs))
-            }
-        } else {
-            // OLD FORMAT: [1, numFeatures, numAnchors]
-            let numFeatures = dim1
-            let numAnchors = dim2
-            let numClasses = numFeatures - 4 - 32
-
-            if debugMode {
-                logDebug("   OLD FORMAT: numFeatures=\(numFeatures), numAnchors=\(numAnchors), numClasses=\(numClasses)")
-            }
-
-            guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
-                if debugMode { logDebug("❌ STAGE 6 FAILED: Invalid tensor dims for old format") }
-                resetProcessingFlag()
-                return
-            }
-
-            let stride = numAnchors
-            let coeffOffset = 4 + numClasses
-            var tempScores = [Float](repeating: 0, count: numClasses)
-
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-
-                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
-
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                blas_scopy(BLASInt(numClasses), basePtr, BLASInt(stride), &tempScores, 1)
-
-                var maxVal: Float = 0
-                var maxIdx: vDSP_Length = 0
-                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-
-                let classIdx = Int(maxIdx)
-
-                guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
-
-                var coeffs = [Float](repeating: 0, count: 32)
-                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
-
-                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
-            }
-        }
         
         if debugMode {
             logDebug("   raw detections: \(allDets.count)")
@@ -1039,7 +979,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         if allDets.isEmpty {
             if debugMode { logDebug("⚠️ No detections found") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
             resetProcessingFlag()
             return
         }
@@ -1116,7 +1059,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         if primaryIdx < 0 {
             if debugMode { logDebug("   ⚠️ No valid primary candidate") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
             resetProcessingFlag()
             return
         }
@@ -1421,7 +1367,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         if kept2.isEmpty {
             if debugMode { logDebug("⚠️ No kept detections") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
             resetProcessingFlag()
             return
         }
@@ -1471,6 +1420,50 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain)))
         let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain)))
         let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain)))
+
+        // Ratio-based FurnitureFit: drive overlay scale (same idea as pinch), not a second CoreML pass.
+        let ratioFeatureOn = AppStateManager.shared.qualitySettings.enableRatioBasedOverlayResize
+        var ratioOverlayRCurrent: Float = 0
+        var ratioOverlayRTarget: Float = defaultTargetHeightFrac
+        var ratioOverlayWithinTolerance = true
+
+        if ratioFeatureOn {
+            let rawLabel = classNames[primary.classIdx] ?? ""
+            let canon = YoloRatioCalibration.canonicalLabel(raw: rawLabel)
+            let bboxHBuf = primary.h / resizeGain
+            let rCurrent = Float(bboxHBuf) / Float(max(1, bufH))
+            // Target height fraction: per-class metadata when present; if the map is empty (no room
+            // calibration), use r_curr so ratio overlay stays 1×—same as before ratio-based resize.
+            // If the map exists but this class is missing, fall back to defaultTargetHeightFrac (wall/room hint).
+            let rTarget: Float
+            let targetSource: String
+            if let meta = ratioTargetsByLabel[canon] {
+                rTarget = meta
+                targetSource = "metadata[\(canon)]"
+            } else if ratioTargetsByLabel.isEmpty {
+                rTarget = rCurrent
+                targetSource = "neutral (no calibration map)"
+            } else {
+                rTarget = defaultTargetHeightFrac
+                targetSource = "defaultTargetHeightFrac (no entry for '\(canon)')"
+            }
+            let delta = abs(rCurrent - rTarget)
+
+            ratioOverlayRCurrent = rCurrent
+            ratioOverlayRTarget = rTarget
+            ratioOverlayWithinTolerance = delta <= ratioTolerance
+
+            if debugMode {
+                logDebug("📐 [RATIO] eval classIdx=\(primary.classIdx) raw=\"\(rawLabel)\" canon=\"\(canon)\" | r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) via \(targetSource) | Δ=\(String(format: "%.4f", delta)) tol=\(ratioTolerance) | bboxHBuf=\(String(format: "%.1f", bboxHBuf)) buf=\(bufW)x\(bufH) pad=(\(padX),\(padY)) gain=\(String(format: "%.4f", resizeGain)) | perClassKeys=\(ratioTargetsByLabel.count)")
+            }
+
+            if ratioOverlayWithinTolerance, debugMode {
+                logDebug("📐 [RATIO] → overlay ratio scale target 1 (within tolerance)")
+            }
+        } else if debugMode {
+            logDebug("📐 [RATIO] overlay resize OFF (Settings → Ratio-based overlay resize)")
+        }
+
         if debugMode {
             logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
@@ -1488,6 +1481,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 y: normY1 * viewH,
                 width: (normX2 - normX1) * viewW,
                 height: (normY2 - normY1) * viewH
+            )
+            self.updateAutoScaleFromRoom(
+                classIdx: primary.classIdx,
+                detectedWidth: CGFloat(primary.w),
+                detectedHeight: CGFloat(primary.h)
+            )
+            self.updateRatioOverlayScaleFromCalibration(
+                featureOn: ratioFeatureOn,
+                withinTolerance: ratioOverlayWithinTolerance,
+                rCurrent: ratioOverlayRCurrent,
+                rTarget: ratioOverlayRTarget,
+                primaryClassIdx: primary.classIdx
             )
             logDebug("👆 [setBbox] viewSize=\(viewW)x\(viewH) bbox=\(self.primaryBboxInView)")
         }
@@ -1634,13 +1639,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return (maskFull, positiveCount)
         }
 
-        // STAGE 13–15b: Build initial mask from kept2
+        // STAGE 13–15b: Build initial mask from kept2 (union path only)
         let t13to15b = Date()
+        var maskFull: [UInt8]
         let build1 = buildFullMaskMetal(from: kept2)
-        var maskFull = build1.maskFull
+        maskFull = build1.maskFull
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
             logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
+        }
+        if debugMode {
             logMemory("AFTER BUILD MASK")
         }
 
@@ -1716,7 +1724,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let srcTexture = makeTexture(from: processBuffer, pixelFormat: .bgra8Unorm)
             CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
 
-            if let src = srcTexture, let cmdBuf = queue.makeCommandBuffer() {
+                if let src = srcTexture, let cmdBuf = queue.makeCommandBuffer() {
                 if let fused = fusedMaskCompositePipeline {
                     // Fused path: compute max logits and composite in one pass.
                     // Prepare buffers: planes (32*planeSize floats) and coeffs (detCount*32 floats)
@@ -2011,10 +2019,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     cgImg = rotatedImg ?? cgImg
                 }
                 self.maskImageView.image = UIImage(cgImage: cgImg)
-
-                // Note: Furniture sizing disabled - the mask already matches room proportions
-                // Scaling to "standard" dimensions was making the cutouts wrong-sized
-                // The detected furniture should display at its natural size in the room
+                // Overlay scale (room × ratio × pinch) is updated on main when primary bbox is set each frame.
             }
         }
         resetProcessingFlag()
@@ -2351,16 +2356,22 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         guard maskImageView.image != nil else { return }
 
         switch gesture.state {
+        case .began:
+            userLockedRatioOverlayScale = true
         case .changed:
-            let newScale = currentScale * gesture.scale
-            let clampedScale = min(max(newScale, 0.3), 3.0)
-            maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
-            currentScale = clampedScale
+            userLockedRatioOverlayScale = true
+            let newPinch = userPinchScale * gesture.scale
+            userPinchScale = min(max(newPinch, 0.25), 4.0)
+            applyCurrentOverlayScaleTransform()
             gesture.scale = 1.0
         case .ended, .cancelled:
-            if currentScale > 0.9 && currentScale < 1.1 {
-                currentScale = 1.0
-                UIView.animate(withDuration: 0.2) { self.maskImageView.transform = .identity }
+            // Snap pinch back to neutral if user barely scaled (same spirit as old 0.9–1.1 total scale).
+            if userPinchScale > 0.92 && userPinchScale < 1.08 {
+                userPinchScale = 1.0
+                userLockedRatioOverlayScale = false
+                UIView.animate(withDuration: 0.2) {
+                    self.applyCurrentOverlayScaleTransform()
+                }
             }
         default: break
         }

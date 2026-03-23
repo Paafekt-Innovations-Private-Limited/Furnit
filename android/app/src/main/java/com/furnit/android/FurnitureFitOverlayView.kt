@@ -26,6 +26,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
     // Pinch-to-zoom scale factor for furniture
     private var furnitureScale = 0.6f  // Start smaller to fit in room
+    /** From room ratio calibration (r_target / r_curr), smoothed in FurnitureFitManager. */
+    private var autoRatioOverlayScale = 1f
     private var translateX = 0f
     private var translateY = 0f
 
@@ -165,7 +167,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         // Prefer detection bbox (furniture structure) for hit-test when we have detections
         if (detections.isNotEmpty() && inputSize > 0) {
             val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
-            val totalScale = baseScale * furnitureScale
+            val totalScale = baseScale * furnitureScale * autoRatioOverlayScale
             val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScale + translateX
             val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScale + translateY
             for (det in detections) {
@@ -181,7 +183,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         // Fallback: mask pixel (segmented shape)
         val bmp = maskBitmap ?: return false
         val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-        val totalScale = baseScale * furnitureScale
+        val totalScale = baseScale * furnitureScale * autoRatioOverlayScale
         val maskLeft = screenCenterX - (bmp.width / 2f) * totalScale + translateX
         val maskTop = screenCenterY - (bmp.height / 2f) * totalScale + translateY
         val bmpX = ((touchX - maskLeft) / totalScale).toInt()
@@ -201,10 +203,20 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun setMaskAndDetections(mask: Bitmap?, dets: List<DetectionResult>, modelInputSize: Int = 640) {
+    fun setMaskAndDetections(
+        mask: Bitmap?,
+        dets: List<DetectionResult>,
+        modelInputSize: Int = 640,
+        autoRatioScale: Float = 1f,
+    ) {
         maskBitmap = mask
         detections = dets
         inputSize = modelInputSize
+        autoRatioOverlayScale = if (mask == null) {
+            1f
+        } else {
+            autoRatioScale.coerceIn(0.25f, 4f)
+        }
         invalidate()
     }
 
@@ -222,7 +234,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         // Ultralytics-style: uniform base scale to fit, scale around bitmap center (pivot), then translate to screen center.
         maskBitmap?.let { bmp ->
             val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-            val totalScale = baseScale * furnitureScale
+            val totalScale = baseScale * furnitureScale * autoRatioOverlayScale
 
             val matrix = Matrix()
             matrix.reset()
@@ -238,7 +250,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         // Draw bounding boxes and labels only when debug mode is enabled (same screen center as mask)
         if (detections.isNotEmpty() && DebugLogger.isDebugMode) {
             val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
-            val totalScale = baseScale * furnitureScale
+            val totalScale = baseScale * furnitureScale * autoRatioOverlayScale
             val screenCenterX = width / 2f
             val screenCenterY = height * 0.35f
             val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScale + translateX

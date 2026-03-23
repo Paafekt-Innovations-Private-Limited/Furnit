@@ -83,12 +83,13 @@ class ModelManager(private val context: Context) {
                 if (disk != null) {
                     disk.name?.takeIf { it.isNotBlank() }?.let { roomName = it }
                     disk.createdAt?.let { createdAt = it }
-                    roomWidth = disk.roomWidth
-                    roomHeight = disk.roomHeight
-                    roomDepth = disk.roomDepth
-                    roomCenterX = disk.roomCenterX
-                    roomCenterY = disk.roomCenterY
-                    roomCenterZ = disk.roomCenterZ
+                    val arSc = disk.arDisplayScale?.takeIf { it > 0f } ?: 1f
+                    roomWidth = disk.roomWidth?.let { it * arSc }
+                    roomHeight = disk.roomHeight?.let { it * arSc }
+                    roomDepth = disk.roomDepth?.let { it * arSc }
+                    roomCenterX = disk.roomCenterX?.let { it * arSc }
+                    roomCenterY = disk.roomCenterY?.let { it * arSc }
+                    roomCenterZ = disk.roomCenterZ?.let { it * arSc }
                     photoOrientation = disk.normalizedOrientation()
                     photoWideAngle = disk.photoWideAngle
                 }

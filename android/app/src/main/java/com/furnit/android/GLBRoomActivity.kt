@@ -673,7 +673,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 metadata.append("roomHeight=$roomHeight\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
-                RoomFolderMetadata.writeToFolder(
+                val glbSnapshot = RoomFolderMetadata.snapshotPreservingYoloFields(
                     savedRoomFolder,
                     RoomFolderMetadata.Snapshot(
                         name = name,
@@ -683,8 +683,9 @@ class GLBRoomActivity : AppCompatActivity() {
                         photoWideAngle = false,
                         roomWidth = roomWidth,
                         roomHeight = roomHeight,
-                    )
+                    ),
                 )
+                RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 

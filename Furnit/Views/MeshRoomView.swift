@@ -18,6 +18,9 @@ struct MeshRoomView: View {
     var ceilingY: CGFloat = 0.15
     var floorY: CGFloat = 0.85
 
+    /// Set when opening a saved mesh room from Home (YOLO ratio calibration).
+    var savedRoomModel: USDZModel? = nil
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -39,8 +42,15 @@ struct MeshRoomView: View {
     // WebView reference for GLTF export
     @State private var webView: WKWebView?
 
-    // Model manager for saving rooms
+    // Model manager for saving rooms (also used for YOLO ratio metadata merge when viewing saved room)
     @StateObject private var modelManager = USDZModelManager()
+
+    private var furnitureFitDefaultTargetFrac: Float {
+        if let wall = savedRoomModel?.yoloWallHeightFrac {
+            return min(0.6, max(0.08, wall * 0.35))
+        }
+        return 0.26
+    }
 
     var body: some View {
         ZStack {
@@ -124,6 +134,8 @@ struct MeshRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth,
                     roomHeightMeters: roomHeight,
+                    ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
+                    defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
                     onFurnitureSizeEstimated: { _, _ in }
                 )
                 .ignoresSafeArea()
@@ -166,6 +178,15 @@ struct MeshRoomView: View {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
                 OrientationLockManager.shared.lockToPortrait()
+            }
+            if let sm = savedRoomModel {
+                Task {
+                    await RoomYoloRatioCapture.captureIfMissing(
+                        savedModel: sm,
+                        modelManager: modelManager,
+                        sharpRoomHeightMeters: sm.roomHeight ?? roomHeight
+                    )
+                }
             }
         }
         .onDisappear {

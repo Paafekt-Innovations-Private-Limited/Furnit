@@ -133,6 +133,10 @@
 "settings.furnitureSegmentationSection" = "Furniture segmentation";
 "settings.multiFurniView" = "MultiFurniView";
 "settings.multiFurniViewDescription" = "When ON, segment multiple furniture. When OFF (default), one primary plus items in 10% margin (e.g. headboard).";
+"settings.ratioBasedFurnitureFit" = "YOLO ratio calibration (saved rooms)";
+"settings.ratioBasedFurnitureFitDescription" = "When you save a room, run a one-shot YOLO pass to store furniture height fractions in room metadata for scale hints.";
+"settings.ratioBasedOverlayResize" = "Ratio-based overlay resize";
+"settings.ratioBasedOverlayResizeDescription" = "Resize the segmentation overlay using saved (or default) target height vs the live detection. Turn off to keep overlay scale 1× (room scale and pinch still apply).";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";

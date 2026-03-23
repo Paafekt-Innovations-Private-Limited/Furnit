@@ -128,6 +128,9 @@
     <string name="settings_support">Support</string>
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
+    <string name="settings_furniture_segmentation">Furniture segmentation</string>
+    <string name="settings_ratio_based_overlay_resize">Ratio-based overlay resize</string>
+    <string name="settings_ratio_based_overlay_resize_description">Resize the mask overlay using saved (or default) target height vs the live detection. Off keeps overlay scale 1×.</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
@@ -484,4 +487,30 @@
 
     <!-- Login (legacy) -->
     <string name="login_continue">Continue</string>
+
+    <!-- ARCore distance measure (beta) -->
+    <string name="ar_measure_status_init">Move the device slowly to detect floors and walls.</string>
+    <string name="ar_measure_status_tracking">Tracking OK · %1$d plane(s)</string>
+    <string name="ar_measure_status_paused">Tracking paused — move device to resume.</string>
+    <string name="ar_measure_status_not_tracking">Searching for surfaces…</string>
+    <string name="ar_measure_distance_m">Distance: %1$.3f m</string>
+    <string name="ar_measure_tap_two_points">Tap two points on a surface to measure.</string>
+    <string name="ar_measure_reset">Reset</string>
+    <string name="ar_measure_done">Done</string>
+    <string name="ar_measure_camera_required">Camera permission is required for AR measurement.</string>
+    <string name="ar_measure_camera_unavailable">Camera unavailable for AR.</string>
+    <string name="ar_measure_arcore_failed">ARCore: %1$s</string>
+    <string name="ar_measure_session_unavailable">AR session unavailable: %1$s</string>
+    <string name="ar_measure_tracking_lost">Wait until tracking is stable, then tap again.</string>
+    <string name="ar_measure_no_plane_hit">No surface hit — aim at a floor or wall.</string>
+    <string name="ar_measure_need_two_points">Place two points first (tap surface twice).</string>
+    <string name="sharp_room_ar_measure_content_description">Measure with AR (beta)</string>
+    <string name="ar_measure_apply_title">Apply ARCore measurement?</string>
+    <string name="ar_measure_apply_message">AR segment: %1$.3f m\nSHARP bbox: %2$.3f × %3$.3f × %4$.3f m\nChoose which axis this segment matches for isotropic scale.</string>
+    <string name="ar_measure_calib_width">Match width (SHARP %.2f m)</string>
+    <string name="ar_measure_calib_height">Match height (SHARP %.2f m)</string>
+    <string name="ar_measure_calib_depth">Match depth (SHARP %.2f m)</string>
+    <string name="ar_measure_calib_invalid_ref">That axis is invalid for scaling.</string>
+    <string name="ar_measure_calib_applied">Display scale updated (AR calibration).</string>
+    <string name="ar_measure_calib_no_folder">Calibration updated for this session only (room not saved to disk yet).</string>
 </resources>

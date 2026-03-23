@@ -510,7 +510,12 @@ class FurnitureFitFragment : Fragment() {
                         "${it.label} ${(it.confidence * 100).toInt()}%"
                     }
                     statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
-                    overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
+                    overlay.setMaskAndDetections(
+                        result.mask,
+                        result.detections,
+                        result.inputSize,
+                        result.autoRatioOverlayScale,
+                    )
 
                     // Estimated furniture height in meters from largest detection (for Tap to calibrate)
                     val inputSize = result.inputSize

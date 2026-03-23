@@ -20,6 +20,11 @@
             android:name="com.furnit.executorch.USE_VULKAN_AAR"
             android:value="${executorchVulkanAar}" />
 
+        <!-- ARCore optional: app installs on non-AR devices; ArMeasureActivity checks support at runtime. -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
+
         <!-- Auth Activities -->
         <activity
             android:name=".auth.LoginActivity"
@@ -54,6 +59,11 @@
         <activity
             android:name=".SharpRoomActivity"
             android:exported="false"
+            android:theme="@style/Theme.Furnit.FullScreen" />
+        <activity
+            android:name=".ArMeasureActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".GLBRoomActivity"

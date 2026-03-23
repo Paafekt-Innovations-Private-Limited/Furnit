@@ -177,6 +177,36 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.green)
+
+                    Toggle(isOn: $appState.qualitySettings.enableRatioBasedFurnitureFit) {
+                        HStack {
+                            Image(systemName: "camera.metering.center.weighted")
+                                .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.ratioBasedFurnitureFit)
+                                    .font(.headline)
+                                Text(L10n.Settings.ratioBasedFurnitureFitDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.indigo)
+
+                    Toggle(isOn: $appState.qualitySettings.enableRatioBasedOverlayResize) {
+                        HStack {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.ratioBasedOverlayResize)
+                                    .font(.headline)
+                                Text(L10n.Settings.ratioBasedOverlayResizeDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.indigo)
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }

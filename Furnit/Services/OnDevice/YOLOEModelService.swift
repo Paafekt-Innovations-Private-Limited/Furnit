@@ -77,6 +77,16 @@ class YOLOEModelService: ObservableObject {
         }
     }
 
+    /// Wait until `model` is non-nil or `maxWaitSeconds` elapses (for one-shot room calibration after ODR).
+    func waitForModelReady(maxWaitSeconds: TimeInterval = 45) async {
+        if model != nil { return }
+        ensureModelLoaded()
+        let deadline = Date().addingTimeInterval(maxWaitSeconds)
+        while model == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
     /// Release model and ODR resources — call when the app goes to background
     /// or memory pressure occurs.
     func releaseResources() {

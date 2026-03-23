@@ -358,7 +358,7 @@ struct HomeTab: View {
                 if model.fileType == .ply {
                     NavigationLink {
                         LazyView {
-                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation, savedRoomWidth: model.roomWidth, savedRoomHeight: model.roomHeight)
+                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation, savedRoomWidth: model.roomWidth, savedRoomHeight: model.roomHeight, savedRoomModel: model)
                         }
                     } label: {
                         HomeViewModelRow(model: model)
@@ -380,7 +380,8 @@ struct HomeTab: View {
                                     roomHeight: model.roomHeight ?? 3.0,
                                     roomDepth: model.roomDepth ?? 4.0,
                                     frontWallImage: image,
-                                    photoOrientation: model.photoOrientation
+                                    photoOrientation: model.photoOrientation,
+                                    savedRoomModel: model
                                 )
                             } else {
                                 // Fallback - show error
@@ -404,7 +405,8 @@ struct HomeTab: View {
                                 glbURL: modelURL,
                                 photoOrientation: model.photoOrientation,
                                 roomWidth: model.roomWidth,
-                                roomHeight: model.roomHeight
+                                roomHeight: model.roomHeight,
+                                savedRoomModel: model
                             )
                         }
                     } label: {

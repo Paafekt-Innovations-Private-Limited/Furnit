@@ -6,6 +6,7 @@ import android.graphics.Bitmap.Config
 import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.YoloRatioCalibration
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import ai.onnxruntime.OnnxTensor
@@ -20,13 +21,26 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.max
+
+/** Per-room YOLO height fractions for brain FurnitureFit — drives overlay scale only (full-frame inference). */
+data class RatioSegmentationParams(
+    val furnitureHeightFracByClass: Map<String, Float> = emptyMap(),
+    val defaultTargetHeightFrac: Float = 0.26f,
+)
 
 // Result containing mask and detections
 data class SegmentationResult(
     val mask: Bitmap?,
     val detections: List<DetectionResult>,
-    val inputSize: Int = 640
+    val inputSize: Int = 640,
+    /** Smoothed r_target/r_curr for overlay pinch-style scale; segmentation always full-frame. */
+    val autoRatioOverlayScale: Float = 1f,
 )
 
 /**
@@ -44,6 +58,9 @@ class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
+        /** Shared with [com.furnit.android.SettingsActivity] — ratio r_target/r_curr overlay scale only. */
+        const val KEY_RATIO_BASED_OVERLAY_RESIZE = "ratio_based_overlay_resize"
+
         private val COCO_CLASSES = arrayOf(
             "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
             "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
@@ -70,6 +87,54 @@ class FurnitureFitManager(private val context: Context) {
     // NCNN inference engine (preferred)
     private var ncnnYoloe: NcnnYoloe? = null
     private var useNcnn = false
+
+    private val ratioOverlaySmoothLock = Any()
+    private var smoothedRatioOverlayScale: Float = 1f
+
+    private fun isRatioBasedOverlayResizeEnabled(): Boolean {
+        return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+            .getBoolean(KEY_RATIO_BASED_OVERLAY_RESIZE, true)
+    }
+
+    /**
+     * Overlay-only ratio scale (matches iOS). No second inference / crop — avoids broken masks from ROI paste.
+     */
+    private fun computeAutoRatioOverlayScale(
+        ratioParams: RatioSegmentationParams?,
+        frameHeight: Int,
+        primaryLabel: String,
+        bboxHeightInFramePx: Float,
+    ): Float {
+        if (!isRatioBasedOverlayResizeEnabled()) {
+            synchronized(ratioOverlaySmoothLock) {
+                smoothedRatioOverlayScale = 1f
+            }
+            return 1f
+        }
+        if (ratioParams == null || ratioParams.furnitureHeightFracByClass.isEmpty()) {
+            synchronized(ratioOverlaySmoothLock) {
+                smoothedRatioOverlayScale = 1f
+            }
+            return 1f
+        }
+        val fh = frameHeight.coerceAtLeast(1)
+        val rTarget = YoloRatioCalibration.targetHeightFracForLabel(
+            primaryLabel,
+            ratioParams.furnitureHeightFracByClass,
+            ratioParams.defaultTargetHeightFrac,
+        )
+        val rCur = bboxHeightInFramePx / fh.toFloat()
+        val target = if (abs(rCur - rTarget) <= 0.04f) {
+            1f
+        } else {
+            (rTarget / max(rCur, 1e-4f)).coerceIn(0.4f, 2.5f)
+        }
+        synchronized(ratioOverlaySmoothLock) {
+            val alpha = 0.28f
+            smoothedRatioOverlayScale = smoothedRatioOverlayScale * (1f - alpha) + target * alpha
+            return smoothedRatioOverlayScale
+        }
+    }
 
     fun initialize(tfliteAssetName: String = "yoloe_11l.tflite") {
         try {
@@ -141,10 +206,19 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Auto-initialize with the best available backend (ONNX Runtime, then TFLite).
+     * Auto-initialize with the best available backend (NCNN, ONNX Runtime, then TFLite).
      */
     fun initializeAuto(): Boolean {
         LogUtil.i("FurnitureFitManager", "Auto-initializing with best available backend...")
+
+        try {
+            if (initializeNcnn()) {
+                LogUtil.i("FurnitureFitManager", "Using NCNN backend (preferred)")
+                return true
+            }
+        } catch (e: Exception) {
+            LogUtil.w("FurnitureFitManager", "NCNN initialization failed: ${e.message}")
+        }
 
         // ONNX Runtime
         try {
@@ -208,12 +282,20 @@ class FurnitureFitManager(private val context: Context) {
 
     fun segmentImageAsync(frame: Bitmap?, callback: (Bitmap?) -> Unit) {
         // Wrapper that discards detection info
-        segmentWithDetectionsAsync(frame) { result ->
+        segmentWithDetectionsAsync(frame, ratioParams = null) { result ->
             callback(result?.mask)
         }
     }
 
-    fun segmentWithDetectionsAsync(frame: Bitmap?, callback: (SegmentationResult?) -> Unit) {
+    /**
+     * @param ratioParams When non-null and map non-empty, primary is furniture-biased and overlay
+     *   auto-scale tracks per-room height fractions (full-frame mask only; no crop second pass).
+     */
+    fun segmentWithDetectionsAsync(
+        frame: Bitmap?,
+        ratioParams: RatioSegmentationParams? = null,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
         if (frame == null) {
             mainHandler.postDelayed({ callback(null) }, 200)
             return
@@ -223,13 +305,13 @@ class FurnitureFitManager(private val context: Context) {
             try {
                 // Prefer NCNN if available (best performance)
                 if (useNcnn && ncnnYoloe != null) {
-                    runNcnnInferenceWithDetections(frame, callback)
+                    runNcnnInferenceWithDetections(frame, ratioParams, callback)
                     return@execute
                 }
 
                 // Prefer ONNX Runtime if available
                 if (ortSession != null) {
-                    runOnnxInferenceWithDetections(frame, callback)
+                    runOnnxInferenceWithDetections(frame, ratioParams, callback)
                     return@execute
                 }
 
@@ -804,23 +886,55 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
-    // Version that returns detections along with mask
-    private fun runOnnxInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
-        try {
-            val session = ortSession ?: run {
-                mainHandler.post { callback(null) }
-                return
-            }
-            val env = ortEnv ?: run {
-                mainHandler.post { callback(null) }
-                return
-            }
+    private fun pickPrimaryOnnxFromKeep(keepDets: List<Detection>, preferFurniture: Boolean): Detection? {
+        if (keepDets.isEmpty()) return null
+        if (!preferFurniture) return keepDets.firstOrNull()
+        val furn = keepDets.filter {
+            YoloRatioCalibration.canonicalFurnitureLabel(getClassName(it.classId)) in YoloRatioCalibration.FURNITURE_LABELS
+        }
+        return furn.maxByOrNull { it.confidence } ?: keepDets.firstOrNull()
+    }
 
-            val firstInput = session.inputInfo.entries.firstOrNull()
-            if (firstInput == null) {
+    private fun runOnnxInferenceWithDetections(
+        frame: Bitmap,
+        ratioParams: RatioSegmentationParams?,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        try {
+            val preferFurniture = ratioParams != null && ratioParams.furnitureHeightFracByClass.isNotEmpty()
+            val base = runOnnxSegmentationOnce(frame, preferFurniture) ?: run {
                 mainHandler.post { callback(null) }
                 return
             }
+            val overlayScale = when {
+                base.detections.isEmpty() -> {
+                    if (ratioParams == null || ratioParams.furnitureHeightFracByClass.isEmpty()) {
+                        synchronized(ratioOverlaySmoothLock) { smoothedRatioOverlayScale = 1f }
+                    }
+                    1f
+                }
+                else -> {
+                    val pd = base.detections.first()
+                    val inp = base.inputSize.coerceAtLeast(1)
+                    val bh = pd.h * (frame.height / inp.toFloat())
+                    computeAutoRatioOverlayScale(ratioParams, frame.height, pd.label, bh)
+                }
+            }
+            mainHandler.post { callback(base.copy(autoRatioOverlayScale = overlayScale)) }
+        } catch (e: Exception) {
+            LogUtil.e("FurnitureFitManager", "ONNX inference with detections failed", e)
+            mainHandler.post { callback(null) }
+        }
+    }
+
+    /** Single ONNX forward + mask; no main-thread hop. */
+    private fun runOnnxSegmentationOnce(frame: Bitmap, preferFurniture: Boolean): SegmentationResult? {
+        var tensor: OnnxTensor? = null
+        return try {
+            val session = ortSession ?: return null
+            val env = ortEnv ?: return null
+
+            val firstInput = session.inputInfo.entries.firstOrNull() ?: return null
 
             val inputName = firstInput.key
             val tensorInfo = firstInput.value.info
@@ -835,7 +949,7 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            LogUtil.d("FurnitureFitManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
+            LogUtil.d("FurnitureFitManager", "ONNX once: frame ${frame.width}x${frame.height} -> ${inputW}x${inputH}")
             val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true)
                 .copy(Config.ARGB_8888, false)
 
@@ -860,7 +974,7 @@ class FurnitureFitManager(private val context: Context) {
             }
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
-            val tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
+            tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
 
             val results = session.run(mapOf(inputName to tensor))
 
@@ -873,12 +987,9 @@ class FurnitureFitManager(private val context: Context) {
             @Suppress("UNCHECKED_CAST")
             val det3d = detValue as? Array<Array<FloatArray>>
             if (det3d == null) {
-                mainHandler.post { callback(null) }
-                tensor.close()
-                return
+                return null
             }
 
-            val numFeatures = det3d[0].size
             val numAnchors = det3d[0][0].size
             val numClasses = 80
             val numMaskCoeffs = 32
@@ -919,12 +1030,9 @@ class FurnitureFitManager(private val context: Context) {
             }
 
             if (detections.isEmpty()) {
-                mainHandler.post { callback(SegmentationResult(null, emptyList(), inputW)) }
-                tensor.close()
-                return
+                return SegmentationResult(null, emptyList(), inputW)
             }
 
-            // NMS
             val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
             val keepDets = mutableListOf<Detection>()
             val suppressed = BooleanArray(sortedDets.size)
@@ -939,31 +1047,29 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            // Only keep the highest confidence detection (primary furniture)
-            val primaryDet = keepDets.firstOrNull()
+            val primaryDet = pickPrimaryOnnxFromKeep(keepDets, preferFurniture)
 
-            // Convert to DetectionResult for overlay - only the primary one
             val detectionResults = if (primaryDet != null) {
-                listOf(DetectionResult(
-                    x = primaryDet.x,
-                    y = primaryDet.y,
-                    w = primaryDet.w,
-                    h = primaryDet.h,
-                    confidence = primaryDet.confidence,
-                    label = getClassName(primaryDet.classId)
-                ))
+                listOf(
+                    DetectionResult(
+                        x = primaryDet.x,
+                        y = primaryDet.y,
+                        w = primaryDet.w,
+                        h = primaryDet.h,
+                        confidence = primaryDet.confidence,
+                        label = getClassName(primaryDet.classId),
+                    ),
+                )
             } else {
                 emptyList()
             }
 
-            // Generate mask for primary detection only
             var maskResult: Bitmap? = null
             if (primaryDet != null && proto.isNotEmpty()) {
                 val protoScaleX = inputW.toFloat() / protoW.toFloat()
                 val protoScaleY = inputH.toFloat() / protoH.toFloat()
                 val maskProto = FloatArray(protoH * protoW)
 
-                // Only process the primary (highest confidence) detection
                 val detection = primaryDet
                 val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
                 val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
@@ -989,17 +1095,14 @@ class FurnitureFitManager(private val context: Context) {
                     }
                 }
 
-                // Scale mask to frame size and apply to original image (remove background)
                 val frameW = frame.width
                 val frameH = frame.height
                 val scaleX = frameW.toFloat() / protoW
                 val scaleY = frameH.toFloat() / protoH
 
-                // Get original frame pixels
                 val framePixels = IntArray(frameW * frameH)
                 frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
 
-                // Create output with transparent background where mask <= 0.5
                 val outPixels = IntArray(frameW * frameH)
                 for (y in 0 until frameH) {
                     val protoY = (y / scaleY).toInt().coerceIn(0, protoH - 1)
@@ -1008,10 +1111,8 @@ class FurnitureFitManager(private val context: Context) {
                         val maskVal = maskProto[protoY * protoW + protoX]
                         val frameIdx = y * frameW + x
                         if (maskVal > 0.5f) {
-                            // Keep original pixel
                             outPixels[frameIdx] = framePixels[frameIdx]
                         } else {
-                            // Transparent background
                             outPixels[frameIdx] = 0x00000000
                         }
                     }
@@ -1022,17 +1123,34 @@ class FurnitureFitManager(private val context: Context) {
                 maskResult = maskBmp
             }
 
-            tensor.close()
-            val result = SegmentationResult(maskResult, detectionResults, inputW)
-            mainHandler.post { callback(result) }
+            SegmentationResult(maskResult, detectionResults, inputW)
         } catch (e: Exception) {
-            LogUtil.e("FurnitureFitManager", "ONNX inference with detections failed", e)
-            mainHandler.post { callback(null) }
+            LogUtil.e("FurnitureFitManager", "ONNX segmentation once failed", e)
+            null
+        } finally {
+            tensor?.close()
         }
     }
 
-    // NCNN inference with detections - only returns highest confidence detection
-    private fun runNcnnInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
+    private fun pickPrimaryNcnnDetection(
+        detections: List<NcnnYoloe.Detection>,
+        ratioParams: RatioSegmentationParams?,
+    ): NcnnYoloe.Detection? {
+        if (detections.isEmpty()) return null
+        val useFurniture = ratioParams != null && ratioParams.furnitureHeightFracByClass.isNotEmpty()
+        if (!useFurniture) return detections.maxByOrNull { it.confidence }
+        val furn = detections.filter {
+            YoloRatioCalibration.canonicalFurnitureLabel(it.label) in YoloRatioCalibration.FURNITURE_LABELS
+        }
+        return furn.maxByOrNull { it.confidence } ?: detections.maxByOrNull { it.confidence }
+    }
+
+    // NCNN inference with detections — always full-frame mask; ratio only adjusts overlay scale.
+    private fun runNcnnInferenceWithDetections(
+        frame: Bitmap,
+        ratioParams: RatioSegmentationParams?,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
         try {
             val ncnn = ncnnYoloe ?: run {
                 LogUtil.e("FurnitureFitManager", "NCNN not initialized")
@@ -1042,51 +1160,194 @@ class FurnitureFitManager(private val context: Context) {
 
             val startTime = System.currentTimeMillis()
 
-            // Get all detections first
             val detections = ncnn.detect(
                 bitmap = frame,
                 confThreshold = 0.25f,
-                iouThreshold = 0.45f
+                iouThreshold = 0.45f,
             )
 
             if (detections.isEmpty()) {
+                synchronized(ratioOverlaySmoothLock) { smoothedRatioOverlayScale = 1f }
                 mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
                 return
             }
 
-            // Sort by confidence and take only the highest
-            val primaryDet = detections.maxByOrNull { it.confidence }
-
-            if (primaryDet == null) {
+            val primaryFull = pickPrimaryNcnnDetection(detections, ratioParams)
+            if (primaryFull == null) {
+                synchronized(ratioOverlaySmoothLock) { smoothedRatioOverlayScale = 1f }
                 mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
                 return
             }
 
-            // Generate mask for only the primary (highest confidence) detection
-            val mask = ncnn.generateMask(
+            val maskFull = ncnn.generateMask(
                 bitmap = frame,
-                detections = listOf(primaryDet),  // Only one detection
-                maskThreshold = 0.5f
+                detections = listOf(primaryFull),
+                maskThreshold = 0.5f,
+            )
+
+            val detResult = YoloRatioCalibration.detectionResultInModelSquare(
+                primaryFull.x,
+                primaryFull.y,
+                primaryFull.width,
+                primaryFull.height,
+                frame.width,
+                frame.height,
+                640,
+                primaryFull.confidence,
+                primaryFull.label,
+            )
+
+            val overlayScale = computeAutoRatioOverlayScale(
+                ratioParams,
+                frame.height,
+                primaryFull.label,
+                primaryFull.height.toFloat(),
             )
 
             val inferenceTime = System.currentTimeMillis() - startTime
-            LogUtil.d("FurnitureFitManager", "NCNN inference: primary detection ${primaryDet.label} (${String.format("%.2f", primaryDet.confidence)}) in ${inferenceTime}ms")
-
-            // Convert to DetectionResult
-            val detectionResult = DetectionResult(
-                x = primaryDet.x,
-                y = primaryDet.y,
-                w = primaryDet.width,
-                h = primaryDet.height,
-                confidence = primaryDet.confidence,
-                label = primaryDet.label
+            LogUtil.d(
+                "FurnitureFitManager",
+                "NCNN inference: ${primaryFull.label} conf=${String.format("%.2f", primaryFull.confidence)} " +
+                    "fullFrame overlayRatio=${String.format("%.2f", overlayScale)} ${inferenceTime}ms",
             )
 
-            val result = SegmentationResult(mask, listOf(detectionResult), 640)
-            mainHandler.post { callback(result) }
+            mainHandler.post {
+                callback(SegmentationResult(maskFull, listOf(detResult), 640, overlayScale))
+            }
         } catch (e: Exception) {
             LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
             mainHandler.post { callback(null) }
+        }
+    }
+
+    /**
+     * Blocking (do not call on main thread). Used for one-shot room reference ratio capture.
+     */
+    fun detectCalibrationBoxesSync(bitmap: Bitmap): List<YoloRatioCalibration.CalibrationBox> {
+        val latch = CountDownLatch(1)
+        val out = AtomicReference<List<YoloRatioCalibration.CalibrationBox>>(emptyList())
+        inferenceExecutor.execute {
+            try {
+                val list = when {
+                    useNcnn && ncnnYoloe != null -> {
+                        val dets = ncnnYoloe!!.detect(bitmap, 0.25f, 0.45f)
+                        YoloRatioCalibration.fromNcnnDetections(dets)
+                    }
+                    ortSession != null -> onnxDetectCalibrationBoxesBlocking(bitmap)
+                    else -> emptyList()
+                }
+                out.set(list)
+            } catch (e: Exception) {
+                LogUtil.w("FurnitureFitManager", "detectCalibrationBoxesSync failed: ${e.message}")
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await(90, TimeUnit.SECONDS)
+        return out.get()
+    }
+
+    private fun onnxDetectCalibrationBoxesBlocking(bitmap: Bitmap): List<YoloRatioCalibration.CalibrationBox> {
+        var tensor: OnnxTensor? = null
+        return try {
+            val session = ortSession ?: return emptyList()
+            val env = ortEnv ?: return emptyList()
+            val firstInput = session.inputInfo.entries.firstOrNull() ?: return emptyList()
+            val inputName = firstInput.key
+            val tensorInfo = firstInput.value.info
+            var inputH = 640
+            var inputW = 640
+            if (tensorInfo is ai.onnxruntime.TensorInfo) {
+                val sh = tensorInfo.shape
+                if (sh.size == 4) {
+                    inputH = sh[2].toInt()
+                    inputW = sh[3].toInt()
+                }
+            }
+            val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true).copy(Config.ARGB_8888, false)
+            val floatCount = 1 * 3 * inputH * inputW
+            val inputFloats = FloatArray(floatCount)
+            val intValues = IntArray(inputW * inputH)
+            resized.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
+            val hw = inputH * inputW
+            for (y in 0 until inputH) {
+                val rowOff = y * inputW
+                for (x in 0 until inputW) {
+                    val v = intValues[rowOff + x]
+                    val r = ((v shr 16) and 0xFF) / 255.0f
+                    val g = ((v shr 8) and 0xFF) / 255.0f
+                    val b = (v and 0xFF) / 255.0f
+                    val pixelIdx = rowOff + x
+                    inputFloats[0 * hw + pixelIdx] = r
+                    inputFloats[1 * hw + pixelIdx] = g
+                    inputFloats[2 * hw + pixelIdx] = b
+                }
+            }
+            val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
+            tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
+            val results = session.run(mapOf(inputName to tensor))
+            @Suppress("UNCHECKED_CAST")
+            val det3d = results.get(0)?.value as? Array<Array<FloatArray>> ?: return emptyList()
+            val numAnchors = det3d[0][0].size
+            val numClasses = 80
+            val numMaskCoeffs = 32
+            val classStartIdx = 4
+            val maskCoeffStartIdx = 4 + numClasses
+            val confThreshold = 0.25f
+            val iouThreshold = 0.45f
+            val maxDetections = 100
+            val detections = mutableListOf<Detection>()
+            for (anchor in 0 until numAnchors) {
+                var maxScore = Float.MIN_VALUE
+                var bestClass = -1
+                for (c in 0 until numClasses) {
+                    val score = det3d[0][classStartIdx + c][anchor]
+                    if (score > maxScore) {
+                        maxScore = score
+                        bestClass = c
+                    }
+                }
+                if (maxScore > confThreshold) {
+                    val x = det3d[0][0][anchor]
+                    val y = det3d[0][1][anchor]
+                    val bw = det3d[0][2][anchor]
+                    val bh = det3d[0][3][anchor]
+                    val coeffs = FloatArray(numMaskCoeffs)
+                    for (c in 0 until numMaskCoeffs) {
+                        coeffs[c] = det3d[0][maskCoeffStartIdx + c][anchor]
+                    }
+                    detections.add(Detection(anchor, x, y, bw, bh, maxScore, bestClass, coeffs))
+                }
+            }
+            if (detections.isEmpty()) return emptyList()
+            val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
+            val keepDets = mutableListOf<Detection>()
+            val suppressed = BooleanArray(sortedDets.size)
+            for (i in sortedDets.indices) {
+                if (suppressed[i]) continue
+                keepDets.add(sortedDets[i])
+                for (j in i + 1 until sortedDets.size) {
+                    if (suppressed[j]) continue
+                    if (calculateIoU(sortedDets[i], sortedDets[j]) > iouThreshold) suppressed[j] = true
+                }
+            }
+            val sx = bitmap.width / inputW.toFloat()
+            val sy = bitmap.height / inputH.toFloat()
+            keepDets.map { d ->
+                YoloRatioCalibration.CalibrationBox(
+                    label = getClassName(d.classId),
+                    centerX = d.x * sx,
+                    centerY = d.y * sy,
+                    width = d.w * sx,
+                    height = d.h * sy,
+                    confidence = d.confidence,
+                )
+            }
+        } catch (e: Exception) {
+            LogUtil.w("FurnitureFitManager", "onnxDetectCalibrationBoxesBlocking: ${e.message}")
+            emptyList()
+        } finally {
+            tensor?.close()
         }
     }
 

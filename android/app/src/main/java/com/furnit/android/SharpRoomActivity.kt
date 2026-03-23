@@ -21,6 +21,7 @@ import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import com.furnit.android.ar.ArSupportChecker
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -37,7 +38,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.RoomYoloRatioCapture
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.RatioSegmentationParams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,6 +94,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private var roomCenterX: Float = 0f
     private var roomCenterY: Float = 0f
     private var roomCenterZ: Float = 0f
+    /** Isotropic scale for displayed dims vs raw SHARP bbox (ARCore calibration). */
+    private var arDisplayScale: Float = 1f
     private var photoOrientation: String = "portrait"
     /** True when the photo was taken with wide-angle (0.5x) lens; viewer camera position is adjusted for wider FOV. */
     private var photoWideAngle: Boolean = false
@@ -103,6 +108,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
+    /** Per-room YOLO height fractions for brain (SmartyPants) ROI; null if not on disk. */
+    private var brainRatioParams: RatioSegmentationParams? = null
     /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
     private var statusBarInsetTop = 0
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -116,6 +123,15 @@ class SharpRoomActivity : AppCompatActivity() {
             DebugLogger.d(TAG, "Brain: camera permission denied")
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
         }
+    }
+
+    private val arMeasureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val dist = result.data?.getFloatExtra(ArMeasureActivity.RESULT_EXTRA_DISTANCE_M, Float.NaN) ?: Float.NaN
+        if (dist.isNaN() || dist <= 0f) return@registerForActivityResult
+        showArCalibrationDialog(dist)
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -164,10 +180,28 @@ class SharpRoomActivity : AppCompatActivity() {
                 disk.roomCenterZ?.let { roomCenterZ = it }
                 rawOrientation = disk.normalizedOrientation()
                 photoWideAngle = disk.photoWideAngle
+                disk.arDisplayScale?.takeIf { it > 0f }?.let { arDisplayScale = it }
                 DebugLogger.d(
                     TAG,
-                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle"
+                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle arDisplayScale=$arDisplayScale"
                 )
+                if (disk.yoloFurnitureHeightFracByClass.isNotEmpty()) {
+                    brainRatioParams = RatioSegmentationParams(
+                        furnitureHeightFracByClass = disk.yoloFurnitureHeightFracByClass,
+                        defaultTargetHeightFrac = 0.26f,
+                    )
+                    DebugLogger.d(TAG, "Brain ratio targets loaded: ${disk.yoloFurnitureHeightFracByClass.keys}")
+                }
+            }
+        }
+
+        roomFolder?.let { folderPath ->
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching {
+                    RoomYoloRatioCapture.captureIfMissing(applicationContext, File(folderPath))
+                }.onFailure { e ->
+                    DebugLogger.eDebugMode(TAG, "Room YOLO ratio capture failed", e)
+                }
             }
         }
 
@@ -381,6 +415,90 @@ class SharpRoomActivity : AppCompatActivity() {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
+    private fun effRoomWidth(): Float = roomWidth * arDisplayScale
+    private fun effRoomHeight(): Float = roomHeight * arDisplayScale
+    private fun effRoomDepth(): Float = roomDepth * arDisplayScale
+    private fun effRoomCenterX(): Float = roomCenterX * arDisplayScale
+    private fun effRoomCenterY(): Float = roomCenterY * arDisplayScale
+    private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
+
+    private fun launchArMeasureActivity() {
+        val intent = Intent(this, ArMeasureActivity::class.java).apply {
+            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_WIDTH_M, roomWidth)
+            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_HEIGHT_M, roomHeight)
+            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_DEPTH_M, roomDepth)
+        }
+        arMeasureLauncher.launch(intent)
+    }
+
+    private fun showArCalibrationDialog(measuredMeters: Float) {
+        val items = arrayOf(
+            getString(R.string.ar_measure_calib_width, roomWidth),
+            getString(R.string.ar_measure_calib_height, roomHeight),
+            getString(R.string.ar_measure_calib_depth, roomDepth),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ar_measure_apply_title)
+            .setMessage(
+                getString(
+                    R.string.ar_measure_apply_message,
+                    measuredMeters,
+                    roomWidth,
+                    roomHeight,
+                    roomDepth,
+                ),
+            )
+            .setItems(items) { _, which ->
+                val ref = when (which) {
+                    0 -> roomWidth
+                    1 -> roomHeight
+                    else -> roomDepth
+                }
+                if (ref <= 1e-4f) {
+                    Toast.makeText(this, R.string.ar_measure_calib_invalid_ref, Toast.LENGTH_SHORT).show()
+                    return@setItems
+                }
+                applyArDisplayScale(measuredMeters / ref)
+            }
+            .setNegativeButton(R.string.common_cancel, null)
+            .show()
+    }
+
+    private fun applyArDisplayScale(newScale: Float) {
+        if (newScale <= 0f || newScale.isNaN()) return
+        arDisplayScale = newScale
+        refreshDimensionTitle()
+        reloadWebViewWithEffectiveFallbackDims()
+        val folder = roomFolder
+        if (folder != null) {
+            val dir = File(folder)
+            val snap = RoomFolderMetadata.readFromFolder(dir)
+            if (snap != null) {
+                RoomFolderMetadata.writeToFolder(dir, snap.copy(arDisplayScale = arDisplayScale))
+            }
+            Toast.makeText(this, R.string.ar_measure_calib_applied, Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, R.string.ar_measure_calib_no_folder, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun refreshDimensionTitle() {
+        if (::titleView.isInitialized) {
+            titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+        }
+    }
+
+    private fun reloadWebViewWithEffectiveFallbackDims() {
+        val html = generateWebGLHTML()
+        webView.loadDataWithBaseURL(
+            "https://appassets.androidplatform.net/",
+            html,
+            "text/html",
+            "UTF-8",
+            null,
+        )
+    }
+
     /** Position arrow overlay so it sits just below the top bar (works in portrait and landscape). */
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
         val top = statusBarInsetTop + topBar.height
@@ -423,7 +541,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
             // Title with dimensions
             titleView = TextView(this@SharpRoomActivity).apply {
-                text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
+                text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
                 textSize = 17f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
@@ -450,6 +568,27 @@ class SharpRoomActivity : AppCompatActivity() {
                 setOnClickListener { recenterCamera() }
             }
             barContainer.addView(recenterBtn)
+
+            if (ArSupportChecker.isArCoreSupported(this@SharpRoomActivity)) {
+                val arMeasureBtn = TextView(this@SharpRoomActivity).apply {
+                    text = "AR"
+                    contentDescription = getString(R.string.sharp_room_ar_measure_content_description)
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#2E7D32"))
+                    }
+                    background = bg
+                    val size = dpToPx(40)
+                    val params = LinearLayout.LayoutParams(size, size)
+                    params.setMargins(dpToPx(8), 0, 0, 0)
+                    layoutParams = params
+                    setOnClickListener { launchArMeasureActivity() }
+                }
+                barContainer.addView(arMeasureBtn)
+            }
 
             // Help button (circle with ?)
             val helpBtn = TextView(this@SharpRoomActivity).apply {
@@ -797,6 +936,16 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun startBrainDetection() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        roomFolder?.let { path ->
+            RoomFolderMetadata.readFromFolder(File(path))?.let { disk ->
+                if (disk.yoloFurnitureHeightFracByClass.isNotEmpty()) {
+                    brainRatioParams = RatioSegmentationParams(
+                        furnitureHeightFracByClass = disk.yoloFurnitureHeightFracByClass,
+                        defaultTargetHeightFrac = 0.26f,
+                    )
+                }
+            }
+        }
         lifecycleScope.launch {
             val manager = withContext(Dispatchers.IO) {
                 val m = FurnitureFitManager(this@SharpRoomActivity)
@@ -845,7 +994,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     if (frameCount == 1 || frameCount % 30 == 0) {
                         DebugLogger.d(TAG, "Brain: analysis frame $frameCount (camera active)")
                     }
-                    manager.segmentWithDetectionsAsync(bitmap) { result ->
+                    manager.segmentWithDetectionsAsync(bitmap, brainRatioParams) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
@@ -857,7 +1006,12 @@ class SharpRoomActivity : AppCompatActivity() {
                             val mask = result?.mask
                             val dets = result?.detections ?: emptyList()
                             val size = result?.inputSize ?: 640
-                            brainDetectionOverlayView.setMaskAndDetections(mask, dets, size)
+                            brainDetectionOverlayView.setMaskAndDetections(
+                                mask,
+                                dets,
+                                size,
+                                result?.autoRatioOverlayScale ?: 1f,
+                            )
                         }
                     }
                 } finally {
@@ -922,12 +1076,12 @@ class SharpRoomActivity : AppCompatActivity() {
         // upside-down fix) so "front" maps to this side; matches current good landscape behavior.
         // Portrait uses the same Rx+Rz as iOS; frameFromWorldBox uses Swift SharpRoomView rule (front at maxZ).
         val webglEntranceMinZ = true
-        val fallbackW = roomWidth.toDouble()
-        val fallbackH = roomHeight.toDouble()
-        val fallbackD = roomDepth.toDouble()
-        val fallbackCx = roomCenterX.toDouble()
-        val fallbackCy = roomCenterY.toDouble()
-        val fallbackCz = roomCenterZ.toDouble()
+        val fallbackW = effRoomWidth().toDouble()
+        val fallbackH = effRoomHeight().toDouble()
+        val fallbackD = effRoomDepth().toDouble()
+        val fallbackCx = effRoomCenterX().toDouble()
+        val fallbackCy = effRoomCenterY().toDouble()
+        val fallbackCz = effRoomCenterZ().toDouble()
         val usedWideLens = photoWideAngle
 
         // SparkJS implementation matching iOS exactly
@@ -1621,9 +1775,11 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("roomCenterZ=$roomCenterZ\n")
             metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
             metadata.append("photoWideAngle=$photoWideAngle\n")
+            metadata.append("arDisplayScale=$arDisplayScale\n")
             metadataFile.writeText(metadata.toString())
-            RoomFolderMetadata.writeToFolder(
-                File(folder),
+            val folderFile = File(folder)
+            val snapshotToWrite = RoomFolderMetadata.snapshotPreservingYoloFields(
+                folderFile,
                 RoomFolderMetadata.Snapshot(
                     name = name,
                     createdAt = System.currentTimeMillis(),
@@ -1636,8 +1792,10 @@ class SharpRoomActivity : AppCompatActivity() {
                     roomCenterX = roomCenterX,
                     roomCenterY = roomCenterY,
                     roomCenterZ = roomCenterZ,
-                )
+                    arDisplayScale = arDisplayScale,
+                ),
             )
+            RoomFolderMetadata.writeToFolder(folderFile, snapshotToWrite)
 
             Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
             DebugLogger.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")

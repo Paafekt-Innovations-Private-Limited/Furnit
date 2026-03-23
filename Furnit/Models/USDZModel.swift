@@ -14,6 +14,16 @@ struct USDZModel: Identifiable, Hashable {
     let roomHeight: Float?  // Room height in meters
     let roomDepth: Float?  // Room depth in meters (for meshroom)
 
+    // MARK: - YOLO ratio calibration (optional; from *.meta JSON)
+    /// Wall bbox height / reference image height, or 1.0 when using full-frame proxy.
+    let yoloWallHeightFrac: Float?
+    /// Canonical furniture label → height / reference image height.
+    let yoloFurnitureHeightFracByClass: [String: Float]?
+    /// Reference image height in pixels at calibration time.
+    let yoloRefImageHeightPx: Int?
+    /// SHARP / metadata room height (m) when ratios were captured.
+    let sharpRoomHeightAtYoloCapture: Float?
+
     // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false) {
         self.name = name
@@ -25,12 +35,30 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = nil
         self.roomHeight = nil
         self.roomDepth = nil
+        self.yoloWallHeightFrac = nil
+        self.yoloFurnitureHeightFracByClass = nil
+        self.yoloRefImageHeightPx = nil
+        self.sharpRoomHeightAtYoloCapture = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
 
     // Full initializer with file type and size
-    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, roomDepth: Float? = nil) {
+    init(
+        name: String,
+        fileName: String,
+        isSavedRoom: Bool,
+        fileType: ModelFileType,
+        fileSize: UInt64?,
+        photoOrientation: PhotoOrientation = .portrait,
+        roomWidth: Float? = nil,
+        roomHeight: Float? = nil,
+        roomDepth: Float? = nil,
+        yoloWallHeightFrac: Float? = nil,
+        yoloFurnitureHeightFracByClass: [String: Float]? = nil,
+        yoloRefImageHeightPx: Int? = nil,
+        sharpRoomHeightAtYoloCapture: Float? = nil
+    ) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
@@ -40,6 +68,10 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = roomWidth
         self.roomHeight = roomHeight
         self.roomDepth = roomDepth
+        self.yoloWallHeightFrac = yoloWallHeightFrac
+        self.yoloFurnitureHeightFracByClass = yoloFurnitureHeightFracByClass
+        self.yoloRefImageHeightPx = yoloRefImageHeightPx
+        self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }

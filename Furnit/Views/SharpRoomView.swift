@@ -150,19 +150,22 @@ struct SharpRoomView: View {
     let photoOrientation: PhotoOrientation  // Source photo orientation (for UI layout)
     let savedRoomWidth: Float?  // Room width from saved metadata (for HomeView)
     let savedRoomHeight: Float?  // Room height from saved metadata (for HomeView)
+    /// When opening a saved PLY from Home, used for YOLO ratio calibration + FurnitureFit targets.
+    let savedRoomModel: USDZModel?
     @Environment(\.dismiss) private var dismiss
 
     // Parsed bounds from PLY file (used when roomMeasurements is nil)
     private let parsedBounds: RoomBounds?
 
     // Convenience initializer for backwards compatibility
-    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true, photoOrientation: PhotoOrientation = .portrait, savedRoomWidth: Float? = nil, savedRoomHeight: Float? = nil) {
+    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true, photoOrientation: PhotoOrientation = .portrait, savedRoomWidth: Float? = nil, savedRoomHeight: Float? = nil, savedRoomModel: USDZModel? = nil) {
         self.plyURL = plyURL
         self.roomMeasurements = roomMeasurements
         self.allowSave = allowSave
         self.photoOrientation = photoOrientation
         self.savedRoomWidth = savedRoomWidth
         self.savedRoomHeight = savedRoomHeight
+        self.savedRoomModel = savedRoomModel
 
         // Compute viewer PLY URL (prefer 3DGS for SparkJS, then classic, then base)
         let basePath = plyURL.path
@@ -416,6 +419,16 @@ struct SharpRoomView: View {
             yoloeService.ensureModelLoaded()
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
+            if let sm = savedRoomModel {
+                let sharpH = roomMeasurements?.frontWallHeight ?? sm.roomHeight
+                Task {
+                    await RoomYoloRatioCapture.captureIfMissing(
+                        savedModel: sm,
+                        modelManager: modelManager,
+                        sharpRoomHeightMeters: sharpH
+                    )
+                }
+            }
         }
         .onDisappear { OrientationLockManager.shared.unlock() }
         .alert("Save Room", isPresented: $showRoomNameInput) {
@@ -560,6 +573,13 @@ struct SharpRoomView: View {
         calibratedRoomHeight ?? roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
     }
 
+    private var furnitureFitDefaultTargetFrac: Float {
+        if let wall = savedRoomModel?.yoloWallHeightFrac {
+            return min(0.6, max(0.08, wall * 0.35))
+        }
+        return 0.26
+    }
+
     private var furnitureFitOverlayView: some View {
         FurnitureFitUIView(
             capturedImage: .constant(nil),
@@ -570,6 +590,8 @@ struct SharpRoomView: View {
             lockedOrientation: photoOrientation,
             roomWidthMeters: furnitureFitRoomWidth,
             roomHeightMeters: furnitureFitRoomHeight,
+            ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
+            defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
             onFurnitureSizeEstimated: { width, height in
                 detectedFurnitureWidth = width
                 detectedFurnitureHeight = height
