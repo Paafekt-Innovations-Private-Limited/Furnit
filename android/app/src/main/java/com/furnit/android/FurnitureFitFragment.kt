@@ -609,7 +609,8 @@ class FurnitureFitFragment : Fragment() {
 
         val rotation = requireContext().displayRotationForCameraX()
         val analysis = ImageAnalysis.Builder()
-            .setTargetResolution(android.util.Size(768, 768))
+            // 640² matches typical YOLO input; less pixels than 768² → faster resize + NCNN (model scales internally).
+            .setTargetResolution(android.util.Size(640, 640))
             .setTargetRotation(rotation)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()

@@ -812,6 +812,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
             putExtra("photo_orientation", metadataOrientationStringForViewer())
             putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
+            // Mark this as a temporary SHARP room: if the user backs out without saving,
+            // SharpRoomActivity will delete the folder so it doesn't appear in the list.
+            putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, true)
         }
         startActivity(intent)
     }

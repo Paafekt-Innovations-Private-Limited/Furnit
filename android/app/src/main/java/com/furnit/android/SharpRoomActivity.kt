@@ -11,6 +11,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import com.furnit.android.utils.DebugLogger
 import android.view.Gravity
 import android.view.View
@@ -76,6 +78,52 @@ class SharpRoomActivity : AppCompatActivity() {
         const val EXTRA_ALLOW_SAVE = "allow_save"
         /** True if the photo was taken with the wide-angle (0.5x) lens; used to adjust initial camera position. */
         const val EXTRA_PHOTO_WIDE_ANGLE = "photo_wide_angle"
+        /** True when this Sharp room comes directly from a new SHARP generation (SinglePhotoRoom); delete if not saved. */
+        const val EXTRA_IS_TEMP_SHARP_ROOM = "is_temp_sharp_room"
+    }
+
+    /** Persist latest Spark/Box3 dimensions into room_meta.json so list screen shows accurate width/height. */
+    private fun persistSparkBoxDimensionsDebounced() {
+        val folderPath = roomFolder ?: return
+        val w = roomWidth
+        val h = roomHeight
+        if (w <= 0f || h <= 0f) return
+
+        val folder = File(folderPath)
+        sparkBoxPersistRunnable?.let { sparkBoxPersistHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            try {
+                val prev = RoomFolderMetadata.readFromFolder(folder)
+                val baseSnapshot = if (prev != null) {
+                    prev.copy(
+                        roomWidth = w,
+                        roomHeight = h
+                    )
+                } else {
+                    RoomFolderMetadata.Snapshot(
+                        name = null,
+                        createdAt = folder.lastModified(),
+                        type = "sharp",
+                        photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                        photoWideAngle = photoWideAngle,
+                        roomWidth = w,
+                        roomHeight = h,
+                        roomDepth = roomDepth,
+                        roomCenterX = null,
+                        roomCenterY = null,
+                        roomCenterZ = null,
+                        arDisplayScale = arDisplayScale
+                    )
+                }
+                val merged = RoomFolderMetadata.snapshotPreservingYoloFields(folder, baseSnapshot)
+                RoomFolderMetadata.writeToFolder(folder, merged)
+                DebugLogger.d(TAG, "Persisted Spark Box3 dimensions to room_meta.json: ${w}x${h}")
+            } catch (e: Exception) {
+                DebugLogger.eDebugMode(TAG, "Failed to persist Spark Box3 dimensions", e)
+            }
+        }
+        sparkBoxPersistRunnable = runnable
+        sparkBoxPersistHandler.postDelayed(runnable, 1500L)
     }
 
     private lateinit var webView: WebView
@@ -130,8 +178,25 @@ class SharpRoomActivity : AppCompatActivity() {
      */
     @Volatile
     private var brainSegmentationAcceptingUpdates: Boolean = false
+    /** True after the first segmentation result arrives for the current brain session (CameraX or ARCore). */
+    @Volatile
+    private var brainFirstResultReceived: Boolean = false
+    /** Used so we can fall back from ARCore brain path to CameraX if no result arrives. */
+    private var disableArBrainThisSession: Boolean = false
+    private val brainTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var brainTimeoutRunnable: Runnable? = null
+    /** Progress bar inside the brain progress overlay (used only for simple animated feedback). */
+    private var brainProgressBar: ProgressBar? = null
     /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
     private var statusBarInsetTop = 0
+
+    /** Debounced write of Spark/Box3 dimensions to [room_meta.json] (list screen reads same file). */
+    private val sparkBoxPersistHandler = Handler(Looper.getMainLooper())
+    private var sparkBoxPersistRunnable: Runnable? = null
+    /** True when this viewer is showing a freshly-generated SHARP room that hasn't been saved with a name yet. */
+    private var isTempSharpRoom: Boolean = false
+    /** Set to true once the user explicitly saves the room from this viewer. */
+    private var hasSavedRoom: Boolean = false
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -167,6 +232,7 @@ class SharpRoomActivity : AppCompatActivity() {
         plyPath = intent.getStringExtra(EXTRA_PLY_PATH)
         roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
         allowSave = intent.getBooleanExtra(EXTRA_ALLOW_SAVE, true)
+        isTempSharpRoom = intent.getBooleanExtra(EXTRA_IS_TEMP_SHARP_ROOM, false)
 
         // Load saved dimensions and orientation from intent (if available)
         var savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
@@ -662,9 +728,24 @@ class SharpRoomActivity : AppCompatActivity() {
                     Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                // For now, update the displayed height; deeper WebGL scaling can be added by wiring a JS hook.
-                val newTitle = String.format(Locale.US, "%.1f × %.1f m", effRoomWidth(), real)
-                titleView.text = newTitle
+                // Compute how much we need to scale the current room so that the *effective* front-wall
+                // height (roomHeight * arDisplayScale) matches the user-entered real height.
+                val currentEffH = effRoomHeight()
+                if (currentEffH <= 0f) {
+                    Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val factor = real / currentEffH
+                // Scale the underlying SHARP dimensions; arDisplayScale stays the same so the new
+                // effective dimensions become real numbers. Depth is scaled as well for consistency.
+                roomWidth *= factor
+                roomHeight *= factor
+                roomDepth *= factor
+                // Update title to show calibrated dimensions.
+                titleView.text = String.format(Locale.US, "%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+                DebugLogger.d(TAG, "Room calibration applied: factor=$factor newDims=${effRoomWidth()}x${effRoomHeight()} (real=$real)")
+                // Persist calibrated dimensions so the home list and future viewer sessions match.
+                persistSparkBoxDimensionsDebounced()
             }
             .show()
     }
@@ -951,12 +1032,19 @@ class SharpRoomActivity : AppCompatActivity() {
                     setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(8))
                 }
                 addView(label)
-                val progress = ProgressBar(this@SharpRoomActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                val progress = ProgressBar(
+                    this@SharpRoomActivity,
+                    null,
+                    android.R.attr.progressBarStyleHorizontal
+                ).apply {
                     layoutParams = LinearLayout.LayoutParams(dpToPx(250), ViewGroup.LayoutParams.WRAP_CONTENT)
-                    max = 100
-                    progress = 15
-                    progressDrawable.colorFilter = android.graphics.PorterDuffColorFilter(0xFF4CAF50.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+                    isIndeterminate = true
+                    progressDrawable.colorFilter = android.graphics.PorterDuffColorFilter(
+                        0xFF4CAF50.toInt(),
+                        android.graphics.PorterDuff.Mode.SRC_IN
+                    )
                 }
+                brainProgressBar = progress
                 addView(progress)
             }
             addView(content)
@@ -994,6 +1082,11 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun startBrainDetection() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        // Reset per-session state and any pending timeout from a previous brain run.
+        brainFirstResultReceived = false
+        brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+        brainTimeoutRunnable = null
+        disableArBrainThisSession = false
         lifecycleScope.launch {
             val manager = withContext(Dispatchers.IO) {
                 val m = FurnitureFitManager(this@SharpRoomActivity)
@@ -1010,10 +1103,38 @@ class SharpRoomActivity : AppCompatActivity() {
             DebugLogger.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
             furnitureFitManager = manager
             runOnUiThread { bindBrainCamera(manager) }
+
+            // If ARCore path fails to produce any segmentation result (e.g. camera not available or ARCore
+            // session cannot be created), fall back to classic CameraX brain path instead of leaving the
+            // user stuck on "Detecting furniture…".
+            brainTimeoutRunnable = Runnable {
+                if (!brainFirstResultReceived && brainProgressOverlay.visibility == View.VISIBLE) {
+                    DebugLogger.eDebugMode(TAG, "Brain: timeout waiting for first result, falling back to CameraX brain path")
+                    // Tear down ARCore controller if present.
+                    brainArController?.let { c ->
+                        try {
+                            sharpRoomContentRoot.removeView(c.glSurfaceView)
+                        } catch (_: Exception) {
+                        }
+                        c.destroy()
+                    }
+                    brainArController = null
+                    brainSegmentationAcceptingUpdates = false
+                    setBrainSegmentationButtonActive(false)
+                    hideBrainProgressOverlay()
+                    disableArBrainThisSession = true
+                    furnitureFitManager?.let { mgr ->
+                        bindBrainCamera(mgr)
+                    }
+                }
+            }.also { runnable ->
+                brainTimeoutHandler.postDelayed(runnable, 7_000L)
+            }
         }
     }
 
     private fun shouldUseArBrainCamera(): Boolean {
+        if (disableArBrainThisSession) return false
         return FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this) &&
             ArSupportChecker.isArCoreSupported(this)
     }
@@ -1041,7 +1162,7 @@ class SharpRoomActivity : AppCompatActivity() {
             provider.unbindAll()
             DebugLogger.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
             val analysis = ImageAnalysis.Builder()
-                .setTargetResolution(android.util.Size(768, 768))
+                .setTargetResolution(android.util.Size(640, 640))
                 // Match display so ImageProxy.rotationDegrees + toBitmapSafe() align mask with portrait/landscape UI
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -1066,6 +1187,9 @@ class SharpRoomActivity : AppCompatActivity() {
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
+                                brainFirstResultReceived = true
+                                brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+                                brainTimeoutRunnable = null
                                 DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
                                 hideBrainProgressOverlay()
                                 brainDetectionOverlay.visibility = View.VISIBLE
@@ -1145,6 +1269,9 @@ class SharpRoomActivity : AppCompatActivity() {
                     isBrainInferenceRunning.set(false)
                     if (!hasFirstResult[0]) {
                         hasFirstResult[0] = true
+                        brainFirstResultReceived = true
+                        brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+                        brainTimeoutRunnable = null
                         DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
                         hideBrainProgressOverlay()
                         brainDetectionOverlay.visibility = View.VISIBLE
@@ -1203,8 +1330,12 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun stopBrainDetection() {
-        brainSegmentationAcceptingUpdates = false
         DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera / AR")
+        brainSegmentationAcceptingUpdates = false
+        brainFirstResultReceived = false
+        brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+        brainTimeoutRunnable = null
+        disableArBrainThisSession = false
         brainArController?.let { c ->
             try {
                 sharpRoomContentRoot.removeView(c.glSurfaceView)
@@ -1981,6 +2112,8 @@ class SharpRoomActivity : AppCompatActivity() {
 
             Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
             DebugLogger.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
+            hasSavedRoom = true
+            isTempSharpRoom = false
 
             // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
             val intent = Intent(this, ContentActivity::class.java)
@@ -2047,16 +2180,16 @@ class SharpRoomActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onDimensionsMeasured(width: Float, height: Float) {
             runOnUiThread {
-                // Only use JS-measured dimensions if no saved dimensions were provided
-                if (!hasSavedDimensions) {
-                    roomWidth = width
-                    roomHeight = height
-                    // Update title
-                    titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
-                    DebugLogger.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
-                } else {
-                    DebugLogger.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
+                if (width <= 0f || height <= 0f) {
+                    DebugLogger.d(TAG, "WebGL dimensions measured but non-positive, ignoring: ${width}x${height}")
+                    return@runOnUiThread
                 }
+                // Always treat Spark Box3 as canonical room width/height once available.
+                roomWidth = width
+                roomHeight = height
+                titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
+                DebugLogger.d(TAG, "WebGL dimensions measured (Box3): ${roomWidth}x${roomHeight} (will persist)")
+                persistSparkBoxDimensionsDebounced()
             }
         }
 
@@ -2105,6 +2238,9 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (isFinishing) {
+            deleteTempSharpRoomIfNeeded()
+        }
         stopBrainDetection()
         if (!cameraExecutor.isShutdown) {
             cameraExecutor.shutdown()
@@ -2112,6 +2248,21 @@ class SharpRoomActivity : AppCompatActivity() {
         furnitureFitManager?.close()
         webView.destroy()
         super.onDestroy()
+    }
+
+    /** Delete SHARP room folder when viewer was opened as a temp room and user backed out without saving. */
+    private fun deleteTempSharpRoomIfNeeded() {
+        if (!isTempSharpRoom || hasSavedRoom) return
+        val folderPath = roomFolder ?: return
+        try {
+            val folder = File(folderPath)
+            if (folder.exists()) {
+                val ok = folder.deleteRecursively()
+                DebugLogger.d(TAG, "Temp Sharp room deleted on exit: $folderPath success=$ok")
+            }
+        } catch (e: Exception) {
+            DebugLogger.eDebugMode(TAG, "Failed to delete temp Sharp room at $folderPath", e)
+        }
     }
 }
 

@@ -64,8 +64,8 @@ class FurnitureFitArCameraController(
     private var lastEstimatedHeightMeters = 0f
 
     private var lastInferencePostMs = 0L
-    /** Matches iOS default `processInterval` 0.07s between segmentation starts. */
-    var minFrameIntervalMs: Long = 70L
+    /** Min time between frames handed to YOLO (iOS ~0.07s; slightly lower here for responsiveness). */
+    var minFrameIntervalMs: Long = 55L
 
     @Volatile
     private var preferImmediateNextBitmap = false
@@ -88,6 +88,25 @@ class FurnitureFitArCameraController(
      * target rotation so segmentation bitmap aspect matches the locked activity.
      */
     var lockedPhotoOrientation: String = "portrait"
+
+    /** Cache for [orientedToRawInverseForDimensions] — avoids per-frame bitmap work for AR metrics. */
+    private var cachedInverseRawW = -1
+    private var cachedInverseRawH = -1
+    private var cachedInverseOrientation: String = ""
+    private var cachedOrientedToRawInverse: Matrix? = null
+
+    private fun orientedInverseForCurrentCamera(rawW: Int, rawH: Int): Matrix? {
+        if (rawW == cachedInverseRawW && rawH == cachedInverseRawH &&
+            lockedPhotoOrientation == cachedInverseOrientation
+        ) {
+            return cachedOrientedToRawInverse
+        }
+        cachedInverseRawW = rawW
+        cachedInverseRawH = rawH
+        cachedInverseOrientation = lockedPhotoOrientation
+        cachedOrientedToRawInverse = orientedToRawInverseForDimensions(rawW, rawH, lockedPhotoOrientation)
+        return cachedOrientedToRawInverse
+    }
 
     fun setBboxHint(centerImageX: Float, centerImageY: Float, heightImagePx: Float, label: String) {
         val labelChanged = synchronized(bboxLock) {
@@ -266,13 +285,9 @@ class FurnitureFitArCameraController(
         try {
             val rawW = image.width
             val rawH = image.height
-            val rawBmp = image.yuv420888ToBitmap() ?: return
-            val (orientedBmp, orientedToRawInverse) = rawBmp.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
-            if (orientedBmp !== rawBmp) {
-                rawBmp.recycle()
-            }
-
-            updateArScaleForCurrentFrame(frame, rawW, rawH, orientedToRawInverse)
+            // AR overlay scale uses bbox + intrinsics only — inverse matrix does not require decoding YUV.
+            val orientedInverse = orientedInverseForCurrentCamera(rawW, rawH)
+            updateArScaleForCurrentFrame(frame, rawW, rawH, orientedInverse)
 
             if (!shouldPostBitmapFrame()) {
                 preferImmediateNextBitmap = true
@@ -280,14 +295,21 @@ class FurnitureFitArCameraController(
 
             val now = SystemClock.elapsedRealtime()
             val allowPost = shouldPostBitmapFrame() && (now - lastInferencePostMs >= minFrameIntervalMs)
-            if (allowPost) {
-                lastInferencePostMs = now
-                val consumer = onBitmapFrame
-                if (consumer != null) {
-                    inferenceExecutor.execute { consumer(orientedBmp) }
-                } else {
-                    orientedBmp.recycle()
-                }
+            if (!allowPost) {
+                return
+            }
+
+            // Expensive: YUV → bitmap only when we actually feed YOLO (throttled by [minFrameIntervalMs]).
+            val rawBmp = image.yuv420888ToBitmap() ?: return
+            val (orientedBmp, _) = rawBmp.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
+            if (orientedBmp !== rawBmp) {
+                rawBmp.recycle()
+            }
+
+            lastInferencePostMs = now
+            val consumer = onBitmapFrame
+            if (consumer != null) {
+                inferenceExecutor.execute { consumer(orientedBmp) }
             } else {
                 orientedBmp.recycle()
             }

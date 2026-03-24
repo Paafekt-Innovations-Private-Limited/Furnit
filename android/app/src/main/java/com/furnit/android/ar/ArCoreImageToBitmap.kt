@@ -90,6 +90,27 @@ fun Bitmap.rotateToMatchLockedRoomPhoto(lockedOrientation: String): Pair<Bitmap,
     return Pair(out, inv)
 }
 
+/**
+ * Same inverse mapping as [Bitmap.rotateToMatchLockedRoomPhoto] but without allocating bitmaps.
+ * Use this on the GL thread every frame; only decode YUV→bitmap when actually sending a frame to YOLO.
+ */
+fun orientedToRawInverseForDimensions(
+    rawWidth: Int,
+    rawHeight: Int,
+    lockedOrientation: String,
+): Matrix? {
+    val wantLandscape = lockedOrientation.equals("landscape", ignoreCase = true)
+    if (rawWidth == rawHeight) return null
+    val isLandscape = rawWidth > rawHeight
+    if (wantLandscape == isLandscape) return null
+    val cx = rawWidth / 2f
+    val cy = rawHeight / 2f
+    val m = Matrix()
+    m.postRotate(90f, cx, cy)
+    val inv = Matrix()
+    return if (m.invert(inv)) inv else null
+}
+
 /** Maps bbox vertical extent from oriented pixels to raw [Frame.acquireCameraImage] pixels (after [rotateToMatchLockedRoomPhoto]). */
 fun orientedBboxHeightToRawPixels(
     centerXOriented: Float,
