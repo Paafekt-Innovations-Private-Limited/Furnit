@@ -71,6 +71,8 @@ class FurnitureFitFragment : Fragment() {
     private var cameraProvider: ProcessCameraProvider? = null
     /** ARCore camera path (mutually exclusive with [cameraProvider] while active). */
     private var arCameraController: FurnitureFitArCameraController? = null
+    /** Host for [startArCameraPath]; used to tear down / recreate ARCore when the AR setting changes while this screen is open. */
+    private var cameraPathRoot: FrameLayout? = null
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
     private var hasFirstDetection = false
@@ -275,6 +277,7 @@ class FurnitureFitFragment : Fragment() {
         calibrationPillContainer = calibrationPill
         bottomControls.addView(calibrationPill)
 
+
         // Screenshot button (right)
         val screenshotButton = ImageButton(requireContext()).apply {
             setImageResource(android.R.drawable.ic_menu_camera)
@@ -307,6 +310,7 @@ class FurnitureFitFragment : Fragment() {
         // Initial progress
         setProgress(5, "Starting camera...")
 
+        cameraPathRoot = root
         if (useArAssistedCameraPath()) {
             startArCameraPath(root)
         } else {
@@ -394,8 +398,14 @@ class FurnitureFitFragment : Fragment() {
                             det.h * scaleY,
                             det.label,
                         )
-                        val maxH = result.detections.maxOf { it.h }
-                        detectedFurnitureHeightMeters = (maxH / inputSize) * defaultRoomHeightMeters
+                        // Prefer ARCore pinhole height estimate when available, fall back to ratio-based estimate.
+                        val arHeight = arCameraController?.getLastEstimatedHeightMeters()
+                        detectedFurnitureHeightMeters = if (arHeight != null && arHeight > 0f) {
+                            arHeight
+                        } else {
+                            val maxH = result.detections.maxOf { it.h }
+                            (maxH / inputSize) * defaultRoomHeightMeters
+                        }
                         updateCalibrationPill()
                     } else {
                         arCameraController?.clearBboxHint()
@@ -430,11 +440,40 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun effectiveOverlayScale(ratioScale: Float): Float {
+        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(requireContext())) {
+            return ratioScale
+        }
         val ar = arCameraController
         return if (ar != null && ar.isArOverlayScaleValid()) {
             ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
         } else {
             ratioScale
+        }
+    }
+
+    /**
+     * Re-reads prefs after returning from Settings so ARCore vs CameraX matches the AR-assisted toggle.
+     */
+    private fun syncFurnitureFitCameraPathToPrefs() {
+        val wantAr = useArAssistedCameraPath()
+        val hasAr = arCameraController != null
+        if (wantAr == hasAr) return
+        val root = cameraPathRoot ?: return
+        if (wantAr && !hasAr) {
+            cameraProvider?.unbindAll()
+            cameraProvider = null
+            startArCameraPath(root)
+        } else if (!wantAr && hasAr) {
+            val controller = arCameraController ?: return
+            try {
+                root.removeView(controller.glSurfaceView)
+            } catch (_: Exception) {
+            }
+            controller.destroy()
+            arCameraController = null
+            val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
+            previewView.visibility = if (hasRoomBackground) View.GONE else View.VISIBLE
+            startCamera()
         }
     }
 
@@ -771,6 +810,7 @@ class FurnitureFitFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        syncFurnitureFitCameraPathToPrefs()
         arCameraController?.onHostResume()
     }
 

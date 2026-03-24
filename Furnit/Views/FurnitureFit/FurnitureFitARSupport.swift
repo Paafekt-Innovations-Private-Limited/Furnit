@@ -7,6 +7,19 @@ import CoreVideo
 import simd
 import UIKit
 
+/// Depth + intrinsics captured on the **same** `ARFrame` as `copyCapturedImageToBGRA`, so ML and AR
+/// sampling stay time-aligned (avoid using `arSession.currentFrame` after async inference).
+struct FurnitureFitARDepthSnapshot {
+    let depthMap: CVPixelBuffer?
+    let focalLengthY: Float
+    let capturedImageWidth: Int
+    let capturedImageHeight: Int
+    let bgraWidth: Int
+    let bgraHeight: Int
+    /// True when BGRA was produced with `CIImage.oriented(.right)` from a landscape `capturedImage` (see `copyCapturedImageToBGRA`).
+    let bgraIsRotatedFromCaptured: Bool
+}
+
 enum FurnitureFitARSupport {
 
     /// AR world tracking supported on this device.
@@ -109,19 +122,17 @@ enum FurnitureFitARSupport {
         return simd_distance(camPos, hitPos)
     }
 
-    /// Sample scene depth (meters) at normalized image coords (0…1, top-left). LiDAR / depth-capable devices only.
-    static func sceneDepthMeters(
-        frame: ARFrame,
-        normalizedImagePoint: CGPoint
+    /// Sample scene depth (meters) at normalized coords (0…1, top-left) in **depth map** space.
+    static func depthMetersFromDepthMap(
+        _ depthMap: CVPixelBuffer,
+        normalizedDepthPoint: CGPoint
     ) -> Float? {
-        guard let depthData = frame.sceneDepth ?? frame.smoothedSceneDepth else { return nil }
-        let depthMap = depthData.depthMap
         let dmW = CVPixelBufferGetWidth(depthMap)
         let dmH = CVPixelBufferGetHeight(depthMap)
         guard dmW > 0, dmH > 0 else { return nil }
 
-        let u = Float(min(max(normalizedImagePoint.x, 0), 1))
-        let v = Float(min(max(normalizedImagePoint.y, 0), 1))
+        let u = Float(min(max(normalizedDepthPoint.x, 0), 1))
+        let v = Float(min(max(normalizedDepthPoint.y, 0), 1))
         let x = min(Int(u * Float(dmW - 1)), dmW - 1)
         let y = min(Int(v * Float(dmH - 1)), dmH - 1)
 
@@ -139,6 +150,130 @@ enum FurnitureFitARSupport {
         return nil
     }
 
+    /// Sample scene depth (meters) at normalized image coords (0…1, top-left). LiDAR / depth-capable devices only.
+    static func sceneDepthMeters(
+        frame: ARFrame,
+        normalizedImagePoint: CGPoint
+    ) -> Float? {
+        guard let depthData = frame.sceneDepth ?? frame.smoothedSceneDepth else { return nil }
+        return depthMetersFromDepthMap(depthData.depthMap, normalizedDepthPoint: normalizedImagePoint)
+    }
+
+    /// Copy depth map bytes so they stay valid after the `ARFrame` delegate returns.
+    private static func copyDepthMapPixelBuffer(_ src: CVPixelBuffer) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
+        let w = CVPixelBufferGetWidth(src)
+        let h = CVPixelBufferGetHeight(src)
+        let fmt = CVPixelBufferGetPixelFormatType(src)
+        var dst: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferPixelFormatTypeKey: fmt,
+            kCVPixelBufferWidthKey: w,
+            kCVPixelBufferHeightKey: h,
+            kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, fmt, attrs as CFDictionary, &dst) == kCVReturnSuccess,
+              let out = dst else { return nil }
+        CVPixelBufferLockBaseAddress(out, [])
+        defer { CVPixelBufferUnlockBaseAddress(out, []) }
+        guard let sb = CVPixelBufferGetBaseAddress(src), let db = CVPixelBufferGetBaseAddress(out) else { return nil }
+        let sbRow = CVPixelBufferGetBytesPerRow(src)
+        let dbRow = CVPixelBufferGetBytesPerRow(out)
+        let rowCopy = min(sbRow, dbRow)
+        for y in 0..<h {
+            memcpy(db.advanced(by: y * dbRow), sb.advanced(by: y * sbRow), rowCopy)
+        }
+        return out
+    }
+
+    /// Focal length in **pixels** along the **vertical** axis of the processed BGRA (matches `bboxHeightImagePx`).
+    /// Uses `camera.intrinsics` + `imageResolution` — `intrinsicsForImageResolution` is not available on all SDKs.
+    static func focalLengthYForProcessedBGRA(
+        camera: ARCamera,
+        bgraHeight: Int,
+        bgraIsRotatedFromCaptured: Bool
+    ) -> Float {
+        let ref = camera.imageResolution
+        let K = camera.intrinsics
+        let fx = K.columns.0.x
+        let fy = K.columns.1.y
+        guard ref.width > 0, ref.height > 0 else { return fy }
+
+        if bgraIsRotatedFromCaptured {
+            // Vertical axis in BGRA corresponds to horizontal axis in captured image (see `copyCapturedImageToBGRA` + `.oriented(.right)`).
+            return fx * Float(bgraHeight) / Float(ref.width)
+        }
+        return fy * Float(bgraHeight) / Float(ref.height)
+    }
+
+    /// Build metrics from the **same** `ARFrame` as the BGRA buffer passed to YOLO (call on the AR session delegate queue only).
+    static func makeDepthSnapshot(
+        frame: ARFrame,
+        bgraWidth: Int,
+        bgraHeight: Int,
+        lockedOrientation: PhotoOrientation
+    ) -> FurnitureFitARDepthSnapshot {
+        let src = frame.capturedImage
+        let srcW = CVPixelBufferGetWidth(src)
+        let srcH = CVPixelBufferGetHeight(src)
+        let isLandscapeBuffer = srcW > srcH
+        let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
+        let bgraIsRotatedFromCaptured = needsPortrait && isLandscapeBuffer
+
+        let focalY = focalLengthYForProcessedBGRA(
+            camera: frame.camera,
+            bgraHeight: bgraHeight,
+            bgraIsRotatedFromCaptured: bgraIsRotatedFromCaptured
+        )
+
+        let depthCopy: CVPixelBuffer? = {
+            guard let depthData = frame.sceneDepth ?? frame.smoothedSceneDepth else { return nil }
+            return copyDepthMapPixelBuffer(depthData.depthMap)
+        }()
+
+        return FurnitureFitARDepthSnapshot(
+            depthMap: depthCopy,
+            focalLengthY: focalY,
+            capturedImageWidth: srcW,
+            capturedImageHeight: srcH,
+            bgraWidth: bgraWidth,
+            bgraHeight: bgraHeight,
+            bgraIsRotatedFromCaptured: bgraIsRotatedFromCaptured
+        )
+    }
+
+    /// Scene depth at bbox center, using **BGRA-normalized** coords (same space as YOLO / `processBuffer`).
+    static func depthMeters(
+        snapshot: FurnitureFitARDepthSnapshot,
+        normalizedBgraNX: CGFloat,
+        normalizedBgraNY: CGFloat
+    ) -> Float? {
+        guard let depthMap = snapshot.depthMap else { return nil }
+        let nx = CGFloat(min(max(normalizedBgraNX, 0), 1))
+        let ny = CGFloat(min(max(normalizedBgraNY, 0), 1))
+        let srcW = snapshot.capturedImageWidth
+        let srcH = snapshot.capturedImageHeight
+
+        let uw: CGFloat
+        let uh: CGFloat
+        if snapshot.bgraIsRotatedFromCaptured {
+            let bw = CGFloat(snapshot.bgraWidth)
+            let bh = CGFloat(snapshot.bgraHeight)
+            let px_b = nx * (bw - 1)
+            let py_b = ny * (bh - 1)
+            // Inverse of CIImage.oriented(.right): output (x,y) → captured (x_in, y_in).
+            let x_in = py_b
+            let y_in = CGFloat(max(0, srcH - 1)) - px_b
+            uw = x_in / CGFloat(max(srcW - 1, 1))
+            uh = y_in / CGFloat(max(srcH - 1, 1))
+        } else {
+            uw = nx
+            uh = ny
+        }
+        return depthMetersFromDepthMap(depthMap, normalizedDepthPoint: CGPoint(x: uw, y: uh))
+    }
+
     /// Pinhole: physical height (m) from bbox height in **full image pixels** and distance in meters.
     static func estimatedPhysicalHeightMeters(
         bboxHeightPixels: Float,
@@ -149,7 +284,7 @@ enum FurnitureFitARSupport {
         return (bboxHeightPixels / focalLengthYPixels) * distanceMeters
     }
 
-    /// Target overlay scale vs 1.0: standard catalog height / AR-estimated height, clamped.
+    /// Target overlay scale vs 1.0: AR-estimated height relative to standard catalog height, clamped.
     static func overlayScaleFromMetricHeights(
         standardHeightMeters: Float,
         estimatedHeightMeters: Float,
@@ -157,7 +292,11 @@ enum FurnitureFitARSupport {
         maxScale: Float = 2.5
     ) -> Float? {
         guard standardHeightMeters > 0.1, estimatedHeightMeters > 0.05 else { return nil }
-        let raw = standardHeightMeters / estimatedHeightMeters
+        // When the FurnitureFit overlay has already been scaled so that the standard height appears
+        // correct for the current room, this additional factor adjusts it so that the final visual
+        // height matches the AR-estimated height. If AR says the furniture is taller than the
+        // standard, we scale up (>1); if shorter, we scale down (<1).
+        let raw = estimatedHeightMeters / standardHeightMeters
         return min(max(raw, minScale), maxScale)
     }
 }

@@ -59,6 +59,7 @@ class FurnitureFitArCameraController(
     private val scaleLock = Any()
     private var smoothedArOverlayScale = 1f
     private var arOverlayScaleValid = false
+    private var lastEstimatedHeightMeters = 0f
 
     private var lastInferencePostMs = 0L
     var minFrameIntervalMs: Long = 85L
@@ -86,12 +87,21 @@ class FurnitureFitArCameraController(
         synchronized(scaleLock) {
             arOverlayScaleValid = false
             smoothedArOverlayScale = 1f
+            lastEstimatedHeightMeters = 0f
         }
     }
 
     fun isArOverlayScaleValid(): Boolean = synchronized(scaleLock) { arOverlayScaleValid }
 
     fun getSmoothedArOverlayScale(): Float = synchronized(scaleLock) { smoothedArOverlayScale }
+
+    /**
+     * Last AR-estimated furniture height in meters from the pinhole model, when available.
+     * Returns null when AR overlay scale is not currently valid.
+     */
+    fun getLastEstimatedHeightMeters(): Float? = synchronized(scaleLock) {
+        if (!arOverlayScaleValid || lastEstimatedHeightMeters <= 0f) null else lastEstimatedHeightMeters
+    }
 
     fun onHostResume() {
         displayRotationHelper.onResume()
@@ -259,13 +269,11 @@ class FurnitureFitArCameraController(
 
         val intrinsics = frame.camera.imageIntrinsics
         val fy = FurnitureFitArMetrics.focalLengthYPixelsForImage(intrinsics, rawImageWidth, rawImageHeight)
-        val stdH = FurnitureFitStandardHeights.heightMetersForLabel(label)
         val estH = FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, dist, fy) ?: return
-        val rawScale = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH) ?: return
         synchronized(scaleLock) {
-            val alpha = 0.28f
-            smoothedArOverlayScale = smoothedArOverlayScale * (1f - alpha) + rawScale * alpha
-            arOverlayScaleValid = true
+            lastEstimatedHeightMeters = estH
+            // Note: smoothedArOverlayScale / arOverlayScaleValid are driven by higher-level
+            // logic; ARCore here is responsible for the metric height only.
         }
     }
 }

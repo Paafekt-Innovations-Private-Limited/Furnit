@@ -489,6 +489,25 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             barContainer.addView(recenterBtn)
 
+            // Reset-size button (next to recenter): reset FurnitureFit overlay scale/position.
+            val resetSizeBtn = TextView(this@SharpRoomActivity).apply {
+                text = "↺"
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { brainDetectionOverlayView.resetTransform() }
+            }
+            barContainer.addView(resetSizeBtn)
+
             // Help button (circle with ?)
             val helpBtn = TextView(this@SharpRoomActivity).apply {
                 text = "?"
@@ -875,6 +894,15 @@ class SharpRoomActivity : AppCompatActivity() {
             bindBrainArCoreCamera(manager)
             return
         }
+        // Switching from ARCore brain path to CameraX: remove GL surface or we keep AR frames while AR is off in prefs.
+        brainArController?.let { existing ->
+            try {
+                sharpRoomContentRoot.removeView(existing.glSurfaceView)
+            } catch (_: Exception) {
+            }
+            existing.destroy()
+        }
+        brainArController = null
         DebugLogger.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -1008,6 +1036,9 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun brainEffectiveOverlayScale(ratioScale: Float): Float {
+        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)) {
+            return ratioScale
+        }
         val ar = brainArController
         return if (ar != null && ar.isArOverlayScaleValid()) {
             ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
@@ -1878,6 +1909,14 @@ class SharpRoomActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         brainArController?.onHostResume()
+        val mgr = furnitureFitManager
+        if (mgr != null && brainDetectionOverlay.visibility == View.VISIBLE) {
+            val wantAr = shouldUseArBrainCamera()
+            val hasAr = brainArController != null
+            if (wantAr != hasAr) {
+                bindBrainCamera(mgr)
+            }
+        }
     }
 
     override fun onPause() {

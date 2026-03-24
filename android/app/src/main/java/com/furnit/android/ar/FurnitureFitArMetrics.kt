@@ -42,7 +42,11 @@ object FurnitureFitArMetrics {
         maxScale: Float = 2.5f,
     ): Float? {
         if (standardHeightMeters <= 0.1f || estimatedHeightMeters <= 0.05f) return null
-        val raw = standardHeightMeters / estimatedHeightMeters
+        // When the overlay is already sized so that the reference height appears correct for
+        // the room, this factor adjusts it so the final visual height matches the AR-estimated
+        // height. If AR says the object is taller than the reference, we scale up (>1); if
+        // shorter, we scale down (<1).
+        val raw = estimatedHeightMeters / standardHeightMeters
         return raw.coerceIn(minScale, maxScale)
     }
 

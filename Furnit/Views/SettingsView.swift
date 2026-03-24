@@ -194,21 +194,6 @@ struct SettingsView: View {
                     }
                     .tint(.indigo)
 
-                    Toggle(isOn: $appState.qualitySettings.enableRatioBasedOverlayResize) {
-                        HStack {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .foregroundColor(.indigo)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.ratioBasedOverlayResize)
-                                    .font(.headline)
-                                Text(L10n.Settings.ratioBasedOverlayResizeDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .tint(.indigo)
-
                     if ARWorldTrackingConfiguration.isSupported {
                         Toggle(isOn: $appState.qualitySettings.enableArAssistedFurnitureSizing) {
                             HStack {

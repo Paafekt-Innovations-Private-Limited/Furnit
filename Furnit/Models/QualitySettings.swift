@@ -274,6 +274,7 @@ class QualitySettings: ObservableObject {
     private func saveArAssistedFurnitureSizing() {
         UserDefaults.standard.set(enableArAssistedFurnitureSizing, forKey: arAssistedFurnitureSizingKey)
         logDebug("💾 Saved AR-assisted furniture sizing: \(enableArAssistedFurnitureSizing)")
+        NotificationCenter.default.post(name: .furnitureFitArAssistedSettingChanged, object: nil)
     }
     
     // Get all available quality options for UI
@@ -318,6 +319,11 @@ class QualitySettings: ObservableObject {
         enableRatioBasedOverlayResize = true
         enableArAssistedFurnitureSizing = true
     }
+}
+
+extension Notification.Name {
+    /// Posted when `enableArAssistedFurnitureSizing` is saved so FurnitureFit can switch AR vs classic camera.
+    static let furnitureFitArAssistedSettingChanged = Notification.Name("furnitureFitArAssistedSettingChanged")
 }
 
 // Extension for RealityKit rendering configuration

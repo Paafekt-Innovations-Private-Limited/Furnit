@@ -24,8 +24,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var detections: List<DetectionResult> = emptyList()
     private var inputSize = 640 // Model input size
 
-    // Pinch-to-zoom scale factor for furniture
-    private var furnitureScale = 0.6f  // Start smaller to fit in room
+    // Pinch-to-zoom scale factor for furniture (1.0 = neutral)
+    private var furnitureScale = 1.0f
     /** From room ratio calibration (r_target / r_curr), smoothed in FurnitureFitManager. */
     private var autoRatioOverlayScale = 1f
     private var translateX = 0f

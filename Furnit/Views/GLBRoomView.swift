@@ -256,7 +256,7 @@ struct GLBRoomView: View {
                     roomHeightMeters: roomHeight ?? 3.0,
                     ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
                     defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
-                    onFurnitureSizeEstimated: { _, _ in }
+                    onFurnitureSizeEstimated: { _ in }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)

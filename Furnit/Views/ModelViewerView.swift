@@ -616,8 +616,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var defaultTargetHeightFrac: Float = 0.26
     var ratioTolerance: Float = 0.04
 
-    // Callback for reporting estimated furniture size (width, height in meters)
-    var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
+    // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
+    var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()

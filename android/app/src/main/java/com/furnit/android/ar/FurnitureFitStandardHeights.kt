@@ -3,22 +3,20 @@ package com.furnit.android.ar
 import com.furnit.android.utils.YoloRatioCalibration
 
 /**
- * Typical furniture heights (meters) for AR-assisted overlay scale, aligned with iOS [FurnitureDimensions] ideas.
- * Android path uses COCO-style labels from YOLOE.
+ * Reference height in meters for AR-assisted overlay scale.
+ *
+ * NOTE: We intentionally do **not** vary this by class anymore — relying on
+ * per-label \"standard\" sizes was too restrictive for generic fitment. The
+ * AR path can still estimate absolute height in meters; this is only a
+ * neutral reference when a height is required.
  */
 object FurnitureFitStandardHeights {
 
     /** Default when label is unknown (matches iOS fallback 0.85). */
     private const val DEFAULT_HEIGHT_M = 0.85f
 
-    fun heightMetersForLabel(label: String): Float {
-        val key = YoloRatioCalibration.canonicalFurnitureLabel(label)
-        return when (key) {
-            "chair", "bench" -> 0.9f
-            "couch" -> 0.85f
-            "bed" -> 0.6f
-            "dining table" -> 0.75f
-            else -> DEFAULT_HEIGHT_M
-        }
+    fun heightMetersForLabel(@Suppress("UNUSED_PARAMETER") label: String): Float {
+        // Single neutral value for all labels.
+        return DEFAULT_HEIGHT_M
     }
 }

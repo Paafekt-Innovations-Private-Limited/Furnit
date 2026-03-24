@@ -314,6 +314,8 @@ struct SharpRoomView: View {
     // Detected furniture size (from FurnitureFit, in meters - before calibration)
     @State private var detectedFurnitureWidth: Float?
     @State private var detectedFurnitureHeight: Float?
+    /// Optional AR-based furniture height (when AR-assisted sizing is active).
+    @State private var detectedFurnitureHeightAR: Float?
 
     // User-input real furniture dimensions for room calibration
     @State private var showFurnitureDimensionsInput = false
@@ -323,6 +325,8 @@ struct SharpRoomView: View {
     // Calibrated room dimensions (computed from real furniture size)
     @State private var calibratedRoomHeight: Float?
     @State private var calibratedRoomWidth: Float?
+    /// Track whether we've already auto-applied AR-based calibration this session.
+    @State private var didApplyArAutoCalibration = false
 
     // Reject calibration when result would be unrealistically small (wrong input or wrong detected size)
     @State private var showCalibrationRejectAlert = false
@@ -394,22 +398,34 @@ struct SharpRoomView: View {
         .navigationBarHidden(isCapturingSnapshot)
         .navigationTitle(navigationTitleWithDimensions)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if authManager.canShare {
-                    Button(action: { showShareSheet = true }) { Image(systemName: "square.and.arrow.up") }
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if authManager.canShare {
+                        Button(action: { showShareSheet = true }) { Image(systemName: "square.and.arrow.up") }
+                            .disabled(isLoading)
+                    }
+                    if allowSave {
+                        Button(action: { showRoomNameInput = true }) { Image(systemName: "square.and.arrow.down") }
+                            .disabled(isLoading)
+                    }
+                    Button(action: { showWallCalibration = true }) { Image(systemName: "ruler") }
                         .disabled(isLoading)
-                }
-                if allowSave {
-                    Button(action: { showRoomNameInput = true }) { Image(systemName: "square.and.arrow.down") }
-                        .disabled(isLoading)
-                }
-                Button(action: { showWallCalibration = true }) { Image(systemName: "ruler") }
+                    // Recenter room camera
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
+                    }) {
+                        Image(systemName: "viewfinder")
+                    }
                     .disabled(isLoading)
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil) }) { Image(systemName: "viewfinder") }
+                    // Reset FurnitureFit overlay scale (undo pinch) – sits next to recenter.
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitResetOverlayScale"), object: nil)
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
                     .disabled(isLoading)
+                }
             }
-        }
         .sheet(isPresented: $showShareSheet) {
             let threeDGSPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
             let shareURL = FileManager.default.fileExists(atPath: threeDGSPath) ? URL(fileURLWithPath: threeDGSPath) : plyURL
@@ -474,8 +490,15 @@ struct SharpRoomView: View {
                 infiniteZoom: infiniteZoomEnabled,
                 onLoaded: { isLoading = false },
                 onFrontWallDimensions: { w, h in
-                    jsFrontWallWidth = Float(w)
-                    jsFrontWallHeight = Float(h)
+                    let fw = Float(w)
+                    let fh = Float(h)
+                    guard fw > 0, fh > 0 else { return }
+                    // WebGL can report refined bounds several times as the scene settles; latching the
+                    // first valid pair keeps the nav title and FurnitureFit room meters from drifting.
+                    if jsFrontWallWidth == nil, jsFrontWallHeight == nil {
+                        jsFrontWallWidth = fw
+                        jsFrontWallHeight = fh
+                    }
                 }
             )
             .ignoresSafeArea()
@@ -592,9 +615,12 @@ struct SharpRoomView: View {
             roomHeightMeters: furnitureFitRoomHeight,
             ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
             defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
-            onFurnitureSizeEstimated: { width, height in
-                detectedFurnitureWidth = width
-                detectedFurnitureHeight = height
+            onFurnitureSizeEstimated: { estimate in
+                // Keep numeric room + furniture measurements stable; AR height is used only
+                // for visual overlay sizing inside FurnitureFit, not for recalibrating the room.
+                detectedFurnitureWidth = estimate.widthMeters
+                detectedFurnitureHeight = estimate.heightMeters
+                detectedFurnitureHeightAR = estimate.arHeightMeters
             }
         )
         .ignoresSafeArea()
@@ -704,6 +730,39 @@ struct SharpRoomView: View {
         showFurnitureDimensionsInput = false
     }
 
+    /// Auto-apply AR-based calibration once per session: use AR height as the \"real\" value and
+    /// the room-based estimate as the detected value to compute a global scale factor.
+    private func applyArAutoCalibrationIfNeeded(realHeight: Float, detectedHeight: Float) {
+        guard !didApplyArAutoCalibration else { return }
+        guard realHeight > 0, detectedHeight > 0 else { return }
+
+        let roomH = roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
+        let roomW = roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0
+        let heightFromSource = roomMeasurements?.frontWallHeight != nil || jsFrontWallHeight != nil
+        let widthFromSource = roomMeasurements?.frontWallWidth != nil || jsFrontWallWidth != nil
+        // If we run before WebGL/SHARP has reported both walls, we'd scale against 4×3 defaults and
+        // the displayed room would still change when real bounds arrive — wait for real geometry.
+        guard heightFromSource, widthFromSource else { return }
+
+        didApplyArAutoCalibration = true
+        let scaleFactor = realHeight / detectedHeight
+        realFurnitureHeight = realHeight
+
+        NotificationCenter.default.post(
+            name: NSNotification.Name("WebGLScaleRoom"),
+            object: nil,
+            userInfo: ["factor": Double(scaleFactor)]
+        )
+
+        if roomMeasurements?.frontWallHeight != nil || jsFrontWallHeight != nil {
+            calibratedRoomHeight = roomH * scaleFactor
+        }
+        if roomMeasurements?.frontWallWidth != nil || jsFrontWallWidth != nil {
+            calibratedRoomWidth = roomW * scaleFactor
+        }
+        logDebug("📐 [AR Calibration] Auto real height: \(realHeight)m, detected=\(detectedHeight)m, scale factor: \(scaleFactor)")
+    }
+
     private func applyWallCalibration() {
         guard let realW = Float(inputWallWidth), realW > 0,
               let realH = Float(inputWallHeight), realH > 0 else {
@@ -796,13 +855,14 @@ struct SharpRoomView: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(Color.black.opacity(0.5)).cornerRadius(8)
                     .allowsHitTesting(false)
-                    if showingFurnitureFit, let h = detectedFurnitureHeight {
+                    if showingFurnitureFit, let baseH = detectedFurnitureHeight {
                         Button(action: { showFurnitureDimensionsInput = true }) {
                             VStack(spacing: 2) {
                                 if let calibH = calibratedRoomHeight {
                                     Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
                                 }
-                                Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                let displayH = detectedFurnitureHeightAR ?? baseH
+                                Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
                                     .font(.caption.bold())
                                     .foregroundColor(realFurnitureHeight != nil ? .green : .white)
                                 Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
@@ -850,13 +910,14 @@ struct SharpRoomView: View {
                     .padding(.leading, 16)
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
-                        if showingFurnitureFit, let h = detectedFurnitureHeight {
+                        if showingFurnitureFit, let baseH = detectedFurnitureHeight {
                             Button(action: { showFurnitureDimensionsInput = true }) {
                                 VStack(spacing: 2) {
                                     if let calibH = calibratedRoomHeight {
                                         Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
                                     }
-                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                    let displayH = detectedFurnitureHeightAR ?? baseH
+                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
                                         .font(.caption.bold())
                                         .foregroundColor(realFurnitureHeight != nil ? .green : .white)
                                     Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)

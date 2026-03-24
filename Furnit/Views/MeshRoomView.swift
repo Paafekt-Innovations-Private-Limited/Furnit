@@ -136,7 +136,7 @@ struct MeshRoomView: View {
                     roomHeightMeters: roomHeight,
                     ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
                     defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
-                    onFurnitureSizeEstimated: { _, _ in }
+                    onFurnitureSizeEstimated: { _ in }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)

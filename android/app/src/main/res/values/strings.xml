@@ -130,9 +130,9 @@
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="settings_ratio_based_overlay_resize">Ratio-based overlay resize</string>
-    <string name="settings_ratio_based_overlay_resize_description">Resize the mask overlay using saved (or default) target height vs the live detection. Off keeps overlay scale 1×.</string>
+    <string name="settings_ratio_based_overlay_resize_description">Resize the mask overlay using saved (or default) target height vs the live detection. Independent of AR-assisted sizing—turn this off separately for a fixed 1× overlay scale.</string>
     <string name="settings_ar_assisted_furniture_sizing">AR-assisted furniture sizing</string>
-    <string name="settings_ar_assisted_furniture_sizing_description">Use ARCore planes and camera intrinsics to estimate real furniture height and scale the mask overlay. When off or unsupported, ratio-based resize applies.</string>
+    <string name="settings_ar_assisted_furniture_sizing_description">Use ARCore planes and camera intrinsics to estimate furniture height and scale the overlay. When off, the regular camera is used and only ratio-based overlay resize applies (if that setting is on).</string>
     <string name="settings_ar_assisted_furniture_sizing_not_supported">AR-assisted sizing requires ARCore on a supported device.</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
