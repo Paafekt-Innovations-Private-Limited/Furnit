@@ -2344,7 +2344,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 if let body = message.body as? [String: Any],
                    let w = body["width"] as? Double,
                    let h = body["height"] as? Double {
-                    print("Box3 width: \(String(format: "%.2f", w)) height: \(String(format: "%.2f", h))")
+                    logDebug("📐 [WebGL] Box3 width: \(String(format: "%.2f", w)) height: \(String(format: "%.2f", h))")
                 }
             } else if message.name == "jsLog", let text = message.body as? String {
                 logDebug("📜 [JS] \(text)")

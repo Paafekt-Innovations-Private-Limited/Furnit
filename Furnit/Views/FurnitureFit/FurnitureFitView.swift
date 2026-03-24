@@ -136,9 +136,9 @@ final class MetalMaskLogic {
 // MARK: - SwiftUI Wrapper
 struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
-    var processInterval: TimeInterval = 0.1
+    var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.15
-    var useBilinearUpscaling: Bool = true
+    var useBilinearUpscaling: Bool = false
     var active: Bool = false
     
     @ObservedObject private var appState = AppStateManager.shared
@@ -185,10 +185,9 @@ struct FurnitureSizeEstimate {
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
 
     // MARK: Config
-    var processInterval: TimeInterval = 0.1
+    var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
-    /// When true (default), mask upscales use high-quality resampling for smoother edges.
-    var useBilinearUpscaling: Bool = true
+    var useBilinearUpscaling: Bool = false
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
     // MARK: Room Dimensions (from SHARP output, in meters)
@@ -251,6 +250,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var arAssistedScaleValid = false
     private var autoScaleFromAR: CGFloat = 1.0
     private var smoothedArOverlayScale: CGFloat = 1.0
+    /// After primary class changes, apply first valid AR scale immediately instead of long EMA ramp (faster when panning between furniture).
+    private var snapArOverlayScaleAfterPrimaryChange = false
     /// When depth/estimation drops for a few frames, keep last AR scale instead of snapping to 1× (avoids small/big flicker).
     private var arAssistedConsecutiveMisses: Int = 0
     private let maxArAssistedHoldMisses: Int = 18
@@ -324,7 +325,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var useMultiCandidateStage5 = true
 
     /// When **Settings → Debug mode** is on: anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline. Inside the box you still see the union mask from kept detections. When debug is off, the full mask is shown (no bbox crop).
-    private var clipUnionMaskToPrimaryBbox: Bool { debugMode }
+    /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
+    private var clipUnionMaskToPrimaryBbox = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -391,6 +393,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
+    /// While inference is running, camera frames are dropped; when set, next completion clears `lastProcessTime` so the following frame is not delayed by `processInterval`.
+    private var preferImmediateNextInference = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
 
     // MARK: Orientation
@@ -400,6 +404,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func resetProcessingFlag() {
         frameLock.lock()
         isProcessing = false
+        if preferImmediateNextInference {
+            lastProcessTime = .distantPast
+            preferImmediateNextInference = false
+        }
         frameLock.unlock()
     }
     
@@ -633,6 +641,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             autoScaleFromAR = 1.0
             arAssistedScaleValid = false
             arAssistedConsecutiveMisses = 0
+            snapArOverlayScaleAfterPrimaryChange = true
             overlayDebugLastAssistedLabel = ""
             overlayDebugLastCombined = -1
         }
@@ -696,14 +705,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     standardHeightMeters: stdH,
                     estimatedHeightMeters: estH
                 ) {
-                    // AR-assisted scale can jitter due to depth noise; clamp per-frame change and EMA smooth.
                     let target = CGFloat(raw)
-                    let base = smoothedArOverlayScale
-                    let maxStep: CGFloat = 0.08
-                    let delta = max(-maxStep, min(maxStep, target - base))
-                    let clampedTarget = base + delta
-                    let alpha: CGFloat = 0.16
-                    smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                    if snapArOverlayScaleAfterPrimaryChange {
+                        // One shot after switching primary detection — avoids sluggish ramp from 1× while panning between pieces.
+                        let clamped = min(max(target, 0.25), 4.0)
+                        smoothedArOverlayScale = clamped
+                        snapArOverlayScaleAfterPrimaryChange = false
+                    } else {
+                        // AR-assisted scale can jitter due to depth noise; clamp per-frame change and EMA smooth.
+                        let base = smoothedArOverlayScale
+                        let maxStep: CGFloat = 0.08
+                        let delta = max(-maxStep, min(maxStep, target - base))
+                        let clampedTarget = base + delta
+                        let alpha: CGFloat = 0.16
+                        smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                    }
                     autoScaleFromAR = smoothedArOverlayScale
                     arAssistedScaleValid = true
                     arAssistedConsecutiveMisses = 0
@@ -998,6 +1014,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Early exit check BEFORE dispatching to avoid queuing frames unnecessarily
         let now = Date()
         frameLock.lock()
+        if isProcessing {
+            preferImmediateNextInference = true
+        }
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
         if shouldProcess {
             isProcessing = true
@@ -2309,7 +2328,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             maskSmall.withUnsafeBufferPointer { srcPtr in
                 var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(pH), width: vImagePixelCount(pW), rowBytes: pW)
                 var d = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(modelInput), width: vImagePixelCount(modelInput), rowBytes: modelInput)
-                // High-quality resampling avoids jagged, stair-stepped mask edges after upscale.
                 let flags: vImage_Flags = useBilinearUpscaling ? vImage_Flags(kvImageHighQualityResampling) : vImage_Flags(kvImageNoFlags)
                 vImageScale_Planar8(&s, &d, nil, flags)
             }
@@ -2713,6 +2731,9 @@ extension FurnitureFitContainerView {
         guard isUsingARCameraPath else { return }
         let now = Date()
         frameLock.lock()
+        if isProcessing {
+            preferImmediateNextInference = true
+        }
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
         if shouldProcess {
             isProcessing = true
