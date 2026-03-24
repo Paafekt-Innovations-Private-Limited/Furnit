@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.furnit.android.utils.LogUtil
 import com.google.ar.core.ArCoreApk
@@ -62,7 +64,24 @@ class FurnitureFitArCameraController(
     private var lastEstimatedHeightMeters = 0f
 
     private var lastInferencePostMs = 0L
-    var minFrameIntervalMs: Long = 85L
+    /** Matches iOS default `processInterval` 0.07s between segmentation starts. */
+    var minFrameIntervalMs: Long = 70L
+
+    @Volatile
+    private var preferImmediateNextBitmap = false
+
+    private val measurementHandler = Handler(Looper.getMainLooper())
+    /** Debounced apply of AR overlay scale (mirrors iOS `assistedMeasurementDebounceSeconds` ~0.85s). */
+    private val assistedMeasurementDebounceMs = 850L
+    @Volatile
+    private var latestRawScale: Float? = null
+    @Volatile
+    private var pendingEstHForApply = 0f
+    private var snapAfterPrimaryChange = false
+
+    private val debounceApplyRunnable = Runnable {
+        applyPendingArOverlayScaleFromLatest()
+    }
 
     /**
      * Room photo lock from FurnitureFit / Sharp room (`"portrait"` or `"landscape"`), matching CameraX
@@ -71,12 +90,25 @@ class FurnitureFitArCameraController(
     var lockedPhotoOrientation: String = "portrait"
 
     fun setBboxHint(centerImageX: Float, centerImageY: Float, heightImagePx: Float, label: String) {
-        synchronized(bboxLock) {
+        val labelChanged = synchronized(bboxLock) {
+            val prev = bboxLabel
             bboxCenterImageX = centerImageX
             bboxCenterImageY = centerImageY
             bboxHeightImagePx = heightImagePx
             bboxLabel = label
             bboxHintValid = heightImagePx > 2f
+            prev != label
+        }
+        if (labelChanged) {
+            snapAfterPrimaryChange = true
+            latestRawScale = null
+            pendingEstHForApply = 0f
+            measurementHandler.removeCallbacks(debounceApplyRunnable)
+            synchronized(scaleLock) {
+                arOverlayScaleValid = false
+                smoothedArOverlayScale = 1f
+                lastEstimatedHeightMeters = 0f
+            }
         }
     }
 
@@ -84,6 +116,9 @@ class FurnitureFitArCameraController(
         synchronized(bboxLock) {
             bboxHintValid = false
         }
+        latestRawScale = null
+        pendingEstHForApply = 0f
+        measurementHandler.removeCallbacks(debounceApplyRunnable)
         synchronized(scaleLock) {
             arOverlayScaleValid = false
             smoothedArOverlayScale = 1f
@@ -101,6 +136,17 @@ class FurnitureFitArCameraController(
      */
     fun getLastEstimatedHeightMeters(): Float? = synchronized(scaleLock) {
         if (!arOverlayScaleValid || lastEstimatedHeightMeters <= 0f) null else lastEstimatedHeightMeters
+    }
+
+    /**
+     * Call when one segmentation pass finishes so the next camera bitmap is not also delayed by [minFrameIntervalMs]
+     * (mirrors iOS `preferImmediateNextInference`).
+     */
+    fun onInferenceFinished() {
+        if (preferImmediateNextBitmap) {
+            lastInferencePostMs = 0L
+            preferImmediateNextBitmap = false
+        }
     }
 
     fun onHostResume() {
@@ -123,9 +169,32 @@ class FurnitureFitArCameraController(
     }
 
     fun destroy() {
+        measurementHandler.removeCallbacks(debounceApplyRunnable)
         onHostPause()
         session?.close()
         session = null
+    }
+
+    private fun applyPendingArOverlayScaleFromLatest() {
+        val raw = latestRawScale ?: return
+        val estH = pendingEstHForApply
+        if (estH <= 0.05f) return
+        synchronized(scaleLock) {
+            lastEstimatedHeightMeters = estH
+            if (snapAfterPrimaryChange) {
+                smoothedArOverlayScale = raw.coerceIn(0.25f, 4f)
+                snapAfterPrimaryChange = false
+            } else {
+                val base = smoothedArOverlayScale
+                val maxStep = 0.08f
+                val target = raw.coerceIn(0.25f, 4f)
+                val delta = (target - base).coerceIn(-maxStep, maxStep)
+                val clampedTarget = base + delta
+                val alpha = 0.16f
+                smoothedArOverlayScale = base * (1f - alpha) + clampedTarget * alpha
+            }
+            arOverlayScaleValid = true
+        }
     }
 
     private fun tryCreateSession(): Boolean {
@@ -205,6 +274,10 @@ class FurnitureFitArCameraController(
 
             updateArScaleForCurrentFrame(frame, rawW, rawH, orientedToRawInverse)
 
+            if (!shouldPostBitmapFrame()) {
+                preferImmediateNextBitmap = true
+            }
+
             val now = SystemClock.elapsedRealtime()
             val allowPost = shouldPostBitmapFrame() && (now - lastInferencePostMs >= minFrameIntervalMs)
             if (allowPost) {
@@ -233,13 +306,11 @@ class FurnitureFitArCameraController(
         val cx: Float
         val cy: Float
         val hPx: Float
-        val label: String
         synchronized(bboxLock) {
             hint = bboxHintValid
             cx = bboxCenterImageX
             cy = bboxCenterImageY
             hPx = bboxHeightImagePx
-            label = bboxLabel
         }
         if (!hint) {
             return
@@ -270,10 +341,11 @@ class FurnitureFitArCameraController(
         val intrinsics = frame.camera.imageIntrinsics
         val fy = FurnitureFitArMetrics.focalLengthYPixelsForImage(intrinsics, rawImageWidth, rawImageHeight)
         val estH = FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, dist, fy) ?: return
-        synchronized(scaleLock) {
-            lastEstimatedHeightMeters = estH
-            // Note: smoothedArOverlayScale / arOverlayScaleValid are driven by higher-level
-            // logic; ARCore here is responsible for the metric height only.
-        }
+        val stdH = 0.85f
+        val raw = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH, 0.25f, 4f) ?: return
+        pendingEstHForApply = estH
+        latestRawScale = raw
+        measurementHandler.removeCallbacks(debounceApplyRunnable)
+        measurementHandler.postDelayed(debounceApplyRunnable, assistedMeasurementDebounceMs)
     }
 }

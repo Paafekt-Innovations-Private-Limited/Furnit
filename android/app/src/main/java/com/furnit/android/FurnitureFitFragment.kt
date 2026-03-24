@@ -435,6 +435,7 @@ class FurnitureFitFragment : Fragment() {
                 }
             }
             isProcessing = false
+            arCameraController?.onInferenceFinished()
         }
     }
 
@@ -721,6 +722,7 @@ class FurnitureFitFragment : Fragment() {
                 }
             }
             isProcessing = false
+            arCameraController?.onInferenceFinished()
         }
 
         imageProxy.close()

@@ -63,6 +63,8 @@ class SharpRoomActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "SharpRoomActivity"
+        private const val BRAIN_BUTTON_COLOR_IDLE = "#007AFF"
+        private const val BRAIN_BUTTON_COLOR_SEGMENTING = "#34C759"
         const val EXTRA_PLY_PATH = "ply_path"
         const val EXTRA_ROOM_FOLDER = "room_folder"
         const val EXTRA_ROOM_WIDTH = "room_width"
@@ -81,6 +83,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private lateinit var brainProgressOverlay: FrameLayout
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
+    /** Bottom-left brain control; blue when idle, green while live segmentation is active. */
+    private lateinit var brainModeButton: TextView
     private lateinit var titleView: TextView
     private var plyPath: String? = null
     private var roomFolder: String? = null
@@ -95,6 +99,11 @@ class SharpRoomActivity : AppCompatActivity() {
     private var roomCenterZ: Float = 0f
     /** Isotropic scale for displayed dims vs raw SHARP bbox (ARCore calibration). */
     private var arDisplayScale: Float = 1f
+    // Brain (SmartyPants) furniture calibration state (height and optional scale factor for display).
+    private val brainDefaultRoomHeightMeters: Float = 3.0f
+    private var brainDetectedFurnitureHeightMeters: Float? = null
+    private var brainRealFurnitureHeightMeters: Float? = null
+    private var brainCalibrationScaleFactor: Float = 1.0f
     private var photoOrientation: String = "portrait"
     /** True when the photo was taken with wide-angle (0.5x) lens; viewer camera position is adjusted for wider FOV. */
     private var photoWideAngle: Boolean = false
@@ -108,9 +117,19 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainArController: FurnitureFitArCameraController? = null
     /** [setContentView] root — used to insert/remove AR [GLSurfaceView] for brain mode. */
     private lateinit var sharpRoomContentRoot: FrameLayout
+    // Brain overlay calibration pill (bottom overlay).
+    private var brainCalibrationPillContainer: View? = null
+    private var brainCalibrationPillLine1: TextView? = null
+    private var brainCalibrationPillLine2: TextView? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
+    /**
+     * False as soon as brain segmentation is torn down. Inference callbacks may still be scheduled;
+     * they must bail out so they do not repopulate height / the calibration pill after stop.
+     */
+    @Volatile
+    private var brainSegmentationAcceptingUpdates: Boolean = false
     /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
     private var statusBarInsetTop = 0
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -322,7 +341,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainProgressOverlay.elevation = 20f
         rootLayout.addView(brainProgressOverlay)
 
-        // Brain detection overlay: live segmentation on top of room (updates as you point at objects; Done to dismiss)
+        // Brain detection overlay: live segmentation on top of room; tap green brain button to stop.
         brainDetectionOverlay = FrameLayout(this).apply {
             visibility = View.GONE
             elevation = 21f
@@ -339,24 +358,6 @@ class SharpRoomActivity : AppCompatActivity() {
             onTouchOutsideFurniture = { ev -> webView.dispatchTouchEvent(ev) }
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
-        val doneBtn = TextView(this).apply {
-            text = getString(R.string.common_done)
-            setTextColor(Color.WHITE)
-            setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
-            textSize = 16f
-            setBackgroundColor(Color.parseColor("#80000000"))
-            val lp = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            lp.bottomMargin = dpToPx(80)
-            layoutParams = lp
-            setOnClickListener {
-                hideBrainDetectionOverlay()
-            }
-        }
-        brainDetectionOverlay.addView(doneBtn)
         rootLayout.addView(brainDetectionOverlay)
 
         setContentView(rootLayout)
@@ -448,6 +449,25 @@ class SharpRoomActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             barContainer.addView(titleView)
+
+            // Room calibration button (circle with ruler icon) – mirrors iOS wall-calibration entry point.
+            val calibrateBtn = TextView(this@SharpRoomActivity).apply {
+                text = "\uD83E\uDDF0" // Ruler emoji
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { showRoomCalibrationDialog() }
+            }
+            barContainer.addView(calibrateBtn)
 
             // Recenter button (circle with viewfinder icon)
             val recenterBtn = TextView(this@SharpRoomActivity).apply {
@@ -561,6 +581,94 @@ class SharpRoomActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Update the brain (FurnitureFit) calibration pill at the bottom of the screen. */
+    private fun updateBrainCalibrationPill() {
+        runOnUiThread {
+            val container = brainCalibrationPillContainer
+            val line1 = brainCalibrationPillLine1
+            val line2 = brainCalibrationPillLine2
+            val detected = brainDetectedFurnitureHeightMeters
+            if (container == null || line1 == null || line2 == null) return@runOnUiThread
+            if (detected == null || detected <= 0f) {
+                container.visibility = View.GONE
+                return@runOnUiThread
+            }
+            container.visibility = View.VISIBLE
+            val realH = brainRealFurnitureHeightMeters
+            if (realH != null && realH > 0f) {
+                val roomH = effRoomHeight()
+                val text = String.format(Locale.US, "%.2f", roomH)
+                line1.text = "Room: ${text}m"
+                line1.setTextColor(0xFF4CAF50.toInt())
+            } else {
+                val text = String.format(Locale.US, "%.2f", detected)
+                line1.text = "Furn: ${text}m"
+                line1.setTextColor(0xFFFFFFFF.toInt())
+            }
+            line2.text = getString(R.string.smartypants_tap_calibrate)
+        }
+    }
+
+    /** Dialog for per-object furniture calibration in brain overlay. */
+    private fun showBrainCalibrationDialog() {
+        val detected = brainDetectedFurnitureHeightMeters ?: return
+        val ctx = this
+        val edit = EditText(ctx).apply {
+            hint = getString(R.string.smartypants_real_height_hint)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", detected))
+            setSelection(text?.length ?: 0)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(getString(R.string.smartypants_calibrate_title))
+            .setMessage(getString(R.string.smartypants_calibrate_message, String.format(Locale.US, "%.2f", detected)))
+            .setView(edit)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val raw = edit.text?.toString()?.trim() ?: return@setPositiveButton
+                val real = raw.toFloatOrNull() ?: return@setPositiveButton
+                if (real <= 0f) {
+                    Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val factor = real / detected
+                brainCalibrationScaleFactor = factor
+                brainRealFurnitureHeightMeters = real
+                // For now, reflect calibration in UI; viewer scaling can be added via JS hook later.
+                updateBrainCalibrationPill()
+                Toast.makeText(ctx, getString(R.string.smartypants_room_scaled, String.format(Locale.US, "%.2f", factor)), Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    /** Dialog for manual room calibration (front-wall height) – Android counterpart to iOS wall-calibration overlay. */
+    private fun showRoomCalibrationDialog() {
+        val ctx = this
+        val edit = EditText(ctx).apply {
+            hint = getString(R.string.smartypants_real_height_hint)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", effRoomHeight()))
+            setSelection(text?.length ?: 0)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(getString(R.string.smartypants_calibrate_title))
+            .setMessage(getString(R.string.smartypants_calibrate_message, String.format(Locale.US, "%.2f", effRoomHeight())))
+            .setView(edit)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val raw = edit.text?.toString()?.trim() ?: return@setPositiveButton
+                val real = raw.toFloatOrNull() ?: return@setPositiveButton
+                if (real <= 0f) {
+                    Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                // For now, update the displayed height; deeper WebGL scaling can be added by wiring a JS hook.
+                val newTitle = String.format(Locale.US, "%.1f × %.1f m", effRoomWidth(), real)
+                titleView.text = newTitle
+            }
+            .show()
+    }
+
     private fun createBottomControls(): FrameLayout {
         return FrameLayout(this).apply {
             setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
@@ -583,12 +691,17 @@ class SharpRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#007AFF"))
+                    setColor(Color.parseColor(BRAIN_BUTTON_COLOR_IDLE))
                 }
                 background = bg
                 val size = dpToPx(56)
                 layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener {
+                    if (brainDetectionOverlay.visibility == View.VISIBLE) {
+                        DebugLogger.d(TAG, "Brain: tap while segmenting — stopping")
+                        hideBrainDetectionOverlay()
+                        return@setOnClickListener
+                    }
                     val roomId = roomFolder?.let { File(it).name }
                     DebugLogger.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     if (ContextCompat.checkSelfPermission(this@SharpRoomActivity, Manifest.permission.CAMERA)
@@ -602,6 +715,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                 }
             }
+            brainModeButton = brainBtn
             leftBottomRow.addView(brainBtn)
             val orientationLabel = TextView(this@SharpRoomActivity).apply {
                 text = if (photoOrientation == "landscape") getString(R.string.orientation_held_horizontally) else getString(R.string.orientation_held_vertically)
@@ -635,6 +749,45 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             addView(cameraBtn)
+
+            // Brain calibration pill (bottom-center): shows detected furniture height and a Tap to calibrate affordance.
+            val pillContent = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(24).toFloat()
+                    setColor(Color.parseColor("#E6333333"))
+                }
+            }
+            brainCalibrationPillLine1 = TextView(this@SharpRoomActivity).apply {
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setShadowLayer(2f, 1f, 1f, Color.BLACK)
+            }
+            brainCalibrationPillLine2 = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.smartypants_tap_calibrate)
+                setTextColor(Color.parseColor("#AAFFFFFF"))
+                textSize = 12f
+                setShadowLayer(2f, 1f, 1f, Color.BLACK)
+            }
+            pillContent.addView(brainCalibrationPillLine1)
+            pillContent.addView(brainCalibrationPillLine2)
+            val pillContainer = FrameLayout(this@SharpRoomActivity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                    bottomMargin = dpToPx(52)
+                }
+                visibility = View.GONE
+                addView(pillContent)
+                setOnClickListener { showBrainCalibrationDialog() }
+            }
+            brainCalibrationPillContainer = pillContainer
+            addView(pillContainer)
         }
     }
 
@@ -822,10 +975,18 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun showBrainDetectionOverlay(mask: Bitmap?, detections: List<DetectionResult>, inputSize: Int) {
         brainDetectionOverlayView.setMaskAndDetections(mask, detections, inputSize)
         brainDetectionOverlay.visibility = View.VISIBLE
+        setBrainSegmentationButtonActive(true)
+    }
+
+    private fun setBrainSegmentationButtonActive(active: Boolean) {
+        if (!::brainModeButton.isInitialized) return
+        val color = if (active) BRAIN_BUTTON_COLOR_SEGMENTING else BRAIN_BUTTON_COLOR_IDLE
+        (brainModeButton.background as? GradientDrawable)?.setColor(Color.parseColor(color))
     }
 
     private fun hideBrainDetectionOverlay() {
-        DebugLogger.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
+        DebugLogger.d(TAG, "Brain: hideBrainDetectionOverlay() - user stopped or Back, stopping camera")
+        setBrainSegmentationButtonActive(false)
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         stopBrainDetection()
@@ -901,12 +1062,14 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                     manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
+                            if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
                                 DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
                                 hideBrainProgressOverlay()
                                 brainDetectionOverlay.visibility = View.VISIBLE
+                                setBrainSegmentationButtonActive(true)
                             }
                             val mask = result?.mask
                             val dets = result?.detections ?: emptyList()
@@ -917,6 +1080,15 @@ class SharpRoomActivity : AppCompatActivity() {
                                 size,
                                 brainEffectiveOverlayScale(),
                             )
+                            // Estimated furniture height in metres from tallest detection (CameraX brain path).
+                            if (dets.isNotEmpty() && size > 0) {
+                                val maxH = dets.maxOf { it.h }
+                                brainDetectedFurnitureHeightMeters =
+                                    (maxH / size.toFloat()) * brainDefaultRoomHeightMeters
+                            } else {
+                                brainDetectedFurnitureHeightMeters = null
+                            }
+                            updateBrainCalibrationPill()
                         }
                     }
                 } finally {
@@ -924,9 +1096,11 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             try {
+                brainSegmentationAcceptingUpdates = true
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
                 DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
+                brainSegmentationAcceptingUpdates = false
                 DebugLogger.eDebugMode(TAG, "Brain camera bind failed", e)
                 runOnUiThread {
                     hideBrainProgressOverlay()
@@ -967,12 +1141,14 @@ class SharpRoomActivity : AppCompatActivity() {
             isBrainInferenceRunning.set(true)
             manager.segmentWithDetectionsAsync(bitmap) { result ->
                 runOnUiThread {
+                    if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                     isBrainInferenceRunning.set(false)
                     if (!hasFirstResult[0]) {
                         hasFirstResult[0] = true
                         DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
                         hideBrainProgressOverlay()
                         brainDetectionOverlay.visibility = View.VISIBLE
+                        setBrainSegmentationButtonActive(true)
                     }
                     val mask = result?.mask
                     val dets = result?.detections ?: emptyList()
@@ -994,12 +1170,23 @@ class SharpRoomActivity : AppCompatActivity() {
                             det.h * scaleY,
                             det.label,
                         )
+                        // Prefer ARCore pinhole height when available, otherwise fallback to tallest detection ratio.
+                        val arHeight = brainArController?.getLastEstimatedHeightMeters()
+                        brainDetectedFurnitureHeightMeters = if (arHeight != null && arHeight > 0f) {
+                            arHeight
+                        } else {
+                            val maxH = dets.maxOf { it.h }
+                            (maxH / size.toFloat()) * brainDefaultRoomHeightMeters
+                        }
                     } else {
                         brainArController?.clearBboxHint()
+                        brainDetectedFurnitureHeightMeters = null
                     }
+                    updateBrainCalibrationPill()
                 }
             }
         }
+        brainSegmentationAcceptingUpdates = true
         controller.onHostResume()
     }
 
@@ -1016,6 +1203,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun stopBrainDetection() {
+        brainSegmentationAcceptingUpdates = false
         DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera / AR")
         brainArController?.let { c ->
             try {
@@ -1024,6 +1212,10 @@ class SharpRoomActivity : AppCompatActivity() {
             c.destroy()
         }
         brainArController = null
+        brainDetectedFurnitureHeightMeters = null
+        brainRealFurnitureHeightMeters = null
+        brainCalibrationScaleFactor = 1.0f
+        updateBrainCalibrationPill()
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) { }
