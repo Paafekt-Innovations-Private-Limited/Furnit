@@ -397,6 +397,24 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private var preferImmediateNextInference = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
 
+    /// Serial queue for debounced AR-assisted measurement (depth → height → overlay scale). Keeps work off the main thread until the debounce fires; height can lag ~1s while the mask keeps up.
+    private let measurementQueue = DispatchQueue(label: "com.furnit.furniturefit.measurement", qos: .utility)
+    private let assistedMeasurementDebounceSeconds: TimeInterval = 0.85
+    private struct PendingAssistedMeasurement {
+        let primaryClassIdx: Int
+        let bboxCenterImageX: CGFloat
+        let bboxCenterImageY: CGFloat
+        let bboxHeightImagePx: Float
+        let imageWidth: Int
+        let imageHeight: Int
+        let arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    }
+    private let pendingMeasurementLock = NSLock()
+    private var pendingAssistedMeasurement: PendingAssistedMeasurement?
+    private var assistedMeasurementDebounceWorkItem: DispatchWorkItem?
+    /// Incremented on each new schedule and on invalidate so superseded debounce work is dropped.
+    private var assistedMeasurementScheduleToken: UInt64 = 0
+
     // MARK: Orientation
     private var currentDeviceOrientation: UIDeviceOrientation = .portrait
 
@@ -409,6 +427,60 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             preferImmediateNextInference = false
         }
         frameLock.unlock()
+    }
+
+    private func invalidatePendingAssistedMeasurement() {
+        assistedMeasurementDebounceWorkItem?.cancel()
+        assistedMeasurementScheduleToken &+= 1
+        pendingMeasurementLock.lock()
+        pendingAssistedMeasurement = nil
+        pendingMeasurementLock.unlock()
+    }
+
+    private func scheduleDebouncedAssistedMeasurement(
+        primaryClassIdx: Int,
+        bboxCenterImageX: CGFloat,
+        bboxCenterImageY: CGFloat,
+        bboxHeightImagePx: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        pendingMeasurementLock.lock()
+        pendingAssistedMeasurement = PendingAssistedMeasurement(
+            primaryClassIdx: primaryClassIdx,
+            bboxCenterImageX: bboxCenterImageX,
+            bboxCenterImageY: bboxCenterImageY,
+            bboxHeightImagePx: bboxHeightImagePx,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            arDepthSnapshot: arDepthSnapshot
+        )
+        pendingMeasurementLock.unlock()
+        assistedMeasurementScheduleToken &+= 1
+        let workToken = assistedMeasurementScheduleToken
+        assistedMeasurementDebounceWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard workToken == self.assistedMeasurementScheduleToken else { return }
+            self.pendingMeasurementLock.lock()
+            let p = self.pendingAssistedMeasurement
+            self.pendingMeasurementLock.unlock()
+            guard let p else { return }
+            DispatchQueue.main.async {
+                self.updateAssistedOverlayScale(
+                    primaryClassIdx: p.primaryClassIdx,
+                    bboxCenterImageX: p.bboxCenterImageX,
+                    bboxCenterImageY: p.bboxCenterImageY,
+                    bboxHeightImagePx: p.bboxHeightImagePx,
+                    imageWidth: p.imageWidth,
+                    imageHeight: p.imageHeight,
+                    arDepthSnapshot: p.arDepthSnapshot
+                )
+            }
+        }
+        assistedMeasurementDebounceWorkItem = work
+        measurementQueue.asyncAfter(deadline: .now() + assistedMeasurementDebounceSeconds, execute: work)
     }
     
     // MARK: Class Names (loaded from classes.json)
@@ -759,6 +831,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func resetOverlayScalesForEmptyMask() {
+        invalidatePendingAssistedMeasurement()
         autoScaleFromRoom = 1.0
         autoScaleFromAR = 1.0
         smoothedArOverlayScale = 1.0
@@ -890,6 +963,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func stop() {
+        invalidatePendingAssistedMeasurement()
         if didRegisterArAssistedSettingObserver {
             NotificationCenter.default.removeObserver(self, name: .furnitureFitArAssistedSettingChanged, object: nil)
             didRegisterArAssistedSettingObserver = false
@@ -1697,6 +1771,31 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
         let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
         let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
+        let useDebouncedArMeasurement = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
+            && isUsingARCameraPath
+        if useDebouncedArMeasurement {
+            scheduleDebouncedAssistedMeasurement(
+                primaryClassIdx: primary.classIdx,
+                bboxCenterImageX: bboxCenterImageX,
+                bboxCenterImageY: bboxCenterImageY,
+                bboxHeightImagePx: bboxHeightImagePx,
+                imageWidth: origW,
+                imageHeight: origH,
+                arDepthSnapshot: arDepthSnapshot
+            )
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateAssistedOverlayScale(
+                    primaryClassIdx: primary.classIdx,
+                    bboxCenterImageX: bboxCenterImageX,
+                    bboxCenterImageY: bboxCenterImageY,
+                    bboxHeightImagePx: bboxHeightImagePx,
+                    imageWidth: origW,
+                    imageHeight: origH,
+                    arDepthSnapshot: arDepthSnapshot
+                )
+            }
+        }
         DispatchQueue.main.async {
             let viewW = self.maskImageView.bounds.width
             let viewH = self.maskImageView.bounds.height
@@ -1710,15 +1809,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 classIdx: primary.classIdx,
                 detectedWidth: CGFloat(primary.w),
                 detectedHeight: CGFloat(primary.h)
-            )
-            self.updateAssistedOverlayScale(
-                primaryClassIdx: primary.classIdx,
-                bboxCenterImageX: bboxCenterImageX,
-                bboxCenterImageY: bboxCenterImageY,
-                bboxHeightImagePx: bboxHeightImagePx,
-                imageWidth: origW,
-                imageHeight: origH,
-                arDepthSnapshot: arDepthSnapshot
             )
             logDebug("👆 [setBbox] viewSize=\(viewW)x\(viewH) bbox=\(self.primaryBboxInView)")
         }
