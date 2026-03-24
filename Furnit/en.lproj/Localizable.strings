@@ -131,14 +131,8 @@
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 "settings.furnitureSegmentationSection" = "Furniture segmentation";
-"settings.multiFurniView" = "MultiFurniView";
-"settings.multiFurniViewDescription" = "When ON, segment multiple furniture. When OFF (default), one primary plus items in 10% margin (e.g. headboard).";
-"settings.ratioBasedFurnitureFit" = "YOLO ratio calibration (saved rooms)";
-"settings.ratioBasedFurnitureFitDescription" = "When you save a room, run a one-shot YOLO pass to store furniture height fractions in room metadata for scale hints.";
-"settings.ratioBasedOverlayResize" = "Ratio-based overlay resize";
-"settings.ratioBasedOverlayResizeDescription" = "Resize the segmentation overlay using saved (or default) target height vs the live detection. Independent of AR-assisted sizing—turn this off separately if you want a fixed 1× overlay scale (room scale and pinch still apply).";
 "settings.arAssistedFurnitureSizing" = "AR-assisted furniture sizing";
-"settings.arAssistedFurnitureSizingDescription" = "Use ARKit depth and planes with camera intrinsics to size the overlay in meters. When off, the regular camera is used and only ratio-based overlay resize applies (if that setting is on).";
+"settings.arAssistedFurnitureSizingDescription" = "Use ARKit depth and planes with camera intrinsics to size the overlay in meters. When off, the regular camera is used and the overlay stays at 1× scale (pinch still adjusts size).";
 "settings.arAssistedNotSupported" = "ARKit world tracking is not available on this device.";
 
 // Licenses & Attributions (About)

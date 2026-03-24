@@ -366,8 +366,7 @@ class FurnitureFitFragment : Fragment() {
 
         manager.segmentWithDetectionsAsync(bitmap) { result ->
             activity?.runOnUiThread {
-                val ratioScale = result?.autoRatioOverlayScale ?: 1f
-                val overlayScale = effectiveOverlayScale(ratioScale)
+                val overlayScale = effectiveOverlayScale()
 
                 if (result != null && result.mask != null) {
                     if (!hasFirstDetection) {
@@ -439,15 +438,15 @@ class FurnitureFitFragment : Fragment() {
         }
     }
 
-    private fun effectiveOverlayScale(ratioScale: Float): Float {
+    private fun effectiveOverlayScale(): Float {
         if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(requireContext())) {
-            return ratioScale
+            return 1f
         }
         val ar = arCameraController
         return if (ar != null && ar.isArOverlayScaleValid()) {
             ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
         } else {
-            ratioScale
+            1f
         }
     }
 
@@ -684,7 +683,7 @@ class FurnitureFitFragment : Fragment() {
                         result.mask,
                         result.detections,
                         result.inputSize,
-                        effectiveOverlayScale(result.autoRatioOverlayScale),
+                        effectiveOverlayScale(),
                     )
 
                     // Estimated furniture height in meters from largest detection (for Tap to calibrate)

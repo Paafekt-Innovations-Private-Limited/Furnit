@@ -45,13 +45,6 @@ struct MeshRoomView: View {
     // Model manager for saving rooms (also used for YOLO ratio metadata merge when viewing saved room)
     @StateObject private var modelManager = USDZModelManager()
 
-    private var furnitureFitDefaultTargetFrac: Float {
-        if let wall = savedRoomModel?.yoloWallHeightFrac {
-            return min(0.6, max(0.08, wall * 0.35))
-        }
-        return 0.26
-    }
-
     var body: some View {
         ZStack {
             // WebGL mesh viewer - OrbitControls in Three.js handles touch directly
@@ -134,8 +127,6 @@ struct MeshRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth,
                     roomHeightMeters: roomHeight,
-                    ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
-                    defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
                     onFurnitureSizeEstimated: { _ in }
                 )
                 .ignoresSafeArea()
@@ -178,15 +169,6 @@ struct MeshRoomView: View {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
                 OrientationLockManager.shared.lockToPortrait()
-            }
-            if let sm = savedRoomModel {
-                Task {
-                    await RoomYoloRatioCapture.captureIfMissing(
-                        savedModel: sm,
-                        modelManager: modelManager,
-                        sharpRoomHeightMeters: sm.roomHeight ?? roomHeight
-                    )
-                }
             }
         }
         .onDisappear {

@@ -1,7 +1,5 @@
 package com.furnit.android.ar
 
-import com.furnit.android.utils.YoloRatioCalibration
-
 /**
  * Reference height in meters for AR-assisted overlay scale.
  *

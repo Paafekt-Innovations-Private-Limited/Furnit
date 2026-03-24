@@ -64,7 +64,7 @@ class USDZModelManager: ObservableObject {
         documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
     }
 
-    /// Exposed for `RoomYoloRatioCapture` reference image lookup (same folder as room files).
+    /// Exposed for reference image lookup in the room folder (e.g. room thumbnail / meshroom assets).
     var savedRoomsDirectoryURL: URL { modelsDirectory }
     
     init() {

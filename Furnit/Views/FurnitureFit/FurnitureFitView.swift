@@ -138,7 +138,7 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.15
-    var useBilinearUpscaling: Bool = false
+    var useBilinearUpscaling: Bool = true
     var active: Bool = false
     
     @ObservedObject private var appState = AppStateManager.shared
@@ -187,19 +187,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.1
-    var useBilinearUpscaling: Bool = false
+    /// When true (default), mask upscales use high-quality resampling for smoother edges.
+    var useBilinearUpscaling: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
     // MARK: Room Dimensions (from SHARP output, in meters)
     var roomWidthMeters: Float = 4.0   // Default fallback
     var roomHeightMeters: Float = 3.0  // Default fallback
-
-    // MARK: Ratio-based ROI (saved-room calibration → live FurnitureFit)
-    /// Canonical furniture label → target bbox height / frame height (from room `.meta`).
-    var ratioTargetsByLabel: [String: Float] = [:]
-    /// Used when the calibration map is non-empty but a class has no entry (room wall / fallback hint). If the map is empty, ratio overlay uses r_curr instead (pre-ratio behavior).
-    var defaultTargetHeightFrac: Float = 0.26
-    var ratioTolerance: Float = 0.04
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
@@ -257,7 +251,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var arAssistedScaleValid = false
     private var autoScaleFromAR: CGFloat = 1.0
     private var smoothedArOverlayScale: CGFloat = 1.0
-    /// When depth/estimation drops for a few frames, keep last AR scale instead of snapping to ratio (avoids small/big flicker).
+    /// When depth/estimation drops for a few frames, keep last AR scale instead of snapping to 1× (avoids small/big flicker).
     private var arAssistedConsecutiveMisses: Int = 0
     private let maxArAssistedHoldMisses: Int = 18
     /// Latest AR-estimated furniture height in meters (UI only; does not affect segmentation).
@@ -271,6 +265,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true
+        iv.layer.minificationFilter = .linear
+        iv.layer.magnificationFilter = .linear
         return iv
     }()
     
@@ -304,25 +300,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     private var hasFirstDetection = false
 
-    // MARK: - Overlay scale (room calibration × ratio × user pinch)
-    /// From `FurnitureSizingCalculator` (real-world proportions vs detected bbox in model space).
+    // MARK: - Overlay scale (room × AR when enabled × user pinch)
+    /// From `FurnitureSizingCalculator` (currently neutral 1×; room meters come from SHARP / calibration).
     private var autoScaleFromRoom: CGFloat = 1.0
-    /// From YOLO room ratio targets: shrink/expand overlay so bbox height fraction → r_target (used when AR metric path is inactive).
-    private var autoScaleFromRatio: CGFloat = 1.0
     /// User pinch multiplier (reset when primary class changes).
     private var userPinchScale: CGFloat = 1.0
-    /// Smoothed ratio scale to avoid jitter frame-to-frame.
-    private var smoothedRatioOverlayScale: CGFloat = 1.0
-    /// After user pinches, stop updating ratio auto-scale until primary class changes.
-    private var userLockedRatioOverlayScale: Bool = false
-    /// Last primary class used for overlay ratio / pinch reset.
+    /// After user pinches, stop updating AR-assisted auto-scale until primary class changes.
+    private var userLockedAssistedOverlayScale: Bool = false
+    /// Last primary class used for overlay / pinch reset.
     private var lastOverlayPrimaryClassIdx: Int = -1
 
     private let minCombinedOverlayScale: CGFloat = 0.3
     private let maxCombinedOverlayScale: CGFloat = 3.0
-    private let minRatioOverlayScale: CGFloat = 0.4
-    private let maxRatioOverlayScale: CGFloat = 2.5
-    private let ratioOverlaySmoothingAlpha: CGFloat = 0.28
 
     /// Throttled logging for oscillation diagnosis (when `debugMode` is on).
     private var overlayDebugLastAssistedLabel: String = ""
@@ -586,34 +575,34 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     /// Updates room-based auto scale from standard furniture dimensions vs detection (model input pixels).
-    /// Does not set `transform`; call `applyCurrentOverlayScaleTransform()` after ratio (or alone).
+    /// Does not set `transform`; call `applyCurrentOverlayScaleTransform()` after AR update (or alone).
     private func updateAutoScaleFromRoom(classIdx: Int, detectedWidth: CGFloat, detectedHeight: CGFloat) {
         // In \"generic fit\" mode we no longer apply any per-class catalog-based scaling.
         // Room-based meters already come from SHARP / calibration; visual scaling is driven
-        // by AR (when available), ratio targets, and user pinch.
+        // by AR (when available) and user pinch.
         autoScaleFromRoom = 1.0
     }
 
-    /// Combined overlay transform: room × (AR metric or ratio) × pinch (clamped).
+    /// Combined overlay transform: room × (AR metric when valid, else 1×) × pinch (clamped).
     private func applyCurrentOverlayScaleTransform() {
         let settingsArOn = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
         let arOn = settingsArOn
             && isUsingARCameraPath
             && arAssistedScaleValid
-        let assistedScale = arOn ? autoScaleFromAR : autoScaleFromRatio
+        let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
         let product = autoScaleFromRoom * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
         maskImageView.transform = CGAffineTransform(scaleX: clamped, y: clamped)
 
         if debugMode {
-            let wantAR = settingsArOn && isUsingARCameraPath && !userLockedRatioOverlayScale
+            let wantAR = settingsArOn && isUsingARCameraPath && !userLockedAssistedOverlayScale
             let assistedLabel: String
             if arOn {
                 assistedLabel = "AR"
             } else if wantAR {
-                assistedLabel = "ratio_AR_unavailable"
+                assistedLabel = "1x_AR_unavailable"
             } else {
-                assistedLabel = "ratio"
+                assistedLabel = "1x"
             }
             let jump = overlayDebugLastCombined < 0 || abs(clamped - overlayDebugLastCombined) > 0.02
             let labelChange = assistedLabel != overlayDebugLastAssistedLabel
@@ -621,60 +610,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 overlayDebugLastAssistedLabel = assistedLabel
                 overlayDebugLastCombined = clamped
                 logDebug(
-                    "📐 [OVERLAY] assist=\(assistedLabel) room=\(String(format: "%.3f", autoScaleFromRoom)) ar=\(String(format: "%.3f", autoScaleFromAR)) ratio=\(String(format: "%.3f", autoScaleFromRatio)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid) arMisses=\(arAssistedConsecutiveMisses)"
+                    "📐 [OVERLAY] assist=\(assistedLabel) room=\(String(format: "%.3f", autoScaleFromRoom)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid) arMisses=\(arAssistedConsecutiveMisses)"
                 )
             }
         }
     }
 
-    /// Call on main after each successful frame with ratio metrics (replaces second CoreML pass).
-    private func updateRatioOverlayScaleFromCalibration(
-        featureOn: Bool,
-        withinTolerance: Bool,
-        rCurrent: Float,
-        rTarget: Float,
-        primaryClassIdx: Int
-    ) {
-        if primaryClassIdx != lastOverlayPrimaryClassIdx {
-            lastOverlayPrimaryClassIdx = primaryClassIdx
-            userPinchScale = 1.0
-            userLockedRatioOverlayScale = false
-            smoothedRatioOverlayScale = 1.0
-            autoScaleFromRatio = 1.0
-        }
-
-        let targetRatioScale: CGFloat
-        if !featureOn || withinTolerance {
-            targetRatioScale = 1.0
-        } else {
-            let rc = max(rCurrent, 1e-4)
-            let raw = CGFloat(rTarget) / CGFloat(rc)
-            targetRatioScale = min(max(raw, minRatioOverlayScale), maxRatioOverlayScale)
-        }
-
-        if !userLockedRatioOverlayScale {
-            let alpha = ratioOverlaySmoothingAlpha
-            smoothedRatioOverlayScale = smoothedRatioOverlayScale * (1.0 - alpha) + targetRatioScale * alpha
-            autoScaleFromRatio = smoothedRatioOverlayScale
-        }
-
-        applyCurrentOverlayScaleTransform()
-
-        if debugMode {
-            let arOn = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing && isUsingARCameraPath && arAssistedScaleValid
-            let assisted = arOn ? autoScaleFromAR : autoScaleFromRatio
-            let product = autoScaleFromRoom * assisted * userPinchScale
-            let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
-            logDebug("📐 [RATIO] overlay scale room=\(String(format: "%.3f", autoScaleFromRoom)) assisted=\(String(format: "%.3f", assisted)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) (targetRatio=\(String(format: "%.3f", targetRatioScale)) r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) locked=\(userLockedRatioOverlayScale))")
-        }
-    }
-
-    /// After ratio/AR updates, applies transform (AR vs ratio chosen inside `applyCurrentOverlayScaleTransform`).
     private func updateAssistedOverlayScale(
-        ratioFeatureOn: Bool,
-        withinTolerance: Bool,
-        rCurrent: Float,
-        rTarget: Float,
         primaryClassIdx: Int,
         bboxCenterImageX: CGFloat,
         bboxCenterImageY: CGFloat,
@@ -686,9 +628,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if primaryClassIdx != lastOverlayPrimaryClassIdx {
             lastOverlayPrimaryClassIdx = primaryClassIdx
             userPinchScale = 1.0
-            userLockedRatioOverlayScale = false
-            smoothedRatioOverlayScale = 1.0
-            autoScaleFromRatio = 1.0
+            userLockedAssistedOverlayScale = false
             smoothedArOverlayScale = 1.0
             autoScaleFromAR = 1.0
             arAssistedScaleValid = false
@@ -699,7 +639,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         let wantAR = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
             && isUsingARCameraPath
-            && !userLockedRatioOverlayScale
+            && !userLockedAssistedOverlayScale
 
         if wantAR, arDepthSnapshot != nil || arSession.currentFrame != nil {
             let nx = bboxCenterImageX / CGFloat(max(1, imageWidth))
@@ -756,8 +696,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     standardHeightMeters: stdH,
                     estimatedHeightMeters: estH
                 ) {
-                    // AR-assisted scale can jitter due to depth noise; clamp per-frame change
-                    // and apply a slightly slower EMA than ratio-based scaling.
+                    // AR-assisted scale can jitter due to depth noise; clamp per-frame change and EMA smooth.
                     let target = CGFloat(raw)
                     let base = smoothedArOverlayScale
                     let maxStep: CGFloat = 0.08
@@ -777,7 +716,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
             // AR sizing is on but this frame had no depth / invalid estimate.
             // If we've *ever* had a valid AR scale, keep reusing it instead of
-            // snapping back to ratio (that snap is what causes the big/small oscillation).
+            // snapping back to 1× (that snap is what causes the big/small oscillation).
             if arAssistedScaleValid {
                 if debugMode {
                     logDebug("📐 [AR_HOLD] no depth this frame; keeping last AR scale")
@@ -795,24 +734,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // If we get here, either AR is off, or it's on but has NEVER produced a valid scale
-        // in this session (`arAssistedScaleValid == false`). In that case we fall back to
-        // ratio / 1× only — no AR ↔ ratio flipping.
+        // in this session (`arAssistedScaleValid == false`). Use 1× assisted scale — no AR ↔ 1× flipping once AR was valid.
         arAssistedConsecutiveMisses = 0
         if !arAssistedScaleValid {
             autoScaleFromAR = 1.0
         }
-        updateRatioOverlayScaleFromCalibration(
-            featureOn: ratioFeatureOn,
-            withinTolerance: withinTolerance,
-            rCurrent: rCurrent,
-            rTarget: rTarget,
-            primaryClassIdx: primaryClassIdx
-        )
+        applyCurrentOverlayScaleTransform()
     }
 
     private func resetOverlayScalesForEmptyMask() {
         autoScaleFromRoom = 1.0
-        autoScaleFromRatio = 1.0
         autoScaleFromAR = 1.0
         smoothedArOverlayScale = 1.0
         arAssistedConsecutiveMisses = 0
@@ -821,8 +752,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         overlayDebugLastCombined = -1
         lastAREstimatedHeightMeters = nil
         userPinchScale = 1.0
-        smoothedRatioOverlayScale = 1.0
-        userLockedRatioOverlayScale = false
+        userLockedAssistedOverlayScale = false
         lastOverlayPrimaryClassIdx = -1
         maskImageView.transform = .identity
     }
@@ -1736,50 +1666,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain)))
         let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain)))
 
-        // Ratio-based FurnitureFit: drive overlay scale (same idea as pinch), not a second CoreML pass.
-        // Use a single unified toggle so YOLO ratio capture and live overlay resize stay in sync.
-        let ratioFeatureOn = AppStateManager.shared.qualitySettings.enableRatioBasedFurnitureFit
-        var ratioOverlayRCurrent: Float = 0
-        var ratioOverlayRTarget: Float = defaultTargetHeightFrac
-        var ratioOverlayWithinTolerance = true
-
-        if ratioFeatureOn {
-            let rawLabel = classNames[primary.classIdx] ?? ""
-            let canon = YoloRatioCalibration.canonicalLabel(raw: rawLabel)
-            let bboxHBuf = primary.h / resizeGain
-            let rCurrent = Float(bboxHBuf) / Float(max(1, bufH))
-            // Target height fraction: per-class metadata when present; if the map is empty (no room
-            // calibration), use r_curr so ratio overlay stays 1×—same as before ratio-based resize.
-            // If the map exists but this class is missing, fall back to defaultTargetHeightFrac (wall/room hint).
-            let rTarget: Float
-            let targetSource: String
-            if let meta = ratioTargetsByLabel[canon] {
-                rTarget = meta
-                targetSource = "metadata[\(canon)]"
-            } else if ratioTargetsByLabel.isEmpty {
-                rTarget = rCurrent
-                targetSource = "neutral (no calibration map)"
-            } else {
-                rTarget = defaultTargetHeightFrac
-                targetSource = "defaultTargetHeightFrac (no entry for '\(canon)')"
-            }
-            let delta = abs(rCurrent - rTarget)
-
-            ratioOverlayRCurrent = rCurrent
-            ratioOverlayRTarget = rTarget
-            ratioOverlayWithinTolerance = delta <= ratioTolerance
-
-            if debugMode {
-                logDebug("📐 [RATIO] eval classIdx=\(primary.classIdx) raw=\"\(rawLabel)\" canon=\"\(canon)\" | r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) via \(targetSource) | Δ=\(String(format: "%.4f", delta)) tol=\(ratioTolerance) | bboxHBuf=\(String(format: "%.1f", bboxHBuf)) buf=\(bufW)x\(bufH) pad=(\(padX),\(padY)) gain=\(String(format: "%.4f", resizeGain)) | perClassKeys=\(ratioTargetsByLabel.count)")
-            }
-
-            if ratioOverlayWithinTolerance, debugMode {
-                logDebug("📐 [RATIO] → overlay ratio scale target 1 (within tolerance)")
-            }
-        } else if debugMode {
-            logDebug("📐 [RATIO] overlay sizing OFF (Settings → Ratio-based FurnitureFit)")
-        }
-
         if debugMode {
             logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
@@ -1807,10 +1693,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 detectedHeight: CGFloat(primary.h)
             )
             self.updateAssistedOverlayScale(
-                ratioFeatureOn: ratioFeatureOn,
-                withinTolerance: ratioOverlayWithinTolerance,
-                rCurrent: ratioOverlayRCurrent,
-                rTarget: ratioOverlayRTarget,
                 primaryClassIdx: primary.classIdx,
                 bboxCenterImageX: bboxCenterImageX,
                 bboxCenterImageY: bboxCenterImageY,
@@ -2222,11 +2104,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     let m = maskFull[y * origW + x]
                     if m > 0 {
                         let origIdx = origRow + x * 4
-                        // Source is BGRA, destination is RGBA - swap R and B
-                        outBase[outIdx+0] = origBase[origIdx+2]  // R
-                        outBase[outIdx+1] = origBase[origIdx+1]  // G
-                        outBase[outIdx+2] = origBase[origIdx+0]  // B
-                        outBase[outIdx+3] = 255                   // A
+                        let a = Float(m) / 255.0
+                        // Source is BGRA, destination is premultiplied RGBA
+                        outBase[outIdx+0] = UInt8(min(255, Float(origBase[origIdx+2]) * a + 0.5))
+                        outBase[outIdx+1] = UInt8(min(255, Float(origBase[origIdx+1]) * a + 0.5))
+                        outBase[outIdx+2] = UInt8(min(255, Float(origBase[origIdx+0]) * a + 0.5))
+                        outBase[outIdx+3] = m
                     } else {
                         outBase[outIdx+3] = 0
                     }
@@ -2346,7 +2229,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     cgImg = rotatedImg ?? cgImg
                 }
                 self.maskImageView.image = UIImage(cgImage: cgImg)
-                // Overlay scale (room × ratio × pinch) is updated on main when primary bbox is set each frame.
+                // Overlay scale (room × AR × pinch) is updated on main when primary bbox is set each frame.
             }
         }
         resetProcessingFlag()
@@ -2426,6 +2309,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             maskSmall.withUnsafeBufferPointer { srcPtr in
                 var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(pH), width: vImagePixelCount(pW), rowBytes: pW)
                 var d = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(modelInput), width: vImagePixelCount(modelInput), rowBytes: modelInput)
+                // High-quality resampling avoids jagged, stair-stepped mask edges after upscale.
                 let flags: vImage_Flags = useBilinearUpscaling ? vImage_Flags(kvImageHighQualityResampling) : vImage_Flags(kvImageNoFlags)
                 vImageScale_Planar8(&s, &d, nil, flags)
             }
@@ -2684,9 +2568,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         switch gesture.state {
         case .began:
-            userLockedRatioOverlayScale = true
+            userLockedAssistedOverlayScale = true
         case .changed:
-            userLockedRatioOverlayScale = true
+            userLockedAssistedOverlayScale = true
             let newPinch = userPinchScale * gesture.scale
             userPinchScale = min(max(newPinch, 0.25), 4.0)
             applyCurrentOverlayScaleTransform()
@@ -2695,7 +2579,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Snap pinch back to neutral if user barely scaled (same spirit as old 0.9–1.1 total scale).
             if userPinchScale > 0.92 && userPinchScale < 1.08 {
                 userPinchScale = 1.0
-                userLockedRatioOverlayScale = false
+                userLockedAssistedOverlayScale = false
                 UIView.animate(withDuration: 0.2) {
                     self.applyCurrentOverlayScaleTransform()
                 }
@@ -2704,12 +2588,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
     }
 
-    /// Reset overlay scale back to its default for the current detection: keep room and AR/ratio
+    /// Reset overlay scale back to its default for the current detection: keep room and AR-assisted
     /// scaling, but remove user pinch so the furniture returns to its \"real\" size.
     @objc private func handleResetScaleTapped() {
         guard maskImageView.image != nil else { return }
         userPinchScale = 1.0
-        userLockedRatioOverlayScale = false
+        userLockedAssistedOverlayScale = false
         if debugMode {
             logDebug("📐 [RESET] overlay scale reset to default (pinch=1.0)")
         }

@@ -39,9 +39,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.RoomFolderMetadata
-import com.furnit.android.utils.RoomYoloRatioCapture
 import com.furnit.android.services.FurnitureFitManager
-import com.furnit.android.services.RatioSegmentationParams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,8 +111,6 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
-    /** Per-room YOLO height fractions for brain (SmartyPants) ROI; null if not on disk. */
-    private var brainRatioParams: RatioSegmentationParams? = null
     /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
     private var statusBarInsetTop = 0
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -181,23 +177,6 @@ class SharpRoomActivity : AppCompatActivity() {
                     TAG,
                     "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle arDisplayScale=$arDisplayScale"
                 )
-                if (disk.yoloFurnitureHeightFracByClass.isNotEmpty()) {
-                    brainRatioParams = RatioSegmentationParams(
-                        furnitureHeightFracByClass = disk.yoloFurnitureHeightFracByClass,
-                        defaultTargetHeightFrac = 0.26f,
-                    )
-                    DebugLogger.d(TAG, "Brain ratio targets loaded: ${disk.yoloFurnitureHeightFracByClass.keys}")
-                }
-            }
-        }
-
-        roomFolder?.let { folderPath ->
-            lifecycleScope.launch(Dispatchers.IO) {
-                runCatching {
-                    RoomYoloRatioCapture.captureIfMissing(applicationContext, File(folderPath))
-                }.onFailure { e ->
-                    DebugLogger.eDebugMode(TAG, "Room YOLO ratio capture failed", e)
-                }
             }
         }
 
@@ -854,16 +833,6 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun startBrainDetection() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
-        roomFolder?.let { path ->
-            RoomFolderMetadata.readFromFolder(File(path))?.let { disk ->
-                if (disk.yoloFurnitureHeightFracByClass.isNotEmpty()) {
-                    brainRatioParams = RatioSegmentationParams(
-                        furnitureHeightFracByClass = disk.yoloFurnitureHeightFracByClass,
-                        defaultTargetHeightFrac = 0.26f,
-                    )
-                }
-            }
-        }
         lifecycleScope.launch {
             val manager = withContext(Dispatchers.IO) {
                 val m = FurnitureFitManager(this@SharpRoomActivity)
@@ -930,7 +899,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     if (frameCount == 1 || frameCount % 30 == 0) {
                         DebugLogger.d(TAG, "Brain: analysis frame $frameCount (camera active)")
                     }
-                    manager.segmentWithDetectionsAsync(bitmap, brainRatioParams) { result ->
+                    manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
@@ -946,7 +915,7 @@ class SharpRoomActivity : AppCompatActivity() {
                                 mask,
                                 dets,
                                 size,
-                                result?.autoRatioOverlayScale ?: 1f,
+                                brainEffectiveOverlayScale(),
                             )
                         }
                     }
@@ -996,7 +965,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 return@arBitmap
             }
             isBrainInferenceRunning.set(true)
-            manager.segmentWithDetectionsAsync(bitmap, brainRatioParams) { result ->
+            manager.segmentWithDetectionsAsync(bitmap) { result ->
                 runOnUiThread {
                     isBrainInferenceRunning.set(false)
                     if (!hasFirstResult[0]) {
@@ -1008,12 +977,11 @@ class SharpRoomActivity : AppCompatActivity() {
                     val mask = result?.mask
                     val dets = result?.detections ?: emptyList()
                     val size = result?.inputSize ?: 640
-                    val ratioScale = result?.autoRatioOverlayScale ?: 1f
                     brainDetectionOverlayView.setMaskAndDetections(
                         mask,
                         dets,
                         size,
-                        brainEffectiveOverlayScale(ratioScale),
+                        brainEffectiveOverlayScale(),
                     )
                     if (mask != null && dets.isNotEmpty()) {
                         val det = dets.first()
@@ -1035,15 +1003,15 @@ class SharpRoomActivity : AppCompatActivity() {
         controller.onHostResume()
     }
 
-    private fun brainEffectiveOverlayScale(ratioScale: Float): Float {
+    private fun brainEffectiveOverlayScale(): Float {
         if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)) {
-            return ratioScale
+            return 1f
         }
         val ar = brainArController
         return if (ar != null && ar.isArOverlayScaleValid()) {
             ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
         } else {
-            ratioScale
+            1f
         }
     }
 

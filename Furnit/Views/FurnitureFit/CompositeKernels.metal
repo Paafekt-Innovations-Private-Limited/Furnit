@@ -14,7 +14,8 @@ kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]
         return;
     }
     float4 s = src.read(gid);  // BGRA: s.r=Blue, s.g=Green, s.b=Red
-    out.write(float4(s.b, s.g, s.r, 1.0), gid);
+    // Premultiplied alpha so soft mask values (from bilinear upscale) blend smoothly.
+    out.write(float4(s.b * m, s.g * m, s.r * m, m), gid);
 }
 
 // Build maskSmall in prototype space: max over detections of dot(A[pixel], coeffs[j]) then threshold > 0
@@ -37,6 +38,26 @@ kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
         if (dotv > maxLogit) maxLogit = dotv;
     }
     outMask[gid] = (maxLogit > 0.0f) ? (uchar)255 : (uchar)0;
+}
+
+// Bilinear sample of one prototype plane at fractional (px, py) in [0, pW-1]×[0, pH-1].
+static inline float sp_samplePlaneBilinear(constant float *planes, uint pW, uint pH, uint planeSize, float px, float py, uint k) {
+    px = clamp(px, 0.0f, float(pW - 1));
+    py = clamp(py, 0.0f, float(pH - 1));
+    float fx = floor(px);
+    float fy = floor(py);
+    uint x0 = uint(fx);
+    uint y0 = uint(fy);
+    uint x1 = min(x0 + 1, pW - 1);
+    uint y1 = min(y0 + 1, pH - 1);
+    float tx = px - fx;
+    float ty = py - fy;
+    uint b = k * planeSize;
+    float v00 = planes[b + y0 * pW + x0];
+    float v10 = planes[b + y0 * pW + x1];
+    float v01 = planes[b + y1 * pW + x0];
+    float v11 = planes[b + y1 * pW + x1];
+    return mix(mix(v00, v10, tx), mix(v01, v11, tx), ty);
 }
 
 // Fused kernel: compute max(A·coeffs) in prototype space and composite into output
@@ -96,30 +117,24 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
     float px = u * float(pW - 1);
     float py = v * float(pH - 1);
 
-    // Nearest neighbor sampling in prototype space for performance
-    uint ix = (uint)round(px);
-    uint iy = (uint)round(py);
     uint planeSize = pW * pH;
-    uint protIdx = iy * pW + ix;
 
-    // Compute max over detections of dot(prototypes[:, protIdx], coeffs[j][:])
+    // Bilinear sampling in prototype space (avoids blocky / jagged mask edges from nearest-neighbor).
     float maxLogit = -3.4e38f;
     for (uint j = 0; j < detCount; ++j) {
         float dotv = 0.0f;
         for (uint k = 0; k < 32; ++k) {
-            float a = planes[k * planeSize + protIdx];
+            float a = sp_samplePlaneBilinear(planes, pW, pH, planeSize, px, py, k);
             float c = coeffs[j * 32 + k];
             dotv += a * c;
         }
         if (dotv > maxLogit) maxLogit = dotv;
     }
 
-    // Threshold at 0 and composite. Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
-    float4 out = float4(0.0, 0.0, 0.0, 0.0);
-    if (maxLogit > 0.0f) {
-        float4 s = src.read(uint2(gid.x, gid.y));
-        out = float4(s.b, s.g, s.r, 1.0);
-    }
-    outTex.write(out, gid);
+    // Soft alpha across the decision boundary (premultiplied BGRA for smooth edges).
+    const float edgeW = 0.22f;
+    float a = smoothstep(-edgeW, edgeW, maxLogit);
+    float4 s = src.read(uint2(gid.x, gid.y));
+    outTex.write(float4(s.b * a, s.g * a, s.r * a, a), gid);
 }
 

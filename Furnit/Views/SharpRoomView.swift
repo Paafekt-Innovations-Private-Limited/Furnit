@@ -435,16 +435,6 @@ struct SharpRoomView: View {
             yoloeService.ensureModelLoaded()
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
-            if let sm = savedRoomModel {
-                let sharpH = roomMeasurements?.frontWallHeight ?? sm.roomHeight
-                Task {
-                    await RoomYoloRatioCapture.captureIfMissing(
-                        savedModel: sm,
-                        modelManager: modelManager,
-                        sharpRoomHeightMeters: sharpH
-                    )
-                }
-            }
         }
         .onDisappear { OrientationLockManager.shared.unlock() }
         .alert("Save Room", isPresented: $showRoomNameInput) {
@@ -596,13 +586,6 @@ struct SharpRoomView: View {
         calibratedRoomHeight ?? roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
     }
 
-    private var furnitureFitDefaultTargetFrac: Float {
-        if let wall = savedRoomModel?.yoloWallHeightFrac {
-            return min(0.6, max(0.08, wall * 0.35))
-        }
-        return 0.26
-    }
-
     private var furnitureFitOverlayView: some View {
         FurnitureFitUIView(
             capturedImage: .constant(nil),
@@ -613,8 +596,6 @@ struct SharpRoomView: View {
             lockedOrientation: photoOrientation,
             roomWidthMeters: furnitureFitRoomWidth,
             roomHeightMeters: furnitureFitRoomHeight,
-            ratioTargetsByLabel: savedRoomModel?.yoloFurnitureHeightFracByClass ?? [:],
-            defaultTargetHeightFrac: furnitureFitDefaultTargetFrac,
             onFurnitureSizeEstimated: { estimate in
                 // Keep numeric room + furniture measurements stable; AR height is used only
                 // for visual overlay sizing inside FurnitureFit, not for recalibrating the room.

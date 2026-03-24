@@ -138,13 +138,7 @@ enum L10n {
         static let autoOrbitDescription = "settings.autoOrbitDescription".localized
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
-        static let multiFurniView = "settings.multiFurniView".localized
-        static let multiFurniViewDescription = "settings.multiFurniViewDescription".localized
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
-        static let ratioBasedFurnitureFit = "settings.ratioBasedFurnitureFit".localized
-        static let ratioBasedFurnitureFitDescription = "settings.ratioBasedFurnitureFitDescription".localized
-        static let ratioBasedOverlayResize = "settings.ratioBasedOverlayResize".localized
-        static let ratioBasedOverlayResizeDescription = "settings.ratioBasedOverlayResizeDescription".localized
         static let arAssistedFurnitureSizing = "settings.arAssistedFurnitureSizing".localized
         static let arAssistedFurnitureSizingDescription = "settings.arAssistedFurnitureSizingDescription".localized
         static let arAssistedNotSupported = "settings.arAssistedNotSupported".localized

@@ -74,9 +74,7 @@ struct ModelViewerView: View {
                             active: true,
                             lockedOrientation: model.photoOrientation,
                             roomWidthMeters: model.roomWidth ?? 4.0,
-                            roomHeightMeters: model.roomHeight ?? 3.0,
-                            ratioTargetsByLabel: model.yoloFurnitureHeightFracByClass ?? [:],
-                            defaultTargetHeightFrac: model.yoloWallHeightFrac.map { min(0.6, max(0.08, $0 * 0.35)) } ?? 0.26
+                            roomHeightMeters: model.roomHeight ?? 3.0
                         )
                         .zIndex(9000)
                     }
@@ -611,11 +609,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var roomWidthMeters: Float = 4.0
     var roomHeightMeters: Float = 3.0
 
-    /// Saved-room YOLO ratio targets (canonical label → height fraction). Empty when unavailable.
-    var ratioTargetsByLabel: [String: Float] = [:]
-    var defaultTargetHeightFrac: Float = 0.26
-    var ratioTolerance: Float = 0.04
-
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
 
@@ -625,9 +618,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.lockedOrientation = lockedOrientation
         view.roomWidthMeters = roomWidthMeters
         view.roomHeightMeters = roomHeightMeters
-        view.ratioTargetsByLabel = ratioTargetsByLabel
-        view.defaultTargetHeightFrac = defaultTargetHeightFrac
-        view.ratioTolerance = ratioTolerance
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         return view
@@ -639,9 +629,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.lockedOrientation = lockedOrientation
         uiView.roomWidthMeters = roomWidthMeters
         uiView.roomHeightMeters = roomHeightMeters
-        uiView.ratioTargetsByLabel = ratioTargetsByLabel
-        uiView.defaultTargetHeightFrac = defaultTargetHeightFrac
-        uiView.ratioTolerance = ratioTolerance
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         if active { uiView.startIfNeeded() } else { uiView.stop() }

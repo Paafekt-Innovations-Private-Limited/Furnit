@@ -149,39 +149,7 @@ class SettingsActivity : AppCompatActivity() {
         qualitySection.addView(rg)
         layout.addView(qualitySection)
 
-        // Furniture segmentation — ratio overlay resize (matches iOS QualitySettings.enableRatioBasedOverlayResize)
         val furnitureFitSection = createSection(getString(R.string.settings_furniture_segmentation))
-        val ratioResizeLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 8, 0, 8)
-        }
-        val ratioResizeLabel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        ratioResizeLabel.addView(
-            TextView(this).apply {
-                text = getString(R.string.settings_ratio_based_overlay_resize)
-                textSize = 16f
-                setTextColor(Color.parseColor("#333333"))
-            },
-        )
-        ratioResizeLabel.addView(
-            TextView(this).apply {
-                text = getString(R.string.settings_ratio_based_overlay_resize_description)
-                textSize = 12f
-                setTextColor(Color.parseColor("#666666"))
-            },
-        )
-        val ratioResizeSwitch = createStyledSwitch(
-            prefs.getBoolean(FurnitureFitManager.KEY_RATIO_BASED_OVERLAY_RESIZE, true),
-        ) { isChecked ->
-            prefs.edit().putBoolean(FurnitureFitManager.KEY_RATIO_BASED_OVERLAY_RESIZE, isChecked).apply()
-        }
-        ratioResizeLayout.addView(ratioResizeLabel)
-        ratioResizeLayout.addView(ratioResizeSwitch)
-        furnitureFitSection.addView(ratioResizeLayout)
 
         if (ArSupportChecker.isArCoreSupported(this)) {
             val arSizingLayout = LinearLayout(this).apply {

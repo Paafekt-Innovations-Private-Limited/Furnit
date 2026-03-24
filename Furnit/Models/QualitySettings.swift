@@ -157,21 +157,7 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When enabled: run one-shot YOLO calibration for saved rooms and persist height fractions in room metadata.
-    @Published var enableRatioBasedFurnitureFit: Bool {
-        didSet {
-            saveRatioBasedFurnitureFit()
-        }
-    }
-
-    /// When enabled: scale the FurnitureFit mask overlay using saved (or default) target height vs current detection (r_target / r_curr).
-    @Published var enableRatioBasedOverlayResize: Bool {
-        didSet {
-            saveRatioBasedOverlayResize()
-        }
-    }
-
-    /// When enabled and ARKit is supported: use AR depth / plane raycast + intrinsics for metric overlay sizing (falls back to ratio + AV camera when off or unsupported).
+    /// When enabled and ARKit is supported: use AR depth / plane raycast + intrinsics for metric overlay sizing (falls back to 1× overlay scale + AV camera when off or unsupported).
     @Published var enableArAssistedFurnitureSizing: Bool {
         didSet {
             saveArAssistedFurnitureSizing()
@@ -183,8 +169,6 @@ class QualitySettings: ObservableObject {
     private let movementSpeedKey = "selected_movement_speed"
     private let debugModeKey = "debug_mode"
     private let bboxInMaskThresholdKey = "bbox_in_mask_threshold"
-    private let ratioBasedFurnitureFitKey = "ratio_based_furniture_fit"
-    private let ratioBasedOverlayResizeKey = "ratio_based_overlay_resize"
     private let arAssistedFurnitureSizingKey = "ar_assisted_furniture_sizing"
     
     // Initialize with saved quality or default to high
@@ -212,23 +196,6 @@ class QualitySettings: ObservableObject {
         // Load bbox-in-mask threshold setting, default to 0.30
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
-
-        // Ratio-based FurnitureFit: default on after validation (toggle in Settings)
-        let loadedRatioBasedFurnitureFit: Bool
-        if UserDefaults.standard.object(forKey: ratioBasedFurnitureFitKey) != nil {
-            loadedRatioBasedFurnitureFit = UserDefaults.standard.bool(forKey: ratioBasedFurnitureFitKey)
-        } else {
-            loadedRatioBasedFurnitureFit = true
-        }
-        self.enableRatioBasedFurnitureFit = loadedRatioBasedFurnitureFit
-
-        // Overlay resize from r_target/r_curr: default mirrors legacy single toggle when key is new.
-        // Use local `loadedRatioBasedFurnitureFit` — cannot read `self` here until every stored property is set.
-        if UserDefaults.standard.object(forKey: ratioBasedOverlayResizeKey) != nil {
-            self.enableRatioBasedOverlayResize = UserDefaults.standard.bool(forKey: ratioBasedOverlayResizeKey)
-        } else {
-            self.enableRatioBasedOverlayResize = loadedRatioBasedFurnitureFit
-        }
 
         if UserDefaults.standard.object(forKey: arAssistedFurnitureSizingKey) != nil {
             self.enableArAssistedFurnitureSizing = UserDefaults.standard.bool(forKey: arAssistedFurnitureSizingKey)
@@ -259,16 +226,6 @@ class QualitySettings: ObservableObject {
     private func saveBboxInMaskThreshold() {
         UserDefaults.standard.set(bboxInMaskThreshold, forKey: bboxInMaskThresholdKey)
         logDebug("💾 Saved bbox-in-mask threshold setting: \(bboxInMaskThreshold)")
-    }
-
-    private func saveRatioBasedFurnitureFit() {
-        UserDefaults.standard.set(enableRatioBasedFurnitureFit, forKey: ratioBasedFurnitureFitKey)
-        logDebug("💾 Saved ratio-based FurnitureFit: \(enableRatioBasedFurnitureFit)")
-    }
-
-    private func saveRatioBasedOverlayResize() {
-        UserDefaults.standard.set(enableRatioBasedOverlayResize, forKey: ratioBasedOverlayResizeKey)
-        logDebug("💾 Saved ratio-based overlay resize: \(enableRatioBasedOverlayResize)")
     }
 
     private func saveArAssistedFurnitureSizing() {
@@ -315,8 +272,6 @@ class QualitySettings: ObservableObject {
         selectedMovementSpeed = .normal
         debugMode = false
         bboxInMaskThreshold = 0.30
-        enableRatioBasedFurnitureFit = true
-        enableRatioBasedOverlayResize = true
         enableArAssistedFurnitureSizing = true
     }
 }
