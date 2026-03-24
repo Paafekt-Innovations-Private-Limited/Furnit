@@ -171,6 +171,13 @@ class QualitySettings: ObservableObject {
         }
     }
 
+    /// When enabled and ARKit is supported: use AR depth / plane raycast + intrinsics for metric overlay sizing (falls back to ratio + AV camera when off or unsupported).
+    @Published var enableArAssistedFurnitureSizing: Bool {
+        didSet {
+            saveArAssistedFurnitureSizing()
+        }
+    }
+
     // UserDefaults keys for persistence
     private let qualityKey = "selected_asset_quality"
     private let movementSpeedKey = "selected_movement_speed"
@@ -178,6 +185,7 @@ class QualitySettings: ObservableObject {
     private let bboxInMaskThresholdKey = "bbox_in_mask_threshold"
     private let ratioBasedFurnitureFitKey = "ratio_based_furniture_fit"
     private let ratioBasedOverlayResizeKey = "ratio_based_overlay_resize"
+    private let arAssistedFurnitureSizingKey = "ar_assisted_furniture_sizing"
     
     // Initialize with saved quality or default to high
     init() {
@@ -221,6 +229,12 @@ class QualitySettings: ObservableObject {
         } else {
             self.enableRatioBasedOverlayResize = loadedRatioBasedFurnitureFit
         }
+
+        if UserDefaults.standard.object(forKey: arAssistedFurnitureSizingKey) != nil {
+            self.enableArAssistedFurnitureSizing = UserDefaults.standard.bool(forKey: arAssistedFurnitureSizingKey)
+        } else {
+            self.enableArAssistedFurnitureSizing = true
+        }
     }
     
     // Save quality setting to UserDefaults
@@ -255,6 +269,11 @@ class QualitySettings: ObservableObject {
     private func saveRatioBasedOverlayResize() {
         UserDefaults.standard.set(enableRatioBasedOverlayResize, forKey: ratioBasedOverlayResizeKey)
         logDebug("💾 Saved ratio-based overlay resize: \(enableRatioBasedOverlayResize)")
+    }
+
+    private func saveArAssistedFurnitureSizing() {
+        UserDefaults.standard.set(enableArAssistedFurnitureSizing, forKey: arAssistedFurnitureSizingKey)
+        logDebug("💾 Saved AR-assisted furniture sizing: \(enableArAssistedFurnitureSizing)")
     }
     
     // Get all available quality options for UI
@@ -297,6 +316,7 @@ class QualitySettings: ObservableObject {
         bboxInMaskThreshold = 0.30
         enableRatioBasedFurnitureFit = true
         enableRatioBasedOverlayResize = true
+        enableArAssistedFurnitureSizing = true
     }
 }
 

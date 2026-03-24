@@ -1,4 +1,5 @@
 import SwiftUI
+import ARKit
 
 struct SettingsView: View {
     @ObservedObject private var appState = AppStateManager.shared
@@ -207,6 +208,31 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.indigo)
+
+                    if ARWorldTrackingConfiguration.isSupported {
+                        Toggle(isOn: $appState.qualitySettings.enableArAssistedFurnitureSizing) {
+                            HStack {
+                                Image(systemName: "camera.metering.matrix")
+                                    .foregroundColor(.teal)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(L10n.Settings.arAssistedFurnitureSizing)
+                                        .font(.headline)
+                                    Text(L10n.Settings.arAssistedFurnitureSizingDescription)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .tint(.teal)
+                    } else {
+                        HStack {
+                            Image(systemName: "camera.metering.matrix")
+                                .foregroundColor(.secondary)
+                            Text(L10n.Settings.arAssistedNotSupported)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }

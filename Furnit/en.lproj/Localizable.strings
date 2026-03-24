@@ -137,6 +137,9 @@
 "settings.ratioBasedFurnitureFitDescription" = "When you save a room, run a one-shot YOLO pass to store furniture height fractions in room metadata for scale hints.";
 "settings.ratioBasedOverlayResize" = "Ratio-based overlay resize";
 "settings.ratioBasedOverlayResizeDescription" = "Resize the segmentation overlay using saved (or default) target height vs the live detection. Turn off to keep overlay scale 1× (room scale and pinch still apply).";
+"settings.arAssistedFurnitureSizing" = "AR-assisted furniture sizing";
+"settings.arAssistedFurnitureSizingDescription" = "Use ARKit depth and planes with camera intrinsics to size the overlay in meters when possible. Falls back to ratio-based resize if AR data is unavailable. Uses AR camera instead of plain camera when on.";
+"settings.arAssistedNotSupported" = "ARKit world tracking is not available on this device.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";

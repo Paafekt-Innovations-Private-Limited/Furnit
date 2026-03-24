@@ -32,6 +32,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.furnit.android.ar.ArSupportChecker
+import com.furnit.android.ar.FurnitureFitArCameraController
 import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
@@ -67,6 +69,8 @@ class FurnitureFitFragment : Fragment() {
     private lateinit var progressLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
+    /** ARCore camera path (mutually exclusive with [cameraProvider] while active). */
+    private var arCameraController: FurnitureFitArCameraController? = null
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
     private var hasFirstDetection = false
@@ -303,8 +307,135 @@ class FurnitureFitFragment : Fragment() {
         // Initial progress
         setProgress(5, "Starting camera...")
 
-        startCamera()
+        if (useArAssistedCameraPath()) {
+            startArCameraPath(root)
+        } else {
+            startCamera()
+        }
         return root
+    }
+
+    private fun useArAssistedCameraPath(): Boolean {
+        return FurnitureFitManager.isArAssistedFurnitureSizingEnabled(requireContext()) &&
+            ArSupportChecker.isArCoreSupported(requireContext())
+    }
+
+    private fun startArCameraPath(container: FrameLayout) {
+        val act = activity ?: return
+        cameraProvider?.unbindAll()
+        cameraProvider = null
+
+        val controller = FurnitureFitArCameraController(act, cameraExecutor)
+        arCameraController = controller
+        controller.lockedPhotoOrientation = selectedPhotoOrientation
+        controller.glSurfaceView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        container.addView(controller.glSurfaceView, 0)
+
+        val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
+        controller.glSurfaceView.visibility = if (hasRoomBackground) View.INVISIBLE else View.VISIBLE
+        previewView.visibility = View.GONE
+
+        controller.shouldPostBitmapFrame = { !isProcessing }
+        controller.onBitmapFrame = { bitmap -> processArCoreFrame(bitmap) }
+
+        activity?.runOnUiThread {
+            statusLabel.text = if (hasRoomBackground) {
+                getString(R.string.smartypants_detecting_furniture)
+            } else {
+                getString(R.string.smartypants_camera_ready)
+            }
+        }
+    }
+
+    private fun processArCoreFrame(bitmap: Bitmap) {
+        if (isProcessing) {
+            return
+        }
+        isProcessing = true
+
+        if (!hasFirstDetection) {
+            setProgress(15, getString(R.string.smartypants_preprocessing))
+        }
+
+        manager.segmentWithDetectionsAsync(bitmap) { result ->
+            activity?.runOnUiThread {
+                val ratioScale = result?.autoRatioOverlayScale ?: 1f
+                val overlayScale = effectiveOverlayScale(ratioScale)
+
+                if (result != null && result.mask != null) {
+                    if (!hasFirstDetection) {
+                        hasFirstDetection = true
+                        progressContainer.visibility = View.GONE
+                    }
+
+                    val labels = result.detections.take(3).joinToString(", ") {
+                        "${it.label} ${(it.confidence * 100).toInt()}%"
+                    }
+                    statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
+                    overlay.setMaskAndDetections(
+                        result.mask,
+                        result.detections,
+                        result.inputSize,
+                        overlayScale,
+                    )
+
+                    val inputSize = result.inputSize
+                    if (result.detections.isNotEmpty() && inputSize > 0) {
+                        val det = result.detections.first()
+                        val inpF = inputSize.coerceAtLeast(1).toFloat()
+                        val scaleX = bitmap.width / inpF
+                        val scaleY = bitmap.height / inpF
+                        arCameraController?.setBboxHint(
+                            det.x * scaleX,
+                            det.y * scaleY,
+                            det.h * scaleY,
+                            det.label,
+                        )
+                        val maxH = result.detections.maxOf { it.h }
+                        detectedFurnitureHeightMeters = (maxH / inputSize) * defaultRoomHeightMeters
+                        updateCalibrationPill()
+                    } else {
+                        arCameraController?.clearBboxHint()
+                        detectedFurnitureHeightMeters = null
+                        updateCalibrationPill()
+                    }
+
+                    if (showRoomBackground) {
+                        if (usePlyBackground) {
+                            roomPlyWebView?.visibility = View.VISIBLE
+                            roomSceneView.visibility = View.GONE
+                        } else {
+                            roomSceneView.visibility = View.VISIBLE
+                            roomPlyWebView?.visibility = View.GONE
+                        }
+                        previewView.visibility = View.GONE
+                    }
+                } else {
+                    arCameraController?.clearBboxHint()
+                    if (!hasFirstDetection) {
+                        setProgress(40, getString(R.string.smartypants_scanning_for_furniture))
+                    }
+                    statusLabel.text = getString(R.string.smartypants_scanning)
+                    overlay.setMaskAndDetections(null, emptyList())
+                    roomSceneView.visibility = View.GONE
+                    roomPlyWebView?.visibility = View.GONE
+                    previewView.visibility = View.VISIBLE
+                }
+            }
+            isProcessing = false
+        }
+    }
+
+    private fun effectiveOverlayScale(ratioScale: Float): Float {
+        val ar = arCameraController
+        return if (ar != null && ar.isArOverlayScaleValid()) {
+            ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
+        } else {
+            ratioScale
+        }
     }
 
     private fun handleCameraDrag(event: MotionEvent) {
@@ -514,7 +645,7 @@ class FurnitureFitFragment : Fragment() {
                         result.mask,
                         result.detections,
                         result.inputSize,
-                        result.autoRatioOverlayScale,
+                        effectiveOverlayScale(result.autoRatioOverlayScale),
                     )
 
                     // Estimated furniture height in meters from largest detection (for Tap to calibrate)
@@ -638,10 +769,22 @@ class FurnitureFitFragment : Fragment() {
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
 
+    override fun onResume() {
+        super.onResume()
+        arCameraController?.onHostResume()
+    }
+
+    override fun onPause() {
+        arCameraController?.onHostPause()
+        super.onPause()
+    }
+
     override fun onDestroy() {
-        super.onDestroy()
+        arCameraController?.destroy()
+        arCameraController = null
         cameraExecutor.shutdown()
         manager.close()
+        super.onDestroy()
     }
 
     /**

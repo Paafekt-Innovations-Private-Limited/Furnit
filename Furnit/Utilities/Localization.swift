@@ -145,6 +145,9 @@ enum L10n {
         static let ratioBasedFurnitureFitDescription = "settings.ratioBasedFurnitureFitDescription".localized
         static let ratioBasedOverlayResize = "settings.ratioBasedOverlayResize".localized
         static let ratioBasedOverlayResizeDescription = "settings.ratioBasedOverlayResizeDescription".localized
+        static let arAssistedFurnitureSizing = "settings.arAssistedFurnitureSizing".localized
+        static let arAssistedFurnitureSizingDescription = "settings.arAssistedFurnitureSizingDescription".localized
+        static let arAssistedNotSupported = "settings.arAssistedNotSupported".localized
     }
 
     // MARK: Licenses & Attributions

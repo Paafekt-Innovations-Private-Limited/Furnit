@@ -7,6 +7,8 @@ import UIKit
 import CoreML
 import Accelerate
 import AVFoundation
+import ARKit
+import SceneKit
 import CoreText
 import MetalKit
 
@@ -170,7 +172,7 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
 typealias UnionDet = FurnitureFitDetection
 
 // MARK: - Main Container View
-final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
+final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
 
     // MARK: Config
     var processInterval: TimeInterval = 0.1
@@ -220,6 +222,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
 
+    // MARK: AR camera path (optional — when AR-assisted sizing enabled and ARKit supported)
+    private let arSession = ARSession()
+    private let arSCNView: ARSCNView = {
+        let v = ARSCNView(frame: .zero)
+        v.automaticallyUpdatesLighting = false
+        if #available(iOS 15.0, *) {
+            v.rendersCameraGrain = false
+        }
+        v.isHidden = true
+        v.alpha = 0
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    private var arBGRAReuse: CVPixelBuffer?
+    private let arCIContext = CIContext(options: [.cacheIntermediates: false])
+    /// View size for AR-assisted camera path (set in `layoutSubviews`).
+    private var cachedARViewportSize: CGSize = .zero
+    /// True while ARSession is the active camera source (not AVCaptureSession).
+    private var isUsingARCameraPath = false
+    private var arAssistedScaleValid = false
+    private var autoScaleFromAR: CGFloat = 1.0
+    private var smoothedArOverlayScale: CGFloat = 1.0
+    /// Latest AR-estimated furniture height in meters (UI only; does not affect segmentation).
+    private var lastAREstimatedHeightMeters: Float?
+
     // MARK: UI
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
@@ -264,7 +291,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Overlay scale (room calibration × ratio × user pinch)
     /// From `FurnitureSizingCalculator` (real-world proportions vs detected bbox in model space).
     private var autoScaleFromRoom: CGFloat = 1.0
-    /// From YOLO room ratio targets: shrink/expand overlay so bbox height fraction → r_target.
+    /// From YOLO room ratio targets: shrink/expand overlay so bbox height fraction → r_target (used when AR metric path is inactive).
     private var autoScaleFromRatio: CGFloat = 1.0
     /// User pinch multiplier (reset when primary class changes).
     private var userPinchScale: CGFloat = 1.0
@@ -411,9 +438,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
+        addSubview(arSCNView)
         addSubview(maskImageView)
+        arSCNView.session = arSession
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            arSCNView.topAnchor.constraint(equalTo: topAnchor),
+            arSCNView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            arSCNView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            arSCNView.trailingAnchor.constraint(equalTo: trailingAnchor),
             maskImageView.topAnchor.constraint(equalTo: topAnchor),
             maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor),
             maskImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -509,6 +542,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = bounds
+        cachedARViewportSize = bounds.size
         updateSizingCalculator()
     }
 
@@ -537,9 +571,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         )
     }
 
-    /// Combined overlay transform: room × ratio × pinch (clamped).
+    /// Combined overlay transform: room × (AR metric or ratio) × pinch (clamped).
     private func applyCurrentOverlayScaleTransform() {
-        let product = autoScaleFromRoom * autoScaleFromRatio * userPinchScale
+        let arOn = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
+            && isUsingARCameraPath
+            && arAssistedScaleValid
+        let assistedScale = arOn ? autoScaleFromAR : autoScaleFromRatio
+        let product = autoScaleFromRoom * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
         maskImageView.transform = CGAffineTransform(scaleX: clamped, y: clamped)
     }
@@ -578,15 +616,112 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         applyCurrentOverlayScaleTransform()
 
         if debugMode {
-            let product = autoScaleFromRoom * autoScaleFromRatio * userPinchScale
+            let arOn = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing && isUsingARCameraPath && arAssistedScaleValid
+            let assisted = arOn ? autoScaleFromAR : autoScaleFromRatio
+            let product = autoScaleFromRoom * assisted * userPinchScale
             let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
-            logDebug("📐 [RATIO] overlay scale room=\(String(format: "%.3f", autoScaleFromRoom)) ratio=\(String(format: "%.3f", autoScaleFromRatio)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) (targetRatio=\(String(format: "%.3f", targetRatioScale)) r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) locked=\(userLockedRatioOverlayScale))")
+            logDebug("📐 [RATIO] overlay scale room=\(String(format: "%.3f", autoScaleFromRoom)) assisted=\(String(format: "%.3f", assisted)) pinch=\(String(format: "%.3f", userPinchScale)) → combined=\(String(format: "%.3f", clamped)) (targetRatio=\(String(format: "%.3f", targetRatioScale)) r_curr=\(String(format: "%.4f", rCurrent)) r_tgt=\(String(format: "%.4f", rTarget)) locked=\(userLockedRatioOverlayScale))")
         }
+    }
+
+    /// After ratio/AR updates, applies transform (AR vs ratio chosen inside `applyCurrentOverlayScaleTransform`).
+    private func updateAssistedOverlayScale(
+        ratioFeatureOn: Bool,
+        withinTolerance: Bool,
+        rCurrent: Float,
+        rTarget: Float,
+        primaryClassIdx: Int,
+        bboxCenterImageX: CGFloat,
+        bboxCenterImageY: CGFloat,
+        bboxHeightImagePx: Float,
+        imageWidth: Int,
+        imageHeight: Int
+    ) {
+        if primaryClassIdx != lastOverlayPrimaryClassIdx {
+            lastOverlayPrimaryClassIdx = primaryClassIdx
+            userPinchScale = 1.0
+            userLockedRatioOverlayScale = false
+            smoothedRatioOverlayScale = 1.0
+            autoScaleFromRatio = 1.0
+            smoothedArOverlayScale = 1.0
+            autoScaleFromAR = 1.0
+            arAssistedScaleValid = false
+        }
+
+        let wantAR = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
+            && isUsingARCameraPath
+            && !userLockedRatioOverlayScale
+
+        if wantAR, let frame = arSession.currentFrame {
+            let nx = bboxCenterImageX / CGFloat(max(1, imageWidth))
+            let ny = bboxCenterImageY / CGFloat(max(1, imageHeight))
+            let norm = CGPoint(x: nx, y: ny)
+
+            var distM: Float? = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
+            if distM == nil, #available(iOS 14.0, *) {
+                let sp = CGPoint(
+                    x: (bboxCenterImageX / CGFloat(max(1, imageWidth))) * bounds.width,
+                    y: (bboxCenterImageY / CGFloat(max(1, imageHeight))) * bounds.height
+                )
+                distM = FurnitureFitARSupport.distanceToHorizontalPlaneMeters(
+                    session: arSession,
+                    frame: frame,
+                    screenPoint: sp,
+                    in: bounds
+                )
+            }
+
+            let fy = frame.camera.intrinsics[1][1]
+            if let d = distM,
+               let estH = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
+                bboxHeightPixels: bboxHeightImagePx,
+                distanceMeters: d,
+                focalLengthYPixels: fy
+               ) {
+                lastAREstimatedHeightMeters = estH
+                let stdH = FurnitureDimensions.forClass(primaryClassIdx)?.height ?? 0.85
+                if let raw = FurnitureFitARSupport.overlayScaleFromMetricHeights(
+                    standardHeightMeters: stdH,
+                    estimatedHeightMeters: estH
+                ) {
+                    // AR-assisted scale can jitter due to depth noise; clamp per-frame change
+                    // and apply a slightly slower EMA than ratio-based scaling.
+                    let target = CGFloat(raw)
+                    let base = smoothedArOverlayScale
+                    let maxStep: CGFloat = 0.08
+                    let delta = max(-maxStep, min(maxStep, target - base))
+                    let clampedTarget = base + delta
+                    let alpha: CGFloat = 0.16
+                    smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                    autoScaleFromAR = smoothedArOverlayScale
+                    arAssistedScaleValid = true
+                    if debugMode {
+                        logDebug("📐 [AR] dist=\(String(format: "%.2f", d))m estH=\(String(format: "%.2f", estH))m stdH=\(String(format: "%.2f", stdH))m scale=\(String(format: "%.3f", raw)) smoothed=\(String(format: "%.3f", autoScaleFromAR))")
+                    }
+                    applyCurrentOverlayScaleTransform()
+                    return
+                }
+            }
+        }
+
+        arAssistedScaleValid = false
+        autoScaleFromAR = 1.0
+        updateRatioOverlayScaleFromCalibration(
+            featureOn: ratioFeatureOn,
+            withinTolerance: withinTolerance,
+            rCurrent: rCurrent,
+            rTarget: rTarget,
+            primaryClassIdx: primaryClassIdx
+        )
     }
 
     private func resetOverlayScalesForEmptyMask() {
         autoScaleFromRoom = 1.0
         autoScaleFromRatio = 1.0
+        autoScaleFromAR = 1.0
+        smoothedArOverlayScale = 1.0
+        arAssistedScaleValid = false
+        lastAREstimatedHeightMeters = nil
         userPinchScale = 1.0
         smoothedRatioOverlayScale = 1.0
         userLockedRatioOverlayScale = false
@@ -687,7 +822,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
-        guard let conn = videoOutput.connection(with: .video) else { return }
+        guard !isUsingARCameraPath, let conn = videoOutput.connection(with: .video) else { return }
 
         // Keep rotation fixed based on locked orientation to ensure consistent buffer dimensions
         // This prevents segmentation misalignment when device rotates
@@ -704,6 +839,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
+        DispatchQueue.main.async {
+            self.arSession.pause()
+            self.isUsingARCameraPath = false
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
@@ -749,21 +888,61 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func requestCameraPermissionAndStart() {
+        let wantAR = AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing
+            && FurnitureFitARSupport.isWorldTrackingSupported
+
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            if !captureSession.isRunning {
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self.captureSession.startRunning()
-                }
+            if wantAR {
+                DispatchQueue.main.async { self.startArCameraPathIfNeeded() }
+            } else {
+                startClassicCameraPathIfNeeded()
             }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
-                if granted {
-                    DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() }
+                guard granted else { return }
+                if wantAR {
+                    DispatchQueue.main.async { self.startArCameraPathIfNeeded() }
+                } else {
+                    self.startClassicCameraPathIfNeeded()
                 }
             }
         default: break
         }
+    }
+
+    /// ARKit camera + world tracking (FurnitureFitARSupport). Falls back if session fails to start.
+    private func startArCameraPathIfNeeded() {
+        guard AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing else {
+            startClassicCameraPathIfNeeded()
+            return
+        }
+        guard FurnitureFitARSupport.isWorldTrackingSupported else {
+            startClassicCameraPathIfNeeded()
+            return
+        }
+        if captureSession.isRunning {
+            captureSession.stopRunning()
+        }
+        isUsingARCameraPath = true
+        arSCNView.session = arSession
+        arSession.delegate = self
+        let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+        arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
+        if debugMode { logDebug("📷 [FurnitureFit] ARSession started for assisted sizing") }
+    }
+
+    private func startClassicCameraPathIfNeeded() {
+        isUsingARCameraPath = false
+        DispatchQueue.main.async {
+            self.arSession.pause()
+        }
+        if !captureSession.isRunning {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.captureSession.startRunning()
+            }
+        }
+        if debugMode { logDebug("📷 [FurnitureFit] AVCaptureSession (classic camera path)") }
     }
 
     // MARK: - Capture Delegate
@@ -1090,6 +1269,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Ensure height > width for display (most furniture: height is the larger dimension)
         if estimatedWidth > estimatedHeight {
             swap(&estimatedWidth, &estimatedHeight)
+        }
+
+        // When AR-assisted sizing is enabled and we have a valid AR-estimated height, surface
+        // that value to the calibration pill via `onFurnitureSizeEstimated` without touching
+        // the core segmentation or overlay math.
+        if AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing,
+           isUsingARCameraPath,
+           let arH = lastAREstimatedHeightMeters,
+           arH > 0 {
+            estimatedHeight = arH
         }
 
         if debugMode {
@@ -1473,6 +1662,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let normY1 = CGFloat(primaryBy1) / CGFloat(origH)
         let normX2 = CGFloat(primaryBx2) / CGFloat(origW)
         let normY2 = CGFloat(primaryBy2) / CGFloat(origH)
+        let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
+        let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
+        let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
         DispatchQueue.main.async {
             let viewW = self.maskImageView.bounds.width
             let viewH = self.maskImageView.bounds.height
@@ -1487,12 +1679,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 detectedWidth: CGFloat(primary.w),
                 detectedHeight: CGFloat(primary.h)
             )
-            self.updateRatioOverlayScaleFromCalibration(
-                featureOn: ratioFeatureOn,
+            self.updateAssistedOverlayScale(
+                ratioFeatureOn: ratioFeatureOn,
                 withinTolerance: ratioOverlayWithinTolerance,
                 rCurrent: ratioOverlayRCurrent,
                 rTarget: ratioOverlayRTarget,
-                primaryClassIdx: primary.classIdx
+                primaryClassIdx: primary.classIdx,
+                bboxCenterImageX: bboxCenterImageX,
+                bboxCenterImageY: bboxCenterImageY,
+                bboxHeightImagePx: bboxHeightImagePx,
+                imageWidth: origW,
+                imageHeight: origH
             )
             logDebug("👆 [setBbox] viewSize=\(viewW)x\(viewH) bbox=\(self.primaryBboxInView)")
         }
@@ -2006,16 +2203,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Present result - handle rotation for display
-        // For landscape rooms: no rotation needed since UI is also landscape
-        // For portrait rooms with landscape buffer: rotate back to portrait
+        // For landscape rooms: no rotation needed since UI is also landscape.
+        // For portrait rooms with a landscape buffer on the **classic camera path**, rotate 90° to portrait.
+        // AR path (`isUsingARCameraPath == true`) keeps the buffer as-is (segmentation and labels stay aligned
+        // even if the whole image is visually tilted, which was the last known-good behavior).
         DispatchQueue.main.async {
             if var cgImg = composedImage {
                 if self.lockedOrientation == .landscape {
                     // Landscape room on landscape UI: no rotation needed
                     // The mask is already in landscape orientation matching the screen
-                } else if isLandscape {
-                    // Portrait room but landscape buffer: rotate back for portrait display
-                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
+                } else if isLandscape && !self.isUsingARCameraPath {
+                    // Portrait room but landscape buffer on classic camera path: rotate back for portrait display
+                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: true)
                     cgImg = rotatedImg ?? cgImg
                 }
                 self.maskImageView.image = UIImage(cgImage: cgImg)
@@ -2479,6 +2678,41 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Pass through touches outside bbox to underlying room view
         logDebug("👆 [hitTest] OUTSIDE bbox - passing through")
         return nil
+    }
+}
+
+// MARK: - ARSessionDelegate (ARKit camera for FurnitureFit when AR-assisted sizing is on)
+extension FurnitureFitContainerView {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard isUsingARCameraPath else { return }
+        let now = Date()
+        frameLock.lock()
+        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
+        if shouldProcess {
+            isProcessing = true
+            lastProcessTime = now
+        }
+        frameLock.unlock()
+        guard shouldProcess else { return }
+        guard let bgra = FurnitureFitARSupport.copyCapturedImageToBGRA(
+            frame: frame,
+            reuse: &arBGRAReuse,
+            ciContext: arCIContext,
+            lockedOrientation: lockedOrientation
+        ) else {
+            resetProcessingFlag()
+            return
+        }
+        detectionQueue.async { [weak self] in
+            self?.processFrame(bgra)
+        }
+    }
+
+    func session(_ session: ARSession, didFailWithError error: Error) {
+        logDebug("⚠️ [FurnitureFit] ARSession failed: \(error.localizedDescription) — using AVCapture")
+        DispatchQueue.main.async {
+            self.startClassicCameraPathIfNeeded()
+        }
     }
 }
 

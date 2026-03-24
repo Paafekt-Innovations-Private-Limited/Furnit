@@ -22,6 +22,7 @@ import android.webkit.*
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import com.furnit.android.ar.ArSupportChecker
+import com.furnit.android.ar.FurnitureFitArCameraController
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -105,6 +106,10 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainOverlayVisible = false
     private var furnitureFitManager: FurnitureFitManager? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    /** Brain flow: ARCore camera when AR-assisted sizing is on and supported. */
+    private var brainArController: FurnitureFitArCameraController? = null
+    /** [setContentView] root — used to insert/remove AR [GLSurfaceView] for brain mode. */
+    private lateinit var sharpRoomContentRoot: FrameLayout
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
@@ -123,15 +128,6 @@ class SharpRoomActivity : AppCompatActivity() {
             DebugLogger.d(TAG, "Brain: camera permission denied")
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
         }
-    }
-
-    private val arMeasureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode != RESULT_OK) return@registerForActivityResult
-        val dist = result.data?.getFloatExtra(ArMeasureActivity.RESULT_EXTRA_DISTANCE_M, Float.NaN) ?: Float.NaN
-        if (dist.isNaN() || dist <= 0f) return@registerForActivityResult
-        showArCalibrationDialog(dist)
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -385,6 +381,7 @@ class SharpRoomActivity : AppCompatActivity() {
         rootLayout.addView(brainDetectionOverlay)
 
         setContentView(rootLayout)
+        sharpRoomContentRoot = rootLayout
 
         // Apply status bar insets; position top bar below status bar and arrow overlay below top bar (portrait + landscape)
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
@@ -421,83 +418,6 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun effRoomCenterX(): Float = roomCenterX * arDisplayScale
     private fun effRoomCenterY(): Float = roomCenterY * arDisplayScale
     private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
-
-    private fun launchArMeasureActivity() {
-        val intent = Intent(this, ArMeasureActivity::class.java).apply {
-            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_WIDTH_M, roomWidth)
-            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_HEIGHT_M, roomHeight)
-            putExtra(ArMeasureActivity.EXTRA_SHARP_ROOM_DEPTH_M, roomDepth)
-        }
-        arMeasureLauncher.launch(intent)
-    }
-
-    private fun showArCalibrationDialog(measuredMeters: Float) {
-        val items = arrayOf(
-            getString(R.string.ar_measure_calib_width, roomWidth),
-            getString(R.string.ar_measure_calib_height, roomHeight),
-            getString(R.string.ar_measure_calib_depth, roomDepth),
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.ar_measure_apply_title)
-            .setMessage(
-                getString(
-                    R.string.ar_measure_apply_message,
-                    measuredMeters,
-                    roomWidth,
-                    roomHeight,
-                    roomDepth,
-                ),
-            )
-            .setItems(items) { _, which ->
-                val ref = when (which) {
-                    0 -> roomWidth
-                    1 -> roomHeight
-                    else -> roomDepth
-                }
-                if (ref <= 1e-4f) {
-                    Toast.makeText(this, R.string.ar_measure_calib_invalid_ref, Toast.LENGTH_SHORT).show()
-                    return@setItems
-                }
-                applyArDisplayScale(measuredMeters / ref)
-            }
-            .setNegativeButton(R.string.common_cancel, null)
-            .show()
-    }
-
-    private fun applyArDisplayScale(newScale: Float) {
-        if (newScale <= 0f || newScale.isNaN()) return
-        arDisplayScale = newScale
-        refreshDimensionTitle()
-        reloadWebViewWithEffectiveFallbackDims()
-        val folder = roomFolder
-        if (folder != null) {
-            val dir = File(folder)
-            val snap = RoomFolderMetadata.readFromFolder(dir)
-            if (snap != null) {
-                RoomFolderMetadata.writeToFolder(dir, snap.copy(arDisplayScale = arDisplayScale))
-            }
-            Toast.makeText(this, R.string.ar_measure_calib_applied, Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, R.string.ar_measure_calib_no_folder, Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun refreshDimensionTitle() {
-        if (::titleView.isInitialized) {
-            titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
-        }
-    }
-
-    private fun reloadWebViewWithEffectiveFallbackDims() {
-        val html = generateWebGLHTML()
-        webView.loadDataWithBaseURL(
-            "https://appassets.androidplatform.net/",
-            html,
-            "text/html",
-            "UTF-8",
-            null,
-        )
-    }
 
     /** Position arrow overlay so it sits just below the top bar (works in portrait and landscape). */
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
@@ -568,27 +488,6 @@ class SharpRoomActivity : AppCompatActivity() {
                 setOnClickListener { recenterCamera() }
             }
             barContainer.addView(recenterBtn)
-
-            if (ArSupportChecker.isArCoreSupported(this@SharpRoomActivity)) {
-                val arMeasureBtn = TextView(this@SharpRoomActivity).apply {
-                    text = "AR"
-                    contentDescription = getString(R.string.sharp_room_ar_measure_content_description)
-                    textSize = 14f
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    val bg = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#2E7D32"))
-                    }
-                    background = bg
-                    val size = dpToPx(40)
-                    val params = LinearLayout.LayoutParams(size, size)
-                    params.setMargins(dpToPx(8), 0, 0, 0)
-                    layoutParams = params
-                    setOnClickListener { launchArMeasureActivity() }
-                }
-                barContainer.addView(arMeasureBtn)
-            }
 
             // Help button (circle with ?)
             val helpBtn = TextView(this@SharpRoomActivity).apply {
@@ -965,8 +864,17 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun shouldUseArBrainCamera(): Boolean {
+        return FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this) &&
+            ArSupportChecker.isArCoreSupported(this)
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindBrainCamera(manager: FurnitureFitManager) {
+        if (shouldUseArBrainCamera()) {
+            bindBrainArCoreCamera(manager)
+            return
+        }
         DebugLogger.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -1032,8 +940,91 @@ class SharpRoomActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun bindBrainArCoreCamera(manager: FurnitureFitManager) {
+        DebugLogger.d(TAG, "Brain: bindBrainArCoreCamera() - ARCore path")
+        cameraProvider?.unbindAll()
+        cameraProvider = null
+        brainArController?.let { existing ->
+            try {
+                sharpRoomContentRoot.removeView(existing.glSurfaceView)
+            } catch (_: Exception) { }
+            existing.destroy()
+        }
+        val controller = FurnitureFitArCameraController(this, cameraExecutor)
+        brainArController = controller
+        controller.lockedPhotoOrientation = photoOrientation
+        val lp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        sharpRoomContentRoot.addView(controller.glSurfaceView, 1, lp)
+        controller.glSurfaceView.visibility = View.INVISIBLE
+
+        val hasFirstResult = BooleanArray(1) { false }
+        controller.shouldPostBitmapFrame = { !isBrainInferenceRunning.get() }
+        controller.onBitmapFrame = arBitmap@{ bitmap ->
+            if (isBrainInferenceRunning.get()) {
+                return@arBitmap
+            }
+            isBrainInferenceRunning.set(true)
+            manager.segmentWithDetectionsAsync(bitmap, brainRatioParams) { result ->
+                runOnUiThread {
+                    isBrainInferenceRunning.set(false)
+                    if (!hasFirstResult[0]) {
+                        hasFirstResult[0] = true
+                        DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
+                        hideBrainProgressOverlay()
+                        brainDetectionOverlay.visibility = View.VISIBLE
+                    }
+                    val mask = result?.mask
+                    val dets = result?.detections ?: emptyList()
+                    val size = result?.inputSize ?: 640
+                    val ratioScale = result?.autoRatioOverlayScale ?: 1f
+                    brainDetectionOverlayView.setMaskAndDetections(
+                        mask,
+                        dets,
+                        size,
+                        brainEffectiveOverlayScale(ratioScale),
+                    )
+                    if (mask != null && dets.isNotEmpty()) {
+                        val det = dets.first()
+                        val inp = size.coerceAtLeast(1).toFloat()
+                        val scaleX = bitmap.width / inp
+                        val scaleY = bitmap.height / inp
+                        brainArController?.setBboxHint(
+                            det.x * scaleX,
+                            det.y * scaleY,
+                            det.h * scaleY,
+                            det.label,
+                        )
+                    } else {
+                        brainArController?.clearBboxHint()
+                    }
+                }
+            }
+        }
+        controller.onHostResume()
+    }
+
+    private fun brainEffectiveOverlayScale(ratioScale: Float): Float {
+        val ar = brainArController
+        return if (ar != null && ar.isArOverlayScaleValid()) {
+            ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
+        } else {
+            ratioScale
+        }
+    }
+
     private fun stopBrainDetection() {
-        DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
+        DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera / AR")
+        brainArController?.let { c ->
+            try {
+                sharpRoomContentRoot.removeView(c.glSurfaceView)
+            } catch (_: Exception) { }
+            c.destroy()
+        }
+        brainArController = null
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) { }
@@ -1882,6 +1873,16 @@ class SharpRoomActivity : AppCompatActivity() {
         fun log(message: String) {
             DebugLogger.d(TAG, "WebGL: $message")
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        brainArController?.onHostResume()
+    }
+
+    override fun onPause() {
+        brainArController?.onHostPause()
+        super.onPause()
     }
 
     @Deprecated("Deprecated in Java")

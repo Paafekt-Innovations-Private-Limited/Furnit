@@ -61,6 +61,14 @@ class FurnitureFitManager(private val context: Context) {
         /** Shared with [com.furnit.android.SettingsActivity] — ratio r_target/r_curr overlay scale only. */
         const val KEY_RATIO_BASED_OVERLAY_RESIZE = "ratio_based_overlay_resize"
 
+        /** Shared with [com.furnit.android.SettingsActivity] — ARCore metric distance + pinhole overlay scale. */
+        const val KEY_AR_ASSISTED_FURNITURE_SIZING = "ar_assisted_furniture_sizing"
+
+        fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean {
+            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                .getBoolean(KEY_AR_ASSISTED_FURNITURE_SIZING, true)
+        }
+
         private val COCO_CLASSES = arrayOf(
             "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
             "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",

@@ -131,6 +131,9 @@
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="settings_ratio_based_overlay_resize">Ratio-based overlay resize</string>
     <string name="settings_ratio_based_overlay_resize_description">Resize the mask overlay using saved (or default) target height vs the live detection. Off keeps overlay scale 1×.</string>
+    <string name="settings_ar_assisted_furniture_sizing">AR-assisted furniture sizing</string>
+    <string name="settings_ar_assisted_furniture_sizing_description">Use ARCore planes and camera intrinsics to estimate real furniture height and scale the mask overlay. When off or unsupported, ratio-based resize applies.</string>
+    <string name="settings_ar_assisted_furniture_sizing_not_supported">AR-assisted sizing requires ARCore on a supported device.</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
