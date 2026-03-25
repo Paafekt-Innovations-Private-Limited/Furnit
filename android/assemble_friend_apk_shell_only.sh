@@ -4,7 +4,7 @@
 # "There was a problem with the package" / invalid app file (many installers use 32-bit sizes).
 #
 # After install, push models:
-#   ./push_sharp_vulkan_only.sh
+#   ./push_sharp_cpuvulkan_hybrid_androidstudio.sh
 #   # → Android/data/com.furnit.android/files/models_cpuvulkan_hybrid/
 #
 set -euo pipefail
@@ -23,4 +23,4 @@ echo "Building :app:assemble${TASK_VARIANT} with NO bundled models (-PskipExecut
 
 echo ""
 echo "Install: adb install -r app/build/outputs/apk/etVulkan/debug/app-etVulkan-arm64-v8a-debug.apk"
-echo "Then:    ./push_sharp_vulkan_only.sh"
+echo "Then:    ./push_sharp_cpuvulkan_hybrid_androidstudio.sh"

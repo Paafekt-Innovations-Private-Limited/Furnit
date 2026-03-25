@@ -14,13 +14,16 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
+import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
+import android.widget.PopupMenu
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import com.furnit.android.ar.ArSupportChecker
@@ -80,6 +83,13 @@ class SharpRoomActivity : AppCompatActivity() {
         const val EXTRA_PHOTO_WIDE_ANGLE = "photo_wide_angle"
         /** True when this Sharp room comes directly from a new SHARP generation (SinglePhotoRoom); delete if not saved. */
         const val EXTRA_IS_TEMP_SHARP_ROOM = "is_temp_sharp_room"
+
+        private const val OV_SHARE = 10001
+        private const val OV_SAVE = 10002
+        private const val OV_CALIBRATE = 10003
+        private const val OV_RECENTER = 10004
+        private const val OV_RESET_OVERLAY = 10005
+        private const val OV_HELP = 10006
     }
 
     /** Persist latest Spark/Box3 dimensions into room_meta.json so list screen shows accurate width/height. */
@@ -118,6 +128,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 val merged = RoomFolderMetadata.snapshotPreservingYoloFields(folder, baseSnapshot)
                 RoomFolderMetadata.writeToFolder(folder, merged)
                 DebugLogger.d(TAG, "Persisted Spark Box3 dimensions to room_meta.json: ${w}x${h}")
+                LogUtil.i(
+                    "SHARP_ROOM_MEAS",
+                    "[box3_persist] room_meta.json W×H=$w×$h depth=$roomDepth arDisplayScale=$arDisplayScale folder=${folder.absolutePath}",
+                )
             } catch (e: Exception) {
                 DebugLogger.eDebugMode(TAG, "Failed to persist Spark Box3 dimensions", e)
             }
@@ -289,6 +303,12 @@ class SharpRoomActivity : AppCompatActivity() {
         DebugLogger.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
         val isPortraitReceived = photoOrientation != "landscape"
         DebugLogger.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[viewer_open] raw W×H×D=$roomWidth×$roomHeight×$roomDepth " +
+                "center=($roomCenterX,$roomCenterY,$roomCenterZ) arDisplayScale=$arDisplayScale " +
+                "eff_front_wall=${effRoomWidth()}×${effRoomHeight()} hasSavedMeta=$hasSavedDimensions folder=$roomFolder",
+        )
 
         if (plyPath == null) {
             Toast.makeText(this, getString(R.string.sharp_room_no_ply), Toast.LENGTH_SHORT).show()
@@ -390,7 +410,7 @@ class SharpRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.BOTTOM })
 
-        // Camera arrow overlay (up/down/left/right) — same as iOS
+        // Camera pan arrows (not in ⋮ menu)
         val cameraArrowOverlay = createCameraArrowOverlay()
         rootLayout.addView(cameraArrowOverlay, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -429,7 +449,7 @@ class SharpRoomActivity : AppCompatActivity() {
         setContentView(rootLayout)
         sharpRoomContentRoot = rootLayout
 
-        // Apply status bar insets; position top bar below status bar and arrow overlay below top bar (portrait + landscape)
+        // Apply status bar insets; pan overlay sits below top bar
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
             val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             statusBarInsetTop = statusBar.top
@@ -465,7 +485,6 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun effRoomCenterY(): Float = roomCenterY * arDisplayScale
     private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
 
-    /** Position arrow overlay so it sits just below the top bar (works in portrait and landscape). */
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
         val top = statusBarInsetTop + topBar.height
         arrowOverlay.setPadding(0, top, 0, 0)
@@ -475,10 +494,9 @@ class SharpRoomActivity : AppCompatActivity() {
         return FrameLayout(this).apply {
             setPadding(dpToPx(16), dpToPx(48), dpToPx(16), dpToPx(12))
 
-            // Rounded dark background container
-            val barContainer = LinearLayout(this@SharpRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+            // Rounded pill: FrameLayout so the title can stay truly centered; LinearLayout+weight=1
+            // between back and many icons often leaves 0dp for the title on narrow screens.
+            val barContainer = FrameLayout(this@SharpRoomActivity).apply {
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(25).toFloat()
@@ -487,6 +505,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 background = bg
                 setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
             }
+
+            val iconSize = dpToPx(40)
 
             // Back button (circle with arrow)
             val backBtn = TextView(this@SharpRoomActivity).apply {
@@ -499,138 +519,68 @@ class SharpRoomActivity : AppCompatActivity() {
                     setColor(Color.parseColor("#3A3A3C"))
                 }
                 background = bg
-                val size = dpToPx(40)
-                layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener { finish() }
             }
-            barContainer.addView(backBtn)
+            barContainer.addView(
+                backBtn,
+                FrameLayout.LayoutParams(iconSize, iconSize).apply {
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                },
+            )
 
-            // Title with dimensions
+            val rightCluster = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            // Single overflow (⋮): share, save, calibrate, recenter, reset overlay, pan arrows, help — keeps title centered.
+            val overflowBtn = TextView(this@SharpRoomActivity).apply {
+                text = "\u22EE" // vertical ellipsis
+                textSize = 22f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                contentDescription = getString(R.string.sharp_room_overflow_content_description)
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { showSharpRoomOverflowMenu(this) }
+            }
+            rightCluster.addView(overflowBtn)
+
+            barContainer.addView(
+                rightCluster,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                },
+            )
+
             titleView = TextView(this@SharpRoomActivity).apply {
                 text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
                 textSize = 17f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dpToPx(6), 0, dpToPx(6), 0)
             }
-            barContainer.addView(titleView)
-
-            // Room calibration button (circle with ruler icon) – mirrors iOS wall-calibration entry point.
-            val calibrateBtn = TextView(this@SharpRoomActivity).apply {
-                text = "\uD83E\uDDF0" // Ruler emoji
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { showRoomCalibrationDialog() }
-            }
-            barContainer.addView(calibrateBtn)
-
-            // Recenter button (circle with viewfinder icon)
-            val recenterBtn = TextView(this@SharpRoomActivity).apply {
-                text = "⌖"  // Viewfinder-like symbol
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { recenterCamera() }
-            }
-            barContainer.addView(recenterBtn)
-
-            // Reset-size button (next to recenter): reset FurnitureFit overlay scale/position.
-            val resetSizeBtn = TextView(this@SharpRoomActivity).apply {
-                text = "↺"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { brainDetectionOverlayView.resetTransform() }
-            }
-            barContainer.addView(resetSizeBtn)
-
-            // Help button (circle with ?)
-            val helpBtn = TextView(this@SharpRoomActivity).apply {
-                text = "?"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { showHelpDialog() }
-            }
-            barContainer.addView(helpBtn)
-
-            // Save button (circle with upload icon) - only if allowed
-            if (allowSave) {
-                val saveBtn = TextView(this@SharpRoomActivity).apply {
-                    text = "↓" // Download/save arrow (matching iOS square.and.arrow.down)
-                    textSize = 20f
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    val bg = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#3A3A3C"))
-                    }
-                    background = bg
-                    val size = dpToPx(40)
-                    val params = LinearLayout.LayoutParams(size, size)
-                    params.setMargins(dpToPx(8), 0, 0, 0)
-                    layoutParams = params
-                    setOnClickListener { showSaveDialog() }
-                }
-                barContainer.addView(saveBtn)
-            }
-
-            // Share button (circle with share icon)
-            val shareBtn = TextView(this@SharpRoomActivity).apply {
-                text = "↑" // Share arrow (matching iOS square.and.arrow.up)
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { sharePlyFile() }
-            }
-            barContainer.addView(shareBtn)
+            barContainer.addView(
+                titleView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER,
+                ),
+            )
 
             addView(barContainer, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -642,9 +592,36 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun showHelpDialog() {
         AlertDialog.Builder(this)
             .setTitle("3D Room Controls")
-            .setMessage("• Drag to rotate view\n• Pinch to zoom\n• Two-finger drag to pan\n• Tap recenter button to reset view")
+            .setMessage("• Drag to rotate view\n• Pinch to zoom\n• Two-finger drag to pan\n• Top-left arrows nudge the view\n• ⋮ → Recenter view to reset camera")
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    /** Overflow menu: matches iOS SharpRoomView ellipsis (share, save, calibrate, recenter, pan, …). */
+    private fun showSharpRoomOverflowMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        val menu = popup.menu
+        menu.add(Menu.NONE, OV_SHARE, Menu.NONE, R.string.sharp_room_menu_share)
+        if (allowSave) {
+            menu.add(Menu.NONE, OV_SAVE, Menu.NONE, R.string.sharp_room_menu_save)
+        }
+        menu.add(Menu.NONE, OV_CALIBRATE, Menu.NONE, R.string.sharp_room_menu_calibrate)
+        menu.add(Menu.NONE, OV_RECENTER, Menu.NONE, R.string.sharp_room_menu_recenter)
+        menu.add(Menu.NONE, OV_RESET_OVERLAY, Menu.NONE, R.string.sharp_room_menu_reset_overlay)
+        menu.add(Menu.NONE, OV_HELP, Menu.NONE, R.string.sharp_room_menu_help)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                OV_SHARE -> sharePlyFile()
+                OV_SAVE -> showSaveDialog()
+                OV_CALIBRATE -> showRoomCalibrationDialog()
+                OV_RECENTER -> recenterCamera()
+                OV_RESET_OVERLAY -> brainDetectionOverlayView.resetTransform()
+                OV_HELP -> showHelpDialog()
+                else -> return@setOnMenuItemClickListener false
+            }
+            true
+        }
+        popup.show()
     }
 
     /** Update the brain (FurnitureFit) calibration pill at the bottom of the screen. */
@@ -744,6 +721,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 // Update title to show calibrated dimensions.
                 titleView.text = String.format(Locale.US, "%.1f × %.1f m", effRoomWidth(), effRoomHeight())
                 DebugLogger.d(TAG, "Room calibration applied: factor=$factor newDims=${effRoomWidth()}x${effRoomHeight()} (real=$real)")
+                LogUtil.i(
+                    "SHARP_ROOM_MEAS",
+                    "[wall_calibrate] factor=$factor real_wall_h_m=$real raw_after W×H×D=$roomWidth×$roomHeight×$roomDepth eff_front_wall=${effRoomWidth()}×${effRoomHeight()}",
+                )
                 // Persist calibrated dimensions so the home list and future viewer sessions match.
                 persistSparkBoxDimensionsDebounced()
             }
@@ -872,7 +853,7 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Camera move arrows (up/down/left/right) — matches iOS SharpRoomView. */
+    /** Camera move arrows (up/down/left/right) — on-screen only, not in overflow menu. */
     private fun createCameraArrowOverlay(): FrameLayout {
         val paddingPx = dpToPx(12)
         val buttonSizePx = dpToPx(44)
@@ -902,17 +883,17 @@ class SharpRoomActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        container.addView(makeArrowButton("\u2190") { runMoveCamera(-8.0, 0.0) }) // Left
+        container.addView(makeArrowButton("\u2190") { runMoveCamera(-8.0, 0.0) })
         val upDownColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
         }
-        upDownColumn.addView(makeArrowButton("\u2191") { runMoveCameraUp(0.2) })  // Up
-        val downBtn = makeArrowButton("\u2193") { runMoveCameraUp(-0.2) }  // Down
+        upDownColumn.addView(makeArrowButton("\u2191") { runMoveCameraUp(0.2) })
+        val downBtn = makeArrowButton("\u2193") { runMoveCameraUp(-0.2) }
         downBtn.layoutParams = LinearLayout.LayoutParams(buttonSizePx, buttonSizePx).apply { topMargin = dpToPx(8) }
         upDownColumn.addView(downBtn)
         container.addView(upDownColumn)
-        container.addView(makeArrowButton("\u2192") { runMoveCamera(8.0, 0.0) }) // Right
+        container.addView(makeArrowButton("\u2192") { runMoveCamera(8.0, 0.0) })
 
         return FrameLayout(this).apply {
             isClickable = false
@@ -2184,11 +2165,22 @@ class SharpRoomActivity : AppCompatActivity() {
                     DebugLogger.d(TAG, "WebGL dimensions measured but non-positive, ignoring: ${width}x${height}")
                     return@runOnUiThread
                 }
-                // Always treat Spark Box3 as canonical room width/height once available.
+                // Match iOS: prefer saved / SHARP front-wall metadata over raw WebGL Box3 (often ~1.5 model units).
+                if (hasSavedDimensions) {
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_measured] skip overwrite (keep metadata/intent W×H=$roomWidth×$roomHeight); Box3 was ${width}×${height}",
+                    )
+                    return@runOnUiThread
+                }
                 roomWidth = width
                 roomHeight = height
-                titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
+                titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
                 DebugLogger.d(TAG, "WebGL dimensions measured (Box3): ${roomWidth}x${roomHeight} (will persist)")
+                LogUtil.i(
+                    "SHARP_ROOM_MEAS",
+                    "[box3_measured] WebGL W×H=$roomWidth×$roomHeight title_m_label depth=$roomDepth arDisplayScale=$arDisplayScale folder=$roomFolder",
+                )
                 persistSparkBoxDimensionsDebounced()
             }
         }

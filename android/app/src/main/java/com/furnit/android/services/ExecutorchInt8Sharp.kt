@@ -675,7 +675,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /**
      * Part1+2 portable/INT8 weights for hybrid Vulkan runs.
-     * **Prefer `models_cpuvulkan_hybrid`** (same folder as Vulkan Part3/4 + adb `push_sharp_vulkan_only.sh`), then `models_cpu` (legacy).
+     * **Prefer `models_cpuvulkan_hybrid`** (same folder as Vulkan Part3/4 + adb `push_sharp_cpuvulkan_hybrid_androidstudio.sh`), then `models_cpu` (legacy).
      */
     private fun findCpuSidecarFile(filename: String): File? {
         if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
@@ -1522,6 +1522,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val centerY = (minY + maxY) * 0.5f
         val centerZ = (minZ + maxZ) * 0.5f
         LogUtil.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[ply_bbox] gaussians=$count W=$roomW H=$roomH D=$roomD " +
+                "center=($centerX,$centerY,$centerZ) file=${plyFile.name} " +
+                "(AABB in model space; WebGL viewer is authoritative for display dims)",
+        )
         if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
             LogUtil.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
         }

@@ -376,6 +376,13 @@
     <string name="sharp_room_saved">Room \'%s\' saved!</string>
     <string name="sharp_room_save_failed">Failed to save: %s</string>
     <string name="sharp_room_share_failed">Failed to share: %s</string>
+    <string name="sharp_room_overflow_content_description">More options</string>
+    <string name="sharp_room_menu_share">Share</string>
+    <string name="sharp_room_menu_save">Save room</string>
+    <string name="sharp_room_menu_calibrate">Calibrate wall</string>
+    <string name="sharp_room_menu_recenter">Recenter view</string>
+    <string name="sharp_room_menu_reset_overlay">Reset overlay scale</string>
+    <string name="sharp_room_menu_help">Help</string>
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>

@@ -24,7 +24,7 @@ Runtime uses mmap load + zero-copy output for Part 4.
 Export (Vulkan, recommended):
   cd android
   ./export_sharp_vulkan_only.sh
-  ./push_sharp_vulkan_only.sh
+  ./push_sharp_cpuvulkan_hybrid_androidstudio.sh
 
 Or manually:
   python export_sharp_executorch_split4.py --backend vulkan --chunked-part4 --dtype fp16 --output-dir sharp_vulkan_only

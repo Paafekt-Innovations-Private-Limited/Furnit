@@ -86,7 +86,7 @@ python3 "${SCRIPT_DIR}/export_sharp_executorch_split4.py" "${VULKAN_ARGS[@]}"
 echo ""
 echo "Export done. Vulkan-only models in: $OUTPUT_DIR"
 echo "To push to device:"
-echo "  ./push_sharp_vulkan_only.sh"
+echo "  ./push_sharp_cpuvulkan_hybrid_androidstudio.sh"
 echo ""
 
 PUSH=false
@@ -99,5 +99,5 @@ done
 
 if [ "$PUSH" = true ]; then
   echo "Pushing to device..."
-  "${SCRIPT_DIR}/push_sharp_vulkan_only.sh"
+  "${SCRIPT_DIR}/push_sharp_cpuvulkan_hybrid_androidstudio.sh"
 fi

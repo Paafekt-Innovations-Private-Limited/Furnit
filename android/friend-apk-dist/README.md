@@ -29,7 +29,7 @@ Many **on-device installers** (Files app, some OEM “package installers”, Blu
    `adb install -r /path/to/friend-…-app-etVulkan-arm64-v8a-debug.apk`
 2. Or ship a **small APK** and push models separately (most reliable):  
    `android/assemble_friend_apk_shell_only.sh`  
-   then `android/push_sharp_vulkan_only.sh`
+   then `android/push_sharp_cpuvulkan_hybrid_androidstudio.sh`
 3. This project’s APKs are **arm64-v8a only** — very old 32-bit-only phones cannot install them.
 
 **Verify the ZIP** (optional): `unzip -t your.apk` should end with “No errors detected”.

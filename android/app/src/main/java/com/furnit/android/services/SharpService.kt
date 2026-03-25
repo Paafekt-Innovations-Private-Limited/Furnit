@@ -246,6 +246,13 @@ class SharpService private constructor(private val context: Context) {
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
             LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+            LogUtil.i(
+                "SHARP_ROOM_MEAS",
+                "[room_created] infer_done gaussians=${result.gaussianCount} " +
+                    "bbox W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
+                    "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
+            )
             val feedOrientation = PhotoOrientation.fromBitmapDimensions(image)
             LogUtil.d(
                 TAG,
@@ -425,6 +432,12 @@ class SharpService private constructor(private val context: Context) {
             TAG,
             "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} " +
                 "dims=${roomWidth}x${roomHeight}x${roomDepth} photoOrientation=$photoOrientation wide=$viewerPhotoWideAngle",
+        )
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[metadata_written] roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth " +
+                "center=($roomCenterX,$roomCenterY,$roomCenterZ) photoOrientation=$photoOrientation " +
+                "path=${roomFolder.absolutePath}",
         )
     }
 

@@ -812,6 +812,17 @@ struct DraggableHandle: View {
     }
 }
 
+/// Pushes `SharpRoomView` with PLY in **one** state update (avoids `isPresented` building stale destinations).
+private struct SplatViewerDestination: Identifiable, Hashable {
+    let id: UUID
+    let plyURL: URL
+
+    init(plyURL: URL) {
+        self.id = UUID()
+        self.plyURL = plyURL
+    }
+}
+
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @ObservedObject private var sharpService = SHARPService.shared
@@ -836,9 +847,7 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     @State private var showGenerationSuccess = false
-    @State private var generatedPLYURL: URL?
-    @State private var generatedRoomMeasurements: RoomMeasurements?
-    @State private var navigateToSplatViewer = false
+    @State private var splatViewerDestination: SplatViewerDestination?
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
@@ -1224,11 +1233,6 @@ struct SinglePhotoRoomView: View {
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
-            // Reset navigation state on appear to clear any stale state
-            if navigateToSplatViewer && generatedPLYURL == nil {
-                logDebug("   Resetting stale navigateToSplatViewer state")
-                navigateToSplatViewer = false
-            }
             // Dimensions are now managed by @AppStorage
 
             // Pre-load SHARP model so "Setting things up..." progress bar shows.
@@ -1285,34 +1289,16 @@ struct SinglePhotoRoomView: View {
                 )
             }
         }
-        // Navigate to SharpRoomView when PLY is generated (used for both orientations)
-        .navigationDestination(isPresented: $navigateToSplatViewer) {
-            // Only navigate if we have a valid PLY URL - otherwise show empty view
-            // (navigation should be prevented by the onChange guard below)
-            if let plyURL = generatedPLYURL {
-                SharpRoomView(
-                    plyURL: plyURL,
-                    roomMeasurements: generatedRoomMeasurements,
-                    photoOrientation: selectedOrientation
-                )
-                .onAppear {
-                    logDebug("🚀 [Navigation] SharpRoomView appeared")
-                    logDebug("   orientation = \(selectedOrientation.rawValue)")
-                    logDebug("   plyURL = \(plyURL.lastPathComponent)")
-                }
-            } else {
-                // Fallback - should not happen if navigation is properly guarded
-                Color.clear.onAppear {
-                    logDebug("⚠️ [Navigation] navigateToSplatViewer=true but generatedPLYURL is nil - resetting")
-                    navigateToSplatViewer = false
-                }
-            }
-        }
-        // Guard: only allow navigation when URL is set
-        .onChange(of: navigateToSplatViewer) { oldValue, newValue in
-            if newValue && generatedPLYURL == nil {
-                logDebug("⚠️ [Navigation] Blocking navigation - generatedPLYURL is nil")
-                navigateToSplatViewer = false
+        .navigationDestination(item: $splatViewerDestination) { dest in
+            SharpRoomView(
+                plyURL: dest.plyURL,
+                photoOrientation: selectedOrientation,
+                savedRoomWidth: nil,
+                savedRoomHeight: nil
+            )
+            .onAppear {
+                logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
+                logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
             }
         }
         // Success alert for API-generated PLY file
@@ -1322,7 +1308,7 @@ struct SinglePhotoRoomView: View {
                 NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
             }
         } message: {
-            if let url = generatedPLYURL {
+            if let url = splatViewerDestination?.plyURL {
                 let fileName = url.lastPathComponent
                 Text("Successfully downloaded \(fileName). View it in your models list.")
             } else {
@@ -1413,25 +1399,15 @@ struct SinglePhotoRoomView: View {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
 
-        // Clear previous generation state to prevent using stale data on failure
-        generatedPLYURL = nil
-        generatedRoomMeasurements = nil
-        navigateToSplatViewer = false  // Reset navigation state
+        splatViewerDestination = nil
 
         Task {
             do {
-                let fileURL: URL
-                let measurements: RoomMeasurements?
+                let plyURL = try await sharpService.generateGaussians(from: image)
 
-                // Use SHARPService for both orientations
-                fileURL = try await sharpService.generateGaussians(from: image)
-                measurements = sharpService.roomMeasurements
-
-                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
+                logDebug("✅ [View] PLY file generated: \(plyURL.path)")
                 await MainActor.run {
-                    generatedPLYURL = fileURL
-                    generatedRoomMeasurements = measurements
-                    navigateToSplatViewer = true
+                    splatViewerDestination = SplatViewerDestination(plyURL: plyURL)
                 }
             } catch {
                 logDebug("❌ [View] Generation failed: \(error)")

@@ -16,6 +16,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -816,6 +817,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             // SharpRoomActivity will delete the folder so it doesn't appear in the list.
             putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, true)
         }
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[open_sharp_viewer] W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
+                "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}",
+        )
         startActivity(intent)
     }
 

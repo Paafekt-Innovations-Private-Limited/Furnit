@@ -44,9 +44,6 @@ class SHARPService: ObservableObject {
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
 
-    /// Room measurements from plane detection (available after generation)
-    @Published var roomMeasurements: RoomMeasurements?
-
     // MARK: - Model Configuration
 
     /// Input image size expected by SHARP model
@@ -302,7 +299,7 @@ class SHARPService: ObservableObject {
 
     /// Generate 3D Gaussian splat from an image
     /// - Parameter image: The source image
-    /// - Returns: URL to the saved PLY file
+    /// - Returns: URL of the primary PLY written by `writePLY`.
     func generateGaussians(from image: UIImage) async throws -> URL {
         logDebug("SHARP: Starting Gaussian generation")
 
@@ -634,7 +631,6 @@ class SHARPService: ObservableObject {
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
-    /// Returns tuple: (originalURL, classicURL, threeDGSURL) for different viewer compatibility
     private func writePLY(_ params: [Float]) async throws -> (original: URL, classic: URL, threeDGS: URL) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
@@ -718,8 +714,6 @@ class SHARPService: ObservableObject {
         var maxY: Float = -.greatestFiniteMagnitude
         var minZ: Float = .greatestFiniteMagnitude
         var maxZ: Float = -.greatestFiniteMagnitude
-        var positions: [(Float, Float, Float)] = []
-        positions.reserveCapacity(gaussianCount)
 
         // Debug: Log final PLY values for first few gaussians
         var debugCount = 0
@@ -742,7 +736,6 @@ class SHARPService: ObservableObject {
             minX = min(minX, x); maxX = max(maxX, x)
             minY = min(minY, y); maxY = max(maxY, y)
             minZ = min(minZ, z); maxZ = max(maxZ, z)
-            positions.append((x, y, z))
 
             // Original PLY
             data.append(Data(bytes: &x, count: 4))
@@ -893,19 +886,6 @@ class SHARPService: ObservableObject {
         logDebug("  Height (Y): \(String(format: "%.2f", height)) units (\(minY) to \(maxY))")
         logDebug("  Depth (Z):  \(String(format: "%.2f", depth)) units (\(minZ) to \(maxZ))")
         logDebug("  Splats: \(gaussianCount)")
-
-        // Detect front wall and compute measurements
-        if let measurements = RoomMeasurement.measureRoom(positions: positions) {
-            await MainActor.run {
-                self.roomMeasurements = measurements
-            }
-            logDebug("SHARP: Front wall detected:")
-            logDebug("  Width:  \(String(format: "%.2f", measurements.frontWallWidth)) units")
-            logDebug("  Height: \(String(format: "%.2f", measurements.frontWallHeight)) units")
-            logDebug("  Confidence: \(String(format: "%.0f", measurements.confidence * 100))%")
-        } else {
-            logDebug("SHARP: Could not detect front wall")
-        }
 
         return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL)
     }
