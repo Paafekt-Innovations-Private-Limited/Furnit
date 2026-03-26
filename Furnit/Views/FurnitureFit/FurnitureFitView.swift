@@ -300,6 +300,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }()
     
     private var hasFirstDetection = false
+    /// After the first successful segmentation in this container, skip startup progress on later `startIfNeeded()` (same UIView instance).
+    private var segmentationCompletedOnceThisSession = false
+    /// When true (e.g. Sharp Room already completed segmentation this session), hide startup progress even for a new UIView.
+    var suppressStartupProgress = false
+    /// Called once when the first valid segmentation mask is ready (parent can persist “no progress next time”).
+    var onFirstSegmentationComplete: (() -> Void)?
 
     // MARK: - Overlay scale (room × AR when enabled × user pinch)
     /// From `FurnitureSizingCalculator` (currently neutral 1×; room meters come from SHARP / calibration).
@@ -876,8 +882,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func startIfNeeded() {
-        hasFirstDetection = false
-        setProgress(0.05, text: "Starting camera…")
+        if suppressStartupProgress || segmentationCompletedOnceThisSession {
+            hasFirstDetection = false
+            DispatchQueue.main.async {
+                self.progressContainer.isHidden = true
+                self.progressContainer.alpha = 1
+            }
+        } else {
+            hasFirstDetection = false
+            setProgress(0.05, text: "Starting camera…")
+        }
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
         loadBlacklist()
@@ -2649,7 +2663,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Progress UI
     private func setProgress(_ value: Float, text: String) {
-        guard !hasFirstDetection else { return }
+        guard !hasFirstDetection, !suppressStartupProgress else { return }
         DispatchQueue.main.async {
             self.progressContainer.isHidden = false
             self.progressView.progress = value
@@ -2660,6 +2674,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func finishFirstDetectionIfNeeded() {
         guard !hasFirstDetection else { return }
         hasFirstDetection = true
+        segmentationCompletedOnceThisSession = true
+        onFirstSegmentationComplete?()
         DispatchQueue.main.async {
             UIView.animate(withDuration: 0.25) {
                 self.progressContainer.alpha = 0

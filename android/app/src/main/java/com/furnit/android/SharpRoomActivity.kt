@@ -217,6 +217,8 @@ class SharpRoomActivity : AppCompatActivity() {
     /** True after the first segmentation result arrives for the current brain session (CameraX or ARCore). */
     @Volatile
     private var brainFirstResultReceived: Boolean = false
+    /** Once true, skip the full-screen "Detecting furniture…" progress on later brain taps this activity session. */
+    private var brainSegmentationCompletedOnceThisSession: Boolean = false
     /** Used so we can fall back from ARCore brain path to CameraX if no result arrives. */
     private var disableArBrainThisSession: Boolean = false
     private val brainTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -240,7 +242,7 @@ class SharpRoomActivity : AppCompatActivity() {
     ) { isGranted ->
         DebugLogger.d(TAG, "Brain: camera permission result isGranted=$isGranted")
         if (isGranted) {
-            showBrainProgressOverlay()
+            showBrainProgressOverlayIfNeeded()
             startBrainDetection()
         } else {
             DebugLogger.d(TAG, "Brain: camera permission denied")
@@ -807,8 +809,8 @@ class SharpRoomActivity : AppCompatActivity() {
                         DebugLogger.d(TAG, "Brain: requesting CAMERA permission")
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     } else {
-                        DebugLogger.d(TAG, "Brain: permission OK, showing progress and starting detection")
-                        showBrainProgressOverlay()
+                        DebugLogger.d(TAG, "Brain: permission OK, starting detection (progress only on first time this session)")
+                        showBrainProgressOverlayIfNeeded()
                         startBrainDetection()
                     }
                 }
@@ -1077,6 +1079,17 @@ class SharpRoomActivity : AppCompatActivity() {
         updateBrainCalibrationPill()
     }
 
+    /** First brain session this activity: full progress + pill. Later sessions: pill only (segmentation already warm). */
+    private fun showBrainProgressOverlayIfNeeded() {
+        if (brainSegmentationCompletedOnceThisSession) {
+            brainOverlayVisible = true
+            setBrainCalibrationPillVisible(true)
+            updateBrainCalibrationPill()
+            return
+        }
+        showBrainProgressOverlay()
+    }
+
     private fun hideBrainProgressOverlay() {
         brainProgressOverlay.visibility = View.GONE
     }
@@ -1131,7 +1144,7 @@ class SharpRoomActivity : AppCompatActivity() {
             // session cannot be created), fall back to classic CameraX brain path instead of leaving the
             // user stuck on "Detecting furniture…".
             brainTimeoutRunnable = Runnable {
-                if (!brainFirstResultReceived && brainProgressOverlay.visibility == View.VISIBLE) {
+                if (!brainFirstResultReceived) {
                     DebugLogger.eDebugMode(TAG, "Brain: timeout waiting for first result, falling back to CameraX brain path")
                     // Tear down ARCore controller if present.
                     brainArController?.let { c ->
@@ -1214,6 +1227,7 @@ class SharpRoomActivity : AppCompatActivity() {
                                 brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
                                 brainTimeoutRunnable = null
                                 DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
+                                brainSegmentationCompletedOnceThisSession = true
                                 hideBrainProgressOverlay()
                                 brainDetectionOverlay.visibility = View.VISIBLE
                                 setBrainSegmentationButtonActive(true)
@@ -1267,6 +1281,10 @@ class SharpRoomActivity : AppCompatActivity() {
         val controller = FurnitureFitArCameraController(this, cameraExecutor)
         brainArController = controller
         controller.lockedPhotoOrientation = photoOrientation
+        controller.onAssistedMeasurementUpdated = {
+            brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
+            updateBrainCalibrationPill()
+        }
         val lp = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1291,6 +1309,7 @@ class SharpRoomActivity : AppCompatActivity() {
                         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
                         brainTimeoutRunnable = null
                         DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
+                        brainSegmentationCompletedOnceThisSession = true
                         hideBrainProgressOverlay()
                         brainDetectionOverlay.visibility = View.VISIBLE
                         setBrainSegmentationButtonActive(true)
@@ -1315,11 +1334,13 @@ class SharpRoomActivity : AppCompatActivity() {
                             det.h * scaleY,
                             det.label,
                         )
+                        // Height is applied on the GL thread + ~850ms debounce; [onAssistedMeasurementUpdated] refreshes the pill.
                         brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
                     } else {
                         brainArController?.clearBboxHint()
                         brainDetectedFurnitureHeightMeters = null
                     }
+                    brainArController?.onInferenceFinished()
                     updateBrainCalibrationPill()
                 }
             }

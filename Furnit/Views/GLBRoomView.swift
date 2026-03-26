@@ -185,6 +185,7 @@ struct GLBRoomView: View {
     @State private var isLoading = true
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitInitialSegmentationDone = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
 
@@ -247,7 +248,9 @@ struct GLBRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth ?? 4.0,
                     roomHeightMeters: roomHeight ?? 3.0,
-                    onFurnitureSizeEstimated: { _ in }
+                    onFurnitureSizeEstimated: { _ in },
+                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)

@@ -76,6 +76,8 @@ class FurnitureFitFragment : Fragment() {
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
     private var hasFirstDetection = false
+    /** After first segmentation in this fragment lifetime, skip startup progress on view/camera restart. */
+    private var segmentationCompletedOnceThisSession = false
     private var showRoomBackground = true  // Show room behind segmented furniture
     private var selectedRoomId: String? = null
     private var selectedRoomName: String? = null
@@ -309,8 +311,11 @@ class FurnitureFitFragment : Fragment() {
         root.addView(backButton)
         root.addView(bottomControls)
 
-        // Initial progress
-        setProgress(5, "Starting camera...")
+        if (!segmentationCompletedOnceThisSession) {
+            setProgress(5, "Starting camera...")
+        } else {
+            progressContainer.visibility = View.GONE
+        }
 
         cameraPathRoot = root
         if (useArAssistedCameraPath()) {
@@ -373,6 +378,7 @@ class FurnitureFitFragment : Fragment() {
                 if (result != null && result.mask != null) {
                     if (!hasFirstDetection) {
                         hasFirstDetection = true
+                        segmentationCompletedOnceThisSession = true
                         progressContainer.visibility = View.GONE
                     }
 
@@ -668,6 +674,7 @@ class FurnitureFitFragment : Fragment() {
                     // First detection - hide progress bar
                     if (!hasFirstDetection) {
                         hasFirstDetection = true
+                        segmentationCompletedOnceThisSession = true
                         progressContainer.visibility = View.GONE
                     }
 

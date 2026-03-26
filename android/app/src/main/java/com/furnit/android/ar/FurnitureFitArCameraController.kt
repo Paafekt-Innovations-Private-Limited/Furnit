@@ -88,7 +88,7 @@ class FurnitureFitArCameraController(
 
     private val measurementHandler = Handler(Looper.getMainLooper())
     /** Debounced apply of AR overlay scale (mirrors iOS `assistedMeasurementDebounceSeconds` ~0.85s). */
-    private val assistedMeasurementDebounceMs = 850L
+    private val assistedMeasurementDebounceMs = 550L
     @Volatile
     private var latestRawScale: Float? = null
     @Volatile
@@ -97,7 +97,15 @@ class FurnitureFitArCameraController(
 
     private val debounceApplyRunnable = Runnable {
         applyPendingArOverlayScaleFromLatest()
+        onAssistedMeasurementUpdated?.invoke()
     }
+
+    /**
+     * Called on the main thread after debounced AR metric sizing is applied (including
+     * [lastEstimatedHeightMeters]). Used so the Sharp room calibration pill refreshes — the pill
+     * is not driven by the GL thread every frame.
+     */
+    var onAssistedMeasurementUpdated: (() -> Unit)? = null
 
     /**
      * Room photo lock from FurnitureFit / Sharp room (`"portrait"` or `"landscape"`), matching CameraX
@@ -212,6 +220,7 @@ class FurnitureFitArCameraController(
 
     fun destroy() {
         measurementHandler.removeCallbacks(debounceApplyRunnable)
+        onAssistedMeasurementUpdated = null
         onHostPause()
         pendingPhotoCaptureRequest?.bestBitmap?.takeIf { !it.isRecycled }?.recycle()
         pendingPhotoCaptureRequest = null

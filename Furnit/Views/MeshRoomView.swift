@@ -37,6 +37,7 @@ struct MeshRoomView: View {
 
     // Brain mode (furniture detection)
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitInitialSegmentationDone = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     // WebView reference for GLTF export
@@ -127,7 +128,9 @@ struct MeshRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth,
                     roomHeightMeters: roomHeight,
-                    onFurnitureSizeEstimated: { _ in }
+                    onFurnitureSizeEstimated: { _ in },
+                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)

@@ -29,6 +29,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
     @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
+    @State private var furnitureFitInitialSegmentationDone = false
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -74,7 +75,10 @@ struct ModelViewerView: View {
                             active: true,
                             lockedOrientation: model.photoOrientation,
                             roomWidthMeters: model.roomWidth ?? 4.0,
-                            roomHeightMeters: model.roomHeight ?? 3.0
+                            roomHeightMeters: model.roomHeight ?? 3.0,
+                            onFurnitureSizeEstimated: nil,
+                            suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                         )
                         .zIndex(9000)
                     }
@@ -611,6 +615,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
+    /// Sharp Room: skip “Starting camera…” progress after the first segmentation this session.
+    var suppressStartupProgress: Bool = false
+    var onFirstSegmentationComplete: (() -> Void)?
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -620,6 +627,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomHeightMeters = roomHeightMeters
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        view.suppressStartupProgress = suppressStartupProgress
+        view.onFirstSegmentationComplete = onFirstSegmentationComplete
         return view
     }
 
@@ -631,6 +640,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.roomHeightMeters = roomHeightMeters
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        uiView.suppressStartupProgress = suppressStartupProgress
+        uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }

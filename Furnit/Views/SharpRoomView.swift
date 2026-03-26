@@ -351,6 +351,8 @@ struct SharpRoomView: View {
     @State private var roomName = ""
     @State private var showShareSheet = false
     @State private var isCapturingSnapshot = false
+    /// After first Furniture Fit segmentation this viewer session, skip startup progress when toggling brain on again.
+    @State private var furnitureFitInitialSegmentationDone = false
     @EnvironmentObject var authManager: AuthenticationManager
 
     /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
@@ -629,7 +631,9 @@ struct SharpRoomView: View {
                 detectedFurnitureWidth = estimate.widthMeters
                 detectedFurnitureHeight = estimate.heightMeters
                 detectedFurnitureHeightAR = estimate.arHeightMeters
-            }
+            },
+            suppressStartupProgress: furnitureFitInitialSegmentationDone,
+            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
         )
         .ignoresSafeArea()
         .zIndex(100)
