@@ -592,6 +592,9 @@ if (!modelDirPath || !imageNCHW) {
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
     }
+    if (progressReporter && reportProgressMethodId) {
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.52f, "Part 3: preparing encoder…");
+    }
     auto fullImgTensor = from_blob(imageData, {1, 3, imageSize, imageSize});
     std::vector<EValue> in3 = {*fullImgTensor};
     auto out3 = mod3->forward(in3);
@@ -653,11 +656,14 @@ if (!modelDirPath || !imageNCHW) {
     std::memcpy(combinedTokens.data(), out512Ptr, out512Len * sizeof(float));
     mod4a512.reset();
     LOGD("Part4a/512: %lldms (out=%zu)", nowMs() - tP4a, out512Len);
+    if (progressReporter && reportProgressMethodId) {
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.645f, "Part 4a (1/2): ViT 512 done…");
+    }
 
     // ── Part4a chunk 65 ──────────────────────────────────────────────────────
     long long tP4a65 = nowMs();
     if (progressReporter && reportProgressMethodId) {
-        reportProgress(env, progressReporter, reportProgressMethodId, 0.68f, "Part 4a (2/2): ViT 65-token chunk…");
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.67f, "Part 4a (2/2): ViT 65-token chunk…");
     }
     LOGI("Part4a/65: portable CPU/XNNPACK…");
     long long tLoad65 = nowMs();

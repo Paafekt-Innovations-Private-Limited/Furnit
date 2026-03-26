@@ -523,4 +523,9 @@
     <string name="ar_measure_calib_invalid_ref">That axis is invalid for scaling.</string>
     <string name="ar_measure_calib_applied">Display scale updated (AR calibration).</string>
     <string name="ar_measure_calib_no_folder">Calibration updated for this session only (room not saved to disk yet).</string>
+
+    <!-- Single photo / AI room generation -->
+    <string name="single_photo_run_in_background">Run in background</string>
+    <string name="single_photo_progress_overlay_background_hint">You can leave this screen. When the room is ready, it will appear in your Home list.</string>
+    <string name="single_photo_ai_room_async_footnote">Generation keeps running if you leave. Your room will appear on the Home list when it is ready.</string>
 </resources>

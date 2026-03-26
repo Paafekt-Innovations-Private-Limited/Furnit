@@ -272,7 +272,8 @@ class FurnitureFitFragment : Fragment() {
                 setMargins(0, 0, 0, 52)
             }
             addView(pillContent)
-            visibility = View.VISIBLE
+            // Shown on first [updateCalibrationPill] once segmentation has run (this flow is only opened after brain).
+            visibility = View.GONE
             setOnClickListener { showCalibrationDialog() }
         }
         calibrationPillContainer = calibrationPill

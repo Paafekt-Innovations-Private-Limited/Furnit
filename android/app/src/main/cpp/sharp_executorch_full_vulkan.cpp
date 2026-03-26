@@ -879,6 +879,9 @@ jfloatArray runSharpFullPipeline_Vulkan(
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
     }
+    if (progressReporter && reportProgressMethodId) {
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.52f, "Part 3: preparing encoder…");
+    }
     auto fullImgTensor = from_blob(imageData, {1, 3, imageSize, imageSize});
     std::vector<EValue> in3 = {*fullImgTensor};
     auto out3 = mod3->forward(in3);
@@ -900,6 +903,9 @@ jfloatArray runSharpFullPipeline_Vulkan(
     const long long part3Ms = nowMs() - tP3;
     LOGD("Part3: %lldms (sequential, numel=%zu)", part3Ms, imgTokensNumel);
     logProcessMemory("after Part3 reset");
+    if (progressReporter && reportProgressMethodId) {
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.56f, "Part 3: encoding room…");
+    }
 
     // ── Part4a chunk 512 + 65 ─────────────────────────────────────────────────
     long long tP4a = nowMs();
@@ -956,11 +962,14 @@ jfloatArray runSharpFullPipeline_Vulkan(
     mod4a512.reset();
     LOGD("Part4a/512: %lldms (out=%zu)", nowMs() - tP4a, out512Len);
     logProcessMemory("after Part4a/512 reset");
+    if (progressReporter && reportProgressMethodId) {
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.645f, "Part 4a (1/2): ViT 512 done…");
+    }
 
     // ── Part4a chunk 65 ──────────────────────────────────────────────────────
     long long tP4a65 = nowMs();
     if (progressReporter && reportProgressMethodId) {
-        reportProgress(env, progressReporter, reportProgressMethodId, 0.68f, "Part 4a (2/2): ViT 65-token chunk…");
+        reportProgress(env, progressReporter, reportProgressMethodId, 0.67f, "Part 4a (2/2): ViT 65-token chunk…");
     }
     if (!useVulkanBackend) {
         LOGI("Part4a/65: portable CPU/XNNPACK…");

@@ -434,9 +434,15 @@ struct SharpRoomView: View {
             ShareSheet(activityItems: [shareURL])
         }
         .onAppear {
-            yoloeService.ensureModelLoaded()
+            // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
+            // Load when the user turns on Furniture Fit (brain) instead.
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
+        }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            }
         }
         .onDisappear { OrientationLockManager.shared.unlock() }
         .alert("Save Room", isPresented: $showRoomNameInput) {
@@ -857,13 +863,13 @@ struct SharpRoomView: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(Color.black.opacity(0.5)).cornerRadius(8)
                     .allowsHitTesting(false)
-                    if showingFurnitureFit, let baseH = detectedFurnitureHeight {
+                    if showingFurnitureFit {
                         Button(action: { showFurnitureDimensionsInput = true }) {
                             VStack(spacing: 2) {
                                 if let calibH = calibratedRoomHeight {
                                     Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
                                 }
-                                let displayH = detectedFurnitureHeightAR ?? baseH
+                                let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
                                 Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
                                     .font(.caption.bold())
                                     .foregroundColor(realFurnitureHeight != nil ? .green : .white)
@@ -912,13 +918,13 @@ struct SharpRoomView: View {
                     .padding(.leading, 16)
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
-                        if showingFurnitureFit, let baseH = detectedFurnitureHeight {
+                        if showingFurnitureFit {
                             Button(action: { showFurnitureDimensionsInput = true }) {
                                 VStack(spacing: 2) {
                                     if let calibH = calibratedRoomHeight {
                                         Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
                                     }
-                                    let displayH = detectedFurnitureHeightAR ?? baseH
+                                    let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
                                     Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
                                         .font(.caption.bold())
                                         .foregroundColor(realFurnitureHeight != nil ? .green : .white)
@@ -1239,58 +1245,61 @@ struct AntimatterSplatView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.allowsInlineMediaPlayback = true
+        // Tight autorelease scope helps return transient Obj-C allocations before WebKit fully warms up.
+        autoreleasepool {
+            let config = WKWebViewConfiguration()
+            config.allowsInlineMediaPlayback = true
 
-        // Enable JavaScript
-        let prefs = WKWebpagePreferences()
-        prefs.allowsContentJavaScript = true
-        config.defaultWebpagePreferences = prefs
+            // Enable JavaScript
+            let prefs = WKWebpagePreferences()
+            prefs.allowsContentJavaScript = true
+            config.defaultWebpagePreferences = prefs
 
-        // Register custom URL scheme handler
-        let schemeHandler = LocalFileSchemeHandler()
-        schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
-        config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
+            // Register custom URL scheme handler
+            let schemeHandler = LocalFileSchemeHandler()
+            schemeHandler.plyURL = plyURL
+            schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
+            config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
-        // Add message handlers for communication from JS
-        config.userContentController.add(context.coordinator, name: "splatLoaded")
-        config.userContentController.add(context.coordinator, name: "frontWallDimensions")
-        config.userContentController.add(context.coordinator, name: "cameraPose")
-        config.userContentController.add(context.coordinator, name: "jsLog")
-        config.userContentController.add(context.coordinator, name: "box3Size")
+            // Add message handlers for communication from JS
+            config.userContentController.add(context.coordinator, name: "splatLoaded")
+            config.userContentController.add(context.coordinator, name: "frontWallDimensions")
+            config.userContentController.add(context.coordinator, name: "cameraPose")
+            config.userContentController.add(context.coordinator, name: "jsLog")
+            config.userContentController.add(context.coordinator, name: "box3Size")
 
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.bounces = false
-        webView.scrollView.bouncesZoom = false
-        webView.scrollView.minimumZoomScale = 1.0
-        webView.scrollView.maximumZoomScale = 1.0
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
+            let webView = WKWebView(frame: .zero, configuration: config)
+            webView.navigationDelegate = context.coordinator
+            webView.scrollView.isScrollEnabled = false
+            webView.scrollView.bounces = false
+            webView.scrollView.bouncesZoom = false
+            webView.scrollView.minimumZoomScale = 1.0
+            webView.scrollView.maximumZoomScale = 1.0
+            webView.scrollView.contentInsetAdjustmentBehavior = .never
 
-        // Disable all scroll view gesture recognizers to let Three.js handle touches
-        for gestureRecognizer in webView.scrollView.gestureRecognizers ?? [] {
-            gestureRecognizer.isEnabled = false
+            // Disable all scroll view gesture recognizers to let Three.js handle touches
+            for gestureRecognizer in webView.scrollView.gestureRecognizers ?? [] {
+                gestureRecognizer.isEnabled = false
+            }
+
+            webView.isOpaque = false
+            webView.backgroundColor = .gray
+            webView.isUserInteractionEnabled = true
+            webView.isMultipleTouchEnabled = true
+
+            // Store reference
+            context.coordinator.schemeHandler = schemeHandler
+            context.coordinator.webView = webView
+            context.coordinator.lastInfiniteZoom = infiniteZoom
+
+            // Load from custom scheme (HTML will auto-load room.ply)
+            if let url = URL(string: "splat://local/") {
+                webView.load(URLRequest(url: url))
+                logDebug("AntimatterSplatView: Loading from custom scheme")
+            }
+
+            return webView
         }
-
-        webView.isOpaque = false
-        webView.backgroundColor = .gray
-        webView.isUserInteractionEnabled = true
-        webView.isMultipleTouchEnabled = true
-
-        // Store reference
-        context.coordinator.schemeHandler = schemeHandler
-        context.coordinator.webView = webView
-        context.coordinator.lastInfiniteZoom = infiniteZoom
-
-        // Load from custom scheme (HTML will auto-load room.ply)
-        if let url = URL(string: "splat://local/") {
-            webView.load(URLRequest(url: url))
-            logDebug("AntimatterSplatView: Loading from custom scheme")
-        }
-
-        return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {

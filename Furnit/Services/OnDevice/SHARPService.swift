@@ -218,6 +218,14 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Released ODR resources")
     }
 
+    /// Drop the in-memory CoreML model after PLY is written so `WKWebView` / WebKit can allocate.
+    /// Without this, peak RAM (SHARP + YOLOE + WebKit) can fail heap allocation at `WKWebViewConfiguration()`.
+    func releaseInferenceMemoryAfterGeneration() {
+        model = nil
+        isLoadingModel = false
+        logDebug("SHARP: Inference model released after generation (free RAM for splat viewer)")
+    }
+
     // MARK: - Model Loading
 
     /// Whether model is currently loading
@@ -345,6 +353,8 @@ class SHARPService: ObservableObject {
             progress = 1.0
             status = .completed(fileURL: plyURL)
             statusMessage = "Done!"
+
+            releaseInferenceMemoryAfterGeneration()
 
             return plyURL
         } catch {

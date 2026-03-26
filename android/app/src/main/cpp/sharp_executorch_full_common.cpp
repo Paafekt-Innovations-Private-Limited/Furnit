@@ -1639,18 +1639,20 @@ bool runPart4bBatchedTiledPipeline(
             float* dst = outGaussians.data() + t * floatsPerTile;
             std::memcpy(dst, outData + i * floatsPerBatchItem, floatsPerTile * sizeof(float));
             correctNDC(dst, gaussiansPerTile, tileRow, tileCol, swapTileNdcXY);
+            // Per-tile progress (0.68→0.90) avoids a large jump when numBatches is small (e.g. 2 batches of 8 tiles).
+            if (progressEnv && progressReporter && reportProgressMethodId) {
+                const int tilesDone = t + 1;
+                const float p = 0.68f + 0.22f * (float)tilesDone / (float)NUM_TILES;
+                char buf[96];
+                snprintf(buf, sizeof(buf), "Part 4b: tile %d/%d…", tilesDone, NUM_TILES);
+                reportProgress(progressEnv, progressReporter, reportProgressMethodId, p, buf);
+            }
         }
 
         auto batchEnd = std::chrono::steady_clock::now();
         long long batchMs = std::chrono::duration_cast<std::chrono::milliseconds>(batchEnd - batchStart).count();
         LOGD("Part4b batch %d/%d (tiles %d-%d): %lldms", b + 1, numBatches,
              b * batch + 1, (b + 1) * batch, (long long)batchMs);
-        if (progressEnv && progressReporter && reportProgressMethodId) {
-            const float p = 0.695f + 0.205f * (float)(b + 1) / (float)numBatches;
-            char buf[96];
-            snprintf(buf, sizeof(buf), "Part 4b: batch %d/%d…", b + 1, numBatches);
-            reportProgress(progressEnv, progressReporter, reportProgressMethodId, p, buf);
-        }
     }
 
     auto tEnd = std::chrono::steady_clock::now();
@@ -2306,7 +2308,8 @@ bool runPart4bTiledFullPipeline(
         long long tileMs = std::chrono::duration_cast<std::chrono::milliseconds>(tileEnd - tileStart).count();
         LOGD("Part4b tile %d/%d: %lldms", t + 1, NUM_TILES, (long long)tileMs);
         if (progressEnv && progressReporter && reportProgressMethodId) {
-            const float p = 0.695f + 0.205f * (float)(t + 1) / (float)NUM_TILES;
+            // Align with batched path: span 0.68→0.90 across tiles (Kotlin PLY phase starts at 0.91).
+            const float p = 0.68f + 0.22f * (float)(t + 1) / (float)NUM_TILES;
             char buf[96];
             snprintf(buf, sizeof(buf), "Part 4b: tile %d/%d…", t + 1, NUM_TILES);
             reportProgress(progressEnv, progressReporter, reportProgressMethodId, p, buf);

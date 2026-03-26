@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.core.content.FileProvider
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.MetricAnchor
@@ -59,6 +60,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var progressRing: CircularProgressIndicator
     private lateinit var progressText: TextView
     private lateinit var progressPercent: TextView
+    private lateinit var runInBackgroundButton: MaterialButton
     /** Host of the ring — subtle pulse animation. */
     private var progressRingHost: View? = null
     private var progressOverlayPulse: AnimatorSet? = null
@@ -82,6 +84,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var aiGenerationRunning = false
     /** Set when user taps AI Room while generation is running - callback will show overlay and open on complete. */
     private var aiRoomOverlayRequested = false
+    /** After "Run in background", AI option line shows percent; otherwise only friendly text (no %). */
+    private var aiOptionShowPercent = false
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
 
     private val imagePickerLauncher = registerForActivityResult(
@@ -492,12 +496,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             }
             addView(subtitle)
 
-            // AI Room option (Sharp) - subtitle shows live progress when generation runs in background
+            // AI Room option (Sharp) — footnote explains async; subtitle shows progress (percent only after "Run in background").
             val aiOption = createOptionCard(
                 icon = "\uD83E\uDE84", // Magic wand
                 title = "AI Room",
                 subtitle = "AI-powered 3D generation",
                 bgColor = "#F3E5F5",
+                footnote = getString(R.string.single_photo_ai_room_async_footnote),
                 onSubtitleCreated = { view -> aiOptionSubtitleView = view }
             ) {
                 onAIRoomSelected()
@@ -535,6 +540,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         title: String,
         subtitle: String,
         bgColor: String,
+        footnote: String? = null,
         onSubtitleCreated: ((TextView) -> Unit)? = null,
         onClick: () -> Unit
     ): LinearLayout {
@@ -578,6 +584,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(subtitleView)
                 onSubtitleCreated?.invoke(subtitleView)
+                if (footnote != null) {
+                    addView(TextView(this@SinglePhotoRoomActivity).apply {
+                        text = footnote
+                        textSize = 11f
+                        setTextColor(Color.parseColor("#888888"))
+                        setPadding(0, dpToPx(6), 0, 0)
+                    })
+                }
             }
             addView(textContainer)
 
@@ -738,6 +752,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     aiGenerationRunning = false
                     aiGenerationResult = result
                     aiGenerationHandle = null
+                    aiOptionShowPercent = false
                     updateAIOptionProgress(1f, "Ready")
                     hideProgressOverlay()
                     if (aiRoomOverlayRequested) {
@@ -753,6 +768,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     aiGenerationResult = null
                     aiGenerationHandle = null
                     aiRoomOverlayRequested = false
+                    aiOptionShowPercent = false
                     updateAIOptionProgress(0f, "Failed")
                     hideProgressOverlay()
                     Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
@@ -779,6 +795,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiGenerationHandle = null
         aiGenerationRunning = false
         aiGenerationResult = null
+        aiOptionShowPercent = false
+        lastAIGenerationRawMessage = ""
         SharpService.getInstance(this).release()
         DebugLogger.d("SinglePhotoRoom", "AI cancelled and memory released")
     }
@@ -788,12 +806,26 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
     private var lastAIGenerationMessage: String = "Getting started…"
+    private var lastAIGenerationRawMessage: String = ""
 
     private fun updateAIOptionProgress(progress: Float, message: String) {
         lastAIGenerationProgress = progress
+        lastAIGenerationRawMessage = message
         val friendly = toFriendlyMessage(progress, message)
         lastAIGenerationMessage = friendly
-        aiOptionSubtitleView?.text = if (progress >= 1f) "Ready — tap to view" else if (progress > 0f) "$friendly (${(progress * 100).toInt()}%)" else "Create a 3D room from your photo"
+        aiOptionSubtitleView?.text = when {
+            progress >= 1f -> "Ready — tap to view"
+            progress > 0f -> if (aiOptionShowPercent) "$friendly (${(progress * 100).toInt()}%)" else friendly
+            else -> "Create a 3D room from your photo"
+        }
+    }
+
+    /** Dismiss full-screen progress; keep generation running and show percent on the AI Room row. */
+    private fun onRunInBackgroundClicked() {
+        aiRoomOverlayRequested = false
+        aiOptionShowPercent = true
+        hideProgressOverlay()
+        updateAIOptionProgress(lastAIGenerationProgress, lastAIGenerationRawMessage)
     }
 
     private fun onAIRoomSelected() {
@@ -825,6 +857,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "start fresh", mapOf())
         lastAIGenerationProgress = 0f
         lastAIGenerationMessage = "Getting started…"
+        lastAIGenerationRawMessage = ""
+        aiOptionShowPercent = false
         showProgressOverlay(preserveProgress = false)
         startAIGenerationInBackground(selectedBitmap!!)
         aiRoomOverlayRequested = true
@@ -1107,8 +1141,21 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(progressText)
 
+                runInBackgroundButton = MaterialButton(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.single_photo_run_in_background)
+                    textSize = 14f
+                    setOnClickListener { onRunInBackgroundClicked() }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        topMargin = (16 * density).toInt()
+                    }
+                }
+                addView(runInBackgroundButton)
+
                 addView(TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "Usually ~2 minutes. You can leave anytime.\nWork continues in the background."
+                    text = getString(R.string.single_photo_progress_overlay_background_hint)
                     textSize = 12f
                     setTextColor(Color.parseColor("#757575"))
                     gravity = Gravity.CENTER
@@ -1117,6 +1164,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                     ).apply {
+                        topMargin = (12 * density).toInt()
                         bottomMargin = (16 * density).toInt()
                     }
                 })

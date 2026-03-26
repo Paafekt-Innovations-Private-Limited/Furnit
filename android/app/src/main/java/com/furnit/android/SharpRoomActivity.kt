@@ -653,6 +653,12 @@ class SharpRoomActivity : AppCompatActivity() {
         popup.show()
     }
 
+    private fun setBrainCalibrationPillVisible(visible: Boolean) {
+        runOnUiThread {
+            brainCalibrationPillContainer?.visibility = if (visible) View.VISIBLE else View.GONE
+        }
+    }
+
     /** Update the brain (FurnitureFit) calibration pill at the bottom of the screen. */
     private fun updateBrainCalibrationPill() {
         runOnUiThread {
@@ -661,7 +667,6 @@ class SharpRoomActivity : AppCompatActivity() {
             val line2 = brainCalibrationPillLine2
             val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
-            container.visibility = View.VISIBLE
             val realH = brainRealFurnitureHeightMeters
             if (realH != null && realH > 0f) {
                 val roomH = effRoomHeight()
@@ -871,7 +876,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
                     bottomMargin = dpToPx(52)
                 }
-                visibility = View.VISIBLE
+                // Shown only while a brain session is active (tap brain → progress/detection); not on plain room view.
+                visibility = View.GONE
                 addView(pillContent)
                 setOnClickListener { showBrainCalibrationDialog() }
             }
@@ -1062,6 +1068,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun showBrainProgressOverlay() {
         brainOverlayVisible = true
         brainProgressOverlay.visibility = View.VISIBLE
+        setBrainCalibrationPillVisible(true)
+        updateBrainCalibrationPill()
     }
 
     private fun hideBrainProgressOverlay() {
@@ -1086,6 +1094,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         stopBrainDetection()
+        setBrainCalibrationPillVisible(false)
     }
 
     private fun startBrainDetection() {
@@ -1104,6 +1113,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 DebugLogger.eDebugMode(TAG, "Brain: SmartyPants failed to initialize")
                 runOnUiThread {
                     hideBrainProgressOverlay()
+                    setBrainCalibrationPillVisible(false)
                     Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_smartypants_failed), Toast.LENGTH_SHORT).show()
                 }
                 return@launch
@@ -1230,6 +1240,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 DebugLogger.eDebugMode(TAG, "Brain camera bind failed", e)
                 runOnUiThread {
                     hideBrainProgressOverlay()
+                    setBrainCalibrationPillVisible(false)
                     Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
                     CrashReporter.report(this@SharpRoomActivity, e, "Sharp room brain / camera bind")
                 }
@@ -2070,17 +2081,21 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun showSaveDialog() {
         val input = EditText(this).apply {
-            hint = "Enter room name"
+            hint = getString(R.string.room_viewer_enter_name)
             setPadding(48, 32, 48, 32)
-            val defaultName = roomFolder?.let { folderPath ->
-                RoomFolderMetadata.readFromFolder(File(folderPath))?.name?.takeIf { it.isNotBlank() }
-            } ?: RoomDisplayName.aiRoomWithTimestamp()
-            setText(defaultName)
+            val folder = roomFolder?.let { File(it) }?.takeIf { it.isDirectory }
+            val snapshot = folder?.let { RoomFolderMetadata.readFromFolder(it) }
+            // Preview rooms carry an internal "AI Room …" name on disk for list/debug — don't pre-fill it here.
+            val initialName = when {
+                snapshot?.previewOnly == true -> ""
+                else -> snapshot?.name?.takeIf { it.isNotBlank() }.orEmpty()
+            }
+            setText(initialName)
         }
 
         AlertDialog.Builder(this)
-            .setTitle("Save Room")
-            .setMessage("Enter a name for your room")
+            .setTitle(R.string.room_viewer_save_room)
+            .setMessage(R.string.room_viewer_enter_name)
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
                 val name = input.text.toString().ifEmpty { RoomDisplayName.aiRoomWithTimestamp() }
@@ -2369,7 +2384,10 @@ class SharpRoomActivity : AppCompatActivity() {
             stopBrainDetection()
             hideBrainProgressOverlay()
             if (brainDetectionOverlay.visibility == View.VISIBLE) hideBrainDetectionOverlay()
-            else brainOverlayVisible = false
+            else {
+                brainOverlayVisible = false
+                setBrainCalibrationPillVisible(false)
+            }
             return
         }
         if (webView.canGoBack()) {
