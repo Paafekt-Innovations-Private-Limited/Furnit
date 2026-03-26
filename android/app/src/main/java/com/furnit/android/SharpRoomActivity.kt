@@ -132,7 +132,8 @@ class SharpRoomActivity : AppCompatActivity() {
                         roomCenterX = null,
                         roomCenterY = null,
                         roomCenterZ = null,
-                        arDisplayScale = arDisplayScale
+                        arDisplayScale = arDisplayScale,
+                        previewOnly = true,
                     )
                 }
                 val merged = RoomFolderMetadata.snapshotPreservingYoloFields(folder, baseSnapshot)
@@ -2112,6 +2113,7 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
             metadata.append("photoWideAngle=$photoWideAngle\n")
             metadata.append("arDisplayScale=$arDisplayScale\n")
+            metadata.append("previewOnly=false\n")
             metadataFile.writeText(metadata.toString())
             val folderFile = File(folder)
             val snapshotToWrite = RoomFolderMetadata.snapshotPreservingYoloFields(
@@ -2129,6 +2131,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     roomCenterY = roomCenterY,
                     roomCenterZ = roomCenterZ,
                     arDisplayScale = arDisplayScale,
+                    previewOnly = false,
                 ),
             )
             RoomFolderMetadata.writeToFolder(folderFile, snapshotToWrite)

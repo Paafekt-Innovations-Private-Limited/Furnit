@@ -1541,7 +1541,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val cppElapsedMs = System.currentTimeMillis() - cppStartMs
                 if (cppResult != null && cppResult.isNotEmpty()) {
                     LogUtil.d(TAG, "[C++ FULL] ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
-                    report(0.92f, "Saving your 3D room…", progressCallback)
+                    // Native Part4b ends ~0.90; keep PLY phase 0.91–1.0 so UI does not jump after long decoder.
+                    // Wires PLY to preview folder only — "Save" in the app means Save from the viewer (library).
+                    report(0.91f, "Writing your room file…", progressCallback)
                     val result = writePly(cppResult, progressCallback, isPortrait, originalWidth, originalHeight, metricAnchors)
                     report(1f, "Your room is ready!", progressCallback)
                     return@withContext result
@@ -1746,7 +1748,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
                 for (i in 0 until count) {
                     if (i > 0 && i % progressReportEvery == 0) {
-                        report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
+                        report(0.91f + 0.09f * (i.toFloat() / count), "Writing your room file…", progressCallback)
                     }
                     val off = i * PARAMS_PER_GAUSSIAN
                     val rawX = params[off]

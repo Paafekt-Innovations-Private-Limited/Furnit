@@ -808,7 +808,10 @@ if (!modelDirPath || !imageNCHW) {
                                       combinedTokens.data(),
                                       imgTokensNumel,
                                       swapTileNdc,
-                                      tiledGaussians)) {
+                                      tiledGaussians,
+                                      env,
+                                      progressReporter,
+                                      reportProgressMethodId)) {
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         pruneGaussiansByOpacity(tiledGaussians, maxG);
         const int numFloats = static_cast<int>(tiledGaussians.size());
@@ -833,7 +836,10 @@ if (!modelDirPath || !imageNCHW) {
                                    combinedTokens.data(),
                                    imgTokensNumel,
                                    swapTileNdc,
-                                   tiledGaussians)) {
+                                   tiledGaussians,
+                                   env,
+                                   progressReporter,
+                                   reportProgressMethodId)) {
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         pruneGaussiansByOpacity(tiledGaussians, maxG);
         const int numFloats = static_cast<int>(tiledGaussians.size());

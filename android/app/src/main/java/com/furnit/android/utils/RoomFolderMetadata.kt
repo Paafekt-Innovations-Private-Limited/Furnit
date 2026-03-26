@@ -46,6 +46,11 @@ object RoomFolderMetadata {
         val yoloRefImageHeightPx: Int? = null,
         /** SHARP room height (internal / "Navarro" units) at ratio capture time — dimensionless pairing with YOLO fractions. */
         val sharpNavarroRoomHeightAtYoloCapture: Float? = null,
+        /**
+         * When true, the room exists only as a SHARP preview under `files/sharp_rooms/` and was not committed via Save.
+         * Omitted or false means the room should appear in the library (legacy folders without the key are treated as saved).
+         */
+        val previewOnly: Boolean? = null,
     ) {
         fun normalizedOrientation(): String =
             if (photoOrientation.trim().lowercase() == "landscape") "landscape" else "portrait"
@@ -122,6 +127,11 @@ object RoomFolderMetadata {
         snapshot.sharpNavarroRoomHeightAtYoloCapture?.takeIf { it > 0f }?.let {
             jo.put("sharpNavarroRoomHeightAtYoloCapture", it.toDouble())
         }
+        when (snapshot.previewOnly) {
+            null -> { /* legacy: omit */ }
+            true -> jo.put("previewOnly", true)
+            false -> jo.put("previewOnly", false)
+        }
         File(folder, JSON_FILE_NAME).writeText(jo.toString())
     }
 
@@ -151,6 +161,10 @@ object RoomFolderMetadata {
             yoloFurnitureHeightFracByClass = furnitureFracs,
             yoloRefImageHeightPx = if (jo.has("yoloRefImageHeightPx")) jo.optInt("yoloRefImageHeightPx", 0).takeIf { it > 0 } else null,
             sharpNavarroRoomHeightAtYoloCapture = optFloat("sharpNavarroRoomHeightAtYoloCapture"),
+            previewOnly = when {
+                !jo.has("previewOnly") -> null
+                else -> jo.optBoolean("previewOnly", false)
+            },
         )
     }
 
@@ -202,6 +216,11 @@ object RoomFolderMetadata {
             yoloFurnitureHeightFracByClass = emptyMap(),
             yoloRefImageHeightPx = map["yoloRefImageHeightPx"]?.toIntOrNull(),
             sharpNavarroRoomHeightAtYoloCapture = map["sharpNavarroRoomHeightAtYoloCapture"]?.toFloatOrNull(),
+            previewOnly = when {
+                !map.containsKey("previewOnly") -> null
+                map["previewOnly"]?.trim()?.lowercase() == "true" -> true
+                else -> false
+            },
         )
     }
 }

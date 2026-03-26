@@ -11,6 +11,7 @@ import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.ExecutorchNativeLoader
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.Part1OnlyTest
+import com.furnit.android.utils.UnsavedSharpRoomCleanup
 import com.google.firebase.FirebaseApp
 
 /**
@@ -51,6 +52,8 @@ class FurnitApplication : Application() {
 
         DebugLogger.init(this)
         LogUtil.init(this)
+
+        UnsavedSharpRoomCleanup.deletePreviewOnlyFolders(this)
 
         scheduleHydrateSharpModelsFromApkAssetsIfNeeded()
 

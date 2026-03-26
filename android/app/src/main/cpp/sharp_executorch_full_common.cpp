@@ -1006,7 +1006,10 @@ bool runPart4bBatchedTiledPipeline(
         const float* __restrict x2Feat,      // [1024,24,24]
         const float* __restrict combinedTokens, size_t tokensNumel,
         bool swapTileNdcXY,
-        std::vector<float>& outGaussians) {
+        std::vector<float>& outGaussians,
+        JNIEnv* progressEnv,
+        jobject progressReporter,
+        jmethodID reportProgressMethodId) {
 
     const int GRID = 4;
     const int NUM_TILES = GRID * GRID;
@@ -1642,6 +1645,12 @@ bool runPart4bBatchedTiledPipeline(
         long long batchMs = std::chrono::duration_cast<std::chrono::milliseconds>(batchEnd - batchStart).count();
         LOGD("Part4b batch %d/%d (tiles %d-%d): %lldms", b + 1, numBatches,
              b * batch + 1, (b + 1) * batch, (long long)batchMs);
+        if (progressEnv && progressReporter && reportProgressMethodId) {
+            const float p = 0.695f + 0.205f * (float)(b + 1) / (float)numBatches;
+            char buf[96];
+            snprintf(buf, sizeof(buf), "Part 4b: batch %d/%d…", b + 1, numBatches);
+            reportProgress(progressEnv, progressReporter, reportProgressMethodId, p, buf);
+        }
     }
 
     auto tEnd = std::chrono::steady_clock::now();
@@ -1667,7 +1676,10 @@ bool runPart4bTiledFullPipeline(
         const float* __restrict x2Feat,      // [1024,24,24]
         const float* __restrict combinedTokens, size_t tokensNumel,
         bool swapTileNdcXY,
-        std::vector<float>& outGaussians) {
+        std::vector<float>& outGaussians,
+        JNIEnv* progressEnv,
+        jobject progressReporter,
+        jmethodID reportProgressMethodId) {
 
     const int GRID = 4;
     const int NUM_TILES = GRID * GRID;
@@ -2293,6 +2305,12 @@ bool runPart4bTiledFullPipeline(
         auto tileEnd = std::chrono::steady_clock::now();
         long long tileMs = std::chrono::duration_cast<std::chrono::milliseconds>(tileEnd - tileStart).count();
         LOGD("Part4b tile %d/%d: %lldms", t + 1, NUM_TILES, (long long)tileMs);
+        if (progressEnv && progressReporter && reportProgressMethodId) {
+            const float p = 0.695f + 0.205f * (float)(t + 1) / (float)NUM_TILES;
+            char buf[96];
+            snprintf(buf, sizeof(buf), "Part 4b: tile %d/%d…", t + 1, NUM_TILES);
+            reportProgress(progressEnv, progressReporter, reportProgressMethodId, p, buf);
+        }
     }
 
     auto tEnd = std::chrono::steady_clock::now();

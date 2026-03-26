@@ -419,6 +419,7 @@ class SharpService private constructor(private val context: Context) {
         sb.append("type=$modelType\n")
         sb.append("photoOrientation=$photoOrientation\n")
         sb.append("photoWideAngle=$viewerPhotoWideAngle\n")
+        sb.append("previewOnly=true\n")
         roomWidth?.let { sb.append("roomWidth=$it\n") }
         roomHeight?.let { sb.append("roomHeight=$it\n") }
         roomDepth?.let { sb.append("roomDepth=$it\n") }
@@ -440,6 +441,7 @@ class SharpService private constructor(private val context: Context) {
                 roomCenterX = roomCenterX,
                 roomCenterY = roomCenterY,
                 roomCenterZ = roomCenterZ,
+                previewOnly = true,
             )
         )
         LogUtil.d(

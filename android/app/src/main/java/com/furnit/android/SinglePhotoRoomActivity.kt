@@ -899,7 +899,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             m.contains("part 3") || m.contains("image encoder") -> "Understanding the full picture…"
             m.contains("part 4a") || m.contains("tokens") -> "Adding depth and shape…"
             m.contains("part 4b") || m.contains("decoder") -> "Adding the finishing touches…"
-            m.contains("writing") || m.contains("ply") || m.contains("gaussian") -> "Saving your 3D room…"
+            m.contains("writing") || m.contains("room file") || m.contains("ply") || m.contains("gaussian") ->
+                "Preparing your preview…"
             m.contains("done") -> "Your room is ready!"
             m.contains("error") || m.contains("failed") -> message
             progress < 0.15f -> "Getting started…"

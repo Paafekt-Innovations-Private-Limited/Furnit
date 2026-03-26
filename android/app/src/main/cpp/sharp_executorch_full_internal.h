@@ -191,7 +191,9 @@ bool runPart4bBatchedTiledPipeline(const std::string& modelDir,
                                    const float* __restrict x1Feat,
                                    const float* __restrict x2Feat,
                                    const float* __restrict combinedTokens, size_t tokensNumel,
-                                   bool swapTileNdcXY, std::vector<float>& outGaussians);
+                                   bool swapTileNdcXY, std::vector<float>& outGaussians,
+                                   JNIEnv* progressEnv = nullptr, jobject progressReporter = nullptr,
+                                   jmethodID reportProgressMethodId = nullptr);
 
 bool runPart4bTiledFullPipeline(const std::string& modelDir,
                                 const float* __restrict imageData,
@@ -201,7 +203,9 @@ bool runPart4bTiledFullPipeline(const std::string& modelDir,
                                 const float* __restrict x1Feat,
                                 const float* __restrict x2Feat,
                                 const float* __restrict combinedTokens, size_t tokensNumel,
-                                bool swapTileNdcXY, std::vector<float>& outGaussians);
+                                bool swapTileNdcXY, std::vector<float>& outGaussians,
+                                JNIEnv* progressEnv = nullptr, jobject progressReporter = nullptr,
+                                jmethodID reportProgressMethodId = nullptr);
 
 void pruneGaussiansByOpacity(std::vector<float>& gaussians, int maxGaussians);
 int pruneGaussiansFromPtr(const float* src, int totalGaussians, int maxGaussians,

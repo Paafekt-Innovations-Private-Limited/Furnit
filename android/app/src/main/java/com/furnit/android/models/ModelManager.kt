@@ -80,6 +80,10 @@ class ModelManager(private val context: Context) {
                 var photoWideAngle = false
 
                 val disk = RoomFolderMetadata.readFromFolder(folder)
+                if (disk != null && disk.previewOnly == true) {
+                    LogUtil.d(TAG, "Skipping preview-only room (not saved to library): ${folder.name}")
+                    continue
+                }
                 if (disk != null) {
                     disk.name?.takeIf { it.isNotBlank() }?.let { roomName = it }
                     disk.createdAt?.let { createdAt = it }
