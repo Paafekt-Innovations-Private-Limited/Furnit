@@ -3,16 +3,17 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -147,6 +148,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ): GenerationHandle {
         generationCancelled.set(false)
         val handle = object : GenerationHandle {
@@ -165,6 +167,7 @@ class SharpService private constructor(private val context: Context) {
                 orientationLockedByUser,
                 sourcePhotoUri,
                 sourcePhotoPath,
+                metricAnchors,
             )
         }.start()
         return handle
@@ -178,6 +181,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ) {
         generationCancelled.set(false)
         Thread {
@@ -190,6 +194,7 @@ class SharpService private constructor(private val context: Context) {
                 orientationLockedByUser,
                 sourcePhotoUri,
                 sourcePhotoPath,
+                metricAnchors,
             )
         }.start()
     }
@@ -203,6 +208,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ) {
         LogUtil.d(TAG, "Starting generation: ${image.width}x${image.height}")
         LogUtil.d(
@@ -213,7 +219,8 @@ class SharpService private constructor(private val context: Context) {
                 "photoWideAngle=$viewerPhotoWideAngle " +
                 "orientationLockedByUser=$orientationLockedByUser " +
                 "sourceUri=${if (sourcePhotoUri != null) "yes" else "no"} " +
-                "sourcePath=${if (sourcePhotoPath.isNullOrBlank()) "no" else "yes"}",
+                "sourcePath=${if (sourcePhotoPath.isNullOrBlank()) "no" else "yes"} " +
+                "metricAnchors=${metricAnchors?.size ?: 0}",
         )
 
         try {
@@ -231,6 +238,7 @@ class SharpService private constructor(private val context: Context) {
             val result = kotlinx.coroutines.runBlocking {
                 executorchInt8Sharp.inferStreaming(
                     bitmap = image,
+                    metricAnchors = metricAnchors,
                     progressCallback = { progress: Float, message: String ->
                         val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
                         callback.onProgress(mapped, message)
@@ -246,10 +254,16 @@ class SharpService private constructor(private val context: Context) {
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
             LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+            val (sanW, sanH, sanD) = SharpRoomDimensionSanitizer.sanitizeMeters(
+                result.roomWidth,
+                result.roomHeight,
+                result.roomDepth,
+            )
             LogUtil.i(
                 "SHARP_ROOM_MEAS",
                 "[room_created] infer_done gaussians=${result.gaussianCount} " +
-                    "bbox W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                    "bbox_raw W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                    "bbox_san W×H×D=$sanW×$sanH×$sanD " +
                     "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
                     "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
             )
@@ -258,7 +272,8 @@ class SharpService private constructor(private val context: Context) {
                 TAG,
                 "[SHARP_ORIENTATION] post-infer bitmap_layout=${feedOrientation.value} " +
                     "(SHARP input pixels ${image.width}x${image.height}) " +
-                    "room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
+                    "room_raw=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
+                    "room_san=$sanW×$sanH×$sanD " +
                     "path=${result.plyFile.parentFile?.absolutePath}",
             )
 
@@ -266,9 +281,9 @@ class SharpService private constructor(private val context: Context) {
                 roomFolder = result.plyFile.parentFile!!,
                 image = image,
                 modelType = "sharp_executorch_int8",
-                roomWidth = result.roomWidth,
-                roomHeight = result.roomHeight,
-                roomDepth = result.roomDepth,
+                roomWidth = sanW,
+                roomHeight = sanH,
+                roomDepth = sanD,
                 roomCenterX = result.roomCenterX,
                 roomCenterY = result.roomCenterY,
                 roomCenterZ = result.roomCenterZ,
@@ -284,9 +299,9 @@ class SharpService private constructor(private val context: Context) {
                 GenerationResult(
                     plyFile = result.plyFile,
                     classicPlyFile = result.classicPlyFile,
-                    roomWidth = result.roomWidth,
-                    roomHeight = result.roomHeight,
-                    roomDepth = result.roomDepth,
+                    roomWidth = sanW,
+                    roomHeight = sanH,
+                    roomDepth = sanD,
                     roomCenterX = result.roomCenterX,
                     roomCenterY = result.roomCenterY,
                     roomCenterZ = result.roomCenterZ
@@ -336,8 +351,8 @@ class SharpService private constructor(private val context: Context) {
         }
 
         val metadataFile = File(roomFolder, "metadata.txt")
-        val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-        val roomName = "AI Room ${dateFormat.format(Date())}"
+        val createdAtMillis = System.currentTimeMillis()
+        val roomName = RoomDisplayName.aiRoomWithTimestamp(Date(createdAtMillis))
         val normalizedViewer = viewerPhotoOrientation?.trim()?.lowercase()
         val bitmapLayoutOrientation = PhotoOrientation.fromBitmapDimensions(image)
         fun orientationEnumToMetadataString(o: PhotoOrientation): String {
@@ -398,7 +413,6 @@ class SharpService private constructor(private val context: Context) {
                 "wide=$viewerPhotoWideAngle locked=$orientationLockedByUser " +
                 "image=${image.width}x${image.height}",
         )
-        val createdAtMillis = System.currentTimeMillis()
         val sb = StringBuilder()
         sb.append("name=$roomName\n")
         sb.append("created=$createdAtMillis\n")

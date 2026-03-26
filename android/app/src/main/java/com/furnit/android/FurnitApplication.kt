@@ -76,6 +76,7 @@ class FurnitApplication : Application() {
 
     private val componentCallbacks2 = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
+            // releaseNativeCaches no-ops while ExecutorchInt8Sharp room pipeline is in native code (avoids SIGSEGV).
             when (level) {
                 ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
                 ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,

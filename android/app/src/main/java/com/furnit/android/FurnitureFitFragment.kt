@@ -253,6 +253,7 @@ class FurnitureFitFragment : Fragment() {
             }
         }
         calibrationPillLine1 = TextView(requireContext()).apply {
+            text = "Furn: 0.00m"
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 14f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
@@ -271,7 +272,7 @@ class FurnitureFitFragment : Fragment() {
                 setMargins(0, 0, 0, 52)
             }
             addView(pillContent)
-            visibility = View.GONE
+            visibility = View.VISIBLE
             setOnClickListener { showCalibrationDialog() }
         }
         calibrationPillContainer = calibrationPill
@@ -397,14 +398,7 @@ class FurnitureFitFragment : Fragment() {
                             det.h * scaleY,
                             det.label,
                         )
-                        // Prefer ARCore pinhole height estimate when available, fall back to ratio-based estimate.
-                        val arHeight = arCameraController?.getLastEstimatedHeightMeters()
-                        detectedFurnitureHeightMeters = if (arHeight != null && arHeight > 0f) {
-                            arHeight
-                        } else {
-                            val maxH = result.detections.maxOf { it.h }
-                            (maxH / inputSize) * defaultRoomHeightMeters
-                        }
+                        detectedFurnitureHeightMeters = arCameraController?.getLastEstimatedHeightMeters()
                         updateCalibrationPill()
                     } else {
                         arCameraController?.clearBboxHint()
@@ -688,16 +682,9 @@ class FurnitureFitFragment : Fragment() {
                         effectiveOverlayScale(),
                     )
 
-                    // Estimated furniture height in meters from largest detection (for Tap to calibrate)
-                    val inputSize = result.inputSize
-                    if (result.detections.isNotEmpty() && inputSize > 0) {
-                        val maxH = result.detections.maxOf { it.h }
-                        detectedFurnitureHeightMeters = (maxH / inputSize) * defaultRoomHeightMeters
-                        updateCalibrationPill()
-                    } else {
-                        detectedFurnitureHeightMeters = null
-                        updateCalibrationPill()
-                    }
+                    // CameraX-only path has no defensible metric sizing. Show meters only from AR depth.
+                    detectedFurnitureHeightMeters = null
+                    updateCalibrationPill()
 
                     // Show 3D room (GLB or PLY) behind segmented furniture, hide camera preview.
                     // Show room on first valid segmentation result (mask present), even if no detections yet, so the room is visible and segmentation can continue.
@@ -740,19 +727,20 @@ class FurnitureFitFragment : Fragment() {
 
     private fun updateCalibrationPill() {
         activity?.runOnUiThread {
-            val detected = detectedFurnitureHeightMeters
-            calibrationPillContainer?.visibility = if (detected != null) View.VISIBLE else View.GONE
-            if (detected != null) {
-                val roomM = calibratedRoomHeightMeters
-                calibrationPillLine1?.text = if (roomM != null) "Room: ${String.format(Locale.US, "%.2f", roomM)}m" else "Furn: ${String.format(Locale.US, "%.2f", detected)}m"
-                calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
-                calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
+            val detected = detectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
+            calibrationPillContainer?.visibility = View.VISIBLE
+            val roomM = calibratedRoomHeightMeters
+            calibrationPillLine1?.text = when {
+                roomM != null -> "Room: ${String.format(Locale.US, "%.2f", roomM)}m"
+                else -> "Furn: ${String.format(Locale.US, "%.2f", detected)}m"
             }
+            calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
+            calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
         }
     }
 
     private fun showCalibrationDialog() {
-        val detected = detectedFurnitureHeightMeters ?: return
+        val detected = detectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
         val ctx = requireContext()
         val edit = EditText(ctx).apply {
             setHint(getString(R.string.smartypants_real_height_hint))
@@ -772,7 +760,8 @@ class FurnitureFitFragment : Fragment() {
                     Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                calibrationScaleFactor = real / detected
+                val divisor = kotlin.math.abs(detected).coerceAtLeast(0.0001f)
+                calibrationScaleFactor = real / divisor
                 realFurnitureHeightMeters = real
                 calibratedRoomHeightMeters = defaultRoomHeightMeters * calibrationScaleFactor
                 applyScaleToRoom()

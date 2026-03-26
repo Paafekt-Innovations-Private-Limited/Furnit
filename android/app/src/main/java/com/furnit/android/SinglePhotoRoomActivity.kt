@@ -29,6 +29,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.core.content.FileProvider
 import com.google.android.material.progressindicator.CircularProgressIndicator
+import com.furnit.android.ar.ArSupportChecker
+import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
@@ -80,6 +82,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var aiGenerationRunning = false
     /** Set when user taps AI Room while generation is running - callback will show overlay and open on complete. */
     private var aiRoomOverlayRequested = false
+    private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -87,6 +90,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         if (uri != null) {
             DebugLogger.d("SinglePhotoRoom", "Image selected: $uri")
             selectedImageUri = uri
+            pendingMetricAnchors = null
             loadImageFromUri(uri)
         } else {
             DebugLogger.d("SinglePhotoRoom", "No image selected")
@@ -115,6 +119,27 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             DebugLogger.d("SinglePhotoRoom", "Camera permission denied")
             Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private val arPhotoCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            DebugLogger.d("SinglePhotoRoom", "AR photo capture cancelled")
+            return@registerForActivityResult
+        }
+        val data = result.data
+        val imageUriString = data?.getStringExtra(ArDepthPhotoCaptureActivity.EXTRA_CAPTURED_IMAGE_URI)
+        val anchors = data?.getSerializableExtra(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS) as? ArrayList<MetricAnchor>
+        if (imageUriString.isNullOrBlank()) {
+            DebugLogger.d("SinglePhotoRoom", "AR photo capture missing image uri")
+            Toast.makeText(this, "AR photo capture failed", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        pendingMetricAnchors = anchors
+        selectedImageUri = Uri.parse(imageUriString)
+        DebugLogger.d("SinglePhotoRoom", "AR photo captured with anchors=${anchors?.size ?: 0}")
+        loadImageFromUri(selectedImageUri!!)
     }
 
     private val boundaryActivityLauncher = registerForActivityResult(
@@ -587,6 +612,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun launchCamera() {
+        if (ArSupportChecker.isArCoreSupported(this)) {
+            arPhotoCaptureLauncher.launch(Intent(this, ArDepthPhotoCaptureActivity::class.java))
+            return
+        }
         try {
             val photoFile = createImageFile()
             cameraPhotoUri = FileProvider.getUriForFile(
@@ -740,6 +769,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             viewerPhotoWideAngle = photoWideAngle,
             orientationLockedByUser = orientationUserOverridden,
             sourcePhotoUri = selectedImageUri,
+            metricAnchors = pendingMetricAnchors,
         )
     }
 

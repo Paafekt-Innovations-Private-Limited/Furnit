@@ -372,6 +372,48 @@ class SettingsActivity : AppCompatActivity() {
         maxGaussLayout.addView(maxGaussRg)
         developerSection.addView(maxGaussLayout)
 
+        val part1PatchesLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        part1PatchesLayout.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_sharp_part1_patches_1x)
+                textSize = 14f
+                setTextColor(Color.parseColor("#222222"))
+            },
+        )
+        part1PatchesLayout.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_sharp_part1_patches_1x_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        val part1PatchesRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
+        val p1FullId = View.generateViewId()
+        val p1FastId = View.generateViewId()
+        val p1Full = RadioButton(this).apply {
+            id = p1FullId
+            text = "25 (full)"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val p1Fast = RadioButton(this).apply {
+            id = p1FastId
+            text = "16 (faster)"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        part1PatchesRg.addView(p1Full)
+        part1PatchesRg.addView(p1Fast)
+        val currentPart1Patches = ExecutorchInt8Sharp.readPart1MaxPatches1xFromPrefs(prefs)
+        when (currentPart1Patches) {
+            16 -> part1PatchesRg.check(p1FastId)
+            else -> part1PatchesRg.check(p1FullId)
+        }
+        part1PatchesRg.setOnCheckedChangeListener { _, checkedId ->
+            val v = if (checkedId == p1FastId) 16 else 25
+            prefs.edit().putInt(ExecutorchInt8Sharp.PREF_KEY_PART1_MAX_PATCHES_1X, v).apply()
+        }
+        part1PatchesLayout.addView(part1PatchesRg)
+        developerSection.addView(part1PatchesLayout)
+
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
         val showInternalMlDiagnostics = isUserAllowlistedForInternalMlDiagnostics()
 

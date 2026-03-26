@@ -1055,14 +1055,24 @@ class Part4bTileDecoderMergeLatent0PostFuseVulkan(nn.Module):
 
 
 class Part4bTileInitBasePortable(nn.Module):
-    """Portable-only helper for the rank-5 initializer/base-value stage."""
+    """Portable-only helper for the rank-5 initializer/base-value stage.
 
-    def __init__(self, predictor):
+    The split pipeline passes raw disparity from the decoder head.  init_model
+    expects *monodepth* (= disparity_factor / disparity), so we convert here.
+    disparity_factor defaults to 1.0 (same as the monolithic Part4b export).
+    """
+
+    def __init__(self, predictor, default_disparity_factor: float = 1.0):
         super().__init__()
         self.init_model = predictor.init_model
+        self.register_buffer(
+            "disparity_factor",
+            torch.tensor([default_disparity_factor]).reshape(1, 1, 1, 1),
+        )
 
     def forward(self, image, disparity):
-        init_output = self.init_model(image, disparity)
+        monodepth = self.disparity_factor / disparity.clamp(min=1e-4, max=1e4)
+        init_output = self.init_model(image, monodepth)
         base = init_output.gaussian_base_values
         if init_output.global_scale is None:
             global_scale = torch.ones(image.shape[0], dtype=image.dtype, device=image.device)

@@ -12,6 +12,7 @@ import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.MotionEvent
@@ -642,7 +643,7 @@ class GLBRoomActivity : AppCompatActivity() {
             .setMessage("Enter a name for your room")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { "My Room" }
+                val name = input.text.toString().ifEmpty { RoomDisplayName.myRoomWithTimestamp() }
                 saveRoom(name)
             }
             .setNegativeButton("Cancel", null)

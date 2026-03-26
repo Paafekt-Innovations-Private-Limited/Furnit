@@ -3,9 +3,11 @@ package com.furnit.android.services
 // BUILD_ID_TERMINAL_2025
 import android.app.ActivityManager
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import com.furnit.android.BuildConfig
+import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.DeviceHeuristics
 import com.furnit.android.utils.LogUtil
@@ -30,7 +32,8 @@ import kotlin.math.*
  *
  * **Room generation (`inferStreaming`) runs the native C++ full pipeline only** (`runFullPipelineInt8Native` in
  * `sharp_executorch_full.cpp`). There is intentionally no Kotlin Part1–Part4 fallback here—keep all graph work in C++.
- * Part1+2 always use the full patch grid (25× + 9× + 0.25× = 35 encoder passes); Vulkan/GPU work happens inside native
+ * Part1+2 use the 1× patch grid (default 16; settings allow 25 for full overlap) plus 0.25×; 0.5×/0.25× multi-scale may be skipped
+ * in fixed modes. Vulkan/GPU work happens inside native
  * `forward()` on the IO dispatcher—Kotlin `async`/`delay` are not required for that path.
  *
  * Input: center-crop to square (min(w,h)) then resize to 1536x1536. We do not pad gray to make a bigger square
@@ -45,6 +48,14 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     /** Set by inferStreaming before native call; cleared after. Used by reportProgressFromNative (JNI callback). */
     @Volatile
     private var currentProgressCallback: ((Float, String) -> Unit)? = null
+
+    /**
+     * True while `runFullPipelineInt8Native` is executing. Used to ignore [releaseNativeCaches] from
+     * [android.app.Application.onTrimMemory] / [android.content.ComponentCallbacks.onLowMemory], which would
+     * otherwise free ModuleCache + workspace while native code is still using them (SIGSEGV).
+     */
+    @Volatile
+    private var nativeFullPipelineRunning: Boolean = false
 
     /** Called from native (JNI) during runFullPipelineInt8Native to report progress so UI does not appear stuck at 20%. */
     fun reportProgressFromNative(progress: Float, message: String) {
@@ -85,6 +96,27 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         /** Default when prefs/caller omit a cap: 0 = All (unlimited). */
         private const val DEFAULT_MAX_GAUSSIANS_ALL = 0
 
+        /** Min free RAM (bytes) for native optional interleaved Vulkan Part1+2; see `docs/SHARP_HYBRID_OPTIMIZATION.md`. */
+        private const val HYBRID_INTERLEAVE_MIN_AVAIL_BYTES = 512L * 1024 * 1024
+
+        /**
+         * Max 1× Part1 encoder patches (native `limit1x`). 25 = full 5×5 overlap grid; 16 = 4×4 (faster, softer edges).
+         * Stored in [furnit_prefs] as an int; see [readPart1MaxPatches1xFromPrefs].
+         */
+        const val PREF_KEY_PART1_MAX_PATCHES_1X = "sharp_part1_max_patches_1x"
+        private const val DEFAULT_PART1_MAX_PATCHES_1X = 16
+        private const val MIN_PART1_MAX_PATCHES_1X = 16
+        private const val MAX_PART1_MAX_PATCHES_1X = 25
+
+        /**
+         * Resolves to **16** (faster 4×4) or **25** (full 5×5) for C++ `part1MaxPatches1x`.
+         * Any stored value other than 16 is treated as full quality (25).
+         */
+        fun readPart1MaxPatches1xFromPrefs(prefs: SharedPreferences): Int {
+            val raw = prefs.getInt(PREF_KEY_PART1_MAX_PATCHES_1X, DEFAULT_PART1_MAX_PATCHES_1X)
+            return if (raw == MIN_PART1_MAX_PATCHES_1X) MIN_PART1_MAX_PATCHES_1X else MAX_PART1_MAX_PATCHES_1X
+        }
+
         private const val MODEL_FILENAME = "sharp_full_vulkan.pte"
         private val SPLIT_FILENAMES = SharpExecuTorchSplitModelNames.VULKAN_SPLIT_CORE_PTES
         /** Names of .pte files that may be packaged in assets (models_cpu / models_cpuvulkan_hybrid) for testing. */
@@ -106,6 +138,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
             val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f)
             ln(p / (1f - p))
+        }
+
+        private const val SRGB_LUT_SIZE = 4096
+        private val SRGB_LUT = FloatArray(SRGB_LUT_SIZE) { i ->
+            val v = i / (SRGB_LUT_SIZE - 1).toFloat()
+            if (v <= LINEAR_TO_SRGB_THRESHOLD) {
+                v * 12.92f
+            } else {
+                (1.055f * v.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f).coerceIn(0f, 1f)
+            }
         }
 
         private const val LN_LUT_SIZE = 2048
@@ -250,7 +292,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     }
 
     private val plyBatch = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
-    private val zeroSHBuffer = ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    private val zeroSHBytes = ByteArray(45 * 4)
     private val patchPixelBuffer = ByteBuffer.allocateDirect(PATCH_SIZE * PATCH_SIZE * 4).order(ByteOrder.nativeOrder())
     private val patchFloatBuffer = ByteBuffer.allocateDirect(3 * PATCH_SIZE * PATCH_SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val imagePixelBuffer = ByteBuffer.allocateDirect(INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder())
@@ -321,7 +363,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)?.parent
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2_STAGE_A_VULKAN)?.parent
                         ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)?.parent
-                } ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                } ?: modelsDir.absolutePath
                 val useVulkanForPart12 = !useCpuStable && !effectivePart12OnCpu
                 syncSharpNativeVerboseLogging()
                 val preloaded = preloadCppModules(cppModelDir, useVulkanForPart12)
@@ -619,7 +661,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
         if ((anyCopied || anyPruned) && NATIVE_FULL_AVAILABLE) {
             try {
-                releaseCppModules()
+                releaseCppModulesIfSafe()
                 LogUtil.d(TAG, "Released Part1+Part2 cache after external sync / prune")
             } catch (_: Throwable) { }
         }
@@ -651,7 +693,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
         if (anyCopied && NATIVE_FULL_AVAILABLE) {
             try {
-                releaseCppModules()
+                releaseCppModulesIfSafe()
                 LogUtil.d(TAG, "Released Part1+Part2 cache after CPU sidecar sync")
             } catch (_: Throwable) { }
         }
@@ -793,7 +835,23 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         part12YieldMsBetweenChunks: Int,
         swapTileNdcXY: Boolean,
         progressReporter: ExecutorchInt8Sharp,
-        etdumpOutputPath: String?
+        etdumpOutputPath: String?,
+        hybridInterleavePart12: Boolean,
+        hybridInterleaveMinAvailMemBytes: Long,
+    ): FloatArray?
+
+    private external fun getLastMonodepthInfoNative(): IntArray?
+
+    private external fun getLastMonodepthBufferNative(): FloatArray?
+
+    private external fun sampleMonodepthAtPointsNative(pixelXs: IntArray, pixelYs: IntArray, channel: Int): FloatArray?
+
+    private external fun writePlyNative(
+        outputPath: String,
+        params: FloatArray,
+        aspectCorrX: Float,
+        aspectCorrY: Float,
+        metricScale: Float,
     ): FloatArray?
 
     /**
@@ -820,7 +878,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     LogUtil.e(TAG, "JNI result invalid: size=${result.size} too large")
                     null
                 }
-                result.any { it.isNaN() || it.isInfinite() } -> {
+                hasInvalidFloatSample(result) -> {
                     LogUtil.e(TAG, "JNI result invalid: contains NaN or Infinite")
                     null
                 }
@@ -832,11 +890,100 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
     }
 
+    private fun hasInvalidFloatSample(values: FloatArray, maxSamples: Int = 1024): Boolean {
+        if (values.isEmpty()) return false
+        val step = max(1, values.size / maxSamples)
+        var index = 0
+        while (index < values.size) {
+            val value = values[index]
+            if (!value.isFinite()) return true
+            index += step
+        }
+        val last = values[values.lastIndex]
+        return !last.isFinite()
+    }
+
+    private fun getLastMonodepthInfo(): MetricScaleEstimator.SharpMonodepthInfo? {
+        val info = getLastMonodepthInfoNative() ?: return null
+        if (info.size < 3) return null
+        val width = info[0]
+        val height = info[1]
+        val channels = info[2]
+        if (width <= 0 || height <= 0 || channels <= 0) return null
+        return MetricScaleEstimator.SharpMonodepthInfo(
+            width = width,
+            height = height,
+            channels = channels,
+        )
+    }
+
+    private fun sampleMonodepthChannel(xs: IntArray, ys: IntArray, channel: Int): FloatArray? {
+        if (xs.size != ys.size) {
+            LogUtil.w(TAG, "Native monodepth sample size mismatch: xs=${xs.size} ys=${ys.size}")
+            return null
+        }
+        return try {
+            val values = sampleMonodepthAtPointsNative(xs, ys, channel) ?: return null
+            if (values.size != xs.size) {
+                LogUtil.w(TAG, "Native monodepth sample result mismatch: got=${values.size} expected=${xs.size} channel=$channel")
+                return null
+            }
+            values
+        } catch (t: Throwable) {
+            LogUtil.e(TAG, "Native monodepth sample failed: ${t.message}", t)
+            null
+        }
+    }
+
+    private fun tryWritePlyNative(
+        outputPath: String,
+        params: FloatArray,
+        aspectCorrX: Float,
+        aspectCorrY: Float,
+        metricScale: Float,
+    ): FloatArray? {
+        return try {
+            val stats = writePlyNative(outputPath, params, aspectCorrX, aspectCorrY, metricScale) ?: return null
+            if (stats.size != 9 || hasInvalidFloatSample(stats, maxSamples = 9)) {
+                LogUtil.w(TAG, "Native PLY stats invalid: size=${stats.size}")
+                return null
+            }
+            stats
+        } catch (t: Throwable) {
+            LogUtil.e(TAG, "Native PLY export failed: ${t.message}", t)
+            null
+        }
+    }
+
+    private fun estimateGaussianDepthProxyUnits(params: FloatArray): Float {
+        val depthCandidates = FloatArray(params.size / PARAMS_PER_GAUSSIAN)
+        var count = 0
+        for (offset in params.indices step PARAMS_PER_GAUSSIAN) {
+            val opacity = params[offset + 3]
+            if (!opacity.isFinite() || opacity < 0.15f) continue
+            val depth = abs(params[offset + 2])
+            if (!depth.isFinite() || depth <= 0.01f) continue
+            depthCandidates[count] = depth
+            count++
+        }
+        if (count == 0) return Float.NaN
+        Arrays.sort(depthCandidates, 0, count)
+        return depthCandidates[count / 2]
+    }
+
     /** Warm-start: preload Part1+Part2. Vulkan path = Vulkan only (no CPU fallback). */
     private external fun preloadCppModules(modelDirPath: String, useVulkanForPart12: Boolean): Boolean
 
     /** Release native singleton Part1+Part2 cache and aligned workspace buffers. */
     private external fun releaseCppModules()
+
+    private fun releaseCppModulesIfSafe() {
+        if (nativeFullPipelineRunning) {
+            LogUtil.w(TAG, "Skipping releaseCppModules — native full SHARP pipeline is running")
+            return
+        }
+        releaseCppModules()
+    }
 
     /**
      * Release caches that are useful for warmup/bench but waste RAM for the full room-generation path.
@@ -857,6 +1004,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /** Release native caches (Part1+Part2, workspace) and Java Part1 warmup cache. */
     fun releaseNativeCaches() {
+        if (nativeFullPipelineRunning) {
+            LogUtil.w(TAG, "Skipping releaseNativeCaches — native full SHARP pipeline is running (e.g. onTrimMemory)")
+            return
+        }
         try { Part1OnlyTest.releaseCachedPart1Module() } catch (_: Throwable) { }
         try { releaseCppModules() } catch (_: Throwable) { }
     }
@@ -1001,11 +1152,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         } catch (_: Throwable) { Long.MAX_VALUE }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun inferStreaming(
         bitmap: Bitmap,
+        metricAnchors: List<MetricAnchor>? = null,
         progressCallback: ((Float, String) -> Unit)? = null,
         useVulkan: Boolean = true,
-        maxGaussians: Int = DEFAULT_MAX_GAUSSIANS_ALL
+        maxGaussians: Int = DEFAULT_MAX_GAUSSIANS_ALL,
     ): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             inferStreamingFailureDetail = null
@@ -1156,7 +1309,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         }
                     )
                 }
-                val dirHint = modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                val dirHint = modelsDir.absolutePath
                 val hybridHint = if (!useCpuStable && part12OnCpu) {
                     "$dirHint (put INT8 Part1+2 and Vulkan Part3/4 in this models_cpuvulkan_hybrid folder; models_cpu optional)"
                 } else {
@@ -1221,7 +1374,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
             val isPortrait = originalHeight > originalWidth
-            val pipelineStartMs = System.currentTimeMillis()
             LogUtil.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
 
             report(0f, "Preparing…", progressCallback)
@@ -1262,7 +1414,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)
-                part4bOrTileFile?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                part4bOrTileFile?.parent ?: modelsDir.absolutePath
             } else {
                 findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_INT8)?.parent
                     ?: findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART1_FP32)?.parent
@@ -1275,7 +1427,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B2_STAGE_A_VULKAN)?.parent
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_A_VULKAN)?.parent
                     ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00_STAGE_PRE_VULKAN)?.parent
-                    ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                    ?: modelsDir.absolutePath
             }
             LogUtil.d(TAG, "[C++ FULL] modelDir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$part12OnCpu use1280=$use1280")
             run {
@@ -1326,10 +1478,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 currentProgressCallback = progressCallback
                 val cppStartMs = System.currentTimeMillis()
                 val part12OnCpuRun = part12OnCpu
-                // CPU ExecuTorch INT8: fixed — single-patch Part1+2, 25 patches only (skip 0.5x+0.25x).
+                // CPU ExecuTorch INT8: fixed — single-patch Part1+2 (skip 0.5x+0.25x when part12_25Only).
                 val part12ForceSingle = true
                 val part12_25Only = true
-                val part1Max1x = 25
+                val part1Max1x = readPart1MaxPatches1xFromPrefs(prefs)
+                if (part1Max1x < MAX_PART1_MAX_PATCHES_1X) {
+                    LogUtil.d(
+                        TAG,
+                        "[C++ FULL] Part1 1× patch cap=$part1Max1x (faster than full 25; patch edges may be softer)",
+                    )
+                }
                 val part1Max05x = 0
                 val part12Chunk1x = 0
                 val part12Chunk05x = 0
@@ -1337,31 +1495,54 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val swapTileNdcXY = false
                 val etdumpPath = getAndClearEtdumpOutputPath()
                 syncSharpNativeVerboseLogging()
-                val cppResult = safeJniFloatArrayResult {
-                    runFullPipelineInt8Native(
-                        cppModelDir,
-                        imageNCHW,
-                        effectiveMaxGaussians,
-                        preferSinglePart4b,  // true only for CPU-stable; Vulkan always tiled-first in native
-                        !useCpuStable,       // useVulkan (Part4 on Vulkan)
-                        part12OnCpuRun,      // Part1+2 on CPU when true to avoid VK_ERROR_DEVICE_LOST
-                        part12ForceSingle,   // Part1+2 single-patch only; avoids batch-4 SIGSEGV on some devices
-                        part12_25Only,       // Skip 0.5x+0.25x to avoid SIGSEGV at patch 25/35 on some devices
-                        part1Max1x,
-                        part1Max05x,
-                        part12Chunk1x,
-                        part12Chunk05x,
-                        part12YieldMs,
-                        swapTileNdcXY,
-                        this@ExecutorchInt8Sharp,  // progress reporter (reportProgressFromNative called from C++)
-                        etdumpPath
+                val hybridInterleaveRequested = prefs.getBoolean("sharp_hybrid_interleave_part12", false)
+                val availMemBytes = getAvailMemBytes()
+                val hybridInterleavePart12 =
+                    hybridInterleaveRequested && availMemBytes >= HYBRID_INTERLEAVE_MIN_AVAIL_BYTES
+                if (hybridInterleaveRequested && !hybridInterleavePart12) {
+                    LogUtil.d(
+                        TAG,
+                        "[C++ FULL] [HYBRID] interleave Part1+2 skipped: avail=${availMemBytes / (1024 * 1024)}MB " +
+                            "need >=${HYBRID_INTERLEAVE_MIN_AVAIL_BYTES / (1024 * 1024)}MB",
                     )
+                }
+                LogUtil.d(
+                    TAG,
+                    "[C++ FULL] [HYBRID] interleavePart12=$hybridInterleavePart12 " +
+                        "interleaveGateBytes=$HYBRID_INTERLEAVE_MIN_AVAIL_BYTES",
+                )
+                nativeFullPipelineRunning = true
+                val cppResult = try {
+                    safeJniFloatArrayResult {
+                        runFullPipelineInt8Native(
+                            cppModelDir,
+                            imageNCHW,
+                            effectiveMaxGaussians,
+                            preferSinglePart4b,  // true only for CPU-stable; Vulkan always tiled-first in native
+                            !useCpuStable,       // useVulkan (Part4 on Vulkan)
+                            part12OnCpuRun,      // Part1+2 on CPU when true to avoid VK_ERROR_DEVICE_LOST
+                            part12ForceSingle,   // Part1+2 single-patch only; avoids batch-4 SIGSEGV on some devices
+                            part12_25Only,       // Skip 0.5x+0.25x to avoid SIGSEGV at patch 25/35 on some devices
+                            part1Max1x,
+                            part1Max05x,
+                            part12Chunk1x,
+                            part12Chunk05x,
+                            part12YieldMs,
+                            swapTileNdcXY,
+                            this@ExecutorchInt8Sharp,  // progress reporter (reportProgressFromNative called from C++)
+                            etdumpPath,
+                            hybridInterleavePart12,
+                            HYBRID_INTERLEAVE_MIN_AVAIL_BYTES,
+                        )
+                    }
+                } finally {
+                    nativeFullPipelineRunning = false
                 }
                 val cppElapsedMs = System.currentTimeMillis() - cppStartMs
                 if (cppResult != null && cppResult.isNotEmpty()) {
                     LogUtil.d(TAG, "[C++ FULL] ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
                     report(0.92f, "Saving your 3D room…", progressCallback)
-                    val result = writePly(cppResult, progressCallback, isPortrait)
+                    val result = writePly(cppResult, progressCallback, isPortrait, originalWidth, originalHeight, metricAnchors)
                     report(1f, "Your room is ready!", progressCallback)
                     return@withContext result
                 }
@@ -1453,8 +1634,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     /** Linear RGB [0,1] -> sRGB [0,1]. Matches SHARP save_ply (Metal spec 7.7.7) so PLY f_dc matches viewer expectation. */
     private fun linearToSrgb(linear: Float): Float {
         val v = linear.coerceIn(0f, 1f)
-        return if (v <= LINEAR_TO_SRGB_THRESHOLD) v * 12.92f
-        else (1.055f * v.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f).coerceIn(0f, 1f)
+        return SRGB_LUT[(v * (SRGB_LUT_SIZE - 1)).toInt().coerceIn(0, SRGB_LUT_SIZE - 1)]
     }
 
     /**
@@ -1465,54 +1645,143 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private fun writePly(
         params: FloatArray,
         progressCallback: ((Float, String) -> Unit)?,
-        isPortrait: Boolean = false
+        isPortrait: Boolean = false,
+        originalImageWidth: Int = 0,
+        originalImageHeight: Int = 0,
+        metricAnchors: List<MetricAnchor>? = null,
     ): StreamingResult {
         val count = params.size / PARAMS_PER_GAUSSIAN
-        LogUtil.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait (raw x,y,z; y,z negated)")
+
+        val imgW = if (originalImageWidth > 0) originalImageWidth else IMAGE_SIZE
+        val imgH = if (originalImageHeight > 0) originalImageHeight else IMAGE_SIZE
+
+        // Aspect-ratio correction for stretch-to-square.
+        // The model treats the 1536×1536 input as isotropic, producing a square bounding box.
+        // To recover the original image's aspect ratio, scale each axis by (S/dim) (inverse
+        // of the stretch), then normalize so the geometric mean is 1 (preserving overall scale).
+        val aspectCorrX: Float
+        val aspectCorrY: Float
+        if (USE_STRETCH_TO_SQUARE && imgW != imgH) {
+            val rawCorrX = IMAGE_SIZE.toFloat() / imgW.toFloat()
+            val rawCorrY = IMAGE_SIZE.toFloat() / imgH.toFloat()
+            val geomMean = sqrt(rawCorrX * rawCorrY)
+            aspectCorrX = rawCorrX / geomMean
+            aspectCorrY = rawCorrY / geomMean
+        } else {
+            aspectCorrX = 1f
+            aspectCorrY = 1f
+        }
+        LogUtil.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait imgDims=${imgW}x${imgH} aspectCorr=(${"%.4f".format(aspectCorrX)}, ${"%.4f".format(aspectCorrY)}) stretch=$USE_STRETCH_TO_SQUARE")
+
+        val monodepthInfo = if (!metricAnchors.isNullOrEmpty()) getLastMonodepthInfo() else null
+        val scaleEstimation = if (!metricAnchors.isNullOrEmpty()) {
+            val matched = MetricScaleEstimator.estimateFromMatchedMonodepth(metricAnchors, monodepthInfo, ::sampleMonodepthChannel)
+            if (matched.isValid || matched.fallbackReason !in setOf("missing_monodepth_buffer", "insufficient_monodepth_pairings")) {
+                matched
+            } else {
+                val gaussianDepthProxy = estimateGaussianDepthProxyUnits(params)
+                MetricScaleEstimator.estimateFromGaussianDepthProxy(metricAnchors, gaussianDepthProxy)
+            }
+        } else {
+            MetricScaleEstimator.EstimationResult(
+                scale = 1f,
+                isValid = false,
+                fallbackReason = "no_metric_anchors",
+                survivingAnchors = 0,
+                coefficientOfVariation = Float.POSITIVE_INFINITY,
+                arcoreMedianDepthMeters = Float.NaN,
+                sharpMedianDepthUnits = Float.NaN,
+                rawMedianRatio = Float.NaN,
+                monodepthWidth = monodepthInfo?.width ?: 0,
+                monodepthHeight = monodepthInfo?.height ?: 0,
+                monodepthChannels = monodepthInfo?.channels ?: 0,
+            )
+        }
+        val metricScale = if (scaleEstimation.isValid) scaleEstimation.scale else 1f
+        LogUtil.i(
+            "SHARP_METRIC_SCALE",
+            "[estimate] anchors=${metricAnchors?.size ?: 0} surviving=${scaleEstimation.survivingAnchors} " +
+                "sharpMedian=${scaleEstimation.sharpMedianDepthUnits} arcoreMedian=${scaleEstimation.arcoreMedianDepthMeters} " +
+                "rawMedianRatio=${scaleEstimation.rawMedianRatio} scale=${scaleEstimation.scale} " +
+                "valid=${scaleEstimation.isValid} reason=${scaleEstimation.fallbackReason ?: "ok"} " +
+                "cv=${scaleEstimation.coefficientOfVariation} monodepth=${scaleEstimation.monodepthWidth}x${scaleEstimation.monodepthHeight}x${scaleEstimation.monodepthChannels}",
+        )
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
         val plyFile = File(roomFolder, "room.ply")
-        val progressReportEvery = (count / 8).coerceAtLeast(1)
 
         var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
         var minZ = Float.MAX_VALUE; var maxZ = -Float.MAX_VALUE
+        var maxAbsX = 0f
+        var maxAbsY = 0f
+        var maxAbsZ = 0f
 
-        FileOutputStream(plyFile).use { fos ->
-            val channel = fos.channel
-            val header = "ply\nformat binary_little_endian 1.0\nelement vertex $count\nproperty float x\nproperty float y\nproperty float z\nproperty float nx\nproperty float ny\nproperty float nz\n" +
+        val nativeStats = tryWritePlyNative(
+            outputPath = plyFile.absolutePath,
+            params = params,
+            aspectCorrX = aspectCorrX,
+            aspectCorrY = aspectCorrY,
+            metricScale = metricScale,
+        )
+        if (nativeStats != null) {
+            minX = nativeStats[0]
+            maxX = nativeStats[1]
+            minY = nativeStats[2]
+            maxY = nativeStats[3]
+            minZ = nativeStats[4]
+            maxZ = nativeStats[5]
+            maxAbsX = nativeStats[6]
+            maxAbsY = nativeStats[7]
+            maxAbsZ = nativeStats[8]
+        } else {
+            val progressReportEvery = (count / 8).coerceAtLeast(1)
+            FileOutputStream(plyFile).use { fos ->
+                val channel = fos.channel
+                val header = "ply\nformat binary_little_endian 1.0\nelement vertex $count\nproperty float x\nproperty float y\nproperty float z\nproperty float nx\nproperty float ny\nproperty float nz\n" +
                     (0 until 3).joinToString("") { "property float f_dc_$it\n" } + (0 until 45).joinToString("") { "property float f_rest_$it\n" } +
                     "property float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nproperty float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\nend_header\n"
-            channel.write(ByteBuffer.allocateDirect(header.length).apply { put(header.toByteArray()); flip() })
-
-            for (i in 0 until count) {
-                if (i > 0 && i % progressReportEvery == 0) {
-                    report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
-                }
-                val off = i * PARAMS_PER_GAUSSIAN
-                val rawX = params[off]
-                val rawY = params[off + 1]
-                val rawZ = params[off + 2]
-                val x = rawX
-                val y = -rawY
-                val z = -rawZ
-                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); minZ = min(minZ, z); maxZ = max(maxZ, z)
-
+                channel.write(ByteBuffer.allocateDirect(header.length).apply { put(header.toByteArray()); flip() })
                 plyBatch.clear()
-                plyBatch.putFloat(x).putFloat(y).putFloat(z).putFloat(0f).putFloat(0f).putFloat(0f)
-                // Model outputs color as BGR at 11,12,13; PLY f_dc is RGB — swap so brown isn’t blue
-                val b = linearToSrgb(params[off + 11])
-                val g = linearToSrgb(params[off + 12])
-                val r = linearToSrgb(params[off + 13])
-                plyBatch.putFloat((r - 0.5f) / SH_C0).putFloat((g - 0.5f) / SH_C0).putFloat((b - 0.5f) / SH_C0)
-                zeroSHBuffer.rewind(); plyBatch.put(zeroSHBuffer)
-                plyBatch.putFloat(LOGIT_LUT[(params[off + 3] * 1023).toInt().coerceIn(0, 1023)])
-                plyBatch.putFloat(lnLut(max(params[off + 4] * 1.3f, 0.001f))).putFloat(lnLut(max(params[off + 5] * 1.3f, 0.001f))).putFloat(lnLut(max(params[off + 6] * 1.3f, 0.001f)))
+                var batchedVertices = 0
 
-                val rw = params[off + 7]; val rx = params[off + 8]; val ry = params[off + 9]; val rz = params[off + 10]
-                val m = sqrt(rw * rw + rx * rx + ry * ry + rz * rz).let { if (it > 1e-8f) 1f / it else 1f }
-                plyBatch.putFloat(rw * m).putFloat(rx * m).putFloat(ry * m).putFloat(rz * m)
+                for (i in 0 until count) {
+                    if (i > 0 && i % progressReportEvery == 0) {
+                        report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
+                    }
+                    val off = i * PARAMS_PER_GAUSSIAN
+                    val rawX = params[off]
+                    val rawY = params[off + 1]
+                    val rawZ = params[off + 2]
+                    val x = rawX * aspectCorrX * metricScale
+                    val y = -(rawY * aspectCorrY) * metricScale
+                    val z = -rawZ * metricScale
+                    minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); minZ = min(minZ, z); maxZ = max(maxZ, z)
+                    maxAbsX = max(maxAbsX, abs(x))
+                    maxAbsY = max(maxAbsY, abs(y))
+                    maxAbsZ = max(maxAbsZ, abs(z))
 
-                plyBatch.flip(); while (plyBatch.hasRemaining()) channel.write(plyBatch)
+                    plyBatch.putFloat(x).putFloat(y).putFloat(z).putFloat(0f).putFloat(0f).putFloat(0f)
+                    val b = linearToSrgb(params[off + 11])
+                    val g = linearToSrgb(params[off + 12])
+                    val r = linearToSrgb(params[off + 13])
+                    plyBatch.putFloat((r - 0.5f) / SH_C0).putFloat((g - 0.5f) / SH_C0).putFloat((b - 0.5f) / SH_C0)
+                    plyBatch.put(zeroSHBytes)
+                    plyBatch.putFloat(LOGIT_LUT[(params[off + 3] * 1023).toInt().coerceIn(0, 1023)])
+                    plyBatch.putFloat(lnLut(max(params[off + 4] * 1.3f * metricScale, 0.001f)))
+                        .putFloat(lnLut(max(params[off + 5] * 1.3f * metricScale, 0.001f)))
+                        .putFloat(lnLut(max(params[off + 6] * 1.3f * metricScale, 0.001f)))
+
+                    val rw = params[off + 7]; val rx = params[off + 8]; val ry = params[off + 9]; val rz = params[off + 10]
+                    val m = sqrt(rw * rw + rx * rx + ry * ry + rz * rz).let { if (it > 1e-8f) 1f / it else 1f }
+                    plyBatch.putFloat(rw * m).putFloat(rx * m).putFloat(ry * m).putFloat(rz * m)
+                    batchedVertices++
+                    if (batchedVertices == PLY_BATCH_SIZE || i == count - 1) {
+                        plyBatch.flip()
+                        while (plyBatch.hasRemaining()) channel.write(plyBatch)
+                        plyBatch.clear()
+                        batchedVertices = 0
+                    }
+                }
             }
         }
         val roomW = maxX - minX
@@ -1521,12 +1790,33 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val centerX = (minX + maxX) * 0.5f
         val centerY = (minY + maxY) * 0.5f
         val centerZ = (minZ + maxZ) * 0.5f
+        val looksNormalized =
+            roomW <= 2.5f && roomH <= 2.5f && roomD <= 2.5f &&
+                maxAbsX <= 1.5f && maxAbsY <= 1.5f && maxAbsZ <= 1.5f
         LogUtil.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
         LogUtil.i(
             "SHARP_ROOM_MEAS",
             "[ply_bbox] gaussians=$count W=$roomW H=$roomH D=$roomD " +
                 "center=($centerX,$centerY,$centerZ) file=${plyFile.name} " +
                 "(AABB in model space; WebGL viewer is authoritative for display dims)",
+        )
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[ply_space] min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ) " +
+                "maxAbs=($maxAbsX,$maxAbsY,$maxAbsZ) looksNormalized=$looksNormalized",
+        )
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[ply_aspect] aspectCorr=(${"%.4f".format(aspectCorrX)}, ${"%.4f".format(aspectCorrY)}) " +
+                "metricScale=${"%.4f".format(metricScale)} " +
+                "final W=${"%.3f".format(roomW)} H=${"%.3f".format(roomH)} D=${"%.3f".format(roomD)} " +
+                "imgDims=${imgW}x${imgH}",
+        )
+        LogUtil.i(
+            "SHARP_METRIC_SCALE",
+            "[apply] beforeAabb=${"%.3f".format(roomW / metricScale)}x${"%.3f".format(roomH / metricScale)}x${"%.3f".format(roomD / metricScale)} " +
+                "afterAabb=${"%.3f".format(roomW)}x${"%.3f".format(roomH)}x${"%.3f".format(roomD)} " +
+                "metricScale=${"%.4f".format(metricScale)}",
         )
         if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
             LogUtil.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")

@@ -1,10 +1,18 @@
 /**
  * SHARP full pipeline — Vulkan Part1+2 (optional hybrid Part12-on-CPU) + Vulkan Part3–4 .pte names.
+ *
+ * Native stage boundaries (wall-clock; see [HYBRID_TIMING] summary log):
+ *  - Downsample (optional): multiscale half/quarter images for 0.5×/0.25× patches.
+ *  - Part1+2: patch encoder (Vulkan or CPU); 25-only Vulkan uses two-pass or optional interleaved path.
+ *  - Early encoder scratch release: frees patch/temp buffers after Part1+2 (before Part3/4a).
+ *  - Part3 / Part4a / Part4b: sequential ExecuTorch stages (runtime is not thread-safe across threads).
+ *  - Part4b: tiled / batched Gaussian decode (tile_00 loads on the pipeline thread only).
  */
 #include "sharp_executorch_full_internal.h"
 #if defined(EXECUTORCH_HAS_ETDUMP)
 #include <executorch/devtools/etdump/etdump_flatcc.h>
 #endif
+#include <thread>
 
 namespace {
 
@@ -89,8 +97,10 @@ jfloatArray runSharpFullPipeline_Vulkan(
         jint part12YieldMsBetweenChunks,
         jboolean swapTileNdcXY,
         jobject progressReporter,
-        jstring etdumpOutputPath) {
-if (!modelDirPath || !imageNCHW) {
+        jstring etdumpOutputPath,
+        jboolean hybridInterleavePart12,
+        jlong hybridInterleaveMinAvailMemBytes) {
+    if (!modelDirPath || !imageNCHW) {
         LOGE("runFullPipelineInt8: null modelDir or image");
         return nullptr;
     }
@@ -111,12 +121,26 @@ if (!modelDirPath || !imageNCHW) {
     const bool useVulkanForPart12 = !part12Cpu;
 
     ensureRuntimeInit();
+    clearLastMonodepthCapture();
     const long long t0 = nowMs();
+    const bool wantInterleavePart12 = (hybridInterleavePart12 == JNI_TRUE);
+    const jlong interleaveMinAvailBytes = hybridInterleaveMinAvailMemBytes;
+    const long memAvailKbGate = sharpDeviceMemAvailableKb();
+    const bool interleaveMemOk =
+            interleaveMinAvailBytes <= 0 ||
+            (memAvailKbGate >= 0 &&
+             (static_cast<unsigned long long>(memAvailKbGate) * 1024ull >=
+              static_cast<unsigned long long>(interleaveMinAvailBytes)));
 
     const char* dirC = env->GetStringUTFChars(modelDirPath, nullptr);
     std::string modelDir(dirC ? dirC : "");
     env->ReleaseStringUTFChars(modelDirPath, dirC);
     if (modelDir.empty()) { LOGE("empty model dir"); return nullptr; }
+
+    // Resolve Vulkan Part3/Part4a paths once (overlap worker + sequential fallback).
+    const std::string vkPathPart3 = resolveVulkanSplitPte(modelDir, "sharp_split_part3");
+    const std::string vkPath4a512 = pathJoin(modelDir, "sharp_split_part4a_chunk_512_vulkan.pte");
+    const std::string vkPath4a65 = pathJoin(modelDir, "sharp_split_part4a_chunk_65_vulkan.pte");
 
     std::string etdumpPath;
     if (etdumpOutputPath) {
@@ -198,6 +222,7 @@ if (!modelDirPath || !imageNCHW) {
     }
     LOGD("Part1+Part2 ready (cache): %lldms", nowMs() - tLoad12);
 
+    const long long tPart12WallStart = nowMs();
     float* ws_patch = g_workspace.patchBuf;
     float* ws_tokens = g_workspace.tokensCopy;
     float* ws_temp = g_workspace.tempSpatial;
@@ -212,10 +237,81 @@ if (!modelDirPath || !imageNCHW) {
     ETModule* m2_b2 = g_moduleCache.mod2_b2.get();
     const bool part12ForceSingle = (part12ForceSinglePatch == JNI_TRUE);
     bool usedTwoPassVulkan25Only = false;
+    bool usedInterleavedVulkan25Only = false;
+
+    // Vulkan 25-only: optional interleaved Part1→Part2 per patch (keeps Part1+Part2 resident; memory-gated).
+    // Default: two-pass (all Part1, release Part1, all Part2) for lower peak encoder memory.
+    if (useVulkanForPart12 && skip05xAnd025x && limit05x == 0 && wantInterleavePart12 && interleaveMemOk) {
+        usedInterleavedVulkan25Only = true;
+        LOGD("[HYBRID] Vulkan 25-only: interleaved Part1→Part2 (MemAvailable~%ld KB, gate bytes=%lld)",
+             (long)memAvailKbGate, (long long)interleaveMinAvailBytes);
+        const int totalPart12ProgressUnits = limit1x + limit05x + 1;
+        long long t1x = nowMs();
+        if (progressReporter && reportProgressMethodId) {
+            reportProgress(env, progressReporter, reportProgressMethodId, 0.21f,
+                           "Part 1+2 (Vulkan interleaved): starting…");
+        }
+        for (int patchIdx = 0; patchIdx < limit1x; ++patchIdx) {
+            const int ii = patchIdx / GRID_1X;
+            const int jj = patchIdx % GRID_1X;
+            cropNCHW(imageData, imageSize, imageSize, 3,
+                     ii * stride1x, jj * stride1x, PATCH_SIZE, PATCH_SIZE,
+                     ws_patch);
+            auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+            std::vector<EValue> in1 = {*pTensor};
+            auto out1 = m1->forward(in1);
+            if (!out1.ok() || out1->size() < 2) {
+                LOGE("Part1 fail 1x interleaved (%d,%d)", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            const auto& tokT = (*out1)[0].toTensor();
+            const auto& spaT = (*out1)[1].toTensor();
+            const float* tokPtr = tokT.const_data_ptr<float>();
+            const float* spaPtr = spaT.const_data_ptr<float>();
+            if (!tokPtr || !spaPtr) {
+                LOGE("Part1 1x interleaved (%d,%d): null ptr", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            reshapeToSpatial(spaPtr, spaT.numel(), ws_temp);
+            mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
+            mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
+            auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
+            std::vector<EValue> in2 = {*tokInput};
+            auto out2 = m2->forward(in2);
+            if (!out2.ok() || out2->empty()) {
+                LOGE("Part2 fail 1x interleaved (%d,%d)", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
+            if (!featPtr) {
+                LOGE("Part2 1x interleaved (%d,%d): feat null", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            reshapeToSpatial(featPtr, (*out2)[0].toTensor().numel(), ws_temp);
+            mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            if (progressReporter && reportProgressMethodId) {
+                const int patchesDone = patchIdx + 1;
+                const float p = (patchesDone / (float)totalPart12ProgressUnits) * 0.5f;
+                char buf[96];
+                snprintf(buf, sizeof(buf), "Part 1+2 interleaved: patch %d/%d…", patchesDone, limit1x);
+                reportProgress(env, progressReporter, reportProgressMethodId, p, buf);
+            }
+        }
+        LOGD("1x Part1+2 interleaved (%d patches): %lldms", limit1x, nowMs() - t1x);
+        downsample2x(g_workspace.x0Feat, M_1X, M_1X, FEATURE_DIM, g_workspace.x1Feat);
+        downsample4x(g_workspace.x0Feat, M_1X, M_1X, FEATURE_DIM, g_workspace.x2Feat);
+        LOGD("Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat");
+    }
 
     // In the common Vulkan 25-only path, avoid keeping Part1 and Part2 live across each patch.
     // Run all Part1 patches first, cache token outputs, release Part1 modules, then run Part2.
-    if (useVulkanForPart12 && skip05xAnd025x && limit05x == 0) {
+    if (!usedInterleavedVulkan25Only && useVulkanForPart12 && skip05xAnd025x && limit05x == 0) {
         usedTwoPassVulkan25Only = true;
         const int totalPart12ProgressUnits = limit1x + limit05x + 1;
         long long t1x = nowMs();
@@ -339,7 +435,7 @@ if (!modelDirPath || !imageNCHW) {
         LOGD("Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat");
     }
 
-    if (!usedTwoPassVulkan25Only) {
+    if (!usedTwoPassVulkan25Only && !usedInterleavedVulkan25Only) {
     // ── 1x patches (5x5 = 25): batch-2 Vulkan FP16 or batch-4 INT8 when available ─
     long long t1x = nowMs();
     int batchSize1x = 1;
@@ -714,11 +810,19 @@ if (!modelDirPath || !imageNCHW) {
     }
     }
 
+    const long long tPart12WallMs = nowMs() - tPart12WallStart;
+    LOGD("[TIMING] Part1+2 wall: %lldms twoPass=%d interleaved=%d",
+         tPart12WallMs,
+         usedTwoPassVulkan25Only ? 1 : 0,
+         usedInterleavedVulkan25Only ? 1 : 0);
+    g_workspace.releaseEncoderScratch();
+    logProcessMemory("after Part1+2: early encoder scratch release");
+
     // ── Part3 + Part4a paths (fixed names per export; no .pte delegate scanning) ──
     long long tP3 = nowMs();
     std::string path3;
     if (useVulkanBackend) {
-        path3 = resolveVulkanSplitPte(modelDir, "sharp_split_part3");
+        path3 = vkPathPart3;
         if (path3.empty()) {
             LOGE("Part3 Vulkan .pte not found (expected sharp_split_part3_vulkan_fp32.pte or _fp16.pte)");
             env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
@@ -735,12 +839,8 @@ if (!modelDirPath || !imageNCHW) {
             path3 = pathJoin(modelDir, "sharp_split_part3.pte");
         }
     }
-    const std::string path4a512 = useVulkanBackend
-            ? pathJoin(modelDir, "sharp_split_part4a_chunk_512_vulkan.pte")
-            : pathJoin(modelDir, "sharp_split_part4a_chunk_512.pte");
-    const std::string path4a65 = useVulkanBackend
-            ? pathJoin(modelDir, "sharp_split_part4a_chunk_65_vulkan.pte")
-            : pathJoin(modelDir, "sharp_split_part4a_chunk_65.pte");
+    const std::string path4a512 = useVulkanBackend ? vkPath4a512 : pathJoin(modelDir, "sharp_split_part4a_chunk_512.pte");
+    const std::string path4a65 = useVulkanBackend ? vkPath4a65 : pathJoin(modelDir, "sharp_split_part4a_chunk_65.pte");
     // Vulkan: Part4b is **tiled-only** (batched → full tiled in common.cpp). No sharp_split_part4b_vulkan.pte path.
     // CPU (non-Vulkan) branch below: single portable Part4b .pte.
     std::string path4bSingle;
@@ -768,8 +868,11 @@ if (!modelDirPath || !imageNCHW) {
          path4a65.c_str(),
          useVulkanBackend ? "(Vulkan tiled-only)" : (path4bSingle.empty() ? "(none yet / tiled path)" : path4bSingle.c_str()));
     LOGD("[MEM] combinedTokens planned ~%zuMB image=%dx%d", ((size_t)TOKENS_577 * FEATURE_DIM * sizeof(float)) / (1024 * 1024), imageSize, imageSize);
-    logProcessMemory("before Part3 load");
 
+    std::vector<float> combinedTokens;
+    size_t imgTokensNumel = 0;
+
+    logProcessMemory("before Part3 load");
     auto mod3 = std::make_unique<ETModule>(path3, ETModule::LoadMode::Mmap);
     if (mod3->load() != Error::Ok) {
         LOGE("Part3 load fail: %s", path3.c_str());
@@ -790,18 +893,15 @@ if (!modelDirPath || !imageNCHW) {
         return nullptr;
     }
     const float* imgTokensPtr = (*out3)[0].toTensor().const_data_ptr<float>();
-    size_t imgTokensNumel = (*out3)[0].toTensor().numel();
-
-    std::vector<float> combinedTokens(imgTokensNumel);
+    imgTokensNumel = (size_t)(*out3)[0].toTensor().numel();
+    combinedTokens.resize(imgTokensNumel);
     std::memcpy(combinedTokens.data(), imgTokensPtr, imgTokensNumel * sizeof(float));
     mod3.reset();
-    LOGD("Part3: %lldms (numel=%zu)", nowMs() - tP3, imgTokensNumel);
+    const long long part3Ms = nowMs() - tP3;
+    LOGD("Part3: %lldms (sequential, numel=%zu)", part3Ms, imgTokensNumel);
     logProcessMemory("after Part3 reset");
 
-    g_workspace.releaseEncoderScratch();
-    logProcessMemory("after releasing encoder scratch before Part4");
-
-    // ── Part4a chunk 512 ─────────────────────────────────────────────────────
+    // ── Part4a chunk 512 + 65 ─────────────────────────────────────────────────
     long long tP4a = nowMs();
     if (progressReporter && reportProgressMethodId) {
         const char* msg = useVulkanBackend
@@ -907,6 +1007,17 @@ if (!modelDirPath || !imageNCHW) {
     mod4a65.reset();
     LOGD("Part4a/65: %lldms. Part4a total: %lldms", nowMs() - tP4a65, nowMs() - tP4a);
     logProcessMemory("after Part4a/65 reset");
+    const long long part4aMs = nowMs() - tP4a;
+
+    LOGI(
+            "[HYBRID_TIMING] interleaveP12=%d earlyEncoderScratch=1 "
+            "part12_ms=%lld part3_ms=%lld part4a_ms=%lld total_ms=%lld availKb=%ld",
+            (wantInterleavePart12 && interleaveMemOk) ? 1 : 0,
+            (long long)tPart12WallMs,
+            (long long)part3Ms,
+            (long long)part4aMs,
+            (long long)(nowMs() - t0),
+            (long)memAvailKbGate);
 
     // ── Part4b: Vulkan — batched tiled → sequential tiled only (no single-decoder .pte)
     g_moduleCache.release();

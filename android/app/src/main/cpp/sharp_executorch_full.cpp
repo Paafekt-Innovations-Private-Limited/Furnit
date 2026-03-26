@@ -122,6 +122,7 @@ if (!modelDirPath || !imageNCHW) {
     const bool useVulkanForPart12 = false;
 
     ensureRuntimeInit();
+    clearLastMonodepthCapture();
     const long long t0 = nowMs();
 
     const char* dirC = env->GetStringUTFChars(modelDirPath, nullptr);

@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import android.view.PixelCopy
 import android.view.View
 import android.widget.EditText
@@ -217,7 +218,7 @@ class ModelDetailActivity : AppCompatActivity() {
             .setMessage("Enter a name for your room")
             .setView(container)
             .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { "My Room" }
+                val name = input.text.toString().ifEmpty { RoomDisplayName.myRoomWithTimestamp() }
                 saveRoom(name)
             }
             .setNegativeButton("Cancel", null)

@@ -21,6 +21,19 @@ import javax.microedition.khronos.opengles.GL10
 
 private const val TAG = "FurnitureFitAr"
 
+data class ArPhotoCaptureResult(
+    val bitmap: Bitmap,
+    val metricAnchors: List<MetricAnchor>,
+)
+
+private data class PendingPhotoCaptureRequest(
+    val callback: (ArPhotoCaptureResult?) -> Unit,
+    val startedAtMs: Long,
+    var attempts: Int = 0,
+    var bestBitmap: Bitmap? = null,
+    var bestAnchors: List<MetricAnchor> = emptyList(),
+)
+
 /**
  * ARCore path for FurnitureFit: [GLSurfaceView] + [Session], CPU bitmaps for YOLO, and smoothed
  * overlay scale from horizontal plane hit distance + pinhole height ([FurnitureFitArMetrics]).
@@ -51,6 +64,9 @@ class FurnitureFitArCameraController(
     /** If false, the GL thread skips posting new frames (e.g. while YOLO is running). */
     var shouldPostBitmapFrame: () -> Boolean = { true }
 
+    @Volatile
+    private var pendingPhotoCaptureRequest: PendingPhotoCaptureRequest? = null
+
     private val bboxLock = Any()
     private var bboxCenterImageX = 0f
     private var bboxCenterImageY = 0f
@@ -61,7 +77,7 @@ class FurnitureFitArCameraController(
     private val scaleLock = Any()
     private var smoothedArOverlayScale = 1f
     private var arOverlayScaleValid = false
-    private var lastEstimatedHeightMeters = 0f
+    private var lastEstimatedHeightMeters = Float.NaN
 
     private var lastInferencePostMs = 0L
     /** Min time between frames handed to YOLO (iOS ~0.07s; slightly lower here for responsiveness). */
@@ -76,7 +92,7 @@ class FurnitureFitArCameraController(
     @Volatile
     private var latestRawScale: Float? = null
     @Volatile
-    private var pendingEstHForApply = 0f
+    private var pendingEstHForApply = Float.NaN
     private var snapAfterPrimaryChange = false
 
     private val debounceApplyRunnable = Runnable {
@@ -115,18 +131,18 @@ class FurnitureFitArCameraController(
             bboxCenterImageY = centerImageY
             bboxHeightImagePx = heightImagePx
             bboxLabel = label
-            bboxHintValid = heightImagePx > 2f
+            bboxHintValid = centerImageX.isFinite() && centerImageY.isFinite() && heightImagePx.isFinite()
             prev != label
         }
         if (labelChanged) {
             snapAfterPrimaryChange = true
             latestRawScale = null
-            pendingEstHForApply = 0f
+            pendingEstHForApply = Float.NaN
             measurementHandler.removeCallbacks(debounceApplyRunnable)
             synchronized(scaleLock) {
                 arOverlayScaleValid = false
                 smoothedArOverlayScale = 1f
-                lastEstimatedHeightMeters = 0f
+                lastEstimatedHeightMeters = Float.NaN
             }
         }
     }
@@ -136,12 +152,12 @@ class FurnitureFitArCameraController(
             bboxHintValid = false
         }
         latestRawScale = null
-        pendingEstHForApply = 0f
+        pendingEstHForApply = Float.NaN
         measurementHandler.removeCallbacks(debounceApplyRunnable)
         synchronized(scaleLock) {
             arOverlayScaleValid = false
             smoothedArOverlayScale = 1f
-            lastEstimatedHeightMeters = 0f
+            lastEstimatedHeightMeters = Float.NaN
         }
     }
 
@@ -154,7 +170,7 @@ class FurnitureFitArCameraController(
      * Returns null when AR overlay scale is not currently valid.
      */
     fun getLastEstimatedHeightMeters(): Float? = synchronized(scaleLock) {
-        if (!arOverlayScaleValid || lastEstimatedHeightMeters <= 0f) null else lastEstimatedHeightMeters
+        lastEstimatedHeightMeters.takeIf { it.isFinite() }
     }
 
     /**
@@ -166,6 +182,13 @@ class FurnitureFitArCameraController(
             lastInferencePostMs = 0L
             preferImmediateNextBitmap = false
         }
+    }
+
+    fun requestPhotoCapture(callback: (ArPhotoCaptureResult?) -> Unit) {
+        pendingPhotoCaptureRequest = PendingPhotoCaptureRequest(
+            callback = callback,
+            startedAtMs = SystemClock.elapsedRealtime(),
+        )
     }
 
     fun onHostResume() {
@@ -190,16 +213,22 @@ class FurnitureFitArCameraController(
     fun destroy() {
         measurementHandler.removeCallbacks(debounceApplyRunnable)
         onHostPause()
+        pendingPhotoCaptureRequest?.bestBitmap?.takeIf { !it.isRecycled }?.recycle()
+        pendingPhotoCaptureRequest = null
         session?.close()
         session = null
     }
 
     private fun applyPendingArOverlayScaleFromLatest() {
-        val raw = latestRawScale ?: return
         val estH = pendingEstHForApply
-        if (estH <= 0.05f) return
+        if (!estH.isFinite()) return
         synchronized(scaleLock) {
             lastEstimatedHeightMeters = estH
+            val raw = latestRawScale
+            if (raw == null || !raw.isFinite() || raw <= 0f) {
+                arOverlayScaleValid = false
+                return
+            }
             if (snapAfterPrimaryChange) {
                 smoothedArOverlayScale = raw.coerceIn(0.25f, 4f)
                 snapAfterPrimaryChange = false
@@ -235,6 +264,9 @@ class FurnitureFitArCameraController(
             val config = Config(newSession).apply {
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                if (newSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                    depthMode = Config.DepthMode.AUTOMATIC
+                }
             }
             newSession.configure(config)
             session = newSession
@@ -288,6 +320,53 @@ class FurnitureFitArCameraController(
             // AR overlay scale uses bbox + intrinsics only — inverse matrix does not require decoding YUV.
             val orientedInverse = orientedInverseForCurrentCamera(rawW, rawH)
             updateArScaleForCurrentFrame(frame, rawW, rawH, orientedInverse)
+
+            val captureRequest = pendingPhotoCaptureRequest
+            if (captureRequest != null) {
+                val rawBitmap = image.yuv420888ToBitmap()
+                if (rawBitmap == null) {
+                    pendingPhotoCaptureRequest = null
+                    Handler(Looper.getMainLooper()).post { captureRequest.callback(null) }
+                    return
+                }
+                val (orientedBitmap, orientedToRawInverse) = rawBitmap.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
+                if (orientedBitmap !== rawBitmap) {
+                    rawBitmap.recycle()
+                }
+                val metricAnchors = FurnitureFitArMetrics.captureSparseMetricAnchors(
+                    frame = frame,
+                    orientedImageWidth = orientedBitmap.width,
+                    orientedImageHeight = orientedBitmap.height,
+                    rawImageWidth = rawW,
+                    rawImageHeight = rawH,
+                    orientedToRawInverse = orientedToRawInverse,
+                )
+                captureRequest.attempts += 1
+                val elapsedMs = SystemClock.elapsedRealtime() - captureRequest.startedAtMs
+                val tracking = frame.camera.trackingState
+                if (metricAnchors.size >= captureRequest.bestAnchors.size) {
+                    captureRequest.bestBitmap?.takeIf { it !== orientedBitmap && !it.isRecycled }?.recycle()
+                    captureRequest.bestBitmap = orientedBitmap
+                    captureRequest.bestAnchors = metricAnchors
+                } else if (orientedBitmap !== captureRequest.bestBitmap && !orientedBitmap.isRecycled) {
+                    orientedBitmap.recycle()
+                }
+                val done = metricAnchors.size >= 5 || captureRequest.attempts >= 20 || elapsedMs >= 1800L
+                LogUtil.d(
+                    TAG,
+                    "AR photo capture attempt=${captureRequest.attempts} tracking=$tracking anchors=${metricAnchors.size} " +
+                        "best=${captureRequest.bestAnchors.size} elapsedMs=$elapsedMs done=$done"
+                )
+                if (done) {
+                    pendingPhotoCaptureRequest = null
+                    val finalBitmap = captureRequest.bestBitmap
+                    val finalAnchors = captureRequest.bestAnchors
+                    Handler(Looper.getMainLooper()).post {
+                        captureRequest.callback(finalBitmap?.let { ArPhotoCaptureResult(it, finalAnchors) })
+                    }
+                }
+                return
+            }
 
             if (!shouldPostBitmapFrame()) {
                 preferImmediateNextBitmap = true
@@ -353,18 +432,23 @@ class FurnitureFitArCameraController(
             hRaw = hPx
         }
 
-        val viewOut = FloatArray(2)
-        if (!FurnitureFitArMetrics.imagePixelsToViewPixels(frame, rawCx, rawCy, viewOut)) {
-            return
-        }
-        val dist = FurnitureFitArMetrics.horizontalPlaneHitDistanceMeters(frame, viewOut[0], viewOut[1])
-            ?: return
-
         val intrinsics = frame.camera.imageIntrinsics
         val fy = FurnitureFitArMetrics.focalLengthYPixelsForImage(intrinsics, rawImageWidth, rawImageHeight)
-        val estH = FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, dist, fy) ?: return
+        val distEstimate = FurnitureFitArMetrics.metricDistanceEstimate(
+            frame = frame,
+            imageX = rawCx,
+            imageY = rawCy,
+            bboxHeightPixels = hRaw,
+            rawImageWidth = rawImageWidth,
+            rawImageHeight = rawImageHeight,
+        ) ?: return
+        val estH = FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, distEstimate.meters, fy) ?: return
         val stdH = 0.85f
-        val raw = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH, 0.25f, 4f) ?: return
+        val raw = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH, 0.25f, 4f)
+        LogUtil.d(
+            TAG,
+            "AR metric sizing source=${distEstimate.source} dist=${distEstimate.meters}m estH=$estH fy=$fy bboxH=$hRaw rawCenter=($rawCx,$rawCy) overlayRaw=$raw"
+        )
         pendingEstHForApply = estH
         latestRawScale = raw
         measurementHandler.removeCallbacks(debounceApplyRunnable)

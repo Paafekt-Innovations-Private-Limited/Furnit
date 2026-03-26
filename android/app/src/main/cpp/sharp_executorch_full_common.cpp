@@ -1,5 +1,11 @@
 #include "sharp_executorch_full_internal.h"
 
+#include <array>
+#include <cstring>
+#include <limits>
+#include <mutex>
+#include <thread>
+
 static std::atomic<int> g_sharp_exec_verbose{0};
 
 bool sharpExecNativeVerboseLogsEnabled() {
@@ -70,6 +76,13 @@ size_t workspaceBytesEstimate(const Workspace& ws) {
     if (ws.patchBuf4) total += (size_t)PATCH_BATCH * 3 * PATCH_SIZE * PATCH_SIZE * sizeof(float);
     if (ws.tokensCopy) total += (size_t)TOKENS_577 * FEATURE_DIM * sizeof(float);
     if (ws.tokensCopy4) total += (size_t)PATCH_BATCH * TOKENS_577 * FEATURE_DIM * sizeof(float);
+    if (ws.tileImgCrop) total += (size_t)3 * (IMAGE_SIZE / 4) * (IMAGE_SIZE / 4) * sizeof(float);
+    if (ws.tileLat0Crop) total += (size_t)1024 * 24 * 24 * sizeof(float);
+    if (ws.tileLat1Crop) total += (size_t)1024 * 24 * 24 * sizeof(float);
+    if (ws.tileX0Crop) total += (size_t)1024 * 24 * 24 * sizeof(float);
+    if (ws.tileX1Crop) total += (size_t)1024 * 12 * 12 * sizeof(float);
+    if (ws.tileX2Crop) total += (size_t)1024 * 6 * 6 * sizeof(float);
+    if (ws.tileXlCrop) total += (size_t)1024 * 6 * 6 * sizeof(float);
     return total;
 }
 
@@ -81,7 +94,350 @@ bool fileExists(const std::string& path) {
 struct OwnedTensor {
     std::vector<float> data;
     std::vector<executorch::aten::SizesType> sizes;
+
+    void ensureCapacity(size_t numel) {
+        if (data.capacity() < numel) {
+            data.reserve(numel);
+        }
+        data.resize(numel);
+    }
 };
+
+struct Part4bIntermediateScratch {
+    OwnedTensor latent0Up;
+    OwnedTensor latent1Up;
+    OwnedTensor x0Up;
+    OwnedTensor x1Up;
+    OwnedTensor xFused;
+    OwnedTensor disparity;
+    OwnedTensor decoderFeatures;
+    OwnedTensor featureInput;
+    OwnedTensor geometryRaw;
+    OwnedTensor textureRaw;
+    OwnedTensor meanXNdc;
+    OwnedTensor meanYNdc;
+    OwnedTensor meanInverseZNdc;
+    OwnedTensor scales;
+    OwnedTensor quaternions;
+    OwnedTensor colors;
+    OwnedTensor opacities;
+    OwnedTensor globalScale;
+};
+
+constexpr int kPlyBatchSize = 512;
+constexpr int kPlyFloatsPerVertex = 62;
+constexpr int kPlyZeroShFloatCount = 45;
+constexpr int kPlyLogitLutSize = 1024;
+constexpr int kPlySrgbLutSize = 4096;
+constexpr int kPlyLnLutSize = 2048;
+constexpr float kPlyShC0 = 0.28209479177387814f;
+constexpr float kPlyLinearToSrgbThreshold = 0.0031308f;
+constexpr float kPlyLnLutMin = 0.001f;
+constexpr float kPlyLnLutMax = 5.0f;
+constexpr float kPlyScaleBias = 1.3f;
+
+struct PlyExportStats {
+    float minX = std::numeric_limits<float>::max();
+    float maxX = -std::numeric_limits<float>::max();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = -std::numeric_limits<float>::max();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = -std::numeric_limits<float>::max();
+    float maxAbsX = 0.0f;
+    float maxAbsY = 0.0f;
+    float maxAbsZ = 0.0f;
+};
+
+const std::array<float, kPlyLogitLutSize>& plyLogitLut() {
+    static const std::array<float, kPlyLogitLutSize> lut = []() {
+        std::array<float, kPlyLogitLutSize> values{};
+        for (int i = 0; i < kPlyLogitLutSize; ++i) {
+            const float p = std::clamp(
+                    static_cast<float>(i) / static_cast<float>(kPlyLogitLutSize - 1),
+                    1e-4f,
+                    1.0f - 1e-4f);
+            values[static_cast<size_t>(i)] = std::log(p / (1.0f - p));
+        }
+        return values;
+    }();
+    return lut;
+}
+
+const std::array<float, kPlySrgbLutSize>& plySrgbLut() {
+    static const std::array<float, kPlySrgbLutSize> lut = []() {
+        std::array<float, kPlySrgbLutSize> values{};
+        for (int i = 0; i < kPlySrgbLutSize; ++i) {
+            const float v = static_cast<float>(i) / static_cast<float>(kPlySrgbLutSize - 1);
+            if (v <= kPlyLinearToSrgbThreshold) {
+                values[static_cast<size_t>(i)] = v * 12.92f;
+            } else {
+                values[static_cast<size_t>(i)] =
+                        std::clamp(1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f, 0.0f, 1.0f);
+            }
+        }
+        return values;
+    }();
+    return lut;
+}
+
+const std::array<float, kPlyLnLutSize>& plyLnLut() {
+    static const std::array<float, kPlyLnLutSize> lut = []() {
+        std::array<float, kPlyLnLutSize> values{};
+        for (int i = 0; i < kPlyLnLutSize; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(kPlyLnLutSize - 1);
+            values[static_cast<size_t>(i)] =
+                    std::log(kPlyLnLutMin + (kPlyLnLutMax - kPlyLnLutMin) * t);
+        }
+        return values;
+    }();
+    return lut;
+}
+
+inline float plyLnLutValue(float x) {
+    if (x <= kPlyLnLutMin) return plyLnLut()[0];
+    if (x >= kPlyLnLutMax) return plyLnLut()[kPlyLnLutSize - 1];
+    const float scale = static_cast<float>(kPlyLnLutSize - 1) / (kPlyLnLutMax - kPlyLnLutMin);
+    const int index = static_cast<int>((x - kPlyLnLutMin) * scale);
+    return plyLnLut()[static_cast<size_t>(std::clamp(index, 0, kPlyLnLutSize - 1))];
+}
+
+inline float plyLinearToSrgb(float linear) {
+    const float clamped = std::clamp(linear, 0.0f, 1.0f);
+    const int index = std::clamp(
+            static_cast<int>(clamped * static_cast<float>(kPlySrgbLutSize - 1)),
+            0,
+            kPlySrgbLutSize - 1);
+    return plySrgbLut()[static_cast<size_t>(index)];
+}
+
+inline float plyOpacityLogit(float opacity) {
+    const int index = std::clamp(
+            static_cast<int>(opacity * static_cast<float>(kPlyLogitLutSize - 1)),
+            0,
+            kPlyLogitLutSize - 1);
+    return plyLogitLut()[static_cast<size_t>(index)];
+}
+
+bool writePlyBinaryNative(const std::string& outputPath,
+                          const float* params,
+                          int count,
+                          float aspectCorrX,
+                          float aspectCorrY,
+                          float metricScale,
+                          PlyExportStats* statsOut) {
+    if (!params || count <= 0 || !statsOut) {
+        return false;
+    }
+
+    std::ofstream out(outputPath, std::ios::binary);
+    if (!out.good()) {
+        LOGE("writePlyBinaryNative: failed to open %s", outputPath.c_str());
+        return false;
+    }
+
+    const std::string header =
+            "ply\nformat binary_little_endian 1.0\nelement vertex " + std::to_string(count) +
+            "\nproperty float x\nproperty float y\nproperty float z\nproperty float nx\nproperty float ny\nproperty float nz\n" +
+            "property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n" +
+            "property float f_rest_0\nproperty float f_rest_1\nproperty float f_rest_2\nproperty float f_rest_3\nproperty float f_rest_4\nproperty float f_rest_5\nproperty float f_rest_6\nproperty float f_rest_7\nproperty float f_rest_8\nproperty float f_rest_9\nproperty float f_rest_10\nproperty float f_rest_11\nproperty float f_rest_12\nproperty float f_rest_13\nproperty float f_rest_14\nproperty float f_rest_15\nproperty float f_rest_16\nproperty float f_rest_17\nproperty float f_rest_18\nproperty float f_rest_19\nproperty float f_rest_20\nproperty float f_rest_21\nproperty float f_rest_22\nproperty float f_rest_23\nproperty float f_rest_24\nproperty float f_rest_25\nproperty float f_rest_26\nproperty float f_rest_27\nproperty float f_rest_28\nproperty float f_rest_29\nproperty float f_rest_30\nproperty float f_rest_31\nproperty float f_rest_32\nproperty float f_rest_33\nproperty float f_rest_34\nproperty float f_rest_35\nproperty float f_rest_36\nproperty float f_rest_37\nproperty float f_rest_38\nproperty float f_rest_39\nproperty float f_rest_40\nproperty float f_rest_41\nproperty float f_rest_42\nproperty float f_rest_43\nproperty float f_rest_44\n" +
+            "property float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nproperty float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\nend_header\n";
+    out.write(header.data(), static_cast<std::streamsize>(header.size()));
+    if (!out.good()) {
+        LOGE("writePlyBinaryNative: failed to write header for %s", outputPath.c_str());
+        return false;
+    }
+
+    std::array<float, kPlyBatchSize * kPlyFloatsPerVertex> batch{};
+    int batchCount = 0;
+    float* dst = batch.data();
+    const float xScale = aspectCorrX * metricScale;
+    const float yScale = -aspectCorrY * metricScale;
+    const float zScale = -metricScale;
+    const float scaleScale = kPlyScaleBias * metricScale;
+#if HAS_NEON
+    const float32x4_t xyzMul = {xScale, yScale, zScale, 1.0f};
+    const float32x4_t scaleMul = {scaleScale, scaleScale, scaleScale, 1.0f};
+#endif
+
+    PlyExportStats stats;
+    for (int i = 0; i < count; ++i) {
+        const float* src = params + static_cast<size_t>(i) * PARAMS_PER_GAUSSIAN;
+        float x;
+        float y;
+        float z;
+        float opacityRaw;
+        float scale0;
+        float scale1;
+        float scale2;
+        float rw;
+#if HAS_NEON
+        const float32x4_t xyzOpacity = vld1q_f32(src);
+        const float32x4_t xyzScaled = vmulq_f32(xyzOpacity, xyzMul);
+        x = vgetq_lane_f32(xyzScaled, 0);
+        y = vgetq_lane_f32(xyzScaled, 1);
+        z = vgetq_lane_f32(xyzScaled, 2);
+        opacityRaw = vgetq_lane_f32(xyzOpacity, 3);
+
+        const float32x4_t scalesRw = vld1q_f32(src + 4);
+        const float32x4_t scalesScaled = vmulq_f32(scalesRw, scaleMul);
+        scale0 = vgetq_lane_f32(scalesScaled, 0);
+        scale1 = vgetq_lane_f32(scalesScaled, 1);
+        scale2 = vgetq_lane_f32(scalesScaled, 2);
+        rw = vgetq_lane_f32(scalesRw, 3);
+#else
+        x = src[0] * xScale;
+        y = src[1] * yScale;
+        z = src[2] * zScale;
+        opacityRaw = src[3];
+        scale0 = src[4] * scaleScale;
+        scale1 = src[5] * scaleScale;
+        scale2 = src[6] * scaleScale;
+        rw = src[7];
+#endif
+        const float rx = src[8];
+        const float ry = src[9];
+        const float rz = src[10];
+        const float b = plyLinearToSrgb(src[11]);
+        const float g = plyLinearToSrgb(src[12]);
+        const float r = plyLinearToSrgb(src[13]);
+
+        stats.minX = std::min(stats.minX, x);
+        stats.maxX = std::max(stats.maxX, x);
+        stats.minY = std::min(stats.minY, y);
+        stats.maxY = std::max(stats.maxY, y);
+        stats.minZ = std::min(stats.minZ, z);
+        stats.maxZ = std::max(stats.maxZ, z);
+        stats.maxAbsX = std::max(stats.maxAbsX, std::fabs(x));
+        stats.maxAbsY = std::max(stats.maxAbsY, std::fabs(y));
+        stats.maxAbsZ = std::max(stats.maxAbsZ, std::fabs(z));
+
+        dst[0] = x;
+        dst[1] = y;
+        dst[2] = z;
+        dst[3] = 0.0f;
+        dst[4] = 0.0f;
+        dst[5] = 0.0f;
+        dst[6] = (r - 0.5f) / kPlyShC0;
+        dst[7] = (g - 0.5f) / kPlyShC0;
+        dst[8] = (b - 0.5f) / kPlyShC0;
+        std::memset(dst + 9, 0, static_cast<size_t>(kPlyZeroShFloatCount) * sizeof(float));
+        dst[54] = plyOpacityLogit(opacityRaw);
+        dst[55] = plyLnLutValue(std::max(scale0, 0.001f));
+        dst[56] = plyLnLutValue(std::max(scale1, 0.001f));
+        dst[57] = plyLnLutValue(std::max(scale2, 0.001f));
+
+        const float normSq = rw * rw + rx * rx + ry * ry + rz * rz;
+        const float invNorm = (normSq > 1e-16f) ? (1.0f / std::sqrt(normSq)) : 1.0f;
+        dst[58] = rw * invNorm;
+        dst[59] = rx * invNorm;
+        dst[60] = ry * invNorm;
+        dst[61] = rz * invNorm;
+
+        dst += kPlyFloatsPerVertex;
+        batchCount++;
+        if (batchCount == kPlyBatchSize || i == count - 1) {
+            out.write(
+                    reinterpret_cast<const char*>(batch.data()),
+                    static_cast<std::streamsize>(batchCount * kPlyFloatsPerVertex * sizeof(float)));
+            if (!out.good()) {
+                LOGE("writePlyBinaryNative: failed while writing vertex payload for %s", outputPath.c_str());
+                return false;
+            }
+            batchCount = 0;
+            dst = batch.data();
+        }
+    }
+
+    out.flush();
+    if (!out.good()) {
+        LOGE("writePlyBinaryNative: flush failed for %s", outputPath.c_str());
+        return false;
+    }
+    *statsOut = stats;
+    return true;
+}
+
+std::mutex g_lastMonodepthMutex;
+std::vector<float> g_lastMonodepth;
+int g_lastMonodepthWidth = 0;
+int g_lastMonodepthHeight = 0;
+int g_lastMonodepthChannels = 0;
+
+void clearLastMonodepthCaptureLocked() {
+    g_lastMonodepth.clear();
+    g_lastMonodepthWidth = 0;
+    g_lastMonodepthHeight = 0;
+    g_lastMonodepthChannels = 0;
+}
+
+void ensureLastMonodepthCaptureLocked(int fullWidth, int fullHeight, int channels) {
+    if (fullWidth <= 0 || fullHeight <= 0 || channels <= 0) {
+        clearLastMonodepthCaptureLocked();
+        return;
+    }
+    const size_t required = static_cast<size_t>(fullWidth) * static_cast<size_t>(fullHeight) * static_cast<size_t>(channels);
+    if (g_lastMonodepthWidth == fullWidth &&
+        g_lastMonodepthHeight == fullHeight &&
+        g_lastMonodepthChannels == channels &&
+        g_lastMonodepth.size() == required) {
+        return;
+    }
+    g_lastMonodepth.assign(required, 0.0f);
+    g_lastMonodepthWidth = fullWidth;
+    g_lastMonodepthHeight = fullHeight;
+    g_lastMonodepthChannels = channels;
+}
+
+void stitchMonodepthTile(const OwnedTensor& monodepth,
+                         int batchIndex,
+                         int tileRow,
+                         int tileCol,
+                         int grid,
+                         const char* label) {
+    if (monodepth.sizes.size() != 4) {
+        LOGW("%s: monodepth rank %zu unsupported for capture", label, monodepth.sizes.size());
+        return;
+    }
+    const int batch = static_cast<int>(monodepth.sizes[0]);
+    const int channels = static_cast<int>(monodepth.sizes[1]);
+    const int tileHeight = static_cast<int>(monodepth.sizes[2]);
+    const int tileWidth = static_cast<int>(monodepth.sizes[3]);
+    if (batch <= 0 || channels <= 0 || tileHeight <= 0 || tileWidth <= 0) {
+        LOGW("%s: monodepth capture got invalid shape [%d,%d,%d,%d]",
+             label, batch, channels, tileHeight, tileWidth);
+        return;
+    }
+    if (batchIndex < 0 || batchIndex >= batch) {
+        LOGW("%s: monodepth capture batch index %d out of range for batch %d", label, batchIndex, batch);
+        return;
+    }
+    if (tileRow < 0 || tileCol < 0 || tileRow >= grid || tileCol >= grid) {
+        LOGW("%s: monodepth capture tile (%d,%d) out of grid %d", label, tileRow, tileCol, grid);
+        return;
+    }
+
+    const int fullWidth = tileWidth * grid;
+    const int fullHeight = tileHeight * grid;
+    const int tilePixels = tileWidth * tileHeight;
+    const int batchStride = channels * tilePixels;
+    const int srcBase = batchIndex * batchStride;
+
+    std::lock_guard<std::mutex> lock(g_lastMonodepthMutex);
+    ensureLastMonodepthCaptureLocked(fullWidth, fullHeight, channels);
+    if (g_lastMonodepth.empty()) {
+        return;
+    }
+    for (int channel = 0; channel < channels; ++channel) {
+        const int srcChannelBase = srcBase + channel * tilePixels;
+        const int dstChannelBase = channel * fullWidth * fullHeight;
+        for (int y = 0; y < tileHeight; ++y) {
+            const int dstY = tileRow * tileHeight + y;
+            float* dst = g_lastMonodepth.data() + dstChannelBase + dstY * fullWidth + tileCol * tileWidth;
+            const float* src = monodepth.data.data() + srcChannelBase + y * tileWidth;
+            std::memcpy(dst, src, static_cast<size_t>(tileWidth) * sizeof(float));
+        }
+    }
+}
 
 bool copyTensorToOwned(const executorch::runtime::etensor::Tensor& tensor,
                        OwnedTensor& dst,
@@ -97,7 +453,7 @@ bool copyTensorToOwned(const executorch::runtime::etensor::Tensor& tensor,
         return false;
     }
     dst.sizes.assign(tensor.sizes().begin(), tensor.sizes().end());
-    dst.data.resize(static_cast<size_t>(numel));
+    dst.ensureCapacity(static_cast<size_t>(numel));
     std::memcpy(dst.data.data(), src, static_cast<size_t>(numel) * sizeof(float));
     return true;
 }
@@ -178,6 +534,11 @@ auto runForwardWithHeartbeat(ForwardCallable forwardCallable,
 }
 }
 
+void clearLastMonodepthCapture() {
+    std::lock_guard<std::mutex> lock(g_lastMonodepthMutex);
+    clearLastMonodepthCaptureLocked();
+}
+
 bool Workspace::allocate() {
         if (allocated) return true;
         const size_t feat96 = FEATURE_DIM * M_1X * M_1X;
@@ -209,6 +570,51 @@ bool Workspace::allocate() {
         return allocated;
     }
 
+bool Workspace::allocateTileScratch() {
+    if (tileAllocated && tileImgCrop && tileLat0Crop && tileLat1Crop && tileX0Crop && tileX1Crop &&
+        tileX2Crop && tileXlCrop) {
+        return true;
+    }
+    releaseTileScratch();
+    const size_t tileImgSz = 3 * (IMAGE_SIZE / 4) * (IMAGE_SIZE / 4);
+    const size_t tileLat96Sz = (size_t)1024 * 24 * 24;
+    const size_t tileX1Sz = (size_t)1024 * 12 * 12;
+    const size_t tileX2Sz = (size_t)1024 * 6 * 6;
+    tileImgCrop = alignedAlloc(tileImgSz);
+    tileLat0Crop = alignedAlloc(tileLat96Sz);
+    tileLat1Crop = alignedAlloc(tileLat96Sz);
+    tileX0Crop = alignedAlloc(tileLat96Sz);
+    tileX1Crop = alignedAlloc(tileX1Sz);
+    tileX2Crop = alignedAlloc(tileX2Sz);
+    tileXlCrop = alignedAlloc(tileX2Sz);
+    tileAllocated = tileImgCrop && tileLat0Crop && tileLat1Crop && tileX0Crop && tileX1Crop && tileX2Crop &&
+                    tileXlCrop;
+    if (!tileAllocated) {
+        releaseTileScratch();
+        LOGE("Workspace::allocateTileScratch: allocation failed");
+        return false;
+    }
+    return true;
+}
+
+void Workspace::releaseTileScratch() {
+    alignedFree(tileImgCrop);
+    tileImgCrop = nullptr;
+    alignedFree(tileLat0Crop);
+    tileLat0Crop = nullptr;
+    alignedFree(tileLat1Crop);
+    tileLat1Crop = nullptr;
+    alignedFree(tileX0Crop);
+    tileX0Crop = nullptr;
+    alignedFree(tileX1Crop);
+    tileX1Crop = nullptr;
+    alignedFree(tileX2Crop);
+    tileX2Crop = nullptr;
+    alignedFree(tileXlCrop);
+    tileXlCrop = nullptr;
+    tileAllocated = false;
+}
+
 void Workspace::zero() {
         if (!allocated) return;
         const size_t feat96 = FEATURE_DIM * M_1X * M_1X;
@@ -229,6 +635,13 @@ void Workspace::releaseEncoderScratch() {
         alignedFree(patchBuf4); patchBuf4 = nullptr;
         alignedFree(tokensCopy); tokensCopy = nullptr;
         alignedFree(tokensCopy4); tokensCopy4 = nullptr;
+        alignedFree(tileImgCrop); tileImgCrop = nullptr;
+        alignedFree(tileLat0Crop); tileLat0Crop = nullptr;
+        alignedFree(tileLat1Crop); tileLat1Crop = nullptr;
+        alignedFree(tileX0Crop); tileX0Crop = nullptr;
+        alignedFree(tileX1Crop); tileX1Crop = nullptr;
+        alignedFree(tileX2Crop); tileX2Crop = nullptr;
+        alignedFree(tileXlCrop); tileXlCrop = nullptr;
     }
 
 void Workspace::release() {
@@ -236,8 +649,11 @@ void Workspace::release() {
         alignedFree(x1Feat);    alignedFree(x2Feat);    alignedFree(tempSpatial);
         alignedFree(halfImg);   alignedFree(quarterImg); alignedFree(patchBuf);
         alignedFree(patchBuf4); alignedFree(tokensCopy); alignedFree(tokensCopy4);
+        alignedFree(tileImgCrop); alignedFree(tileLat0Crop); alignedFree(tileLat1Crop);
+        alignedFree(tileX0Crop); alignedFree(tileX1Crop); alignedFree(tileX2Crop); alignedFree(tileXlCrop);
         latent0 = latent1 = x0Feat = x1Feat = x2Feat = tempSpatial = nullptr;
         halfImg = quarterImg = patchBuf = patchBuf4 = tokensCopy = tokensCopy4 = nullptr;
+        tileImgCrop = tileLat0Crop = tileLat1Crop = tileX0Crop = tileX1Crop = tileX2Crop = tileXlCrop = nullptr;
         allocated = false;
     }
 
@@ -445,6 +861,136 @@ void mergeCrop(float* __restrict out, int outW,
 std::string pathJoin(const std::string& dir, const std::string& name) {
     if (dir.empty() || dir.back() == '/') return dir + name;
     return dir + "/" + name;
+}
+
+long sharpDeviceMemAvailableKb() {
+    std::ifstream f("/proc/meminfo");
+    if (!f.good()) return -1;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.rfind("MemAvailable:", 0) == 0) {
+            long valueKb = -1;
+            if (sscanf(line.c_str() + strlen("MemAvailable:"), "%ld", &valueKb) == 1) {
+                return valueKb;
+            }
+        }
+    }
+    return -1;
+}
+
+namespace {
+std::mutex g_part4bTile00PreloadMu;
+std::unique_ptr<Part4bTile00ModuleBundle> g_part4bTile00PreloadReady;
+}  // namespace
+
+bool loadPart4bTile00ModuleBundle(const std::string& modelDir, Part4bTile00ModuleBundle& out) {
+    out = Part4bTile00ModuleBundle{};
+    out.modelDir = modelDir;
+
+    const auto pathOk = [](const std::string& p) {
+        std::ifstream f(p);
+        return f.good();
+    };
+
+    const std::string fineSplitStagePre = pathJoin(modelDir, "sharp_split_part4b_tile_00_stage_pre_vulkan.pte");
+    const std::string fineSplitDecoderHead = pathJoin(modelDir, "sharp_split_part4b_tile_00_decoder_head.pte");
+    const std::string splitStageA = pathJoin(modelDir, "sharp_split_part4b_tile_00_stage_a_vulkan.pte");
+    const std::string splitInitBase = pathJoin(modelDir, "sharp_split_part4b_tile_00_init_base.pte");
+    const std::string splitRawHeads = pathJoin(modelDir, "sharp_split_part4b_tile_00_raw_heads_vulkan.pte");
+    const std::string splitCompose = pathJoin(modelDir, "sharp_split_part4b_tile_00_compose.pte");
+    const bool hasFineSplitTile00 =
+            pathOk(fineSplitStagePre) &&
+            pathOk(fineSplitDecoderHead) &&
+            pathOk(splitInitBase) &&
+            pathOk(splitRawHeads) &&
+            pathOk(splitCompose);
+    const bool hasSplitTile00 =
+            pathOk(splitStageA) &&
+            pathOk(splitInitBase) &&
+            pathOk(splitRawHeads) &&
+            pathOk(splitCompose);
+    const std::string tileFullFp32 = "sharp_split_part4b_tile_full.pte";
+    const std::string tile00Fp32 = "sharp_split_part4b_tile_00.pte";
+    const auto chooseLegacyTileModel = [&]() -> std::string {
+        std::string candidate = pathJoin(modelDir, tile00Fp32);
+        std::ifstream f1(candidate);
+        if (f1.good()) {
+            f1.close();
+            return candidate;
+        }
+        f1.close();
+        candidate = pathJoin(modelDir, tileFullFp32);
+        std::ifstream f2(candidate);
+        if (f2.good()) {
+            f2.close();
+            return candidate;
+        }
+        f2.close();
+        return std::string();
+    };
+
+    if (hasFineSplitTile00) {
+        out.splitStagePreModule = std::make_unique<ETModule>(fineSplitStagePre, ETModule::LoadMode::Mmap);
+        out.splitDecoderHeadModule = std::make_unique<ETModule>(fineSplitDecoderHead, ETModule::LoadMode::Mmap);
+        out.splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
+        out.splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
+        out.splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
+        const bool loaded =
+                out.splitStagePreModule->load() == Error::Ok &&
+                out.splitDecoderHeadModule->load() == Error::Ok &&
+                out.splitInitBaseModule->load() == Error::Ok &&
+                out.splitRawHeadsModule->load() == Error::Ok &&
+                out.splitComposeModule->load() == Error::Ok;
+        if (loaded) {
+            out.useFineSplitTile00 = true;
+            return true;
+        }
+        out.splitStagePreModule.reset();
+        out.splitDecoderHeadModule.reset();
+        out.splitInitBaseModule.reset();
+        out.splitRawHeadsModule.reset();
+        out.splitComposeModule.reset();
+    }
+    if (hasSplitTile00) {
+        out.splitStageAModule = std::make_unique<ETModule>(splitStageA, ETModule::LoadMode::Mmap);
+        out.splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
+        out.splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
+        out.splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
+        const bool loaded =
+                out.splitStageAModule->load() == Error::Ok &&
+                out.splitInitBaseModule->load() == Error::Ok &&
+                out.splitRawHeadsModule->load() == Error::Ok &&
+                out.splitComposeModule->load() == Error::Ok;
+        if (loaded) {
+            out.useSplitTile00 = true;
+            return true;
+        }
+        out.splitStageAModule.reset();
+        out.splitInitBaseModule.reset();
+        out.splitRawHeadsModule.reset();
+        out.splitComposeModule.reset();
+    }
+    out.legacyModelPath = chooseLegacyTileModel();
+    if (out.legacyModelPath.empty()) {
+        return false;
+    }
+    out.legacyTileModule = std::make_unique<ETModule>(out.legacyModelPath, ETModule::LoadMode::Mmap);
+    if (out.legacyTileModule->load() != Error::Ok) {
+        out.legacyTileModule.reset();
+        out.legacyModelPath.clear();
+        return false;
+    }
+    return true;
+}
+
+void part4bTile00PreloadStart(const std::string& /*modelDir*/) {
+    // Disabled: ExecuTorch runtime is not thread-safe — async Module::load() races CPU/GPU forward() on the
+    // inference thread. Part4b tile_00 loads only on the main pipeline path (see runPart4bTiledFullPipeline).
+    (void)0;
+}
+
+void part4bTile00PreloadJoin() {
+    // No-op (preload disabled).
 }
 
 // ── Helper: BATCHED tiled Part4b (batch=2 or batch=4 static exports) ─────────
@@ -688,6 +1234,7 @@ bool runPart4bBatchedTiledPipeline(
     std::vector<float> batchImg(batch * imgCropSize);
     std::vector<float> batchLat0(batch * lat96CropSz), batchLat1(batch * lat96CropSz), batchX0(batch * lat96CropSz);
     std::vector<float> batchX1(batch * x1CropSz), batchX2(batch * x2CropSz), batchXl(batch * x2CropSz);
+    Part4bIntermediateScratch scratch;
 
     outGaussians.clear();
     int floatsPerTile = 0;
@@ -749,24 +1296,19 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 stage_pre end outputs=%zu",
                  b + 1, numBatches, stagePreResult->size());
 
-            OwnedTensor latent0Up;
-            OwnedTensor latent1Up;
-            OwnedTensor x0Up;
-            OwnedTensor x1Up;
-            OwnedTensor xFused;
-            if (!copyOutputTensor(*stagePreResult, 0, latent0Up, "fine split tile_b2 latent0_up") ||
-                !copyOutputTensor(*stagePreResult, 1, latent1Up, "fine split tile_b2 latent1_up") ||
-                !copyOutputTensor(*stagePreResult, 2, x0Up, "fine split tile_b2 x0_up") ||
-                !copyOutputTensor(*stagePreResult, 3, x1Up, "fine split tile_b2 x1_up") ||
-                !copyOutputTensor(*stagePreResult, 4, xFused, "fine split tile_b2 x_fused")) {
+            if (!copyOutputTensor(*stagePreResult, 0, scratch.latent0Up, "fine split tile_b2 latent0_up") ||
+                !copyOutputTensor(*stagePreResult, 1, scratch.latent1Up, "fine split tile_b2 latent1_up") ||
+                !copyOutputTensor(*stagePreResult, 2, scratch.x0Up, "fine split tile_b2 x0_up") ||
+                !copyOutputTensor(*stagePreResult, 3, scratch.x1Up, "fine split tile_b2 x1_up") ||
+                !copyOutputTensor(*stagePreResult, 4, scratch.xFused, "fine split tile_b2 x_fused")) {
                 return false;
             }
 
-            auto latent0UpTensor = from_blob(latent0Up.data.data(), latent0Up.sizes);
-            auto latent1UpTensor = from_blob(latent1Up.data.data(), latent1Up.sizes);
-            auto x0UpTensor = from_blob(x0Up.data.data(), x0Up.sizes);
-            auto x1UpTensor = from_blob(x1Up.data.data(), x1Up.sizes);
-            auto xFusedTensor = from_blob(xFused.data.data(), xFused.sizes);
+            auto latent0UpTensor = from_blob(scratch.latent0Up.data.data(), scratch.latent0Up.sizes);
+            auto latent1UpTensor = from_blob(scratch.latent1Up.data.data(), scratch.latent1Up.sizes);
+            auto x0UpTensor = from_blob(scratch.x0Up.data.data(), scratch.x0Up.sizes);
+            auto x1UpTensor = from_blob(scratch.x1Up.data.data(), scratch.x1Up.sizes);
+            auto xFusedTensor = from_blob(scratch.xFused.data.data(), scratch.xFused.sizes);
 
             std::vector<EValue> decoderHeadInputs;
             decoderHeadInputs.reserve(5);
@@ -788,20 +1330,31 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 decoder_head end outputs=%zu",
                  b + 1, numBatches, decoderHeadResult->size());
 
-            OwnedTensor disparity;
-            OwnedTensor decoderFeatures;
-            if (!copyOutputTensor(*decoderHeadResult, 0, disparity, "fine split tile_b2 disparity") ||
-                !copyOutputTensor(*decoderHeadResult, 1, decoderFeatures, "fine split tile_b2 decoder_features")) {
+            if (!copyOutputTensor(*decoderHeadResult, 0, scratch.disparity, "fine split tile_b2 disparity") ||
+                !copyOutputTensor(*decoderHeadResult, 1, scratch.decoderFeatures, "fine split tile_b2 decoder_features")) {
                 return false;
             }
 
-            auto disparityTensor = from_blob(disparity.data.data(), disparity.sizes);
+            // Convert raw disparity → monodepth (= disparity_factor / disparity).
+            // The exported Part4bTileInitBasePortable passes its input directly to
+            // init_model which expects monodepth (metric depth), not raw disparity.
+            // disparity_factor is 1.0 (baked in export), so monodepth = 1/disparity.
+            for (size_t k = 0; k < scratch.disparity.data.size(); ++k) {
+                float v = scratch.disparity.data[k];
+                v = std::clamp(v, 1e-4f, 1e4f);
+                scratch.disparity.data[k] = 1.0f / v;
+            }
+            for (int i = 0; i < batch; ++i) {
+                const int t = b * batch + i;
+                stitchMonodepthTile(scratch.disparity, i, t / GRID, t % GRID, GRID, "fine split tile_b2 disparity");
+            }
+            auto disparityTensor = from_blob(scratch.disparity.data.data(), scratch.disparity.sizes);
             std::vector<EValue> initInputs;
             initInputs.reserve(2);
             initInputs.emplace_back(*imgT);
             initInputs.emplace_back(*disparityTensor);
 
-            LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 init_base begin",
+            LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 init_base begin (disparity→monodepth applied)",
                  b + 1, numBatches);
             auto initResult = runForwardWithHeartbeat(
                     [&]() { return splitInitBaseModule->forward(initInputs); },
@@ -813,13 +1366,12 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 init_base end outputs=%zu",
                  b + 1, numBatches, initResult->size());
 
-            OwnedTensor featureInput;
-            if (!copyOutputTensor(*initResult, 0, featureInput, "fine split tile_b2 feature_input")) {
+            if (!copyOutputTensor(*initResult, 0, scratch.featureInput, "fine split tile_b2 feature_input")) {
                 return false;
             }
 
-            auto featureInputTensor = from_blob(featureInput.data.data(), featureInput.sizes);
-            auto decoderFeaturesTensor = from_blob(decoderFeatures.data.data(), decoderFeatures.sizes);
+            auto featureInputTensor = from_blob(scratch.featureInput.data.data(), scratch.featureInput.sizes);
+            auto decoderFeaturesTensor = from_blob(scratch.decoderFeatures.data.data(), scratch.decoderFeatures.sizes);
 
             std::vector<EValue> rawHeadInputs;
             rawHeadInputs.reserve(7);
@@ -843,39 +1395,29 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d fine split tile_b2 raw_heads end outputs=%zu",
                  b + 1, numBatches, rawHeadResult->size());
 
-            OwnedTensor geometryRaw;
-            OwnedTensor textureRaw;
-            OwnedTensor meanXNdc;
-            OwnedTensor meanYNdc;
-            OwnedTensor meanInverseZNdc;
-            OwnedTensor scales;
-            OwnedTensor quaternions;
-            OwnedTensor colors;
-            OwnedTensor opacities;
-            OwnedTensor globalScale;
-            if (!copyOutputTensor(*rawHeadResult, 0, geometryRaw, "fine split tile_b2 geometry_raw") ||
-                !copyOutputTensor(*rawHeadResult, 1, textureRaw, "fine split tile_b2 texture_raw") ||
-                !copyOutputTensor(*initResult, 1, meanXNdc, "fine split tile_b2 mean_x_ndc") ||
-                !copyOutputTensor(*initResult, 2, meanYNdc, "fine split tile_b2 mean_y_ndc") ||
-                !copyOutputTensor(*initResult, 3, meanInverseZNdc, "fine split tile_b2 mean_inverse_z_ndc") ||
-                !copyOutputTensor(*initResult, 4, scales, "fine split tile_b2 scales") ||
-                !copyOutputTensor(*initResult, 5, quaternions, "fine split tile_b2 quaternions") ||
-                !copyOutputTensor(*initResult, 6, colors, "fine split tile_b2 colors") ||
-                !copyOutputTensor(*initResult, 7, opacities, "fine split tile_b2 opacities") ||
-                !copyOutputTensor(*initResult, 8, globalScale, "fine split tile_b2 global_scale")) {
+            if (!copyOutputTensor(*rawHeadResult, 0, scratch.geometryRaw, "fine split tile_b2 geometry_raw") ||
+                !copyOutputTensor(*rawHeadResult, 1, scratch.textureRaw, "fine split tile_b2 texture_raw") ||
+                !copyOutputTensor(*initResult, 1, scratch.meanXNdc, "fine split tile_b2 mean_x_ndc") ||
+                !copyOutputTensor(*initResult, 2, scratch.meanYNdc, "fine split tile_b2 mean_y_ndc") ||
+                !copyOutputTensor(*initResult, 3, scratch.meanInverseZNdc, "fine split tile_b2 mean_inverse_z_ndc") ||
+                !copyOutputTensor(*initResult, 4, scratch.scales, "fine split tile_b2 scales") ||
+                !copyOutputTensor(*initResult, 5, scratch.quaternions, "fine split tile_b2 quaternions") ||
+                !copyOutputTensor(*initResult, 6, scratch.colors, "fine split tile_b2 colors") ||
+                !copyOutputTensor(*initResult, 7, scratch.opacities, "fine split tile_b2 opacities") ||
+                !copyOutputTensor(*initResult, 8, scratch.globalScale, "fine split tile_b2 global_scale")) {
                 return false;
             }
 
-            auto geometryRawTensor = from_blob(geometryRaw.data.data(), geometryRaw.sizes);
-            auto textureRawTensor = from_blob(textureRaw.data.data(), textureRaw.sizes);
-            auto meanXNdcTensor = from_blob(meanXNdc.data.data(), meanXNdc.sizes);
-            auto meanYNdcTensor = from_blob(meanYNdc.data.data(), meanYNdc.sizes);
-            auto meanInverseZNdcTensor = from_blob(meanInverseZNdc.data.data(), meanInverseZNdc.sizes);
-            auto scalesTensor = from_blob(scales.data.data(), scales.sizes);
-            auto quaternionsTensor = from_blob(quaternions.data.data(), quaternions.sizes);
-            auto colorsTensor = from_blob(colors.data.data(), colors.sizes);
-            auto opacitiesTensor = from_blob(opacities.data.data(), opacities.sizes);
-            auto globalScaleTensor = from_blob(globalScale.data.data(), globalScale.sizes);
+            auto geometryRawTensor = from_blob(scratch.geometryRaw.data.data(), scratch.geometryRaw.sizes);
+            auto textureRawTensor = from_blob(scratch.textureRaw.data.data(), scratch.textureRaw.sizes);
+            auto meanXNdcTensor = from_blob(scratch.meanXNdc.data.data(), scratch.meanXNdc.sizes);
+            auto meanYNdcTensor = from_blob(scratch.meanYNdc.data.data(), scratch.meanYNdc.sizes);
+            auto meanInverseZNdcTensor = from_blob(scratch.meanInverseZNdc.data.data(), scratch.meanInverseZNdc.sizes);
+            auto scalesTensor = from_blob(scratch.scales.data.data(), scratch.scales.sizes);
+            auto quaternionsTensor = from_blob(scratch.quaternions.data.data(), scratch.quaternions.sizes);
+            auto colorsTensor = from_blob(scratch.colors.data.data(), scratch.colors.sizes);
+            auto opacitiesTensor = from_blob(scratch.opacities.data.data(), scratch.opacities.sizes);
+            auto globalScaleTensor = from_blob(scratch.globalScale.data.data(), scratch.globalScale.sizes);
 
             std::vector<EValue> composeInputs;
             composeInputs.reserve(10);
@@ -928,17 +1470,24 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d split tile_b2 stage_a end outputs=%zu",
                  b + 1, numBatches, stageAResult->size());
 
-            OwnedTensor disparity;
-            if (!copyOutputTensor(*stageAResult, 0, disparity, "split tile_b2 disparity")) {
+            if (!copyOutputTensor(*stageAResult, 0, scratch.disparity, "split tile_b2 disparity")) {
                 return false;
             }
-            auto disparityTensor = from_blob(disparity.data.data(), disparity.sizes);
+            for (size_t k = 0; k < scratch.disparity.data.size(); ++k) {
+                float v = std::clamp(scratch.disparity.data[k], 1e-4f, 1e4f);
+                scratch.disparity.data[k] = 1.0f / v;
+            }
+            for (int i = 0; i < batch; ++i) {
+                const int t = b * batch + i;
+                stitchMonodepthTile(scratch.disparity, i, t / GRID, t % GRID, GRID, "split tile_b2 disparity");
+            }
+            auto disparityTensor = from_blob(scratch.disparity.data.data(), scratch.disparity.sizes);
             std::vector<EValue> initInputs;
             initInputs.reserve(2);
             initInputs.emplace_back(*imgT);
             initInputs.emplace_back(*disparityTensor);
 
-            LOGD("runPart4bBatchedTiledPipeline: batch %d/%d split tile_b2 init_base begin",
+            LOGD("runPart4bBatchedTiledPipeline: batch %d/%d split tile_b2 init_base begin (disparity→monodepth applied)",
                  b + 1, numBatches);
             auto initResult = runForwardWithHeartbeat(
                     [&]() { return splitInitBaseModule->forward(initInputs); },
@@ -950,30 +1499,23 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d split tile_b2 init_base end outputs=%zu",
                  b + 1, numBatches, initResult->size());
 
-            OwnedTensor featureInput;
-            OwnedTensor latent0Up;
-            OwnedTensor latent1Up;
-            OwnedTensor x0Up;
-            OwnedTensor x1Up;
-            OwnedTensor xFused;
-            OwnedTensor decoderFeatures;
-            if (!copyOutputTensor(*initResult, 0, featureInput, "split tile_b2 feature_input") ||
-                !copyOutputTensor(*stageAResult, 1, latent0Up, "split tile_b2 latent0_up") ||
-                !copyOutputTensor(*stageAResult, 2, latent1Up, "split tile_b2 latent1_up") ||
-                !copyOutputTensor(*stageAResult, 3, x0Up, "split tile_b2 x0_up") ||
-                !copyOutputTensor(*stageAResult, 4, x1Up, "split tile_b2 x1_up") ||
-                !copyOutputTensor(*stageAResult, 5, xFused, "split tile_b2 x_fused") ||
-                !copyOutputTensor(*stageAResult, 6, decoderFeatures, "split tile_b2 decoder_features")) {
+            if (!copyOutputTensor(*initResult, 0, scratch.featureInput, "split tile_b2 feature_input") ||
+                !copyOutputTensor(*stageAResult, 1, scratch.latent0Up, "split tile_b2 latent0_up") ||
+                !copyOutputTensor(*stageAResult, 2, scratch.latent1Up, "split tile_b2 latent1_up") ||
+                !copyOutputTensor(*stageAResult, 3, scratch.x0Up, "split tile_b2 x0_up") ||
+                !copyOutputTensor(*stageAResult, 4, scratch.x1Up, "split tile_b2 x1_up") ||
+                !copyOutputTensor(*stageAResult, 5, scratch.xFused, "split tile_b2 x_fused") ||
+                !copyOutputTensor(*stageAResult, 6, scratch.decoderFeatures, "split tile_b2 decoder_features")) {
                 return false;
             }
 
-            auto featureInputTensor = from_blob(featureInput.data.data(), featureInput.sizes);
-            auto latent0UpTensor = from_blob(latent0Up.data.data(), latent0Up.sizes);
-            auto latent1UpTensor = from_blob(latent1Up.data.data(), latent1Up.sizes);
-            auto x0UpTensor = from_blob(x0Up.data.data(), x0Up.sizes);
-            auto x1UpTensor = from_blob(x1Up.data.data(), x1Up.sizes);
-            auto xFusedTensor = from_blob(xFused.data.data(), xFused.sizes);
-            auto decoderFeaturesTensor = from_blob(decoderFeatures.data.data(), decoderFeatures.sizes);
+            auto featureInputTensor = from_blob(scratch.featureInput.data.data(), scratch.featureInput.sizes);
+            auto latent0UpTensor = from_blob(scratch.latent0Up.data.data(), scratch.latent0Up.sizes);
+            auto latent1UpTensor = from_blob(scratch.latent1Up.data.data(), scratch.latent1Up.sizes);
+            auto x0UpTensor = from_blob(scratch.x0Up.data.data(), scratch.x0Up.sizes);
+            auto x1UpTensor = from_blob(scratch.x1Up.data.data(), scratch.x1Up.sizes);
+            auto xFusedTensor = from_blob(scratch.xFused.data.data(), scratch.xFused.sizes);
+            auto decoderFeaturesTensor = from_blob(scratch.decoderFeatures.data.data(), scratch.decoderFeatures.sizes);
 
             std::vector<EValue> rawHeadInputs;
             rawHeadInputs.reserve(7);
@@ -997,39 +1539,29 @@ bool runPart4bBatchedTiledPipeline(
             LOGD("runPart4bBatchedTiledPipeline: batch %d/%d split tile_b2 raw_heads end outputs=%zu",
                  b + 1, numBatches, rawHeadResult->size());
 
-            OwnedTensor geometryRaw;
-            OwnedTensor textureRaw;
-            OwnedTensor meanXNdc;
-            OwnedTensor meanYNdc;
-            OwnedTensor meanInverseZNdc;
-            OwnedTensor scales;
-            OwnedTensor quaternions;
-            OwnedTensor colors;
-            OwnedTensor opacities;
-            OwnedTensor globalScale;
-            if (!copyOutputTensor(*rawHeadResult, 0, geometryRaw, "split tile_b2 geometry_raw") ||
-                !copyOutputTensor(*rawHeadResult, 1, textureRaw, "split tile_b2 texture_raw") ||
-                !copyOutputTensor(*initResult, 1, meanXNdc, "split tile_b2 mean_x_ndc") ||
-                !copyOutputTensor(*initResult, 2, meanYNdc, "split tile_b2 mean_y_ndc") ||
-                !copyOutputTensor(*initResult, 3, meanInverseZNdc, "split tile_b2 mean_inverse_z_ndc") ||
-                !copyOutputTensor(*initResult, 4, scales, "split tile_b2 scales") ||
-                !copyOutputTensor(*initResult, 5, quaternions, "split tile_b2 quaternions") ||
-                !copyOutputTensor(*initResult, 6, colors, "split tile_b2 colors") ||
-                !copyOutputTensor(*initResult, 7, opacities, "split tile_b2 opacities") ||
-                !copyOutputTensor(*initResult, 8, globalScale, "split tile_b2 global_scale")) {
+            if (!copyOutputTensor(*rawHeadResult, 0, scratch.geometryRaw, "split tile_b2 geometry_raw") ||
+                !copyOutputTensor(*rawHeadResult, 1, scratch.textureRaw, "split tile_b2 texture_raw") ||
+                !copyOutputTensor(*initResult, 1, scratch.meanXNdc, "split tile_b2 mean_x_ndc") ||
+                !copyOutputTensor(*initResult, 2, scratch.meanYNdc, "split tile_b2 mean_y_ndc") ||
+                !copyOutputTensor(*initResult, 3, scratch.meanInverseZNdc, "split tile_b2 mean_inverse_z_ndc") ||
+                !copyOutputTensor(*initResult, 4, scratch.scales, "split tile_b2 scales") ||
+                !copyOutputTensor(*initResult, 5, scratch.quaternions, "split tile_b2 quaternions") ||
+                !copyOutputTensor(*initResult, 6, scratch.colors, "split tile_b2 colors") ||
+                !copyOutputTensor(*initResult, 7, scratch.opacities, "split tile_b2 opacities") ||
+                !copyOutputTensor(*initResult, 8, scratch.globalScale, "split tile_b2 global_scale")) {
                 return false;
             }
 
-            auto geometryRawTensor = from_blob(geometryRaw.data.data(), geometryRaw.sizes);
-            auto textureRawTensor = from_blob(textureRaw.data.data(), textureRaw.sizes);
-            auto meanXNdcTensor = from_blob(meanXNdc.data.data(), meanXNdc.sizes);
-            auto meanYNdcTensor = from_blob(meanYNdc.data.data(), meanYNdc.sizes);
-            auto meanInverseZNdcTensor = from_blob(meanInverseZNdc.data.data(), meanInverseZNdc.sizes);
-            auto scalesTensor = from_blob(scales.data.data(), scales.sizes);
-            auto quaternionsTensor = from_blob(quaternions.data.data(), quaternions.sizes);
-            auto colorsTensor = from_blob(colors.data.data(), colors.sizes);
-            auto opacitiesTensor = from_blob(opacities.data.data(), opacities.sizes);
-            auto globalScaleTensor = from_blob(globalScale.data.data(), globalScale.sizes);
+            auto geometryRawTensor = from_blob(scratch.geometryRaw.data.data(), scratch.geometryRaw.sizes);
+            auto textureRawTensor = from_blob(scratch.textureRaw.data.data(), scratch.textureRaw.sizes);
+            auto meanXNdcTensor = from_blob(scratch.meanXNdc.data.data(), scratch.meanXNdc.sizes);
+            auto meanYNdcTensor = from_blob(scratch.meanYNdc.data.data(), scratch.meanYNdc.sizes);
+            auto meanInverseZNdcTensor = from_blob(scratch.meanInverseZNdc.data.data(), scratch.meanInverseZNdc.sizes);
+            auto scalesTensor = from_blob(scratch.scales.data.data(), scratch.scales.sizes);
+            auto quaternionsTensor = from_blob(scratch.quaternions.data.data(), scratch.quaternions.sizes);
+            auto colorsTensor = from_blob(scratch.colors.data.data(), scratch.colors.sizes);
+            auto opacitiesTensor = from_blob(scratch.opacities.data.data(), scratch.opacities.sizes);
+            auto globalScaleTensor = from_blob(scratch.globalScale.data.data(), scratch.globalScale.sizes);
 
             std::vector<EValue> composeInputs;
             composeInputs.reserve(10);
@@ -1269,73 +1801,103 @@ bool runPart4bTiledFullPipeline(
     bool useSplitTile00 = false;
 
     logProcessMemory("Part4b tiled seq: before module load");
-    if (hasFineSplitTile00) {
-        splitStagePreModule = std::make_unique<ETModule>(fineSplitStagePre, ETModule::LoadMode::Mmap);
-        splitDecoderHeadModule = std::make_unique<ETModule>(fineSplitDecoderHead, ETModule::LoadMode::Mmap);
-        splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
-        splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
-        splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
-        const bool loaded =
-                splitStagePreModule->load() == Error::Ok &&
-                splitDecoderHeadModule->load() == Error::Ok &&
-                splitInitBaseModule->load() == Error::Ok &&
-                splitRawHeadsModule->load() == Error::Ok &&
-                splitComposeModule->load() == Error::Ok;
-        if (loaded) {
-            useFineSplitTile00 = true;
-            LOGD("runPart4bTiledFullPipeline: loaded fine split tile_00 modules");
-        } else {
-            LOGW("runPart4bTiledFullPipeline: fine split tile_00 load failed, falling back to split tile_00 / legacy tile path");
-            splitStagePreModule.reset();
-            splitDecoderHeadModule.reset();
-            splitInitBaseModule.reset();
-            splitRawHeadsModule.reset();
-            splitComposeModule.reset();
+    bool consumedPart4bPreload = false;
+    {
+        std::lock_guard<std::mutex> lock(g_part4bTile00PreloadMu);
+        if (g_part4bTile00PreloadReady && g_part4bTile00PreloadReady->modelDir == modelDir) {
+            splitStagePreModule = std::move(g_part4bTile00PreloadReady->splitStagePreModule);
+            splitDecoderHeadModule = std::move(g_part4bTile00PreloadReady->splitDecoderHeadModule);
+            splitStageAModule = std::move(g_part4bTile00PreloadReady->splitStageAModule);
+            splitInitBaseModule = std::move(g_part4bTile00PreloadReady->splitInitBaseModule);
+            splitRawHeadsModule = std::move(g_part4bTile00PreloadReady->splitRawHeadsModule);
+            splitComposeModule = std::move(g_part4bTile00PreloadReady->splitComposeModule);
+            module = std::move(g_part4bTile00PreloadReady->legacyTileModule);
+            modelPath = std::move(g_part4bTile00PreloadReady->legacyModelPath);
+            useFineSplitTile00 = g_part4bTile00PreloadReady->useFineSplitTile00;
+            useSplitTile00 = g_part4bTile00PreloadReady->useSplitTile00;
+            g_part4bTile00PreloadReady.reset();
+            consumedPart4bPreload = true;
+            LOGD("runPart4bTiledFullPipeline: consumed async Part4b tile_00 preload");
         }
     }
-    if (!useFineSplitTile00 && hasSplitTile00) {
-        splitStageAModule = std::make_unique<ETModule>(splitStageA, ETModule::LoadMode::Mmap);
-        splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
-        splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
-        splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
-        const bool loaded =
-                splitStageAModule->load() == Error::Ok &&
-                splitInitBaseModule->load() == Error::Ok &&
-                splitRawHeadsModule->load() == Error::Ok &&
-                splitComposeModule->load() == Error::Ok;
-        if (loaded) {
-            useSplitTile00 = true;
-            LOGD("runPart4bTiledFullPipeline: loaded split tile_00 modules");
-        } else {
-            LOGW("runPart4bTiledFullPipeline: split tile_00 load failed, falling back to legacy tile path");
-            splitStageAModule.reset();
-            splitInitBaseModule.reset();
-            splitRawHeadsModule.reset();
-            splitComposeModule.reset();
-            modelPath = chooseLegacyTileModel();
-            if (modelPath.empty()) {
-                LOGE("runPart4bTiledFullPipeline: no legacy tile_00 / tile_full fallback available after split load failure");
+    if (!consumedPart4bPreload) {
+        if (hasFineSplitTile00) {
+            splitStagePreModule = std::make_unique<ETModule>(fineSplitStagePre, ETModule::LoadMode::Mmap);
+            splitDecoderHeadModule = std::make_unique<ETModule>(fineSplitDecoderHead, ETModule::LoadMode::Mmap);
+            splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
+            splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
+            splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
+            const bool loaded =
+                    splitStagePreModule->load() == Error::Ok &&
+                    splitDecoderHeadModule->load() == Error::Ok &&
+                    splitInitBaseModule->load() == Error::Ok &&
+                    splitRawHeadsModule->load() == Error::Ok &&
+                    splitComposeModule->load() == Error::Ok;
+            if (loaded) {
+                useFineSplitTile00 = true;
+                LOGD("runPart4bTiledFullPipeline: loaded fine split tile_00 modules");
+            } else {
+                LOGW("runPart4bTiledFullPipeline: fine split tile_00 load failed, falling back to split tile_00 / legacy tile path");
+                splitStagePreModule.reset();
+                splitDecoderHeadModule.reset();
+                splitInitBaseModule.reset();
+                splitRawHeadsModule.reset();
+                splitComposeModule.reset();
+            }
+        }
+        if (!useFineSplitTile00 && hasSplitTile00) {
+            splitStageAModule = std::make_unique<ETModule>(splitStageA, ETModule::LoadMode::Mmap);
+            splitInitBaseModule = std::make_unique<ETModule>(splitInitBase, ETModule::LoadMode::Mmap);
+            splitRawHeadsModule = std::make_unique<ETModule>(splitRawHeads, ETModule::LoadMode::Mmap);
+            splitComposeModule = std::make_unique<ETModule>(splitCompose, ETModule::LoadMode::Mmap);
+            const bool loaded =
+                    splitStageAModule->load() == Error::Ok &&
+                    splitInitBaseModule->load() == Error::Ok &&
+                    splitRawHeadsModule->load() == Error::Ok &&
+                    splitComposeModule->load() == Error::Ok;
+            if (loaded) {
+                useSplitTile00 = true;
+                LOGD("runPart4bTiledFullPipeline: loaded split tile_00 modules");
+            } else {
+                LOGW("runPart4bTiledFullPipeline: split tile_00 load failed, falling back to legacy tile path");
+                splitStageAModule.reset();
+                splitInitBaseModule.reset();
+                splitRawHeadsModule.reset();
+                splitComposeModule.reset();
+                modelPath = chooseLegacyTileModel();
+                if (modelPath.empty()) {
+                    LOGE("runPart4bTiledFullPipeline: no legacy tile_00 / tile_full fallback available after split load failure");
+                    return false;
+                }
+            }
+        }
+        if (!useFineSplitTile00 && !useSplitTile00) {
+            module = std::make_unique<ETModule>(modelPath, ETModule::LoadMode::Mmap);
+            if (module->load() != Error::Ok) {
+                LOGE("runPart4bTiledFullPipeline: failed to load tile model: %s", modelPath.c_str());
                 return false;
             }
         }
     }
-    if (!useFineSplitTile00 && !useSplitTile00) {
-        module = std::make_unique<ETModule>(modelPath, ETModule::LoadMode::Mmap);
-        if (module->load() != Error::Ok) {
-            LOGE("runPart4bTiledFullPipeline: failed to load tile model: %s", modelPath.c_str());
-            return false;
-        }
-    }
     logProcessMemory("Part4b tiled seq: after module load");
 
-    // Per-tile scratch buffers
-    const int imgCropSize  = imgC * imgTileH * imgTileW;
-    const int lat96CropSz  = 1024 * 24 * 24;
-    const int x1CropSz     = 1024 * 12 * 12;
-    const int x2CropSz     = 1024 * 6 * 6;
-    std::vector<float> imgCrop(imgCropSize);
-    std::vector<float> lat0Crop(lat96CropSz), lat1Crop(lat96CropSz), x0Crop(lat96CropSz);
-    std::vector<float> x1Crop(x1CropSz), x2Crop(x2CropSz), xlCrop(x2CropSz);
+    if (!g_workspace.allocateTileScratch()) {
+        LOGE("runPart4bTiledFullPipeline: tile scratch allocation failed");
+        return false;
+    }
+    struct TileScratchGuard {
+        ~TileScratchGuard() { g_workspace.releaseTileScratch(); }
+    } tileScratchGuard;
+
+    // Per-tile scratch buffers (pooled in workspace; released when this function returns)
+    float* imgCrop = g_workspace.tileImgCrop;
+    float* lat0Crop = g_workspace.tileLat0Crop;
+    float* lat1Crop = g_workspace.tileLat1Crop;
+    float* x0Crop = g_workspace.tileX0Crop;
+    float* x1Crop = g_workspace.tileX1Crop;
+    float* x2Crop = g_workspace.tileX2Crop;
+    float* xlCrop = g_workspace.tileXlCrop;
+    Part4bIntermediateScratch scratch;
 
     outGaussians.clear();
     int floatsPerTile = 0;
@@ -1346,21 +1908,21 @@ bool runPart4bTiledFullPipeline(
         const int tileCol = t % GRID;
         auto tileStart = std::chrono::steady_clock::now();
 
-        cropTileNCHWLocal(imageData, imgC, imgH, imgW, tileRow, tileCol, imgCrop.data());
-        cropTileNCHWLocal(latent0, 1024, lat96H, lat96W, tileRow, tileCol, lat0Crop.data());
-        cropTileNCHWLocal(latent1, 1024, lat96H, lat96W, tileRow, tileCol, lat1Crop.data());
-        cropTileNCHWLocal(x0Feat,  1024, lat96H, lat96W, tileRow, tileCol, x0Crop.data());
-        cropTileNCHWLocal(x1Feat,  1024, x1H,    x1W,    tileRow, tileCol, x1Crop.data());
-        cropTileNCHWLocal(x2Feat,  1024, x2H,    x2W,    tileRow, tileCol, x2Crop.data());
-        cropTileNCHWLocal(xLowres.data(), 1024, xLowH, xLowW, tileRow, tileCol, xlCrop.data());
+        cropTileNCHWLocal(imageData, imgC, imgH, imgW, tileRow, tileCol, imgCrop);
+        cropTileNCHWLocal(latent0, 1024, lat96H, lat96W, tileRow, tileCol, lat0Crop);
+        cropTileNCHWLocal(latent1, 1024, lat96H, lat96W, tileRow, tileCol, lat1Crop);
+        cropTileNCHWLocal(x0Feat,  1024, lat96H, lat96W, tileRow, tileCol, x0Crop);
+        cropTileNCHWLocal(x1Feat,  1024, x1H,    x1W,    tileRow, tileCol, x1Crop);
+        cropTileNCHWLocal(x2Feat,  1024, x2H,    x2W,    tileRow, tileCol, x2Crop);
+        cropTileNCHWLocal(xLowres.data(), 1024, xLowH, xLowW, tileRow, tileCol, xlCrop);
 
-        auto imgTensor  = from_blob(imgCrop.data(),  {1, 3, imgTileH, imgTileW});
-        auto lat0Tensor = from_blob(lat0Crop.data(), {1, 1024, 24, 24});
-        auto lat1Tensor = from_blob(lat1Crop.data(), {1, 1024, 24, 24});
-        auto x0Tensor   = from_blob(x0Crop.data(),   {1, 1024, 24, 24});
-        auto x1Tensor   = from_blob(x1Crop.data(),   {1, 1024, 12, 12});
-        auto x2Tensor   = from_blob(x2Crop.data(),   {1, 1024, 6, 6});
-        auto xlTensor   = from_blob(xlCrop.data(),   {1, 1024, 6, 6});
+        auto imgTensor  = from_blob(imgCrop,  {1, 3, imgTileH, imgTileW});
+        auto lat0Tensor = from_blob(lat0Crop, {1, 1024, 24, 24});
+        auto lat1Tensor = from_blob(lat1Crop, {1, 1024, 24, 24});
+        auto x0Tensor   = from_blob(x0Crop,   {1, 1024, 24, 24});
+        auto x1Tensor   = from_blob(x1Crop,   {1, 1024, 12, 12});
+        auto x2Tensor   = from_blob(x2Crop,   {1, 1024, 6, 6});
+        auto xlTensor   = from_blob(xlCrop,   {1, 1024, 6, 6});
 
         int numFloats = 0;
         int numGaussians = 0;
@@ -1389,32 +1951,27 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor latent0Up;
-            OwnedTensor latent1Up;
-            OwnedTensor x0Up;
-            OwnedTensor x1Up;
-            OwnedTensor xFused;
-            if (!copyOutputTensor(*stagePreResult, 0, latent0Up, "fine split tile_00 latent0_up") ||
-                !copyOutputTensor(*stagePreResult, 1, latent1Up, "fine split tile_00 latent1_up") ||
-                !copyOutputTensor(*stagePreResult, 2, x0Up, "fine split tile_00 x0_up") ||
-                !copyOutputTensor(*stagePreResult, 3, x1Up, "fine split tile_00 x1_up") ||
-                !copyOutputTensor(*stagePreResult, 4, xFused, "fine split tile_00 x_fused")) {
+            if (!copyOutputTensor(*stagePreResult, 0, scratch.latent0Up, "fine split tile_00 latent0_up") ||
+                !copyOutputTensor(*stagePreResult, 1, scratch.latent1Up, "fine split tile_00 latent1_up") ||
+                !copyOutputTensor(*stagePreResult, 2, scratch.x0Up, "fine split tile_00 x0_up") ||
+                !copyOutputTensor(*stagePreResult, 3, scratch.x1Up, "fine split tile_00 x1_up") ||
+                !copyOutputTensor(*stagePreResult, 4, scratch.xFused, "fine split tile_00 x_fused")) {
                 return false;
             }
-            if (!validateOwnedTensorShape(latent0Up, {1, 256, 192, 192}, "fine split tile_00 latent0_up") ||
-                !validateOwnedTensorShape(latent1Up, {1, 256, 96, 96}, "fine split tile_00 latent1_up") ||
-                !validateOwnedTensorShape(x0Up, {1, 512, 48, 48}, "fine split tile_00 x0_up") ||
-                !validateOwnedTensorShape(x1Up, {1, 1024, 24, 24}, "fine split tile_00 x1_up") ||
-                !validateOwnedTensorShape(xFused, {1, 1024, 12, 12}, "fine split tile_00 x_fused")) {
+            if (!validateOwnedTensorShape(scratch.latent0Up, {1, 256, 192, 192}, "fine split tile_00 latent0_up") ||
+                !validateOwnedTensorShape(scratch.latent1Up, {1, 256, 96, 96}, "fine split tile_00 latent1_up") ||
+                !validateOwnedTensorShape(scratch.x0Up, {1, 512, 48, 48}, "fine split tile_00 x0_up") ||
+                !validateOwnedTensorShape(scratch.x1Up, {1, 1024, 24, 24}, "fine split tile_00 x1_up") ||
+                !validateOwnedTensorShape(scratch.xFused, {1, 1024, 12, 12}, "fine split tile_00 x_fused")) {
                 LOGE("runPart4bTiledFullPipeline: fine split tile_00 stage_pre produced unexpected shapes on tile %d", t);
                 return false;
             }
 
-            auto latent0UpTensor = from_blob(latent0Up.data.data(), latent0Up.sizes);
-            auto latent1UpTensor = from_blob(latent1Up.data.data(), latent1Up.sizes);
-            auto x0UpTensor = from_blob(x0Up.data.data(), x0Up.sizes);
-            auto x1UpTensor = from_blob(x1Up.data.data(), x1Up.sizes);
-            auto xFusedTensor = from_blob(xFused.data.data(), xFused.sizes);
+            auto latent0UpTensor = from_blob(scratch.latent0Up.data.data(), scratch.latent0Up.sizes);
+            auto latent1UpTensor = from_blob(scratch.latent1Up.data.data(), scratch.latent1Up.sizes);
+            auto x0UpTensor = from_blob(scratch.x0Up.data.data(), scratch.x0Up.sizes);
+            auto x1UpTensor = from_blob(scratch.x1Up.data.data(), scratch.x1Up.sizes);
+            auto xFusedTensor = from_blob(scratch.xFused.data.data(), scratch.xFused.sizes);
 
             std::vector<EValue> decoderHeadInputs;
             decoderHeadInputs.reserve(5);
@@ -1433,25 +1990,28 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor disparity;
-            OwnedTensor decoderFeatures;
-            if (!copyOutputTensor(*decoderHeadResult, 0, disparity, "fine split tile_00 disparity") ||
-                !copyOutputTensor(*decoderHeadResult, 1, decoderFeatures, "fine split tile_00 decoder_features")) {
+            if (!copyOutputTensor(*decoderHeadResult, 0, scratch.disparity, "fine split tile_00 disparity") ||
+                !copyOutputTensor(*decoderHeadResult, 1, scratch.decoderFeatures, "fine split tile_00 decoder_features")) {
                 return false;
             }
-            if (!validateOwnedTensorShape(disparity, {1, 2, 384, 384}, "fine split tile_00 disparity") ||
-                !validateOwnedTensorShape(decoderFeatures, {1, 256, 192, 192}, "fine split tile_00 decoder_features")) {
+            if (!validateOwnedTensorShape(scratch.disparity, {1, 2, 384, 384}, "fine split tile_00 disparity") ||
+                !validateOwnedTensorShape(scratch.decoderFeatures, {1, 256, 192, 192}, "fine split tile_00 decoder_features")) {
                 LOGE("runPart4bTiledFullPipeline: fine split tile_00 decoder_head produced unexpected shapes on tile %d", t);
                 return false;
             }
 
-            auto disparityTensor = from_blob(disparity.data.data(), disparity.sizes);
+            for (size_t k = 0; k < scratch.disparity.data.size(); ++k) {
+                float v = std::clamp(scratch.disparity.data[k], 1e-4f, 1e4f);
+                scratch.disparity.data[k] = 1.0f / v;
+            }
+            stitchMonodepthTile(scratch.disparity, 0, tileRow, tileCol, GRID, "fine split tile_00 disparity");
+            auto disparityTensor = from_blob(scratch.disparity.data.data(), scratch.disparity.sizes);
             std::vector<EValue> initInputs;
             initInputs.reserve(2);
             initInputs.emplace_back(*imgTensor);
             initInputs.emplace_back(*disparityTensor);
 
-            LOGD("%s init_base begin", tileLabel.c_str());
+            LOGD("%s init_base begin (disparity→monodepth applied)", tileLabel.c_str());
             auto initResult = runForwardWithHeartbeat(
                     [&]() { return splitInitBaseModule->forward(initInputs); },
                     tileLabel + " init_base");
@@ -1460,17 +2020,16 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor featureInput;
-            if (!copyOutputTensor(*initResult, 0, featureInput, "fine split tile_00 feature_input")) {
+            if (!copyOutputTensor(*initResult, 0, scratch.featureInput, "fine split tile_00 feature_input")) {
                 return false;
             }
-            if (!validateOwnedTensorShape(featureInput, {1, 5, 384, 384}, "fine split tile_00 feature_input")) {
+            if (!validateOwnedTensorShape(scratch.featureInput, {1, 5, 384, 384}, "fine split tile_00 feature_input")) {
                 LOGE("runPart4bTiledFullPipeline: fine split tile_00 init_base produced unexpected feature_input shape on tile %d", t);
                 return false;
             }
 
-            auto featureInputTensor = from_blob(featureInput.data.data(), featureInput.sizes);
-            auto decoderFeaturesTensor = from_blob(decoderFeatures.data.data(), decoderFeatures.sizes);
+            auto featureInputTensor = from_blob(scratch.featureInput.data.data(), scratch.featureInput.sizes);
+            auto decoderFeaturesTensor = from_blob(scratch.decoderFeatures.data.data(), scratch.decoderFeatures.sizes);
 
             std::vector<EValue> rawHeadInputs;
             rawHeadInputs.reserve(7);
@@ -1491,44 +2050,34 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor geometryRaw;
-            OwnedTensor textureRaw;
-            OwnedTensor meanXNdc;
-            OwnedTensor meanYNdc;
-            OwnedTensor meanInverseZNdc;
-            OwnedTensor scales;
-            OwnedTensor quaternions;
-            OwnedTensor colors;
-            OwnedTensor opacities;
-            OwnedTensor globalScale;
-            if (!copyOutputTensor(*rawHeadResult, 0, geometryRaw, "fine split tile_00 geometry_raw") ||
-                !copyOutputTensor(*rawHeadResult, 1, textureRaw, "fine split tile_00 texture_raw") ||
-                !copyOutputTensor(*initResult, 1, meanXNdc, "fine split tile_00 mean_x_ndc") ||
-                !copyOutputTensor(*initResult, 2, meanYNdc, "fine split tile_00 mean_y_ndc") ||
-                !copyOutputTensor(*initResult, 3, meanInverseZNdc, "fine split tile_00 mean_inverse_z_ndc") ||
-                !copyOutputTensor(*initResult, 4, scales, "fine split tile_00 scales") ||
-                !copyOutputTensor(*initResult, 5, quaternions, "fine split tile_00 quaternions") ||
-                !copyOutputTensor(*initResult, 6, colors, "fine split tile_00 colors") ||
-                !copyOutputTensor(*initResult, 7, opacities, "fine split tile_00 opacities") ||
-                !copyOutputTensor(*initResult, 8, globalScale, "fine split tile_00 global_scale")) {
+            if (!copyOutputTensor(*rawHeadResult, 0, scratch.geometryRaw, "fine split tile_00 geometry_raw") ||
+                !copyOutputTensor(*rawHeadResult, 1, scratch.textureRaw, "fine split tile_00 texture_raw") ||
+                !copyOutputTensor(*initResult, 1, scratch.meanXNdc, "fine split tile_00 mean_x_ndc") ||
+                !copyOutputTensor(*initResult, 2, scratch.meanYNdc, "fine split tile_00 mean_y_ndc") ||
+                !copyOutputTensor(*initResult, 3, scratch.meanInverseZNdc, "fine split tile_00 mean_inverse_z_ndc") ||
+                !copyOutputTensor(*initResult, 4, scratch.scales, "fine split tile_00 scales") ||
+                !copyOutputTensor(*initResult, 5, scratch.quaternions, "fine split tile_00 quaternions") ||
+                !copyOutputTensor(*initResult, 6, scratch.colors, "fine split tile_00 colors") ||
+                !copyOutputTensor(*initResult, 7, scratch.opacities, "fine split tile_00 opacities") ||
+                !copyOutputTensor(*initResult, 8, scratch.globalScale, "fine split tile_00 global_scale")) {
                 return false;
             }
-            if (!validateOwnedTensorShape(geometryRaw, {1, 6, 192, 192}, "fine split tile_00 geometry_raw") ||
-                !validateOwnedTensorShape(textureRaw, {1, 22, 192, 192}, "fine split tile_00 texture_raw")) {
+            if (!validateOwnedTensorShape(scratch.geometryRaw, {1, 6, 192, 192}, "fine split tile_00 geometry_raw") ||
+                !validateOwnedTensorShape(scratch.textureRaw, {1, 22, 192, 192}, "fine split tile_00 texture_raw")) {
                 LOGE("runPart4bTiledFullPipeline: fine split tile_00 raw_heads produced unexpected shapes on tile %d", t);
                 return false;
             }
 
-            auto geometryRawTensor = from_blob(geometryRaw.data.data(), geometryRaw.sizes);
-            auto textureRawTensor = from_blob(textureRaw.data.data(), textureRaw.sizes);
-            auto meanXNdcTensor = from_blob(meanXNdc.data.data(), meanXNdc.sizes);
-            auto meanYNdcTensor = from_blob(meanYNdc.data.data(), meanYNdc.sizes);
-            auto meanInverseZNdcTensor = from_blob(meanInverseZNdc.data.data(), meanInverseZNdc.sizes);
-            auto scalesTensor = from_blob(scales.data.data(), scales.sizes);
-            auto quaternionsTensor = from_blob(quaternions.data.data(), quaternions.sizes);
-            auto colorsTensor = from_blob(colors.data.data(), colors.sizes);
-            auto opacitiesTensor = from_blob(opacities.data.data(), opacities.sizes);
-            auto globalScaleTensor = from_blob(globalScale.data.data(), globalScale.sizes);
+            auto geometryRawTensor = from_blob(scratch.geometryRaw.data.data(), scratch.geometryRaw.sizes);
+            auto textureRawTensor = from_blob(scratch.textureRaw.data.data(), scratch.textureRaw.sizes);
+            auto meanXNdcTensor = from_blob(scratch.meanXNdc.data.data(), scratch.meanXNdc.sizes);
+            auto meanYNdcTensor = from_blob(scratch.meanYNdc.data.data(), scratch.meanYNdc.sizes);
+            auto meanInverseZNdcTensor = from_blob(scratch.meanInverseZNdc.data.data(), scratch.meanInverseZNdc.sizes);
+            auto scalesTensor = from_blob(scratch.scales.data.data(), scratch.scales.sizes);
+            auto quaternionsTensor = from_blob(scratch.quaternions.data.data(), scratch.quaternions.sizes);
+            auto colorsTensor = from_blob(scratch.colors.data.data(), scratch.colors.sizes);
+            auto opacitiesTensor = from_blob(scratch.opacities.data.data(), scratch.opacities.sizes);
+            auto globalScaleTensor = from_blob(scratch.globalScale.data.data(), scratch.globalScale.sizes);
 
             std::vector<EValue> composeInputs;
             composeInputs.reserve(10);
@@ -1585,17 +2134,21 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor disparity;
-            if (!copyOutputTensor(*stageAResult, 0, disparity, "split tile_00 disparity")) {
+            if (!copyOutputTensor(*stageAResult, 0, scratch.disparity, "split tile_00 disparity")) {
                 return false;
             }
-            auto disparityTensor = from_blob(disparity.data.data(), disparity.sizes);
+            for (size_t k = 0; k < scratch.disparity.data.size(); ++k) {
+                float v = std::clamp(scratch.disparity.data[k], 1e-4f, 1e4f);
+                scratch.disparity.data[k] = 1.0f / v;
+            }
+            stitchMonodepthTile(scratch.disparity, 0, tileRow, tileCol, GRID, "split tile_00 disparity");
+            auto disparityTensor = from_blob(scratch.disparity.data.data(), scratch.disparity.sizes);
             std::vector<EValue> initInputs;
             initInputs.reserve(2);
             initInputs.emplace_back(*imgTensor);
             initInputs.emplace_back(*disparityTensor);
 
-            LOGD("%s init_base begin", tileLabel.c_str());
+            LOGD("%s init_base begin (disparity→monodepth applied)", tileLabel.c_str());
             auto initResult = runForwardWithHeartbeat(
                     [&]() { return splitInitBaseModule->forward(initInputs); },
                     tileLabel + " init_base");
@@ -1604,30 +2157,23 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor featureInput;
-            OwnedTensor latent0Up;
-            OwnedTensor latent1Up;
-            OwnedTensor x0Up;
-            OwnedTensor x1Up;
-            OwnedTensor xFused;
-            OwnedTensor decoderFeatures;
-            if (!copyOutputTensor(*initResult, 0, featureInput, "split tile_00 feature_input") ||
-                !copyOutputTensor(*stageAResult, 1, latent0Up, "split tile_00 latent0_up") ||
-                !copyOutputTensor(*stageAResult, 2, latent1Up, "split tile_00 latent1_up") ||
-                !copyOutputTensor(*stageAResult, 3, x0Up, "split tile_00 x0_up") ||
-                !copyOutputTensor(*stageAResult, 4, x1Up, "split tile_00 x1_up") ||
-                !copyOutputTensor(*stageAResult, 5, xFused, "split tile_00 x_fused") ||
-                !copyOutputTensor(*stageAResult, 6, decoderFeatures, "split tile_00 decoder_features")) {
+            if (!copyOutputTensor(*initResult, 0, scratch.featureInput, "split tile_00 feature_input") ||
+                !copyOutputTensor(*stageAResult, 1, scratch.latent0Up, "split tile_00 latent0_up") ||
+                !copyOutputTensor(*stageAResult, 2, scratch.latent1Up, "split tile_00 latent1_up") ||
+                !copyOutputTensor(*stageAResult, 3, scratch.x0Up, "split tile_00 x0_up") ||
+                !copyOutputTensor(*stageAResult, 4, scratch.x1Up, "split tile_00 x1_up") ||
+                !copyOutputTensor(*stageAResult, 5, scratch.xFused, "split tile_00 x_fused") ||
+                !copyOutputTensor(*stageAResult, 6, scratch.decoderFeatures, "split tile_00 decoder_features")) {
                 return false;
             }
 
-            auto featureInputTensor = from_blob(featureInput.data.data(), featureInput.sizes);
-            auto latent0UpTensor = from_blob(latent0Up.data.data(), latent0Up.sizes);
-            auto latent1UpTensor = from_blob(latent1Up.data.data(), latent1Up.sizes);
-            auto x0UpTensor = from_blob(x0Up.data.data(), x0Up.sizes);
-            auto x1UpTensor = from_blob(x1Up.data.data(), x1Up.sizes);
-            auto xFusedTensor = from_blob(xFused.data.data(), xFused.sizes);
-            auto decoderFeaturesTensor = from_blob(decoderFeatures.data.data(), decoderFeatures.sizes);
+            auto featureInputTensor = from_blob(scratch.featureInput.data.data(), scratch.featureInput.sizes);
+            auto latent0UpTensor = from_blob(scratch.latent0Up.data.data(), scratch.latent0Up.sizes);
+            auto latent1UpTensor = from_blob(scratch.latent1Up.data.data(), scratch.latent1Up.sizes);
+            auto x0UpTensor = from_blob(scratch.x0Up.data.data(), scratch.x0Up.sizes);
+            auto x1UpTensor = from_blob(scratch.x1Up.data.data(), scratch.x1Up.sizes);
+            auto xFusedTensor = from_blob(scratch.xFused.data.data(), scratch.xFused.sizes);
+            auto decoderFeaturesTensor = from_blob(scratch.decoderFeatures.data.data(), scratch.decoderFeatures.sizes);
 
             std::vector<EValue> rawHeadInputs;
             rawHeadInputs.reserve(7);
@@ -1648,39 +2194,29 @@ bool runPart4bTiledFullPipeline(
                 return false;
             }
 
-            OwnedTensor geometryRaw;
-            OwnedTensor textureRaw;
-            OwnedTensor meanXNdc;
-            OwnedTensor meanYNdc;
-            OwnedTensor meanInverseZNdc;
-            OwnedTensor scales;
-            OwnedTensor quaternions;
-            OwnedTensor colors;
-            OwnedTensor opacities;
-            OwnedTensor globalScale;
-            if (!copyOutputTensor(*rawHeadResult, 0, geometryRaw, "split tile_00 geometry_raw") ||
-                !copyOutputTensor(*rawHeadResult, 1, textureRaw, "split tile_00 texture_raw") ||
-                !copyOutputTensor(*initResult, 1, meanXNdc, "split tile_00 mean_x_ndc") ||
-                !copyOutputTensor(*initResult, 2, meanYNdc, "split tile_00 mean_y_ndc") ||
-                !copyOutputTensor(*initResult, 3, meanInverseZNdc, "split tile_00 mean_inverse_z_ndc") ||
-                !copyOutputTensor(*initResult, 4, scales, "split tile_00 scales") ||
-                !copyOutputTensor(*initResult, 5, quaternions, "split tile_00 quaternions") ||
-                !copyOutputTensor(*initResult, 6, colors, "split tile_00 colors") ||
-                !copyOutputTensor(*initResult, 7, opacities, "split tile_00 opacities") ||
-                !copyOutputTensor(*initResult, 8, globalScale, "split tile_00 global_scale")) {
+            if (!copyOutputTensor(*rawHeadResult, 0, scratch.geometryRaw, "split tile_00 geometry_raw") ||
+                !copyOutputTensor(*rawHeadResult, 1, scratch.textureRaw, "split tile_00 texture_raw") ||
+                !copyOutputTensor(*initResult, 1, scratch.meanXNdc, "split tile_00 mean_x_ndc") ||
+                !copyOutputTensor(*initResult, 2, scratch.meanYNdc, "split tile_00 mean_y_ndc") ||
+                !copyOutputTensor(*initResult, 3, scratch.meanInverseZNdc, "split tile_00 mean_inverse_z_ndc") ||
+                !copyOutputTensor(*initResult, 4, scratch.scales, "split tile_00 scales") ||
+                !copyOutputTensor(*initResult, 5, scratch.quaternions, "split tile_00 quaternions") ||
+                !copyOutputTensor(*initResult, 6, scratch.colors, "split tile_00 colors") ||
+                !copyOutputTensor(*initResult, 7, scratch.opacities, "split tile_00 opacities") ||
+                !copyOutputTensor(*initResult, 8, scratch.globalScale, "split tile_00 global_scale")) {
                 return false;
             }
 
-            auto geometryRawTensor = from_blob(geometryRaw.data.data(), geometryRaw.sizes);
-            auto textureRawTensor = from_blob(textureRaw.data.data(), textureRaw.sizes);
-            auto meanXNdcTensor = from_blob(meanXNdc.data.data(), meanXNdc.sizes);
-            auto meanYNdcTensor = from_blob(meanYNdc.data.data(), meanYNdc.sizes);
-            auto meanInverseZNdcTensor = from_blob(meanInverseZNdc.data.data(), meanInverseZNdc.sizes);
-            auto scalesTensor = from_blob(scales.data.data(), scales.sizes);
-            auto quaternionsTensor = from_blob(quaternions.data.data(), quaternions.sizes);
-            auto colorsTensor = from_blob(colors.data.data(), colors.sizes);
-            auto opacitiesTensor = from_blob(opacities.data.data(), opacities.sizes);
-            auto globalScaleTensor = from_blob(globalScale.data.data(), globalScale.sizes);
+            auto geometryRawTensor = from_blob(scratch.geometryRaw.data.data(), scratch.geometryRaw.sizes);
+            auto textureRawTensor = from_blob(scratch.textureRaw.data.data(), scratch.textureRaw.sizes);
+            auto meanXNdcTensor = from_blob(scratch.meanXNdc.data.data(), scratch.meanXNdc.sizes);
+            auto meanYNdcTensor = from_blob(scratch.meanYNdc.data.data(), scratch.meanYNdc.sizes);
+            auto meanInverseZNdcTensor = from_blob(scratch.meanInverseZNdc.data.data(), scratch.meanInverseZNdc.sizes);
+            auto scalesTensor = from_blob(scratch.scales.data.data(), scratch.scales.sizes);
+            auto quaternionsTensor = from_blob(scratch.quaternions.data.data(), scratch.quaternions.sizes);
+            auto colorsTensor = from_blob(scratch.colors.data.data(), scratch.colors.sizes);
+            auto opacitiesTensor = from_blob(scratch.opacities.data.data(), scratch.opacities.sizes);
+            auto globalScaleTensor = from_blob(scratch.globalScale.data.data(), scratch.globalScale.sizes);
 
             std::vector<EValue> composeInputs;
             composeInputs.reserve(10);
@@ -1783,6 +2319,7 @@ void pruneGaussiansByOpacity(std::vector<float>& gaussians, int maxGaussians) {
         [&gaussians](int a, int b) {
             return gaussians[a * PARAMS_PER_GAUSSIAN + 3] > gaussians[b * PARAMS_PER_GAUSSIAN + 3];
         });
+    std::sort(indices.begin(), indices.begin() + maxGaussians);
 
     std::vector<float> pruned(maxGaussians * PARAMS_PER_GAUSSIAN);
     for (int i = 0; i < maxGaussians; ++i) {
@@ -1815,6 +2352,7 @@ int pruneGaussiansFromPtr(const float* src, int totalGaussians, int maxGaussians
         [src](int a, int b) {
             return src[a * PARAMS_PER_GAUSSIAN + 3] > src[b * PARAMS_PER_GAUSSIAN + 3];
         });
+    std::sort(indices.begin(), indices.begin() + maxGaussians);
 
     prunedOut.resize(maxGaussians * PARAMS_PER_GAUSSIAN);
     for (int i = 0; i < maxGaussians; ++i) {
@@ -1928,7 +2466,147 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_releaseCppModules(
         JNIEnv*, jobject) {
     g_moduleCache.release();
     g_workspace.release();
+    clearLastMonodepthCapture();
     LOGD("Released module cache + workspace");
+}
+
+JNIEXPORT jintArray JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_getLastMonodepthInfoNative(
+        JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_lastMonodepthMutex);
+    if (g_lastMonodepth.empty() || g_lastMonodepthWidth <= 0 || g_lastMonodepthHeight <= 0 || g_lastMonodepthChannels <= 0) {
+        return nullptr;
+    }
+    jint values[3] = {
+            static_cast<jint>(g_lastMonodepthWidth),
+            static_cast<jint>(g_lastMonodepthHeight),
+            static_cast<jint>(g_lastMonodepthChannels),
+    };
+    jintArray out = env->NewIntArray(3);
+    if (!out) {
+        return nullptr;
+    }
+    env->SetIntArrayRegion(out, 0, 3, values);
+    return out;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_getLastMonodepthBufferNative(
+        JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_lastMonodepthMutex);
+    if (g_lastMonodepth.empty()) {
+        return nullptr;
+    }
+    jfloatArray out = env->NewFloatArray(static_cast<jsize>(g_lastMonodepth.size()));
+    if (!out) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(out, 0, static_cast<jsize>(g_lastMonodepth.size()), g_lastMonodepth.data());
+    return out;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_sampleMonodepthAtPointsNative(
+        JNIEnv* env, jobject, jintArray pixelXs, jintArray pixelYs, jint channel) {
+    if (!pixelXs || !pixelYs) {
+        return nullptr;
+    }
+    const jsize count = env->GetArrayLength(pixelXs);
+    if (count != env->GetArrayLength(pixelYs)) {
+        LOGE("sampleMonodepthAtPointsNative: xs/ys length mismatch");
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(g_lastMonodepthMutex);
+    if (g_lastMonodepth.empty() || g_lastMonodepthWidth <= 0 || g_lastMonodepthHeight <= 0 || g_lastMonodepthChannels <= 0) {
+        return nullptr;
+    }
+
+    jint* xs = env->GetIntArrayElements(pixelXs, nullptr);
+    jint* ys = env->GetIntArrayElements(pixelYs, nullptr);
+    if (!xs || !ys) {
+        if (xs) env->ReleaseIntArrayElements(pixelXs, xs, JNI_ABORT);
+        if (ys) env->ReleaseIntArrayElements(pixelYs, ys, JNI_ABORT);
+        return nullptr;
+    }
+
+    const int planeSize = g_lastMonodepthWidth * g_lastMonodepthHeight;
+    const int channelIndex = std::clamp(static_cast<int>(channel), 0, g_lastMonodepthChannels - 1);
+    const int channelBase = channelIndex * planeSize;
+    std::vector<float> results(static_cast<size_t>(count), 0.0f);
+    for (jsize i = 0; i < count; ++i) {
+        const int x = std::clamp(static_cast<int>(xs[i]), 0, g_lastMonodepthWidth - 1);
+        const int y = std::clamp(static_cast<int>(ys[i]), 0, g_lastMonodepthHeight - 1);
+        results[static_cast<size_t>(i)] = g_lastMonodepth[static_cast<size_t>(channelBase + y * g_lastMonodepthWidth + x)];
+    }
+
+    env->ReleaseIntArrayElements(pixelXs, xs, JNI_ABORT);
+    env->ReleaseIntArrayElements(pixelYs, ys, JNI_ABORT);
+
+    jfloatArray out = env->NewFloatArray(count);
+    if (!out) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(out, 0, count, results.data());
+    return out;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_writePlyNative(
+        JNIEnv* env,
+        jobject,
+        jstring outputPath,
+        jfloatArray params,
+        jfloat aspectCorrX,
+        jfloat aspectCorrY,
+        jfloat metricScale) {
+    if (!outputPath || !params) {
+        return nullptr;
+    }
+    const jsize numFloats = env->GetArrayLength(params);
+    if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
+        LOGE("writePlyNative: invalid param length %d", static_cast<int>(numFloats));
+        return nullptr;
+    }
+
+    const char* outputPathChars = env->GetStringUTFChars(outputPath, nullptr);
+    if (!outputPathChars) {
+        return nullptr;
+    }
+    jboolean isCopy = JNI_FALSE;
+    jfloat* paramsData = env->GetFloatArrayElements(params, &isCopy);
+    if (!paramsData) {
+        env->ReleaseStringUTFChars(outputPath, outputPathChars);
+        return nullptr;
+    }
+
+    PlyExportStats stats;
+    const bool ok = writePlyBinaryNative(
+            outputPathChars,
+            paramsData,
+            static_cast<int>(numFloats / PARAMS_PER_GAUSSIAN),
+            aspectCorrX,
+            aspectCorrY,
+            metricScale,
+            &stats);
+
+    env->ReleaseFloatArrayElements(params, paramsData, JNI_ABORT);
+    env->ReleaseStringUTFChars(outputPath, outputPathChars);
+    if (!ok) {
+        return nullptr;
+    }
+
+    const jfloat values[9] = {
+            stats.minX, stats.maxX,
+            stats.minY, stats.maxY,
+            stats.minZ, stats.maxZ,
+            stats.maxAbsX, stats.maxAbsY, stats.maxAbsZ,
+    };
+    jfloatArray out = env->NewFloatArray(9);
+    if (!out) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(out, 0, 9, values);
+    return out;
 }
 
 
@@ -1952,13 +2630,17 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         jint part12YieldMsBetweenChunks,
         jboolean swapTileNdcXY,
         jobject progressReporter,
-        jstring etdumpOutputPath) {
+        jstring etdumpOutputPath,
+        jboolean hybridInterleavePart12,
+        jlong hybridInterleaveMinAvailMemBytes) {
     if (useVulkan == JNI_TRUE) {
         return runSharpFullPipeline_Vulkan(
                 env, thiz, modelDirPath, imageNCHW, maxGaussians, preferSinglePart4b, part12OnCpu,
                 part12ForceSinglePatch, part12_25Only,
                 part1MaxPatches1x, part1MaxPatches05x, part12Chunk1x, part12Chunk05x,
-                part12YieldMsBetweenChunks, swapTileNdcXY, progressReporter, etdumpOutputPath);
+                part12YieldMsBetweenChunks, swapTileNdcXY, progressReporter, etdumpOutputPath,
+                hybridInterleavePart12,
+                hybridInterleaveMinAvailMemBytes);
     }
     return runSharpFullPipeline_Cpu(
             env, thiz, modelDirPath, imageNCHW, maxGaussians, preferSinglePart4b,

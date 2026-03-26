@@ -43,7 +43,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,6 +96,13 @@ class SharpRoomActivity : AppCompatActivity() {
 
     /** Persist latest Spark/Box3 dimensions into room_meta.json so list screen shows accurate width/height. */
     private fun persistSparkBoxDimensionsDebounced() {
+        if (hasPlausibleOpenSnapshotRoomDims() && !roomDimensionsLockedByTapeCalibration) {
+            LogUtil.i(
+                "SHARP_ROOM_MEAS",
+                "[box3_persist] skipped; keeping saved SHARP/export dims ${openSnapshotRoomWidth}×${openSnapshotRoomHeight}×${openSnapshotRoomDepth}",
+            )
+            return
+        }
         val folderPath = roomFolder ?: return
         val w = roomWidth
         val h = roomHeight
@@ -107,7 +116,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 val baseSnapshot = if (prev != null) {
                     prev.copy(
                         roomWidth = w,
-                        roomHeight = h
+                        roomHeight = h,
+                        roomDepth = roomDepth
                     )
                 } else {
                     RoomFolderMetadata.Snapshot(
@@ -169,7 +179,16 @@ class SharpRoomActivity : AppCompatActivity() {
     private var photoOrientation: String = "portrait"
     /** True when the photo was taken with wide-angle (0.5x) lens; viewer camera position is adjusted for wider FOV. */
     private var photoWideAngle: Boolean = false
-    private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room
+    private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room (logging / open path)
+    /** When the user applies tape (wall) calibration, do not let WebGL Box3 callbacks overwrite those numbers until recenter. */
+    private var roomDimensionsLockedByTapeCalibration: Boolean = false
+    /**
+     * W×H copied from intent + room_meta right after load (streaming AABB / saved metadata).
+     * Used when WebGL Box3 reports a degenerate footprint for this viewer rotation but pipeline dims are sane.
+     */
+    private var openSnapshotRoomWidth: Float = 4f
+    private var openSnapshotRoomHeight: Float = 3f
+    private var openSnapshotRoomDepth: Float = 4.5f
 
     // Brain (SmartyPants) overlay: show progress in same Activity so room stays visible
     private var brainOverlayVisible = false
@@ -298,6 +317,13 @@ class SharpRoomActivity : AppCompatActivity() {
             roomHeight = 3.0f
             hasSavedDimensions = false
         }
+        val sanitizedOpen = SharpRoomDimensionSanitizer.sanitizeMeters(roomWidth, roomHeight, roomDepth)
+        roomWidth = sanitizedOpen.first
+        roomHeight = sanitizedOpen.second
+        roomDepth = sanitizedOpen.third
+        openSnapshotRoomWidth = roomWidth
+        openSnapshotRoomHeight = roomHeight
+        openSnapshotRoomDepth = roomDepth
 
         DebugLogger.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
         DebugLogger.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
@@ -484,6 +510,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun effRoomCenterX(): Float = roomCenterX * arDisplayScale
     private fun effRoomCenterY(): Float = roomCenterY * arDisplayScale
     private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
+    private fun hasPlausibleOpenSnapshotRoomDims(): Boolean =
+        hasSavedDimensions && openSnapshotRoomWidth >= 2f && openSnapshotRoomHeight >= 2f && openSnapshotRoomDepth >= 1f
 
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
         val top = statusBarInsetTop + topBar.height
@@ -630,12 +658,8 @@ class SharpRoomActivity : AppCompatActivity() {
             val container = brainCalibrationPillContainer
             val line1 = brainCalibrationPillLine1
             val line2 = brainCalibrationPillLine2
-            val detected = brainDetectedFurnitureHeightMeters
+            val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
-            if (detected == null || detected <= 0f) {
-                container.visibility = View.GONE
-                return@runOnUiThread
-            }
             container.visibility = View.VISIBLE
             val realH = brainRealFurnitureHeightMeters
             if (realH != null && realH > 0f) {
@@ -654,7 +678,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     /** Dialog for per-object furniture calibration in brain overlay. */
     private fun showBrainCalibrationDialog() {
-        val detected = brainDetectedFurnitureHeightMeters ?: return
+        val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
         val ctx = this
         val edit = EditText(ctx).apply {
             hint = getString(R.string.smartypants_real_height_hint)
@@ -674,7 +698,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                val factor = real / detected
+                val factor = real / kotlin.math.abs(detected).coerceAtLeast(0.0001f)
                 brainCalibrationScaleFactor = factor
                 brainRealFurnitureHeightMeters = real
                 // For now, reflect calibration in UI; viewer scaling can be added via JS hook later.
@@ -726,6 +750,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     "[wall_calibrate] factor=$factor real_wall_h_m=$real raw_after W×H×D=$roomWidth×$roomHeight×$roomDepth eff_front_wall=${effRoomWidth()}×${effRoomHeight()}",
                 )
                 // Persist calibrated dimensions so the home list and future viewer sessions match.
+                roomDimensionsLockedByTapeCalibration = true
                 persistSparkBoxDimensionsDebounced()
             }
             .show()
@@ -824,6 +849,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             brainCalibrationPillLine1 = TextView(this@SharpRoomActivity).apply {
+                text = "Furn: 0.00m"
                 setTextColor(Color.WHITE)
                 textSize = 14f
                 setShadowLayer(2f, 1f, 1f, Color.BLACK)
@@ -844,7 +870,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
                     bottomMargin = dpToPx(52)
                 }
-                visibility = View.GONE
+                visibility = View.VISIBLE
                 addView(pillContent)
                 setOnClickListener { showBrainCalibrationDialog() }
             }
@@ -1185,14 +1211,8 @@ class SharpRoomActivity : AppCompatActivity() {
                                 size,
                                 brainEffectiveOverlayScale(),
                             )
-                            // Estimated furniture height in metres from tallest detection (CameraX brain path).
-                            if (dets.isNotEmpty() && size > 0) {
-                                val maxH = dets.maxOf { it.h }
-                                brainDetectedFurnitureHeightMeters =
-                                    (maxH / size.toFloat()) * brainDefaultRoomHeightMeters
-                            } else {
-                                brainDetectedFurnitureHeightMeters = null
-                            }
+                            // CameraX-only brain path has no defensible metric sizing. Show meters only from AR depth.
+                            brainDetectedFurnitureHeightMeters = null
                             updateBrainCalibrationPill()
                         }
                     }
@@ -1278,14 +1298,7 @@ class SharpRoomActivity : AppCompatActivity() {
                             det.h * scaleY,
                             det.label,
                         )
-                        // Prefer ARCore pinhole height when available, otherwise fallback to tallest detection ratio.
-                        val arHeight = brainArController?.getLastEstimatedHeightMeters()
-                        brainDetectedFurnitureHeightMeters = if (arHeight != null && arHeight > 0f) {
-                            arHeight
-                        } else {
-                            val maxH = dets.maxOf { it.h }
-                            (maxH / size.toFloat()) * brainDefaultRoomHeightMeters
-                        }
+                        brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
                     } else {
                         brainArController?.clearBboxHint()
                         brainDetectedFurnitureHeightMeters = null
@@ -1370,6 +1383,9 @@ class SharpRoomActivity : AppCompatActivity() {
         // upside-down fix) so "front" maps to this side; matches current good landscape behavior.
         // Portrait uses the same Rx+Rz as iOS; frameFromWorldBox uses Swift SharpRoomView rule (front at maxZ).
         val webglEntranceMinZ = true
+        val defaultDisplayW = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_WIDTH_M.toDouble()
+        val defaultDisplayH = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_HEIGHT_M.toDouble()
+        val defaultDisplayD = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_DEPTH_M.toDouble()
         val fallbackW = effRoomWidth().toDouble()
         val fallbackH = effRoomHeight().toDouble()
         val fallbackD = effRoomDepth().toDouble()
@@ -1438,6 +1454,9 @@ class SharpRoomActivity : AppCompatActivity() {
         const fallbackRoomCenterX = $fallbackCx;
         const fallbackRoomCenterY = $fallbackCy;
         const fallbackRoomCenterZ = $fallbackCz;
+        const reasonableDefaultW = $defaultDisplayW;
+        const reasonableDefaultH = $defaultDisplayH;
+        const reasonableDefaultD = $defaultDisplayD;
         console.log('[SharpRoom] orientation: ' + (isPortrait ? 'portrait' : 'landscape') + ' (isPortrait=' + isPortrait + '), wideAngle(0.5x): ' + usedWideLens + ', fallbackDims: ' + fallbackRoomWidth.toFixed(2) + 'x' + fallbackRoomHeight.toFixed(2) + 'x' + fallbackRoomDepth.toFixed(2) + ', center: ' + fallbackRoomCenterX.toFixed(2) + ',' + fallbackRoomCenterY.toFixed(2) + ',' + fallbackRoomCenterZ.toFixed(2));
 
         // Scene setup (matching iOS exactly)
@@ -1786,8 +1805,15 @@ class SharpRoomActivity : AppCompatActivity() {
                 camera.position.z - controls.target.z
             );
 
-            measuredRoomWidth = roomWidth;
-            measuredRoomHeight = roomHeight;
+            // Title / room_meta only: do not change mesh rotation. Just send the Box3 footprint to Android; do not
+            // upsize “small” rooms or apply defaults here — SHARP / Box3 measurement is the source of truth.
+            (function applyDisplayDimsForAndroid() {
+                measuredRoomWidth = roomWidth;
+                measuredRoomHeight = roomHeight;
+                sharpAndroidLog('[SharpRoom] displayDimsForAndroid: raw box3 ' +
+                    measuredRoomWidth.toFixed(2) + 'x' + measuredRoomHeight.toFixed(2) +
+                    ' zSpan=' + zSpanRaw.toFixed(4));
+            })();
 
             const camPos = camera.position;
             const tgt = controls.target;
@@ -1803,7 +1829,19 @@ class SharpRoomActivity : AppCompatActivity() {
             needsRender = true;
 
             function sendDimensionsToAndroid() {
-                if (window.Android && window.Android.onDimensionsMeasured) {
+                if (window.Android && window.Android.onBoxMetricsMeasured) {
+                    window.Android.onBoxMetricsMeasured(
+                        measuredRoomWidth,
+                        measuredRoomHeight,
+                        currentRoomD,
+                        size.x,
+                        size.y,
+                        size.z,
+                        frameSource,
+                        thinZSlab
+                    );
+                    console.log('[WebGL] Sent box metrics to Android:', measuredRoomWidth.toFixed(2), 'x', measuredRoomHeight.toFixed(2), 'x', currentRoomD.toFixed(2), 'raw=', size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3), 'source=', frameSource, 'thinZ=', thinZSlab ? 1 : 0);
+                } else if (window.Android && window.Android.onDimensionsMeasured) {
                     window.Android.onDimensionsMeasured(measuredRoomWidth, measuredRoomHeight);
                     console.log('[WebGL] Sent dimensions to Android:', measuredRoomWidth.toFixed(2), 'x', measuredRoomHeight.toFixed(2));
                 }
@@ -2033,6 +2071,10 @@ class SharpRoomActivity : AppCompatActivity() {
         val input = EditText(this).apply {
             hint = "Enter room name"
             setPadding(48, 32, 48, 32)
+            val defaultName = roomFolder?.let { folderPath ->
+                RoomFolderMetadata.readFromFolder(File(folderPath))?.name?.takeIf { it.isNotBlank() }
+            } ?: RoomDisplayName.aiRoomWithTimestamp()
+            setText(defaultName)
         }
 
         AlertDialog.Builder(this)
@@ -2040,7 +2082,7 @@ class SharpRoomActivity : AppCompatActivity() {
             .setMessage("Enter a name for your room")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { "AI Room" }
+                val name = input.text.toString().ifEmpty { RoomDisplayName.aiRoomWithTimestamp() }
                 saveRoom(name)
             }
             .setNegativeButton("Cancel", null)
@@ -2110,6 +2152,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun recenterCamera() {
+        roomDimensionsLockedByTapeCalibration = false
         webView.evaluateJavascript(
             "if(typeof recenterCamera==='function')recenterCamera();",
             null
@@ -2165,21 +2208,125 @@ class SharpRoomActivity : AppCompatActivity() {
                     DebugLogger.d(TAG, "WebGL dimensions measured but non-positive, ignoring: ${width}x${height}")
                     return@runOnUiThread
                 }
-                // Match iOS: prefer saved / SHARP front-wall metadata over raw WebGL Box3 (often ~1.5 model units).
-                if (hasSavedDimensions) {
+                if (hasPlausibleOpenSnapshotRoomDims() && !roomDimensionsLockedByTapeCalibration) {
                     LogUtil.i(
                         "SHARP_ROOM_MEAS",
-                        "[box3_measured] skip overwrite (keep metadata/intent W×H=$roomWidth×$roomHeight); Box3 was ${width}×${height}",
+                        "[box3_measured] ignoring legacy Spark width/height; keeping saved SHARP/export dims ${openSnapshotRoomWidth}×${openSnapshotRoomHeight}×${openSnapshotRoomDepth}",
                     )
                     return@runOnUiThread
                 }
-                roomWidth = width
-                roomHeight = height
+                if (roomDimensionsLockedByTapeCalibration) {
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_measured] skip overwrite (tape calibration lock); WebGL offered ${width}×${height}, keeping $roomWidth×$roomHeight",
+                    )
+                    return@runOnUiThread
+                }
+                val capW = if (photoOrientation == "landscape") 8f else 5f
+                val capH = if (photoOrientation == "landscape") 3.2f else 3.5f
+                val minPlausible = 2.0f
+                var finalW = width
+                var finalH = height
+                val snapW = openSnapshotRoomWidth.coerceIn(0.01f, capW)
+                val snapH = openSnapshotRoomHeight.coerceIn(0.01f, capH)
+                if (width < minPlausible && height < minPlausible &&
+                    snapW >= minPlausible && snapH >= minPlausible &&
+                    (snapW > width + 0.05f || snapH > height + 0.05f)
+                ) {
+                    finalW = snapW
+                    finalH = snapH
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_measured] Kotlin fallback: JS ${width}×${height} -> open snapshot ${finalW}×${finalH} (caps ${capW}×${capH})",
+                    )
+                }
+                val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(finalW, finalH, roomDepth)
+                finalW = sanitized.first
+                finalH = sanitized.second
+                if (sanitized.third != roomDepth) {
+                    roomDepth = sanitized.third
+                }
+                roomWidth = finalW
+                roomHeight = finalH
                 titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
-                DebugLogger.d(TAG, "WebGL dimensions measured (Box3): ${roomWidth}x${roomHeight} (will persist)")
+                DebugLogger.d(TAG, "WebGL dimensions applied: ${roomWidth}x${roomHeight} (will persist)")
                 LogUtil.i(
                     "SHARP_ROOM_MEAS",
-                    "[box3_measured] WebGL W×H=$roomWidth×$roomHeight title_m_label depth=$roomDepth arDisplayScale=$arDisplayScale folder=$roomFolder",
+                    "[box3_measured] final W×H=$roomWidth×$roomHeight title_m_label depth=$roomDepth arDisplayScale=$arDisplayScale " +
+                        "hasSavedMeta=$hasSavedDimensions folder=$roomFolder",
+                )
+                persistSparkBoxDimensionsDebounced()
+            }
+        }
+
+        @JavascriptInterface
+        fun onBoxMetricsMeasured(
+            width: Float,
+            height: Float,
+            depth: Float,
+            rawSpanX: Float,
+            rawSpanY: Float,
+            rawSpanZ: Float,
+            source: String?,
+            thinZ: Boolean
+        ) {
+            runOnUiThread {
+                if (width <= 0f || height <= 0f) {
+                    DebugLogger.d(TAG, "WebGL box metrics non-positive, ignoring: ${width}x${height}x${depth}")
+                    return@runOnUiThread
+                }
+                if (hasPlausibleOpenSnapshotRoomDims() && !roomDimensionsLockedByTapeCalibration) {
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_metrics] ignoring Spark metrics; keeping saved SHARP/export dims ${openSnapshotRoomWidth}×${openSnapshotRoomHeight}×${openSnapshotRoomDepth} raw=${rawSpanX}×${rawSpanY}×${rawSpanZ}",
+                    )
+                    return@runOnUiThread
+                }
+                if (roomDimensionsLockedByTapeCalibration) {
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_metrics] skip overwrite (tape calibration lock); WebGL offered ${width}×${height}×${depth}, keeping $roomWidth×$roomHeight×$roomDepth",
+                    )
+                    return@runOnUiThread
+                }
+
+                val capW = if (photoOrientation == "landscape") 8f else 5f
+                val capH = if (photoOrientation == "landscape") 3.2f else 3.5f
+                val snapW = openSnapshotRoomWidth.coerceIn(0.01f, capW)
+                val snapH = openSnapshotRoomHeight.coerceIn(0.01f, capH)
+                val snapD = openSnapshotRoomDepth.coerceAtLeast(0.01f)
+                val minPlausible = 2.0f
+                val depthLooksCollapsed = thinZ || (depth in 0.001f..0.08f)
+                val widthHeightLookCollapsed =
+                    width < minPlausible && height < minPlausible &&
+                        snapW >= minPlausible && snapH >= minPlausible &&
+                        (snapW > width + 0.05f || snapH > height + 0.05f)
+
+                var finalW = width
+                var finalH = height
+                var finalD = depth
+                if ((depthLooksCollapsed && snapD >= 1.0f) || widthHeightLookCollapsed) {
+                    finalW = snapW
+                    finalH = snapH
+                    finalD = snapD
+                    LogUtil.i(
+                        "SHARP_ROOM_MEAS",
+                        "[box3_metrics] keeping open snapshot due to collapsed Spark AABB: js=${width}×${height}×${depth} raw=${rawSpanX}×${rawSpanY}×${rawSpanZ} thinZ=$thinZ source=${source ?: "unknown"} snapshot=${finalW}×${finalH}×${finalD}",
+                    )
+                }
+
+                val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(finalW, finalH, finalD)
+                roomWidth = sanitized.first
+                roomHeight = sanitized.second
+                roomDepth = sanitized.third
+                titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+                DebugLogger.d(
+                    TAG,
+                    "WebGL box metrics applied: ${roomWidth}x${roomHeight}x${roomDepth} raw=${rawSpanX}x${rawSpanY}x${rawSpanZ} thinZ=$thinZ source=${source ?: "unknown"}"
+                )
+                LogUtil.i(
+                    "SHARP_ROOM_MEAS",
+                    "[box3_metrics] final W×H×D=$roomWidth×$roomHeight×$roomDepth rawXYZ=$rawSpanX×$rawSpanY×$rawSpanZ source=${source ?: "unknown"} thinZ=$thinZ arDisplayScale=$arDisplayScale folder=$roomFolder",
                 )
                 persistSparkBoxDimensionsDebounced()
             }
@@ -2257,4 +2404,3 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 }
-
