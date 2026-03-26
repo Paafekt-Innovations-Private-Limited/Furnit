@@ -339,6 +339,12 @@ class FurnitureFitFragment : Fragment() {
         val controller = FurnitureFitArCameraController(act, cameraExecutor)
         arCameraController = controller
         controller.lockedPhotoOrientation = selectedPhotoOrientation
+        controller.roomHeightMetersForFallback =
+            (calibratedRoomHeightMeters ?: selectedRoomHeight).coerceAtLeast(0.1f)
+        controller.onAssistedMeasurementUpdated = {
+            detectedFurnitureHeightMeters = arCameraController?.getLastEstimatedHeightMeters()
+            updateCalibrationPill()
+        }
         controller.glSurfaceView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -690,8 +696,15 @@ class FurnitureFitFragment : Fragment() {
                         effectiveOverlayScale(),
                     )
 
-                    // CameraX-only path has no defensible metric sizing. Show meters only from AR depth.
-                    detectedFurnitureHeightMeters = null
+                    val rh = (calibratedRoomHeightMeters ?: selectedRoomHeight).takeIf { it > 0.1f }
+                    detectedFurnitureHeightMeters =
+                        if (result.detections.isNotEmpty() && rh != null && result.inputSize > 0) {
+                            val det = result.detections.first()
+                            val frac = (det.h / result.inputSize.toFloat()).coerceIn(0.06f, 0.92f)
+                            rh * frac
+                        } else {
+                            null
+                        }
                     updateCalibrationPill()
 
                     // Show 3D room (GLB or PLY) behind segmented furniture, hide camera preview.
@@ -772,6 +785,8 @@ class FurnitureFitFragment : Fragment() {
                 calibrationScaleFactor = real / divisor
                 realFurnitureHeightMeters = real
                 calibratedRoomHeightMeters = defaultRoomHeightMeters * calibrationScaleFactor
+                arCameraController?.roomHeightMetersForFallback =
+                    calibratedRoomHeightMeters ?: selectedRoomHeight
                 applyScaleToRoom()
                 updateCalibrationPill()
                 Toast.makeText(ctx, getString(R.string.smartypants_room_scaled, String.format(Locale.US, "%.2f", calibrationScaleFactor)), Toast.LENGTH_SHORT).show()

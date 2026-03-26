@@ -917,6 +917,48 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         )
     }
 
+    /**
+     * Persists the last pipeline monodepth to [folder]/sharp_monodepth.bin for offline YOLO wall measurement.
+     * Header: 12 bytes little-endian (width, height, channels as int32) + float32 samples (row-major, c interleaved if c>1).
+     * Call immediately after a successful [inferStreaming] while native buffers are still valid.
+     */
+    fun persistLastMonodepthToFolder(folder: File): Boolean {
+        val info = getLastMonodepthInfoNative() ?: return false
+        if (info.size < 3) return false
+        val w = info[0]
+        val h = info[1]
+        val c = info[2]
+        if (w <= 0 || h <= 0 || c <= 0) return false
+        val buf = getLastMonodepthBufferNative() ?: return false
+        val expected = w * h * c
+        if (buf.size != expected) {
+            LogUtil.w(TAG, "persistLastMonodepthToFolder: size mismatch got=${buf.size} expected=$expected (${w}x${h}x$c)")
+            return false
+        }
+        return try {
+            folder.mkdirs()
+            val outFile = File(folder, "sharp_monodepth.bin")
+            FileOutputStream(outFile).use { fos ->
+                val header = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN)
+                header.putInt(w)
+                header.putInt(h)
+                header.putInt(c)
+                fos.write(header.array())
+                val bb = ByteBuffer.allocate(buf.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+                for (f in buf) {
+                    bb.putFloat(f)
+                }
+                fos.write(bb.array())
+            }
+            LogUtil.d(TAG, "persistLastMonodepthToFolder: wrote ${outFile.absolutePath} ($w×$h×${c})")
+            LogUtil.i("WALL_MEAS", "persist_monodepth ok path=${outFile.absolutePath} size=${w}x${h}x$c")
+            true
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "persistLastMonodepthToFolder failed: ${e.message}", e)
+            false
+        }
+    }
+
     private fun sampleMonodepthChannel(xs: IntArray, ys: IntArray, channel: Int): FloatArray? {
         if (xs.size != ys.size) {
             LogUtil.w(TAG, "Native monodepth sample size mismatch: xs=${xs.size} ys=${ys.size}")

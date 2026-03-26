@@ -52,7 +52,7 @@ enum YoloEDetectionParser {
                 let x = (x1 + x2) / 2.0
                 let y = (y1 + y2) / 2.0
 
-                guard confidence > confidenceThreshold, confidence <= 1.0 else { continue }
+                guard confidence >= confidenceThreshold, confidence <= 1.0 else { continue }
                 guard w > 0, h > 0, w < 2000, h < 2000 else { continue }
 
                 let classIdx = Int(classIdxFloat)
@@ -99,7 +99,7 @@ enum YoloEDetectionParser {
                 vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
                 let classIdx = Int(maxIdx)
 
-                guard maxVal > confidenceThreshold, !classBlacklist.contains(classIdx) else { continue }
+                guard maxVal >= confidenceThreshold, !classBlacklist.contains(classIdx) else { continue }
 
                 var coeffs = [Float](repeating: 0, count: 32)
                 let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)

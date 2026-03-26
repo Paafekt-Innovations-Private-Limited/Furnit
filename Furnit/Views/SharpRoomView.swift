@@ -183,8 +183,41 @@ struct SharpRoomView: View {
         self.parsedBounds = Self.parsePLYBounds(from: viewerURL)
     }
 
+    private static let plyBoundsCacheLock = NSLock()
+    private static var plyBoundsCache: [String: RoomBounds?] = [:]
+
+    /// Includes size + mtime so edits to the same path invalidate the cache.
+    private static func plyBoundsCacheKey(_ url: URL) -> String {
+        guard let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+              let mod = vals.contentModificationDate else {
+            return url.path
+        }
+        return "\(url.path)|\(vals.fileSize ?? 0)|\(mod.timeIntervalSince1970)"
+    }
+
     /// Parse PLY file to extract position bounds (e.g. HomeView saved rooms).
+    /// Cached: SwiftUI may initialize `SharpRoomView` more than once for the same URL, which was duplicating multi‑MB reads and `PLY Parser` logs.
     private static func parsePLYBounds(from url: URL) -> RoomBounds? {
+        let key = plyBoundsCacheKey(url)
+        plyBoundsCacheLock.lock()
+        if let cached = plyBoundsCache[key] {
+            plyBoundsCacheLock.unlock()
+            return cached
+        }
+        plyBoundsCacheLock.unlock()
+
+        let result = parsePLYBoundsUncached(from: url)
+
+        plyBoundsCacheLock.lock()
+        if plyBoundsCache.count > 48 {
+            plyBoundsCache.removeAll(keepingCapacity: true)
+        }
+        plyBoundsCache[key] = result
+        plyBoundsCacheLock.unlock()
+        return result
+    }
+
+    private static func parsePLYBoundsUncached(from url: URL) -> RoomBounds? {
         guard let data = try? Data(contentsOf: url) else {
             logDebug("PLY Parser: Failed to read file")
             return nil
@@ -279,8 +312,32 @@ struct SharpRoomView: View {
             return nil
         }
         let maxRoomSize: Float = 50
-        let spanX = maxX - minX, spanY = maxY - minY, spanZ = maxZ - minZ
-        guard spanX <= maxRoomSize, spanY <= maxRoomSize, spanZ <= maxRoomSize else {
+        var spanX = maxX - minX
+        var spanY = maxY - minY
+        var spanZ = maxZ - minZ
+        let maxSpan = max(spanX, spanY, spanZ)
+        // SHARP splats often use model units (large spans) while per-vertex coords stay within ±maxSane.
+        if maxSpan > maxRoomSize, maxSpan.isFinite, maxSpan > 0 {
+            let cx = (minX + maxX) * 0.5
+            let cy = (minY + maxY) * 0.5
+            let cz = (minZ + maxZ) * 0.5
+            let s = maxRoomSize / maxSpan
+            let hx = spanX * 0.5 * s
+            let hy = spanY * 0.5 * s
+            let hz = spanZ * 0.5 * s
+            minX = cx - hx
+            maxX = cx + hx
+            minY = cy - hy
+            maxY = cy + hy
+            minZ = cz - hz
+            maxZ = cz + hz
+            spanX = maxX - minX
+            spanY = maxY - minY
+            spanZ = maxZ - minZ
+            logPlyBoundsDiagnostic("Scaled AABB to fit max span \(maxRoomSize)m (raw maxSpan=\(maxSpan) model units)")
+        }
+        guard spanX <= maxRoomSize + 0.01, spanY <= maxRoomSize + 0.01, spanZ <= maxRoomSize + 0.01 else {
+            logPlyBoundsDiagnostic("Rejecting bounds span X=\(spanX) Y=\(spanY) Z=\(spanZ) (max \(maxRoomSize)m)")
             logDebug("PLY Parser: Rejecting bounds (room size > \(maxRoomSize)m) span X=\(spanX) Y=\(spanY) Z=\(spanZ)")
             return nil
         }
@@ -581,19 +638,33 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Width/height for nav title, FurnitureFit, and save. WebGL front-wall (`jsFrontWall*`) is authoritative.
-    /// `savedRoom*` is on-disk metadata (Home); it sits after JS so reopening picks live viewer over stale file.
+    /// Width/height for nav title, FurnitureFit, and save.
+    /// - **Live session** (`allowSave == true`): WebGL Box3 (`jsFrontWall*`) is authoritative until the user saves.
+    /// - **Opened from Home** (`allowSave == false`): **saved .meta** (`savedRoom*`, YOLO wall measurement) wins over WebGL.
+    ///   Splat AABB is often huge then **capped in JS** to 5.0×3.5 m portrait — that must not override measured 2.3×2.7 m.
     private var displayRoomWidth: Float {
-        calibratedRoomWidth
-            ?? jsFrontWallWidth
+        if allowSave {
+            return calibratedRoomWidth
+                ?? jsFrontWallWidth
+                ?? savedRoomWidth
+                ?? 4.0
+        }
+        return calibratedRoomWidth
             ?? savedRoomWidth
+            ?? jsFrontWallWidth
             ?? 4.0
     }
 
     private var displayRoomHeight: Float {
-        calibratedRoomHeight
-            ?? jsFrontWallHeight
+        if allowSave {
+            return calibratedRoomHeight
+                ?? jsFrontWallHeight
+                ?? savedRoomHeight
+                ?? 3.0
+        }
+        return calibratedRoomHeight
             ?? savedRoomHeight
+            ?? jsFrontWallHeight
             ?? 3.0
     }
 
@@ -601,13 +672,19 @@ struct SharpRoomView: View {
         String(format: "%.1f × %.1f m", displayRoomWidth, displayRoomHeight)
     }
 
-    /// Baseline W/H before calibration — same order as display minus `calibrated`.
+    /// Baseline W/H before calibration — mirrors display priority minus `calibrated*`.
     private var sourceRoomWidth: Float {
-        jsFrontWallWidth ?? savedRoomWidth ?? 4.0
+        if allowSave {
+            return jsFrontWallWidth ?? savedRoomWidth ?? 4.0
+        }
+        return savedRoomWidth ?? jsFrontWallWidth ?? 4.0
     }
 
     private var sourceRoomHeight: Float {
-        jsFrontWallHeight ?? savedRoomHeight ?? 3.0
+        if allowSave {
+            return jsFrontWallHeight ?? savedRoomHeight ?? 3.0
+        }
+        return savedRoomHeight ?? jsFrontWallHeight ?? 3.0
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -806,7 +883,7 @@ struct SharpRoomView: View {
                 Text("Calibrate by wall")
                     .font(.headline)
                     .foregroundColor(.white)
-                Text("Enter front wall dimensions (meters)")
+                Text("Enter tape-measured front wall (meters), e.g. 3.15 × 2.86")
                     .font(.caption)
                     .foregroundColor(.gray)
                 HStack(spacing: 12) {
@@ -1051,6 +1128,24 @@ struct SharpRoomView: View {
     }
 
     // MARK: - Save Room Functions
+
+    /// Resolves `Room_<stamp>_thumbnail.png` next to the classic PLY, or legacy `thumbnail.png` (Android-style).
+    private func resolvedThumbnailURL(forClassicPly classicPly: URL) -> URL {
+        let folder = classicPly.deletingLastPathComponent()
+        let stem = classicPly.deletingPathExtension().lastPathComponent
+        let base: String
+        if stem.hasSuffix("_classic") {
+            base = String(stem.dropLast("_classic".count))
+        } else {
+            base = stem
+        }
+        let named = folder.appendingPathComponent("\(base)_thumbnail.png")
+        let legacy = folder.appendingPathComponent("thumbnail.png")
+        if FileManager.default.fileExists(atPath: named.path) { return named }
+        if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
+        return named
+    }
+
     private func startSavingRoom() {
         guard !roomName.isEmpty else { return }
 
@@ -1062,49 +1157,70 @@ struct SharpRoomView: View {
             saveProgress = 0.0
         }
 
-        var saveStarted = false
-        var saveCompleted = false
-        var saveSuccess = false
-        var saveError: String?
-
-        savingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            if !saveStarted || (saveStarted && saveCompleted) {
-                self.saveProgress += 0.015
+        Task {
+            await MainActor.run { saveProgress = 0.12 }
+            let folder = classicPlyURL.deletingLastPathComponent()
+            let thumbURL = resolvedThumbnailURL(forClassicPly: classicPlyURL)
+            let thumbExists = FileManager.default.fileExists(atPath: thumbURL.path)
+            let thumbImage = UIImage(contentsOfFile: thumbURL.path)
+            logWallMeasurement(
+                "saveRoom start name=\(savedName) folder=\(folder.path) thumb=\(thumbURL.lastPathComponent) exists=\(thumbExists) decoded=\(thumbImage != nil)",
+            )
+            await MainActor.run {
+                YOLOEModelService.shared.ensureModelLoaded()
             }
-
-            if self.saveProgress >= 0.6 && !saveStarted {
-                saveStarted = true
-                let width = self.displayRoomWidth
-                let height = self.displayRoomHeight
-                // Save the classic PLY file (pre-transformed for correct viewing)
-                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation, roomWidth: width, roomHeight: height) { success, error in
-                    DispatchQueue.main.async {
-                        saveCompleted = true
-                        saveSuccess = success
-                        saveError = error
-                        logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
-                    }
+            var yoloModel: MLModel?
+            for _ in 0..<90 {
+                yoloModel = await MainActor.run { YOLOEModelService.shared.model }
+                if yoloModel != nil { break }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if yoloModel == nil {
+                logWallMeasurement("saveRoom YOLO CoreML model still nil after wait — wall measure skipped")
+            }
+            var roomW = await MainActor.run { displayRoomWidth }
+            var roomH = await MainActor.run { displayRoomHeight }
+            logWallMeasurement("saveRoom before measure display W×H=\(roomW)×\(roomH)")
+            if thumbImage == nil || yoloModel == nil {
+                logWallMeasurement("saveRoom wall measure skipped (need thumbnail + YOLO model)")
+            } else if let m = yoloModel, let img = thumbImage {
+                if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m) {
+                    roomW = measured.widthMeters
+                    roomH = measured.heightMeters
+                    logWallMeasurement("saveRoom applied W×H=\(roomW)×\(roomH) mode=\(measured.calibrationMode)")
+                    logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH) m (\(measured.calibrationMode))")
+                } else {
+                    logWallMeasurement("saveRoom measure returned nil — keeping display W×H=\(roomW)×\(roomH)")
                 }
             }
-
-            if self.saveProgress >= 1.0 && saveCompleted {
-                timer.invalidate()
-                self.savingTimer = nil
-
-                withAnimation(.easeOut(duration: 0.3)) {
-                    self.isSavingRoom = false
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    if saveSuccess {
-                        self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
-                        self.saveWasSuccessful = true
-                    } else {
-                        self.saveAlertMessage = "Failed to save: \(saveError ?? "Unknown error")"
-                        self.saveWasSuccessful = false
+            await MainActor.run { saveProgress = 0.55 }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                modelManager.savePLY(
+                    from: classicPlyURL,
+                    name: savedName,
+                    photoOrientation: photoOrientation,
+                    roomWidth: roomW,
+                    roomHeight: roomH
+                ) { success, error in
+                    logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
+                    Task { @MainActor in
+                        saveProgress = 1.0
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            isSavingRoom = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            if success {
+                                saveAlertMessage = "Room '\(savedName)' saved successfully!"
+                                saveWasSuccessful = true
+                            } else {
+                                saveAlertMessage = "Failed to save: \(error ?? "Unknown error")"
+                                saveWasSuccessful = false
+                            }
+                            showSaveAlert = true
+                            roomName = ""
+                        }
+                        continuation.resume()
                     }
-                    self.showSaveAlert = true
-                    self.roomName = ""
                 }
             }
         }

@@ -113,6 +113,13 @@ class FurnitureFitArCameraController(
      */
     var lockedPhotoOrientation: String = "portrait"
 
+    /**
+     * Calibrated front-wall height (m), e.g. SHARP room — used when depth/plane distance is missing.
+     * Set by the host (Sharp room / Furniture fit) when room dimensions are known.
+     */
+    @Volatile
+    var roomHeightMetersForFallback: Float = 0f
+
     /** Cache for [orientedToRawInverseForDimensions] — avoids per-frame bitmap work for AR metrics. */
     private var cachedInverseRawW = -1
     private var cachedInverseRawH = -1
@@ -450,13 +457,28 @@ class FurnitureFitArCameraController(
             bboxHeightPixels = hRaw,
             rawImageWidth = rawImageWidth,
             rawImageHeight = rawImageHeight,
-        ) ?: return
-        val estH = FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, distEstimate.meters, fy) ?: return
+        )
+        val arEstH = distEstimate?.let { d ->
+            FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, d.meters, fy)
+        }
+        val fallbackH = FurnitureFitArMetrics.approximateHeightFromRoomAndBboxFraction(
+            roomHeightMetersForFallback,
+            hRaw,
+            rawImageHeight,
+        )
+        var estH = arEstH
+        if (estH == null || !estH.isFinite() || estH < 0.05f) {
+            estH = fallbackH
+        }
+        if (estH == null || !estH.isFinite() || estH < 0.05f) {
+            return
+        }
         val stdH = 0.85f
         val raw = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH, 0.25f, 4f)
+        val distTag = distEstimate?.let { "${it.source} dist=${it.meters}m" } ?: "fallback_room_frac"
         LogUtil.d(
             TAG,
-            "AR metric sizing source=${distEstimate.source} dist=${distEstimate.meters}m estH=$estH fy=$fy bboxH=$hRaw rawCenter=($rawCx,$rawCy) overlayRaw=$raw"
+            "AR metric sizing source=$distTag arEstH=$arEstH fallbackH=$fallbackH estH=$estH fy=$fy bboxH=$hRaw rawCenter=($rawCx,$rawCy) overlayRaw=$raw"
         )
         pendingEstHForApply = estH
         latestRawScale = raw

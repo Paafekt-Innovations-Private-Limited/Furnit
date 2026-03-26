@@ -332,8 +332,8 @@ class FurnitureFitManager(private val context: Context) {
             // Run detection with mask generation
             val result = ncnn.detectWithMask(
                 bitmap = frame,
-                confThreshold = 0.25f,
-                iouThreshold = 0.45f,
+                confThreshold = YoloEImageInference.CONF_THRESHOLD,
+                iouThreshold = YoloEImageInference.IOU_THRESHOLD,
                 maskThreshold = 0.5f
             )
 
@@ -1069,18 +1069,18 @@ class FurnitureFitManager(private val context: Context) {
 
             val detections = ncnn.detect(
                 bitmap = frame,
-                confThreshold = 0.25f,
-                iouThreshold = 0.45f,
+                confThreshold = YoloEImageInference.CONF_THRESHOLD,
+                iouThreshold = YoloEImageInference.IOU_THRESHOLD,
             )
 
             if (detections.isEmpty()) {
-                mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
+                mainHandler.post { callback(SegmentationResult(null, emptyList(), NcnnYoloe.MODEL_INPUT_SIDE)) }
                 return
             }
 
             val primaryFull = pickPrimaryNcnnDetection(detections)
             if (primaryFull == null) {
-                mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
+                mainHandler.post { callback(SegmentationResult(null, emptyList(), NcnnYoloe.MODEL_INPUT_SIDE)) }
                 return
             }
 
@@ -1097,7 +1097,7 @@ class FurnitureFitManager(private val context: Context) {
                 primaryFull.height,
                 frame.width,
                 frame.height,
-                640,
+                NcnnYoloe.MODEL_INPUT_SIDE,
                 primaryFull.confidence,
                 primaryFull.label,
             )
@@ -1110,7 +1110,7 @@ class FurnitureFitManager(private val context: Context) {
             )
 
             mainHandler.post {
-                callback(SegmentationResult(maskFull, listOf(detResult), 640))
+                callback(SegmentationResult(maskFull, listOf(detResult), NcnnYoloe.MODEL_INPUT_SIDE))
             }
         } catch (e: Exception) {
             LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)

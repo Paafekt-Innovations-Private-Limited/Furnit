@@ -16,6 +16,13 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
+    /// Match Android `WallMeasurementEstimator.PREF_ENABLED` — YOLO + monodepth + EXIF when saving a SHARP room.
+    @AppStorage("wall_measurement_yolo_on_save") private var wallMeasurementYoloOnSave = true
+    /// Distance from camera to front wall (m). Width on save scales ~linearly with this when SHARP monodepth is missing.
+    @AppStorage("wall_measurement_assumed_depth_m") private var wallAssumedDepthM: Double = 2.5
+    /// Used when the YOLO box is a short strip; should be near your tape-measured wall height (e.g. 2.86 m).
+    @AppStorage("wall_measurement_assumed_ceiling_m") private var wallAssumedCeilingM: Double = 2.5
+
     var body: some View {
         NavigationView {
             Form {
@@ -187,6 +194,64 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
+                }
+
+                Section {
+                    Toggle(isOn: $wallMeasurementYoloOnSave) {
+                        HStack {
+                            Image(systemName: "ruler")
+                                .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("YOLO wall dimensions when saving")
+                                    .font(.headline)
+                                Text("When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.indigo)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "camera.metering.center.weighted")
+                                .foregroundColor(.indigo)
+                                .frame(width: 24)
+                            Text("Assumed distance to wall (m)")
+                                .font(.headline)
+                        }
+                        Slider(value: $wallAssumedDepthM, in: 1.5...6.0, step: 0.05)
+                            .tint(.indigo)
+                        Text(String(format: "%.2f m", wallAssumedDepthM))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "arrow.up.to.line.compact")
+                                .foregroundColor(.indigo)
+                                .frame(width: 24)
+                            Text("Assumed wall height ceiling (m)")
+                                .font(.headline)
+                        }
+                        Slider(value: $wallAssumedCeilingM, in: 2.2...4.0, step: 0.01)
+                            .tint(.indigo)
+                        Text(String(format: "%.2f m", wallAssumedCeilingM))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Room measurement")
+                } footer: {
+                    Text(
+                        "Without monodepth on SHARP iOS, save uses assumed depth and sometimes this ceiling for height. " +
+                            "If width is low vs a tape measure, increase Assumed distance (width scales about linearly). " +
+                            "Set Assumed wall height near your tape measure (e.g. 2.86 m). Or use ⋮ → Calibrate by wall before Save."
+                    )
+                    .font(.footnote)
                 }
 
                 // Developer Settings Section

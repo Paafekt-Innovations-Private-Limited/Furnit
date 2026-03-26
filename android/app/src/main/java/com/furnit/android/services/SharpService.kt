@@ -3,6 +3,7 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.utils.LogUtil
@@ -11,6 +12,7 @@ import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -280,6 +282,11 @@ class SharpService private constructor(private val context: Context) {
                     "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
                     "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
             )
+            try {
+                executorchInt8Sharp.persistLastMonodepthToFolder(result.plyFile.parentFile!!)
+            } catch (e: Exception) {
+                LogUtil.w(TAG, "persistLastMonodepthToFolder: ${e.message}")
+            }
             val feedOrientation = PhotoOrientation.fromBitmapDimensions(image)
             LogUtil.d(
                 TAG,
@@ -474,6 +481,32 @@ class SharpService private constructor(private val context: Context) {
                 "center=($roomCenterX,$roomCenterY,$roomCenterZ) photoOrientation=$photoOrientation " +
                 "path=${roomFolder.absolutePath}",
         )
+        writeCameraExifSidecar(roomFolder, sourcePhotoPath)
+    }
+
+    private fun writeCameraExifSidecar(roomFolder: File, sourcePhotoPath: String?) {
+        val path = sourcePhotoPath?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val file = File(path)
+        if (!file.isFile) return
+        try {
+            val exif = ExifInterface(file)
+            val o = JSONObject()
+            val focal = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, Double.NaN)
+            if (focal.isFinite() && focal > 0) {
+                o.put("focalLengthMm", focal)
+            }
+            val fl35 = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, Double.NaN)
+            if (fl35.isFinite() && fl35 > 0) {
+                o.put("focalLength35mmEquivMm", fl35)
+            }
+            if (o.length() == 0) return
+            val exifOut = File(roomFolder, "camera_exif.json")
+            exifOut.writeText(o.toString())
+            LogUtil.d(TAG, "Wrote camera_exif.json for YOLO wall measurement")
+            LogUtil.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${o.keys().asSequence().toList()}")
+        } catch (e: Exception) {
+            LogUtil.w(TAG, "writeCameraExifSidecar: ${e.message}")
+        }
     }
 
     /**

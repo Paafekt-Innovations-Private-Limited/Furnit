@@ -347,6 +347,7 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
             logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
+            saveThumbnailForWallMeasurement(image: image, classicPlyURL: plyURLs.classic)
             let plyURL = plyURLs.original
 
             // Complete
@@ -898,5 +899,27 @@ class SHARPService: ObservableObject {
         logDebug("  Splats: \(gaussianCount)")
 
         return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL)
+    }
+
+    /// Writes `Room_<stamp>_thumbnail.png` next to the classic PLY so [WallMeasurementEstimator] can load it on save (matches Android `thumbnail.png` in the room folder).
+    private func saveThumbnailForWallMeasurement(image: UIImage, classicPlyURL: URL) {
+        let stem = classicPlyURL.deletingPathExtension().lastPathComponent
+        let base: String
+        if stem.hasSuffix("_classic") {
+            base = String(stem.dropLast("_classic".count))
+        } else {
+            base = stem
+        }
+        let out = classicPlyURL.deletingLastPathComponent().appendingPathComponent("\(base)_thumbnail.png")
+        guard let data = image.pngData() else {
+            logWallMeasurement("persist_thumbnail fail encode path=\(out.path)")
+            return
+        }
+        do {
+            try data.write(to: out)
+            logWallMeasurement("persist_thumbnail ok path=\(out.path) bytes=\(data.count)")
+        } catch {
+            logWallMeasurement("persist_thumbnail fail write \(error.localizedDescription) path=\(out.path)")
+        }
     }
 }

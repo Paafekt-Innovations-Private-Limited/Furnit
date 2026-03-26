@@ -305,6 +305,22 @@ object FurnitureFitArMetrics {
         return (bboxHeightPixels / focalLengthYPixels) * distanceMeters
     }
 
+    /**
+     * When ARCore depth and plane hits are unavailable, approximate object height from the
+     * calibrated front-wall [roomHeightMeters] and the bbox height as a fraction of image height.
+     * Coarse only — prefer [estimatedPhysicalHeightMeters] when distance is known.
+     */
+    fun approximateHeightFromRoomAndBboxFraction(
+        roomHeightMeters: Float,
+        bboxHeightPixels: Float,
+        imageHeightPixels: Int,
+    ): Float? {
+        if (roomHeightMeters <= 0.1f || imageHeightPixels <= 0) return null
+        if (!bboxHeightPixels.isFinite()) return null
+        val frac = (bboxHeightPixels / imageHeightPixels.toFloat()).coerceIn(0.06f, 0.92f)
+        return roomHeightMeters * frac
+    }
+
     fun overlayScaleFromMetricHeights(
         standardHeightMeters: Float,
         estimatedHeightMeters: Float,

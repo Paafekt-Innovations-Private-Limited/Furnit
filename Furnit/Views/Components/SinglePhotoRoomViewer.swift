@@ -366,6 +366,11 @@ struct RoomBoundaryDetectionView: View {
             await MainActor.run {
                 savedBoundaries = boundaries
                 isProcessingInView = false
+            }
+            // Let the parent’s `adjustedBoundaries` commit before pushing MeshRoomView; otherwise
+            // `navigationDestination(isPresented: $navigateToViewer)` can build with nil boundaries and log the default-boundaries fallback.
+            await Task.yield()
+            await MainActor.run {
                 onProcessingComplete?()
                 dismiss()
             }
@@ -1275,10 +1280,7 @@ struct SinglePhotoRoomView: View {
                     floorY: boundaries.floorY
                 )
             } else if let image = selectedImage {
-                // Fallback: use full image with default boundaries
-                let _ = {
-                    logDebug("⚠️ [Navigation] Using default boundaries (adjustedBoundaries is nil)")
-                }()
+                // Fallback: full-frame wall lines when `adjustedBoundaries` is nil (common for SHARP / no boundary sheet).
                 MeshRoomView(
                     roomWidth: Float(roomWidth),
                     roomHeight: Float(roomHeight),

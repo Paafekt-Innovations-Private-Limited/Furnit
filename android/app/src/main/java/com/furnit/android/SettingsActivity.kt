@@ -26,6 +26,7 @@ import com.furnit.android.services.ExecutorchFixedSettings
 import com.furnit.android.services.ExecutorchInt8Sharp
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.WallMeasurementEstimator
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.Part1OnlyTest
 import com.furnit.android.utils.Part4OnlyTest
@@ -195,6 +196,125 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         layout.addView(furnitureFitSection)
+
+        val wallMeasSection = createSection(getString(R.string.settings_wall_measurement_title))
+        val wallMeasLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        wallMeasLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_wall_measurement_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        wallMeasSection.addView(wallMeasLabel)
+
+        val wallEnableRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 8)
+        }
+        wallEnableRow.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_wall_measurement_title)
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+        val wallEnableSwitch = createStyledSwitch(
+            prefs.getBoolean(WallMeasurementEstimator.PREF_ENABLED, true),
+        ) { isChecked ->
+            prefs.edit().putBoolean(WallMeasurementEstimator.PREF_ENABLED, isChecked).apply()
+        }
+        wallEnableRow.addView(wallEnableSwitch)
+        wallMeasSection.addView(wallEnableRow)
+
+        val wallDepthRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+        val wallDepthLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        wallDepthLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_wall_measurement_scale_depth)
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+            },
+        )
+        wallDepthLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_wall_measurement_scale_depth_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        val wallDepthSwitch = createStyledSwitch(
+            prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true),
+        ) { isChecked ->
+            prefs.edit().putBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, isChecked).apply()
+        }
+        wallDepthRow.addView(wallDepthLabel)
+        wallDepthRow.addView(wallDepthSwitch)
+        wallMeasSection.addView(wallDepthRow)
+
+        val calTitle = TextView(this).apply {
+            text = getString(R.string.settings_wall_measurement_calibration)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#333333"))
+            setPadding(0, 12, 0, 4)
+        }
+        wallMeasSection.addView(calTitle)
+
+        val calGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        val calAutoId = View.generateViewId()
+        val calDoorId = View.generateViewId()
+        val calCeilId = View.generateViewId()
+        val calAuto = RadioButton(this).apply {
+            id = calAutoId
+            text = getString(R.string.settings_wall_measurement_cal_auto)
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val calDoor = RadioButton(this).apply {
+            id = calDoorId
+            text = getString(R.string.settings_wall_measurement_cal_door)
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val calCeil = RadioButton(this).apply {
+            id = calCeilId
+            text = getString(R.string.settings_wall_measurement_cal_ceiling)
+            setTextColor(Color.parseColor("#333333"))
+        }
+        calGroup.addView(calAuto)
+        calGroup.addView(calDoor)
+        calGroup.addView(calCeil)
+        when (prefs.getString(WallMeasurementEstimator.PREF_CALIBRATION, WallMeasurementEstimator.CAL_AUTO)) {
+            WallMeasurementEstimator.CAL_DOOR -> calGroup.check(calDoorId)
+            WallMeasurementEstimator.CAL_CEILING -> calGroup.check(calCeilId)
+            else -> calGroup.check(calAutoId)
+        }
+        calGroup.setOnCheckedChangeListener { _, checkedId ->
+            val v = when (checkedId) {
+                calDoorId -> WallMeasurementEstimator.CAL_DOOR
+                calCeilId -> WallMeasurementEstimator.CAL_CEILING
+                else -> WallMeasurementEstimator.CAL_AUTO
+            }
+            prefs.edit().putString(WallMeasurementEstimator.PREF_CALIBRATION, v).apply()
+        }
+        wallMeasSection.addView(calGroup)
+        layout.addView(wallMeasSection)
 
         // Room Viewer settings section
         val viewerSection = createSection(getString(R.string.settings_room_viewer))

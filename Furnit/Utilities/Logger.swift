@@ -20,6 +20,18 @@ func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n
     print(output, terminator: terminator)
 }
 
+// MARK: - Always-on diagnostics (not gated by Settings debug mode)
+
+/// YOLO wall measurement on save — always printed. Filter in Console: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
+func logWallMeasurement(_ message: String) {
+    print("[WALL_MEAS] \(message)")
+}
+
+/// PLY bounds / navigation — always printed. Filter: `PLY_BOUNDS`.
+func logPlyBoundsDiagnostic(_ message: String) {
+    print("[PLY_BOUNDS] \(message)")
+}
+
 /// Centralized logging utility using os_log framework
 /// - Debug/Info logs only appear when debug mode is enabled in Settings
 /// - Error/Critical logs always appear for crash reporting

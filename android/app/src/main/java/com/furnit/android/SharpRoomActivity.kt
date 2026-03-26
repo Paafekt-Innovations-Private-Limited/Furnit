@@ -47,6 +47,7 @@ import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.WallMeasurementEstimator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1241,8 +1242,15 @@ class SharpRoomActivity : AppCompatActivity() {
                                 size,
                                 brainEffectiveOverlayScale(),
                             )
-                            // CameraX-only brain path has no defensible metric sizing. Show meters only from AR depth.
-                            brainDetectedFurnitureHeightMeters = null
+                            val rh = effRoomHeight()
+                            brainDetectedFurnitureHeightMeters =
+                                if (dets.isNotEmpty() && rh > 0.1f && size > 0) {
+                                    val det = dets.first()
+                                    val frac = (det.h / size.toFloat()).coerceIn(0.06f, 0.92f)
+                                    rh * frac
+                                } else {
+                                    null
+                                }
                             updateBrainCalibrationPill()
                         }
                     }
@@ -1281,6 +1289,7 @@ class SharpRoomActivity : AppCompatActivity() {
         val controller = FurnitureFitArCameraController(this, cameraExecutor)
         brainArController = controller
         controller.lockedPhotoOrientation = photoOrientation
+        controller.roomHeightMetersForFallback = effRoomHeight()
         controller.onAssistedMeasurementUpdated = {
             brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
             updateBrainCalibrationPill()
@@ -2135,66 +2144,97 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun saveRoom(name: String) {
-        val folder = roomFolder
-        if (folder == null) {
+        val folderPath = roomFolder
+        if (folderPath == null) {
             Toast.makeText(this, getString(R.string.sharp_room_cannot_save), Toast.LENGTH_SHORT).show()
             return
         }
 
-        try {
-            // Update metadata with user's name and dimensions
-            val metadataFile = File(folder, "metadata.txt")
-            val metadata = StringBuilder()
-            metadata.append("name=$name\n")
-            metadata.append("created=${System.currentTimeMillis()}\n")
-            metadata.append("type=sharp\n")
-            metadata.append("roomWidth=$roomWidth\n")
-            metadata.append("roomHeight=$roomHeight\n")
-            metadata.append("roomDepth=$roomDepth\n")
-            metadata.append("roomCenterX=$roomCenterX\n")
-            metadata.append("roomCenterY=$roomCenterY\n")
-            metadata.append("roomCenterZ=$roomCenterZ\n")
-            metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
-            metadata.append("photoWideAngle=$photoWideAngle\n")
-            metadata.append("arDisplayScale=$arDisplayScale\n")
-            metadata.append("previewOnly=false\n")
-            metadataFile.writeText(metadata.toString())
-            val folderFile = File(folder)
-            val snapshotToWrite = RoomFolderMetadata.snapshotPreservingYoloFields(
-                folderFile,
-                RoomFolderMetadata.Snapshot(
-                    name = name,
-                    createdAt = System.currentTimeMillis(),
-                    type = "sharp",
-                    photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
-                    photoWideAngle = photoWideAngle,
-                    roomWidth = roomWidth,
-                    roomHeight = roomHeight,
-                    roomDepth = roomDepth,
-                    roomCenterX = roomCenterX,
-                    roomCenterY = roomCenterY,
-                    roomCenterZ = roomCenterZ,
-                    arDisplayScale = arDisplayScale,
-                    previewOnly = false,
-                ),
+        lifecycleScope.launch {
+            val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+            var rw = roomWidth
+            var rh = roomHeight
+            var rd = roomDepth
+            LogUtil.i(
+                "WALL_MEAS",
+                "saveRoom start name=$name folder=$folderPath before W×H×D=$rw×$rh×${rd} pref_measure=${prefs.getBoolean(WallMeasurementEstimator.PREF_ENABLED, true)}",
             )
-            RoomFolderMetadata.writeToFolder(folderFile, snapshotToWrite)
+            val measured = withContext(Dispatchers.Default) {
+                WallMeasurementEstimator.measure(this@SharpRoomActivity, File(folderPath), prefs)
+            }
+            if (measured == null) {
+                LogUtil.i("WALL_MEAS", "saveRoom measure returned null — keeping viewer dims W×H×D=$rw×$rh×$rd")
+            }
+            measured?.let { m ->
+                rw = m.widthMeters
+                rh = m.heightMeters
+                if (prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true)) {
+                    val prevW = roomWidth.coerceAtLeast(0.01f)
+                    rd = roomDepth * (m.widthMeters / prevW)
+                }
+                roomWidth = rw
+                roomHeight = rh
+                roomDepth = rd
+                LogUtil.i(
+                    "WALL_MEAS",
+                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd depthScaled=${prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true)}",
+                )
+            }
 
-            Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
-            DebugLogger.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
-            hasSavedRoom = true
-            isTempSharpRoom = false
+            withContext(Dispatchers.Main) {
+                try {
+                    val metadataFile = File(folderPath, "metadata.txt")
+                    val metadata = StringBuilder()
+                    metadata.append("name=$name\n")
+                    metadata.append("created=${System.currentTimeMillis()}\n")
+                    metadata.append("type=sharp\n")
+                    metadata.append("roomWidth=$rw\n")
+                    metadata.append("roomHeight=$rh\n")
+                    metadata.append("roomDepth=$rd\n")
+                    metadata.append("roomCenterX=$roomCenterX\n")
+                    metadata.append("roomCenterY=$roomCenterY\n")
+                    metadata.append("roomCenterZ=$roomCenterZ\n")
+                    metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
+                    metadata.append("photoWideAngle=$photoWideAngle\n")
+                    metadata.append("arDisplayScale=$arDisplayScale\n")
+                    metadata.append("previewOnly=false\n")
+                    metadataFile.writeText(metadata.toString())
+                    val folderFile = File(folderPath)
+                    val snapshotToWrite = RoomFolderMetadata.snapshotPreservingYoloFields(
+                        folderFile,
+                        RoomFolderMetadata.Snapshot(
+                            name = name,
+                            createdAt = System.currentTimeMillis(),
+                            type = "sharp",
+                            photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                            photoWideAngle = photoWideAngle,
+                            roomWidth = rw,
+                            roomHeight = rh,
+                            roomDepth = rd,
+                            roomCenterX = roomCenterX,
+                            roomCenterY = roomCenterY,
+                            roomCenterZ = roomCenterZ,
+                            arDisplayScale = arDisplayScale,
+                            previewOnly = false,
+                        ),
+                    )
+                    RoomFolderMetadata.writeToFolder(folderFile, snapshotToWrite)
 
-            // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
-            val intent = Intent(this, ContentActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-            finish()
+                    Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
+                    DebugLogger.d(TAG, "Room saved: $name at $folderPath with dims: ${rw}x${rh}x${rd}")
+                    hasSavedRoom = true
+                    isTempSharpRoom = false
 
-        } catch (e: Exception) {
-            DebugLogger.eDebugMode(TAG, "Failed to save room", e)
-            Toast.makeText(this, getString(R.string.sharp_room_save_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
-            CrashReporter.report(this, e, "Sharp room save")
+                    val intent = Intent(this@SharpRoomActivity, ContentActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                } catch (e: Exception) {
+                    DebugLogger.eDebugMode(TAG, "Failed to save room", e)
+                    Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_save_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                    CrashReporter.report(this@SharpRoomActivity, e, "Sharp room save")
+                }
+            }
         }
     }
 
