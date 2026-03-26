@@ -15,8 +15,14 @@ import android.view.ViewGroup
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.View
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.furnit.android.services.SharpGenerationUiState
+import com.furnit.android.services.SharpService
 import androidx.appcompat.app.AlertDialog
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
@@ -30,6 +36,8 @@ class ContentActivity : AppCompatActivity() {
     private lateinit var roomsContainer: LinearLayout
     private lateinit var statsText: TextView
     private lateinit var totalSizeText: TextView
+    private lateinit var sharpGlobalProgressBar: FrameLayout
+    private lateinit var sharpGlobalProgressLabel: TextView
 
     // Colors matching iOS dark theme
     private val backgroundColor = Color.parseColor("#1C1C1E")
@@ -69,6 +77,12 @@ class ContentActivity : AppCompatActivity() {
         // Refresh models when returning to this activity
         modelManager.refresh()
         refreshRoomsList()
+        syncSharpGlobalProgressBarFromState()
+    }
+
+    override fun onDestroy() {
+        SharpGenerationUiState.setListener(null)
+        super.onDestroy()
     }
 
     private fun navigateToLogin() {
@@ -199,8 +213,84 @@ class ContentActivity : AppCompatActivity() {
         scrollView.addView(layout)
         setContentView(scrollView)
 
+        val contentRoot = findViewById<FrameLayout>(android.R.id.content)
+        sharpGlobalProgressBar = createSharpGlobalProgressBar()
+        contentRoot.addView(
+            sharpGlobalProgressBar,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM,
+            ),
+        )
+        SharpGenerationUiState.setListener { syncSharpGlobalProgressBarFromState() }
+
         // Initial load
         refreshRoomsList()
+    }
+
+    private fun createSharpGlobalProgressBar(): FrameLayout {
+        val density = resources.displayMetrics.density
+        return FrameLayout(this).apply {
+            visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#5E35B1"))
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                elevation = 28f * density
+            }
+            val row = LinearLayout(this@ContentActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14))
+            }
+            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
+                insets
+            }
+            sharpGlobalProgressLabel = TextView(this@ContentActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                textSize = 13f
+                setTextColor(Color.WHITE)
+                maxLines = 2
+            }
+            row.addView(sharpGlobalProgressLabel)
+            val stopGlobal = TextView(this@ContentActivity).apply {
+                text = "⏹"
+                textSize = 11f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(4).toFloat()
+                    setColor(Color.parseColor("#E53935"))
+                }
+                contentDescription = getString(R.string.single_photo_ai_stop)
+                setOnClickListener { onSharpGlobalStopClicked() }
+            }
+            row.addView(stopGlobal)
+            addView(row)
+        }
+    }
+
+    private fun syncSharpGlobalProgressBarFromState() {
+        if (!::sharpGlobalProgressBar.isInitialized) return
+        val s = SharpGenerationUiState
+        if (!s.isGenerating) {
+            sharpGlobalProgressBar.visibility = View.GONE
+            return
+        }
+        sharpGlobalProgressBar.visibility = View.VISIBLE
+        sharpGlobalProgressLabel.text = s.statusLine
+        (sharpGlobalProgressBar.parent as? ViewGroup)?.bringChildToFront(sharpGlobalProgressBar)
+        ViewCompat.requestApplyInsets(sharpGlobalProgressBar)
+    }
+
+    private fun onSharpGlobalStopClicked() {
+        SharpService.getInstance(this).cancelGeneration()
+        SharpGenerationUiState.clear()
+        syncSharpGlobalProgressBarFromState()
+        Toast.makeText(this, getString(R.string.home_sharp_generation_stopped), Toast.LENGTH_SHORT).show()
     }
 
     private fun createIconButton(icon: String): TextView {
@@ -486,11 +576,11 @@ class ContentActivity : AppCompatActivity() {
             }
         }
 
-        // Long press to delete (only for user-created rooms)
+        // Long press: rename or delete (user-created rooms only)
         if (model.isUserCreated) {
             val longPressModel = model
-            card.setOnLongClickListener { v ->
-                showDeleteDialog(longPressModel)
+            card.setOnLongClickListener {
+                showRoomActionsDialog(longPressModel)
                 true
             }
         }
@@ -518,6 +608,60 @@ class ContentActivity : AppCompatActivity() {
             // Ignore
         }
         return "—"
+    }
+
+    private fun showRoomActionsDialog(model: Model) {
+        val options = arrayOf(
+            getString(R.string.home_rename_room),
+            getString(R.string.common_delete),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(model.name)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showRenameRoomDialog(model)
+                    1 -> showDeleteDialog(model)
+                }
+            }
+            .setNegativeButton(R.string.common_cancel, null)
+            .show()
+    }
+
+    private fun showRenameRoomDialog(model: Model) {
+        val padding = dpToPx(24)
+        val input = EditText(this).apply {
+            setText(model.name)
+            setSelection(model.name.length)
+            setHint(R.string.home_rename_room_hint)
+        }
+        val container = FrameLayout(this).apply {
+            setPadding(padding, dpToPx(8), padding, 0)
+            addView(
+                input,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.home_rename_room_title)
+            .setView(container)
+            .setPositiveButton(R.string.common_save) { _, _ ->
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, getString(R.string.home_rename_room_empty), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (modelManager.renameUserRoom(model.id, name)) {
+                    Toast.makeText(this, getString(R.string.home_room_renamed, name), Toast.LENGTH_SHORT).show()
+                    refreshRoomsList()
+                } else {
+                    Toast.makeText(this, getString(R.string.home_rename_room_failed), Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.common_cancel, null)
+            .show()
     }
 
     private fun showDeleteDialog(model: Model) {

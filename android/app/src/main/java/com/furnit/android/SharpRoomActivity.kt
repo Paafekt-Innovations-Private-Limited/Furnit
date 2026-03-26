@@ -85,6 +85,8 @@ class SharpRoomActivity : AppCompatActivity() {
         const val EXTRA_PHOTO_WIDE_ANGLE = "photo_wide_angle"
         /** True when this Sharp room comes directly from a new SHARP generation (SinglePhotoRoom); delete if not saved. */
         const val EXTRA_IS_TEMP_SHARP_ROOM = "is_temp_sharp_room"
+        /** When true, system back exits the viewer (to [SinglePhotoRoomActivity]) instead of walking WebView history. */
+        const val EXTRA_OPENED_FROM_SINGLE_PHOTO_ROOM = "opened_from_single_photo_room"
 
         private const val OV_SHARE = 10001
         private const val OV_SAVE = 10002
@@ -229,6 +231,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private var sparkBoxPersistRunnable: Runnable? = null
     /** True when this viewer is showing a freshly-generated SHARP room that hasn't been saved with a name yet. */
     private var isTempSharpRoom: Boolean = false
+    /** Launched from [SinglePhotoRoomActivity]; back returns to Create 3D Room (not WebView history). */
+    private var openedFromSinglePhotoRoom: Boolean = false
     /** Set to true once the user explicitly saves the room from this viewer. */
     private var hasSavedRoom: Boolean = false
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -267,6 +271,7 @@ class SharpRoomActivity : AppCompatActivity() {
         roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
         allowSave = intent.getBooleanExtra(EXTRA_ALLOW_SAVE, true)
         isTempSharpRoom = intent.getBooleanExtra(EXTRA_IS_TEMP_SHARP_ROOM, false)
+        openedFromSinglePhotoRoom = intent.getBooleanExtra(EXTRA_OPENED_FROM_SINGLE_PHOTO_ROOM, false)
 
         // Load saved dimensions and orientation from intent (if available)
         var savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
@@ -1201,8 +1206,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                     manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
-                            if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                             isBrainInferenceRunning.set(false)
+                            if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
                                 brainFirstResultReceived = true
@@ -1278,8 +1283,8 @@ class SharpRoomActivity : AppCompatActivity() {
             isBrainInferenceRunning.set(true)
             manager.segmentWithDetectionsAsync(bitmap) { result ->
                 runOnUiThread {
-                    if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                     isBrainInferenceRunning.set(false)
+                    if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
                     if (!hasFirstResult[0]) {
                         hasFirstResult[0] = true
                         brainFirstResultReceived = true
@@ -1338,6 +1343,9 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun stopBrainDetection() {
         DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera / AR")
         brainSegmentationAcceptingUpdates = false
+        // Must clear even if a pending segmentWithDetectionsAsync callback returns early (acceptingUpdates false),
+        // or the next brain session never processes frames (CameraX analyzer gates on this flag).
+        isBrainInferenceRunning.set(false)
         brainFirstResultReceived = false
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
@@ -2388,6 +2396,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 brainOverlayVisible = false
                 setBrainCalibrationPillVisible(false)
             }
+            return
+        }
+        if (openedFromSinglePhotoRoom) {
+            finish()
             return
         }
         if (webView.canGoBack()) {

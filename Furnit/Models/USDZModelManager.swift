@@ -13,6 +13,8 @@ private struct SavedRoomDiskMetadata {
     let yoloFurnitureHeightFracByClass: [String: Float]?
     let yoloRefImageHeightPx: Int?
     let sharpRoomHeightAtYoloCapture: Float?
+    /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
+    let displayName: String?
 
     static let empty = SavedRoomDiskMetadata(
         orientation: .portrait,
@@ -22,7 +24,8 @@ private struct SavedRoomDiskMetadata {
         yoloWallHeightFrac: nil,
         yoloFurnitureHeightFracByClass: nil,
         yoloRefImageHeightPx: nil,
-        sharpRoomHeightAtYoloCapture: nil
+        sharpRoomHeightAtYoloCapture: nil,
+        displayName: nil
     )
 
     static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
@@ -39,6 +42,8 @@ private struct SavedRoomDiskMetadata {
            let decoded = try? JSONDecoder().decode([String: Float].self, from: data) {
             furnMap = decoded
         }
+        let rawName = metadata["displayName"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = (rawName?.isEmpty == false) ? rawName : nil
         return SavedRoomDiskMetadata(
             orientation: orientation,
             width: width,
@@ -47,7 +52,8 @@ private struct SavedRoomDiskMetadata {
             yoloWallHeightFrac: yoloWall,
             yoloFurnitureHeightFracByClass: furnMap,
             yoloRefImageHeightPx: yoloRefH,
-            sharpRoomHeightAtYoloCapture: sharpCap
+            sharpRoomHeightAtYoloCapture: sharpCap,
+            displayName: displayName
         )
     }
 }
@@ -199,7 +205,7 @@ class USDZModelManager: ObservableObject {
                 case .glb:
                     metadata = loadGLBMetadata(for: fileName)
                 default:
-                    metadata = .empty
+                    metadata = loadUSDZMetadata(for: fileName)
                 }
 
                 if debugMode {
@@ -219,7 +225,8 @@ class USDZModelManager: ObservableObject {
                     yoloWallHeightFrac: metadata.yoloWallHeightFrac,
                     yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
                     yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
-                    sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture
+                    sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
+                    customDisplayName: metadata.displayName
                 )
                 savedRoomModels.append(model)
             }
@@ -289,6 +296,33 @@ class USDZModelManager: ObservableObject {
             logDebug("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
         }
     }
+
+    /// Writes `displayName` into the per-room `*.meta` sidecar (file name on disk unchanged).
+    func updateDisplayName(for model: USDZModel, newName: String) throws {
+        guard model.isSavedRoom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "USDZModelManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty name"])
+        }
+        let fileExtension: String
+        switch model.fileType {
+        case .ply: fileExtension = "ply"
+        case .meshroom: fileExtension = "meshroom"
+        case .glb: fileExtension = "glb"
+        case .usdz: fileExtension = "usdz"
+        }
+        let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+        dict["displayName"] = trimmed
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+        DispatchQueue.main.async { self.refreshModels() }
+    }
     
     // ✅ NEW: Delete model functionality
     func deleteModel(id: UUID) {
@@ -338,14 +372,12 @@ class USDZModelManager: ObservableObject {
                     }
                 }
 
-                // Also delete metadata file for PLY, meshroom, and GLB files
-                if model.fileType == .ply || model.fileType == .meshroom || model.fileType == .glb {
-                    let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
-                    if FileManager.default.fileExists(atPath: metadataURL.path) {
-                        try FileManager.default.removeItem(at: metadataURL)
-                        if debugMode {
-                            logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
-                        }
+                // Also delete metadata sidecar (all saved types may have *.meta)
+                let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+                if FileManager.default.fileExists(atPath: metadataURL.path) {
+                    try FileManager.default.removeItem(at: metadataURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
                     }
                 }
             } catch {
@@ -672,6 +704,17 @@ class USDZModelManager: ObservableObject {
             return .empty
         }
 
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
+    }
+
+    /// Optional metadata for saved USDZ rooms (`*.usdz.meta`).
+    private func loadUSDZMetadata(for fileName: String) -> SavedRoomDiskMetadata {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).usdz.meta")
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return .empty
+        }
         return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 }

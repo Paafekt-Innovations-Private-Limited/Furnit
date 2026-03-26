@@ -68,7 +68,9 @@ struct HomeTab: View {
     @State private var showingHelp = false
     @State private var showingFileInfoSnackbar = false
     @State private var selectedModelForInfo: USDZModel?
-    
+    @State private var renameTarget: USDZModel?
+    @State private var renameDraft = ""
+
     var body: some View {
         NavigationStack {
             VStack {
@@ -142,7 +144,17 @@ struct HomeTab: View {
                         List {
                             ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
                                 modelRow(for: model, at: index)
-                                    // ✅ SWIPE TO DELETE ADDED HERE
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        if model.isSavedRoom {
+                                            Button {
+                                                renameTarget = model
+                                                renameDraft = model.displayName
+                                            } label: {
+                                                Label(L10n.Home.renameRoom, systemImage: "pencil")
+                                            }
+                                            .tint(.blue)
+                                        }
+                                    }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         Button(role: .destructive) {
                                             roomToDelete = model
@@ -262,6 +274,23 @@ struct HomeTab: View {
                 if let room = roomToDelete {
                     Text(L10n.DeleteRoom.message(room.displayName))
                 }
+            }
+            .alert(L10n.Home.renameRoom, isPresented: Binding(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )) {
+                TextField(L10n.Home.roomNamePlaceholder, text: $renameDraft)
+                Button(L10n.Common.cancel, role: .cancel) {
+                    renameTarget = nil
+                }
+                Button(L10n.Common.save) {
+                    if let room = renameTarget {
+                        try? modelManager.updateDisplayName(for: room, newName: renameDraft)
+                    }
+                    renameTarget = nil
+                }
+            } message: {
+                Text(L10n.Home.renameRoomMessage)
             }
         }
         .onAppear {

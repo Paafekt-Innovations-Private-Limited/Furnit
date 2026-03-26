@@ -23,9 +23,11 @@ struct USDZModel: Identifiable, Hashable {
     let yoloRefImageHeightPx: Int?
     /// SHARP / metadata room height (m) when ratios were captured.
     let sharpRoomHeightAtYoloCapture: Float?
+    /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
+    let customDisplayName: String?
 
     // Standard initializer for USDZ models (backward compatible)
-    init(name: String, fileName: String, isSavedRoom: Bool = false) {
+    init(name: String, fileName: String, isSavedRoom: Bool = false, customDisplayName: String? = nil) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
@@ -39,6 +41,7 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloFurnitureHeightFracByClass = nil
         self.yoloRefImageHeightPx = nil
         self.sharpRoomHeightAtYoloCapture = nil
+        self.customDisplayName = customDisplayName
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
@@ -57,7 +60,8 @@ struct USDZModel: Identifiable, Hashable {
         yoloWallHeightFrac: Float? = nil,
         yoloFurnitureHeightFracByClass: [String: Float]? = nil,
         yoloRefImageHeightPx: Int? = nil,
-        sharpRoomHeightAtYoloCapture: Float? = nil
+        sharpRoomHeightAtYoloCapture: Float? = nil,
+        customDisplayName: String? = nil
     ) {
         self.name = name
         self.fileName = fileName
@@ -72,11 +76,15 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloFurnitureHeightFracByClass = yoloFurnitureHeightFracByClass
         self.yoloRefImageHeightPx = yoloRefImageHeightPx
         self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
+        self.customDisplayName = customDisplayName
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }
     
     var displayName: String {
+        if let custom = customDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
         var cleanName = name
         // Remove timestamp suffix for PLY files (format: "RoomName_1767917336")
         if fileType == .ply {

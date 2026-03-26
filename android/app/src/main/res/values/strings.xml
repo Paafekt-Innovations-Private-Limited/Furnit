@@ -51,7 +51,13 @@
     <string name="home_rooms_remaining">%1$d of %2$d rooms remaining</string>
     <string name="home_delete_hint">Delete old rooms to create new ones</string>
     <string name="home_swipe_hint">Swipe left to delete</string>
-    <string name="home_long_press_hint">Long press to delete</string>
+    <string name="home_long_press_hint">Long press to rename or delete</string>
+    <string name="home_rename_room">Rename</string>
+    <string name="home_rename_room_title">Rename room</string>
+    <string name="home_rename_room_hint">Room name</string>
+    <string name="home_rename_room_empty">Enter a name</string>
+    <string name="home_rename_room_failed">Couldn\'t rename room</string>
+    <string name="home_room_renamed">Renamed to %s</string>
     <string name="home_room_model">3D Room Model</string>
 
     <!-- Room Limit -->
@@ -527,5 +533,10 @@
     <!-- Single photo / AI room generation -->
     <string name="single_photo_run_in_background">Run in background</string>
     <string name="single_photo_progress_overlay_background_hint">You can leave this screen. When the room is ready, it will appear in your Home list.</string>
-    <string name="single_photo_ai_room_async_footnote">Generation keeps running if you leave. Your room will appear on the Home list when it is ready.</string>
+    <string name="single_photo_ai_room_subtitle_idle">AI-Powered 3D construction</string>
+    <string name="single_photo_ai_room_async_footnote">Tap AI Room to see progress. Generation keeps running if you leave; your room will appear on the Home list when it is ready.</string>
+    <string name="single_photo_ai_stop">Stop AI room generation</string>
+    <string name="single_photo_phase_finalize">Finalize</string>
+    <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
+    <string name="home_sharp_generation_stopped">AI room generation stopped</string>
 </resources>

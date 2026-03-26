@@ -158,4 +158,29 @@ class ModelManager(private val context: Context) {
             false
         }
     }
+
+    /**
+     * Updates the display name in [RoomFolderMetadata] for a user room folder.
+     */
+    fun renameUserRoom(roomId: String, newName: String): Boolean {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return false
+        val model = models.find { it.id == roomId && it.isUserCreated } ?: return false
+        val folder = File(model.assetPath).let { if (it.isFile) it.parentFile else it } ?: return false
+        return try {
+            val base = RoomFolderMetadata.readFromFolder(folder)
+                ?: RoomFolderMetadata.Snapshot(
+                    name = trimmed,
+                    createdAt = folder.lastModified(),
+                )
+            val next = RoomFolderMetadata.snapshotPreservingYoloFields(folder, base.copy(name = trimmed))
+            RoomFolderMetadata.writeToFolder(folder, next)
+            loadModels()
+            LogUtil.d(TAG, "Renamed room $roomId to \"$trimmed\"")
+            true
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "Failed to rename room: $roomId", e)
+            false
+        }
+    }
 }

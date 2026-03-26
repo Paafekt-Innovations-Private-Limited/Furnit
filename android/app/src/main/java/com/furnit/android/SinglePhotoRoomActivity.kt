@@ -17,11 +17,15 @@ import android.provider.MediaStore
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -34,6 +38,7 @@ import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
+import com.furnit.android.services.SharpGenerationUiState
 import com.furnit.android.services.SharpService
 import org.json.JSONObject
 import java.io.File
@@ -57,6 +62,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var initialView: LinearLayout
     private lateinit var methodPickerView: LinearLayout
     private lateinit var progressOverlay: FrameLayout
+    /** Bottom bar when AI job is active and the full-screen progress modal is hidden. */
+    private lateinit var globalAiProgressBar: FrameLayout
+    private lateinit var globalAiProgressLabel: TextView
     private lateinit var progressRing: CircularProgressIndicator
     private lateinit var progressText: TextView
     private lateinit var progressPercent: TextView
@@ -86,6 +94,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var aiRoomOverlayRequested = false
     /** After "Run in background", AI option line shows percent; otherwise only friendly text (no %). */
     private var aiOptionShowPercent = false
+    /** Bumped on cancel/restart so stale [SharpService.ProgressCallback] completions are ignored and folders deleted. */
+    private var aiSessionId: Int = 0
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
 
     private val imagePickerLauncher = registerForActivityResult(
@@ -156,6 +166,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
+    private val sharpRoomLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (!isDestroyed) {
+            showInitialView()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -171,17 +189,63 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         methodPickerView.visibility = View.GONE
         rootLayout.addView(methodPickerView)
 
-        // Progress overlay - hidden initially
+        // Full-screen modal first; global bar added last so it stays on top (progress + Stop always visible).
         progressOverlay = createProgressOverlay()
         progressOverlay.visibility = View.GONE
         rootLayout.addView(progressOverlay)
 
         setContentView(rootLayout)
 
+        // Sibling of rootLayout under android.R.id.content so the strip stays above both
+        // Create 3D Room and method-picker full-screen views (not buried under them).
+        val contentRoot = findViewById<FrameLayout>(android.R.id.content)
+        globalAiProgressBar = createGlobalAiProgressBar()
+        contentRoot.addView(
+            globalAiProgressBar,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM,
+            ),
+        )
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (progressOverlay.visibility == View.VISIBLE) {
+                        aiRoomOverlayRequested = false
+                        hideProgressOverlay()
+                        updateAIOptionProgress(lastAIGenerationProgress, lastAIGenerationRawMessage)
+                        return
+                    }
+                    if (methodPickerView.visibility == View.VISIBLE) {
+                        if (aiGenerationRunning || aiGenerationResult != null) {
+                            finish()
+                        } else {
+                            showInitialView()
+                        }
+                    } else {
+                        finish()
+                    }
+                }
+            },
+        )
+
         // Preload ExecuTorch Part1 when backend is ExecuTorch (hides "stuck at 5%" stall at Generate)
         lifecycleScope.launch {
             SharpService.getInstance(this@SinglePhotoRoomActivity).preloadSharpModels()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshGlobalAiProgressUi()
+    }
+
+    /** Keeps the bottom strip visible and on top after navigation or window insets change. */
+    private fun refreshGlobalAiProgressUi() {
+        updateGlobalAiProgressOverlay()
     }
 
     private fun createInitialView(): LinearLayout {
@@ -200,7 +264,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 textSize = 16f
                 setTextColor(Color.parseColor("#007AFF"))
                 setPadding(0, 0, 0, 32)
-                setOnClickListener { finish() }
+                setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             }
             addView(backBtn, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -378,9 +442,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 textSize = 16f
                 setTextColor(Color.parseColor("#007AFF"))
                 setPadding(0, 0, 0, 16)
-                setOnClickListener {
-                    showInitialView()
-                }
+                setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             }
             addView(backBtn)
 
@@ -496,14 +558,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             }
             addView(subtitle)
 
-            // AI Room option (Sharp) — footnote explains async; subtitle shows progress (percent only after "Run in background").
+            // AI Room option (Sharp) — idle subtitle stays static until user taps AI Room or Run in background.
             val aiOption = createOptionCard(
                 icon = "\uD83E\uDE84", // Magic wand
                 title = "AI Room",
-                subtitle = "AI-powered 3D generation",
+                subtitle = getString(R.string.single_photo_ai_room_subtitle_idle),
                 bgColor = "#F3E5F5",
                 footnote = getString(R.string.single_photo_ai_room_async_footnote),
-                onSubtitleCreated = { view -> aiOptionSubtitleView = view }
+                onSubtitleCreated = { view -> aiOptionSubtitleView = view },
+                onStopButtonCreated = { view -> aiStopButtonView = view },
             ) {
                 onAIRoomSelected()
             }
@@ -542,6 +605,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         bgColor: String,
         footnote: String? = null,
         onSubtitleCreated: ((TextView) -> Unit)? = null,
+        onStopButtonCreated: ((TextView) -> Unit)? = null,
         onClick: () -> Unit
     ): LinearLayout {
         return LinearLayout(this).apply {
@@ -594,6 +658,35 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
             }
             addView(textContainer)
+
+            if (onStopButtonCreated != null) {
+                val stopBtn = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "⏹"
+                    textSize = 11f
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dpToPx(4).toFloat()
+                        setColor(Color.parseColor("#E53935"))
+                    }
+                    visibility = View.GONE
+                    contentDescription = getString(R.string.single_photo_ai_stop)
+                    setOnClickListener { onAIStopClicked() }
+                }
+                onStopButtonCreated(stopBtn)
+                addView(
+                    stopBtn,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        gravity = Gravity.CENTER_VERTICAL
+                        setMargins(0, 0, dpToPx(8), 0)
+                    },
+                )
+            }
 
             // Chevron
             val chevron = TextView(this@SinglePhotoRoomActivity).apply {
@@ -723,11 +816,88 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun showMethodPicker() {
         initialView.visibility = View.GONE
         methodPickerView.visibility = View.VISIBLE
+        rootLayout.post { refreshGlobalAiProgressUi() }
+    }
+
+    private fun deleteSharpRoomFolder(result: SharpService.GenerationResult?) {
+        val parent = result?.plyFile?.parentFile ?: return
+        val disk = runCatching { RoomFolderMetadata.readFromFolder(parent) }.getOrNull()
+        if (disk?.previewOnly == false) {
+            DebugLogger.d("SinglePhotoRoom", "Skip delete — room already on Home list: ${parent.absolutePath}")
+            return
+        }
+        try {
+            if (parent.exists()) parent.deleteRecursively()
+            DebugLogger.d("SinglePhotoRoom", "Deleted SHARP room folder: ${parent.absolutePath}")
+        } catch (e: Exception) {
+            DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to delete room folder", e)
+        }
+    }
+
+    /** User tapped Stop — remove folder even if it was promoted to Home ([deleteSharpRoomFolder] would skip). */
+    private fun deleteSharpRoomFolderUnconditional(result: SharpService.GenerationResult?) {
+        val parent = result?.plyFile?.parentFile ?: return
+        try {
+            if (parent.exists()) parent.deleteRecursively()
+            DebugLogger.d("SinglePhotoRoom", "Deleted SHARP room folder (stop): ${parent.absolutePath}")
+        } catch (e: Exception) {
+            DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to delete room folder (stop)", e)
+        }
+    }
+
+    private fun updateAiStopButtonVisibility() {
+        val show = aiGenerationRunning || aiGenerationResult != null
+        aiStopButtonView?.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun onAIStopClicked() {
+        if (!aiGenerationRunning && aiGenerationResult == null) return
+        DebugLogger.d("SinglePhotoRoom", "AI Stop tapped")
+        hideProgressOverlay()
+        aiRoomOverlayRequested = false
+        aiGenerationHandle?.cancel()
+        aiGenerationHandle = null
+        aiGenerationResult?.let { deleteSharpRoomFolderUnconditional(it) }
+        aiGenerationResult = null
+        aiGenerationRunning = false
+        aiOptionShowPercent = false
+        lastAIGenerationRawMessage = ""
+        lastAIGenerationProgress = 0f
+        lastAIGenerationMessage = "Getting started…"
+        aiSessionId++
+        SharpService.getInstance(this).release()
+        aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
+        updateAiStopButtonVisibility()
+        updateGlobalAiProgressOverlay()
+    }
+
+    /** After \"Run in background\", mark folder so [ModelManager] shows it on Home (not preview-only). */
+    private fun promoteSharpRoomToLibrary(result: SharpService.GenerationResult) {
+        val folder = result.plyFile.parentFile ?: return
+        try {
+            val prev = RoomFolderMetadata.readFromFolder(folder) ?: return
+            val updated = RoomFolderMetadata.snapshotPreservingYoloFields(
+                folder,
+                prev.copy(previewOnly = false),
+            )
+            RoomFolderMetadata.writeToFolder(folder, updated)
+            val metaTxt = File(folder, "metadata.txt")
+            if (metaTxt.exists()) {
+                val lines = metaTxt.readLines().map { line ->
+                    if (line.trimStart().startsWith("previewOnly=")) "previewOnly=false" else line
+                }
+                metaTxt.writeText(lines.joinToString("\n").trimEnd() + "\n")
+            }
+            LogUtil.i("SinglePhotoRoom", "Promoted SHARP room to Home list: ${folder.absolutePath}")
+        } catch (e: Exception) {
+            DebugLogger.eDebugMode("SinglePhotoRoom", "promoteSharpRoomToLibrary failed", e)
+        }
     }
 
     /** Start AI generation in background when photo is selected. Cancel on Manual/Back/Change. */
     private fun startAIGenerationInBackground(bitmap: Bitmap) {
         cancelAndReleaseAI()
+        val session = aiSessionId
         aiGenerationResult = null
         aiGenerationRunning = true
         val sharpService = SharpService.getInstance(this)
@@ -737,47 +907,87 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
+                    if (session != aiSessionId) return@runOnUiThread
                     logProgress0("SinglePhotoRoomActivity.kt:onProgress", "callback", mapOf(
                         "progress" to progress, "message" to message, "aiGenerationRunning" to aiGenerationRunning,
                         "aiRoomOverlayRequested" to aiRoomOverlayRequested
                     ))
                     if (aiGenerationRunning) {
                         updateAIOptionProgress(progress, message)
-                        if (aiRoomOverlayRequested) updateProgressOverlay(progress, message)
+                        if (aiRoomOverlayRequested && !isDestroyed) updateProgressOverlay(progress, message)
                     }
+                    if (!isDestroyed) updateAiStopButtonVisibility()
                 }
             }
             override fun onComplete(result: SharpService.GenerationResult) {
                 runOnUiThread {
+                    if (session != aiSessionId) {
+                        deleteSharpRoomFolder(result)
+                        DebugLogger.d("SinglePhotoRoom", "Discarded stale AI completion (session mismatch)")
+                        return@runOnUiThread
+                    }
                     aiGenerationRunning = false
                     aiGenerationResult = result
                     aiGenerationHandle = null
-                    aiOptionShowPercent = false
-                    updateAIOptionProgress(1f, "Ready")
-                    hideProgressOverlay()
-                    if (aiRoomOverlayRequested) {
-                        aiRoomOverlayRequested = false
-                        openSharpRoomWithResult(result)
+                    if (aiOptionShowPercent) {
+                        promoteSharpRoomToLibrary(result)
+                    }
+                    if (!isDestroyed) {
+                        updateAIOptionProgress(1f, "Ready")
+                        hideProgressOverlay()
+                        if (aiRoomOverlayRequested) {
+                            aiRoomOverlayRequested = false
+                            openSharpRoomWithResult(result)
+                        }
+                        updateAiStopButtonVisibility()
+                    } else {
+                        lastAIGenerationProgress = 1f
+                        lastAIGenerationRawMessage = "Ready"
+                        lastAIGenerationMessage = toFriendlyMessage(1f, "Ready")
+                        updateGlobalAiProgressOverlay()
                     }
                     DebugLogger.d("SinglePhotoRoom", "AI generation completed in background")
                 }
             }
             override fun onError(message: String) {
                 runOnUiThread {
+                    if (session != aiSessionId) return@runOnUiThread
+                    if (message == "SHARP_CANCELLED") {
+                        aiGenerationRunning = false
+                        aiGenerationResult = null
+                        aiGenerationHandle = null
+                        aiRoomOverlayRequested = false
+                        aiOptionShowPercent = false
+                        lastAIGenerationRawMessage = ""
+                        lastAIGenerationProgress = 0f
+                        lastAIGenerationMessage = "Getting started…"
+                        if (!isDestroyed) {
+                            hideProgressOverlay()
+                            aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
+                            updateAiStopButtonVisibility()
+                        }
+                        updateGlobalAiProgressOverlay()
+                        return@runOnUiThread
+                    }
                     aiGenerationRunning = false
                     aiGenerationResult = null
                     aiGenerationHandle = null
                     aiRoomOverlayRequested = false
                     aiOptionShowPercent = false
-                    updateAIOptionProgress(0f, "Failed")
-                    hideProgressOverlay()
-                    Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
-                    DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
-                    CrashReporter.report(
-                        this@SinglePhotoRoomActivity,
-                        RuntimeException(message),
-                        "Single photo room — AI / SHARP generation",
-                    )
+                    if (!isDestroyed) {
+                        updateAIOptionProgress(0f, "Failed")
+                        hideProgressOverlay()
+                        Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
+                        DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
+                        CrashReporter.report(
+                            this@SinglePhotoRoomActivity,
+                            RuntimeException(message),
+                            "Single photo room — AI / SHARP generation",
+                        )
+                        updateAiStopButtonVisibility()
+                    } else {
+                        SharpGenerationUiState.clear()
+                    }
                 }
             }
         },
@@ -787,21 +997,31 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             sourcePhotoUri = selectedImageUri,
             metricAnchors = pendingMetricAnchors,
         )
+        updateAiStopButtonVisibility()
+        updateGlobalAiProgressOverlay()
     }
 
-    /** Cancel AI generation and release model memory. Call when user chooses Manual/Back/Change. */
+    /** Cancel AI generation, delete any room folder on disk, and release model memory. */
     private fun cancelAndReleaseAI() {
         aiGenerationHandle?.cancel()
         aiGenerationHandle = null
-        aiGenerationRunning = false
+        deleteSharpRoomFolder(aiGenerationResult)
         aiGenerationResult = null
+        aiGenerationRunning = false
+        aiRoomOverlayRequested = false
         aiOptionShowPercent = false
         lastAIGenerationRawMessage = ""
+        aiSessionId++
+        hideProgressOverlay()
+        aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
         SharpService.getInstance(this).release()
-        DebugLogger.d("SinglePhotoRoom", "AI cancelled and memory released")
+        DebugLogger.d("SinglePhotoRoom", "AI cancelled and memory released (session=$aiSessionId)")
+        updateAiStopButtonVisibility()
+        updateGlobalAiProgressOverlay()
     }
 
     private var aiOptionSubtitleView: TextView? = null
+    private var aiStopButtonView: TextView? = null
 
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
@@ -813,11 +1033,16 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         lastAIGenerationRawMessage = message
         val friendly = toFriendlyMessage(progress, message)
         lastAIGenerationMessage = friendly
-        aiOptionSubtitleView?.text = when {
-            progress >= 1f -> "Ready — tap to view"
-            progress > 0f -> if (aiOptionShowPercent) "$friendly (${(progress * 100).toInt()}%)" else friendly
-            else -> "Create a 3D room from your photo"
+        val idle = getString(R.string.single_photo_ai_room_subtitle_idle)
+        // Idle bluff only when nothing is running. While generating (or after Run in background), show % like before.
+        if (!isDestroyed) {
+            aiOptionSubtitleView?.text = when {
+                progress >= 1f -> "Ready — tap to view"
+                aiGenerationRunning || aiOptionShowPercent -> "$friendly (${(progress * 100).toInt()}%)"
+                else -> idle
+            }
         }
+        updateGlobalAiProgressOverlay()
     }
 
     /** Dismiss full-screen progress; keep generation running and show percent on the AI Room row. */
@@ -859,9 +1084,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         lastAIGenerationMessage = "Getting started…"
         lastAIGenerationRawMessage = ""
         aiOptionShowPercent = false
-        showProgressOverlay(preserveProgress = false)
         startAIGenerationInBackground(selectedBitmap!!)
         aiRoomOverlayRequested = true
+        showProgressOverlay(preserveProgress = false)
     }
 
     private fun openSharpRoomWithResult(result: SharpService.GenerationResult) {
@@ -877,9 +1102,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
             putExtra("photo_orientation", metadataOrientationStringForViewer())
             putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
-            // Mark this as a temporary SHARP room: if the user backs out without saving,
-            // SharpRoomActivity will delete the folder so it doesn't appear in the list.
-            putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, true)
+            // Preview-only / silent builds: delete on exit if never saved. Already on Home (e.g. Run in background) → not temp.
+            val folder = result.plyFile.parentFile
+            val snap = folder?.let { RoomFolderMetadata.readFromFolder(it) }
+            val isTempPreview = snap?.previewOnly != false
+            putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, isTempPreview)
+            putExtra(SharpRoomActivity.EXTRA_OPENED_FROM_SINGLE_PHOTO_ROOM, true)
         }
         LogUtil.i(
             "SHARP_ROOM_MEAS",
@@ -887,7 +1115,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
                 "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}",
         )
-        startActivity(intent)
+        sharpRoomLauncher.launch(intent)
     }
 
     private fun onManualSetupSelected() {
@@ -906,6 +1134,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         boundaryActivityLauncher.launch(intent)
     }
 
+    /** Returns to Create 3D Room photo selection and cancels AI unless already finished (e.g. after Sharp viewer). */
     private fun showInitialView() {
         cancelAndReleaseAI()
         methodPickerView.visibility = View.GONE
@@ -1100,7 +1329,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = (22 * density).toInt() }
                 }
-                val phaseNames = listOf("Prepare", "SHARP", "Save")
+                val phaseNames = listOf(
+                    "Prepare",
+                    "SHARP",
+                    getString(R.string.single_photo_phase_finalize),
+                )
                 phaseStripViews = Array(phaseNames.size) { index ->
                     TextView(this@SinglePhotoRoomActivity).apply {
                         text = phaseNames[index]
@@ -1233,11 +1466,93 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         progressText.text = displayMessage
         setPhaseStripForPercent(pct)
         startProgressOverlayPulse()
+        updateGlobalAiProgressOverlay()
     }
 
     private fun hideProgressOverlay() {
         stopProgressOverlayPulse()
         progressOverlay.visibility = View.GONE
+        updateGlobalAiProgressOverlay()
+    }
+
+    private fun createGlobalAiProgressBar(): FrameLayout {
+        val density = resources.displayMetrics.density
+        return FrameLayout(this).apply {
+            visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#5E35B1"))
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                elevation = 28f * density
+            }
+            val row = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14))
+            }
+            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
+                insets
+            }
+            globalAiProgressLabel = TextView(this@SinglePhotoRoomActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                textSize = 13f
+                setTextColor(Color.WHITE)
+                maxLines = 2
+            }
+            row.addView(globalAiProgressLabel)
+            val stopGlobal = TextView(this@SinglePhotoRoomActivity).apply {
+                text = "⏹"
+                textSize = 11f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(4).toFloat()
+                    setColor(Color.parseColor("#E53935"))
+                }
+                contentDescription = getString(R.string.single_photo_ai_stop)
+                setOnClickListener { onAIStopClicked() }
+            }
+            row.addView(stopGlobal)
+            addView(row)
+        }
+    }
+
+    /** Bottom strip while a job is active — drawn above the full-screen modal so it stays visible on every screen. */
+    private fun updateGlobalAiProgressOverlay() {
+        if (::globalAiProgressBar.isInitialized && !isDestroyed) {
+            val active = aiGenerationRunning || aiGenerationResult != null
+            globalAiProgressBar.visibility = if (active) View.VISIBLE else View.GONE
+            if (active) {
+                val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
+                globalAiProgressLabel.text = if (lastAIGenerationProgress >= 1f && aiGenerationResult != null) {
+                    getString(R.string.single_photo_global_ai_ready, pct)
+                } else {
+                    "${lastAIGenerationMessage} · $pct%"
+                }
+            }
+            (globalAiProgressBar.parent as? ViewGroup)?.bringChildToFront(globalAiProgressBar)
+            ViewCompat.requestApplyInsets(globalAiProgressBar)
+        }
+        syncSharpGenerationUiStateForList()
+    }
+
+    /** Shared with [com.furnit.android.ContentActivity] when this activity is in the background or destroyed. */
+    private fun syncSharpGenerationUiStateForList() {
+        val active = aiGenerationRunning || aiGenerationResult != null
+        if (!active) {
+            SharpGenerationUiState.clear()
+            return
+        }
+        val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
+        val ctx = if (isDestroyed) applicationContext else this
+        val line = if (lastAIGenerationProgress >= 1f && aiGenerationResult != null) {
+            ctx.getString(R.string.single_photo_global_ai_ready, pct)
+        } else {
+            "${lastAIGenerationMessage} · $pct%"
+        }
+        SharpGenerationUiState.update(true, lastAIGenerationProgress, line)
     }
 
     private fun updateProgressOverlay(progress: Float, message: String) {
@@ -1250,5 +1565,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         progressPercent.text = "$percent%"
         progressText.text = friendly
         setPhaseStripForPercent(percent)
+        updateGlobalAiProgressOverlay()
     }
 }

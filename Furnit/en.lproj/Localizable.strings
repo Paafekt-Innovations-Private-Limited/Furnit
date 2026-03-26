@@ -55,7 +55,10 @@
 "home.createRoom" = "Create Room from Photo";
 "home.roomsRemaining" = "%d of %d rooms remaining";
 "home.deleteHint" = "Delete old rooms to create new ones";
-"home.swipeHint" = "Swipe left to delete";
+"home.swipeHint" = "Swipe right to rename, left to delete";
+"home.renameRoom" = "Rename";
+"home.renameRoomMessage" = "This name appears in your room list. The saved file name stays the same.";
+"home.roomNamePlaceholder" = "Room name";
 "home.roomModel" = "3D Room Model";
 
 // MARK: - Room Limit

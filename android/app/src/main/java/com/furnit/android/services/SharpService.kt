@@ -133,6 +133,12 @@ class SharpService private constructor(private val context: Context) {
 
     private val generationCancelled = AtomicBoolean(false)
 
+    /** Cancel the current background [startGenerationInBackground] job (same flag as [GenerationHandle.cancel]). */
+    fun cancelGeneration() {
+        generationCancelled.set(true)
+        LogUtil.d(TAG, "Generation cancel requested")
+    }
+
     /**
      * @param viewerPhotoOrientation "portrait" / "landscape" from SinglePhoto / EXIF fallback.
      * @param viewerPhotoWideAngle 0.5× ultra-wide; with [orientationLockedByUser] false, automatic landscape → portrait in metadata.
@@ -231,7 +237,10 @@ class SharpService private constructor(private val context: Context) {
                 callback.onError(lastInitFailureMessage ?: "SHARP model not available. Push model files to device.")
                 return
             }
-            if (isCancelled()) return
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
 
             LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
             callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
@@ -246,6 +255,10 @@ class SharpService private constructor(private val context: Context) {
                 )
             }
 
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
             if (result == null) {
                 val detail = executorchInt8Sharp.consumeInferStreamingFailureDetail()
                 callback.onError(detail ?: "SHARP ExecuTorch INT8 inference failed")
@@ -294,6 +307,11 @@ class SharpService private constructor(private val context: Context) {
                 sourcePhotoPath = sourcePhotoPath,
             )
 
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
+
             callback.onProgress(1.0f, "Done!")
             callback.onComplete(
                 GenerationResult(
@@ -310,6 +328,7 @@ class SharpService private constructor(private val context: Context) {
         } catch (e: Exception) {
             if (isCancelled()) {
                 LogUtil.d(TAG, "Generation stopped (cancelled)")
+                callback.onError("SHARP_CANCELLED")
                 return
             }
             LogUtil.e(TAG, "Generation failed", e)

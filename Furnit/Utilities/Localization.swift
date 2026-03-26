@@ -83,6 +83,9 @@ enum L10n {
         static let deleteHint = "home.deleteHint".localized
         static let swipeHint = "home.swipeHint".localized
         static let roomModel = "home.roomModel".localized
+        static let renameRoom = "home.renameRoom".localized
+        static let renameRoomMessage = "home.renameRoomMessage".localized
+        static let roomNamePlaceholder = "home.roomNamePlaceholder".localized
     }
 
     // MARK: Room Limit
