@@ -137,6 +137,8 @@
 "settings.arAssistedFurnitureSizing" = "AR-assisted furniture sizing";
 "settings.arAssistedFurnitureSizingDescription" = "Use ARKit depth and planes with camera intrinsics to size the overlay in meters. When off, the regular camera is used and the overlay stays at 1× scale (pinch still adjusts size).";
 "settings.arAssistedNotSupported" = "ARKit world tracking is not available on this device.";
+"settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
+"settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";

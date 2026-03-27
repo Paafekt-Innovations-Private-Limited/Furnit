@@ -195,6 +195,38 @@ class SettingsActivity : AppCompatActivity() {
             )
         }
 
+        val calibrateUiRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 8)
+        }
+        val calibrateUiLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        calibrateUiLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_show_room_furniture_calibrate)
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+            },
+        )
+        calibrateUiLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_show_room_furniture_calibrate_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        val calibrateUiSwitch = createStyledSwitch(
+            prefs.getBoolean(FurnitureFitManager.KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, false),
+        ) { isChecked ->
+            prefs.edit().putBoolean(FurnitureFitManager.KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, isChecked).apply()
+        }
+        calibrateUiRow.addView(calibrateUiLabel)
+        calibrateUiRow.addView(calibrateUiSwitch)
+        furnitureFitSection.addView(calibrateUiRow)
+
         layout.addView(furnitureFitSection)
 
         val wallMeasSection = createSection(getString(R.string.settings_wall_measurement_title))
@@ -259,7 +291,7 @@ class SettingsActivity : AppCompatActivity() {
             },
         )
         val wallDepthSwitch = createStyledSwitch(
-            prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true),
+            prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false),
         ) { isChecked ->
             prefs.edit().putBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, isChecked).apply()
         }

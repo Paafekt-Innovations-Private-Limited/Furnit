@@ -52,7 +52,7 @@ object WallMeasurementEstimator {
         LogUtil.i(
             TAG,
             "measure begin folder=${roomFolder.absolutePath} pref_enabled=${prefs.getBoolean(PREF_ENABLED, true)} " +
-                "calibration=${prefs.getString(PREF_CALIBRATION, CAL_AUTO)} scale_depth=${prefs.getBoolean(PREF_SCALE_DEPTH, true)} " +
+                "calibration=${prefs.getString(PREF_CALIBRATION, CAL_AUTO)} scale_depth=${prefs.getBoolean(PREF_SCALE_DEPTH, false)} " +
                 "ceiling_m=${prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f)} assumed_z_m=${prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f)} sensor_mm=${prefs.getFloat(PREF_SENSOR_WIDTH_MM, 6.4f)}",
         )
         if (!prefs.getBoolean(PREF_ENABLED, true)) {

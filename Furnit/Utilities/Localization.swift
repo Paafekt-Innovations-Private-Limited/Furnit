@@ -145,6 +145,8 @@ enum L10n {
         static let arAssistedFurnitureSizing = "settings.arAssistedFurnitureSizing".localized
         static let arAssistedFurnitureSizingDescription = "settings.arAssistedFurnitureSizingDescription".localized
         static let arAssistedNotSupported = "settings.arAssistedNotSupported".localized
+        static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
+        static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
     }
 
     // MARK: Licenses & Attributions

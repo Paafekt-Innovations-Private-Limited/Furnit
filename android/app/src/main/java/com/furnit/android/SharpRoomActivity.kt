@@ -642,7 +642,9 @@ class SharpRoomActivity : AppCompatActivity() {
         if (allowSave) {
             menu.add(Menu.NONE, OV_SAVE, Menu.NONE, R.string.sharp_room_menu_save)
         }
-        menu.add(Menu.NONE, OV_CALIBRATE, Menu.NONE, R.string.sharp_room_menu_calibrate)
+        if (FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) {
+            menu.add(Menu.NONE, OV_CALIBRATE, Menu.NONE, R.string.sharp_room_menu_calibrate)
+        }
         menu.add(Menu.NONE, OV_RECENTER, Menu.NONE, R.string.sharp_room_menu_recenter)
         menu.add(Menu.NONE, OV_RESET_OVERLAY, Menu.NONE, R.string.sharp_room_menu_reset_overlay)
         menu.add(Menu.NONE, OV_HELP, Menu.NONE, R.string.sharp_room_menu_help)
@@ -667,12 +669,13 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Update the brain (FurnitureFit) calibration pill at the bottom of the screen. */
+    /** Update the brain (FurnitureFit) pill: always shows Furn/Room measurements; “Tap to calibrate” only when pref is on. */
     private fun updateBrainCalibrationPill() {
         runOnUiThread {
             val container = brainCalibrationPillContainer
             val line1 = brainCalibrationPillLine1
             val line2 = brainCalibrationPillLine2
+            val calibrateUi = FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)
             val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
             val realH = brainRealFurnitureHeightMeters
@@ -686,12 +689,22 @@ class SharpRoomActivity : AppCompatActivity() {
                 line1.text = "Furn: ${text}m"
                 line1.setTextColor(0xFFFFFFFF.toInt())
             }
-            line2.text = getString(R.string.smartypants_tap_calibrate)
+            if (calibrateUi) {
+                line2.visibility = View.VISIBLE
+                line2.text = getString(R.string.smartypants_tap_calibrate)
+                container.isClickable = true
+                container.setOnClickListener { showBrainCalibrationDialog() }
+            } else {
+                line2.visibility = View.GONE
+                container.setOnClickListener(null)
+                container.isClickable = false
+            }
         }
     }
 
     /** Dialog for per-object furniture calibration in brain overlay. */
     private fun showBrainCalibrationDialog() {
+        if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) return
         val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
         val ctx = this
         val edit = EditText(ctx).apply {
@@ -724,6 +737,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     /** Dialog for manual room calibration (front-wall height) – Android counterpart to iOS wall-calibration overlay. */
     private fun showRoomCalibrationDialog() {
+        if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) return
         val ctx = this
         val edit = EditText(ctx).apply {
             hint = getString(R.string.smartypants_real_height_hint)
@@ -886,8 +900,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
                 // Shown only while a brain session is active (tap brain → progress/detection); not on plain room view.
                 visibility = View.GONE
+                isClickable = false
                 addView(pillContent)
-                setOnClickListener { showBrainCalibrationDialog() }
+                // Tap / “Tap to calibrate” line: [updateBrainCalibrationPill] (respects calibrate UI pref).
             }
             brainCalibrationPillContainer = pillContainer
             addView(pillContainer)
@@ -2168,7 +2183,7 @@ class SharpRoomActivity : AppCompatActivity() {
             measured?.let { m ->
                 rw = m.widthMeters
                 rh = m.heightMeters
-                if (prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true)) {
+                if (prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)) {
                     val prevW = roomWidth.coerceAtLeast(0.01f)
                     rd = roomDepth * (m.widthMeters / prevW)
                 }
@@ -2177,7 +2192,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 roomDepth = rd
                 LogUtil.i(
                     "WALL_MEAS",
-                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd depthScaled=${prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, true)}",
+                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd depthScaled=${prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)}",
                 )
             }
 
@@ -2435,6 +2450,8 @@ class SharpRoomActivity : AppCompatActivity() {
             if (wantAr != hasAr) {
                 bindBrainCamera(mgr)
             }
+            setBrainCalibrationPillVisible(true)
+            updateBrainCalibrationPill()
         }
     }
 

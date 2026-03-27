@@ -391,6 +391,9 @@ struct SharpRoomView: View {
     @State private var inputWallWidth: String = ""
     @State private var inputWallHeight: String = ""
 
+    /// When true, shows ⋮ Calibrate wall and the Tap to calibrate pill during brain (FurnitureFit). Default off (matches Android).
+    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
+
     // Room viewer settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
@@ -468,8 +471,10 @@ struct SharpRoomView: View {
                                 Label("Save Room", systemImage: "square.and.arrow.down")
                             }
                         }
-                        Button(action: { showWallCalibration = true }) {
-                            Label("Calibrate Wall", systemImage: "ruler")
+                        if showRoomFurnitureCalibrate {
+                            Button(action: { showWallCalibration = true }) {
+                                Label("Calibrate Wall", systemImage: "ruler")
+                            }
                         }
                         Button(action: {
                             NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
@@ -501,6 +506,12 @@ struct SharpRoomView: View {
         .onChange(of: showingFurnitureFit) { _, isOn in
             if isOn {
                 yoloeService.ensureModelLoaded()
+            }
+        }
+        .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
+            if !enabled {
+                showFurnitureDimensionsInput = false
+                showWallCalibration = false
             }
         }
         .onDisappear { OrientationLockManager.shared.unlock() }
@@ -915,6 +926,24 @@ struct SharpRoomView: View {
         .zIndex(99999)
     }
 
+    /// Furn / Room lines; optional “Tap to calibrate” hint only when [showTapHint] is true.
+    private func furnitureMeasurementPillContent(showTapHint: Bool) -> some View {
+        let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
+        return VStack(spacing: 2) {
+            if let calibH = calibratedRoomHeight {
+                Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
+            }
+            Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
+                .font(.caption.bold())
+                .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+            if showTapHint {
+                Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Color.black.opacity(0.6)).cornerRadius(6)
+    }
+
     @ViewBuilder private var bottomBarsOverlayView: some View {
         if photoOrientation == .landscape {
             ZStack(alignment: .bottom) {
@@ -944,19 +973,12 @@ struct SharpRoomView: View {
                     .background(Color.black.opacity(0.5)).cornerRadius(8)
                     .allowsHitTesting(false)
                     if showingFurnitureFit {
-                        Button(action: { showFurnitureDimensionsInput = true }) {
-                            VStack(spacing: 2) {
-                                if let calibH = calibratedRoomHeight {
-                                    Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
-                                }
-                                let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
-                                Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
-                                    .font(.caption.bold())
-                                    .foregroundColor(realFurnitureHeight != nil ? .green : .white)
-                                Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+                        if showRoomFurnitureCalibrate {
+                            Button(action: { showFurnitureDimensionsInput = true }) {
+                                furnitureMeasurementPillContent(showTapHint: true)
                             }
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.black.opacity(0.6)).cornerRadius(6)
+                        } else {
+                            furnitureMeasurementPillContent(showTapHint: false)
                         }
                     }
                     Spacer().allowsHitTesting(false)
@@ -999,19 +1021,12 @@ struct SharpRoomView: View {
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
                         if showingFurnitureFit {
-                            Button(action: { showFurnitureDimensionsInput = true }) {
-                                VStack(spacing: 2) {
-                                    if let calibH = calibratedRoomHeight {
-                                        Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
-                                    }
-                                    let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
-                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
-                                        .font(.caption.bold())
-                                        .foregroundColor(realFurnitureHeight != nil ? .green : .white)
-                                    Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+                            if showRoomFurnitureCalibrate {
+                                Button(action: { showFurnitureDimensionsInput = true }) {
+                                    furnitureMeasurementPillContent(showTapHint: true)
                                 }
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(Color.black.opacity(0.6)).cornerRadius(6)
+                            } else {
+                                furnitureMeasurementPillContent(showTapHint: false)
                             }
                         }
                         Button(action: { takeScreenshot() }) {
@@ -1038,8 +1053,8 @@ struct SharpRoomView: View {
             errorOverlayView
             if showingFurnitureFit { furnitureFitOverlayView }
             if isSavingRoom { saveRoomProgressOverlay }
-            if showFurnitureDimensionsInput { calibrationOverlayView }
-            if showWallCalibration { wallCalibrationOverlay }
+            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate { calibrationOverlayView }
+            if showWallCalibration, showRoomFurnitureCalibrate { wallCalibrationOverlay }
             bottomBarsOverlayView
         }
     }

@@ -276,7 +276,8 @@ class FurnitureFitFragment : Fragment() {
             addView(pillContent)
             // Shown on first [updateCalibrationPill] once segmentation has run (this flow is only opened after brain).
             visibility = View.GONE
-            setOnClickListener { showCalibrationDialog() }
+            isClickable = false
+            // Tap / line2: [updateCalibrationPill] (respects calibrate UI pref).
         }
         calibrationPillContainer = calibrationPill
         bottomControls.addView(calibrationPill)
@@ -748,6 +749,7 @@ class FurnitureFitFragment : Fragment() {
 
     private fun updateCalibrationPill() {
         activity?.runOnUiThread {
+            val calibrateUi = FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(requireContext())
             val detected = detectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
             calibrationPillContainer?.visibility = View.VISIBLE
             val roomM = calibratedRoomHeightMeters
@@ -756,11 +758,22 @@ class FurnitureFitFragment : Fragment() {
                 else -> "Furn: ${String.format(Locale.US, "%.2f", detected)}m"
             }
             calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
-            calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
+            val pill = calibrationPillContainer
+            if (calibrateUi) {
+                calibrationPillLine2?.visibility = View.VISIBLE
+                calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
+                pill?.isClickable = true
+                pill?.setOnClickListener { showCalibrationDialog() }
+            } else {
+                calibrationPillLine2?.visibility = View.GONE
+                pill?.setOnClickListener(null)
+                pill?.isClickable = false
+            }
         }
     }
 
     private fun showCalibrationDialog() {
+        if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(requireContext())) return
         val detected = detectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
         val ctx = requireContext()
         val edit = EditText(ctx).apply {
@@ -826,6 +839,9 @@ class FurnitureFitFragment : Fragment() {
         super.onResume()
         syncFurnitureFitCameraPathToPrefs()
         arCameraController?.onHostResume()
+        if (hasFirstDetection) {
+            updateCalibrationPill()
+        }
     }
 
     override fun onPause() {

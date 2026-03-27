@@ -137,6 +137,8 @@
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
+    <string name="settings_show_room_furniture_calibrate">Show room and furniture calibrate</string>
+    <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
     <string name="settings_ar_assisted_furniture_sizing">AR-assisted furniture sizing</string>
     <string name="settings_ar_assisted_furniture_sizing_description">Use ARCore planes and camera intrinsics to estimate furniture height and scale the overlay. When off, the regular camera is used and the overlay stays at 1× scale (pinch still adjusts size).</string>
     <string name="settings_ar_assisted_furniture_sizing_not_supported">AR-assisted sizing requires ARCore on a supported device.</string>

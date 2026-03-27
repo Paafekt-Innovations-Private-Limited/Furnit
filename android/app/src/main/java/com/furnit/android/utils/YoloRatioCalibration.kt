@@ -11,65 +11,115 @@ import kotlin.math.max
 /**
  * Ratio-only calibration from YOLOe boxes (no metric units): wall / furniture height as
  * fraction of image height, plus helpers to crop live frames toward a target fraction.
+ *
+ * Kept in lockstep with iOS [Furnit/Services/OnDevice/YoloRatioCalibration.swift].
  */
 object YoloRatioCalibration {
 
-    /** COCO-style labels we treat as furniture for per-room reference ratios. */
-    val FURNITURE_LABELS: Set<String> = setOf(
-        "chair", "couch", "bed", "dining table", "toilet", "tv", "refrigerator",
-        "sink", "oven", "microwave", "bench", "potted plant"
+    /** Core furniture categories used for per-class target height fractions (matches iOS). */
+    val FURNITURE_CANONICAL_LABELS: Set<String> = setOf(
+        "chair", "couch", "bed", "dining table", "table", "wardrobe", "desk", "bench", "ottoman",
     )
 
-    private val LABEL_ALIASES: Map<String, String> = mapOf(
-        "sofa" to "couch",
-        "wardrobe" to "refrigerator",
-    )
-
-    fun canonicalFurnitureLabel(raw: String): String {
-        val key = raw.trim().lowercase()
-        return LABEL_ALIASES[key] ?: key
-    }
+    @Deprecated("Use FURNITURE_CANONICAL_LABELS", ReplaceWith("FURNITURE_CANONICAL_LABELS"))
+    val FURNITURE_LABELS: Set<String> = FURNITURE_CANONICAL_LABELS
 
     /**
-     * Wall-like box: wide strip (no dedicated COCO "wall" class).
+     * Map raw COCO / UI labels to canonical keys stored in metadata (matches iOS `canonicalLabel`).
+     */
+    fun canonicalLabel(raw: String): String {
+        val trimmed = raw.trim().lowercase()
+        if (trimmed.isEmpty()) return "unknown"
+        if (trimmed.contains("sofa") || trimmed == "couch") return "couch"
+        if (trimmed.contains("chair")) return "chair"
+        if (trimmed.contains("bed")) return "bed"
+        if (trimmed.contains("dining") && trimmed.contains("table")) return "dining table"
+        if (trimmed.contains("wardrobe") || trimmed.contains("closet")) return "wardrobe"
+        if (trimmed.contains("desk")) return "desk"
+        if (trimmed.contains("ottoman")) return "ottoman"
+        if (trimmed.contains("bench")) return "bench"
+        if (trimmed.contains("table")) return "table"
+        return trimmed
+    }
+
+    @Deprecated("Use canonicalLabel", ReplaceWith("canonicalLabel(raw)"))
+    fun canonicalFurnitureLabel(raw: String): String = canonicalLabel(raw)
+
+    /**
+     * Wall-like boxes: wide vs height, moderate vertical extent, often near horizontal edges.
+     * Matches iOS `wallHeightFractionOrFullFrame(imageSize:boxes:)` (not the tier-3 wall-strip heuristic).
      */
     fun wallHeightFractionOrFullFrame(
         imageWidth: Int,
         imageHeight: Int,
         boxes: List<CalibrationBox>,
     ): Float {
-        if (imageHeight <= 0) return 1f
-        val candidates = boxes.filter { b ->
-            val wFrac = b.width / imageWidth.toFloat()
-            val hFrac = b.height / imageHeight.toFloat()
-            val aspect = b.width / b.height.coerceAtLeast(1e-4f)
-            wFrac >= 0.55f && hFrac in 0.04f..0.55f && aspect >= 1.8f
+        val iw = max(imageWidth, 1).toFloat()
+        val ih = max(imageHeight, 1).toFloat()
+
+        var best: CalibrationBox? = null
+        var bestArea = 0f
+
+        for (box in boxes) {
+            val labelCanon = canonicalLabel(box.label)
+            if (labelCanon in FURNITURE_CANONICAL_LABELS) continue
+
+            val w = box.width
+            val h = box.height
+            if (w <= 1f || h <= 1f) continue
+
+            val widthFrac = w / iw
+            val heightFrac = h / ih
+            val aspect = w / max(h, 1f)
+
+            val nearEdge =
+                (box.centerX - w * 0.5f) / iw < 0.08f ||
+                    (box.centerX + w * 0.5f) / iw > 0.92f
+            val wideEnough = widthFrac > 0.35f
+            val moderateHeight = heightFrac > 0.08f && heightFrac < 0.85f
+            val flatEnough = aspect > 2.0f
+
+            if (wideEnough && moderateHeight && flatEnough && (nearEdge || widthFrac > 0.55f)) {
+                val area = w * h
+                if (area > bestArea) {
+                    bestArea = area
+                    best = box
+                }
+            }
         }
-        if (candidates.isEmpty()) return 1f
-        val best = candidates.maxByOrNull { it.width * it.height } ?: return 1f
-        return (best.height / imageHeight.toFloat()).coerceIn(0.02f, 1f)
+
+        best?.let { wallBox ->
+            val frac = (wallBox.height / ih).coerceIn(0.02f, 1f)
+            return frac.coerceAtMost(1f)
+        }
+        return 1f
     }
 
     /**
-     * Per canonical label, 75th percentile of bbox height / image height.
+     * Per canonical furniture label, 75th percentile of bbox height / image height (matches iOS).
      */
     fun furnitureHeightFractionsByLabel(
         imageHeight: Int,
         boxes: List<CalibrationBox>,
     ): Map<String, Float> {
         if (imageHeight <= 0) return emptyMap()
+        val imageHeightSafe = max(imageHeight, 1).toFloat()
         val byLabel = mutableMapOf<String, MutableList<Float>>()
-        for (b in boxes) {
-            val canon = canonicalFurnitureLabel(b.label)
-            if (canon !in FURNITURE_LABELS) continue
-            val frac = (b.height / imageHeight.toFloat()).coerceIn(0.01f, 0.95f)
+        for (box in boxes) {
+            val canon = canonicalLabel(box.label)
+            if (canon !in FURNITURE_CANONICAL_LABELS) continue
+            val frac = (box.height / imageHeightSafe).coerceIn(0.01f, 0.95f)
             byLabel.getOrPut(canon) { mutableListOf() }.add(frac)
         }
         val out = mutableMapOf<String, Float>()
-        for ((label, heights) in byLabel) {
-            if (heights.isEmpty()) continue
-            val sorted = heights.sorted()
-            val idx = ((sorted.size - 1) * 0.75).toInt().coerceIn(0, sorted.lastIndex)
+        for ((label, values) in byLabel) {
+            if (values.isEmpty()) continue
+            val sorted = values.sorted()
+            // Same index as Swift: min(count-1, Int(Double(count)*0.75 - 0.001))
+            val idx = kotlin.math.min(
+                sorted.size - 1,
+                (sorted.size * 0.75 - 0.001).toInt().coerceAtLeast(0),
+            )
             out[label] = sorted[idx]
         }
         return out
@@ -110,9 +160,8 @@ object YoloRatioCalibration {
         storedByClass: Map<String, Float>,
         defaultFrac: Float,
     ): Float {
-        val canon = canonicalFurnitureLabel(label)
+        val canon = canonicalLabel(label)
         storedByClass[canon]?.let { return it.coerceIn(0.06f, 0.85f) }
-        // Common synonyms
         if (canon == "couch") storedByClass["sofa"]?.let { return it.coerceIn(0.06f, 0.85f) }
         return defaultFrac.coerceIn(0.06f, 0.85f)
     }

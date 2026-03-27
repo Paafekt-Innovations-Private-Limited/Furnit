@@ -16,6 +16,9 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
+    /// Match Android `FurnitureFitManager.KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI` — default off.
+    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
+
     /// Match Android `WallMeasurementEstimator.PREF_ENABLED` — YOLO + monodepth + EXIF when saving a SHARP room.
     @AppStorage("wall_measurement_yolo_on_save") private var wallMeasurementYoloOnSave = true
     /// Distance from camera to front wall (m). Width on save scales ~linearly with this when SHARP monodepth is missing.
@@ -192,6 +195,21 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+
+                    Toggle(isOn: $showRoomFurnitureCalibrate) {
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundColor(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.showRoomFurnitureCalibrate)
+                                    .font(.headline)
+                                Text(L10n.Settings.showRoomFurnitureCalibrateDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.purple)
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }

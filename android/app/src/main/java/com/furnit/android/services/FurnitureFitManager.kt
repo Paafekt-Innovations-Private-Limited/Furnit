@@ -48,9 +48,20 @@ class FurnitureFitManager(private val context: Context) {
         /** Shared with [com.furnit.android.SettingsActivity] — ARCore metric distance + pinhole overlay scale. */
         const val KEY_AR_ASSISTED_FURNITURE_SIZING = "ar_assisted_furniture_sizing"
 
+        /**
+         * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
+         * Default false — same as iOS @AppStorage default.
+         */
+        const val KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI = "show_room_furniture_calibrate"
+
         fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
                 .getBoolean(KEY_AR_ASSISTED_FURNITURE_SIZING, true)
+        }
+
+        fun isRoomFurnitureCalibrateUiEnabled(context: Context): Boolean {
+            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                .getBoolean(KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, false)
         }
 
         private val COCO_CLASSES = arrayOf(
