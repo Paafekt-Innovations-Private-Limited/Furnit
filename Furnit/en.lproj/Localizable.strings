@@ -309,6 +309,10 @@
 
 // MARK: - Photo Selection Warning
 "photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.backAlertTitle" = "Continue with AI or Manual?";
+"photoRoom.backAlertMessage" = "Tap AI or Manual to start creating your room, or OK to go back.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
 
 // MARK: - Camera Capture
 "camera.title" = "Camera";

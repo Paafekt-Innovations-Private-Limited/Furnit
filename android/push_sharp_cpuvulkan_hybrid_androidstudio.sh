@@ -5,6 +5,9 @@
 # Skips standalone full-Vulkan Part1/Part2 (`sharp_split_part1_vulkan_*.pte`, `sharp_split_part2_vulkan_*.pte`)
 # and their manifests — those are large and not used when hybrid INT8 sidecars are present.
 #
+# Multiple adb targets: prefers a **physical** device over `emulator-*`. Override:
+#   export ANDROID_SERIAL=<serial>   # adb devices
+#
 # Default source: android/models_cpuvulkan_hybrid (populate via populate_models_cpuvulkan_hybrid_from_backups.sh
 # or copy the hybrid set from sharp_vulkan_only + INT8 without the part1/2 vulkan-only .pte).
 #
@@ -16,6 +19,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=friend_tester_bundle/adb_common.sh
+source "$SCRIPT_DIR/friend_tester_bundle/adb_common.sh"
+
 MODEL_DIR="${1:-$SCRIPT_DIR/models_cpuvulkan_hybrid}"
 DEST="/sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid"
 
@@ -31,10 +37,9 @@ if ! command -v adb &> /dev/null; then
   exit 1
 fi
 
-if ! adb devices | grep -q "device$"; then
-  echo "Error: No device connected. Connect device and enable USB debugging."
-  exit 1
-fi
+SERIAL="$(pick_physical_serial)" || exit 1
+echo "Using device: $SERIAL"
+ADB=(adb -s "$SERIAL")
 
 if [ ! -d "$MODEL_DIR" ]; then
   echo "Error: Model dir not found: $MODEL_DIR"
@@ -47,7 +52,7 @@ echo "Source:      $MODEL_DIR"
 echo "Destination: $DEST"
 echo ""
 
-adb shell "mkdir -p $DEST"
+"${ADB[@]}" shell "mkdir -p $DEST"
 
 shopt -s nullglob
 artifacts=(
@@ -67,13 +72,13 @@ for artifact_path in "${artifacts[@]}"; do
   fi
   readable_size="$(ls -lh "$artifact_path" | awk '{print $5}')"
   echo "Pushing $file_name ($readable_size)..."
-  adb push "$artifact_path" "$DEST/$file_name"
+  "${ADB[@]}" push "$artifact_path" "$DEST/$file_name"
 done
 
 # Part1 warmup needs part1_test_patch_f32.bin (from export_sharp_executorch_split4.py --part1-only)
 if [ -f "$MODEL_DIR/part1_test_patch_f32.bin" ]; then
   echo "Pushing part1_test_patch_f32.bin (for Part1 warmup)..."
-  adb push "$MODEL_DIR/part1_test_patch_f32.bin" "$DEST/part1_test_patch_f32.bin"
+  "${ADB[@]}" push "$MODEL_DIR/part1_test_patch_f32.bin" "$DEST/part1_test_patch_f32.bin"
 fi
 
 echo ""

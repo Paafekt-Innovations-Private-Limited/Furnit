@@ -477,7 +477,7 @@ class ContentActivity : AppCompatActivity() {
 
         // Click listener - use captured model for this card so correct room opens
         val clickedModel = model
-        card.setOnClickListener { v ->
+        card.setOnClickListener { _ ->
             Toast.makeText(this, getString(R.string.home_opening, clickedModel.name), Toast.LENGTH_SHORT).show()
             LogUtil.d("ContentActivity", "Room clicked: name=${clickedModel.name} id=${clickedModel.id} isUserCreated=${clickedModel.isUserCreated} assetPath=${clickedModel.assetPath}")
 
@@ -517,7 +517,7 @@ class ContentActivity : AppCompatActivity() {
                     intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
                     clickedModel.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
                     clickedModel.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
-                    intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation ?: "portrait")
+                    intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation)
                     startActivity(intent)
                 } else {
                     // Check for files in room folder (assetPath is folder path)
@@ -557,7 +557,7 @@ class ContentActivity : AppCompatActivity() {
                             intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
                             clickedModel.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
                             clickedModel.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
-                            intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation ?: "portrait")
+                            intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation)
                             startActivity(intent)
                         }
                         else -> {

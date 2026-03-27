@@ -605,7 +605,7 @@ object Part4OnlyTest {
                 Log.i(TAG, "Part4 bench: load compose end")
 
                 val times = LongArray(3)
-                var gaussianCount = 0
+                var gaussianCount: Int
                 repeat(3) { index ->
                     val (durationMs, gaussians) = runSplitPass(
                         stagePreModule,

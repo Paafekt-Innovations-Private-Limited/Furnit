@@ -627,8 +627,9 @@ class FurnitureFitManager(private val context: Context) {
 
                 val detections = mutableListOf<Detection>()
 
-                val getDetValue: (Int, Int) -> Float = if (det3d != null) {
-                    { feature, anchor -> det3d!![0][feature][anchor] }
+                val det3dArr = det3d
+                val getDetValue: (Int, Int) -> Float = if (det3dArr != null) {
+                    { feature, anchor -> det3dArr[0][feature][anchor] }
                 } else {
                     { feature, anchor -> detFlat!![feature * stride + anchor] }
                 }
@@ -1236,11 +1237,8 @@ class FurnitureFitManager(private val context: Context) {
         fun rec(a: Any?) {
             when (a) {
                 is Float -> list.add(a)
-                is java.lang.Float -> list.add(a.toFloat())
                 is Double -> list.add(a.toFloat())
-                is java.lang.Double -> list.add(a.toDouble().toFloat())
                 is Int -> list.add(a.toFloat())
-                is java.lang.Integer -> list.add(a.toInt().toFloat())
                 is FloatArray -> for (v in a) list.add(v)
                 is DoubleArray -> for (v in a) list.add(v.toFloat())
                 is Array<*> -> for (e in a) rec(e)

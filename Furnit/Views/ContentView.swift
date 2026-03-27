@@ -217,13 +217,6 @@ struct HomeTab: View {
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
                     SinglePhotoRoomView()
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button(L10n.Common.back) {
-                                    showingPhotoRoomCreator = false
-                                }
-                            }
-                        }
                 }
             }
             // Refresh models when sheet closes

@@ -110,7 +110,6 @@ class ModelDetailActivity : AppCompatActivity() {
 
         // Check for direct GLB path first (for preview mode)
         val directGlbPath = intent.getStringExtra(EXTRA_GLB_PATH)
-        val roomName = intent.getStringExtra(EXTRA_ROOM_NAME)
 
         if (directGlbPath != null) {
             // Direct GLB path mode (preview before save)

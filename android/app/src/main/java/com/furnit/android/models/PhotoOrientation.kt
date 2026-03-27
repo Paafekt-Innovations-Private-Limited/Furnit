@@ -78,9 +78,9 @@ enum class PhotoOrientation(val value: String) {
          * Same EXIF + encoded-dimension rules as [detect], for a filesystem path (gallery export, SharpInference, temp camera file).
          */
         fun detectFromFile(imagePath: String): PhotoOrientation {
-            var rawWidth = 0
-            var rawHeight = 0
-            var rotationDegrees = 0
+            val rawWidth: Int
+            val rawHeight: Int
+            val rotationDegrees: Int
             try {
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(imagePath, options)
@@ -98,21 +98,19 @@ enum class PhotoOrientation(val value: String) {
         }
 
         fun detect(context: Context, uri: Uri): PhotoOrientation {
-            var rawWidth = 0
-            var rawHeight = 0
-            var rotationDegrees = 0
-
+            val rawWidth: Int
+            val rawHeight: Int
+            val rotationDegrees: Int
             try {
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     BitmapFactory.decodeStream(inputStream, null, options)
-                    rawWidth = options.outWidth
-                    rawHeight = options.outHeight
                 }
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val exif = ExifInterface(inputStream)
-                    rotationDegrees = exif.rotationDegrees
-                }
+                rawWidth = options.outWidth
+                rawHeight = options.outHeight
+                rotationDegrees = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    ExifInterface(inputStream).rotationDegrees
+                } ?: 0
             } catch (_: Exception) {
                 return PORTRAIT
             }

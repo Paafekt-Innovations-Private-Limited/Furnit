@@ -402,7 +402,7 @@ class SharpService private constructor(private val context: Context) {
                 val coercedUltraWide = !orientationLockedByUser &&
                     viewerPhotoWideAngle &&
                     normalizedViewer == "landscape"
-                photoOrientation = if (coercedUltraWide) "portrait" else normalizedViewer!!
+                photoOrientation = if (coercedUltraWide) "portrait" else normalizedViewer
                 orientationDecisionSource = if (coercedUltraWide) {
                     "explicit_viewer_ultrawide_to_portrait"
                 } else {

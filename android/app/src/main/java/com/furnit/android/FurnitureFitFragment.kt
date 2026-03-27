@@ -196,7 +196,7 @@ class FurnitureFitFragment : Fragment() {
             layoutParams = lp
             max = 100
             progress = 5
-            progressDrawable.setColorFilter(0xFF4CAF50.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFF4CAF50.toInt())
         }
         progressContainer.addView(progressBar)
 

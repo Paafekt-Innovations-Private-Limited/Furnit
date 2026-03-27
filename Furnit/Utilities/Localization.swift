@@ -213,6 +213,10 @@ enum L10n {
         static let createSubtitle = "photoRoom.createSubtitle".localized
         static let quickPhoto = "photoRoom.quickPhoto".localized
         static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
+        static let backAlertTitle = "photoRoom.backAlertTitle".localized
+        static let backAlertMessage = "photoRoom.backAlertMessage".localized
+        static let backAlertAI = "photoRoom.backAlertAI".localized
+        static let backAlertManual = "photoRoom.backAlertManual".localized
     }
 
     // MARK: Room Viewer

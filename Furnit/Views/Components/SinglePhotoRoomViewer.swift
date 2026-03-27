@@ -856,6 +856,7 @@ struct SinglePhotoRoomView: View {
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
+    @State private var showBackMethodAlert = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -1170,6 +1171,32 @@ struct SinglePhotoRoomView: View {
         }
         .navigationTitle("Photo to 3D Room")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(L10n.Common.back) {
+                    handlePhotoRoomBackTap()
+                }
+            }
+        }
+        .alert(L10n.PhotoRoom.backAlertTitle, isPresented: $showBackMethodAlert) {
+            Button(L10n.PhotoRoom.backAlertAI) {
+                guard let image = selectedImage else { return }
+                logDebug("🤖 [View] Back alert: AI SHARP selected")
+                showMethodPicker = false
+                startSHARPGeneration(image: image)
+            }
+            Button(L10n.PhotoRoom.backAlertManual) {
+                guard let image = selectedImage else { return }
+                logDebug("🏠 [View] Back alert: Manual boundaries selected")
+                showMethodPicker = false
+                fixedImageItem = IdentifiedImage(image: image)
+            }
+            Button(L10n.Common.ok, role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.PhotoRoom.backAlertMessage)
+        }
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
                 .onDisappear {
@@ -1339,6 +1366,15 @@ struct SinglePhotoRoomView: View {
             } else {
                 Text("An error occurred while generating your 3D model.")
             }
+        }
+    }
+
+    /// Leading Back: if user still owes AI vs Manual choice, prompt; otherwise dismiss sheet.
+    private func handlePhotoRoomBackTap() {
+        if selectedImage != nil && showMethodPicker {
+            showBackMethodAlert = true
+        } else {
+            dismiss()
         }
     }
     

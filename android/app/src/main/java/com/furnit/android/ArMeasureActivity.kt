@@ -175,7 +175,7 @@ class ArMeasureActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         }
 
         setContentView(root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             topPanel.setPadding(32, bars.top + 16, 32, 16)
             bottomRow.setPadding(24, 16, 24, bars.bottom + 16)

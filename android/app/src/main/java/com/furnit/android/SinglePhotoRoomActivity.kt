@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -144,7 +145,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
         val data = result.data
         val imageUriString = data?.getStringExtra(ArDepthPhotoCaptureActivity.EXTRA_CAPTURED_IMAGE_URI)
-        val anchors = data?.getSerializableExtra(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS) as? ArrayList<MetricAnchor>
+        val anchors: ArrayList<MetricAnchor>? = data?.extras?.let { bundle ->
+            @Suppress("UNCHECKED_CAST", "DEPRECATION")
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                bundle.getSerializable(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS, ArrayList::class.java)
+            } else {
+                bundle.getSerializable(ArDepthPhotoCaptureActivity.EXTRA_METRIC_ANCHORS)
+            }) as? ArrayList<MetricAnchor>
+        }
         if (imageUriString.isNullOrBlank()) {
             DebugLogger.d("SinglePhotoRoom", "AR photo capture missing image uri")
             Toast.makeText(this, "AR photo capture failed", Toast.LENGTH_SHORT).show()
@@ -1488,7 +1496,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14))
             }
-            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
                 val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
                 row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
                 insets
