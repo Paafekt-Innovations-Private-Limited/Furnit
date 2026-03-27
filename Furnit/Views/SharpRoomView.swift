@@ -639,9 +639,8 @@ struct SharpRoomView: View {
     }
 
     /// Width/height for nav title, FurnitureFit, and save.
-    /// - **Live session** (`allowSave == true`): WebGL Box3 (`jsFrontWall*`) is authoritative until the user saves.
-    /// - **Opened from Home** (`allowSave == false`): **saved .meta** (`savedRoom*`, YOLO wall measurement) wins over WebGL.
-    ///   Splat AABB is often huge then **capped in JS** to 5.0×3.5 m portrait — that must not override measured 2.3×2.7 m.
+    /// - **Live session** (`allowSave == true`): WebGL Box3 (`jsFrontWall*`) until YOLO wall measure on save overwrites `jsFrontWall*` so **Furniture Fit** `room*Meters` / m-per-pixel match measured W×H.
+    /// - **Opened from Home** (`allowSave == false`): **saved .meta** (`savedRoom*`) wins over WebGL (5×3.5 cap must not override measured dims).
     private var displayRoomWidth: Float {
         if allowSave {
             return calibratedRoomWidth
@@ -1189,6 +1188,10 @@ struct SharpRoomView: View {
                     roomH = measured.heightMeters
                     logWallMeasurement("saveRoom applied W×H=\(roomW)×\(roomH) mode=\(measured.calibrationMode)")
                     logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH) m (\(measured.calibrationMode))")
+                    await MainActor.run {
+                        jsFrontWallWidth = roomW
+                        jsFrontWallHeight = roomH
+                    }
                 } else {
                     logWallMeasurement("saveRoom measure returned nil — keeping display W×H=\(roomW)×\(roomH)")
                 }
