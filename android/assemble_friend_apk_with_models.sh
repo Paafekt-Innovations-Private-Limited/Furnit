@@ -13,6 +13,7 @@
 # Copies a timestamped duplicate to android/friend-apk-dist/ so Android Studio Run keeps using
 # app/build/outputs/apk/... only (no friend vs Studio overwrite confusion).
 # Local day-to-day: keep skipExecutorchAssets=true in gradle.properties and adb push models instead.
+# Lightweight friend APK (no .pte): assemble_friend_apk_without_models.sh
 #
 # Usage (from repo android/):
 #   ./assemble_friend_apk_with_models.sh
@@ -249,7 +250,7 @@ if [[ -d "$OUT_DIR" ]]; then
       echo "  *** ERROR: APK is larger than ~2 GiB. Many phones report \"problem with the app file\" or"
       echo "      \"package appears to be invalid\" when installing from Files / chat / Bluetooth."
       echo "      Use a smaller staged hybrid set, or use:"
-      echo "        ./assemble_friend_apk_shell_only.sh"
+      echo "        ./assemble_friend_apk_without_models.sh"
       echo "        ./push_sharp_cpuvulkan_hybrid_androidstudio.sh"
       echo ""
       OVERSIZED=1

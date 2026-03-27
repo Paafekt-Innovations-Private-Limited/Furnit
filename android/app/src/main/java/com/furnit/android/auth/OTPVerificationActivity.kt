@@ -4,26 +4,39 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
-import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.content.res.ColorStateList
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.ContentActivity
+import com.furnit.android.utils.LogUtil
 
 /**
- * OTPVerificationActivity - 6-digit OTP verification screen
- * Matches iOS OTPVerificationView.swift
+ * OTP verification — 6-digit code.
+ *
+ * Note: We do **not** use Play Services SMS User Consent here. Firebase Phone Auth already
+ * registers for [SMS_RETRIEVED]; starting SmsRetriever User Consent in parallel causes
+ * broadcasts where the message body is null until consent, and Firebase’s internal receiver
+ * (firebase-auth) can NPE on that path. Autofill / keyboard suggestions still work via
+ * [setAutofillHints] and visible digit fields.
  */
 class OTPVerificationActivity : AppCompatActivity() {
 
@@ -47,6 +60,7 @@ class OTPVerificationActivity : AppCompatActivity() {
     private var userName: String = ""
     private var resendTimer: CountDownTimer? = null
     private var canResend: Boolean = false
+    private var pendingShowIme: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,22 +76,44 @@ class OTPVerificationActivity : AppCompatActivity() {
 
         setupUI()
         startResendTimer()
+        pendingShowIme = true
+    }
+
+    private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
+
+    private fun otpFieldBackground(hasFocus: Boolean): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(8f).toFloat()
+            setColor(Color.parseColor("#FFFFFF"))
+            val strokePx = if (hasFocus) dp(3f) else dp(2f)
+            val strokeColor = if (hasFocus) {
+                Color.parseColor("#5B4FC9")
+            } else {
+                Color.parseColor("#555555")
+            }
+            setStroke(strokePx, strokeColor)
+        }
+    }
+
+    private fun refreshOtpBoxStyles() {
+        otpDigitInputs.forEach { et ->
+            et.background = otpFieldBackground(et.hasFocus())
+        }
     }
 
     private fun setupUI() {
         val rootLayout = FrameLayout(this)
 
-        // Gradient background
         val gradientDrawable = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
                 Color.parseColor("#667eea"),
-                Color.parseColor("#764ba2")
-            )
+                Color.parseColor("#764ba2"),
+            ),
         )
         rootLayout.background = gradientDrawable
 
-        // Content card
         val cardLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
@@ -87,14 +123,13 @@ class OTPVerificationActivity : AppCompatActivity() {
 
         val cardParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply {
             setMargins(32, 100, 32, 32)
             gravity = Gravity.TOP
         }
         cardLayout.layoutParams = cardParams
 
-        // Back button
         val backButton = TextView(this).apply {
             text = "< Back"
             textSize = 16f
@@ -104,7 +139,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
         cardLayout.addView(backButton)
 
-        // Title
         val title = TextView(this).apply {
             text = "Verify Phone"
             textSize = 24f
@@ -114,7 +148,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
         cardLayout.addView(title)
 
-        // Subtitle with phone number
         val maskedPhone = maskPhoneNumber(phoneNumber)
         val subtitle = TextView(this).apply {
             text = "Enter the 6-digit code sent to\n$maskedPhone"
@@ -125,10 +158,10 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
         cardLayout.addView(subtitle)
 
-        // OTP input row
         val otpRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
         }
 
         otpDigitInputs = Array(OTP_LENGTH) { index ->
@@ -136,17 +169,20 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
 
         otpDigitInputs.forEach { input ->
-            otpRow.addView(input, LinearLayout.LayoutParams(
-                56, 64
-            ).apply { setMargins(4, 0, 4, 0) })
+            otpRow.addView(
+                input,
+                LinearLayout.LayoutParams(dp(52f), dp(58f)).apply { setMargins(dp(5f), 0, dp(5f), 0) },
+            )
         }
 
-        cardLayout.addView(otpRow, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 0, 0, 24) })
+        cardLayout.addView(
+            otpRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { setMargins(0, 0, 0, 24) },
+        )
 
-        // Error text
         errorText = TextView(this).apply {
             textSize = 14f
             setTextColor(Color.parseColor("#F44336"))
@@ -156,7 +192,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
         cardLayout.addView(errorText)
 
-        // Verify button
         verifyButton = Button(this).apply {
             text = "Verify"
             textSize = 16f
@@ -168,22 +203,26 @@ class OTPVerificationActivity : AppCompatActivity() {
             alpha = 0.5f
             setOnClickListener { verifyOtp() }
         }
-        cardLayout.addView(verifyButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        cardLayout.addView(
+            verifyButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
 
-        // Progress bar
         progressBar = ProgressBar(this).apply {
             visibility = View.GONE
             setPadding(0, 16, 0, 0)
         }
-        cardLayout.addView(progressBar, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        cardLayout.addView(
+            progressBar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER_HORIZONTAL },
+        )
 
-        // Timer text
         timerText = TextView(this).apply {
             text = "Resend code in ${RESEND_COOLDOWN_SECONDS}s"
             textSize = 14f
@@ -193,7 +232,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         }
         cardLayout.addView(timerText)
 
-        // Resend button
         resendButton = TextView(this).apply {
             text = "Resend Code"
             textSize = 14f
@@ -209,30 +247,62 @@ class OTPVerificationActivity : AppCompatActivity() {
         rootLayout.addView(cardLayout)
         setContentView(rootLayout)
 
-        // Focus first input
-        otpDigitInputs[0].requestFocus()
+        refreshOtpBoxStyles()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || !pendingShowIme || !::otpDigitInputs.isInitialized) return
+        pendingShowIme = false
+        otpDigitInputs[0].post {
+            otpDigitInputs[0].requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            if (otpDigitInputs[0].windowToken != null) {
+                imm.showSoftInput(otpDigitInputs[0], InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
     }
 
     private fun createOtpDigitInput(index: Int): EditText {
         return EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
-            textSize = 24f
+            setRawInputType(InputType.TYPE_CLASS_NUMBER)
+            imeOptions = if (index == OTP_LENGTH - 1) {
+                EditorInfo.IME_ACTION_DONE
+            } else {
+                EditorInfo.IME_ACTION_NEXT
+            }
+            textSize = 22f
             gravity = Gravity.CENTER
             setTypeface(null, Typeface.BOLD)
-            setBackgroundColor(Color.parseColor("#F5F5F5"))
-            // Force black text color with ColorStateList to override theme
-            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
-            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
-            highlightColor = Color.parseColor("#667eea")
+            background = otpFieldBackground(false)
+            setTextColor(ColorStateList.valueOf(Color.parseColor("#111111")))
+            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#888888")))
+            highlightColor = Color.parseColor("#80667eea")
             filters = arrayOf(InputFilter.LengthFilter(1))
-            imeOptions = if (index == OTP_LENGTH - 1) EditorInfo.IME_ACTION_DONE else EditorInfo.IME_ACTION_NEXT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+                if (index == 0) {
+                    setAutofillHints("smsOTPCode")
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val cursor = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setSize(dp(2f), dp(24f))
+                    setColor(Color.parseColor("#5B4FC9"))
+                }
+                textCursorDrawable = cursor
+            }
+
+            setOnFocusChangeListener { _, _ -> refreshOtpBoxStyles() }
 
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
                     if (s?.length == 1 && index < OTP_LENGTH - 1) {
-                        // Move to next input
                         otpDigitInputs[index + 1].requestFocus()
                     }
                     validateOtp()
@@ -242,7 +312,6 @@ class OTPVerificationActivity : AppCompatActivity() {
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_DEL && event.action == KeyEvent.ACTION_DOWN) {
                     if (text.isEmpty() && index > 0) {
-                        // Move to previous input on backspace when empty
                         otpDigitInputs[index - 1].apply {
                             requestFocus()
                             text.clear()
@@ -268,7 +337,6 @@ class OTPVerificationActivity : AppCompatActivity() {
         verifyButton.isEnabled = isComplete
         verifyButton.alpha = if (isComplete) 1.0f else 0.5f
 
-        // Auto-verify when all digits entered
         if (isComplete) {
             verifyOtp()
         }
@@ -307,7 +375,7 @@ class OTPVerificationActivity : AppCompatActivity() {
                 errorText.text = error
                 errorText.visibility = View.VISIBLE
                 clearOtp()
-            }
+            },
         )
     }
 
@@ -353,7 +421,7 @@ class OTPVerificationActivity : AppCompatActivity() {
                 resendButton.isEnabled = true
                 errorText.text = error
                 errorText.visibility = View.VISIBLE
-            }
+            },
         )
     }
 

@@ -19,7 +19,12 @@ See `docs/MODELS_APK_BUNDLE_TESTING.md` for hybrid/minimal flags and Zip32 limit
 
 Typical **local debug** APK is already small because models are **not** bundled by default. To force a build **without** embedding even when you temporarily set `skipExecutorchAssets=false`:
 
-1. **Build without embedding the SHARP models:**
+1. **Build without embedding the SHARP models** (copies timestamped APK to `friend-apk-dist/`, prints adb instructions):
+   ```bash
+   ./assemble_friend_apk_without_models.sh etVulkanDebug
+   # alias: ./assemble_friend_apk_without_models.sh etCpuVulkanDebug
+   ```
+   Or directly:
    ```bash
    ./gradlew :app:assembleEtVulkanDebug -PskipExecutorchAssets=true
    ```
