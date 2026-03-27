@@ -440,6 +440,10 @@
     <string name="photo_room_progress_hint">This usually takes about 2 minutes. Hang tight — we\'re building something nice for you.</string>
     <string name="photo_room_error_camera">Error opening camera: %s</string>
     <string name="photo_room_error_load">Error: %s</string>
+    <string name="photo_room_back_confirm_title">Leave this screen?</string>
+    <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
+    <string name="photo_room_back_stay">Stay</string>
+    <string name="photo_room_back_leave">Go back</string>
 
     <!-- GLB Room -->
     <string name="glb_room_no_file">No GLB file provided</string>

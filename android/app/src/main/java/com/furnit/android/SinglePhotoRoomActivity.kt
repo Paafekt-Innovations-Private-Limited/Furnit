@@ -28,6 +28,7 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -228,11 +229,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         return
                     }
                     if (methodPickerView.visibility == View.VISIBLE) {
-                        if (aiGenerationRunning || aiGenerationResult != null) {
-                            finish()
-                        } else {
-                            showInitialView()
-                        }
+                        showMethodPickerBackConfirmation()
+                        return
                     } else {
                         finish()
                     }
@@ -254,6 +252,27 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     /** Keeps the bottom strip visible and on top after navigation or window insets change. */
     private fun refreshGlobalAiProgressUi() {
         updateGlobalAiProgressOverlay()
+    }
+
+    private fun showMethodPickerBackConfirmation() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.photo_room_back_confirm_title)
+            .setMessage(
+                getString(
+                    R.string.photo_room_back_confirm_message,
+                    getString(R.string.photo_room_ai_room),
+                    getString(R.string.photo_room_manual_setup),
+                ),
+            )
+            .setNegativeButton(R.string.photo_room_back_stay, null)
+            .setPositiveButton(R.string.photo_room_back_leave) { _, _ ->
+                if (aiGenerationRunning || aiGenerationResult != null) {
+                    finish()
+                } else {
+                    showInitialView()
+                }
+            }
+            .show()
     }
 
     private fun createInitialView(): LinearLayout {
@@ -446,11 +465,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
             // Back button
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = "< Back"
+                text = getString(R.string.photo_room_back)
                 textSize = 16f
                 setTextColor(Color.parseColor("#007AFF"))
                 setPadding(0, 0, 0, 16)
-                setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+                setOnClickListener { showMethodPickerBackConfirmation() }
             }
             addView(backBtn)
 
