@@ -42,4 +42,12 @@ object LogUtil {
             else Log.e(tag, message)
         }
     }
+
+    /**
+     * AR-assisted FurnitureFit metrics for cross-platform comparison (iOS vs Android).
+     * Always uses [Log.i] with tag `FurnitureFitAR` so logcat can filter: `adb logcat -s FurnitureFitAR`.
+     */
+    fun furnitureFitAr(message: String) {
+        Log.i("FurnitureFitAR", message)
+    }
 }

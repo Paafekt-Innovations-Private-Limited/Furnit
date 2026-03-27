@@ -36,7 +36,11 @@ private data class PendingPhotoCaptureRequest(
 
 /**
  * ARCore path for FurnitureFit: [GLSurfaceView] + [Session], CPU bitmaps for YOLO, and smoothed
- * overlay scale from horizontal plane hit distance + pinhole height ([FurnitureFitArMetrics]).
+ * overlay scale from depth/plane distance + pinhole height ([FurnitureFitArMetrics]).
+ *
+ * Physical height uses **pinhole × metric distance only**. We do **not** use
+ * `roomHeight × (bbox_h / image_h)` for sizing — that shrinks as the camera moves away because
+ * the bbox gets smaller in pixels even though the real object does not.
  */
 class FurnitureFitArCameraController(
     private val activity: Activity,
@@ -100,6 +104,15 @@ class FurnitureFitArCameraController(
         onAssistedMeasurementUpdated?.invoke()
     }
 
+    /** Throttle [LogUtil.furnitureFitAr] frame snapshots (avoid logcat flood). */
+    private var lastFurnitureFitArFrameLogMs = 0L
+    /** Throttle logs while GL runs but YOLO has not set [bboxHintValid] yet. */
+    private var lastFurnitureFitArWaitBboxLogMs = 0L
+    /** Throttle logs when bbox exists but pinhole+fallback cannot produce [estH]. */
+    private var lastFurnitureFitArFrameSkipLogMs = 0L
+    /** Throttle [setBboxHint] lines (inference can call every frame). */
+    private var lastFurnitureFitArBboxHintLogMs = 0L
+
     /**
      * Called on the main thread after debounced AR metric sizing is applied (including
      * [lastEstimatedHeightMeters]). Used so the Sharp room calibration pill refreshes — the pill
@@ -114,11 +127,17 @@ class FurnitureFitArCameraController(
     var lockedPhotoOrientation: String = "portrait"
 
     /**
-     * Calibrated front-wall height (m), e.g. SHARP room — used when depth/plane distance is missing.
-     * Set by the host (Sharp room / Furniture fit) when room dimensions are known.
+     * Calibrated front-wall height (m) from SHARP — logged for diagnostics only (not used for
+     * furniture height; room×bbox fraction is not distance-invariant).
      */
     @Volatile
     var roomHeightMetersForFallback: Float = 0f
+
+    /**
+     * EMA of pinhole height from ARCore depth/plane — holds stable when a frame has bad depth.
+     * Reset when the primary detection label changes or bbox hint clears.
+     */
+    private var smoothedPinholeHeightMeters = Float.NaN
 
     /** Cache for [orientedToRawInverseForDimensions] — avoids per-frame bitmap work for AR metrics. */
     private var cachedInverseRawW = -1
@@ -149,7 +168,16 @@ class FurnitureFitArCameraController(
             bboxHintValid = centerImageX.isFinite() && centerImageY.isFinite() && heightImagePx.isFinite()
             prev != label
         }
+        val nowMs = SystemClock.elapsedRealtime()
+        if (bboxHintValid && nowMs - lastFurnitureFitArBboxHintLogMs >= 400L) {
+            lastFurnitureFitArBboxHintLogMs = nowMs
+            LogUtil.furnitureFitAr(
+                "platform=android phase=bbox_hint center=(${String.format("%.1f", centerImageX)},${String.format("%.1f", centerImageY)}) " +
+                    "bboxH_px=${String.format("%.1f", heightImagePx)} label=${label.take(48)}",
+            )
+        }
         if (labelChanged) {
+            smoothedPinholeHeightMeters = Float.NaN
             snapAfterPrimaryChange = true
             latestRawScale = null
             pendingEstHForApply = Float.NaN
@@ -166,6 +194,7 @@ class FurnitureFitArCameraController(
         synchronized(bboxLock) {
             bboxHintValid = false
         }
+        smoothedPinholeHeightMeters = Float.NaN
         latestRawScale = null
         pendingEstHForApply = Float.NaN
         measurementHandler.removeCallbacks(debounceApplyRunnable)
@@ -228,6 +257,7 @@ class FurnitureFitArCameraController(
     fun destroy() {
         measurementHandler.removeCallbacks(debounceApplyRunnable)
         onAssistedMeasurementUpdated = null
+        smoothedPinholeHeightMeters = Float.NaN
         onHostPause()
         pendingPhotoCaptureRequest?.bestBitmap?.takeIf { !it.isRecycled }?.recycle()
         pendingPhotoCaptureRequest = null
@@ -238,12 +268,12 @@ class FurnitureFitArCameraController(
     private fun applyPendingArOverlayScaleFromLatest() {
         val estH = pendingEstHForApply
         if (!estH.isFinite()) return
-        synchronized(scaleLock) {
+        val applied = synchronized(scaleLock) {
             lastEstimatedHeightMeters = estH
             val raw = latestRawScale
             if (raw == null || !raw.isFinite() || raw <= 0f) {
                 arOverlayScaleValid = false
-                return
+                return@synchronized null
             }
             if (snapAfterPrimaryChange) {
                 smoothedArOverlayScale = raw.coerceIn(0.25f, 4f)
@@ -258,6 +288,14 @@ class FurnitureFitArCameraController(
                 smoothedArOverlayScale = base * (1f - alpha) + clampedTarget * alpha
             }
             arOverlayScaleValid = true
+            smoothedArOverlayScale to arOverlayScaleValid
+        }
+        if (applied != null) {
+            val (smoothedOut, validOut) = applied
+            LogUtil.furnitureFitAr(
+                "platform=android phase=debounce_apply estH_m=${String.format("%.4f", estH)} " +
+                    "smoothedScale=${String.format("%.4f", smoothedOut)} valid=$validOut",
+            )
         }
     }
 
@@ -286,6 +324,10 @@ class FurnitureFitArCameraController(
             }
             newSession.configure(config)
             session = newSession
+            val depthLabel = if (config.depthMode == Config.DepthMode.AUTOMATIC) "AUTOMATIC" else "off"
+            LogUtil.furnitureFitAr(
+                "platform=android event=session depthMode=$depthLabel planes=${config.planeFindingMode}",
+            )
             true
         } catch (e: UnavailableException) {
             LogUtil.w(TAG, "ARCore session unavailable: ${e.message}")
@@ -419,17 +461,31 @@ class FurnitureFitArCameraController(
         rawImageHeight: Int,
         orientedToRawInverse: Matrix?,
     ) {
+        val tracking = frame.camera.trackingState
+        val nowMs = SystemClock.elapsedRealtime()
+
         val hint: Boolean
         val cx: Float
         val cy: Float
         val hPx: Float
+        val labelForLog: String
         synchronized(bboxLock) {
             hint = bboxHintValid
             cx = bboxCenterImageX
             cy = bboxCenterImageY
             hPx = bboxHeightImagePx
+            labelForLog = bboxLabel
         }
         if (!hint) {
+            if (nowMs - lastFurnitureFitArWaitBboxLogMs >= 2000L) {
+                lastFurnitureFitArWaitBboxLogMs = nowMs
+                LogUtil.furnitureFitAr(
+                    "platform=android phase=wait_bbox tracking=${tracking.name} " +
+                        "roomFallback_m=${String.format("%.3f", roomHeightMetersForFallback)} " +
+                        "rawWH=(${rawImageWidth}x${rawImageHeight}) " +
+                        "note=no_bbox_hint_until_YOLO_sets_primary",
+                )
+            }
             return
         }
 
@@ -458,28 +514,84 @@ class FurnitureFitArCameraController(
             rawImageWidth = rawImageWidth,
             rawImageHeight = rawImageHeight,
         )
-        val arEstH = distEstimate?.let { d ->
+        val pinholeRaw = distEstimate?.let { d ->
             FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, d.meters, fy)
         }
-        val fallbackH = FurnitureFitArMetrics.approximateHeightFromRoomAndBboxFraction(
+        val arEstH = pinholeRaw?.takeIf { it.isFinite() && it in 0.05f..4.5f }
+        if (arEstH != null) {
+            if (!smoothedPinholeHeightMeters.isFinite()) {
+                smoothedPinholeHeightMeters = arEstH
+            } else {
+                val maxStep = kotlin.math.max(smoothedPinholeHeightMeters * 0.22f, 0.06f)
+                val clamped = arEstH.coerceIn(
+                    smoothedPinholeHeightMeters - maxStep,
+                    smoothedPinholeHeightMeters + maxStep,
+                )
+                val alpha = 0.22f
+                smoothedPinholeHeightMeters = alpha * clamped + (1f - alpha) * smoothedPinholeHeightMeters
+            }
+        }
+
+        val fallbackHDiag = FurnitureFitArMetrics.approximateHeightFromRoomAndBboxFraction(
             roomHeightMetersForFallback,
             hRaw,
             rawImageHeight,
         )
-        var estH = arEstH
-        if (estH == null || !estH.isFinite() || estH < 0.05f) {
-            estH = fallbackH
-        }
-        if (estH == null || !estH.isFinite() || estH < 0.05f) {
+        val estH = smoothedPinholeHeightMeters.takeIf { it.isFinite() && it >= 0.05f }
+        if (estH == null) {
+            if (nowMs - lastFurnitureFitArFrameSkipLogMs >= 500L) {
+                lastFurnitureFitArFrameSkipLogMs = nowMs
+                val distSrc = distEstimate?.source ?: "none"
+                val distM = distEstimate?.meters
+                LogUtil.furnitureFitAr(
+                    buildString {
+                        append("platform=android phase=frame_skip reason=no_pinhole_yet ")
+                        append("tracking=${tracking.name} ")
+                        append("distSource=$distSrc ")
+                        if (distM != null) append("dist_m=${String.format("%.4f", distM)} ") else append("dist_m=null ")
+                        append("fy_px=${String.format("%.2f", fy)} ")
+                        append("label=${labelForLog.take(48)} ")
+                        append("pinholeRaw_m=")
+                        append(if (pinholeRaw != null && pinholeRaw.isFinite()) String.format("%.4f", pinholeRaw) else "null")
+                        append(" room_frac_diag_m=")
+                        append(if (fallbackHDiag != null && fallbackHDiag.isFinite()) String.format("%.4f", fallbackHDiag) else "null")
+                        append(" note=room_frac_not_used_for_scale")
+                        append(" room_m=${String.format("%.3f", roomHeightMetersForFallback)}")
+                    },
+                )
+            }
             return
         }
         val stdH = 0.85f
         val raw = FurnitureFitArMetrics.overlayScaleFromMetricHeights(stdH, estH, 0.25f, 4f)
-        val distTag = distEstimate?.let { "${it.source} dist=${it.meters}m" } ?: "fallback_room_frac"
-        LogUtil.d(
-            TAG,
-            "AR metric sizing source=$distTag arEstH=$arEstH fallbackH=$fallbackH estH=$estH fy=$fy bboxH=$hRaw rawCenter=($rawCx,$rawCy) overlayRaw=$raw"
-        )
+        if (nowMs - lastFurnitureFitArFrameLogMs >= 500L) {
+            lastFurnitureFitArFrameLogMs = nowMs
+            val distSrc = distEstimate?.source ?: "smooth_hold"
+            val distM = distEstimate?.meters
+            val nx = rawCx / rawImageWidth.coerceAtLeast(1)
+            val ny = rawCy / rawImageHeight.coerceAtLeast(1)
+            LogUtil.furnitureFitAr(
+                buildString {
+                    append("platform=android phase=frame ")
+                    append("tracking=${tracking.name} ")
+                    append("distSource=$distSrc ")
+                    if (distM != null) append("dist_m=${String.format("%.4f", distM)} ") else append("dist_m=null ")
+                    append("fy_px=${String.format("%.2f", fy)} ")
+                    append("bboxH_px=${String.format("%.2f", hRaw)} ")
+                    append("label=${labelForLog.take(48)} ")
+                    append("rawWH=(${rawImageWidth}x${rawImageHeight}) ")
+                    append("oriented_xy=(${String.format("%.1f", cx)},${String.format("%.1f", cy)}) ")
+                    append("raw_xy=(${String.format("%.1f", rawCx)},${String.format("%.1f", rawCy)}) ")
+                    append("norm_raw=(${String.format("%.4f", nx)},${String.format("%.4f", ny)}) ")
+                    append("pinholeInstant_m=")
+                    append(if (arEstH != null) String.format("%.4f", arEstH) else "null")
+                    append(" smoothedEstH_m=${String.format("%.4f", estH)} ")
+                    append("stdH_m=$stdH ")
+                    append("rawScale=${raw?.let { String.format("%.4f", it) } ?: "null"} ")
+                    append("room_m_diag=${String.format("%.3f", roomHeightMetersForFallback)}")
+                },
+            )
+        }
         pendingEstHForApply = estH
         latestRawScale = raw
         measurementHandler.removeCallbacks(debounceApplyRunnable)

@@ -306,9 +306,9 @@ object FurnitureFitArMetrics {
     }
 
     /**
-     * When ARCore depth and plane hits are unavailable, approximate object height from the
-     * calibrated front-wall [roomHeightMeters] and the bbox height as a fraction of image height.
-     * Coarse only — prefer [estimatedPhysicalHeightMeters] when distance is known.
+     * **Diagnostic / legacy only:** `roomHeight × (bbox_h / image_h)` is **not** physically
+     * stable when the camera moves — the bbox shrinks in pixels as distance increases. Do not use
+     * for AR overlay scale or primary furniture height; prefer [estimatedPhysicalHeightMeters].
      */
     fun approximateHeightFromRoomAndBboxFraction(
         roomHeightMeters: Float,

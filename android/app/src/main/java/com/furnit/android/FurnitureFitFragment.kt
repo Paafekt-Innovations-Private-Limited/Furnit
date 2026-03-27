@@ -698,8 +698,11 @@ class FurnitureFitFragment : Fragment() {
                     )
 
                     val rh = (calibratedRoomHeightMeters ?: selectedRoomHeight).takeIf { it > 0.1f }
+                    // Room×bbox fraction is not distance-invariant; only used when AR-assisted sizing is off.
                     detectedFurnitureHeightMeters =
-                        if (result.detections.isNotEmpty() && rh != null && result.inputSize > 0) {
+                        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(requireContext()) &&
+                            result.detections.isNotEmpty() && rh != null && result.inputSize > 0
+                        ) {
                             val det = result.detections.first()
                             val frac = (det.h / result.inputSize.toFloat()).coerceIn(0.06f, 0.92f)
                             rh * frac

@@ -80,7 +80,7 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
                                     uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= origW || gid.y >= origH) return;
 
-    // Outside union bbox? Make transparent and early out
+    // Outside primary bbox? Early out (matches Swift 15d clip).
     if (gid.x < bx1 || gid.x >= bx2 || gid.y < by1 || gid.y >= by2) {
         outTex.write(float4(0.0, 0.0, 0.0, 0.0), gid);
         return;
@@ -114,9 +114,59 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
         if (dotv > maxLogit) maxLogit = dotv;
     }
 
-    // Threshold at 0 and composite. Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
+    // Threshold at 0 and composite (same as CPU union mask). Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
     if (maxLogit > 0.0f) {
+        float4 s = src.read(uint2(gid.x, gid.y));
+        out = float4(s.b, s.g, s.r, 1.0);
+    }
+    outTex.write(out, gid);
+}
+
+// Same geometry as sp_maxMaskAndComposite, but visibility comes from morphed prototype mask (Swift vImage close).
+// Buffers: b0 protoMask uchar[pW*pH], b1–b12 same uint/float layout as mapping + primary bbox below.
+kernel void sp_maxMaskAndCompositeMorphed(texture2d<float, access::read>  src   [[texture(0)]],
+                                         texture2d<float, access::write> outTex [[texture(1)]],
+                                         device const uchar *protoMask [[buffer(0)]],
+                                         constant uint &pW [[buffer(1)]],
+                                         constant uint &pH [[buffer(2)]],
+                                         constant uint &origW [[buffer(3)]],
+                                         constant uint &origH [[buffer(4)]],
+                                         constant uint &modelInput [[buffer(5)]],
+                                         constant float &resizeGain [[buffer(6)]],
+                                         constant float &padX [[buffer(7)]],
+                                         constant float &padY [[buffer(8)]],
+                                         constant uint &bx1 [[buffer(9)]],
+                                         constant uint &by1 [[buffer(10)]],
+                                         constant uint &bx2 [[buffer(11)]],
+                                         constant uint &by2 [[buffer(12)]],
+                                         uint2 gid [[thread_position_in_grid]]) {
+    if (gid.x >= origW || gid.y >= origH) return;
+
+    if (gid.x < bx1 || gid.x >= bx2 || gid.y < by1 || gid.y >= by2) {
+        outTex.write(float4(0.0, 0.0, 0.0, 0.0), gid);
+        return;
+    }
+
+    float x_model = (float(gid.x) * resizeGain) + padX;
+    float y_model = (float(gid.y) * resizeGain) + padY;
+
+    float u = clamp(x_model / float(modelInput), 0.0f, 1.0f);
+    float v = clamp(y_model / float(modelInput), 0.0f, 1.0f);
+    float px = u * float(pW - 1);
+    float py = v * float(pH - 1);
+
+    uint ix = (uint)round(px);
+    uint iy = (uint)round(py);
+    uint planeSize = pW * pH;
+    uint protIdx = iy * pW + ix;
+    if (protIdx >= planeSize) {
+        outTex.write(float4(0.0, 0.0, 0.0, 0.0), gid);
+        return;
+    }
+
+    float4 out = float4(0.0, 0.0, 0.0, 0.0);
+    if (protoMask[protIdx] > 0) {
         float4 s = src.read(uint2(gid.x, gid.y));
         out = float4(s.b, s.g, s.r, 1.0);
     }

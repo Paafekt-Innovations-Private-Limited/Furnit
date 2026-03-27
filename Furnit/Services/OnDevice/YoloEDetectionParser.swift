@@ -117,10 +117,6 @@ enum YoloEDetectionParser {
            let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
             return (det, proto)
         }
-        if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
-           let proto = output.featureValue(for: "p")?.multiArrayValue {
-            return (det, proto)
-        }
         if let det = output.featureValue(for: "detections")?.multiArrayValue,
            let proto = output.featureValue(for: "protos")?.multiArrayValue {
             return (det, proto)

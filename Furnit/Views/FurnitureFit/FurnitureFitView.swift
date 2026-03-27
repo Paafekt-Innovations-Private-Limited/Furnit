@@ -1,5 +1,5 @@
 // FurnitureFitView.swift
-// Single-stage: detect → primary selection → optional multi-candidate (5a–5c) → union mask → clip to primary bbox → cutout
+// Single-stage: detect → optional multi-candidate (5a–5b) → union mask → clip outside primary bbox (15d) → cutout
 // With timing at every stage
 
 import SwiftUI
@@ -173,11 +173,11 @@ typealias UnionDet = FurnitureFitDetection
 
 /// High-level furniture size estimate surfaced to SharpRoom / viewers.
 struct FurnitureSizeEstimate {
-    /// Width in meters based on current room scale.
+    /// Horizontal bbox extent in meters (room scale).
     let widthMeters: Float
-    /// Height in meters based on current room scale (non-AR).
+    /// Vertical bbox extent in meters (room scale) — use this for calibration and UI labels.
     let heightMeters: Float
-    /// Optional AR-based height in meters when AR-assisted sizing is active.
+    /// Reserved; always `nil` when emitted from FurnitureFit. AR metric height is used only for in-view overlay scaling (scene depth is wrong on glass / reflective).
     let arHeightMeters: Float?
 }
 
@@ -187,6 +187,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: Config
     var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
+    /// After bbox clip, optional 3×3 morphological close on prototype mask before upscale; uses mask-texture composite path (not fused) when enabled.
+    private let furnitureFitUseMorphologicalCloseMask: Bool = true
     var useBilinearUpscaling: Bool = false
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
@@ -324,15 +326,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var overlayDebugLastAssistedLabel: String = ""
     private var overlayDebugLastCombined: CGFloat = -1
 
+    /// Throttled always-on AR metrics for cross-platform comparison (filter: `FurnitureFitAR`).
+    private var lastFurnitureFitARFrameLogAt: TimeInterval = 0
+    private let furnitureFitARLogInterval: TimeInterval = 0.5
+
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
 
-    /// STAGE 5a–5c: prune / bbox dedupe / mask-overlap gate for extra furniture. Off = primary detection only in `kept2`.
+    /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
-
-    /// When **Settings → Debug mode** is on: anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline. Inside the box you still see the union mask from kept detections. When debug is off, the full mask is shown (no bbox crop).
-    /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
-    private var clipUnionMaskToPrimaryBbox = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -340,12 +342,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var metalLibrary: MTLLibrary?            // FIXED: was computed property creating new library on every access
     private var compositePipeline: MTLComputePipelineState?
     private var fusedMaskCompositePipeline: MTLComputePipelineState?
+    /// Fused compositing using Swift morphed prototype mask (same geometry as `sp_maxMaskAndComposite`, no logit loop).
+    private var fusedMaskMorphedCompositePipeline: MTLComputePipelineState?
 
     // MARK: - Cached Metal buffers for fused compositing (prevents allocation per frame)
     private var cachedFusedPlanesBuf: MTLBuffer?
     private var cachedFusedCoeffBuf: MTLBuffer?
     private var cachedFusedPlanesCapacity: Int = 0
     private var cachedFusedCoeffCapacity: Int = 0
+    private var cachedFusedProtoMaskBuf: MTLBuffer?
+    private var cachedFusedProtoMaskCapacity: Int = 0
 
     // MARK: - CVMetalTextureCache (FIXED: was created per-frame causing memory leak)
     private var cvTextureCache: CVMetalTextureCache?
@@ -353,20 +359,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Reusable prototype buffers (FIXED: prevents ~26MB allocation per frame)
     private var protoRawFloats: [Float] = []
     private var protoPlanes: [Float] = []
-
-    // MARK: - BLAS / mask scratch buffers (reused per frame, O(planeSize) not O(planeSize*N))
-    private var scratchPrimaryLogits: [Float] = []
-    private var scratchCandidateLogits: [Float] = []
-
-    private func ensureFloatCapacity(_ arr: inout [Float], count: Int) {
-        if arr.count < count {
-            arr = [Float](repeating: 0, count: count)
-        } else {
-            _ = arr.withUnsafeMutableBufferPointer { buf in
-                memset(buf.baseAddress!, 0, count * MemoryLayout<Float>.size)
-            }
-        }
-    }
 
     // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
     private var cachedSquareBuffer: CVPixelBuffer?
@@ -488,7 +480,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         assistedMeasurementDebounceWorkItem = work
         measurementQueue.asyncAfter(deadline: .now() + assistedMeasurementDebounceSeconds, execute: work)
     }
-    
+
     // MARK: Class Names (loaded from classes.json)
     internal lazy var classNames: [Int: String] = {
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
@@ -631,6 +623,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             if fusedMaskCompositePipeline == nil, let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
                 fusedMaskCompositePipeline = try device.makeComputePipelineState(function: fn2)
             }
+            if fusedMaskMorphedCompositePipeline == nil, let fn3 = library.makeFunction(name: "sp_maxMaskAndCompositeMorphed") {
+                fusedMaskMorphedCompositePipeline = try device.makeComputePipelineState(function: fn3)
+            }
         } catch {
             if debugMode { logDebug("⚠️ Metal pipeline setup failed: \(error.localizedDescription)") }
             CrashReporter.shared.report(error, context: "Metal Pipeline Setup")
@@ -733,16 +728,33 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let ny = bboxCenterImageY / CGFloat(max(1, imageHeight))
 
             var distM: Float?
-            var fy: Float
+            var fy: Float = 1
+            var distSource = "none"
+            var hasDepthMap = false
+            var bgraIsRotatedFromCaptured = false
+            let trackingName: String = {
+                guard let s = arSession.currentFrame?.camera.trackingState else { return "nil" }
+                switch s {
+                case .normal: return "normal"
+                case .limited: return "limited"
+                case .notAvailable: return "notAvailable"
+                @unknown default: return "unknown"
+                }
+            }()
 
             if let snap = arDepthSnapshot {
+                hasDepthMap = snap.depthMap != nil
+                bgraIsRotatedFromCaptured = snap.bgraIsRotatedFromCaptured
                 distM = FurnitureFitARSupport.depthMeters(snapshot: snap, normalizedBgraNX: nx, normalizedBgraNY: ny)
                 fy = snap.focalLengthY
+                distSource = distM != nil ? "depth_snapshot" : "depth_snapshot_miss"
                 // No plane raycast here: that would use `arSession.currentFrame` and desync from the YOLO frame.
             } else if let frame = arSession.currentFrame {
                 let norm = CGPoint(x: nx, y: ny)
                 distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
-                if distM == nil, #available(iOS 14.0, *) {
+                if distM != nil {
+                    distSource = "scene_depth"
+                } else if #available(iOS 14.0, *) {
                     let sp = CGPoint(
                         x: nx * bounds.width,
                         y: ny * bounds.height
@@ -753,19 +765,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         screenPoint: sp,
                         in: bounds
                     )
+                    distSource = distM != nil ? "plane_raycast" : "no_metric_distance"
+                } else {
+                    distSource = "no_metric_distance"
                 }
                 let cap = frame.capturedImage
                 let cw = CVPixelBufferGetWidth(cap)
                 let ch = CVPixelBufferGetHeight(cap)
                 let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
                 let bgraRotated = needsPortrait && cw > ch
+                bgraIsRotatedFromCaptured = bgraRotated
                 fy = FurnitureFitARSupport.focalLengthYForProcessedBGRA(
                     camera: frame.camera,
                     bgraHeight: imageHeight,
                     bgraIsRotatedFromCaptured: bgraRotated
                 )
             } else {
-                fy = 1
+                distSource = "no_ar_frame"
             }
 
             // If we have a valid distance + focal length, update AR-assisted scale for this frame.
@@ -801,6 +817,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     autoScaleFromAR = smoothedArOverlayScale
                     arAssistedScaleValid = true
                     arAssistedConsecutiveMisses = 0
+                    let nowLog = Date().timeIntervalSince1970
+                    if nowLog - lastFurnitureFitARFrameLogAt >= furnitureFitARLogInterval {
+                        lastFurnitureFitARFrameLogAt = nowLog
+                        logFurnitureFitAR(
+                            "platform=ios phase=frame tracking=\(trackingName) distSource=\(distSource) dist_m=\(String(format: "%.4f", d)) fy_px=\(String(format: "%.2f", fy)) bboxH_px=\(String(format: "%.2f", bboxHeightImagePx)) imageWH=(\(imageWidth)x\(imageHeight)) norm_bgra=(\(String(format: "%.4f", nx)),\(String(format: "%.4f", ny))) estH_m=\(String(format: "%.4f", estH)) stdH_m=\(String(format: "%.2f", stdH)) rawScale=\(String(format: "%.4f", raw)) smoothedScale=\(String(format: "%.4f", Double(autoScaleFromAR))) hasDepthMap=\(hasDepthMap) bgraRotated=\(bgraIsRotatedFromCaptured) snap=\(arDepthSnapshot != nil)"
+                        )
+                    }
                     if debugMode {
                         logDebug("📐 [AR] dist=\(String(format: "%.2f", d))m estH=\(String(format: "%.2f", estH))m stdH=\(String(format: "%.2f", stdH))m scale=\(String(format: "%.3f", raw)) smoothed=\(String(format: "%.3f", autoScaleFromAR))")
                     }
@@ -1080,6 +1103,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         arSCNView.session = arSession
         arSession.delegate = self
         let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+        let sem = config.frameSemantics
+        let hasScene = sem.contains(.sceneDepth)
+        let hasSmoothed = sem.contains(.smoothedSceneDepth)
+        logFurnitureFitAR(
+            "platform=ios event=session sceneDepth=\(hasScene) smoothedSceneDepth=\(hasSmoothed) planeDetection=\(config.planeDetection)"
+        )
         arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
         if debugMode { logDebug("📷 [FurnitureFit] ARSession started for assisted sizing") }
     }
@@ -1238,25 +1267,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 3: Parse outputs (tensors + detections + prototypes)
         let t3 = Date()
 
-        // Try model output names for yoloe-11l
+        // yoloe-11l-seg-pf CoreML: det var_2374, proto var_2412 (bundled model)
         let detArray: MLMultiArray
         let protoArray: MLMultiArray
 
         if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
            let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
-            // yoloe-11l model outputs (export with proper cv3/cv4 heads)
             detArray = det
             protoArray = proto
             if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2374/var_2412)") }
-        } else if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
-                  let proto = output.featureValue(for: "p")?.multiArrayValue {
-            // yoloe-11l model outputs (old export format)
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2497/p)") }
         } else if let det = output.featureValue(for: "detections")?.multiArrayValue,
-           let proto = output.featureValue(for: "protos")?.multiArrayValue {
-            // Generic named outputs fallback
+                  let proto = output.featureValue(for: "protos")?.multiArrayValue {
             detArray = det
             protoArray = proto
             if debugMode { logDebug("📦 Using generic output tensors (detections/protos)") }
@@ -1421,12 +1442,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         var estimatedWidth = imgWidthPx * metersPerPixel
         var estimatedHeight = imgHeightPx * metersPerPixel
 
-        // Ensure height > width for display (most furniture: height is the larger dimension)
         if estimatedWidth > estimatedHeight {
             swap(&estimatedWidth, &estimatedHeight)
         }
 
-        // Optional AR-based height (does not replace the room-based estimate; both are surfaced).
         var arHeightMeters: Float?
         if AppStateManager.shared.qualitySettings.enableArAssistedFurnitureSizing,
            isUsingARCameraPath,
@@ -1453,7 +1472,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             self.onFurnitureSizeEstimated?(estimate)
         }
 
-        // STAGE 5: Filter candidates by mask overlap with primary (5a prune, 5b bbox dedupe, 5c mask overlap).
+        // STAGE 5: Filter candidates (5a prune, 5b bbox dedupe).
         // When disabled, composite uses primary detection only (same as early single-object behavior).
         var kept2: [UnionDet]
         if !useMultiCandidateStage5 {
@@ -1608,111 +1627,25 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
 
-        // STAGE 5c: Apply mask-overlap gate only on the small bboxKept set (final remaining detections)
-
-        // Build primary logits into scratch buffer (reused every frame)
-        ensureFloatCapacity(&scratchPrimaryLogits, count: planeSize)
-
-        planes.withUnsafeBufferPointer { planesPtr in
-            primary.coeffs.withUnsafeBufferPointer { xPtr in
-                scratchPrimaryLogits.withUnsafeMutableBufferPointer { yPtr in
-                    blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
-                                              A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
-                                              x: xPtr.baseAddress!, incx: 1,
-                                              beta: 0.0, y: yPtr.baseAddress!, incy: 1)
-                }
-            }
-        }
-
-        // Count primary mask area
-        var primaryMaskArea = 0
-        for i in 0..<planeSize {
-            if scratchPrimaryLogits[i] > 0 { primaryMaskArea += 1 }
-        }
+        kept2 = [primary] + bboxKept.map(\.det)
 
         if debugMode {
             logDebug("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
-            logDebug("      mask pixels: \(primaryMaskArea)")
-        }
-
-        // Final result container: always include primary; add candidates that pass mask-overlap gate
-        kept2 = [primary]
-
-        if !bboxKept.isEmpty {
-            // Scratch buffer for candidate logits (reused per candidate)
-            ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
-
-            // Keep detection if at least 5% of candidate mask lies on primary mask
-            let minMaskOverlap: Float = 0.05
-
-            planes.withUnsafeBufferPointer { planesPtr in
-                scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
-
-                    for candPair in bboxKept {
-                        let origIdx = candPair.idx
-                        let d = candPair.det
-
-                        // 1. Compute candidate logits: tmp = planes^T * coeffs
-                        scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
-                            d.coeffs.withUnsafeBufferPointer { xPtr in
-                                blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
-                                                          A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
-                                                          x: xPtr.baseAddress!, incx: 1,
-                                                          beta: 0.0, y: yPtr.baseAddress!, incy: 1)
-                            }
-                        }
-
-                        // 2. Compute area & intersection with primary in a single pass
-                        var area = 0
-                        var inter = 0
-
-                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
-                            for px in 0..<planeSize {
-                                if cPtr[px] > 0 {
-                                    area &+= 1
-                                    if pPtr[px] > 0 { inter &+= 1 }
-                                }
-                            }
-                        }
-
-                        if area == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) area=0") }
-                            continue
-                        }
-
-                        if inter == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap") }
-                            continue
-                        }
-
-                        // Require mask-of-object to lie mostly on primary (e.g. ≥ 80% of candidate mask pixels on primary mask)
-                        let overlapFrac = Float(inter) / Float(area)
-                        if overlapFrac < minMaskOverlap {
-                            if debugMode {
-                                let pct = String(format: "%.1f", overlapFrac * 100)
-                                let minPct = Int(minMaskOverlap * 100)
-                                logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) mask overlap=\(pct)% (<\(minPct)%)")
-                            }
-                            continue
-                        }
-
-                        kept2.append(d)
-                        if debugMode {
-                            let pct = String(format: "%.1f", overlapFrac * 100)
-                            logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(pct)% bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
-                        }
-                    }
+            if bboxKept.isEmpty {
+                logDebug("   No non-primary candidates after bbox dedupe")
+            } else {
+                for candPair in bboxKept {
+                    let d = candPair.det
+                    logDebug("   ✅ [\(candPair.idx)]: \(className(d.classIdx)) bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
                 }
             }
-        } else {
-            if debugMode { logDebug("   No non-primary candidates after bbox dedupe") }
         }
 
         let t5End = Date()
         if debugMode {
             let filterMs = String(format: "%.2f", t5End.timeIntervalSince(t5a) * 1000)
-            logDebug("⏱️ STAGE 5b/5c - Filter (bbox+mask): \(filterMs) ms, kept=\(kept2.count)")
-            logMemory("AFTER STAGE 5b/5c")
+            logDebug("⏱️ STAGE 5b - Bbox dedupe: \(filterMs) ms, kept=\(kept2.count)")
+            logMemory("AFTER STAGE 5b")
         }
 
         } // end useMultiCandidateStage5
@@ -1828,7 +1761,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Helper: Build full-resolution mask from current kept detections
-        func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
+        func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int, morphedProtoForFuse: [UInt8]) {
             // Compute per-pixel max logits across detections
             var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
 
@@ -1921,26 +1854,32 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Stage 15: Upscale + crop back (morphology disabled)
-            let maskFull = upscaleMask(maskSmall: maskSmall,
+            let maskSmallForUpscale: [UInt8] = furnitureFitUseMorphologicalCloseMask
+                ? morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
+                : maskSmall
+            var positiveCountFinal = 0
+            for v in maskSmallForUpscale where v > 0 { positiveCountFinal += 1 }
+
+            // Stage 15: Upscale + crop back
+            let maskFull = upscaleMask(maskSmall: maskSmallForUpscale,
                                        pW: pW, pH: pH,
                                        modelInput: modelInputSize,
                                        origW: origW, origH: origH,
                                        padX: padX, padY: padY,
                                        contentW: contentW, contentH: contentH)
 
-            return (maskFull, positiveCount)
+            return (maskFull, positiveCountFinal, maskSmallForUpscale)
         }
 
         // Helper: Build full-resolution mask using Metal for the heavy logits->maskSmall step
         // Logic preserved: maskSmall[i] = 255 iff maxLogit > 0.0, then reuse the same upscaleMask() path.
-        func buildFullMaskMetal(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
+        func buildFullMaskMetal(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int, morphedProtoForFuse: [UInt8]) {
             guard let mm = metalMaskLogic else {
                 return buildFullMask(from: detections)
             }
             let detCount = detections.count
             if detCount == 0 {
-                return ([UInt8](repeating: 0, count: origW * origH), 0)
+                return ([UInt8](repeating: 0, count: origW * origH), 0, [UInt8](repeating: 0, count: planeSize))
             }
             // Flatten coeffs (detCount x 32) row-major
             var coeffFlat = [Float](repeating: 0, count: detCount * 32)
@@ -1954,10 +1893,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
             // planes is [Float] length 32*planeSize in the current scope (same as CPU path)
-            let maskSmall = mm.buildMaskSmall(planes: planes, coeffs: coeffFlat, planeSize: planeSize, detCount: detCount)
+            var maskSmall = mm.buildMaskSmall(planes: planes, coeffs: coeffFlat, planeSize: planeSize, detCount: detCount)
+            if furnitureFitUseMorphologicalCloseMask {
+                maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
+            }
             var positiveCount = 0
-            // Count positives (same as CPU)
-            for v in maskSmall { if v > 0 { positiveCount += 1 } }
+            for v in maskSmall where v > 0 { positiveCount += 1 }
 
             // Reuse upscale/crop pipeline with exact integer values from resizeToSquare
             let maskFull = upscaleMask(maskSmall: maskSmall,
@@ -1966,7 +1907,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                                       origW: origW, origH: origH,
                                       padX: padX, padY: padY,
                                       contentW: contentW, contentH: contentH)
-            return (maskFull, positiveCount)
+            return (maskFull, positiveCount, maskSmall)
         }
 
         // STAGE 13–15b: Build initial mask from kept2 (union path only)
@@ -1974,50 +1915,51 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         var maskFull: [UInt8]
         let build1 = buildFullMaskMetal(from: kept2)
         maskFull = build1.maskFull
+        let morphedProtoForFuse = build1.morphedProtoForFuse
+
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
             logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
-        }
-        if debugMode {
             logMemory("AFTER BUILD MASK")
         }
 
-        // Outside the red primary rectangle: clear the mask so those pixels are transparent.
-        if clipUnionMaskToPrimaryBbox {
-            let clipPx1 = primaryBx1
-            let clipPy1 = primaryBy1
-            let clipPx2 = primaryBx2
-            let clipPy2 = primaryBy2
-            if clipPy1 > 0 {
-                let topBytes = clipPy1 * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!, 0, topBytes)
-                }
+        // 15d: Always clear mask outside the primary detection bbox.
+        let clipPx1 = primaryBx1
+        let clipPy1 = primaryBy1
+        let clipPx2 = primaryBx2
+        let clipPy2 = primaryBy2
+        if clipPy1 > 0 {
+            let topBytes = clipPy1 * origW
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!, 0, topBytes)
             }
-            if clipPy2 < origH {
-                let bottomStart = clipPy2 * origW
-                let bottomBytes = (origH - clipPy2) * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
-                }
+        }
+        if clipPy2 < origH {
+            let bottomStart = clipPy2 * origW
+            let bottomBytes = (origH - clipPy2) * origW
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
             }
-            if clipPx1 > 0 || clipPx2 < origW {
-                maskFull.withUnsafeMutableBufferPointer { ptr in
-                    for y in clipPy1..<clipPy2 {
-                        let rowStart = y * origW
-                        if clipPx1 > 0 {
-                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipPx1)
-                        }
-                        if clipPx2 < origW {
-                            memset(ptr.baseAddress!.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
-                        }
+        }
+        if clipPx1 > 0 || clipPx2 < origW {
+            maskFull.withUnsafeMutableBufferPointer { ptr in
+                for y in clipPy1..<clipPy2 {
+                    let rowStart = y * origW
+                    if clipPx1 > 0 {
+                        memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipPx1)
+                    }
+                    if clipPx2 < origW {
+                        memset(ptr.baseAddress!.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
                     }
                 }
             }
-            if debugMode {
-                logDebug("⏱️ STAGE 15d - Mask cleared outside primary (red) rect [\(clipPx1),\(clipPy1)]→[\(clipPx2),\(clipPy2)]")
-            }
         }
+        if debugMode {
+            logDebug("⏱️ STAGE 15d - Mask cleared outside primary bbox [\(clipPx1),\(clipPy1)]→[\(clipPx2),\(clipPy2)]")
+        }
+
+        // Morph close (if enabled) is applied on prototype mask before upscale; full-res close removed for performance.
+        let maskForComposite: [UInt8] = maskFull
 
         // Prepare flattened coeffs for fused GPU path
         let detCountFused = kept2.count
@@ -2055,7 +1997,88 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
 
                 if let src = srcTexture, let cmdBuf = queue.makeCommandBuffer() {
-                if let fused = fusedMaskCompositePipeline {
+                // Fused + morph: upload morphed prototype mask (matches CPU vImage close before upscale).
+                if furnitureFitUseMorphologicalCloseMask,
+                   let fusedM = fusedMaskMorphedCompositePipeline,
+                   detCountFused > 0,
+                   morphedProtoForFuse.count == planeSize {
+                    let protoBytes = morphedProtoForFuse.count * MemoryLayout<UInt8>.size
+                    let protoBuf: MTLBuffer?
+                    if let cached = cachedFusedProtoMaskBuf, cachedFusedProtoMaskCapacity >= protoBytes {
+                        protoBuf = cached
+                    } else {
+                        let newCapacity = max(protoBytes, cachedFusedProtoMaskCapacity * 2, 1024)
+                        cachedFusedProtoMaskBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
+                        cachedFusedProtoMaskCapacity = newCapacity
+                        protoBuf = cachedFusedProtoMaskBuf
+                    }
+                    if let pb = protoBuf {
+                        morphedProtoForFuse.withUnsafeBytes { raw in
+                            memcpy(pb.contents(), raw.baseAddress!, protoBytes)
+                        }
+                    }
+
+                    let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
+                    outDesc.usage = [.shaderWrite, .shaderRead]
+                    let outTexture = device.makeTexture(descriptor: outDesc)
+
+                    if let enc = cmdBuf.makeComputeCommandEncoder(), let out = outTexture, let protoBuf {
+                        enc.setComputePipelineState(fusedM)
+                        enc.setTexture(src, index: 0)
+                        enc.setTexture(out, index: 1)
+                        enc.setBuffer(protoBuf, offset: 0, index: 0)
+                        var pW_u = UInt32(pW)
+                        var pH_u = UInt32(pH)
+                        var origW_u = UInt32(origW)
+                        var origH_u = UInt32(origH)
+                        var modelInput_u = UInt32(modelInputSize)
+                        var resizeGain_f = resizeGain
+                        var padX_f = Float(padX)
+                        var padY_f = Float(padY)
+                        enc.setBytes(&pW_u, length: MemoryLayout<UInt32>.size, index: 1)
+                        enc.setBytes(&pH_u, length: MemoryLayout<UInt32>.size, index: 2)
+                        enc.setBytes(&origW_u, length: MemoryLayout<UInt32>.size, index: 3)
+                        enc.setBytes(&origH_u, length: MemoryLayout<UInt32>.size, index: 4)
+                        enc.setBytes(&modelInput_u, length: MemoryLayout<UInt32>.size, index: 5)
+                        enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 6)
+                        enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 7)
+                        enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 8)
+                        var bx1_u = UInt32(primaryBx1)
+                        var by1_u = UInt32(primaryBy1)
+                        var bx2_u = UInt32(primaryBx2)
+                        var by2_u = UInt32(primaryBy2)
+                        enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 9)
+                        enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 10)
+                        enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 11)
+                        enc.setBytes(&by2_u, length: MemoryLayout<UInt32>.size, index: 12)
+
+                        let w = fusedM.threadExecutionWidth
+                        let h = max(1, fusedM.maxTotalThreadsPerThreadgroup / w)
+                        let tg = MTLSize(width: w, height: h, depth: 1)
+                        let grid = MTLSize(width: origW, height: origH, depth: 1)
+                        enc.dispatchThreads(grid, threadsPerThreadgroup: tg)
+                        enc.endEncoding()
+
+                        cmdBuf.commit()
+                        cmdBuf.waitUntilCompleted()
+
+                        let bytesPerRow = origW * 4
+                        var rgba = [UInt8](repeating: 0, count: origH * bytesPerRow)
+                        out.getBytes(&rgba, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, origW, origH), mipmapLevel: 0)
+                        if let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                            let dst = ctx.data!.assumingMemoryBound(to: UInt8.self)
+                            rgba.withUnsafeBytes { srcBuf in
+                                guard let srcBytes = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                                for y in 0..<origH {
+                                    dst.advanced(by: y * bytesPerRow).update(from: srcBytes.advanced(by: y * bytesPerRow), count: bytesPerRow)
+                                }
+                            }
+                            if let img = ctx.makeImage() {
+                                composedImage = img
+                            }
+                        }
+                    }
+                } else if !furnitureFitUseMorphologicalCloseMask, let fused = fusedMaskCompositePipeline {
                     // Fused path: compute max logits and composite in one pass.
                     // Prepare buffers: planes (32*planeSize floats) and coeffs (detCount*32 floats)
                     let planesBytes = planes.count * MemoryLayout<Float>.size
@@ -2118,18 +2141,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
-                        // Same rule as mask: outside red primary rect → GPU outputs transparent (inside can still be union of detections).
-                        // `var` required: `setBytes(_:length:)` takes inout pointers.
-                        var bx1_u: UInt32 = 0
-                        var by1_u: UInt32 = 0
-                        var bx2_u: UInt32 = UInt32(origW)
-                        var by2_u: UInt32 = UInt32(origH)
-                        if clipUnionMaskToPrimaryBbox {
-                            bx1_u = UInt32(primaryBx1)
-                            by1_u = UInt32(primaryBy1)
-                            bx2_u = UInt32(primaryBx2)
-                            by2_u = UInt32(primaryBy2)
-                        }
+                        // Outside primary bbox → transparent (GPU skips logits there).
+                        var bx1_u = UInt32(primaryBx1)
+                        var by1_u = UInt32(primaryBy1)
+                        var bx2_u = UInt32(primaryBx2)
+                        var by2_u = UInt32(primaryBy2)
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
@@ -2169,7 +2185,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     let maskTexture = device.makeTexture(descriptor: maskDesc)
                     if let mt = maskTexture {
                         let region = MTLRegionMake2D(0, 0, origW, origH)
-                        mt.replace(region: region, mipmapLevel: 0, withBytes: maskFull, bytesPerRow: origW)
+                        mt.replace(region: region, mipmapLevel: 0, withBytes: maskForComposite, bytesPerRow: origW)
                     }
                     let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
                     outDesc.usage = [.shaderWrite, .shaderRead]
@@ -2217,14 +2233,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
                 for x in 0..<origW {
                     let outIdx = outRow + x * 4
-                    // Same rule: outside the red primary rectangle, output is transparent.
-                    if clipUnionMaskToPrimaryBbox {
-                        if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
-                            outBase[outIdx+3] = 0
-                            continue
-                        }
+                    if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
+                        outBase[outIdx+3] = 0
+                        continue
                     }
-                    let m = maskFull[y * origW + x]
+                    let m = maskForComposite[y * origW + x]
                     if m > 0 {
                         let origIdx = origRow + x * 4
                         let a = Float(m) / 255.0
@@ -2358,9 +2371,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         resetProcessingFlag()
 
         // Trigger first-detection UI dismissal based on mask having any positive pixels
-        let hasMask = maskFull.contains(where: { $0 > 0 })
+        let hasMask = maskForComposite.contains(where: { $0 > 0 })
         if hasMask { finishFirstDetectionIfNeeded() }
-        
+
         let t7End = Date()
         let frameEnd = Date()
 
@@ -2424,6 +2437,35 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         return (protoPlanes, count, h, w)
     }
 
+    /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
+    private func morphologicalBinaryClose3x3Planar8(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        let count = width * height
+        guard count == mask.count, width >= 1, height >= 1 else { return mask }
+        var dilated = [UInt8](repeating: 0, count: count)
+        var closed = [UInt8](repeating: 0, count: count)
+        let errMax: vImage_Error = mask.withUnsafeBufferPointer { srcPtr in
+            dilated.withUnsafeMutableBufferPointer { dPtr in
+                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                return vImageMax_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
+            }
+        }
+        guard errMax == kvImageNoError else {
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+        }
+        let errMin: vImage_Error = dilated.withUnsafeBufferPointer { srcPtr in
+            closed.withUnsafeMutableBufferPointer { dPtr in
+                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                return vImageMin_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
+            }
+        }
+        guard errMin == kvImageNoError else {
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+        }
+        return closed
+    }
+
     // MARK: - Upscale Mask
     // Uses exact integer values from resizeToSquare to ensure pixel-perfect reverse mapping
     private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, padX: Int, padY: Int, contentW: Int, contentH: Int) -> [UInt8] {
@@ -2460,6 +2502,61 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
         return maskFull
+    }
+
+    /// 3×3 binary dilate (foreground = any > 0 in neighborhood).
+    private func morphologicalBinaryDilate3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                var hit = false
+                outer: for dy in -1...1 {
+                    for dx in -1...1 {
+                        let nx = x + dx
+                        let ny = y + dy
+                        if nx < 0 || nx >= width || ny < 0 || ny >= height { continue }
+                        if mask[ny * width + nx] > 0 {
+                            hit = true
+                            break outer
+                        }
+                    }
+                }
+                out[y * width + x] = hit ? 255 : 0
+            }
+        }
+        return out
+    }
+
+    /// 3×3 binary erode (foreground only if all neighbors > 0).
+    private func morphologicalBinaryErode3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                var all = true
+                outer: for dy in -1...1 {
+                    for dx in -1...1 {
+                        let nx = x + dx
+                        let ny = y + dy
+                        if nx < 0 || nx >= width || ny < 0 || ny >= height {
+                            all = false
+                            break outer
+                        }
+                        if mask[ny * width + nx] == 0 {
+                            all = false
+                            break outer
+                        }
+                    }
+                }
+                out[y * width + x] = all ? 255 : 0
+            }
+        }
+        return out
+    }
+
+    /// Closing = dilate ∘ erode: fills small holes / smooths thin gaps without raising the logit threshold.
+    private func morphologicalBinaryClose3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        let dilated = morphologicalBinaryDilate3x3(mask: mask, width: width, height: height)
+        return morphologicalBinaryErode3x3(mask: dilated, width: width, height: height)
     }
 
     // MARK: - Resize to Square

@@ -32,6 +32,11 @@ func logPlyBoundsDiagnostic(_ message: String) {
     print("[PLY_BOUNDS] \(message)")
 }
 
+/// AR-assisted FurnitureFit metrics for cross-platform comparison. Filter in Xcode Console: `FurnitureFitAR`.
+func logFurnitureFitAR(_ message: String) {
+    print("[FurnitureFitAR] \(message)")
+}
+
 /// Centralized logging utility using os_log framework
 /// - Debug/Info logs only appear when debug mode is enabled in Settings
 /// - Error/Critical logs always appear for crash reporting

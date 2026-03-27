@@ -222,7 +222,7 @@ public struct FurnitureFitRotation {
 }
 
 // MARK: - BBox Intersection Utility
-/// Utility for bounding box intersection checks used in mask overlap filtering
+/// Utility for bounding box intersection checks used in multi-candidate filtering
 public struct FurnitureFitBBox {
 
     /// Check if two bounding boxes intersect

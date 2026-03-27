@@ -177,7 +177,10 @@ class SharpRoomActivity : AppCompatActivity() {
     private var arDisplayScale: Float = 1f
     // Brain (SmartyPants) furniture calibration state (height and optional scale factor for display).
     private val brainDefaultRoomHeightMeters: Float = 3.0f
-    private var brainDetectedFurnitureHeightMeters: Float? = null
+    /**
+     * Legacy: room-height × YOLO bbox fraction (distance-dependent; only used when AR-assisted sizing is **off**).
+     */
+    private var brainRoomBasedFurnitureHeightMeters: Float? = null
     private var brainRealFurnitureHeightMeters: Float? = null
     private var brainCalibrationScaleFactor: Float = 1.0f
     private var photoOrientation: String = "portrait"
@@ -669,6 +672,20 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * When AR-assisted sizing is on, furniture height is **pinhole × depth only** (same as [FurnitureFitArCameraController]).
+     * We do not mix `roomHeight × bbox/image_height` here — that shrinks as the camera moves away.
+     * When AR is off, legacy room×bbox fraction is used as a rough hint only.
+     */
+    private fun effectiveBrainFurnitureHeightDisplayMeters(): Float {
+        val arEnabled = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)
+        val ar = brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
+        if (arEnabled && brainArController != null) {
+            return ar ?: 0f
+        }
+        return brainRoomBasedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f } ?: 0f
+    }
+
     /** Update the brain (FurnitureFit) pill: always shows Furn/Room measurements; “Tap to calibrate” only when pref is on. */
     private fun updateBrainCalibrationPill() {
         runOnUiThread {
@@ -676,7 +693,7 @@ class SharpRoomActivity : AppCompatActivity() {
             val line1 = brainCalibrationPillLine1
             val line2 = brainCalibrationPillLine2
             val calibrateUi = FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)
-            val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
+            val detected = effectiveBrainFurnitureHeightDisplayMeters()
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
             val realH = brainRealFurnitureHeightMeters
             if (realH != null && realH > 0f) {
@@ -705,7 +722,7 @@ class SharpRoomActivity : AppCompatActivity() {
     /** Dialog for per-object furniture calibration in brain overlay. */
     private fun showBrainCalibrationDialog() {
         if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) return
-        val detected = brainDetectedFurnitureHeightMeters?.takeIf { it.isFinite() } ?: 0f
+        val detected = effectiveBrainFurnitureHeightDisplayMeters()
         val ctx = this
         val edit = EditText(ctx).apply {
             hint = getString(R.string.smartypants_real_height_hint)
@@ -1258,8 +1275,9 @@ class SharpRoomActivity : AppCompatActivity() {
                                 brainEffectiveOverlayScale(),
                             )
                             val rh = effRoomHeight()
-                            brainDetectedFurnitureHeightMeters =
-                                if (dets.isNotEmpty() && rh > 0.1f && size > 0) {
+                            val arSizingOn = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this@SharpRoomActivity)
+                            brainRoomBasedFurnitureHeightMeters =
+                                if (!arSizingOn && dets.isNotEmpty() && rh > 0.1f && size > 0) {
                                     val det = dets.first()
                                     val frac = (det.h / size.toFloat()).coerceIn(0.06f, 0.92f)
                                     rh * frac
@@ -1306,7 +1324,6 @@ class SharpRoomActivity : AppCompatActivity() {
         controller.lockedPhotoOrientation = photoOrientation
         controller.roomHeightMetersForFallback = effRoomHeight()
         controller.onAssistedMeasurementUpdated = {
-            brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
             updateBrainCalibrationPill()
         }
         val lp = FrameLayout.LayoutParams(
@@ -1347,6 +1364,16 @@ class SharpRoomActivity : AppCompatActivity() {
                         size,
                         brainEffectiveOverlayScale(),
                     )
+                    val rh = effRoomHeight()
+                    val arSizingOn = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this@SharpRoomActivity)
+                    brainRoomBasedFurnitureHeightMeters =
+                        if (!arSizingOn && dets.isNotEmpty() && rh > 0.1f && size > 0) {
+                            val det = dets.first()
+                            val frac = (det.h / size.toFloat()).coerceIn(0.06f, 0.92f)
+                            rh * frac
+                        } else {
+                            null
+                        }
                     if (mask != null && dets.isNotEmpty()) {
                         val det = dets.first()
                         val inp = size.coerceAtLeast(1).toFloat()
@@ -1358,11 +1385,9 @@ class SharpRoomActivity : AppCompatActivity() {
                             det.h * scaleY,
                             det.label,
                         )
-                        // Height is applied on the GL thread + ~850ms debounce; [onAssistedMeasurementUpdated] refreshes the pill.
-                        brainDetectedFurnitureHeightMeters = brainArController?.getLastEstimatedHeightMeters()
+                        // Pill: AR pinhole height only when arSizingOn (see [effectiveBrainFurnitureHeightDisplayMeters]).
                     } else {
                         brainArController?.clearBboxHint()
-                        brainDetectedFurnitureHeightMeters = null
                     }
                     brainArController?.onInferenceFinished()
                     updateBrainCalibrationPill()
@@ -1402,7 +1427,7 @@ class SharpRoomActivity : AppCompatActivity() {
             c.destroy()
         }
         brainArController = null
-        brainDetectedFurnitureHeightMeters = null
+        brainRoomBasedFurnitureHeightMeters = null
         brainRealFurnitureHeightMeters = null
         brainCalibrationScaleFactor = 1.0f
         updateBrainCalibrationPill()

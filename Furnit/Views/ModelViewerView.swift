@@ -30,6 +30,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentFurniture = false
     @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
     @State private var furnitureFitInitialSegmentationDone = false
+    @State private var furnitureFitEstimatedHeightM: Float?
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -76,11 +77,29 @@ struct ModelViewerView: View {
                             lockedOrientation: model.photoOrientation,
                             roomWidthMeters: model.roomWidth ?? 4.0,
                             roomHeightMeters: model.roomHeight ?? 3.0,
-                            onFurnitureSizeEstimated: nil,
+                            onFurnitureSizeEstimated: { estimate in
+                                furnitureFitEstimatedHeightM = estimate.heightMeters
+                            },
                             suppressStartupProgress: furnitureFitInitialSegmentationDone,
                             onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                         )
                         .zIndex(9000)
+                    }
+
+                    if showingFurnitureFit, let fh = furnitureFitEstimatedHeightM {
+                        VStack {
+                            Spacer()
+                            Text(String(format: "Furniture height ~ %.2f m", fh))
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.black.opacity(0.55))
+                                .cornerRadius(8)
+                                .padding(.bottom, 96)
+                        }
+                        .zIndex(9001)
+                        .allowsHitTesting(false)
                     }
 
                     if isLandscape(geometry: geometry) {
@@ -407,6 +426,7 @@ struct ModelViewerView: View {
                 
                 if showingFurnitureFit {
                     showingFurnitureFit = false
+                    furnitureFitEstimatedHeightM = nil
                 } else {
                     // Trigger ARView snapshot
                     shouldCaptureARViewSnapshot = true
