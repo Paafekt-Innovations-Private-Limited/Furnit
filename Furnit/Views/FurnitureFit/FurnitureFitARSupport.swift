@@ -145,7 +145,8 @@ enum FurnitureFitARSupport {
             let stride = rowBytes / MemoryLayout<Float>.size
             let ptr = base.assumingMemoryBound(to: Float.self)
             let d = ptr[y * stride + x]
-            return d.isFinite && d > 0.05 && d < 50 ? d : nil
+            // Ignore depths under 10 cm — glass / reflective surfaces often report bogus near depth.
+            return d.isFinite && d > 0.1 && d < 50 ? d : nil
         }
         return nil
     }
@@ -280,7 +281,7 @@ enum FurnitureFitARSupport {
         distanceMeters: Float,
         focalLengthYPixels: Float
     ) -> Float? {
-        guard bboxHeightPixels > 1, distanceMeters > 0.05, focalLengthYPixels > 1 else { return nil }
+        guard bboxHeightPixels > 1, distanceMeters > 0.1, focalLengthYPixels > 1 else { return nil }
         return (bboxHeightPixels / focalLengthYPixels) * distanceMeters
     }
 
@@ -291,7 +292,7 @@ enum FurnitureFitARSupport {
         minScale: Float = 0.4,
         maxScale: Float = 2.5
     ) -> Float? {
-        guard standardHeightMeters > 0.1, estimatedHeightMeters > 0.05 else { return nil }
+        guard standardHeightMeters > 0.1, estimatedHeightMeters > 0.1 else { return nil }
         // When the FurnitureFit overlay has already been scaled so that the standard height appears
         // correct for the current room, this additional factor adjusts it so that the final visual
         // height matches the AR-estimated height. If AR says the furniture is taller than the

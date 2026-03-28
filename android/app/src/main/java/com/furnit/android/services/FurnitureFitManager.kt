@@ -22,6 +22,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 // Result containing mask and detections
 data class SegmentationResult(
@@ -43,6 +47,10 @@ data class SegmentationResult(
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val includeSupportingTableForMonitorScene = true
+    private val enableMorphCloseForMask = false
+    private val monitorLikeClassIds = setOf(1063, 2675, 4105)
+    private val supportingTableClassIds = setOf(1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564)
 
     companion object {
         /** Shared with [com.furnit.android.SettingsActivity] — ARCore metric distance + pinhole overlay scale. */
@@ -161,19 +169,11 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Auto-initialize with the best available backend (NCNN, ONNX Runtime, then TFLite).
+     * Auto-initialize segmentation with ONNX Runtime first, then TFLite.
+     * NCNN remains available for explicit/manual initialization only.
      */
     fun initializeAuto(): Boolean {
-        LogUtil.i("FurnitureFitManager", "Auto-initializing with best available backend...")
-
-        try {
-            if (initializeNcnn()) {
-                LogUtil.i("FurnitureFitManager", "Using NCNN backend (preferred)")
-                return true
-            }
-        } catch (e: Exception) {
-            LogUtil.w("FurnitureFitManager", "NCNN initialization failed: ${e.message}")
-        }
+        LogUtil.i("FurnitureFitManager", "Auto-initializing segmentation backend...")
 
         // ONNX Runtime
         try {
@@ -973,7 +973,16 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            val primaryDet = keepDets.firstOrNull()
+            val primaryDet = pickPrimaryOnnxDetection(
+                detections = keepDets,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+            )
+            val maskDetections = if (primaryDet != null) {
+                collectMaskDetections(primaryDet, keepDets)
+            } else {
+                emptyList()
+            }
 
             val detectionResults = if (primaryDet != null) {
                 listOf(
@@ -996,29 +1005,39 @@ class FurnitureFitManager(private val context: Context) {
                 val protoScaleY = inputH.toFloat() / protoH.toFloat()
                 val maskProto = FloatArray(protoH * protoW)
 
-                val detection = primaryDet
-                val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
-                val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
-                val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
-                val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                for (detection in maskDetections) {
+                    val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                    val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
 
-                for (py in bboxTop..bboxBottom) {
-                    val rowBase = py * protoW
-                    for (px in bboxLeft..bboxRight) {
-                        var sum = 0f
-                        val p = rowBase + px
-                        val hwProto = protoH * protoW
-                        var c = 0
-                        while (c < numProtos) {
-                            val protoIdx = c * hwProto + p
-                            sum += detection.coeffs[c] * proto[protoIdx]
-                            c++
-                        }
-                        val sigmoidVal = 1f / (1f + exp(-sum))
-                        if (sigmoidVal > maskProto[p]) {
-                            maskProto[p] = sigmoidVal
+                    for (py in bboxTop..bboxBottom) {
+                        val rowBase = py * protoW
+                        for (px in bboxLeft..bboxRight) {
+                            var sum = 0f
+                            val p = rowBase + px
+                            val hwProto = protoH * protoW
+                            var c = 0
+                            while (c < numProtos) {
+                                val protoIdx = c * hwProto + p
+                                sum += detection.coeffs[c] * proto[protoIdx]
+                                c++
+                            }
+                            val sigmoidVal = 1f / (1f + exp(-sum))
+                            if (sigmoidVal > maskProto[p]) {
+                                maskProto[p] = sigmoidVal
+                            }
                         }
                     }
+                }
+
+                if (enableMorphCloseForMask) {
+                    applyMorphClose3x3ToFloatMask(
+                        mask = maskProto,
+                        width = protoW,
+                        height = protoH,
+                        threshold = 0.5f,
+                    )
                 }
 
                 val frameW = frame.width
@@ -1058,11 +1077,428 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
+    private data class PrimaryCandidateScore(
+        val score: Float,
+        val isInteriorCandidate: Boolean,
+    )
+
+    private fun primaryDetectionScore(
+        centerX: Float,
+        centerY: Float,
+        width: Float,
+        height: Float,
+        confidence: Float,
+        frameWidth: Float,
+        frameHeight: Float,
+    ): PrimaryCandidateScore {
+        if (!centerX.isFinite() || !centerY.isFinite() || !width.isFinite() || !height.isFinite() || !confidence.isFinite()) {
+            return PrimaryCandidateScore(-1f, false)
+        }
+        if (frameWidth <= 1f || frameHeight <= 1f || width <= 0f || height <= 0f) {
+            return PrimaryCandidateScore(-1f, false)
+        }
+
+        val frameArea = frameWidth * frameHeight
+        val areaNormalized = (width * height) / frameArea
+        val minimumConfidence = 0.15f
+        val minimumAreaNormalized = 0.02f
+        if (confidence < minimumConfidence || areaNormalized < minimumAreaNormalized) {
+            return PrimaryCandidateScore(-1f, false)
+        }
+
+        val frameCenterX = frameWidth * 0.5f
+        val frameCenterY = frameHeight * 0.5f
+        val deltaX = (centerX - frameCenterX) / frameCenterX.coerceAtLeast(1f)
+        val deltaY = (centerY - frameCenterY) / frameCenterY.coerceAtLeast(1f)
+        val centerDistance = min(1f, sqrt(deltaX * deltaX + deltaY * deltaY))
+        val centerScore = 1f - centerDistance
+
+        val boxLeft = centerX - width * 0.5f
+        val boxTop = centerY - height * 0.5f
+        val boxRight = centerX + width * 0.5f
+        val boxBottom = centerY + height * 0.5f
+        val edgeMarginX = max(frameWidth * 0.04f, 1f)
+        val edgeMarginY = max(frameHeight * 0.04f, 1f)
+        val leftClearance = (boxLeft / edgeMarginX).coerceIn(0f, 1f)
+        val topClearance = (boxTop / edgeMarginY).coerceIn(0f, 1f)
+        val rightClearance = ((frameWidth - boxRight) / edgeMarginX).coerceIn(0f, 1f)
+        val bottomClearance = ((frameHeight - boxBottom) / edgeMarginY).coerceIn(0f, 1f)
+        val edgeClearanceScore = max(0.1f, min(min(leftClearance, topClearance), min(rightClearance, bottomClearance)))
+        val isInteriorCandidate =
+            leftClearance >= 1f &&
+                topClearance >= 1f &&
+                rightClearance >= 1f &&
+                bottomClearance >= 1f
+
+        val confidenceTerm = confidence.pow(1.0f)
+        val areaTerm = areaNormalized.pow(0.8f)
+        val centerTerm = max(0f, centerScore).pow(1.0f)
+        val edgeTerm = edgeClearanceScore.pow(1.0f)
+        return PrimaryCandidateScore(
+            score = confidenceTerm * areaTerm * centerTerm * edgeTerm,
+            isInteriorCandidate = isInteriorCandidate,
+        )
+    }
+
+    private fun pickPrimaryOnnxDetection(
+        detections: List<Detection>,
+        frameWidth: Float,
+        frameHeight: Float,
+    ): Detection? {
+        if (detections.isEmpty()) return null
+
+        var bestDetection: Detection? = null
+        var bestScore = -1f
+        var bestEdgeFallback: Detection? = null
+        var bestEdgeFallbackScore = -1f
+        for (detection in detections) {
+            val candidateScore = primaryDetectionScore(
+                centerX = detection.x,
+                centerY = detection.y,
+                width = detection.w,
+                height = detection.h,
+                confidence = detection.confidence,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+            )
+            if (candidateScore.isInteriorCandidate && candidateScore.score > bestScore) {
+                bestScore = candidateScore.score
+                bestDetection = detection
+            } else if (!candidateScore.isInteriorCandidate && candidateScore.score > bestEdgeFallbackScore) {
+                bestEdgeFallbackScore = candidateScore.score
+                bestEdgeFallback = detection
+            }
+        }
+        return bestDetection ?: bestEdgeFallback ?: detections.maxByOrNull { it.confidence }
+    }
+
+    private fun pickSupportingTableForMonitorScene(
+        primaryDetection: Detection,
+        detections: List<Detection>,
+    ): Detection? {
+        if (!includeSupportingTableForMonitorScene) return null
+        if (!monitorLikeClassIds.contains(primaryDetection.classId)) return null
+
+        val primaryLeft = primaryDetection.x - primaryDetection.w / 2f
+        val primaryRight = primaryDetection.x + primaryDetection.w / 2f
+        val primaryBottom = primaryDetection.y + primaryDetection.h / 2f
+        val primaryArea = max(1e-3f, primaryDetection.w * primaryDetection.h)
+
+        var bestDetection: Detection? = null
+        var bestScore = -1f
+
+        for (detection in detections) {
+            if (detection === primaryDetection) continue
+            if (!supportingTableClassIds.contains(detection.classId)) continue
+
+            val candidateLeft = detection.x - detection.w / 2f
+            val candidateRight = detection.x + detection.w / 2f
+            val candidateTop = detection.y - detection.h / 2f
+            val overlapWidth = max(0f, min(primaryRight, candidateRight) - max(primaryLeft, candidateLeft))
+            val horizontalOverlapRatio = overlapWidth / max(1e-3f, min(primaryDetection.w, detection.w))
+            if (horizontalOverlapRatio < 0.35f) continue
+
+            if (detection.y <= primaryDetection.y) continue
+
+            val verticalGap = candidateTop - primaryBottom
+            if (verticalGap < -primaryDetection.h * 0.20f || verticalGap > primaryDetection.h * 0.60f) continue
+
+            val widthRatio = detection.w / max(1e-3f, primaryDetection.w)
+            if (widthRatio < 0.75f || widthRatio > 5.0f) continue
+
+            val areaRatio = (detection.w * detection.h) / primaryArea
+            if (areaRatio < 0.50f || areaRatio > 12.0f) continue
+
+            val closenessTerm = 1f - min(1f, kotlin.math.abs(verticalGap) / max(primaryDetection.h * 0.60f, 1e-3f))
+            val score = detection.confidence * horizontalOverlapRatio * max(0.1f, closenessTerm)
+
+            if (score > bestScore) {
+                bestScore = score
+                bestDetection = detection
+            }
+        }
+
+        if (bestDetection != null) {
+            LogUtil.d(
+                "FurnitureFitManager",
+                "Support table picked for monitor scene: class=${bestDetection.classId} conf=${bestDetection.confidence}",
+            )
+        }
+
+        return bestDetection
+    }
+
+    private fun calculateIoUForMaskSelection(first: Detection, second: Detection): Float {
+        val firstX1 = first.x - first.w / 2f
+        val firstY1 = first.y - first.h / 2f
+        val firstX2 = first.x + first.w / 2f
+        val firstY2 = first.y + first.h / 2f
+
+        val secondX1 = second.x - second.w / 2f
+        val secondY1 = second.y - second.h / 2f
+        val secondX2 = second.x + second.w / 2f
+        val secondY2 = second.y + second.h / 2f
+
+        val interX1 = max(firstX1, secondX1)
+        val interY1 = max(firstY1, secondY1)
+        val interX2 = min(firstX2, secondX2)
+        val interY2 = min(firstY2, secondY2)
+        val interW = max(0f, interX2 - interX1)
+        val interH = max(0f, interY2 - interY1)
+        val interArea = interW * interH
+        val unionArea = first.w * first.h + second.w * second.h - interArea
+        return if (unionArea > 0f) interArea / unionArea else 0f
+    }
+
+    private fun collectMaskDetections(
+        primaryDetection: Detection,
+        detections: List<Detection>,
+    ): List<Detection> {
+        val supportingTableDetection = pickSupportingTableForMonitorScene(primaryDetection, detections)
+        val primaryLeft = primaryDetection.x - primaryDetection.w / 2f
+        val primaryTop = primaryDetection.y - primaryDetection.h / 2f
+        val primaryRight = primaryDetection.x + primaryDetection.w / 2f
+        val primaryBottom = primaryDetection.y + primaryDetection.h / 2f
+        val encompassTolerance = 2f
+        val minimumCandidateConfidence = 0.1f
+        val bboxDuplicateThreshold = 0.7f
+
+        val bboxKept = mutableListOf<Detection>()
+        for (detection in detections) {
+            if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
+
+            val candidateLeft = detection.x - detection.w / 2f
+            val candidateTop = detection.y - detection.h / 2f
+            val candidateRight = detection.x + detection.w / 2f
+            val candidateBottom = detection.y + detection.h / 2f
+
+            val encompassesPrimary =
+                candidateLeft <= primaryLeft + encompassTolerance &&
+                    candidateTop <= primaryTop + encompassTolerance &&
+                    candidateRight >= primaryRight - encompassTolerance &&
+                    candidateBottom >= primaryBottom - encompassTolerance
+            if (encompassesPrimary) continue
+
+            val intersectsPrimary =
+                !(candidateRight < primaryLeft || candidateLeft > primaryRight || candidateBottom < primaryTop || candidateTop > primaryBottom)
+            if (!intersectsPrimary) continue
+
+            val tooLarge =
+                detection.w > primaryDetection.w * 1.5f &&
+                    detection.h > primaryDetection.h * 1.5f
+            if (tooLarge) continue
+
+            if (calculateIoUForMaskSelection(detection, primaryDetection) > bboxDuplicateThreshold) continue
+
+            var shouldSkip = false
+            var replaceIndex = -1
+            for ((index, keptDetection) in bboxKept.withIndex()) {
+                val iou = calculateIoUForMaskSelection(detection, keptDetection)
+                if (iou > bboxDuplicateThreshold) {
+                    if (detection.confidence > keptDetection.confidence) {
+                        replaceIndex = index
+                    } else {
+                        shouldSkip = true
+                    }
+                    break
+                }
+            }
+            if (shouldSkip) continue
+            if (replaceIndex >= 0) {
+                bboxKept[replaceIndex] = detection
+            } else {
+                bboxKept += detection
+            }
+        }
+
+        val maskDetections = mutableListOf(primaryDetection)
+        maskDetections += bboxKept
+        if (supportingTableDetection != null && !maskDetections.contains(supportingTableDetection)) {
+            maskDetections += supportingTableDetection
+        }
+        return maskDetections
+    }
+
     private fun pickPrimaryNcnnDetection(
         detections: List<NcnnYoloe.Detection>,
+        frameWidth: Float,
+        frameHeight: Float,
     ): NcnnYoloe.Detection? {
         if (detections.isEmpty()) return null
-        return detections.maxByOrNull { it.confidence }
+
+        var bestDetection: NcnnYoloe.Detection? = null
+        var bestScore = -1f
+        var bestEdgeFallback: NcnnYoloe.Detection? = null
+        var bestEdgeFallbackScore = -1f
+        for (detection in detections) {
+            val candidateScore = primaryDetectionScore(
+                centerX = detection.x,
+                centerY = detection.y,
+                width = detection.width,
+                height = detection.height,
+                confidence = detection.confidence,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+            )
+            if (candidateScore.isInteriorCandidate && candidateScore.score > bestScore) {
+                bestScore = candidateScore.score
+                bestDetection = detection
+            } else if (!candidateScore.isInteriorCandidate && candidateScore.score > bestEdgeFallbackScore) {
+                bestEdgeFallbackScore = candidateScore.score
+                bestEdgeFallback = detection
+            }
+        }
+        return bestDetection ?: bestEdgeFallback ?: detections.maxByOrNull { it.confidence }
+    }
+
+    private fun pickSupportingTableForMonitorScene(
+        primaryDetection: NcnnYoloe.Detection,
+        detections: List<NcnnYoloe.Detection>,
+    ): NcnnYoloe.Detection? {
+        if (!includeSupportingTableForMonitorScene) return null
+        if (!monitorLikeClassIds.contains(primaryDetection.classId)) return null
+
+        val primaryLeft = primaryDetection.x - primaryDetection.width / 2f
+        val primaryRight = primaryDetection.x + primaryDetection.width / 2f
+        val primaryBottom = primaryDetection.y + primaryDetection.height / 2f
+        val primaryArea = max(1e-3f, primaryDetection.width * primaryDetection.height)
+
+        var bestDetection: NcnnYoloe.Detection? = null
+        var bestScore = -1f
+
+        for (detection in detections) {
+            if (detection === primaryDetection) continue
+            if (!supportingTableClassIds.contains(detection.classId)) continue
+
+            val candidateLeft = detection.x - detection.width / 2f
+            val candidateRight = detection.x + detection.width / 2f
+            val candidateTop = detection.y - detection.height / 2f
+            val overlapWidth = max(0f, min(primaryRight, candidateRight) - max(primaryLeft, candidateLeft))
+            val horizontalOverlapRatio = overlapWidth / max(1e-3f, min(primaryDetection.width, detection.width))
+            if (horizontalOverlapRatio < 0.35f) continue
+
+            if (detection.y <= primaryDetection.y) continue
+
+            val verticalGap = candidateTop - primaryBottom
+            if (verticalGap < -primaryDetection.height * 0.20f || verticalGap > primaryDetection.height * 0.60f) continue
+
+            val widthRatio = detection.width / max(1e-3f, primaryDetection.width)
+            if (widthRatio < 0.75f || widthRatio > 5.0f) continue
+
+            val areaRatio = (detection.width * detection.height) / primaryArea
+            if (areaRatio < 0.50f || areaRatio > 12.0f) continue
+
+            val closenessTerm = 1f - min(1f, kotlin.math.abs(verticalGap) / max(primaryDetection.height * 0.60f, 1e-3f))
+            val score = detection.confidence * horizontalOverlapRatio * max(0.1f, closenessTerm)
+
+            if (score > bestScore) {
+                bestScore = score
+                bestDetection = detection
+            }
+        }
+
+        if (bestDetection != null) {
+            LogUtil.d(
+                "FurnitureFitManager",
+                "Support table picked for NCNN monitor scene: class=${bestDetection.classId} conf=${bestDetection.confidence}",
+            )
+        }
+
+        return bestDetection
+    }
+
+    private fun calculateIoUForMaskSelection(
+        first: NcnnYoloe.Detection,
+        second: NcnnYoloe.Detection,
+    ): Float {
+        val firstX1 = first.x - first.width / 2f
+        val firstY1 = first.y - first.height / 2f
+        val firstX2 = first.x + first.width / 2f
+        val firstY2 = first.y + first.height / 2f
+
+        val secondX1 = second.x - second.width / 2f
+        val secondY1 = second.y - second.height / 2f
+        val secondX2 = second.x + second.width / 2f
+        val secondY2 = second.y + second.height / 2f
+
+        val interX1 = max(firstX1, secondX1)
+        val interY1 = max(firstY1, secondY1)
+        val interX2 = min(firstX2, secondX2)
+        val interY2 = min(firstY2, secondY2)
+        val interW = max(0f, interX2 - interX1)
+        val interH = max(0f, interY2 - interY1)
+        val interArea = interW * interH
+        val unionArea = first.width * first.height + second.width * second.height - interArea
+        return if (unionArea > 0f) interArea / unionArea else 0f
+    }
+
+    private fun collectMaskDetections(
+        primaryDetection: NcnnYoloe.Detection,
+        detections: List<NcnnYoloe.Detection>,
+    ): List<NcnnYoloe.Detection> {
+        val supportingTableDetection = pickSupportingTableForMonitorScene(primaryDetection, detections)
+        val primaryLeft = primaryDetection.x - primaryDetection.width / 2f
+        val primaryTop = primaryDetection.y - primaryDetection.height / 2f
+        val primaryRight = primaryDetection.x + primaryDetection.width / 2f
+        val primaryBottom = primaryDetection.y + primaryDetection.height / 2f
+        val encompassTolerance = 2f
+        val minimumCandidateConfidence = 0.1f
+        val bboxDuplicateThreshold = 0.7f
+
+        val bboxKept = mutableListOf<NcnnYoloe.Detection>()
+        for (detection in detections) {
+            if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
+
+            val candidateLeft = detection.x - detection.width / 2f
+            val candidateTop = detection.y - detection.height / 2f
+            val candidateRight = detection.x + detection.width / 2f
+            val candidateBottom = detection.y + detection.height / 2f
+
+            val encompassesPrimary =
+                candidateLeft <= primaryLeft + encompassTolerance &&
+                    candidateTop <= primaryTop + encompassTolerance &&
+                    candidateRight >= primaryRight - encompassTolerance &&
+                    candidateBottom >= primaryBottom - encompassTolerance
+            if (encompassesPrimary) continue
+
+            val intersectsPrimary =
+                !(candidateRight < primaryLeft || candidateLeft > primaryRight || candidateBottom < primaryTop || candidateTop > primaryBottom)
+            if (!intersectsPrimary) continue
+
+            val tooLarge =
+                detection.width > primaryDetection.width * 1.5f &&
+                    detection.height > primaryDetection.height * 1.5f
+            if (tooLarge) continue
+
+            if (calculateIoUForMaskSelection(detection, primaryDetection) > bboxDuplicateThreshold) continue
+
+            var shouldSkip = false
+            var replaceIndex = -1
+            for ((index, keptDetection) in bboxKept.withIndex()) {
+                val iou = calculateIoUForMaskSelection(detection, keptDetection)
+                if (iou > bboxDuplicateThreshold) {
+                    if (detection.confidence > keptDetection.confidence) {
+                        replaceIndex = index
+                    } else {
+                        shouldSkip = true
+                    }
+                    break
+                }
+            }
+            if (shouldSkip) continue
+            if (replaceIndex >= 0) {
+                bboxKept[replaceIndex] = detection
+            } else {
+                bboxKept += detection
+            }
+        }
+
+        val maskDetections = mutableListOf(primaryDetection)
+        maskDetections += bboxKept
+        if (supportingTableDetection != null && !maskDetections.contains(supportingTableDetection)) {
+            maskDetections += supportingTableDetection
+        }
+        return maskDetections
     }
 
     // NCNN inference with detections — always full-frame mask.
@@ -1090,17 +1526,25 @@ class FurnitureFitManager(private val context: Context) {
                 return
             }
 
-            val primaryFull = pickPrimaryNcnnDetection(detections)
+            val primaryFull = pickPrimaryNcnnDetection(
+                detections = detections,
+                frameWidth = frame.width.toFloat(),
+                frameHeight = frame.height.toFloat(),
+            )
             if (primaryFull == null) {
                 mainHandler.post { callback(SegmentationResult(null, emptyList(), NcnnYoloe.MODEL_INPUT_SIDE)) }
                 return
             }
+            val maskDetections = collectMaskDetections(primaryFull, detections)
 
-            val maskFull = ncnn.generateMask(
+            var maskFull = ncnn.generateMask(
                 bitmap = frame,
-                detections = listOf(primaryFull),
+                detections = maskDetections,
                 maskThreshold = 0.5f,
             )
+            if (enableMorphCloseForMask && maskFull != null) {
+                maskFull = applyMorphClose3x3ToBitmapMask(frame, maskFull)
+            }
 
             val detResult = YoloRatioCalibration.detectionResultInModelSquare(
                 primaryFull.x,
@@ -1171,6 +1615,101 @@ class FurnitureFitManager(private val context: Context) {
         val unionArea = area1 + area2 - interArea
 
         return if (unionArea > 0) interArea / unionArea else 0f
+    }
+
+    private fun applyMorphClose3x3ToFloatMask(
+        mask: FloatArray,
+        width: Int,
+        height: Int,
+        threshold: Float,
+    ) {
+        if (width <= 0 || height <= 0 || mask.size != width * height) return
+
+        val binaryMask = BooleanArray(mask.size) { idx -> mask[idx] > threshold }
+        val dilatedMask = dilate3x3(binaryMask, width, height)
+        val closedMask = erode3x3(dilatedMask, width, height)
+
+        for (index in mask.indices) {
+            mask[index] = if (closedMask[index]) 1f else 0f
+        }
+    }
+
+    private fun applyMorphClose3x3ToBitmapMask(frame: Bitmap, mask: Bitmap): Bitmap {
+        val width = mask.width
+        val height = mask.height
+        if (width <= 0 || height <= 0) return mask
+
+        val framePixels = IntArray(width * height)
+        val maskPixels = IntArray(width * height)
+        frame.getPixels(framePixels, 0, width, 0, 0, width, height)
+        mask.getPixels(maskPixels, 0, width, 0, 0, width, height)
+
+        val binaryMask = BooleanArray(maskPixels.size) { idx ->
+            ((maskPixels[idx] ushr 24) and 0xFF) > 0
+        }
+        val dilatedMask = dilate3x3(binaryMask, width, height)
+        val closedMask = erode3x3(dilatedMask, width, height)
+
+        val outputPixels = IntArray(width * height)
+        for (index in outputPixels.indices) {
+            outputPixels[index] = if (closedMask[index]) {
+                framePixels[index]
+            } else {
+                0x00000000
+            }
+        }
+
+        return Bitmap.createBitmap(outputPixels, width, height, Config.ARGB_8888)
+    }
+
+    private fun dilate3x3(mask: BooleanArray, width: Int, height: Int): BooleanArray {
+        val outputMask = BooleanArray(mask.size)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                var isForeground = false
+                val yStart = maxOf(0, y - 1)
+                val yEnd = minOf(height - 1, y + 1)
+                val xStart = maxOf(0, x - 1)
+                val xEnd = minOf(width - 1, x + 1)
+                for (kernelY in yStart..yEnd) {
+                    val rowOffset = kernelY * width
+                    for (kernelX in xStart..xEnd) {
+                        if (mask[rowOffset + kernelX]) {
+                            isForeground = true
+                            break
+                        }
+                    }
+                    if (isForeground) break
+                }
+                outputMask[y * width + x] = isForeground
+            }
+        }
+        return outputMask
+    }
+
+    private fun erode3x3(mask: BooleanArray, width: Int, height: Int): BooleanArray {
+        val outputMask = BooleanArray(mask.size)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                var isForeground = true
+                val yStart = maxOf(0, y - 1)
+                val yEnd = minOf(height - 1, y + 1)
+                val xStart = maxOf(0, x - 1)
+                val xEnd = minOf(width - 1, x + 1)
+                for (kernelY in yStart..yEnd) {
+                    val rowOffset = kernelY * width
+                    for (kernelX in xStart..xEnd) {
+                        if (!mask[rowOffset + kernelX]) {
+                            isForeground = false
+                            break
+                        }
+                    }
+                    if (!isForeground) break
+                }
+                outputMask[y * width + x] = isForeground
+            }
+        }
+        return outputMask
     }
 
     // Inner class for detection data

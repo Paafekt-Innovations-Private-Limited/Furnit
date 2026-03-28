@@ -250,6 +250,7 @@ android/sharp_vulkan_only_latent0/
 *.pt
 *.ptl
 *.onnx
+!Furnit/Resources/yoloe-11l-seg-pf.onnx
 *.tflite
 android/__pycache__/
 **/__pycache__/

@@ -11,3 +11,11 @@ target 'Furnit' do
   pod 'onnxruntime-objc'
 end
 
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_WARN_MISSING_SEARCH_PATHS'] = 'NO'
+    end
+  end
+end
+

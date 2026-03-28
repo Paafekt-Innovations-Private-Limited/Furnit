@@ -42,6 +42,9 @@ object WallMeasurementEstimator {
     /** ~33k NCNN anchors; 0 keeps all and tier 1 can pick a 0.01-conf “wall” over a better tier-2 label. 0.05 drops anchor noise only (not Furniture Fit 0.25). */
     private const val YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR = 0.05f
 
+    @Volatile
+    private var cachedClassNames: Map<Int, String>? = null
+
     data class Result(
         val widthMeters: Float,
         val heightMeters: Float,
@@ -80,9 +83,13 @@ object WallMeasurementEstimator {
             return null
         }
         val dets = YoloEImageInference.runDetectionsUnfiltered(context.applicationContext, bitmap, YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR)
-        LogUtil.i(TAG, "yolo_detections count=${dets.size} sample=${dets.take(5).joinToString { "c${it.classId}:${it.label}:${it.confidence}" }}")
+        val classNames = loadClassNames(context.applicationContext)
+        LogUtil.i(
+            TAG,
+            "yolo_detections count=${dets.size} sample=${dets.take(5).joinToString { "c${it.classId}:${classNameFor(it, classNames)}:${it.confidence}" }}",
+        )
 
-        val wallBounds = wallBoundsFromDetections(dets, iw, ih)
+        val wallBounds = wallBoundsFromDetections(dets, iw, ih, classNames)
         if (wallBounds == null) {
             LogUtil.w(TAG, "measure abort: no wall-like detection")
             return null
@@ -143,7 +150,7 @@ object WallMeasurementEstimator {
                     "wall_bbox_px_w=$wallPixelW wall_bbox_px_h=$wallPixelH image_px=${iw}x$ih fracH=${"%.3f".format(fracH)} " +
                     "focal_px=$focalPx ($focalReason) Z_assumed_m=$z (pref $PREF_ASSUMED_DEPTH_M) " +
                     "formula wm=(wall_bbox_px_w/focal_px)*Z hm per height_rule height_rule=$heightRule " +
-                    "wall_detection_source=$wallSource monodepth=absent",
+                "wall_detection_source=$wallSource monodepth=absent",
             )
             return Result(wm, hm, "assumed_depth_z")
         }
@@ -159,7 +166,7 @@ object WallMeasurementEstimator {
 
         val wantDoor = calibrationMode == CAL_DOOR || calibrationMode == CAL_AUTO
         if (wantDoor && mono != null) {
-            val doorRect = findDoorDetection(dets, iw, ih)
+            val doorRect = findDoorDetection(dets, iw, ih, classNames)
             if (doorRect != null) {
                 val dDepth = medianMonodepthAt(mono, doorRect, iw, ih) ?: wallDepthSharp
                 val doorHSharp = (doorRect.height().toFloat() / focalPx) * dDepth
@@ -221,7 +228,7 @@ object WallMeasurementEstimator {
     private data class MonoBuffer(val w: Int, val h: Int, val c: Int, val data: FloatArray)
 
     private fun loadMonodepthBin(f: File): MonoBuffer? {
-        if (!f.isFile || f.length() < 24) return null
+        if (!f.isFile || f.length() < 12) return null
         return try {
             FileInputStream(f).use { ins ->
                 val hdr = ByteArray(12)
@@ -307,13 +314,13 @@ object WallMeasurementEstimator {
         return interiorVenueRegex.containsMatchIn(lower)
     }
 
-    private fun logWallPick(source: String, d: NcnnYoloe.Detection, iw: Int, ih: Int) {
+    private fun logWallPick(source: String, d: NcnnYoloe.Detection, iw: Int, ih: Int, classNames: Map<Int, String>) {
         val imgArea = max(1, iw * ih).toFloat()
         val areaPx = d.width * d.height
         val frac = areaPx / imgArea
         LogUtil.i(
             TAG,
-            "yolo_wall_pick source=$source id=${d.classId} label=\"${d.label}\" area_px=${areaPx.toInt()} " +
+            "yolo_wall_pick source=$source id=${d.classId} label=\"${classNameFor(d, classNames)}\" area_px=${areaPx.toInt()} " +
                 "frac_image=${"%.3f".format(frac)} conf=${d.confidence} (furniture blacklist.json NOT used)",
         )
     }
@@ -323,7 +330,12 @@ object WallMeasurementEstimator {
     }
 
     /** Returns wall rect and source tag for debugging. */
-    private fun wallBoundsFromDetections(dets: List<NcnnYoloe.Detection>, iw: Int, ih: Int): Pair<Rect, String>? {
+    private fun wallBoundsFromDetections(
+        dets: List<NcnnYoloe.Detection>,
+        iw: Int,
+        ih: Int,
+        classNames: Map<Int, String>,
+    ): Pair<Rect, String>? {
         val imgArea = max(1, iw * ih).toFloat()
 
         LogUtil.i(
@@ -340,7 +352,7 @@ object WallMeasurementEstimator {
         }
         if (byClass.isNotEmpty()) {
             val best = byClass.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("class_$LVIS_WALL", best, iw, ih)
+            logWallPick("class_$LVIS_WALL", best, iw, ih, classNames)
             logWallPickReason(
                 "class_$LVIS_WALL",
                 "tier1_LVIS_wall_class_${LVIS_WALL}_largest_bbox_area (wall detection preferred)",
@@ -349,18 +361,27 @@ object WallMeasurementEstimator {
         }
 
         // 2) classes.json semantics: wall/room + venue/interior (hotel, hospital, lobby, facade, …).
-        val byLabel = dets.filter { isWallLikeLabel(it.label) }
+        val byLabel = dets.filter { isWallLikeLabel(classNameFor(it, classNames)) }
         if (byLabel.isEmpty()) {
             LogUtil.i(TAG, "wall_pick_tier_skip tier=2 semantic_wall_room_venue reason=no_label_matches_try_next_tier")
         }
         if (byLabel.isNotEmpty()) {
             val best = byLabel.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("label_wall_room_venue", best, iw, ih)
+            logWallPick("label_wall_room_venue", best, iw, ih, classNames)
             logWallPickReason("label_wall_room_venue", "tier2_classes_json_semantic_largest_bbox_area")
             return detToRect(best, iw, ih) to "label_wall_room_venue"
         }
 
-        val boxes = YoloRatioCalibration.fromNcnnDetections(dets)
+        val boxes = dets.map { det ->
+            YoloRatioCalibration.CalibrationBox(
+                label = classNameFor(det, classNames),
+                centerX = det.x,
+                centerY = det.y,
+                width = det.width,
+                height = det.height,
+                confidence = det.confidence,
+            )
+        }
         val fracWall = YoloRatioCalibration.wallHeightFractionOrFullFrame(iw, ih, boxes)
         if (fracWall >= 0.99f) {
             LogUtil.w(
@@ -382,7 +403,7 @@ object WallMeasurementEstimator {
         }
         if (heurDets.isNotEmpty()) {
             val best = heurDets.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("heuristic_wide_strip", best, iw, ih)
+            logWallPick("heuristic_wide_strip", best, iw, ih, classNames)
             logWallPickReason(
                 "heuristic_wide_strip",
                 "tier3_wide_strip_w>=0.55_image h in (0.04,0.55)_image aspect>=1.8 largest_area",
@@ -401,7 +422,7 @@ object WallMeasurementEstimator {
         }
         if (wideFallback.isNotEmpty()) {
             val best = wideFallback.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("largest_wide_bbox", best, iw, ih)
+            logWallPick("largest_wide_bbox", best, iw, ih, classNames)
             logWallPickReason(
                 "largest_wide_bbox",
                 "tier4_fallback_aspect>=1.25_frac_area>=0.02_largest_area",
@@ -414,17 +435,55 @@ object WallMeasurementEstimator {
     }
 
     private fun detToRect(d: NcnnYoloe.Detection, iw: Int, ih: Int): Rect {
-        val l = d.left.toInt().coerceIn(0, iw - 1)
-        val t = d.top.toInt().coerceIn(0, ih - 1)
-        val r = d.right.toInt().coerceIn(0, iw - 1)
-        val b = d.bottom.toInt().coerceIn(0, ih - 1)
+        val maxX = (iw - 1).coerceAtLeast(0)
+        val maxY = (ih - 1).coerceAtLeast(0)
+        val l = d.left.toInt().coerceIn(0, maxX)
+        val t = d.top.toInt().coerceIn(0, maxY)
+        val r = d.right.toInt().coerceIn(l + 1, iw.coerceAtLeast(l + 1))
+        val b = d.bottom.toInt().coerceIn(t + 1, ih.coerceAtLeast(t + 1))
         return Rect(l, t, r, b)
     }
 
-    private fun findDoorDetection(dets: List<NcnnYoloe.Detection>, iw: Int, ih: Int): Rect? {
-        val door = dets.filter { it.classId == LVIS_DOOR || it.label.contains("door", ignoreCase = true) }
+    private fun findDoorDetection(
+        dets: List<NcnnYoloe.Detection>,
+        iw: Int,
+        ih: Int,
+        classNames: Map<Int, String>,
+    ): Rect? {
+        val door = dets.filter {
+            it.classId == LVIS_DOOR || classNameFor(it, classNames).contains("door", ignoreCase = true)
+        }
             .maxByOrNull { it.confidence * it.width * it.height }
         return door?.let { detToRect(it, iw, ih) }
+    }
+
+    private fun classNameFor(detection: NcnnYoloe.Detection, classNames: Map<Int, String>): String {
+        return classNames[detection.classId]?.takeIf { it.isNotBlank() }
+            ?: detection.label.takeIf { it.isNotBlank() && it != "object" }
+            ?: "object"
+    }
+
+    private fun loadClassNames(context: Context): Map<Int, String> {
+        cachedClassNames?.let { return it }
+        val loaded = try {
+            context.assets.open("classes.json").bufferedReader().use { reader ->
+                val json = JSONObject(reader.readText())
+                buildMap {
+                    json.keys().forEach { key ->
+                        val id = key.toIntOrNull() ?: return@forEach
+                        val label = json.optString(key).trim()
+                        if (label.isNotEmpty()) {
+                            put(id, label)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            LogUtil.w(TAG, "loadClassNames failed: ${e.message}")
+            emptyMap()
+        }
+        cachedClassNames = loaded
+        return loaded
     }
 
     private fun loadCameraExif(folder: File): JSONObject? {

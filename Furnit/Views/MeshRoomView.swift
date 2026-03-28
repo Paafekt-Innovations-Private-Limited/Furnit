@@ -224,7 +224,12 @@ struct MeshRoomView: View {
             HStack {
                 // Brain button (bottom-left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))
@@ -263,7 +268,12 @@ struct MeshRoomView: View {
             HStack(spacing: 20) {
                 // Brain button (left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))

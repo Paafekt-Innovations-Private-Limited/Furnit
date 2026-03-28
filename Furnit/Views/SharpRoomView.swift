@@ -952,8 +952,13 @@ struct SharpRoomView: View {
                     .allowsHitTesting(false)
                 HStack(spacing: 20) {
                     Button(action: {
-                        if showingFurnitureFit { showingFurnitureFit = false }
-                        else { SHARPService.shared.releaseResources(); showingFurnitureFit = true }
+                        if showingFurnitureFit {
+                            showingFurnitureFit = false
+                        } else {
+                            furnitureFitInitialSegmentationDone = false
+                            SHARPService.shared.releaseResources()
+                            showingFurnitureFit = true
+                        }
                     }) {
                         Image(systemName: "brain.head.profile")
                             .font(.system(size: 28))
@@ -1008,8 +1013,13 @@ struct SharpRoomView: View {
                 .allowsHitTesting(false)
                 HStack {
                     Button(action: {
-                        if showingFurnitureFit { showingFurnitureFit = false }
-                        else { SHARPService.shared.releaseResources(); showingFurnitureFit = true }
+                        if showingFurnitureFit {
+                            showingFurnitureFit = false
+                        } else {
+                            furnitureFitInitialSegmentationDone = false
+                            SHARPService.shared.releaseResources()
+                            showingFurnitureFit = true
+                        }
                     }) {
                         Image(systemName: "brain.head.profile")
                             .font(.system(size: 28)).foregroundColor(.white)

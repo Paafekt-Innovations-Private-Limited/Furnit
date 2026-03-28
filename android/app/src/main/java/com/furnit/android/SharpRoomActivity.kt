@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
@@ -38,6 +39,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import kotlin.math.min
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
@@ -71,6 +73,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "SharpRoomActivity"
+        private const val SCALE_LOG_TAG = "FURNIT_SCALE"
         private const val BRAIN_BUTTON_COLOR_IDLE = "#007AFF"
         private const val BRAIN_BUTTON_COLOR_SEGMENTING = "#34C759"
         const val EXTRA_PLY_PATH = "ply_path"
@@ -177,10 +180,14 @@ class SharpRoomActivity : AppCompatActivity() {
     private var arDisplayScale: Float = 1f
     // Brain (SmartyPants) furniture calibration state (height and optional scale factor for display).
     private val brainDefaultRoomHeightMeters: Float = 3.0f
+    private var brainRoomBasedFurnitureWidthMeters: Float? = null
     /**
-     * Legacy: room-height × YOLO bbox fraction (distance-dependent; only used when AR-assisted sizing is **off**).
+     * Room-height × YOLO bbox fraction fallback. Distance-dependent, but still better than blank when
+     * AR-assisted sizing is enabled yet AR depth/pinhole has no valid estimate for the current frame.
      */
     private var brainRoomBasedFurnitureHeightMeters: Float? = null
+    private var brainLockedFurnitureWidthMeters: Float? = null
+    private var brainLockedFurnitureHeightMeters: Float? = null
     private var brainRealFurnitureHeightMeters: Float? = null
     private var brainCalibrationScaleFactor: Float = 1.0f
     private var photoOrientation: String = "portrait"
@@ -209,6 +216,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainCalibrationPillContainer: View? = null
     private var brainCalibrationPillLine1: TextView? = null
     private var brainCalibrationPillLine2: TextView? = null
+    private var lastBrainOverlayScaleLogMs: Long = 0L
+    private var lastBrainArBridgeLogMs: Long = 0L
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
@@ -672,18 +681,87 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
+    private data class FurnitureSizeEstimateMeters(
+        val widthMeters: Float,
+        val heightMeters: Float,
+    )
+
     /**
-     * When AR-assisted sizing is on, furniture height is **pinhole × depth only** (same as [FurnitureFitArCameraController]).
-     * We do not mix `roomHeight × bbox/image_height` here — that shrinks as the camera moves away.
-     * When AR is off, legacy room×bbox fraction is used as a rough hint only.
+     * Prefer AR pinhole × depth when available. Fall back to room×bbox so the pill still shows a
+     * usable estimate when AR is enabled but temporarily unavailable or invalid.
      */
-    private fun effectiveBrainFurnitureHeightDisplayMeters(): Float {
-        val arEnabled = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)
-        val ar = brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
-        if (arEnabled && brainArController != null) {
-            return ar ?: 0f
+    private fun effectiveBrainFurnitureHeightDisplayMeters(): Float? {
+        return brainRealFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            ?: brainLockedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
+            ?: brainRoomBasedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+    }
+
+    private fun effectiveBrainFurnitureWidthDisplayMeters(): Float? =
+        (brainLockedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            ?: brainRoomBasedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f })?.let { baseWidth ->
+            val scale = brainCalibrationScaleFactor.takeIf { it.isFinite() && it > 0f } ?: 1f
+            if (brainRealFurnitureHeightMeters != null) baseWidth * scale else baseWidth
         }
-        return brainRoomBasedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f } ?: 0f
+
+    private fun brainRoomBasedFurnitureSizeMeters(size: Int, det: DetectionResult): FurnitureSizeEstimateMeters? {
+        if (size <= 0) return null
+        val roomW = effRoomWidth()
+        val roomH = effRoomHeight()
+        if (roomW <= 0.1f || roomH <= 0.1f) return null
+        val metersPerPixel = min(roomW / size.toFloat(), roomH / size.toFloat())
+        val widthM = det.w * metersPerPixel
+        val heightM = det.h * metersPerPixel
+        if (!widthM.isFinite() || !heightM.isFinite()) return null
+        return FurnitureSizeEstimateMeters(widthM, heightM)
+    }
+
+    private fun brainOverlayScaleForDetection(
+        det: DetectionResult?,
+        modelInputSize: Int,
+        targetHeightMeters: Float?,
+    ): Float {
+        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)) return 1f
+        val detection = det ?: return 1f
+        if (modelInputSize <= 0) return 1f
+        val roomHeightMeters = effRoomHeight()
+        val stableHeightMeters = targetHeightMeters?.takeIf { it.isFinite() && it >= 0.05f } ?: return 1f
+        if (roomHeightMeters <= 0.1f) return 1f
+        val currentFraction = (detection.h / modelInputSize.toFloat()).coerceIn(0.06f, 0.92f)
+        val targetFraction = (stableHeightMeters / roomHeightMeters).coerceIn(0.06f, 0.92f)
+        val finalScale = (targetFraction / currentFraction).coerceIn(0.25f, 4f)
+        val nowMs = SystemClock.elapsedRealtime()
+        if (nowMs - lastBrainOverlayScaleLogMs >= 500L) {
+            lastBrainOverlayScaleLogMs = nowMs
+            val depthMeters = brainArController?.getLastMetricDistanceMeters()
+            val depthSource = brainArController?.getLastMetricDistanceSource()
+            val depthDiagnostic = brainArController?.getLastMetricDistanceDiagnostic()
+            LogUtil.i(
+                SCALE_LOG_TAG,
+                "screen=SharpRoomActivity roomH_m=${String.format(Locale.US, "%.3f", roomHeightMeters)} " +
+                    "displayH_m=${String.format(Locale.US, "%.3f", stableHeightMeters)} " +
+                    "bboxH_model=${String.format(Locale.US, "%.1f", detection.h)} input=$modelInputSize " +
+                    "currentFrac=${String.format(Locale.US, "%.4f", currentFraction)} " +
+                    "targetFrac=${String.format(Locale.US, "%.4f", targetFraction)} " +
+                    "layerScale=${String.format(Locale.US, "%.4f", finalScale)} " +
+                    "width_m=${brainRoomBasedFurnitureWidthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "height_m=${brainRoomBasedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "arH_m=${brainArController?.getLastEstimatedHeightMeters()?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "depth_m=${depthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "depthSource=${depthSource ?: "none"} " +
+                    "depthDiag=${depthDiagnostic ?: "none"}",
+            )
+        }
+        return finalScale
+    }
+
+    private fun lockBrainFurnitureSizeIfNeeded(widthMeters: Float?, heightMeters: Float?) {
+        if (brainLockedFurnitureWidthMeters == null) {
+            brainLockedFurnitureWidthMeters = widthMeters?.takeIf { it.isFinite() && it >= 0.05f }
+        }
+        if (brainLockedFurnitureHeightMeters == null) {
+            brainLockedFurnitureHeightMeters = heightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+        }
     }
 
     /** Update the brain (FurnitureFit) pill: always shows Furn/Room measurements; “Tap to calibrate” only when pref is on. */
@@ -693,6 +771,7 @@ class SharpRoomActivity : AppCompatActivity() {
             val line1 = brainCalibrationPillLine1
             val line2 = brainCalibrationPillLine2
             val calibrateUi = FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)
+            val detectedWidth = effectiveBrainFurnitureWidthDisplayMeters()
             val detected = effectiveBrainFurnitureHeightDisplayMeters()
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
             val realH = brainRealFurnitureHeightMeters
@@ -702,11 +781,16 @@ class SharpRoomActivity : AppCompatActivity() {
                 line1.text = "Room: ${text}m"
                 line1.setTextColor(0xFF4CAF50.toInt())
             } else {
-                val text = String.format(Locale.US, "%.2f", detected)
-                line1.text = "Furn: ${text}m"
+                line1.text = if (detectedWidth != null && detected != null) {
+                    "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
+                } else if (detected != null) {
+                    "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
+                } else {
+                    "Furn: --"
+                }
                 line1.setTextColor(0xFFFFFFFF.toInt())
             }
-            if (calibrateUi) {
+            if (calibrateUi && detected != null) {
                 line2.visibility = View.VISIBLE
                 line2.text = getString(R.string.smartypants_tap_calibrate)
                 container.isClickable = true
@@ -722,7 +806,7 @@ class SharpRoomActivity : AppCompatActivity() {
     /** Dialog for per-object furniture calibration in brain overlay. */
     private fun showBrainCalibrationDialog() {
         if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) return
-        val detected = effectiveBrainFurnitureHeightDisplayMeters()
+        val detected = effectiveBrainFurnitureHeightDisplayMeters() ?: return
         val ctx = this
         val edit = EditText(ctx).apply {
             hint = getString(R.string.smartypants_real_height_hint)
@@ -841,7 +925,7 @@ class SharpRoomActivity : AppCompatActivity() {
                         DebugLogger.d(TAG, "Brain: requesting CAMERA permission")
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     } else {
-                        DebugLogger.d(TAG, "Brain: permission OK, starting detection (progress only on first time this session)")
+                        DebugLogger.d(TAG, "Brain: permission OK, starting detection (show progress on every brain tap)")
                         showBrainProgressOverlayIfNeeded()
                         startBrainDetection()
                     }
@@ -894,7 +978,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             brainCalibrationPillLine1 = TextView(this@SharpRoomActivity).apply {
-                text = "Furn: 0.00m"
+                text = "Furn: --"
                 setTextColor(Color.WHITE)
                 textSize = 14f
                 setShadowLayer(2f, 1f, 1f, Color.BLACK)
@@ -1112,14 +1196,8 @@ class SharpRoomActivity : AppCompatActivity() {
         updateBrainCalibrationPill()
     }
 
-    /** First brain session this activity: full progress + pill. Later sessions: pill only (segmentation already warm). */
+    /** Every brain tap should show progress until the first result for that tap arrives. */
     private fun showBrainProgressOverlayIfNeeded() {
-        if (brainSegmentationCompletedOnceThisSession) {
-            brainOverlayVisible = true
-            setBrainCalibrationPillVisible(true)
-            updateBrainCalibrationPill()
-            return
-        }
         showBrainProgressOverlay()
     }
 
@@ -1268,22 +1346,19 @@ class SharpRoomActivity : AppCompatActivity() {
                             val mask = result?.mask
                             val dets = result?.detections ?: emptyList()
                             val size = result?.inputSize ?: 640
+                            val sizeEstimate = dets.firstOrNull()?.let { brainRoomBasedFurnitureSizeMeters(size, it) }
+                            brainRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
+                            brainRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
+                            val currentHeightMeters =
+                                brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
+                                    ?: brainRoomBasedFurnitureHeightMeters
+                            lockBrainFurnitureSizeIfNeeded(brainRoomBasedFurnitureWidthMeters, currentHeightMeters)
                             brainDetectionOverlayView.setMaskAndDetections(
                                 mask,
                                 dets,
                                 size,
-                                brainEffectiveOverlayScale(),
+                                brainOverlayScaleForDetection(dets.firstOrNull(), size, effectiveBrainFurnitureHeightDisplayMeters()),
                             )
-                            val rh = effRoomHeight()
-                            val arSizingOn = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this@SharpRoomActivity)
-                            brainRoomBasedFurnitureHeightMeters =
-                                if (!arSizingOn && dets.isNotEmpty() && rh > 0.1f && size > 0) {
-                                    val det = dets.first()
-                                    val frac = (det.h / size.toFloat()).coerceIn(0.06f, 0.92f)
-                                    rh * frac
-                                } else {
-                                    null
-                                }
                             updateBrainCalibrationPill()
                         }
                     }
@@ -1327,11 +1402,12 @@ class SharpRoomActivity : AppCompatActivity() {
             updateBrainCalibrationPill()
         }
         val lp = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
+            1,
+            1,
         )
         sharpRoomContentRoot.addView(controller.glSurfaceView, 1, lp)
-        controller.glSurfaceView.visibility = View.INVISIBLE
+        controller.glSurfaceView.visibility = View.VISIBLE
+        controller.glSurfaceView.alpha = 0.01f
 
         val hasFirstResult = BooleanArray(1) { false }
         controller.shouldPostBitmapFrame = { !isBrainInferenceRunning.get() }
@@ -1358,23 +1434,32 @@ class SharpRoomActivity : AppCompatActivity() {
                     val mask = result?.mask
                     val dets = result?.detections ?: emptyList()
                     val size = result?.inputSize ?: 640
+                    val sizeEstimate = dets.firstOrNull()?.let { brainRoomBasedFurnitureSizeMeters(size, it) }
+                    brainRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
+                    brainRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
+                    val nowMs = SystemClock.elapsedRealtime()
+                    if (nowMs - lastBrainArBridgeLogMs >= 500L) {
+                        lastBrainArBridgeLogMs = nowMs
+                        val firstDet = dets.firstOrNull()
+                        LogUtil.furnitureFitAr(
+                            "platform=android phase=brain_bridge " +
+                                "controllerPresent=${brainArController != null} " +
+                                "maskPresent=${mask != null} detCount=${dets.size} input=$size " +
+                                "detLabel=${firstDet?.label?.take(48) ?: "none"} " +
+                                "bboxModelH=${firstDet?.h?.let { String.format(Locale.US, "%.1f", it) } ?: "null"}",
+                        )
+                    }
+                    val currentHeightMeters =
+                        brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
+                            ?: brainRoomBasedFurnitureHeightMeters
+                    lockBrainFurnitureSizeIfNeeded(brainRoomBasedFurnitureWidthMeters, currentHeightMeters)
                     brainDetectionOverlayView.setMaskAndDetections(
                         mask,
                         dets,
                         size,
-                        brainEffectiveOverlayScale(),
+                        brainOverlayScaleForDetection(dets.firstOrNull(), size, effectiveBrainFurnitureHeightDisplayMeters()),
                     )
-                    val rh = effRoomHeight()
-                    val arSizingOn = FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this@SharpRoomActivity)
-                    brainRoomBasedFurnitureHeightMeters =
-                        if (!arSizingOn && dets.isNotEmpty() && rh > 0.1f && size > 0) {
-                            val det = dets.first()
-                            val frac = (det.h / size.toFloat()).coerceIn(0.06f, 0.92f)
-                            rh * frac
-                        } else {
-                            null
-                        }
-                    if (mask != null && dets.isNotEmpty()) {
+                    if (dets.isNotEmpty()) {
                         val det = dets.first()
                         val inp = size.coerceAtLeast(1).toFloat()
                         val scaleX = bitmap.width / inp
@@ -1385,7 +1470,6 @@ class SharpRoomActivity : AppCompatActivity() {
                             det.h * scaleY,
                             det.label,
                         )
-                        // Pill: AR pinhole height only when arSizingOn (see [effectiveBrainFurnitureHeightDisplayMeters]).
                     } else {
                         brainArController?.clearBboxHint()
                     }
@@ -1396,18 +1480,6 @@ class SharpRoomActivity : AppCompatActivity() {
         }
         brainSegmentationAcceptingUpdates = true
         controller.onHostResume()
-    }
-
-    private fun brainEffectiveOverlayScale(): Float {
-        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)) {
-            return 1f
-        }
-        val ar = brainArController
-        return if (ar != null && ar.isArOverlayScaleValid()) {
-            ar.getSmoothedArOverlayScale().coerceIn(0.25f, 4f)
-        } else {
-            1f
-        }
     }
 
     private fun stopBrainDetection() {
@@ -1427,7 +1499,10 @@ class SharpRoomActivity : AppCompatActivity() {
             c.destroy()
         }
         brainArController = null
+        brainRoomBasedFurnitureWidthMeters = null
         brainRoomBasedFurnitureHeightMeters = null
+        brainLockedFurnitureWidthMeters = null
+        brainLockedFurnitureHeightMeters = null
         brainRealFurnitureHeightMeters = null
         brainCalibrationScaleFactor = 1.0f
         updateBrainCalibrationPill()

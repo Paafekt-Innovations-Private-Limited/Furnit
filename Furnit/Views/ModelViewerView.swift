@@ -170,6 +170,7 @@ struct ModelViewerView: View {
                                     // Wait briefly for snapshot to complete
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                                        self.furnitureFitInitialSegmentationDone = false
                                         self.showingFurnitureFit = true
                                     }
                                 }
