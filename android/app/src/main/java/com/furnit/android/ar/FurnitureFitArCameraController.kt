@@ -2,7 +2,6 @@ package com.furnit.android.ar
 
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.Matrix
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.os.Handler
@@ -15,7 +14,9 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.UnavailableException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -62,6 +63,8 @@ class FurnitureFitArCameraController(
     private var session: Session? = null
     private var installRequested = false
 
+    private val sessionGlLock = Any()
+
     /** Invoked on [inferenceExecutor] with a decoded camera bitmap. */
     var onBitmapFrame: ((Bitmap) -> Unit)? = null
 
@@ -103,6 +106,26 @@ class FurnitureFitArCameraController(
     @Volatile
     private var pendingEstHForApply = Float.NaN
     private var snapAfterPrimaryChange = false
+
+    /**
+     * Tier 1 (provisional): latest smoothed pinhole height from the GL thread, updated every frame
+     * with a valid [estH]. Segmentation / UI can read this without waiting for debounce (Tier 2).
+     */
+    @Volatile
+    private var provisionalHeightMeters: Float? = null
+
+    @Volatile
+    private var provisionalRawScale: Float? = null
+
+    @Volatile
+    private var provisionalDistanceMeters: Float? = null
+
+    @Volatile
+    private var provisionalHeightTimestampMs: Long = 0L
+
+    /** Monotonic clock when [applyPendingArOverlayScaleFromLatest] last committed height (main thread). */
+    @Volatile
+    private var lastCommittedHeightAtMs: Long = 0L
 
     private val debounceApplyRunnable = Runnable {
         applyPendingArOverlayScaleFromLatest()
@@ -146,25 +169,6 @@ class FurnitureFitArCameraController(
      */
     private var smoothedPinholeHeightMeters = Float.NaN
 
-    /** Cache for [orientedToRawInverseForDimensions] — avoids per-frame bitmap work for AR metrics. */
-    private var cachedInverseRawW = -1
-    private var cachedInverseRawH = -1
-    private var cachedInverseOrientation: String = ""
-    private var cachedOrientedToRawInverse: Matrix? = null
-
-    private fun orientedInverseForCurrentCamera(rawW: Int, rawH: Int): Matrix? {
-        if (rawW == cachedInverseRawW && rawH == cachedInverseRawH &&
-            lockedPhotoOrientation == cachedInverseOrientation
-        ) {
-            return cachedOrientedToRawInverse
-        }
-        cachedInverseRawW = rawW
-        cachedInverseRawH = rawH
-        cachedInverseOrientation = lockedPhotoOrientation
-        cachedOrientedToRawInverse = orientedToRawInverseForDimensions(rawW, rawH, lockedPhotoOrientation)
-        return cachedOrientedToRawInverse
-    }
-
     fun setBboxHint(centerImageX: Float, centerImageY: Float, heightImagePx: Float, label: String) {
         val labelChanged = synchronized(bboxLock) {
             val prev = bboxLabel
@@ -189,6 +193,10 @@ class FurnitureFitArCameraController(
             latestRawScale = null
             pendingEstHForApply = Float.NaN
             measurementHandler.removeCallbacks(debounceApplyRunnable)
+            provisionalHeightMeters = null
+            provisionalRawScale = null
+            provisionalDistanceMeters = null
+            provisionalHeightTimestampMs = 0L
             synchronized(scaleLock) {
                 arOverlayScaleValid = false
                 smoothedArOverlayScale = 1f
@@ -211,6 +219,7 @@ class FurnitureFitArCameraController(
         }
         pendingEstHForApply = Float.NaN
         measurementHandler.removeCallbacks(debounceApplyRunnable)
+        // Keep provisional tier until stale (matches iOS AR_HOLD); GL stops refreshing timestamp.
     }
 
     fun isArOverlayScaleValid(): Boolean = synchronized(scaleLock) { arOverlayScaleValid }
@@ -223,6 +232,59 @@ class FurnitureFitArCameraController(
      */
     fun getLastEstimatedHeightMeters(): Float? = synchronized(scaleLock) {
         lastEstimatedHeightMeters.takeIf { it.isFinite() }
+    }
+
+    /**
+     * Tier 1: latest smoothed AR height (GL thread), for immediate use before debounce commits.
+     * Null if never updated, out of range, or older than [provisionalStalenessMs].
+     */
+    fun getProvisionalHeightMeters(
+        provisionalStalenessMs: Long = 2000L,
+    ): Float? {
+        val h = provisionalHeightMeters ?: return null
+        if (!h.isFinite() || h < 0.055f || h > 4.8f) return null
+        val age = SystemClock.elapsedRealtime() - provisionalHeightTimestampMs
+        if (provisionalHeightTimestampMs <= 0L || age > provisionalStalenessMs) return null
+        return h
+    }
+
+    /** Tier 1 distance (meters) paired with [getProvisionalHeightMeters], same staleness rule. */
+    fun getProvisionalDistanceMeters(
+        provisionalStalenessMs: Long = 2000L,
+    ): Float? {
+        val d = provisionalDistanceMeters ?: return null
+        if (!d.isFinite() || d <= 0f) return null
+        val age = SystemClock.elapsedRealtime() - provisionalHeightTimestampMs
+        if (provisionalHeightTimestampMs <= 0L || age > provisionalStalenessMs) return null
+        return d
+    }
+
+    fun getProvisionalHeightAgeMs(): Long {
+        if (provisionalHeightTimestampMs <= 0L) return -1L
+        return (SystemClock.elapsedRealtime() - provisionalHeightTimestampMs).coerceAtLeast(0L)
+    }
+
+    fun getCommittedHeightAgeMs(): Long {
+        if (lastCommittedHeightAtMs <= 0L) return -1L
+        return (SystemClock.elapsedRealtime() - lastCommittedHeightAtMs).coerceAtLeast(0L)
+    }
+
+    /**
+     * Skip debounce and commit current provisional height/scale immediately (main thread).
+     * No-op if provisional is missing or invalid. Optional fast-path after stable tracking.
+     */
+    fun forceCommitProvisional() {
+        measurementHandler.post {
+            val h = provisionalHeightMeters
+            val raw = provisionalRawScale
+            if (h == null || !h.isFinite() || h < 0.055f || h > 4.8f) return@post
+            if (raw == null || !raw.isFinite() || raw <= 0f) return@post
+            measurementHandler.removeCallbacks(debounceApplyRunnable)
+            pendingEstHForApply = h
+            latestRawScale = raw
+            applyPendingArOverlayScaleFromLatest()
+            onAssistedMeasurementUpdated?.invoke()
+        }
     }
 
     fun getLastMetricDistanceMeters(): Float? = synchronized(scaleLock) {
@@ -283,27 +345,59 @@ class FurnitureFitArCameraController(
     }
 
     fun onHostPause() {
-        glSurfaceView.onPause()
-        session?.pause()
         displayRotationHelper.onPause()
+        val latch = CountDownLatch(1)
+        glSurfaceView.queueEvent {
+            try {
+                session?.pause()
+            } catch (_: Exception) {
+            } finally {
+                latch.countDown()
+            }
+        }
+        glSurfaceView.onPause()
+        try {
+            latch.await(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     fun destroy() {
         measurementHandler.removeCallbacks(debounceApplyRunnable)
         onAssistedMeasurementUpdated = null
         smoothedPinholeHeightMeters = Float.NaN
-        onHostPause()
+        val latch = CountDownLatch(1)
+        glSurfaceView.queueEvent {
+            synchronized(sessionGlLock) {
+                try {
+                    session?.pause()
+                } catch (_: Exception) {
+                }
+                try {
+                    session?.close()
+                } catch (_: Exception) {
+                }
+                session = null
+            }
+            latch.countDown()
+        }
+        displayRotationHelper.onPause()
+        try {
+            glSurfaceView.onPause()
+            latch.await(3, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
         synchronized(pendingInferenceBitmapLock) {
             pendingInferenceBitmap?.takeIf { !it.isRecycled }?.recycle()
             pendingInferenceBitmap = null
         }
         pendingPhotoCaptureRequest?.bestBitmap?.takeIf { !it.isRecycled }?.recycle()
         pendingPhotoCaptureRequest = null
-        try {
-            session?.close()
-        } catch (_: Exception) {
+        synchronized(sessionGlLock) {
+            session = null
         }
-        session = null
     }
 
     private fun applyPendingArOverlayScaleFromLatest() {
@@ -333,6 +427,7 @@ class FurnitureFitArCameraController(
         }
         if (applied != null) {
             val (smoothedOut, validOut) = applied
+            lastCommittedHeightAtMs = SystemClock.elapsedRealtime()
             LogUtil.furnitureFitAr(
                 "platform=android phase=debounce_apply estH_m=${String.format("%.4f", estH)} " +
                     "smoothedScale=${String.format("%.4f", smoothedOut)} valid=$validOut",
@@ -341,7 +436,9 @@ class FurnitureFitArCameraController(
     }
 
     private fun tryCreateSession(): Boolean {
-        if (session != null) return true
+        synchronized(sessionGlLock) {
+            if (session != null) return true
+        }
         try {
             when (ArCoreApk.getInstance().requestInstall(activity, !installRequested)) {
                 ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
@@ -364,7 +461,16 @@ class FurnitureFitArCameraController(
                 }
             }
             newSession.configure(config)
-            session = newSession
+            synchronized(sessionGlLock) {
+                if (session != null) {
+                    try {
+                        newSession.close()
+                    } catch (_: Exception) {
+                    }
+                    return true
+                }
+                session = newSession
+            }
             val depthLabel = if (config.depthMode == Config.DepthMode.AUTOMATIC) "AUTOMATIC" else "off"
             LogUtil.furnitureFitAr(
                 "platform=android event=session depthMode=$depthLabel planes=${config.planeFindingMode}",
@@ -388,7 +494,7 @@ class FurnitureFitArCameraController(
 
     override fun onDrawFrame(gl: GL10?) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        val sess = session ?: return
+        val sess = synchronized(sessionGlLock) { session } ?: return
         displayRotationHelper.updateSessionIfNeeded(sess)
         try {
             sess.setCameraTextureName(backgroundRenderer.getTextureId())
@@ -425,8 +531,7 @@ class FurnitureFitArCameraController(
             val rawW = image.width
             val rawH = image.height
             // AR overlay scale uses bbox + intrinsics only — inverse matrix does not require decoding YUV.
-            val orientedInverse = orientedInverseForCurrentCamera(rawW, rawH)
-            updateArScaleForCurrentFrame(frame, rawW, rawH, orientedInverse)
+            updateArScaleForCurrentFrame(frame, rawW, rawH)
 
             val captureRequest = pendingPhotoCaptureRequest
             if (captureRequest != null) {
@@ -436,7 +541,7 @@ class FurnitureFitArCameraController(
                     Handler(Looper.getMainLooper()).post { captureRequest.callback(null) }
                     return
                 }
-                val (orientedBitmap, orientedToRawInverse) = rawBitmap.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
+                val (orientedBitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
                 if (orientedBitmap !== rawBitmap) {
                     rawBitmap.recycle()
                 }
@@ -446,7 +551,7 @@ class FurnitureFitArCameraController(
                     orientedImageHeight = orientedBitmap.height,
                     rawImageWidth = rawW,
                     rawImageHeight = rawH,
-                    orientedToRawInverse = orientedToRawInverse,
+                    lockedPhotoOrientation = lockedPhotoOrientation,
                 )
                 captureRequest.attempts += 1
                 val elapsedMs = SystemClock.elapsedRealtime() - captureRequest.startedAtMs
@@ -518,7 +623,6 @@ class FurnitureFitArCameraController(
         frame: Frame,
         rawImageWidth: Int,
         rawImageHeight: Int,
-        orientedToRawInverse: Matrix?,
     ) {
         val tracking = frame.camera.trackingState
         val nowMs = SystemClock.elapsedRealtime()
@@ -548,30 +652,39 @@ class FurnitureFitArCameraController(
             return
         }
 
-        val rawCx: Float
-        val rawCy: Float
-        val hRaw: Float
-        if (orientedToRawInverse != null) {
-            val c = floatArrayOf(cx, cy)
-            orientedToRawInverse.mapPoints(c)
-            rawCx = c[0]
-            rawCy = c[1]
-            hRaw = orientedBboxHeightToRawPixels(cx, cy, hPx, orientedToRawInverse)
-        } else {
-            rawCx = cx
-            rawCy = cy
-            hRaw = hPx
-        }
+        val (rawCx, rawCy) = mapOrientedImagePixelToRawCameraPixel(
+            cx,
+            cy,
+            rawImageWidth,
+            rawImageHeight,
+            lockedPhotoOrientation,
+        )
+        val hRaw = orientedBboxVerticalExtentInRawPixels(
+            cx,
+            cy,
+            hPx,
+            rawImageWidth,
+            rawImageHeight,
+            lockedPhotoOrientation,
+        )
+        // Loose YOLO boxes can span most of the frame; huge spans blow up pinhole (meters) when depth glitches.
+        val maxSpanPx = rawImageHeight.toFloat() * 0.68f
+        val hRawForDepthGrid = hRaw.coerceIn(28f, maxOf(96f, maxSpanPx))
+        val hRawForPinhole = hRaw.coerceIn(20f, maxSpanPx * 1.08f)
 
         val intrinsics = frame.camera.imageIntrinsics
         val fy = FurnitureFitArMetrics.focalLengthYPixelsForImage(intrinsics, rawImageWidth, rawImageHeight)
+        val viewW = glSurfaceView.width.coerceAtLeast(0)
+        val viewH = glSurfaceView.height.coerceAtLeast(0)
         val distDebug = FurnitureFitArMetrics.metricDistanceEstimateDebug(
             frame = frame,
             imageX = rawCx,
             imageY = rawCy,
-            bboxHeightPixels = hRaw,
+            bboxHeightPixels = hRawForDepthGrid,
             rawImageWidth = rawImageWidth,
             rawImageHeight = rawImageHeight,
+            viewWidthPx = viewW,
+            viewHeightPx = viewH,
         )
         val distEstimate = distDebug.estimate
         synchronized(scaleLock) {
@@ -579,10 +692,14 @@ class FurnitureFitArCameraController(
             lastMetricDistanceSource = distEstimate?.source
             lastMetricDistanceDiagnostic = distDebug.diagnostic
         }
-        val pinholeRaw = distEstimate?.let { d ->
-            FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRaw, d.meters, fy)
+        // Reject far-plane / multipath spikes (e.g. 15–20 m indoors) that drive absurd pinhole heights.
+        val distForPinhole = distEstimate?.takeIf { d ->
+            d.meters.isFinite() && d.meters in 0.12f..9.5f
         }
-        val arEstH = pinholeRaw?.takeIf { it.isFinite() && it in 0.1f..4.5f }
+        val pinholeRaw = distForPinhole?.let { d ->
+            FurnitureFitArMetrics.estimatedPhysicalHeightMeters(hRawForPinhole, d.meters, fy)
+        }
+        val arEstH = pinholeRaw?.takeIf { it.isFinite() && it in 0.055f..4.8f }
         if (arEstH != null) {
             if (!smoothedPinholeHeightMeters.isFinite()) {
                 smoothedPinholeHeightMeters = arEstH
@@ -599,10 +716,10 @@ class FurnitureFitArCameraController(
 
         val fallbackHDiag = FurnitureFitArMetrics.approximateHeightFromRoomAndBboxFraction(
             roomHeightMetersForFallback,
-            hRaw,
+            hRawForPinhole,
             rawImageHeight,
         )
-        val estH = smoothedPinholeHeightMeters.takeIf { it.isFinite() && it >= 0.1f }
+        val estH = smoothedPinholeHeightMeters.takeIf { it.isFinite() && it >= 0.055f }
         if (estH == null) {
             if (nowMs - lastFurnitureFitArFrameSkipLogMs >= 500L) {
                 lastFurnitureFitArFrameSkipLogMs = nowMs
@@ -644,7 +761,7 @@ class FurnitureFitArCameraController(
                     if (distM != null) append("dist_m=${String.format("%.4f", distM)} ") else append("dist_m=null ")
                     append("distDiag=${distDebug.diagnostic} ")
                     append("fy_px=${String.format("%.2f", fy)} ")
-                    append("bboxH_px=${String.format("%.2f", hRaw)} ")
+                    append("bboxH_px=${String.format("%.2f", hRawForPinhole)} ")
                     append("label=${labelForLog.take(48)} ")
                     append("rawWH=(${rawImageWidth}x${rawImageHeight}) ")
                     append("oriented_xy=(${String.format("%.1f", cx)},${String.format("%.1f", cy)}) ")
@@ -659,6 +776,12 @@ class FurnitureFitArCameraController(
                 },
             )
         }
+        val distForProvisional = distForPinhole?.meters ?: distEstimate?.meters?.takeIf { it.isFinite() && it > 0f }
+        provisionalHeightMeters = estH
+        provisionalRawScale = raw
+        provisionalDistanceMeters = distForProvisional
+        provisionalHeightTimestampMs = SystemClock.elapsedRealtime()
+
         pendingEstHForApply = estH
         latestRawScale = raw
         measurementHandler.removeCallbacks(debounceApplyRunnable)

@@ -35,6 +35,8 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.FurnitureFitArCameraController
+import com.furnit.android.ar.FurnitureFitStandardHeights
+import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
@@ -101,21 +103,12 @@ class FurnitureFitFragment : Fragment() {
     private var usePlyBackground: Boolean = false  // True when background is PLY (WebView), false when GLB (SceneView) or none
     private var roomPlyWebView: WebView? = null
 
-    private data class FurnitureSizeEstimateMeters(
-        val widthMeters: Float,
-        val heightMeters: Float,
-    )
-
     // Tap to calibrate (from Swift): estimated furniture height from detections, user-entered real height, scale factor
     private val defaultRoomHeightMeters = 3.0f
     private var detectedFurnitureWidthMeters: Float? = null
     private var detectedFurnitureHeightMeters: Float? = null
     private var lockedFurnitureWidthMeters: Float? = null
     private var lockedFurnitureHeightMeters: Float? = null
-    /** Room-based furniture width (iOS [FurnitureSizeEstimate.widthMeters]) when AR is unavailable. */
-    private var lastRoomBasedFurnitureWidthMeters: Float? = null
-    /** Room-based furniture height (iOS [FurnitureSizeEstimate.heightMeters]) when AR is unavailable. */
-    private var lastRoomBasedFurnitureHeightMeters: Float? = null
     private var realFurnitureHeightMeters: Float? = null
     private var calibratedRoomHeightMeters: Float? = null
     private var calibrationScaleFactor: Float = 1.0f
@@ -280,7 +273,7 @@ class FurnitureFitFragment : Fragment() {
             }
         }
         calibrationPillLine1 = TextView(requireContext()).apply {
-            text = "Furn: --"
+            text = "Furn:"
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 14f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
@@ -367,9 +360,9 @@ class FurnitureFitFragment : Fragment() {
         controller.roomHeightMetersForFallback =
             (calibratedRoomHeightMeters ?: selectedRoomHeight).coerceAtLeast(0.1f)
         controller.onAssistedMeasurementUpdated = {
-            val arH = arCameraController?.getLastEstimatedHeightMeters()
-            detectedFurnitureWidthMeters = lastRoomBasedFurnitureWidthMeters
-            detectedFurnitureHeightMeters = arH ?: lastRoomBasedFurnitureHeightMeters
+            val arH = arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            detectedFurnitureWidthMeters = null
+            detectedFurnitureHeightMeters = arH
             lockFurnitureSizeIfNeeded(detectedFurnitureWidthMeters, detectedFurnitureHeightMeters)
             updateCalibrationPill()
         }
@@ -436,13 +429,10 @@ class FurnitureFitFragment : Fragment() {
                             det.h * scaleY,
                             det.label,
                         )
-                        val sizeEstimate =
-                            roomBasedFurnitureSizeMetersLikeIos(det, inputSize, bitmap.width, bitmap.height)
-                        lastRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
-                        lastRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
-                        detectedFurnitureWidthMeters = lastRoomBasedFurnitureWidthMeters
-                        val arH = arCameraController?.getLastEstimatedHeightMeters()
-                        detectedFurnitureHeightMeters = arH ?: lastRoomBasedFurnitureHeightMeters
+                        val arH = arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                            ?: arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                        detectedFurnitureWidthMeters = null
+                        detectedFurnitureHeightMeters = arH
                         lockFurnitureSizeIfNeeded(detectedFurnitureWidthMeters, detectedFurnitureHeightMeters)
                         overlay.setMaskAndDetections(
                             result.mask,
@@ -455,8 +445,6 @@ class FurnitureFitFragment : Fragment() {
                         updateCalibrationPill()
                     } else {
                         arCameraController?.clearBboxHint()
-                        lastRoomBasedFurnitureWidthMeters = null
-                        lastRoomBasedFurnitureHeightMeters = null
                         detectedFurnitureWidthMeters = null
                         detectedFurnitureHeightMeters = null
                         overlay.setMaskAndDetections(
@@ -503,23 +491,95 @@ class FurnitureFitFragment : Fragment() {
         targetHeightMeters: Float?,
     ): Float {
         if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(requireContext())) return 1f
+        val nowMs = SystemClock.elapsedRealtime()
+        val directArScale = arCameraController
+            ?.takeIf { it.isArOverlayScaleValid() }
+            ?.getSmoothedArOverlayScale()
+            ?.takeIf { it.isFinite() && it > 0f }
+        if (directArScale != null) {
+            if (nowMs - lastOverlayScaleLogMs >= 500L) {
+                lastOverlayScaleLogMs = nowMs
+                val depthMeters = arCameraController?.getLastMetricDistanceMeters()
+                val depthSource = arCameraController?.getLastMetricDistanceSource()
+                val depthDiagnostic = arCameraController?.getLastMetricDistanceDiagnostic()
+                val provisionalH = arCameraController?.getProvisionalHeightMeters()
+                val committedH = arCameraController?.getLastEstimatedHeightMeters()
+                val displayH = targetHeightMeters
+                val scaleSource = when {
+                    realFurnitureHeightMeters != null -> "manual"
+                    provisionalH != null -> "provisional_ar"
+                    committedH != null -> "committed_ar"
+                    lockedFurnitureHeightMeters != null -> "locked_fallback"
+                    else -> "detected_or_fallback"
+                }
+                val provAge = arCameraController?.getProvisionalHeightAgeMs() ?: -1L
+                val commitAge = arCameraController?.getCommittedHeightAgeMs() ?: -1L
+                val driftPct = if (displayH != null && displayH > 1e-6f && provisionalH != null) {
+                    String.format(
+                        Locale.US,
+                        "%.1f",
+                        kotlin.math.abs(provisionalH - displayH) / displayH * 100f,
+                    )
+                } else {
+                    "n/a"
+                }
+                LogUtil.i(
+                    SCALE_LOG_TAG,
+                    "screen=FurnitureFitFragment mode=ar_direct " +
+                        "layerScale=${String.format(Locale.US, "%.4f", directArScale)} " +
+                        "displayH_m=${displayH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "width_m=${detectedFurnitureWidthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "height_m=${detectedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "provisionalH_m=${provisionalH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "committedH_m=${committedH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "lockedSnap_m=${lockedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "source=$scaleSource drift_pct_vs_display=$driftPct " +
+                        "provisionalAge_ms=$provAge committedAge_ms=$commitAge " +
+                        "depth_m=${depthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                        "depthSource=${depthSource ?: "none"} " +
+                        "depthDiag=${depthDiagnostic ?: "none"}",
+                )
+            }
+            return directArScale
+        }
+
         val detection = det ?: return 1f
         if (modelInputSize <= 0) return 1f
         val roomHeightMeters = effectiveRoomHeightMetersForSizing()
-        val displayHeightMeters = targetHeightMeters?.takeIf { it.isFinite() && it >= 0.05f } ?: return 1f
+        val displayHeightMeters = targetHeightMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: FurnitureFitStandardHeights.heightMetersForLabel(detection.label)
         if (roomHeightMeters <= 0.1f) return 1f
         val currentFraction = (detection.h / modelInputSize.toFloat()).coerceIn(0.06f, 0.92f)
         val targetFraction = (displayHeightMeters / roomHeightMeters).coerceIn(0.06f, 0.92f)
         val finalScale = (targetFraction / currentFraction).coerceIn(0.25f, 4f)
-        val nowMs = SystemClock.elapsedRealtime()
         if (nowMs - lastOverlayScaleLogMs >= 500L) {
             lastOverlayScaleLogMs = nowMs
             val depthMeters = arCameraController?.getLastMetricDistanceMeters()
             val depthSource = arCameraController?.getLastMetricDistanceSource()
             val depthDiagnostic = arCameraController?.getLastMetricDistanceDiagnostic()
+            val provisionalH = arCameraController?.getProvisionalHeightMeters()
+            val committedH = arCameraController?.getLastEstimatedHeightMeters()
+            val scaleSource = when {
+                realFurnitureHeightMeters != null -> "manual"
+                provisionalH != null -> "provisional_ar"
+                committedH != null -> "committed_ar"
+                lockedFurnitureHeightMeters != null -> "locked_fallback"
+                else -> "fallback_std"
+            }
+            val provAge = arCameraController?.getProvisionalHeightAgeMs() ?: -1L
+            val commitAge = arCameraController?.getCommittedHeightAgeMs() ?: -1L
+            val driftPct = if (displayHeightMeters > 1e-6f && provisionalH != null) {
+                String.format(
+                    Locale.US,
+                    "%.1f",
+                    kotlin.math.abs(provisionalH - displayHeightMeters) / displayHeightMeters * 100f,
+                )
+            } else {
+                "n/a"
+            }
             LogUtil.i(
                 SCALE_LOG_TAG,
-                "screen=FurnitureFitFragment roomH_m=${String.format(Locale.US, "%.3f", roomHeightMeters)} " +
+                "screen=FurnitureFitFragment mode=room_fraction_fallback roomH_m=${String.format(Locale.US, "%.3f", roomHeightMeters)} " +
                     "displayH_m=${String.format(Locale.US, "%.3f", displayHeightMeters)} " +
                     "bboxH_model=${String.format(Locale.US, "%.1f", detection.h)} input=$modelInputSize " +
                     "currentFrac=${String.format(Locale.US, "%.4f", currentFraction)} " +
@@ -527,6 +587,11 @@ class FurnitureFitFragment : Fragment() {
                     "layerScale=${String.format(Locale.US, "%.4f", finalScale)} " +
                     "width_m=${detectedFurnitureWidthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
                     "height_m=${detectedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "provisionalH_m=${provisionalH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "committedH_m=${committedH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "lockedSnap_m=${lockedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "source=$scaleSource drift_pct_vs_display=$driftPct " +
+                    "provisionalAge_ms=$provAge committedAge_ms=$commitAge " +
                     "depth_m=${depthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
                     "depthSource=${depthSource ?: "none"} " +
                     "depthDiag=${depthDiagnostic ?: "none"}",
@@ -537,21 +602,23 @@ class FurnitureFitFragment : Fragment() {
 
     private fun lockFurnitureSizeIfNeeded(widthMeters: Float?, heightMeters: Float?) {
         if (lockedFurnitureWidthMeters == null) {
-            lockedFurnitureWidthMeters = widthMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            lockedFurnitureWidthMeters = widthMeters?.takeIf { it.isFinite() && it > 0f }
         }
         if (lockedFurnitureHeightMeters == null) {
-            lockedFurnitureHeightMeters = heightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            lockedFurnitureHeightMeters = heightMeters?.takeIf { it.isFinite() && it > 0f }
         }
     }
 
     private fun effectiveDisplayedFurnitureHeightMeters(): Float? =
-        realFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: lockedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: detectedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+        realFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: lockedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: detectedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
 
     private fun effectiveDisplayedFurnitureWidthMeters(): Float? {
-        val baseWidth = lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: detectedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f }
+        val baseWidth = lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: detectedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
         if (baseWidth == null) return null
         val scale = calibrationScaleFactor.takeIf { it.isFinite() && it > 0f } ?: 1f
         return if (realFurnitureHeightMeters != null) baseWidth * scale else baseWidth
@@ -559,45 +626,6 @@ class FurnitureFitFragment : Fragment() {
 
     private fun effectiveRoomHeightMetersForSizing(): Float =
         calibratedRoomHeightMeters ?: selectedRoomHeight
-
-    /**
-     * After wall calibration, room is scaled uniformly; width tracks height like iOS [displayRoomWidth].
-     */
-    private fun effectiveRoomWidthMetersForSizing(): Float {
-        val ch = calibratedRoomHeightMeters
-        val sh = selectedRoomHeight
-        return if (ch != null && sh > 0.01f) {
-            selectedRoomWidth * (ch / sh)
-        } else {
-            selectedRoomWidth
-        }
-    }
-
-    /**
-     * Matches iOS [FurnitureFitView.processFrameInner]: `min(roomW/bufW, roomH/bufH)` × bbox in buffer
-     * pixels, producing width/height meters from the primary detection.
-     */
-    private fun roomBasedFurnitureSizeMetersLikeIos(
-        det: DetectionResult,
-        modelInputSize: Int,
-        bufferWidth: Int,
-        bufferHeight: Int,
-    ): FurnitureSizeEstimateMeters? {
-        val inp = modelInputSize.coerceAtLeast(1).toFloat()
-        if (bufferWidth <= 0 || bufferHeight <= 0) return null
-        val roomW = effectiveRoomWidthMetersForSizing()
-        val roomH = effectiveRoomHeightMetersForSizing()
-        if (roomW <= 0.1f || roomH <= 0.1f) return null
-        val imgWidthPx = det.w * (bufferWidth / inp)
-        val imgHeightPx = det.h * (bufferHeight / inp)
-        val metersPerPixelX = roomW / bufferWidth.toFloat()
-        val metersPerPixelY = roomH / bufferHeight.toFloat()
-        val metersPerPixel = min(metersPerPixelX, metersPerPixelY)
-        val widthM = imgWidthPx * metersPerPixel
-        val heightM = imgHeightPx * metersPerPixel
-        if (!widthM.isFinite() || !heightM.isFinite()) return null
-        return FurnitureSizeEstimateMeters(widthMeters = widthM, heightMeters = heightM)
-    }
 
     /**
      * Re-reads prefs after returning from Settings so ARCore vs CameraX matches the AR-assisted toggle.
@@ -611,13 +639,7 @@ class FurnitureFitFragment : Fragment() {
             releaseCameraUseCases()
             startArCameraPath(root)
         } else if (!wantAr && hasAr) {
-            val controller = arCameraController ?: return
-            try {
-                root.removeView(controller.glSurfaceView)
-            } catch (_: Exception) {
-            }
-            controller.destroy()
-            arCameraController = null
+            releaseArCameraController()
             val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
             previewView.visibility = if (hasRoomBackground) View.GONE else View.VISIBLE
             startCamera()
@@ -756,6 +778,20 @@ class FurnitureFitFragment : Fragment() {
      * Call when switching to ARCore or when the fragment view is destroyed to avoid leaked Surfaces
      * and ONNX work after the user leaves the screen.
      */
+    /**
+     * Removes the ARCore [GLSurfaceView] and closes the session on the GL thread ([FurnitureFitArCameraController.destroy]).
+     * Call from view teardown or when switching off the AR camera path.
+     */
+    private fun releaseArCameraController() {
+        val controller = arCameraController ?: return
+        try {
+            cameraPathRoot?.removeView(controller.glSurfaceView)
+        } catch (_: Exception) {
+        }
+        controller.destroy()
+        arCameraController = null
+    }
+
     private fun releaseCameraUseCases() {
         synchronized(pendingCameraBitmapLock) {
             pendingCameraBitmap?.takeIf { !it.isRecycled }?.recycle()
@@ -786,9 +822,16 @@ class FurnitureFitFragment : Fragment() {
         cameraProvider.unbindAll()
 
         val rotation = requireContext().displayRotationForCameraX()
+        // Bias buffer aspect to the locked room orientation so rotation metadata + YOLO see a non-square
+        // frame; square 640² skips aspect-based correction and was misaligned for landscape-locked UI.
+        val analysisTargetSize =
+            if (selectedPhotoOrientation.equals("landscape", ignoreCase = true)) {
+                android.util.Size(640, 480)
+            } else {
+                android.util.Size(480, 640)
+            }
         val analysis = ImageAnalysis.Builder()
-            // 640² matches typical YOLO input; less pixels than 768² → faster resize + NCNN (model scales internally).
-            .setTargetResolution(android.util.Size(640, 640))
+            .setTargetResolution(analysisTargetSize)
             .setTargetRotation(rotation)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
@@ -808,6 +851,7 @@ class FurnitureFitFragment : Fragment() {
             } else {
                 // No room: show live camera + analysis
                 val preview = Preview.Builder()
+                    .setTargetResolution(analysisTargetSize)
                     .setTargetRotation(rotation)
                     .build()
                     .also {
@@ -854,13 +898,25 @@ class FurnitureFitFragment : Fragment() {
         imageProxy.close()
     }
 
+    /**
+     * Match CameraX output to the same width/height convention as the room lock and the ARCore path
+     * ([rotateToMatchLockedRoomPhoto]). ImageProxy rotation alone is not always enough for landscape-locked activities.
+     */
+    private fun alignCameraBitmapToLockedRoom(bitmap: Bitmap): Bitmap {
+        val (oriented, _) = bitmap.rotateToMatchLockedRoomPhoto(selectedPhotoOrientation)
+        if (oriented !== bitmap) bitmap.recycle()
+        return oriented
+    }
+
     private fun runCameraXSegmentation(bitmap: Bitmap) {
         // Update progress during processing
         if (!hasFirstDetection) {
             setProgress(15, getString(R.string.smartypants_preprocessing))
         }
 
-        manager.segmentWithDetectionsAsync(bitmap) { result ->
+        val alignedBitmap = alignCameraBitmapToLockedRoom(bitmap)
+
+        manager.segmentWithDetectionsAsync(alignedBitmap) { result ->
             activity?.runOnUiThread {
                 if (result != null && result.mask != null) {
                     // First detection - hide progress bar
@@ -875,18 +931,12 @@ class FurnitureFitFragment : Fragment() {
                         "${it.label} ${(it.confidence * 100).toInt()}%"
                     }
                     statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
-                    // Pill height: prefer AR pinhole when ARCore is active; else room×bbox fraction.
-                    // Important: when "AR-assisted sizing" is ON but this device uses CameraX (no ARCore),
-                    // [arCameraController] is null — we must still show room×bbox (previously gated on AR off → 0.00m).
                     if (result.detections.isNotEmpty() && result.inputSize > 0) {
                         val det = result.detections.first()
-                        val sizeEstimate =
-                            roomBasedFurnitureSizeMetersLikeIos(det, result.inputSize, bitmap.width, bitmap.height)
-                        lastRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
-                        lastRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
-                        detectedFurnitureWidthMeters = lastRoomBasedFurnitureWidthMeters
-                        val arH = arCameraController?.getLastEstimatedHeightMeters()
-                        detectedFurnitureHeightMeters = arH ?: lastRoomBasedFurnitureHeightMeters
+                        val arH = arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                            ?: arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                        detectedFurnitureWidthMeters = null
+                        detectedFurnitureHeightMeters = arH
                         lockFurnitureSizeIfNeeded(detectedFurnitureWidthMeters, detectedFurnitureHeightMeters)
                         overlay.setMaskAndDetections(
                             result.mask,
@@ -898,8 +948,6 @@ class FurnitureFitFragment : Fragment() {
                         )
                     } else {
                         arCameraController?.clearBboxHint()
-                        lastRoomBasedFurnitureWidthMeters = null
-                        lastRoomBasedFurnitureHeightMeters = null
                         detectedFurnitureWidthMeters = null
                         detectedFurnitureHeightMeters = null
                         overlay.setMaskAndDetections(
@@ -971,7 +1019,7 @@ class FurnitureFitFragment : Fragment() {
                 detectedWidth != null && detected != null ->
                     "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
                 detected != null -> "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
-                else -> "Furn: --"
+                else -> "Furn:"
             }
             calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
             val pill = calibrationPillContainer
@@ -1067,6 +1115,7 @@ class FurnitureFitFragment : Fragment() {
 
     override fun onDestroyView() {
         releaseCameraUseCases()
+        releaseArCameraController()
         super.onDestroyView()
     }
 
@@ -1074,8 +1123,7 @@ class FurnitureFitFragment : Fragment() {
         lockedFurnitureWidthMeters = null
         lockedFurnitureHeightMeters = null
         releaseCameraUseCases()
-        arCameraController?.destroy()
-        arCameraController = null
+        releaseArCameraController()
         cameraExecutor.shutdown()
         manager.close()
         super.onDestroy()

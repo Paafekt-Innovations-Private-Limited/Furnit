@@ -74,7 +74,18 @@ fun Image.yuv420888ToBitmap(jpegQuality: Int = 90): Bitmap? {
  */
 fun Bitmap.rotateToMatchLockedRoomPhoto(lockedOrientation: String): Pair<Bitmap, Matrix?> {
     val wantLandscape = lockedOrientation.equals("landscape", ignoreCase = true)
-    if (width == height) return Pair(this, null)
+    // Square analysis targets (e.g. 640²) do not change aspect with rotation; CameraX can still leave
+    // content 90° off vs a landscape-locked activity. Apply the same 90° we use for WxH mismatch.
+    if (width == height) {
+        if (!wantLandscape) return Pair(this, null)
+        val cx = width / 2f
+        val cy = height / 2f
+        val m = Matrix()
+        m.postRotate(90f, cx, cy)
+        val out = Bitmap.createBitmap(this, 0, 0, width, height, m, true)
+        val inv = Matrix()
+        return if (m.invert(inv)) Pair(out, inv) else Pair(out, null)
+    }
     val isLandscape = width > height
     if (wantLandscape == isLandscape) return Pair(this, null)
 
@@ -100,7 +111,15 @@ fun orientedToRawInverseForDimensions(
     lockedOrientation: String,
 ): Matrix? {
     val wantLandscape = lockedOrientation.equals("landscape", ignoreCase = true)
-    if (rawWidth == rawHeight) return null
+    if (rawWidth == rawHeight) {
+        if (!wantLandscape) return null
+        val cx = rawWidth / 2f
+        val cy = rawHeight / 2f
+        val m = Matrix()
+        m.postRotate(90f, cx, cy)
+        val inv = Matrix()
+        return if (m.invert(inv)) inv else null
+    }
     val isLandscape = rawWidth > rawHeight
     if (wantLandscape == isLandscape) return null
     val cx = rawWidth / 2f
@@ -111,7 +130,79 @@ fun orientedToRawInverseForDimensions(
     return if (m.invert(inv)) inv else null
 }
 
-/** Maps bbox vertical extent from oriented pixels to raw [Frame.acquireCameraImage] pixels (after [rotateToMatchLockedRoomPhoto]). */
+/**
+ * Maps a point from **oriented** bitmap pixels (what YOLO sees after [rotateToMatchLockedRoomPhoto])
+ * to **raw** [Frame.acquireCameraImage] pixel coordinates for depth, intrinsics, and hit tests.
+ *
+ * For a 90° quarter-turn (portrait raw ↔ landscape lock or the reverse), the bitmap dimensions swap;
+ * a plain [Matrix.postRotate] inverse in raw-sized space does **not** match [Bitmap.createBitmap] output
+ * coordinates — use the explicit mapping below (matches CW quarter-turn used in [rotateToMatchLockedRoomPhoto]).
+ */
+fun mapOrientedImagePixelToRawCameraPixel(
+    orientedX: Float,
+    orientedY: Float,
+    rawWidth: Int,
+    rawHeight: Int,
+    lockedPhotoOrientation: String,
+): Pair<Float, Float> {
+    if (rawWidth <= 0 || rawHeight <= 0) return orientedX to orientedY
+    val wantLandscape = lockedPhotoOrientation.equals("landscape", ignoreCase = true)
+    val rawIsLandscape = rawWidth > rawHeight
+    val rawIsPortrait = rawHeight > rawWidth
+    val rawIsSquare = rawWidth == rawHeight
+
+    if (rawIsPortrait || rawIsLandscape) {
+        if (wantLandscape == rawIsLandscape) {
+            return orientedX to orientedY
+        }
+        val rx = rawWidth - 1f - orientedY
+        val ry = orientedX
+        return rx to ry
+    }
+
+    if (rawIsSquare && wantLandscape) {
+        val cx = rawWidth / 2f
+        val cy = rawHeight / 2f
+        val m = Matrix()
+        m.postRotate(90f, cx, cy)
+        val inv = Matrix()
+        if (m.invert(inv)) {
+            val pts = floatArrayOf(orientedX, orientedY)
+            inv.mapPoints(pts)
+            return pts[0] to pts[1]
+        }
+    }
+    return orientedX to orientedY
+}
+
+/** Maps bbox vertical extent (oriented Y axis) to a Euclidean span in raw image pixels. */
+fun orientedBboxVerticalExtentInRawPixels(
+    centerXOriented: Float,
+    centerYOriented: Float,
+    heightOriented: Float,
+    rawWidth: Int,
+    rawHeight: Int,
+    lockedPhotoOrientation: String,
+): Float {
+    if (heightOriented <= 1f) return heightOriented
+    val top = mapOrientedImagePixelToRawCameraPixel(
+        centerXOriented,
+        centerYOriented - heightOriented * 0.5f,
+        rawWidth,
+        rawHeight,
+        lockedPhotoOrientation,
+    )
+    val bot = mapOrientedImagePixelToRawCameraPixel(
+        centerXOriented,
+        centerYOriented + heightOriented * 0.5f,
+        rawWidth,
+        rawHeight,
+        lockedPhotoOrientation,
+    )
+    return hypot((bot.first - top.first).toDouble(), (bot.second - top.second).toDouble()).toFloat()
+}
+
+/** @deprecated Use [mapOrientedImagePixelToRawCameraPixel] — matrix inverse was wrong for dimension-swapping 90° rotations. */
 fun orientedBboxHeightToRawPixels(
     centerXOriented: Float,
     centerYOriented: Float,

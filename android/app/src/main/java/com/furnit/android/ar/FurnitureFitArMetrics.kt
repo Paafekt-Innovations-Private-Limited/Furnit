@@ -1,15 +1,16 @@
 package com.furnit.android.ar
 
 import android.graphics.ImageFormat
-import android.graphics.Matrix
 import android.hardware.HardwareBuffer
 import android.media.Image
+import android.os.SystemClock
 import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingState
 import com.furnit.android.utils.LogUtil
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -19,6 +20,42 @@ import kotlin.math.roundToInt
  * Metric helpers for AR-assisted FurnitureFit overlay scale (Android / ARCore), mirroring iOS [FurnitureFitARSupport].
  */
 object FurnitureFitArMetrics {
+
+    /** After repeated plane+depth misses, skip plane hitTest for a short interval to reduce ARCore native log spam. */
+    @Volatile
+    private var planeProbeBackoffUntilMs: Long = 0L
+
+    private val planeProbeConsecutiveMisses = AtomicInteger(0)
+
+    private const val PLANE_PROBE_MISS_THRESHOLD = 4
+    private const val PLANE_PROBE_BACKOFF_MS = 250L
+
+    /** Min inset from image edges (px) before mapping to view for hitTest. */
+    private fun imageEdgeMarginPx(rawImageWidth: Int, rawImageHeight: Int): Float {
+        val shortSide = min(rawImageWidth, rawImageHeight).coerceAtLeast(1)
+        return max(4f, shortSide * 0.02f)
+    }
+
+    /** Min inset from GLSurfaceView edges for ARCore hitTest (avoids "too close to the edge"). */
+    private fun viewHitTestMarginPx(viewWidthPx: Int, viewHeightPx: Int): Float {
+        if (viewWidthPx <= 1 || viewHeightPx <= 1) return 24f
+        val shortSide = min(viewWidthPx, viewHeightPx)
+        return max(24f, shortSide * 0.04f)
+    }
+
+    private fun isViewHitTestSafe(
+        viewX: Float,
+        viewY: Float,
+        viewWidthPx: Int,
+        viewHeightPx: Int,
+    ): Boolean {
+        if (viewWidthPx <= 1 || viewHeightPx <= 1) return true
+        val margin = viewHitTestMarginPx(viewWidthPx, viewHeightPx)
+        val shortSide = min(viewWidthPx, viewHeightPx)
+        if (margin * 2f >= shortSide) return true
+        return viewX in margin..(viewWidthPx - margin) &&
+            viewY in margin..(viewHeightPx - margin)
+    }
 
     data class DistanceEstimate(
         val meters: Float,
@@ -60,22 +97,71 @@ object FurnitureFitArMetrics {
         return null
     }
 
-    /** Any tracked plane hit (horizontal or vertical) from a screen pixel. */
-    private fun anyPlaneHitDistanceMeters(frame: Frame, xPx: Float, yPx: Float): Pair<Float, String>? {
+    /**
+     * Single [Frame.hitTest] per view pixel: prefer horizontal support planes, else first tracked plane.
+     * Reduces ARCore native depth-hit-test churn vs calling horizontal then any separately.
+     */
+    private fun planeDistancePreferHorizontal(frame: Frame, xPx: Float, yPx: Float): Pair<Float, String>? {
         if (frame.camera.trackingState != TrackingState.TRACKING) return null
+        var fallback: Pair<Float, String>? = null
         for (hit in frame.hitTest(xPx, yPx)) {
             val t = hit.trackable
-            if (t is Plane && t.trackingState == TrackingState.TRACKING) {
-                val label = when (t.type) {
-                    Plane.Type.HORIZONTAL_UPWARD_FACING -> "plane_horiz_up"
-                    Plane.Type.HORIZONTAL_DOWNWARD_FACING -> "plane_horiz_down"
-                    Plane.Type.VERTICAL -> "plane_vertical"
-                    else -> "plane_other"
+            if (t !is Plane || t.trackingState != TrackingState.TRACKING || !t.isPoseInPolygon(hit.hitPose)) {
+                continue
+            }
+            when (t.type) {
+                Plane.Type.HORIZONTAL_UPWARD_FACING, Plane.Type.HORIZONTAL_DOWNWARD_FACING -> {
+                    return hit.distance to "plane_horiz_${if (t.type == Plane.Type.HORIZONTAL_UPWARD_FACING) "up" else "down"}"
                 }
-                return hit.distance to label
+                else -> {
+                    if (fallback == null) {
+                        val label = when (t.type) {
+                            Plane.Type.VERTICAL -> "plane_vertical"
+                            else -> "plane_other"
+                        }
+                        fallback = hit.distance to label
+                    }
+                }
             }
         }
-        return null
+        return fallback
+    }
+
+    private data class PlaneProbe(
+        val imageX: Float,
+        val imageY: Float,
+        val label: String,
+    )
+
+    private fun buildPlaneProbePoints(
+        imageX: Float,
+        imageY: Float,
+        bboxHeightPixels: Float,
+        rawImageWidth: Int,
+        rawImageHeight: Int,
+    ): List<PlaneProbe> {
+        val halfHeight = max(8f, bboxHeightPixels * 0.5f)
+        val halfWidth = max(8f, bboxHeightPixels * 0.42f)
+        val margin = imageEdgeMarginPx(rawImageWidth, rawImageHeight)
+        val maxX = max(rawImageWidth - 1, 0).toFloat() - margin
+        val maxY = max(rawImageHeight - 1, 0).toFloat() - margin
+        fun clampImageX(value: Float): Float = value.coerceIn(margin, maxX)
+        fun clampImageY(value: Float): Float = value.coerceIn(margin, maxY)
+        val raw = listOf(
+            PlaneProbe(clampImageX(imageX), clampImageY(imageY), "center"),
+            PlaneProbe(clampImageX(imageX), clampImageY(imageY + halfHeight * 0.35f), "lower_center"),
+            PlaneProbe(clampImageX(imageX), clampImageY(imageY + halfHeight * 0.55f), "bottom_center"),
+            PlaneProbe(clampImageX(imageX - halfWidth * 0.45f), clampImageY(imageY + halfHeight * 0.55f), "bottom_left"),
+            PlaneProbe(clampImageX(imageX + halfWidth * 0.45f), clampImageY(imageY + halfHeight * 0.55f), "bottom_right"),
+            PlaneProbe(clampImageX(imageX), clampImageY(imageY + halfHeight * 0.75f), "lower_mid"),
+        )
+        val seen = HashSet<Long>(raw.size)
+        val deduped = ArrayList<PlaneProbe>(raw.size)
+        for (probe in raw) {
+            val key = (probe.imageX.roundToInt().toLong() shl 32) or (probe.imageY.roundToInt().toLong() and 0xffffffffL)
+            if (seen.add(key)) deduped += probe
+        }
+        return deduped
     }
 
     /**
@@ -106,6 +192,8 @@ object FurnitureFitArMetrics {
         bboxHeightPixels: Float,
         rawImageWidth: Int,
         rawImageHeight: Int,
+        viewWidthPx: Int = 0,
+        viewHeightPx: Int = 0,
     ): DistanceEstimateDebug {
         val depthDebug = depthDistanceMetersDebug(
             frame = frame,
@@ -116,37 +204,70 @@ object FurnitureFitArMetrics {
             rawImageHeight = rawImageHeight,
         )
         depthDebug.meters?.let {
+            planeProbeConsecutiveMisses.set(0)
+            planeProbeBackoffUntilMs = 0L
             return DistanceEstimateDebug(
                 estimate = DistanceEstimate(it, "depth16"),
                 diagnostic = depthDebug.diagnostic,
             )
         }
 
-        val viewOut = FloatArray(2)
-        if (!imagePixelsToViewPixels(frame, imageX, imageY, viewOut)) {
-            return DistanceEstimateDebug(null, "${depthDebug.diagnostic}+view_transform_failed")
-        }
         if (frame.camera.trackingState != TrackingState.TRACKING) {
             return DistanceEstimateDebug(null, "${depthDebug.diagnostic}+tracking_not_tracking")
         }
 
-        val horizPlane = horizontalPlaneHitDistanceMeters(frame, viewOut[0], viewOut[1])
-        if (horizPlane != null) {
-            return DistanceEstimateDebug(
-                estimate = DistanceEstimate(horizPlane, "plane"),
-                diagnostic = "${depthDebug.diagnostic}+plane_ok",
-            )
+        val nowMs = SystemClock.elapsedRealtime()
+        if (nowMs < planeProbeBackoffUntilMs) {
+            return DistanceEstimateDebug(null, "${depthDebug.diagnostic}+plane_backoff")
         }
 
-        val anyPlane = anyPlaneHitDistanceMeters(frame, viewOut[0], viewOut[1])
-        if (anyPlane != null) {
-            return DistanceEstimateDebug(
-                estimate = DistanceEstimate(anyPlane.first, anyPlane.second),
-                diagnostic = "${depthDebug.diagnostic}+${anyPlane.second}",
-            )
+        val planeProbes = buildPlaneProbePoints(
+            imageX = imageX,
+            imageY = imageY,
+            bboxHeightPixels = bboxHeightPixels,
+            rawImageWidth = rawImageWidth,
+            rawImageHeight = rawImageHeight,
+        )
+        val maxHitTests = 5
+        var hitTestsUsed = 0
+        val triedViewPixels = HashSet<Long>(planeProbes.size)
+        var safeProbeCount = 0
+
+        for (probe in planeProbes) {
+            if (hitTestsUsed >= maxHitTests) break
+            val probeView = FloatArray(2)
+            if (!imagePixelsToViewPixels(frame, probe.imageX, probe.imageY, probeView)) continue
+            if (!isViewHitTestSafe(probeView[0], probeView[1], viewWidthPx, viewHeightPx)) continue
+            safeProbeCount++
+            val viewKey = (probeView[0].roundToInt().toLong() shl 32) or
+                (probeView[1].roundToInt().toLong() and 0xffffffffL)
+            if (!triedViewPixels.add(viewKey)) continue
+            hitTestsUsed++
+            val planeHit = planeDistancePreferHorizontal(frame, probeView[0], probeView[1])
+            if (planeHit != null) {
+                planeProbeConsecutiveMisses.set(0)
+                planeProbeBackoffUntilMs = 0L
+                val sourceTag = "${planeHit.second}_${probe.label}"
+                return DistanceEstimateDebug(
+                    estimate = DistanceEstimate(planeHit.first, sourceTag),
+                    diagnostic = "${depthDebug.diagnostic}+plane_ok_${probe.label}_${planeHit.second}",
+                )
+            }
         }
 
-        return DistanceEstimateDebug(null, "${depthDebug.diagnostic}+plane_miss")
+        val misses = planeProbeConsecutiveMisses.incrementAndGet()
+        if (misses >= PLANE_PROBE_MISS_THRESHOLD) {
+            planeProbeConsecutiveMisses.set(0)
+            planeProbeBackoffUntilMs = SystemClock.elapsedRealtime() + PLANE_PROBE_BACKOFF_MS
+        }
+
+        val planeDiagSuffix = when {
+            planeProbes.isEmpty() -> "plane_no_probes"
+            safeProbeCount == 0 -> "plane_probes_all_unsafe_or_transform_failed"
+            hitTestsUsed == 0 -> "plane_skipped_no_safe_probes"
+            else -> "plane_miss"
+        }
+        return DistanceEstimateDebug(null, "${depthDebug.diagnostic}+$planeDiagSuffix")
     }
 
     fun captureSparseMetricAnchors(
@@ -155,7 +276,7 @@ object FurnitureFitArMetrics {
         orientedImageHeight: Int,
         rawImageWidth: Int,
         rawImageHeight: Int,
-        orientedToRawInverse: Matrix?,
+        lockedPhotoOrientation: String,
         gridSize: Int = 7,
         marginFraction: Float = 0.05f,
         minimumConfidence: Float = 0.15f,
@@ -173,7 +294,7 @@ object FurnitureFitArMetrics {
                 orientedImageHeight = orientedImageHeight,
                 rawImageWidth = rawImageWidth,
                 rawImageHeight = rawImageHeight,
-                orientedToRawInverse = orientedToRawInverse,
+                lockedPhotoOrientation = lockedPhotoOrientation,
                 gridSize = gridSize,
                 marginFraction = marginFraction,
                 minimumConfidence = minimumConfidence,
@@ -190,7 +311,7 @@ object FurnitureFitArMetrics {
                     orientedImageHeight = orientedImageHeight,
                     rawImageWidth = rawImageWidth,
                     rawImageHeight = rawImageHeight,
-                    orientedToRawInverse = orientedToRawInverse,
+                    lockedPhotoOrientation = lockedPhotoOrientation,
                     gridSize = max(gridSize, 9),
                     marginFraction = marginFraction * 0.5f,
                     minimumConfidence = 0f,
@@ -344,8 +465,151 @@ object FurnitureFitArMetrics {
             }
         }
 
+        val pass3 = sampleDepthRingAroundCenterDebug(
+            buf = buf,
+            rowStride = rowStride,
+            pixelStride = pixelStride,
+            depthFormat = depthFormat,
+            depthW = depthW,
+            depthH = depthH,
+            rawImageWidth = rawImageWidth,
+            rawImageHeight = rawImageHeight,
+            imageX = imageX,
+            imageY = imageY,
+            minMm = 80,
+            maxMm = 60000,
+        )
+        if (pass3.meters != null) {
+            logDepthSampleDiag(
+                "pass3_ring",
+                GridSampleResult(
+                    totalSamples = pass3.samplesTried,
+                    zeroOrInvalid = pass3.zeroOrInvalid,
+                    belowMin = pass3.belowMin,
+                    aboveMax = pass3.aboveMax,
+                    lowConfidence = pass3.lowConfidence,
+                    validDepths = ArrayList(pass3.validDepthsSnapshot),
+                    regionX1 = pass3.regionX1,
+                    regionY1 = pass3.regionY1,
+                    regionX2 = pass3.regionX2,
+                    regionY2 = pass3.regionY2,
+                ),
+                imageX,
+                imageY,
+                bboxHeightPixels,
+            )
+            return DepthDistanceDebug(pass3.meters, pass3.diagnostic)
+        }
+
         logDepthSampleDiag("fail", pass1, imageX, imageY, bboxHeightPixels)
         return DepthDistanceDebug(null, "depth_no_valid_samples")
+    }
+
+    private data class DepthRingPassDebug(
+        val meters: Float?,
+        val diagnostic: String,
+        val samplesTried: Int,
+        val zeroOrInvalid: Int,
+        val belowMin: Int,
+        val aboveMax: Int,
+        val lowConfidence: Int,
+        val validDepthsSnapshot: List<Float>,
+        val regionX1: Float,
+        val regionY1: Float,
+        val regionX2: Float,
+        val regionY2: Float,
+    )
+
+    /**
+     * When bbox grids return only zeros (reflective / sparse depth), search outward in the depth
+     * buffer from the camera-image-mapped center using Chebyshev rings (matches low-res ARCore depth).
+     */
+    private fun sampleDepthRingAroundCenterDebug(
+        buf: java.nio.ByteBuffer,
+        rowStride: Int,
+        pixelStride: Int,
+        depthFormat: Int,
+        depthW: Int,
+        depthH: Int,
+        rawImageWidth: Int,
+        rawImageHeight: Int,
+        imageX: Float,
+        imageY: Float,
+        minMm: Int,
+        maxMm: Int,
+    ): DepthRingPassDebug {
+        val nx = (imageX / rawImageWidth.toFloat()).coerceIn(0f, 1f)
+        val ny = (imageY / rawImageHeight.toFloat()).coerceIn(0f, 1f)
+        val cx = (nx * (depthW - 1)).roundToInt().coerceIn(0, depthW - 1)
+        val cy = (ny * (depthH - 1)).roundToInt().coerceIn(0, depthH - 1)
+        val maxR = max(24, max(depthW, depthH) / 2).coerceAtMost(max(depthW, depthH) - 1)
+        val formatLabel = if (depthFormat == HardwareBuffer.D_16) "d16" else "depth16"
+        var samplesTried = 0
+        var zeroOrInvalid = 0
+        var belowMin = 0
+        var aboveMax = 0
+        var lowConfidence = 0
+        val accumulated = ArrayList<Float>(64)
+        var rUsed = 0
+        ringLoop@ for (r in 0..maxR) {
+            for (dy in -r..r) {
+                for (dx in -r..r) {
+                    if (max(abs(dx), abs(dy)) != r) continue
+                    val px = cx + dx
+                    val py = cy + dy
+                    if (px !in 0 until depthW || py !in 0 until depthH) continue
+                    samplesTried++
+                    val sample = readDepth16Sample(buf, rowStride, pixelStride, px, py)
+                    val mm = depthMillimetersFromSample(sample, depthFormat)
+                    val confidence = depthConfidenceFromSample(sample, depthFormat)
+                    when {
+                        mm <= 0 -> zeroOrInvalid++
+                        mm < minMm -> belowMin++
+                        mm > maxMm -> aboveMax++
+                        confidence <= 0f -> lowConfidence++
+                        else -> accumulated += mm / 1000f
+                    }
+                }
+            }
+            rUsed = r
+            if (accumulated.size >= 5) break@ringLoop
+        }
+        val rx1 = ((cx - rUsed).toFloat() / (depthW - 1).coerceAtLeast(1)) * rawImageWidth
+        val ry1 = ((cy - rUsed).toFloat() / (depthH - 1).coerceAtLeast(1)) * rawImageHeight
+        val rx2 = ((cx + rUsed).toFloat() / (depthW - 1).coerceAtLeast(1)) * rawImageWidth
+        val ry2 = ((cy + rUsed).toFloat() / (depthH - 1).coerceAtLeast(1)) * rawImageHeight
+        if (accumulated.isEmpty()) {
+            return DepthRingPassDebug(
+                meters = null,
+                diagnostic = "depth_ring_empty",
+                samplesTried = samplesTried,
+                zeroOrInvalid = zeroOrInvalid,
+                belowMin = belowMin,
+                aboveMax = aboveMax,
+                lowConfidence = lowConfidence,
+                validDepthsSnapshot = emptyList(),
+                regionX1 = rx1,
+                regionY1 = ry1,
+                regionX2 = rx2,
+                regionY2 = ry2,
+            )
+        }
+        val forMed = ArrayList(accumulated)
+        val median = medianWithIqrFilter(forMed) ?: accumulated.sorted()[accumulated.size / 2]
+        return DepthRingPassDebug(
+            meters = median,
+            diagnostic = "depth_ok_${formatLabel}_ring_r$rUsed",
+            samplesTried = samplesTried,
+            zeroOrInvalid = zeroOrInvalid,
+            belowMin = belowMin,
+            aboveMax = aboveMax,
+            lowConfidence = lowConfidence,
+            validDepthsSnapshot = accumulated.toList(),
+            regionX1 = rx1,
+            regionY1 = ry1,
+            regionX2 = rx2,
+            regionY2 = ry2,
+        )
     }
 
     private data class GridSampleResult(
@@ -459,7 +723,7 @@ object FurnitureFitArMetrics {
         orientedImageHeight: Int,
         rawImageWidth: Int,
         rawImageHeight: Int,
-        orientedToRawInverse: Matrix?,
+        lockedPhotoOrientation: String,
         gridSize: Int,
         marginFraction: Float,
         minimumConfidence: Float,
@@ -488,10 +752,13 @@ object FurnitureFitArMetrics {
             val orientedY = if (gridSize == 1) orientedImageHeight * 0.5f else marginY + usableHeight * (gridY.toFloat() / (gridSize - 1).toFloat())
             for (gridX in 0 until gridSize) {
                 val orientedX = if (gridSize == 1) orientedImageWidth * 0.5f else marginX + usableWidth * (gridX.toFloat() / (gridSize - 1).toFloat())
-                val rawPoint = floatArrayOf(orientedX, orientedY)
-                orientedToRawInverse?.mapPoints(rawPoint)
-                val rawX = rawPoint[0]
-                val rawY = rawPoint[1]
+                val (rawX, rawY) = mapOrientedImagePixelToRawCameraPixel(
+                    orientedX,
+                    orientedY,
+                    rawImageWidth,
+                    rawImageHeight,
+                    lockedPhotoOrientation,
+                )
                 if (!rawX.isFinite() || !rawY.isFinite()) continue
 
                 val depthPx = min(max(((rawX / rawImageWidth.toFloat()) * (depthWidth - 1)).roundToInt(), 0), depthWidth - 1)

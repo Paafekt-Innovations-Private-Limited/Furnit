@@ -29,6 +29,7 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.FurnitureFitArCameraController
+import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -179,13 +180,6 @@ class SharpRoomActivity : AppCompatActivity() {
     /** Isotropic scale for displayed dims vs raw SHARP bbox (ARCore calibration). */
     private var arDisplayScale: Float = 1f
     // Brain (SmartyPants) furniture calibration state (height and optional scale factor for display).
-    private val brainDefaultRoomHeightMeters: Float = 3.0f
-    private var brainRoomBasedFurnitureWidthMeters: Float? = null
-    /**
-     * Room-height × YOLO bbox fraction fallback. Distance-dependent, but still better than blank when
-     * AR-assisted sizing is enabled yet AR depth/pinhole has no valid estimate for the current frame.
-     */
-    private var brainRoomBasedFurnitureHeightMeters: Float? = null
     private var brainLockedFurnitureWidthMeters: Float? = null
     private var brainLockedFurnitureHeightMeters: Float? = null
     private var brainRealFurnitureHeightMeters: Float? = null
@@ -681,40 +675,23 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    private data class FurnitureSizeEstimateMeters(
-        val widthMeters: Float,
-        val heightMeters: Float,
-    )
-
     /**
-     * Prefer AR pinhole × depth when available. Fall back to room×bbox so the pill still shows a
-     * usable estimate when AR is enabled but temporarily unavailable or invalid.
+     * Manual calibration wins, then live AR (provisional → committed). GL thread already EMA-smooths
+     * pinhole height; a one-shot [brainLockedFurnitureHeightMeters] must not freeze display when the user moves.
+     * Locked height is only a fallback when AR tiers are null (e.g. stale provisional).
      */
     private fun effectiveBrainFurnitureHeightDisplayMeters(): Float? {
-        return brainRealFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: brainLockedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: brainRoomBasedFurnitureHeightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+        return brainRealFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: brainLockedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
     }
 
     private fun effectiveBrainFurnitureWidthDisplayMeters(): Float? =
-        (brainLockedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f }
-            ?: brainRoomBasedFurnitureWidthMeters?.takeIf { it.isFinite() && it >= 0.05f })?.let { baseWidth ->
+        brainLockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }?.let { baseWidth ->
             val scale = brainCalibrationScaleFactor.takeIf { it.isFinite() && it > 0f } ?: 1f
             if (brainRealFurnitureHeightMeters != null) baseWidth * scale else baseWidth
         }
-
-    private fun brainRoomBasedFurnitureSizeMeters(size: Int, det: DetectionResult): FurnitureSizeEstimateMeters? {
-        if (size <= 0) return null
-        val roomW = effRoomWidth()
-        val roomH = effRoomHeight()
-        if (roomW <= 0.1f || roomH <= 0.1f) return null
-        val metersPerPixel = min(roomW / size.toFloat(), roomH / size.toFloat())
-        val widthM = det.w * metersPerPixel
-        val heightM = det.h * metersPerPixel
-        if (!widthM.isFinite() || !heightM.isFinite()) return null
-        return FurnitureSizeEstimateMeters(widthM, heightM)
-    }
 
     private fun brainOverlayScaleForDetection(
         det: DetectionResult?,
@@ -725,7 +702,8 @@ class SharpRoomActivity : AppCompatActivity() {
         val detection = det ?: return 1f
         if (modelInputSize <= 0) return 1f
         val roomHeightMeters = effRoomHeight()
-        val stableHeightMeters = targetHeightMeters?.takeIf { it.isFinite() && it >= 0.05f } ?: return 1f
+        val stableHeightMeters = targetHeightMeters?.takeIf { it.isFinite() && it > 0f }
+            ?: com.furnit.android.ar.FurnitureFitStandardHeights.heightMetersForLabel(detection.label)
         if (roomHeightMeters <= 0.1f) return 1f
         val currentFraction = (detection.h / modelInputSize.toFloat()).coerceIn(0.06f, 0.92f)
         val targetFraction = (stableHeightMeters / roomHeightMeters).coerceIn(0.06f, 0.92f)
@@ -736,6 +714,27 @@ class SharpRoomActivity : AppCompatActivity() {
             val depthMeters = brainArController?.getLastMetricDistanceMeters()
             val depthSource = brainArController?.getLastMetricDistanceSource()
             val depthDiagnostic = brainArController?.getLastMetricDistanceDiagnostic()
+            val provisionalH = brainArController?.getProvisionalHeightMeters()
+            val committedH = brainArController?.getLastEstimatedHeightMeters()
+            val lockedSnapH = brainLockedFurnitureHeightMeters
+            val scaleSource = when {
+                brainRealFurnitureHeightMeters != null -> "manual"
+                provisionalH != null -> "provisional_ar"
+                committedH != null -> "committed_ar"
+                lockedSnapH != null -> "locked_fallback"
+                else -> "fallback_std"
+            }
+            val provAge = brainArController?.getProvisionalHeightAgeMs() ?: -1L
+            val commitAge = brainArController?.getCommittedHeightAgeMs() ?: -1L
+            val driftPct = if (stableHeightMeters > 1e-6f && provisionalH != null) {
+                String.format(
+                    Locale.US,
+                    "%.1f",
+                    kotlin.math.abs(provisionalH - stableHeightMeters) / stableHeightMeters * 100f,
+                )
+            } else {
+                "n/a"
+            }
             LogUtil.i(
                 SCALE_LOG_TAG,
                 "screen=SharpRoomActivity roomH_m=${String.format(Locale.US, "%.3f", roomHeightMeters)} " +
@@ -744,9 +743,13 @@ class SharpRoomActivity : AppCompatActivity() {
                     "currentFrac=${String.format(Locale.US, "%.4f", currentFraction)} " +
                     "targetFrac=${String.format(Locale.US, "%.4f", targetFraction)} " +
                     "layerScale=${String.format(Locale.US, "%.4f", finalScale)} " +
-                    "width_m=${brainRoomBasedFurnitureWidthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
-                    "height_m=${brainRoomBasedFurnitureHeightMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
-                    "arH_m=${brainArController?.getLastEstimatedHeightMeters()?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "width_m=${effectiveBrainFurnitureWidthDisplayMeters()?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "height_m=${effectiveBrainFurnitureHeightDisplayMeters()?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "provisionalH_m=${provisionalH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "committedH_m=${committedH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "lockedSnap_m=${lockedSnapH?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
+                    "source=$scaleSource drift_pct_vs_display=$driftPct " +
+                    "provisionalAge_ms=$provAge committedAge_ms=$commitAge " +
                     "depth_m=${depthMeters?.let { String.format(Locale.US, "%.3f", it) } ?: "null"} " +
                     "depthSource=${depthSource ?: "none"} " +
                     "depthDiag=${depthDiagnostic ?: "none"}",
@@ -757,10 +760,10 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun lockBrainFurnitureSizeIfNeeded(widthMeters: Float?, heightMeters: Float?) {
         if (brainLockedFurnitureWidthMeters == null) {
-            brainLockedFurnitureWidthMeters = widthMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            brainLockedFurnitureWidthMeters = widthMeters?.takeIf { it.isFinite() && it > 0f }
         }
         if (brainLockedFurnitureHeightMeters == null) {
-            brainLockedFurnitureHeightMeters = heightMeters?.takeIf { it.isFinite() && it >= 0.05f }
+            brainLockedFurnitureHeightMeters = heightMeters?.takeIf { it.isFinite() && it > 0f }
         }
     }
 
@@ -786,7 +789,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 } else if (detected != null) {
                     "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
                 } else {
-                    "Furn: --"
+                    "Furn:"
                 }
                 line1.setTextColor(0xFFFFFFFF.toInt())
             }
@@ -978,7 +981,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             brainCalibrationPillLine1 = TextView(this@SharpRoomActivity).apply {
-                text = "Furn: --"
+                text = "Furn:"
                 setTextColor(Color.WHITE)
                 textSize = 14f
                 setShadowLayer(2f, 1f, 1f, Color.BLACK)
@@ -1257,15 +1260,7 @@ class SharpRoomActivity : AppCompatActivity() {
             brainTimeoutRunnable = Runnable {
                 if (!brainFirstResultReceived) {
                     DebugLogger.eDebugMode(TAG, "Brain: timeout waiting for first result, falling back to CameraX brain path")
-                    // Tear down ARCore controller if present.
-                    brainArController?.let { c ->
-                        try {
-                            sharpRoomContentRoot.removeView(c.glSurfaceView)
-                        } catch (_: Exception) {
-                        }
-                        c.destroy()
-                    }
-                    brainArController = null
+                    teardownBrainArCoreController()
                     brainSegmentationAcceptingUpdates = false
                     setBrainSegmentationButtonActive(false)
                     hideBrainProgressOverlay()
@@ -1286,6 +1281,25 @@ class SharpRoomActivity : AppCompatActivity() {
             ArSupportChecker.isArCoreSupported(this)
     }
 
+    /** Single teardown path for brain ARCore controller (GL session close + view removal). */
+    private fun teardownBrainArCoreController() {
+        brainArController?.let { controller ->
+            try {
+                sharpRoomContentRoot.removeView(controller.glSurfaceView)
+            } catch (_: Exception) {
+            }
+            controller.destroy()
+        }
+        brainArController = null
+    }
+
+    /** Match CameraX brain frames to [photoOrientation], same as ARCore path and Furniture Fit fragment. */
+    private fun alignBrainCameraBitmapToLockedRoom(bitmap: Bitmap): Bitmap {
+        val (oriented, _) = bitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
+        if (oriented !== bitmap) bitmap.recycle()
+        return oriented
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindBrainCamera(manager: FurnitureFitManager) {
         if (shouldUseArBrainCamera()) {
@@ -1293,14 +1307,7 @@ class SharpRoomActivity : AppCompatActivity() {
             return
         }
         // Switching from ARCore brain path to CameraX: remove GL surface or we keep AR frames while AR is off in prefs.
-        brainArController?.let { existing ->
-            try {
-                sharpRoomContentRoot.removeView(existing.glSurfaceView)
-            } catch (_: Exception) {
-            }
-            existing.destroy()
-        }
-        brainArController = null
+        teardownBrainArCoreController()
         DebugLogger.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -1308,8 +1315,14 @@ class SharpRoomActivity : AppCompatActivity() {
             cameraProvider = provider
             provider.unbindAll()
             DebugLogger.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
+            val brainAnalysisSize =
+                if (photoOrientation.equals("landscape", ignoreCase = true)) {
+                    android.util.Size(640, 480)
+                } else {
+                    android.util.Size(480, 640)
+                }
             val analysis = ImageAnalysis.Builder()
-                .setTargetResolution(android.util.Size(640, 640))
+                .setTargetResolution(brainAnalysisSize)
                 // Match display so ImageProxy.rotationDegrees + toBitmapSafe() align mask with portrait/landscape UI
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -1318,7 +1331,8 @@ class SharpRoomActivity : AppCompatActivity() {
             val hasFirstResult = BooleanArray(1) { false }
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 try {
-                    val bitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
+                    val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
+                    val bitmap = alignBrainCameraBitmapToLockedRoom(rawBitmap)
                     // Only process one frame at a time; drop others so we show current view when camera moves (no "chair forever")
                     if (isBrainInferenceRunning.get()) {
                         return@setAnalyzer
@@ -1346,13 +1360,10 @@ class SharpRoomActivity : AppCompatActivity() {
                             val mask = result?.mask
                             val dets = result?.detections ?: emptyList()
                             val size = result?.inputSize ?: 640
-                            val sizeEstimate = dets.firstOrNull()?.let { brainRoomBasedFurnitureSizeMeters(size, it) }
-                            brainRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
-                            brainRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
                             val currentHeightMeters =
-                                brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
-                                    ?: brainRoomBasedFurnitureHeightMeters
-                            lockBrainFurnitureSizeIfNeeded(brainRoomBasedFurnitureWidthMeters, currentHeightMeters)
+                                brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                                    ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                            lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
                             brainDetectionOverlayView.setMaskAndDetections(
                                 mask,
                                 dets,
@@ -1388,12 +1399,7 @@ class SharpRoomActivity : AppCompatActivity() {
         DebugLogger.d(TAG, "Brain: bindBrainArCoreCamera() - ARCore path")
         cameraProvider?.unbindAll()
         cameraProvider = null
-        brainArController?.let { existing ->
-            try {
-                sharpRoomContentRoot.removeView(existing.glSurfaceView)
-            } catch (_: Exception) { }
-            existing.destroy()
-        }
+        teardownBrainArCoreController()
         val controller = FurnitureFitArCameraController(this, cameraExecutor)
         brainArController = controller
         controller.lockedPhotoOrientation = photoOrientation
@@ -1434,9 +1440,6 @@ class SharpRoomActivity : AppCompatActivity() {
                     val mask = result?.mask
                     val dets = result?.detections ?: emptyList()
                     val size = result?.inputSize ?: 640
-                    val sizeEstimate = dets.firstOrNull()?.let { brainRoomBasedFurnitureSizeMeters(size, it) }
-                    brainRoomBasedFurnitureWidthMeters = sizeEstimate?.widthMeters
-                    brainRoomBasedFurnitureHeightMeters = sizeEstimate?.heightMeters
                     val nowMs = SystemClock.elapsedRealtime()
                     if (nowMs - lastBrainArBridgeLogMs >= 500L) {
                         lastBrainArBridgeLogMs = nowMs
@@ -1450,9 +1453,9 @@ class SharpRoomActivity : AppCompatActivity() {
                         )
                     }
                     val currentHeightMeters =
-                        brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it >= 0.05f }
-                            ?: brainRoomBasedFurnitureHeightMeters
-                    lockBrainFurnitureSizeIfNeeded(brainRoomBasedFurnitureWidthMeters, currentHeightMeters)
+                        brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                            ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                    lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
                     brainDetectionOverlayView.setMaskAndDetections(
                         mask,
                         dets,
@@ -1492,15 +1495,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
         disableArBrainThisSession = false
-        brainArController?.let { c ->
-            try {
-                sharpRoomContentRoot.removeView(c.glSurfaceView)
-            } catch (_: Exception) { }
-            c.destroy()
-        }
-        brainArController = null
-        brainRoomBasedFurnitureWidthMeters = null
-        brainRoomBasedFurnitureHeightMeters = null
+        teardownBrainArCoreController()
         brainLockedFurnitureWidthMeters = null
         brainLockedFurnitureHeightMeters = null
         brainRealFurnitureHeightMeters = null
