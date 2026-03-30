@@ -309,6 +309,13 @@ struct GLBRoomView: View {
                 OrientationLockManager.shared.lockToPortrait()
             }
         }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            } else {
+                yoloeService.releaseResources()
+            }
+        }
         .onDisappear {
             OrientationLockManager.shared.unlock()
         }

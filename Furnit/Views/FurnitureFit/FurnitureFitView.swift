@@ -262,9 +262,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// True when ARSession runs alongside AVCapture for depth / tracking while video frames come from `AVCaptureSession` (recommended).
     private var isARDepthCompanionSessionRunning = false
 
+    /// True only when ARKit is feeding sizing (AR-as-camera or hybrid companion). Do **not** use plain world-tracking support here — that
+    /// incorrectly made `startIfNeeded()` return before starting `AVCaptureSession`.
     private var hasARKitAssistedSizingPayload: Bool {
         isUsingARCameraPath || isARDepthCompanionSessionRunning
     }
+
+    /// Not started while `AVCaptureSession` runs — a second `ARSession` still grabs the back camera (Fig -17281).
+    private let asyncDepthSampler = FurnitureFitAsyncDepthSampler()
+    private var furnitureFitCameraStartupInitiated = false
     private var arAssistedScaleValid = false
     private var autoScaleFromAR: CGFloat = 1.0
     private var smoothedArOverlayScale: CGFloat = 1.0
@@ -395,12 +401,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Reused scratch for CPU fallback compositing (vDSP + BLAS); grows with frame width, never shrinks.
     private var compositeCpuScratchFloats: [Float] = []
-
-// GPU mask builder (optional)
-private lazy var metalMaskLogic: MetalMaskLogic? = {
-    guard let d = metalDevice else { return nil }
-    return MetalMaskLogic(device: d)
-}()
+    /// Proto mask upscaled to full frame (`origW*origH`) via vImage — one SIMD resize then a cheap composite scan.
+    private var upscaledPlanarMaskScratch: [UInt8] = []
+    // GPU mask builder (optional)
+    private lazy var metalMaskLogic: MetalMaskLogic? = {
+        guard let d = metalDevice else { return nil }
+        return MetalMaskLogic(device: d)
+    }()
     // MARK: - Memory Logging
     private func logMemory(_ tag: String) {
         var info = mach_task_basic_info()
@@ -461,7 +468,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         frameLock.unlock()
         if resumeAR {
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.isUsingARCameraPath, let cfg = self.arSession.configuration else { return }
+                guard let self, let cfg = self.arSession.configuration else { return }
+                // Full AR-as-camera path, or hybrid depth companion after `pause()` between frames.
+                guard self.isUsingARCameraPath || self.isARDepthCompanionSessionRunning else { return }
                 self.arSession.run(cfg, options: [])
             }
         }
@@ -941,10 +950,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func startIfNeeded() {
-        // SwiftUI may call this multiple times; avoid restarting camera/AR when already active.
-        if captureSession.isRunning || hasARKitAssistedSizingPayload {
-            return
-        }
+        // SwiftUI calls this on many `updateUIView` passes; only run setup once until `stop()`.
+        if captureSession.isRunning { return }
+        if furnitureFitCameraStartupInitiated { return }
+        furnitureFitCameraStartupInitiated = true
 
         if suppressStartupProgress || segmentationCompletedOnceThisSession {
             hasFirstDetection = false
@@ -1032,6 +1041,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     func stop() {
         invalidatePendingAssistedMeasurement()
+        asyncDepthSampler.stop()
+        furnitureFitCameraStartupInitiated = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -1084,11 +1095,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func requestCameraPermissionAndStart() {
-        // No AR in FurnitureFit — classic camera only.
-        // AR + AVCapture cannot reliably coexist at this memory level.
+        // Single back-camera consumer: `AVCaptureSession` only. Do not run a parallel `ARSession` for world tracking here
+        // (Fig -17281 / failed capture). `FurnitureFitAsyncDepthSampler` remains for a possible AR-only video path later.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             startClassicCameraPathIfNeeded()
+            if debugMode {
+                logDebug("📷 [FurnitureFit] AVCaptureSession (classic path, no parallel ARSession)")
+            }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 guard granted else { return }
@@ -1099,60 +1113,22 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
     }
 
-    /// Hardware BGRA from `AVCaptureSession` + parallel `ARSession` for depth (no `copyCapturedImageToBGRA` / CI YUV path).
-    private func startHybridOrClassicCameraPathIfNeeded() {
-        if FurnitureFitARSupport.isWorldTrackingSupported {
-            startHybridCameraPathIfNeeded()
-        } else {
-            startClassicCameraPathIfNeeded()
-        }
-    }
-
-    private func startHybridCameraPathIfNeeded() {
-        guard FurnitureFitARSupport.isWorldTrackingSupported else {
-            startClassicCameraPathIfNeeded()
-            return
-        }
-        isUsingARCameraPath = false
-        isARDepthCompanionSessionRunning = true
-        frameLock.lock()
-        arPausedForSegmentation = false
-        frameLock.unlock()
-        arSession.delegate = self
-        if !captureSession.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.captureSession.startRunning()
-            }
-        }
-        DispatchQueue.main.async {
-            self.arSCNView.session = self.arSession
-            let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
-            let sem = config.frameSemantics
-            let hasScene = sem.contains(.sceneDepth)
-            let hasSmoothed = sem.contains(.smoothedSceneDepth)
-            logFurnitureFitAR(
-                "platform=ios event=session_hybrid sceneDepth=\(hasScene) smoothedSceneDepth=\(hasSmoothed) planeDetection=\(config.planeDetection)"
-            )
-            self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
-        }
-        if debugMode {
-            logDebug("📷 [FurnitureFit] Hybrid: AVCapture BGRA + ARSession depth (ARKit camera / CI copy disabled)")
-        }
-    }
-
-    /// AVCapture only; pauses AR (no depth-assisted sizing).
+    /// AVCapture only; pauses container `ARSession`.
     private func startClassicCameraPathIfNeeded() {
         isUsingARCameraPath = false
         isARDepthCompanionSessionRunning = false
         frameLock.lock()
         arPausedForSegmentation = false
         frameLock.unlock()
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             self.arSession.pause()
-        }
-        if !captureSession.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.captureSession.startRunning()
+            self.setupCamera()
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { return }
+                if !self.captureSession.isRunning {
+                    self.captureSession.startRunning()
+                }
             }
         }
         if debugMode { logDebug("📷 [FurnitureFit] AVCaptureSession (classic camera path)") }
@@ -1580,7 +1556,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let compStart = Date()
         // Nearest map proto → frame (Android `composeNearestProtoMaskCutoutArgb`). Bilinear upscale of a 0/255 mask
         // was smearing edges and could make most of the primary band fully opaque (A=255) while the cutout failed visually.
-        let composedImage = compositeCpuNearestProtoMaskCutout(
+        let composedImage = compositeCpuBilinearProtoMaskCutout(
             processBuffer: processBuffer,
             maskProto: maskSmall,
             protoW: pW,
@@ -1844,9 +1820,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         logDebug("🎨 [RGBA \(tag)] center (\(cx),\(cy)) premul R=\(red) G=\(green) B=\(blue) A=\(alpha)")
     }
 
-    /// Android `composeNearestProtoMaskCutoutArgb`: nearest-neighbor lookup from proto-sized mask (no bilinear upscale of 0/255 mask).
-    /// Optional future: bilinear sampling of float proto logits before threshold would soften edges vs ~4px blocks at 160→720.
-    private func compositeCpuNearestProtoMaskCutout(
+    /// ONNX-style cutout: vImage **Planar8 scale** proto→full frame (one fast resize), then scan composite band only.
+    /// Smoothstep on mask reduces bilinear “mush” and frame-to-frame edge flicker vs per-pixel bilinear in a huge band.
+    private func compositeCpuBilinearProtoMaskCutout(
         processBuffer: CVPixelBuffer,
         maskProto: [UInt8],
         protoW: Int,
@@ -1868,8 +1844,37 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let yEnd = max(0, min(origH, y1))
         guard xStart < xEnd, yStart < yEnd else { return nil }
 
-        // Must match `compositeCpuCameraBandAccelerated` + historical contexts: premultipliedLast **without**
-        // byteOrder32Little — adding byteOrder32Little makes CoreGraphics reinterpret R,G,B,A bytes and tints (e.g. red).
+        let fullPixels = origW * origH
+        if upscaledPlanarMaskScratch.count < fullPixels {
+            upscaledPlanarMaskScratch = [UInt8](repeating: 0, count: fullPixels)
+        }
+
+        let scaleErr: vImage_Error = maskProto.withUnsafeBufferPointer { srcPtr in
+            guard let srcBase = srcPtr.baseAddress else { return kvImageNullPointerArgument }
+            var srcBuf = vImage_Buffer(
+                data: UnsafeMutableRawPointer(mutating: srcBase),
+                height: vImagePixelCount(ph),
+                width: vImagePixelCount(pw),
+                rowBytes: pw
+            )
+            return upscaledPlanarMaskScratch.withUnsafeMutableBufferPointer { dstPtr in
+                guard let dstBase = dstPtr.baseAddress else { return kvImageNullPointerArgument }
+                var dstBuf = vImage_Buffer(
+                    data: dstBase,
+                    height: vImagePixelCount(origH),
+                    width: vImagePixelCount(origW),
+                    rowBytes: origW
+                )
+                return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling))
+            }
+        }
+        if scaleErr != kvImageNoError {
+            if debugMode {
+                logDebug("⚠️ ONNX-style vImageScale_Planar8 failed (\(scaleErr)); compositing skipped")
+            }
+            return nil
+        }
+
         guard let ctx = CGContext(
             data: nil,
             width: origW,
@@ -1892,28 +1897,31 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
         }
 
-        let fw = origW
-        let fh = origH
+        let rgbDim: Float = 0.92
+        let inv255: Float = 1.0 / 255.0
+        // Smoothstep remaps soft mask slopes → stabler alpha (less intermittent “blur” at boundary).
+        let edgeLo: Float = 0.36
+        let invEdgeWidth: Float = 1.0 / max(0.18, 0.62 - edgeLo)
 
+        let maskFull = upscaledPlanarMaskScratch
         for y in yStart..<yEnd {
-            let protoY = min(ph - 1, max(0, (y * ph) / fh))
-            let protoRowBase = protoY * pw
+            let rowOff = y * origW
             let outRow = outBase.advanced(by: y * bytesPerRowOut)
             let camRow = origBase.advanced(by: y * camRowBytes)
             for x in xStart..<xEnd {
-                let protoX = min(pw - 1, max(0, (x * pw) / fw))
-                let a8 = maskProto[protoRowBase + protoX]
-                guard a8 > 127 else { continue }
-                let mf = Float(a8) * (1.0 / 255.0)
+                let raw = Float(maskFull[rowOff + x]) * inv255
+                let t = (raw - edgeLo) * invEdgeWidth
+                let s = min(1, max(0, t))
+                let sm = s * s * (3 - 2 * s)
+                guard sm > 0.008 else { continue }
                 let cx = x * 4
-                // Camera BGRA → premultiplied RGBA (same channel assignment as vDSP composite path).
-                let rf = Float(camRow[cx + 2]) * mf
-                let gf = Float(camRow[cx + 1]) * mf
-                let bf = Float(camRow[cx]) * mf
+                let rf = Float(camRow[cx + 2]) * sm * rgbDim
+                let gf = Float(camRow[cx + 1]) * sm * rgbDim
+                let bf = Float(camRow[cx]) * sm * rgbDim
                 outRow[cx] = UInt8(min(255, max(0, rf + 0.5)))
                 outRow[cx + 1] = UInt8(min(255, max(0, gf + 0.5)))
                 outRow[cx + 2] = UInt8(min(255, max(0, bf + 0.5)))
-                outRow[cx + 3] = a8
+                outRow[cx + 3] = UInt8(min(255, max(0, sm * 255 + 0.5)))
             }
         }
 

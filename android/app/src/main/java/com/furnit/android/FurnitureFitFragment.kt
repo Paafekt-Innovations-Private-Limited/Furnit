@@ -138,7 +138,7 @@ class FurnitureFitFragment : Fragment() {
         LogUtil.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = FurnitureFitManager(requireContext())
-        // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
+        // Initialize model — ONNX first, then TFLite (see FurnitureFitManager.initializeAuto).
         LogUtil.d("FurnitureFit", "Calling initializeAuto...")
         val success = manager.initializeAuto()
         LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")

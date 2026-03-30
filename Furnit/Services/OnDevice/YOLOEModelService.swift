@@ -97,11 +97,17 @@ class YOLOEModelService: ObservableObject {
     /// Release model and ODR resources — call when the app goes to background
     /// or memory pressure occurs.
     func releaseResources() {
+        progressObservation?.invalidate()
+        progressObservation = nil
         resourceRequest?.endAccessingResources()
         resourceRequest = nil
         resourcesAvailable = false
         model = nil
-        logDebug("YOLOE: Released ODR resources")
+        isLoadingModel = false
+        isDownloadingResources = false
+        downloadProgress = 0.0
+        statusMessage = ""
+        logDebug("YOLOE: Released model + ODR resources (memory)")
     }
 
     // MARK: - ODR

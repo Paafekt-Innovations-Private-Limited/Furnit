@@ -524,6 +524,8 @@ struct SharpRoomView: View {
         .onChange(of: showingFurnitureFit) { _, isOn in
             if isOn {
                 yoloeService.ensureModelLoaded()
+            } else {
+                yoloeService.releaseResources()
             }
         }
         .onChange(of: showRoomFurnitureCalibrate) { _, enabled in

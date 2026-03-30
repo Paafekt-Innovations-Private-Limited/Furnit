@@ -79,6 +79,7 @@ struct ModelViewerView: View {
                             suppressStartupProgress: furnitureFitInitialSegmentationDone,
                             onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                         )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .zIndex(9000)
                     }
 
@@ -230,6 +231,7 @@ struct ModelViewerView: View {
                 roomSnapshot = nil
                 capturedImage = nil
                 furnitureFitEstimatedHeightM = nil
+                yoloeService.releaseResources()
             }
         }
         .onAppear {
@@ -672,6 +674,11 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.suppressStartupProgress = suppressStartupProgress
         uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
         if active { uiView.startIfNeeded() } else { uiView.stop() }
+    }
+
+    static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
+        uiView.setModel(nil)
+        uiView.stop()
     }
 }
 

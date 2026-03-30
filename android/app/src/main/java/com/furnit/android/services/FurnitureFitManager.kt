@@ -22,7 +22,6 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
-import java.util.Arrays
 import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.floor
@@ -42,12 +41,10 @@ data class SegmentationResult(
  * FurnitureFitManager handles object detection and segmentation using YOLOE models.
  *
  * Inference backends (in order of preference):
- * 1. NCNN - Fastest, GPU-accelerated with Vulkan (recommended)
- * 2. ONNX Runtime - Good performance, cross-platform
- * 3. TensorFlow Lite - Fallback option
+ * 1. ONNX Runtime — primary (`yoloe-26l-seg-pf_seg_o2m.onnx` in assets)
+ * 2. TensorFlow Lite — fallback when ONNX is unavailable
  *
- * For best performance, use NCNN with exported .param/.bin model files.
- * Place model files in `app/src/main/assets/`.
+ * NCNN is not used here; wall measurement and other code may still use [NcnnYoloe] via [YoloEImageInference].
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -97,10 +94,6 @@ class FurnitureFitManager(private val context: Context) {
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
 
-    // NCNN inference engine (preferred)
-    private var ncnnYoloe: NcnnYoloe? = null
-    private var useNcnn = false
-
     fun initialize(tfliteAssetName: String = "yoloe_11l.tflite") {
         try {
             val model = loadModelFile(tfliteAssetName)
@@ -123,56 +116,7 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Initialize NCNN backend for high-performance inference.
-     * This is the recommended backend for best performance on Android.
-     *
-     * @param paramAsset NCNN .param file in assets (default: "yoloe-11l-seg.param")
-     * @param binAsset NCNN .bin file in assets (default: "yoloe-11l-seg.bin")
-     * @param useGpu Whether to use GPU (Vulkan) acceleration (default: true)
-     * @return true if NCNN initialization succeeded
-     */
-    fun initializeNcnn(
-        paramAsset: String = "yoloe-11l-seg.param",
-        binAsset: String = "yoloe-11l-seg.bin",
-        useGpu: Boolean = true
-    ): Boolean {
-        LogUtil.i(
-            "FurnitureFitManager",
-            "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu"
-        )
-
-        if (!NcnnYoloe.isAvailable()) {
-            val error = NcnnYoloe.getLoadError() ?: "unknown reason"
-            LogUtil.w("FurnitureFitManager", "NCNN native library not available: $error")
-            return false
-        }
-
-        try {
-            ncnnYoloe = NcnnYoloe()
-            val success = ncnnYoloe!!.init(context, paramAsset, binAsset, useGpu)
-
-            if (success) {
-                useNcnn = true
-                LogUtil.i(
-                    "FurnitureFitManager",
-                    "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})"
-                )
-                return true
-            } else {
-                LogUtil.e("FurnitureFitManager", "NCNN initialization failed")
-                ncnnYoloe = null
-                return false
-            }
-        } catch (e: Exception) {
-            LogUtil.e("FurnitureFitManager", "NCNN init exception: ${e.message}", e)
-            ncnnYoloe = null
-            return false
-        }
-    }
-
-    /**
      * Auto-initialize segmentation with ONNX Runtime first, then TFLite.
-     * NCNN remains available for explicit/manual initialization only.
      */
     fun initializeAuto(): Boolean {
         LogUtil.i("FurnitureFitManager", "Auto-initializing segmentation backend...")
@@ -255,12 +199,6 @@ class FurnitureFitManager(private val context: Context) {
 
         inferenceExecutor.execute {
             try {
-                // Prefer NCNN if available (best performance)
-                if (useNcnn && ncnnYoloe != null) {
-                    runNcnnInferenceWithDetections(frame, callback)
-                    return@execute
-                }
-
                 // Prefer ONNX Runtime if available
                 if (ortSession != null) {
                     runOnnxInferenceWithDetections(frame, callback)
@@ -327,85 +265,6 @@ class FurnitureFitManager(private val context: Context) {
                 mainHandler.post { callback(null) }
             }
         }
-    }
-
-    /**
-     * Run inference using NCNN backend (fastest).
-     */
-    private fun runNcnnInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
-        try {
-            val ncnn = ncnnYoloe ?: run {
-                LogUtil.e("FurnitureFitManager", "NCNN not initialized")
-                mainHandler.post { callback(null) }
-                return
-            }
-
-            val startTime = System.currentTimeMillis()
-
-            // Run detection with mask generation
-            val result = ncnn.detectWithMask(
-                bitmap = frame,
-                confThreshold = YoloEImageInference.CONF_THRESHOLD,
-                iouThreshold = YoloEImageInference.IOU_THRESHOLD,
-                maskThreshold = 0.5f
-            )
-
-            val inferenceTime = System.currentTimeMillis() - startTime
-            LogUtil.d(
-                "FurnitureFitManager",
-                "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms"
-            )
-
-            // Log top detections
-            for ((idx, det) in result.detections.take(5).withIndex()) {
-                LogUtil.d(
-                    "FurnitureFitManager",
-                    "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})"
-                )
-            }
-
-            // Return the mask bitmap
-            if (result.mask != null) {
-                mainHandler.post { callback(result.mask) }
-            } else if (result.detections.isEmpty()) {
-                // No detections, return null mask
-                mainHandler.post { callback(null) }
-            } else {
-                // Detections but no mask - create a simple bounding box visualization
-                val maskBmp = createBboxMask(frame, result.detections)
-                mainHandler.post { callback(maskBmp) }
-            }
-        } catch (e: Exception) {
-            LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
-            mainHandler.post { callback(null) }
-        }
-    }
-
-    /**
-     * Create a simple mask from bounding boxes (fallback when segmentation masks unavailable).
-     */
-    private fun createBboxMask(frame: Bitmap, detections: List<NcnnYoloe.Detection>): Bitmap {
-        val mask = Bitmap.createBitmap(frame.width, frame.height, Config.ARGB_8888)
-        val pixels = IntArray(frame.width * frame.height)
-        pixels.fill(0)
-
-        // Draw filled rectangles for each detection
-        val fw = frame.width
-        for (det in detections) {
-            val left = maxOf(0, det.left.toInt())
-            val top = maxOf(0, det.top.toInt())
-            val right = minOf(frame.width - 1, det.right.toInt())
-            val bottom = minOf(frame.height - 1, det.bottom.toInt())
-
-            val color = 0xCC00FF00.toInt()
-            for (y in top..bottom) {
-                val row = y * fw
-                Arrays.fill(pixels, row + left, row + right + 1, color)
-            }
-        }
-
-        mask.setPixels(pixels, 0, frame.width, 0, 0, frame.width, frame.height)
-        return mask
     }
 
     /**
@@ -1370,261 +1229,6 @@ class FurnitureFitManager(private val context: Context) {
         return maskDetections
     }
 
-    private fun pickPrimaryNcnnDetection(
-        detections: List<NcnnYoloe.Detection>,
-        frameWidth: Float,
-        frameHeight: Float,
-    ): NcnnYoloe.Detection? {
-        if (detections.isEmpty()) return null
-
-        var bestDetection: NcnnYoloe.Detection? = null
-        var bestScore = -1f
-        var bestEdgeFallback: NcnnYoloe.Detection? = null
-        var bestEdgeFallbackScore = -1f
-        for (detection in detections) {
-            val candidateScore = primaryDetectionScore(
-                centerX = detection.x,
-                centerY = detection.y,
-                width = detection.width,
-                height = detection.height,
-                confidence = detection.confidence,
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-            )
-            if (candidateScore.isInteriorCandidate && candidateScore.score > bestScore) {
-                bestScore = candidateScore.score
-                bestDetection = detection
-            } else if (!candidateScore.isInteriorCandidate && candidateScore.score > bestEdgeFallbackScore) {
-                bestEdgeFallbackScore = candidateScore.score
-                bestEdgeFallback = detection
-            }
-        }
-        return bestDetection ?: bestEdgeFallback ?: detections.maxByOrNull { it.confidence }
-    }
-
-    private fun pickSupportingTableForMonitorScene(
-        primaryDetection: NcnnYoloe.Detection,
-        detections: List<NcnnYoloe.Detection>,
-    ): NcnnYoloe.Detection? {
-        if (!includeSupportingTableForMonitorScene) return null
-        if (!monitorLikeClassIds.contains(primaryDetection.classId)) return null
-
-        val primaryLeft = primaryDetection.x - primaryDetection.width / 2f
-        val primaryRight = primaryDetection.x + primaryDetection.width / 2f
-        val primaryBottom = primaryDetection.y + primaryDetection.height / 2f
-        val primaryArea = max(1e-3f, primaryDetection.width * primaryDetection.height)
-
-        var bestDetection: NcnnYoloe.Detection? = null
-        var bestScore = -1f
-
-        for (detection in detections) {
-            if (detection === primaryDetection) continue
-            if (!supportingTableClassIds.contains(detection.classId)) continue
-
-            val candidateLeft = detection.x - detection.width / 2f
-            val candidateRight = detection.x + detection.width / 2f
-            val candidateTop = detection.y - detection.height / 2f
-            val overlapWidth = max(0f, min(primaryRight, candidateRight) - max(primaryLeft, candidateLeft))
-            val horizontalOverlapRatio = overlapWidth / max(1e-3f, min(primaryDetection.width, detection.width))
-            if (horizontalOverlapRatio < 0.35f) continue
-
-            if (detection.y <= primaryDetection.y) continue
-
-            val verticalGap = candidateTop - primaryBottom
-            if (verticalGap < -primaryDetection.height * 0.20f || verticalGap > primaryDetection.height * 0.60f) continue
-
-            val widthRatio = detection.width / max(1e-3f, primaryDetection.width)
-            if (widthRatio < 0.75f || widthRatio > 5.0f) continue
-
-            val areaRatio = (detection.width * detection.height) / primaryArea
-            if (areaRatio < 0.50f || areaRatio > 12.0f) continue
-
-            val closenessTerm = 1f - min(1f, kotlin.math.abs(verticalGap) / max(primaryDetection.height * 0.60f, 1e-3f))
-            val score = detection.confidence * horizontalOverlapRatio * max(0.1f, closenessTerm)
-
-            if (score > bestScore) {
-                bestScore = score
-                bestDetection = detection
-            }
-        }
-
-        if (bestDetection != null) {
-            LogUtil.d(
-                "FurnitureFitManager",
-                "Support table picked for NCNN monitor scene: class=${bestDetection.classId} conf=${bestDetection.confidence}",
-            )
-        }
-
-        return bestDetection
-    }
-
-    private fun calculateIoUForMaskSelection(
-        first: NcnnYoloe.Detection,
-        second: NcnnYoloe.Detection,
-    ): Float {
-        val firstX1 = first.x - first.width / 2f
-        val firstY1 = first.y - first.height / 2f
-        val firstX2 = first.x + first.width / 2f
-        val firstY2 = first.y + first.height / 2f
-
-        val secondX1 = second.x - second.width / 2f
-        val secondY1 = second.y - second.height / 2f
-        val secondX2 = second.x + second.width / 2f
-        val secondY2 = second.y + second.height / 2f
-
-        val interX1 = max(firstX1, secondX1)
-        val interY1 = max(firstY1, secondY1)
-        val interX2 = min(firstX2, secondX2)
-        val interY2 = min(firstY2, secondY2)
-        val interW = max(0f, interX2 - interX1)
-        val interH = max(0f, interY2 - interY1)
-        val interArea = interW * interH
-        val unionArea = first.width * first.height + second.width * second.height - interArea
-        return if (unionArea > 0f) interArea / unionArea else 0f
-    }
-
-    private fun collectMaskDetections(
-        primaryDetection: NcnnYoloe.Detection,
-        detections: List<NcnnYoloe.Detection>,
-    ): List<NcnnYoloe.Detection> {
-        val supportingTableDetection = pickSupportingTableForMonitorScene(primaryDetection, detections)
-        val primaryLeft = primaryDetection.x - primaryDetection.width / 2f
-        val primaryTop = primaryDetection.y - primaryDetection.height / 2f
-        val primaryRight = primaryDetection.x + primaryDetection.width / 2f
-        val primaryBottom = primaryDetection.y + primaryDetection.height / 2f
-        val encompassTolerance = 2f
-        val minimumCandidateConfidence = 0.1f
-        val bboxDuplicateThreshold = 0.7f
-
-        val bboxKept = mutableListOf<NcnnYoloe.Detection>()
-        for (detection in detections) {
-            if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
-
-            val candidateLeft = detection.x - detection.width / 2f
-            val candidateTop = detection.y - detection.height / 2f
-            val candidateRight = detection.x + detection.width / 2f
-            val candidateBottom = detection.y + detection.height / 2f
-
-            val encompassesPrimary =
-                candidateLeft <= primaryLeft + encompassTolerance &&
-                    candidateTop <= primaryTop + encompassTolerance &&
-                    candidateRight >= primaryRight - encompassTolerance &&
-                    candidateBottom >= primaryBottom - encompassTolerance
-            if (encompassesPrimary) continue
-
-            val intersectsPrimary =
-                !(candidateRight < primaryLeft || candidateLeft > primaryRight || candidateBottom < primaryTop || candidateTop > primaryBottom)
-            if (!intersectsPrimary) continue
-
-            val tooLarge =
-                detection.width > primaryDetection.width * 1.5f &&
-                    detection.height > primaryDetection.height * 1.5f
-            if (tooLarge) continue
-
-            if (calculateIoUForMaskSelection(detection, primaryDetection) > bboxDuplicateThreshold) continue
-
-            var shouldSkip = false
-            var replaceIndex = -1
-            for ((index, keptDetection) in bboxKept.withIndex()) {
-                val iou = calculateIoUForMaskSelection(detection, keptDetection)
-                if (iou > bboxDuplicateThreshold) {
-                    if (detection.confidence > keptDetection.confidence) {
-                        replaceIndex = index
-                    } else {
-                        shouldSkip = true
-                    }
-                    break
-                }
-            }
-            if (shouldSkip) continue
-            if (replaceIndex >= 0) {
-                bboxKept[replaceIndex] = detection
-            } else {
-                bboxKept += detection
-            }
-        }
-
-        val maskDetections = mutableListOf(primaryDetection)
-        maskDetections += bboxKept
-        if (supportingTableDetection != null && !maskDetections.contains(supportingTableDetection)) {
-            maskDetections += supportingTableDetection
-        }
-        return maskDetections
-    }
-
-    // NCNN inference with detections — always full-frame mask.
-    private fun runNcnnInferenceWithDetections(
-        frame: Bitmap,
-        callback: (SegmentationResult?) -> Unit,
-    ) {
-        try {
-            val ncnn = ncnnYoloe ?: run {
-                LogUtil.e("FurnitureFitManager", "NCNN not initialized")
-                mainHandler.post { callback(null) }
-                return
-            }
-
-            val startTime = System.currentTimeMillis()
-
-            val detections = ncnn.detect(
-                bitmap = frame,
-                confThreshold = YoloEImageInference.CONF_THRESHOLD,
-                iouThreshold = YoloEImageInference.IOU_THRESHOLD,
-            )
-
-            if (detections.isEmpty()) {
-                mainHandler.post { callback(SegmentationResult(null, emptyList(), NcnnYoloe.MODEL_INPUT_SIDE)) }
-                return
-            }
-
-            val primaryFull = pickPrimaryNcnnDetection(
-                detections = detections,
-                frameWidth = frame.width.toFloat(),
-                frameHeight = frame.height.toFloat(),
-            )
-            if (primaryFull == null) {
-                mainHandler.post { callback(SegmentationResult(null, emptyList(), NcnnYoloe.MODEL_INPUT_SIDE)) }
-                return
-            }
-            val maskDetections = collectMaskDetections(primaryFull, detections)
-
-            var maskFull = ncnn.generateMask(
-                bitmap = frame,
-                detections = maskDetections,
-                maskThreshold = 0.5f,
-            )
-            if (enableMorphCloseForMask && maskFull != null) {
-                maskFull = applyMorphClose3x3ToBitmapMask(frame, maskFull)
-            }
-
-            val detResult = YoloRatioCalibration.detectionResultInModelSquare(
-                primaryFull.x,
-                primaryFull.y,
-                primaryFull.width,
-                primaryFull.height,
-                frame.width,
-                frame.height,
-                NcnnYoloe.MODEL_INPUT_SIDE,
-                primaryFull.confidence,
-                primaryFull.label,
-            )
-
-            val inferenceTime = System.currentTimeMillis() - startTime
-            LogUtil.d(
-                "FurnitureFitManager",
-                "NCNN inference: ${primaryFull.label} conf=${String.format("%.2f", primaryFull.confidence)} " +
-                    "fullFrame ${inferenceTime}ms",
-            )
-
-            mainHandler.post {
-                callback(SegmentationResult(maskFull, listOf(detResult), NcnnYoloe.MODEL_INPUT_SIDE))
-            }
-        } catch (e: Exception) {
-            LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
-            mainHandler.post { callback(null) }
-        }
-    }
-
     private fun extractFloatArray(value: Any?): FloatArray {
         return when (value) {
             is FloatArray -> value
@@ -1773,11 +1377,6 @@ class FurnitureFitManager(private val context: Context) {
     )
 
     fun close() {
-        // Release NCNN resources
-        ncnnYoloe?.release()
-        ncnnYoloe = null
-        useNcnn = false
-
         interpreter?.close()
         interpreter = null
         ortSession?.close()
