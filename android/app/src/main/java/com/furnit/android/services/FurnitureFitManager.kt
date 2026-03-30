@@ -6,22 +6,16 @@ import android.graphics.Bitmap.Config
 import android.os.Handler
 import android.os.Looper
 import com.furnit.android.utils.LogUtil
-import com.furnit.android.utils.YoloRatioCalibration
-import org.tensorflow.lite.DataType
-import org.tensorflow.lite.Interpreter
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
-import ai.onnxruntime.OrtException
 import com.furnit.android.DetectionResult
 import com.furnit.android.ar.ArSupportChecker
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.channels.FileChannel
+import org.json.JSONObject
 import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.floor
@@ -40,11 +34,10 @@ data class SegmentationResult(
 /**
  * FurnitureFitManager handles object detection and segmentation using YOLOE models.
  *
- * Inference backends (in order of preference):
- * 1. ONNX Runtime — primary (`yoloe-26l-seg-pf_seg_o2m.onnx` in assets)
- * 2. TensorFlow Lite — fallback when ONNX is unavailable
+ * Inference backend:
+ * 1. ONNX Runtime (`yoloe-26l-seg-pf_seg_o2m.onnx` in assets)
  *
- * NCNN is not used here; wall measurement and other code may still use [NcnnYoloe] via [YoloEImageInference].
+ * Furniture segmentation is ONNX-only. NCNN and TensorFlow Lite are not used here.
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -52,6 +45,7 @@ class FurnitureFitManager(private val context: Context) {
     private val enableMorphCloseForMask = false
     private val monitorLikeClassIds = setOf(1063, 2675, 4105)
     private val supportingTableClassIds = setOf(1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564)
+    private val classNames: Map<Int, String> by lazy(LazyThreadSafetyMode.NONE) { loadClassNames() }
 
     companion object {
         /**
@@ -70,58 +64,19 @@ class FurnitureFitManager(private val context: Context) {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
                 .getBoolean(KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, false)
         }
-
-        private val COCO_CLASSES = arrayOf(
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
-            "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
-            "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
-            "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
-            "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
-            "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
-            "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
-            "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-            "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
-        )
-        fun getClassName(classId: Int): String = COCO_CLASSES.getOrElse(classId) { "unknown" }
     }
     private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private var interpreter: Interpreter? = null
-    private var inputShape: IntArray? = null
-    private var inputDataType: DataType? = null
 
     // ONNX Runtime objects
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
 
-    fun initialize(tfliteAssetName: String = "yoloe_11l.tflite") {
-        try {
-            val model = loadModelFile(tfliteAssetName)
-            val opts = Interpreter.Options().apply { setNumThreads(4) }
-            interpreter = Interpreter(model, opts)
-
-            // Inspect input tensor
-            val idx = 0
-            val t = interpreter!!.getInputTensor(idx)
-            inputShape = t.shape()
-            inputDataType = t.dataType()
-            LogUtil.i(
-                "FurnitureFitManager",
-                "Loaded TFLite model '$tfliteAssetName' inputShape=${inputShape?.joinToString()} dataType=$inputDataType"
-            )
-        } catch (e: Exception) {
-            LogUtil.w("FurnitureFitManager", "Failed to load tflite: ${e.message}")
-            interpreter = null
-        }
-    }
-
     /**
-     * Auto-initialize segmentation with ONNX Runtime first, then TFLite.
+     * Initializes the ONNX Runtime segmentation backend.
      */
     fun initializeAuto(): Boolean {
-        LogUtil.i("FurnitureFitManager", "Auto-initializing segmentation backend...")
+        LogUtil.i("FurnitureFitManager", "Initializing ONNX segmentation backend...")
 
-        // ONNX Runtime
         try {
             initializeOnnx()
             if (ortSession != null) {
@@ -132,18 +87,7 @@ class FurnitureFitManager(private val context: Context) {
             LogUtil.w("FurnitureFitManager", "ONNX initialization failed: ${e.message}")
         }
 
-        // Fall back to TFLite
-        try {
-            initialize()
-            if (interpreter != null) {
-                LogUtil.i("FurnitureFitManager", "Using TFLite backend")
-                return true
-            }
-        } catch (e: Exception) {
-            LogUtil.w("FurnitureFitManager", "TFLite initialization failed: ${e.message}")
-        }
-
-        LogUtil.e("FurnitureFitManager", "No inference backend available - segmentation disabled")
+        LogUtil.e("FurnitureFitManager", "ONNX initialization failed - segmentation disabled")
         return false
     }
 
@@ -199,65 +143,10 @@ class FurnitureFitManager(private val context: Context) {
 
         inferenceExecutor.execute {
             try {
-                // Prefer ONNX Runtime if available
                 if (ortSession != null) {
                     runOnnxInferenceWithDetections(frame, callback)
                     return@execute
                 }
-
-                // Fallback to TFLite if initialized
-                if (interpreter == null) {
-                    mainHandler.post { callback(null) }
-                    return@execute
-                }
-
-                val inShape = inputShape ?: throw IllegalArgumentException("Missing input shape")
-                // Expecting input shape like [1, H, W, C] or [1, C, H, W]
-                val h: Int
-                val w: Int
-                val c: Int
-                if (inShape.size == 4) {
-                    // assume NHWC
-                    h = inShape[1]
-                    w = inShape[2]
-                    c = inShape[3]
-                } else if (inShape.size == 3) {
-                    h = inShape[1]
-                    w = inShape[2]
-                    c = 3
-                } else {
-                    throw IllegalArgumentException("Unsupported input shape: ${inShape.joinToString()}")
-                }
-
-                // Resize frame to model input size
-                val resized = Bitmap.createScaledBitmap(frame, w, h, true).copy(Config.ARGB_8888, false)
-
-                // Prepare input ByteBuffer
-                val bb = convertBitmapToByteBuffer(resized, c, inputDataType ?: DataType.FLOAT32)
-
-                // Prepare output buffers by inspecting model outputs (best-effort)
-                val outputMap = HashMap<Int, Any>()
-                val outputCount = interpreter!!.outputTensorCount
-                for (i in 0 until outputCount) {
-                    val outT = interpreter!!.getOutputTensor(i)
-                    val shape = outT.shape()
-                    val dt = outT.dataType()
-                    // allocate a FloatArray for common float outputs
-                    if (dt == DataType.FLOAT32) {
-                        var size = 1
-                        for (d in shape) size *= d
-                        outputMap[i] = FloatArray(size)
-                    } else {
-                        // default fallback: ByteBuffer
-                        var size = 1
-                        for (d in shape) size *= d
-                        outputMap[i] =
-                            ByteBuffer.allocateDirect(size * 4).order(ByteOrder.nativeOrder())
-                    }
-                }
-
-                // Run inference
-                interpreter!!.runForMultipleInputsOutputs(arrayOf(bb), outputMap)
 
                 mainHandler.post { callback(null) }
             } catch (e: Exception) {
@@ -635,7 +524,7 @@ class FurnitureFitManager(private val context: Context) {
                 val topDets = detections.sortedByDescending { it.confidence }.take(5)
                 LogUtil.d("FurnitureFitManager", "=== TOP DETECTIONS ===")
                 for ((idx, det) in topDets.withIndex()) {
-                    val label = getClassName(det.classId)
+                    val label = labelForClassId(det.classId)
                     LogUtil.d("FurnitureFitManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
                 }
                 LogUtil.d("FurnitureFitManager", "======================")
@@ -818,11 +707,20 @@ class FurnitureFitManager(private val context: Context) {
                 return null
             }
 
+            val numFeatures = det3d[0].size
             val numAnchors = det3d[0][0].size
-            val numClasses = 80
             val numMaskCoeffs = 32
+            val numClasses = numFeatures - 4 - numMaskCoeffs
             val classStartIdx = 4
             val maskCoeffStartIdx = 4 + numClasses
+
+            if (numClasses <= 0) {
+                LogUtil.e(
+                    "FurnitureFitManager",
+                    "Invalid ONNX detection layout: features=$numFeatures classes=$numClasses maskCoeffs=$numMaskCoeffs"
+                )
+                return null
+            }
 
             val proto = extractFloatArray(protoValue)
             val numProtos = 32
@@ -894,7 +792,7 @@ class FurnitureFitManager(private val context: Context) {
                         w = primaryDet.w,
                         h = primaryDet.h,
                         confidence = primaryDet.confidence,
-                        label = getClassName(primaryDet.classId),
+                        label = labelForClassId(primaryDet.classId),
                     ),
                 )
             } else {
@@ -1377,59 +1275,11 @@ class FurnitureFitManager(private val context: Context) {
     )
 
     fun close() {
-        interpreter?.close()
-        interpreter = null
         ortSession?.close()
         ortSession = null
         ortEnv?.close()
         ortEnv = null
         inferenceExecutor.shutdown()
-    }
-
-    @Throws(IOException::class)
-    private fun loadModelFile(assetName: String): ByteBuffer {
-        val assetFileDescriptor = context.assets.openFd(assetName)
-        FileInputStream(assetFileDescriptor.fileDescriptor).use { input ->
-            val fileChannel: FileChannel = input.channel
-            val startOffset = assetFileDescriptor.startOffset
-            val declaredLength = assetFileDescriptor.declaredLength
-            return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
-        }
-    }
-
-    private fun convertBitmapToByteBuffer(bmp: Bitmap, channels: Int, dtype: DataType): ByteBuffer {
-        val bb: ByteBuffer
-        if (dtype == DataType.FLOAT32) {
-            bb = ByteBuffer.allocateDirect(4 * bmp.width * bmp.height * channels)
-                .order(ByteOrder.nativeOrder())
-            val intValues = IntArray(bmp.width * bmp.height)
-            bmp.getPixels(intValues, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-            var px = 0
-            for (y in 0 until bmp.height) {
-                for (x in 0 until bmp.width) {
-                    val v = intValues[px++]
-                    bb.putFloat(((v shr 16 and 0xFF) / 255.0f))
-                    bb.putFloat(((v shr 8 and 0xFF) / 255.0f))
-                    bb.putFloat(((v and 0xFF) / 255.0f))
-                }
-            }
-        } else {
-            bb = ByteBuffer.allocateDirect(bmp.width * bmp.height * channels)
-                .order(ByteOrder.nativeOrder())
-            val intValues = IntArray(bmp.width * bmp.height)
-            bmp.getPixels(intValues, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-            var px = 0
-            for (y in 0 until bmp.height) {
-                for (x in 0 until bmp.width) {
-                    val v = intValues[px++]
-                    bb.put((v shr 16 and 0xFF).toByte())
-                    bb.put((v shr 8 and 0xFF).toByte())
-                    bb.put((v and 0xFF).toByte())
-                }
-            }
-        }
-        bb.rewind()
-        return bb
     }
 
     private fun flattenArrayToFloat(arr: Array<*>): FloatArray {
@@ -1458,5 +1308,27 @@ class FurnitureFitManager(private val context: Context) {
             }
         }
         return outFile
+    }
+
+    private fun loadClassNames(): Map<Int, String> {
+        return try {
+            context.assets.open("classes.json").bufferedReader().use { reader ->
+                val json = JSONObject(reader.readText())
+                buildMap {
+                    json.keys().forEach { key ->
+                        val id = key.toIntOrNull() ?: return@forEach
+                        val label = json.optString(key).trim()
+                        if (label.isNotEmpty()) put(id, label)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            LogUtil.w("FurnitureFitManager", "loadClassNames failed: ${e.message}")
+            emptyMap()
+        }
+    }
+
+    private fun labelForClassId(classId: Int): String {
+        return classNames[classId]?.takeIf { it.isNotBlank() } ?: "class_$classId"
     }
 }

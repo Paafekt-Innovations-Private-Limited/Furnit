@@ -5,6 +5,7 @@ import android.graphics.*
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import com.furnit.android.utils.DebugLogger
 import kotlin.math.max
 import kotlin.math.min
@@ -23,6 +24,11 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var maskBitmap: Bitmap? = null
     private var detections: List<DetectionResult> = emptyList()
     private var inputSize = 640 // Model input size
+    private var lastPrimaryLabel: String? = null
+    private var hitTestPixels: IntArray? = null
+    private var hitTestWidth = 0
+    private var hitTestHeight = 0
+    private var hitTestBitmap: Bitmap? = null
 
     // Pinch-to-zoom scale factor for furniture (1.0 = neutral)
     private var furnitureScale = 1.0f
@@ -34,15 +40,20 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var translateY = 0f
 
     // For single-finger drag
+    private var initialTouchX = 0f
+    private var initialTouchY = 0f
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var isDraggingFurniture = false
+    private var hasDraggedFurniture = false
     private var touchOnFurniture = false
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // Callback for when touch is outside furniture (for camera control)
     var onTouchOutsideFurniture: ((MotionEvent) -> Unit)? = null
 
     private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
+    private val drawMatrix = Matrix()
 
     private val maskPaint = Paint().apply {
         isAntiAlias = true
@@ -101,8 +112,11 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private fun handleTouchInternal(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                initialTouchX = event.x
+                initialTouchY = event.y
                 lastTouchX = event.x
                 lastTouchY = event.y
+                hasDraggedFurniture = false
                 touchOnFurniture = isTouchOnFurniture(event.x, event.y)
                 isDraggingFurniture = touchOnFurniture
                 if (!touchOnFurniture) {
@@ -116,10 +130,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                     if (!allPointersOnFurniture(event)) {
                         touchOnFurniture = false
                         isDraggingFurniture = false
+                        hasDraggedFurniture = false
                         onTouchOutsideFurniture?.invoke(event)
                         return false
                     }
                     isDraggingFurniture = false
+                    hasDraggedFurniture = true
                 }
                 if (touchOnFurniture) {
                     scaleGestureDetector.onTouchEvent(event)
@@ -134,6 +150,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 if (!scaleGestureDetector.isInProgress && event.pointerCount == 1 && isDraggingFurniture) {
                     val deltaX = event.x - lastTouchX
                     val deltaY = event.y - lastTouchY
+                    if (!hasDraggedFurniture &&
+                        (kotlin.math.abs(event.x - initialTouchX) >= touchSlop ||
+                            kotlin.math.abs(event.y - initialTouchY) >= touchSlop)
+                    ) {
+                        hasDraggedFurniture = true
+                    }
                     translateX += deltaX
                     translateY += deltaY
                     lastTouchX = event.x
@@ -141,7 +163,22 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                     invalidate()
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
+                if (!touchOnFurniture) {
+                    onTouchOutsideFurniture?.invoke(event)
+                    return false
+                }
+                scaleGestureDetector.onTouchEvent(event)
+                if (!hasDraggedFurniture) {
+                    performClick()
+                }
+                val wasHandling = touchOnFurniture
+                isDraggingFurniture = false
+                hasDraggedFurniture = false
+                touchOnFurniture = false
+                return wasHandling
+            }
+            MotionEvent.ACTION_CANCEL -> {
                 if (!touchOnFurniture) {
                     onTouchOutsideFurniture?.invoke(event)
                     return false
@@ -149,12 +186,18 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 scaleGestureDetector.onTouchEvent(event)
                 val wasHandling = touchOnFurniture
                 isDraggingFurniture = false
+                hasDraggedFurniture = false
                 touchOnFurniture = false
                 return wasHandling
             }
             else -> if (touchOnFurniture) scaleGestureDetector.onTouchEvent(event)
         }
         return touchOnFurniture
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     /**
@@ -193,7 +236,70 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         val bmpX = ((touchX - maskLeft) / totalScaleX).toInt()
         val bmpY = ((touchY - maskTop) / totalScaleY).toInt()
         if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) return false
-        return Color.alpha(bmp.getPixel(bmpX, bmpY)) > 10
+        updateHitTestCache(bmp)
+        val pixels = hitTestPixels ?: return false
+        val idx = bmpY * hitTestWidth + bmpX
+        if (idx < 0 || idx >= pixels.size) return false
+        return Color.alpha(pixels[idx]) > 10
+    }
+
+    private fun updateHitTestCache(bmp: Bitmap) {
+        if (hitTestBitmap === bmp &&
+            hitTestWidth == bmp.width &&
+            hitTestHeight == bmp.height &&
+            hitTestPixels != null
+        ) {
+            return
+        }
+
+        val pixels = IntArray(bmp.width * bmp.height)
+        val readBitmap =
+            if (bmp.config == Bitmap.Config.HARDWARE) {
+                bmp.copy(Bitmap.Config.ARGB_8888, false)
+            } else {
+                bmp
+            }
+
+        try {
+            readBitmap.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        } finally {
+            if (readBitmap !== bmp && !readBitmap.isRecycled) {
+                readBitmap.recycle()
+            }
+        }
+
+        hitTestPixels = pixels
+        hitTestWidth = bmp.width
+        hitTestHeight = bmp.height
+        hitTestBitmap = bmp
+    }
+
+    private fun clearHitTestCache() {
+        hitTestPixels = null
+        hitTestWidth = 0
+        hitTestHeight = 0
+        hitTestBitmap = null
+    }
+
+    private fun replaceMaskBitmap(newMask: Bitmap?) {
+        val oldMask = maskBitmap
+        if (oldMask != null && oldMask !== newMask && !oldMask.isRecycled) {
+            oldMask.recycle()
+        }
+        maskBitmap = newMask
+        clearHitTestCache()
+    }
+
+    private fun maybeResetTransformForPrimaryDetection(dets: List<DetectionResult>) {
+        val newPrimaryLabel = dets.firstOrNull()?.label
+        if (newPrimaryLabel != null && newPrimaryLabel != lastPrimaryLabel) {
+            furnitureScale = 1.0f
+            translateX = 0f
+            translateY = 0f
+        }
+        if (newPrimaryLabel != null) {
+            lastPrimaryLabel = newPrimaryLabel
+        }
     }
 
     private fun computeVerticalClampFactor(totalScaleX: Float): Float {
@@ -222,11 +328,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     fun setMask(b: Bitmap?) {
-        maskBitmap = b
+        replaceMaskBitmap(b)
         invalidate()
     }
 
     fun setDetections(dets: List<DetectionResult>, modelInputSize: Int = 640) {
+        maybeResetTransformForPrimaryDetection(dets)
         detections = dets
         inputSize = modelInputSize
         invalidate()
@@ -240,7 +347,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         displayedHeightMeters: Float? = null,
         roomHeightMeters: Float? = null,
     ) {
-        maskBitmap = mask
+        maybeResetTransformForPrimaryDetection(dets)
+        replaceMaskBitmap(mask)
         detections = dets
         inputSize = modelInputSize
         this.displayedFurnitureHeightMeters = displayedHeightMeters
@@ -270,15 +378,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
             val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
 
-            val matrix = Matrix()
-            matrix.reset()
-            matrix.postScale(totalScaleX, totalScaleY, bmp.width / 2f, bmp.height / 2f)
+            drawMatrix.reset()
+            drawMatrix.postScale(totalScaleX, totalScaleY, bmp.width / 2f, bmp.height / 2f)
             val screenCenterX = width / 2f
             val screenCenterY = overlayScreenCenterY()
-            matrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
-            matrix.postTranslate(translateX, translateY)
+            drawMatrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
+            drawMatrix.postTranslate(translateX, translateY)
 
-            canvas.drawBitmap(bmp, matrix, maskPaint)
+            canvas.drawBitmap(bmp, drawMatrix, maskPaint)
         }
 
         // Draw bounding boxes and labels only when debug mode is enabled (same screen center as mask)

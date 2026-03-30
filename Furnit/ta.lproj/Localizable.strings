@@ -324,24 +324,71 @@
 "faq.whatIsMemoryDisplayAnswer" = "அறைகளில் காட்டப்படும் MB (மெகாபைட்கள்) கோப்பு அளவைக் குறிக்கிறது. இது சேமிப்பகத்தை நிர்வகிக்க உதவுகிறது. அனைத்து அறைகளும் பயன்படுத்தும் மொத்த சேமிப்பகம் முகப்புத் திரையின் மேலே காட்டப்படும்.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "உங்கள் 3D அறையை எப்படி உருவாக்க விரும்புகிறீர்கள்?";
+"photoRoom.tapOption" = "தொடர கீழே ஒரு விருப்பத்தைத் தட்டவும்";
+"photoRoom.aiPowered" = "AI-இயக்க 3D கட்டமைப்பு";
+"photoRoom.manualSetup" = "கைமுறை அமைப்பு";
+"photoRoom.manualSetupDesc" = "சுவர்களை சரிசெய்ய இழுக்கவும்";
+"photoRoom.selectPhoto" = "புகைப்படத்தைத் தேர்ந்தெடுக்கவும்";
+"photoRoom.fromLibrary" = "உங்கள் புகைப்பட நூலகத்திலிருந்து";
+"photoRoom.loading" = "3D அறை ஏற்றப்படுகிறது...";
+"photoRoom.downloadSuccess" = "%@ வெற்றிகரமாக பதிவிறக்கப்பட்டது. மாதிரி பட்டியலில் காண்க.";
+"photoRoom.saveSuccess" = "உங்கள் 3D மாதிரி வெற்றிகரமாக சேமிக்கப்பட்டது.";
 "photoRoom.error" = "உங்கள் 3D மாதிரியை உருவாக்கும்போது பிழை ஏற்பட்டது.";
 "photoRoom.buildingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "செங்குத்து";
+"orientation.landscape" = "கிடைமட்டம்";
+"orientation.heldVertically" = "செங்குத்தாகப் பிடிக்கப்பட்டது";
+"orientation.heldHorizontally" = "கிடைமட்டமாகப் பிடிக்கப்பட்டது";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "திரைப்பிடிப்புகளைத் தேர்ந்தெடுக்காதீர் — கருப்புப் புள்ளிகள் வரலாம்";
+
+// MARK: - i18n sync (Tamil)
+"common.or" = "அல்லது";
+"common.retry" = "மீண்டும் முயல்க";
+"settings.furnitureSegmentationSection" = "தளபாட பிரிப்பு";
+"settings.furnitureFitOnnxRuntime" = "YOLO-E க்கு ONNX ரன்டைம் பயன்படுத்து";
+"settings.furnitureFitOnnxRuntimeDescription" = "ஆஃப் (இயல்பு): Core ML, letterbox, நிலையான முகமூடி பாதை. ஆன்: அதே Core ML மாதிரி, நீட்டிப்பு முன் செயலாக்கம், Android-பாணி bbox முகமூடி இணைப்பு, blacklist.json. மாதிரி ஏற்றப்படாவிட்டால் கிடைக்கும்போது தொகுப்பு .onnx மற்றும் ONNX ரன்டைம்.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU அனுமதி";
+"settings.yoloeCoreMLAllowGPUDescription" = "ஆஃப் (இயல்பு): CPU மட்டும் — மெதுவானது ஆனால் சில YOLO-E 26L Core ML கட்டமைப்புகளில் செயலிழப்பைத் தவிர்க்கும். ஆன்: வேகத்திற்கு CPU+GPU; Metal இல் ஏற்றுமதி ஓடாவிட்டால் பிரிப்பில் SIGABRT.";
+"settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";
+"settings.showRoomFurnitureCalibrateDescription" = "அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.";
+"settings.roomMeasurementSection" = "அறை அளவீடுகள்";
+"settings.yoloWallDimensionsOnSave" = "சேமிக்கும்போது YOLO சுவர் அளவுகள்";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP அறைக்கு பெயரிட்டு சேமிக்கும்போது, YOLO (சுவர் வகுப்பு அல்லது சுவர்போன்ற பெட்டி), அறையுடன் சேமிக்கப்பட்ட SHARP ஒற்றை ஆழம், கேமரா EXIF ஆகியவற்றால் முன் சுவரின் அகலம் மற்றும் உயரம் மதிப்பிடப்படுகிறது. thumbnail.png தேவை; சிறந்த முடிவுக்கு sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "சுவருக்கான கருதப்பட்ட தூரம் (மீ)";
+"settings.wallAssumedCeilingM" = "கருதப்பட்ட சுவர்/மேற்கூரை உயரம் (மீ)";
+"settings.roomMeasurementFooter" = "SHARP iOS இல் ஒற்றை ஆழம் இல்லாமல் சேமிப்பு கருதப்பட்ட ஆழத்தையும் சிலநேரம் இந்த மேற்கூரை உயரத்தையும் பயன்படுத்துகிறது. அகலம் அளவிடும் நாடாவுடன் ஒப்பிட்டு குறைவாக இருந்தால் கருதப்பட்ட தூரத்தை அதிகரிக்கவும் (அகலம் கிட்டத்தட்ட நேரியல்). சுவர் உயரத்தை அளவீட்டுக்கு அருகில் அமைக்கவும் (எ.கா. 2.86 மீ). அல்லது சேமிப்பதற்கு முன் ⋮ → சுவரால் அளவிடு.";
+"camera.takePhoto" = "புகைப்படம் எடு";
+"camera.chooseOrientationShort" = "செங்குத்து அல்லது கிடைமட்டம்";
+"sharp.downloadingEngine" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது...";
+"sharp.downloadingEnginePercent" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது... %d%%";
+"sharp.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
+"sharp.downloadFailed" = "பதிவிறக்கம் தோல்வி";
+"sharp.gettingReady" = "தயாராகிறது...";
+"sharp.notEnoughSpace" = "சாதனத்தில் போதுமான இடமில்லை";
+"sharp.settingThingsUp" = "அமைக்கப்படுகிறது...";
+"sharp.ready" = "தயார்!";
+"sharp.couldNotGetReady" = "தயாரிப்பை முடிக்க முடியவில்லை";
+"sharp.somethingWentWrong" = "ஏதோ தவறு நடந்தது";
+"sharp.preparingPhoto" = "உங்கள் புகைப்படம் தயாராகிறது...";
+"sharp.creatingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
+"sharp.almostDone" = "கிட்டத்தட்ட முடிந்தது...";
+"sharp.done" = "முடிந்தது!";
+"sharp.couldNotCreateRoom" = "அறையை உருவாக்க முடியவில்லை";
+"sharp.cancelled" = "ரத்துசெய்யப்பட்டது";
+"photoRoom.odrOneTimeDownload" = "ஒருமுறை பதிவிறக்கம் (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D மாதிரி உருவாக்கப்பட்டது";
+"photoRoom.generationFailedTitle" = "உருவாக்கம் தோல்வி";
+"photoRoom.loading3DRoom" = "3D அறை ஏற்றப்படுகிறது...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "படம் பதிவேற்றப்படுகிறது";
+"generationProgress.generating3DModel" = "3D மாதிரி உருவாக்கப்படுகிறது";
+"generationProgress.downloadingModel" = "மாதிரி பதிவிறக்கப்படுகிறது";
+"generationProgress.complete" = "முடிந்தது!";
+"generationProgress.preparing" = "தயாராகி வருகிறது...";
+"generationProgress.mayTakeFewMinutes" = "இதற்கு சில நிமிடங்கள் ஆகலாம்";

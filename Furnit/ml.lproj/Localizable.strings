@@ -324,24 +324,71 @@
 "faq.whatIsMemoryDisplayAnswer" = "മുറികളിൽ കാണിക്കുന്ന MB (മെഗാബൈറ്റ്സ്) ഫയൽ സൈസ് സൂചിപ്പിക്കുന്നു. ഇത് സ്റ്റോറേജ് മാനേജ് ചെയ്യാൻ സഹായിക്കുന്നു. എല്ലാ മുറികളും ഉപയോഗിക്കുന്ന ആകെ സ്റ്റോറേജ് ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണിക്കും.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "നിങ്ങളുടെ 3D മുറി എങ്ങനെ സൃഷ്ടിക്കണം?";
+"photoRoom.tapOption" = "തുടരാൻ താഴെ ഒരു ഓപ്ഷൻ ടാപ്പ് ചെയ്യുക";
+"photoRoom.aiPowered" = "AI-ചാലിത 3D നിർമ്മാണം";
+"photoRoom.manualSetup" = "മാനുവൽ സെറ്റപ്പ്";
+"photoRoom.manualSetupDesc" = "മതിൽ ചുവടുകൾ ക്രമീകരിക്കാൻ വലിച്ചിടുക";
+"photoRoom.selectPhoto" = "ഫോട്ടോ തിരഞ്ഞെടുക്കുക";
+"photoRoom.fromLibrary" = "നിങ്ങളുടെ ഫോട്ടോ ലൈബ്രറിയിൽ നിന്ന്";
+"photoRoom.loading" = "3D മുറി ലോഡ് ചെയ്യുന്നു...";
+"photoRoom.downloadSuccess" = "%@ വിജയകരമായി ഡൗൺലോഡ് ചെയ്തു. മോഡൽ പട്ടികയിൽ കാണുക.";
+"photoRoom.saveSuccess" = "നിങ്ങളുടെ 3D മോഡൽ വിജയകരമായി സേവ് ചെയ്തു.";
 "photoRoom.error" = "നിങ്ങളുടെ 3D മോഡൽ സൃഷ്ടിക്കുമ്പോൾ ഒരു പിശക് സംഭവിച്ചു.";
 "photoRoom.buildingRoom" = "നിങ്ങളുടെ 3D മുറി നിർമ്മിക്കുന്നു...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "പോർട്രെയ്റ്റ്";
+"orientation.landscape" = "ലാൻഡ്സ്കേപ്പ്";
+"orientation.heldVertically" = "നെടുകെ പിടിച്ചിരിക്കുന്നു";
+"orientation.heldHorizontally" = "കിടക്കയായി പിടിച്ചിരിക്കുന്നു";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "സ്ക്രീൻഷോട്ടുകൾ തിരഞ്ഞെടുക്കരുത് — കറുത്ത പാടുകൾ വന്നേക്കാം";
+
+// MARK: - i18n sync (Malayalam)
+"common.or" = "അല്ലെങ്കിൽ";
+"common.retry" = "വീണ്ടും ശ്രമിക്കുക";
+"settings.furnitureSegmentationSection" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ";
+"settings.furnitureFitOnnxRuntime" = "YOLO-E-ക്ക് ONNX റൺടൈം ഉപയോഗിക്കുക";
+"settings.furnitureFitOnnxRuntimeDescription" = "ഓഫ് (ഡിഫോൾട്ട്): Core ML, letterbox, സ്റ്റാൻഡേർഡ് മാസ്ക് പാത്ത്. ഓൺ: അതേ Core ML മോഡൽ, സ്ട്രെച്ച് പ്രീപ്രോസസിംഗ്, Android-ശൈലി bbox മാസ്ക് ഫ്യൂഷനും blacklist.json. മോഡൽ ലോഡ് ആകാത്തപ്പോൾ ലഭ്യമെങ്കിൽ ബണ്ടിൽ .onnx, ONNX റൺടൈം.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU അനുവദിക്കുക";
+"settings.yoloeCoreMLAllowGPUDescription" = "ഓഫ് (ഡിഫോൾട്ട്): CPU മാത്രം — പക്ഷേ ചില YOLO-E 26L Core ML ബിൽഡുകളിൽ ക്രാഷ് കുറയ്ക്കും. ഓൺ: വേഗതയ്ക്ക് CPU+GPU; Metal-ൽ എക്സ്പോർട്ട് ഓടാത്തപ്പോൾ സെഗ്മെന്റേഷനിൽ SIGABRT.";
+"settings.showRoomFurnitureCalibrate" = "മുറിയും ഫർണിച്ചർ കാലിബ്രേഷനും കാണിക്കുക";
+"settings.showRoomFurnitureCalibrateDescription" = "മുറി മെനുവിൽ «മതിൽ കാലിബ്രേറ്റ് ചെയ്യുക», SmartyPants (മസ്തിഷ്കം) ഓണായാൽ «കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക» പിൽ കാണിക്കുന്നു.";
+"settings.roomMeasurementSection" = "മുറി അളവുകൾ";
+"settings.yoloWallDimensionsOnSave" = "സേവ് ചെയ്യുമ്പോൾ YOLO മതിൽ അളവുകൾ";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP മുറിക്ക് പേരിട്ട് സേവ് ചെയ്യുമ്പോൾ, YOLO (മതിൽ ക്ലാസ് അല്ലെങ്കിൽ മതിൽപോലുള്ള ബോക്സ്), മുറിയോടൊപ്പം സേവ് ചെയ്ത SHARP മോണോഡെപ്ത്, ക്യാമറ EXIF എന്നിവ ഉപയോഗിച്ച് മുൻമതിലിന്റെ വീതിയും ഉയരവും അനുമാനിക്കുന്നു. thumbnail.png വേണം; മികച്ച ഫലത്തിന് sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "മതിലിലേക്ക് കരുതിയ ദൂരം (മീ)";
+"settings.wallAssumedCeilingM" = "കരുതിയ മതിൽ/സീലിംഗ് ഉയരം (മീ)";
+"settings.roomMeasurementFooter" = "SHARP iOS-ൽ മോണോഡെപ്ത് ഇല്ലാതെ സേവ് കരുതിയ ആഴവും ചിലപ്പോൾ ഈ സീലിംഗ് ഉയരവും ഉപയോഗിക്കുന്നു. ടേപ്പ് അളവിനോട് താരതമ്യത്തിൽ വീതി കുറവാണെങ്കിൽ കരുതിയ ദൂരം കൂട്ടുക (വീതി ഏകദേശം രേഖീയം). മതിൽ ഉയരം ടേപ്പ് അളവിന് അടുത്ത് സെറ്റ് ചെയ്യുക (ഉദാ. 2.86 മീ). അല്ലെങ്കിൽ സേവ് ചെയ്യുന്നതിന് മുമ്പ് ⋮ → മതിൽ വഴി കാലിബ്രേറ്റ്.";
+"camera.takePhoto" = "ഫോട്ടോ എടുക്കുക";
+"camera.chooseOrientationShort" = "പോർട്രെയ്റ്റ് അല്ലെങ്കിൽ ലാൻഡ്സ്കേപ്പ്";
+"sharp.downloadingEngine" = "3D എഞ്ചിൻ ഡൗൺലോഡ് ചെയ്യുന്നു...";
+"sharp.downloadingEnginePercent" = "3D എഞ്ചിൻ ഡൗൺലോഡ് ചെയ്യുന്നു... %d%%";
+"sharp.downloadComplete" = "ഡൗൺലോഡ് പൂർത്തിയായി";
+"sharp.downloadFailed" = "ഡൗൺലോഡ് പരാജയപ്പെട്ടു";
+"sharp.gettingReady" = "തയ്യാറാക്കുന്നു...";
+"sharp.notEnoughSpace" = "ഉപകരണത്തിൽ മതിയായ സ്ഥലമില്ല";
+"sharp.settingThingsUp" = "സജ്ജമാക്കുന്നു...";
+"sharp.ready" = "തയ്യാർ!";
+"sharp.couldNotGetReady" = "തയ്യാറാക്കൽ പൂർത്തിയാക്കാനായില്ല";
+"sharp.somethingWentWrong" = "എന്തോ തെറ്റായി";
+"sharp.preparingPhoto" = "നിങ്ങളുടെ ഫോട്ടോ തയ്യാറാക്കുന്നു...";
+"sharp.creatingRoom" = "നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കുന്നു...";
+"sharp.almostDone" = "ഏതാണ്ട് പൂർത്തിയായി...";
+"sharp.done" = "പൂർത്തിയായി!";
+"sharp.couldNotCreateRoom" = "മുറി സൃഷ്ടിക്കാനായില്ല";
+"sharp.cancelled" = "റദ്ദാക്കി";
+"photoRoom.odrOneTimeDownload" = "ഒറ്റത്തവണ ഡൗൺലോഡ് (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D മോഡൽ സൃഷ്ടിച്ചു";
+"photoRoom.generationFailedTitle" = "സൃഷ്ടി പരാജയപ്പെട്ടു";
+"photoRoom.loading3DRoom" = "3D മുറി ലോഡ് ചെയ്യുന്നു...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "ചിത്രം അപ്‌ലോഡ് ചെയ്യുന്നു";
+"generationProgress.generating3DModel" = "3D മോഡൽ സൃഷ്ടിക്കുന്നു";
+"generationProgress.downloadingModel" = "മോഡൽ ഡൗൺലോഡ് ചെയ്യുന്നു";
+"generationProgress.complete" = "പൂർത്തിയായി!";
+"generationProgress.preparing" = "തയ്യാറാക്കുന്നു...";
+"generationProgress.mayTakeFewMinutes" = "ഇതിന് കുറച്ച് മിനിറ്റുകൾ എടുത്തേക്കാം";

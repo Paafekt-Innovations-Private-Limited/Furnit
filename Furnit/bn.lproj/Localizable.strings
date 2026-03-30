@@ -324,24 +324,71 @@
 "accessibility.createRoom" = "ছবি থেকে রুম তৈরি করুন";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "আপনি কীভাবে আপনার 3D রুম তৈরি করতে চান?";
+"photoRoom.tapOption" = "চালিয়ে যেতে নিচের একটি বিকল্পে ট্যাপ করুন";
+"photoRoom.aiPowered" = "AI-চালিত 3D নির্মাণ";
+"photoRoom.manualSetup" = "ম্যানুয়াল সেটআপ";
+"photoRoom.manualSetupDesc" = "দেয়াল সামঞ্জস্য করতে টেনে আনুন";
+"photoRoom.selectPhoto" = "ছবি বেছে নিন";
+"photoRoom.fromLibrary" = "আপনার ফটো লাইব্রেরি থেকে";
+"photoRoom.loading" = "3D রুম লোড হচ্ছে...";
+"photoRoom.downloadSuccess" = "%@ সফলভাবে ডাউনলোড হয়েছে। আপনার মডেল তালিকায় দেখুন।";
+"photoRoom.saveSuccess" = "আপনার 3D মডেল সফলভাবে সংরক্ষিত হয়েছে।";
 "photoRoom.error" = "আপনার 3D মডেল তৈরি করতে একটি ত্রুটি ঘটেছে।";
 "photoRoom.buildingRoom" = "আপনার 3D রুম তৈরি হচ্ছে...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "পোর্ট্রেট";
+"orientation.landscape" = "ল্যান্ডস্কেপ";
+"orientation.heldVertically" = "উলম্ব ধরে";
+"orientation.heldHorizontally" = "আড়াআড়ি ধরে";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "স্ক্রিনশট বেছে নেবেন না — কালো দাগ হতে পারে";
+
+// MARK: - i18n sync (Bengali)
+"common.or" = "অথবা";
+"common.retry" = "আবার চেষ্টা করুন";
+"settings.furnitureSegmentationSection" = "ফার্নিচার সেগমেন্টেশন";
+"settings.furnitureFitOnnxRuntime" = "YOLO-E এর জন্য ONNX রানটাইম ব্যবহার করুন";
+"settings.furnitureFitOnnxRuntimeDescription" = "বন্ধ (ডিফল্ট): Core ML, letterbox ও স্ট্যান্ডার্ড মাস্ক পাথ। চালু: একই Core ML মডেল, স্ট্রেচ প্রিপ্রসেসিং, Android-স্টাইল bbox মাস্ক ফিউশন ও blacklist.json। মডেল লোড না হলে উপলব্ধ হলে বান্ডল করা .onnx ও ONNX Runtime।";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU অনুমতি";
+"settings.yoloeCoreMLAllowGPUDescription" = "বন্ধ (ডিফল্ট): শুধু CPU — ধীর কিন্তু কিছু YOLO-E 26L Core ML বিল্ডে ক্র্যাশ এড়ায়। চালু: গতির জন্য CPU+GPU; Metal এ এক্সপোর্ট না চললে সেগমেন্টেশনে SIGABRT হতে পারে।";
+"settings.showRoomFurnitureCalibrate" = "রুম ও ফার্নিচার ক্যালিব্রেশন UI দেখান";
+"settings.showRoomFurnitureCalibrateDescription" = "রুম মেনুতে «দেয়াল ক্যালিব্রেট» এবং SmartyPants (মস্তিষ্ক) চালু থাকলে «ক্যালিব্রেট করতে ট্যাপ» পিল দেখায়।";
+"settings.roomMeasurementSection" = "রুম মাপ";
+"settings.yoloWallDimensionsOnSave" = "সংরক্ষণে YOLO দেয়ালের মাপ";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP রুম নাম দিয়ে সংরক্ষণ করলে, YOLO (দেয়াল ক্লাস বা দেয়ালসদৃশ বক্স), রুমের সাথে সংরক্ষিত SHARP মোনোডেপথ ও ক্যামেরা EXIF দিয়ে সামনের দেয়ালের প্রস্থ ও উচ্চতা আনুমান। thumbnail.png দরকার; সেরা ফলের জন্য sharp_monodepth.bin।";
+"settings.wallAssumedDepthM" = "দেয়ালের ধারণ দূরত্ব (মি)";
+"settings.wallAssumedCeilingM" = "ধারণ দেয়াল/ছাদ উচ্চতা (মি)";
+"settings.roomMeasurementFooter" = "SHARP iOS এ মোনোডেপথ ছাড়া সংরক্ষণ ধারণ গভীরতা এবং কখনও কখনও এই ছাদ উচ্চতা ব্যবহার করে। মাপার টেপের তুলনায় প্রস্থ কম হলে ধারণ দূরত্ব বাড়ান (প্রস্থ প্রায় রৈখিক স্কেল)। টেপ মাপের কাছাকাছি দেয়াল উচ্চতা সেট করুন (যেমন 2.86 মি)। অথবা সংরক্ষণের আগে ⋮ → দেয়াল দিয়ে ক্যালিব্রেট।";
+"camera.takePhoto" = "ছবি তুলুন";
+"camera.chooseOrientationShort" = "পোর্ট্রেট বা ল্যান্ডস্কেপ";
+"sharp.downloadingEngine" = "3D ইঞ্জিন ডাউনলোড হচ্ছে...";
+"sharp.downloadingEnginePercent" = "3D ইঞ্জিন ডাউনলোড হচ্ছে... %d%%";
+"sharp.downloadComplete" = "ডাউনলোড সম্পূর্ণ";
+"sharp.downloadFailed" = "ডাউনলোড ব্যর্থ";
+"sharp.gettingReady" = "প্রস্তুত হচ্ছে...";
+"sharp.notEnoughSpace" = "ডিভাইসে পর্যাপ্ত জায়গা নেই";
+"sharp.settingThingsUp" = "সেটআপ হচ্ছে...";
+"sharp.ready" = "প্রস্তুত!";
+"sharp.couldNotGetReady" = "প্রস্তুতি সম্পূর্ণ করা যায়নি";
+"sharp.somethingWentWrong" = "কিছু ভুল হয়েছে";
+"sharp.preparingPhoto" = "আপনার ছবি প্রস্তুত করা হচ্ছে...";
+"sharp.creatingRoom" = "আপনার 3D রুম তৈরি হচ্ছে...";
+"sharp.almostDone" = "প্রায় শেষ...";
+"sharp.done" = "হয়ে গেছে!";
+"sharp.couldNotCreateRoom" = "রুম তৈরি করা যায়নি";
+"sharp.cancelled" = "বাতিল";
+"photoRoom.odrOneTimeDownload" = "একবারের ডাউনলোড (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D মডেল তৈরি হয়েছে";
+"photoRoom.generationFailedTitle" = "তৈরি ব্যর্থ";
+"photoRoom.loading3DRoom" = "3D রুম লোড হচ্ছে...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "ছবি আপলোড করা হচ্ছে";
+"generationProgress.generating3DModel" = "৩ডি মডেল তৈরি করা হচ্ছে";
+"generationProgress.downloadingModel" = "মডেল ডাউনলোড করা হচ্ছে";
+"generationProgress.complete" = "সম্পূর্ণ!";
+"generationProgress.preparing" = "প্রস্তুত করা হচ্ছে...";
+"generationProgress.mayTakeFewMinutes" = "এতে কয়েক মিনিট সময় লাগতে পারে";

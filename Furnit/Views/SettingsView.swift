@@ -227,9 +227,9 @@ struct SettingsView: View {
                             Image(systemName: "ruler")
                                 .foregroundColor(.indigo)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("YOLO wall dimensions when saving")
+                                Text(L10n.Settings.yoloWallDimensionsOnSave)
                                     .font(.headline)
-                                Text("When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.")
+                                Text(L10n.Settings.yoloWallDimensionsOnSaveDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -242,7 +242,7 @@ struct SettingsView: View {
                             Image(systemName: "camera.metering.center.weighted")
                                 .foregroundColor(.indigo)
                                 .frame(width: 24)
-                            Text("Assumed distance to wall (m)")
+                            Text(L10n.Settings.wallAssumedDepthM)
                                 .font(.headline)
                         }
                         Slider(value: $wallAssumedDepthM, in: 1.5...6.0, step: 0.05)
@@ -258,7 +258,7 @@ struct SettingsView: View {
                             Image(systemName: "arrow.up.to.line.compact")
                                 .foregroundColor(.indigo)
                                 .frame(width: 24)
-                            Text("Assumed wall height ceiling (m)")
+                            Text(L10n.Settings.wallAssumedCeilingM)
                                 .font(.headline)
                         }
                         Slider(value: $wallAssumedCeilingM, in: 2.2...4.0, step: 0.01)
@@ -269,14 +269,10 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Room measurement")
+                    Text(L10n.Settings.roomMeasurementSection)
                 } footer: {
-                    Text(
-                        "Without monodepth on SHARP iOS, save uses assumed depth and sometimes this ceiling for height. " +
-                            "If width is low vs a tape measure, increase Assumed distance (width scales about linearly). " +
-                            "Set Assumed wall height near your tape measure (e.g. 2.86 m). Or use ⋮ → Calibrate by wall before Save."
-                    )
-                    .font(.footnote)
+                    Text(L10n.Settings.roomMeasurementFooter)
+                        .font(.footnote)
                 }
 
                 // Developer Settings Section

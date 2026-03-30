@@ -324,24 +324,71 @@
 "faq.whatIsMemoryDisplayAnswer" = "గదులలో చూపించే MB (మెగాబైట్స్) ఫైల్ సైజ్‌ను సూచిస్తుంది. ఇది స్టోరేజ్ మేనేజ్ చేయడానికి సహాయపడుతుంది. అన్ని గదులు ఉపయోగించే మొత్తం స్టోరేజ్ హోమ్ స్క్రీన్ పైన చూపించబడుతుంది.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "మీరు మీ 3D గదిని ఎలా సృష్టించాలనుకుంటున్నారు?";
+"photoRoom.tapOption" = "కొనసాగించడానికి క్రింద ఒక ఎంపికను ట్యాప్ చేయండి";
+"photoRoom.aiPowered" = "AI-ఆధారిత 3D నిర్మాణం";
+"photoRoom.manualSetup" = "మాన్యువల్ సెటప్";
+"photoRoom.manualSetupDesc" = "గోడలను సర్దుబాటు చేయడానికి లాగండి";
+"photoRoom.selectPhoto" = "ఫోటో ఎంచుకోండి";
+"photoRoom.fromLibrary" = "మీ ఫోటో లైబ్రరీ నుండి";
+"photoRoom.loading" = "3D గది లోడ్ అవుతోంది...";
+"photoRoom.downloadSuccess" = "%@ విజయవంతంగా డౌన్‌లోడ్ అయింది. మీ మోడల్ జాబితాలో చూడండి.";
+"photoRoom.saveSuccess" = "మీ 3D మోడల్ విజయవంతంగా సేవ్ అయింది.";
 "photoRoom.error" = "మీ 3D మోడల్‌ను రూపొందించేటప్పుడు లోపం సంభవించింది.";
 "photoRoom.buildingRoom" = "మీ 3D గది నిర్మించబడుతోంది...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "పోర్ట్రెయిట్";
+"orientation.landscape" = "ల్యాండ్‌స్కేప్";
+"orientation.heldVertically" = "నిలువుగా పట్టుకున్నారు";
+"orientation.heldHorizontally" = "అడ్డంగా పట్టుకున్నారు";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "స్క్రీన్‌షాట్‌లను ఎంచుకోవద్దు — నల్ల మచ్చలు రావచ్చు";
+
+// MARK: - i18n sync (Telugu)
+"common.or" = "లేదా";
+"common.retry" = "మళ్లీ ప్రయత్నించండి";
+"settings.furnitureSegmentationSection" = "ఫర్నిచర్ సెగ్మెంటేషన్";
+"settings.furnitureFitOnnxRuntime" = "YOLO-E కోసం ONNX రన్‌టైమ్ వాడండి";
+"settings.furnitureFitOnnxRuntimeDescription" = "ఆఫ్ (డిఫాల్ట్): Core ML, letterbox, స్టాండర్డ్ మాస్క్ మార్గం. ఆన్: అదే Core ML మోడల్, స్ట్రెచ్ ప్రీప్రాసెసింగ్, Android-శైలి bbox మాస్క్ ఫ్యూజన్, blacklist.json. మోడల్ లోడ్ కాకపోతే అందుబాటులో ఉంటే బండిల్ .onnx, ONNX రన్‌టైమ్.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU అనుమతించు";
+"settings.yoloeCoreMLAllowGPUDescription" = "ఆఫ్ (డిఫాల్ట్): CPU మాత్రమే — నెమ్మది కానీ కొన్ని YOLO-E 26L Core ML బిల్డ్‌లలో క్రాష్‌లను తగ్గిస్తుంది. ఆన్: వేగానికి CPU+GPU; Metal పై ఎగుమతి నడకపోతే సెగ్మెంటేషన్‌లో SIGABRT.";
+"settings.showRoomFurnitureCalibrate" = "గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు";
+"settings.showRoomFurnitureCalibrateDescription" = "గది మెనూలో «గోడ క్యాలిబ్రేట్ చేయి», SmartyPants (మెదడు) ఆన్‌లో ఉన్నప్పుడు «క్యాలిబ్రేట్ చేయడానికి ట్యాప్» పిల్ చూపిస్తుంది.";
+"settings.roomMeasurementSection" = "గది కొలతలు";
+"settings.yoloWallDimensionsOnSave" = "సేవ్ చేసేటప్పుడు YOLO గోడ కొలతలు";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP గదికి పేరు పెట్టి సేవ్ చేసినప్పుడు, YOLO (గోడ తరగతి లేదా గోడ లాంటి బాక్స్), గదితో సేవ్ చేసిన SHARP మోనోడెప్త్, కెమెరా EXIF తో ముందు గోడ వెడల్పు మరియు ఎత్తు అంచనా. thumbnail.png అవసరం; ఉత్తమ ఫలితానికి sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "గోడకు అంచనా దూరం (మీ)";
+"settings.wallAssumedCeilingM" = "అంచనా గోడ/సీలింగ్ ఎత్తు (మీ)";
+"settings.roomMeasurementFooter" = "SHARP iOS లో మోనోడెప్త్ లేకుండా సేవ్ అంచనా లోతు మరియు కొన్నిసార్లు ఈ సీలింగ్ ఎత్తును వాడుతుంది. వెడల్పు టేప్ కొలతతో పోలిస్తే తక్కువైతే అంచనా దూరం పెంచండి (వెడల్పు సుమారు రేఖీయంగా స్కేల్). గోడ ఎత్తును టేప్ కొలత దగ్గర సెట్ చేయండి (ఉదా. 2.86 మీ). లేదా సేవ్ చేయే ముందు ⋮ → గోడ ద్వారా క్యాలిబ్రేట్.";
+"camera.takePhoto" = "ఫోటో తీయండి";
+"camera.chooseOrientationShort" = "పోర్ట్రెయిట్ లేదా ల్యాండ్‌స్కేప్";
+"sharp.downloadingEngine" = "3D ఇంజిన్ డౌన్‌లోడ్ అవుతోంది...";
+"sharp.downloadingEnginePercent" = "3D ఇంజిన్ డౌన్‌లోడ్ అవుతోంది... %d%%";
+"sharp.downloadComplete" = "డౌన్‌లోడ్ పూర్తయింది";
+"sharp.downloadFailed" = "డౌన్‌లోడ్ విఫలమైంది";
+"sharp.gettingReady" = "సిద్ధమవుతోంది...";
+"sharp.notEnoughSpace" = "పరికరంలో తగినంత స్థలం లేదు";
+"sharp.settingThingsUp" = "సెటప్ అవుతోంది...";
+"sharp.ready" = "సిద్ధం!";
+"sharp.couldNotGetReady" = "సిద్ధం చేయలేకపోయాం";
+"sharp.somethingWentWrong" = "ఏదో తప్పు జరిగింది";
+"sharp.preparingPhoto" = "మీ ఫోటో సిద్ధం చేస్తున్నాం...";
+"sharp.creatingRoom" = "మీ 3D గదిని సృష్టిస్తున్నాం...";
+"sharp.almostDone" = "దాదాపు పూర్తయింది...";
+"sharp.done" = "పూర్తయింది!";
+"sharp.couldNotCreateRoom" = "గదిని సృష్టించలేకపోయాం";
+"sharp.cancelled" = "రద్దు";
+"photoRoom.odrOneTimeDownload" = "ఒకసారి డౌన్‌లోడ్ (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D మోడల్ సృష్టించబడింది";
+"photoRoom.generationFailedTitle" = "సృష్టి విఫలమైంది";
+"photoRoom.loading3DRoom" = "3D గది లోడ్ అవుతోంది...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "చిత్రం అప్‌లోడ్ అవుతోంది";
+"generationProgress.generating3DModel" = "3D మాదరి రూపొందిస్తున్నారు";
+"generationProgress.downloadingModel" = "మాదరి డౌన్‌లోడ్ అవుతోంది";
+"generationProgress.complete" = "పూర్తయింది!";
+"generationProgress.preparing" = "సిద్ధం చేస్తోంది...";
+"generationProgress.mayTakeFewMinutes" = "దీనికి కొన్ని నిమిషాలు పట్టవచ్చు";

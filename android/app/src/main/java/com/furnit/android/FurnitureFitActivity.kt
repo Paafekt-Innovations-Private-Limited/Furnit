@@ -21,7 +21,7 @@ class FurnitureFitActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            loadFragment()
+            ensureFragmentLoaded()
         } else {
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
             finish()
@@ -29,8 +29,6 @@ class FurnitureFitActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
         // Lock orientation based on room's photo orientation (no auto-rotate)
         val photoOrientation = intent.getStringExtra("PHOTO_ORIENTATION") ?: "portrait"
         requestedOrientation = if (photoOrientation == "landscape") {
@@ -39,12 +37,26 @@ class FurnitureFitActivity : AppCompatActivity() {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
 
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_furniture_fit)
+
+        if (savedInstanceState != null) {
+            return
+        }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {
-            loadFragment()
+            ensureFragmentLoaded()
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    private fun ensureFragmentLoaded() {
+        if (supportFragmentManager.findFragmentById(R.id.furniture_fit_container) != null) {
+            return
+        }
+        loadFragment()
     }
 
     private fun loadFragment() {
@@ -77,7 +89,7 @@ class FurnitureFitActivity : AppCompatActivity() {
         }
 
         supportFragmentManager.beginTransaction()
-            .replace(android.R.id.content, fragment)
+            .replace(R.id.furniture_fit_container, fragment)
             .commit()
     }
 }

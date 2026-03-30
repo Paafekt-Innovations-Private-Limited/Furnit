@@ -50,7 +50,7 @@ struct GenerationProgressOverlay: View {
 
                 // Cancel button
                 Button(action: onCancel) {
-                    Text("Cancel")
+                    Text(L10n.Common.cancel)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white.opacity(0.8))
@@ -127,7 +127,7 @@ struct GenerationProgressOverlay: View {
             .frame(maxWidth: 200)
         } else if status.showsSpinner {
             // Processing phase - show estimated time
-            Text("This may take a few minutes")
+            Text(L10n.GenerationProgress.mayTakeFewMinutes)
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.6))
         }
@@ -169,17 +169,17 @@ struct GenerationProgressOverlay: View {
     private var phaseTitleText: String {
         switch status {
         case .uploading:
-            return "Uploading Image"
+            return L10n.GenerationProgress.uploadingImage
         case .processing:
-            return "Generating 3D Model"
+            return L10n.GenerationProgress.generating3DModel
         case .downloading:
-            return "Downloading Model"
+            return L10n.GenerationProgress.downloadingModel
         case .completed:
-            return "Complete!"
+            return L10n.GenerationProgress.complete
         case .failed:
-            return "Generation Failed"
+            return L10n.PhotoRoom.generationFailedTitle
         default:
-            return "Preparing..."
+            return L10n.GenerationProgress.preparing
         }
     }
 }

@@ -636,8 +636,6 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
-    // TensorFlow Lite (CPU path in FurnitureFitManager); GPU delegate artifacts removed — unused.
-    implementation 'org.tensorflow:tensorflow-lite:2.17.0'
     // ONNX Runtime Mobile for running exported ONNX models directly on Android
     // 1.24.2 fixes EXTENDED_OPT crash (shape merging on Concat, #24340); 1.18.0 was 18mo behind
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'

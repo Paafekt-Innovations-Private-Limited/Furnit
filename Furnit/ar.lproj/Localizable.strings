@@ -324,24 +324,71 @@
 "accessibility.createRoom" = "إنشاء غرفة من صورة";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "كيف تريد إنشاء غرفتك ثلاثية الأبعاد؟";
+"photoRoom.tapOption" = "اضغط على خيار أدناه للمتابعة";
+"photoRoom.aiPowered" = "بناء ثلاثي الأبعاد بالذكاء الاصطناعي";
+"photoRoom.manualSetup" = "إعداد يدوي";
+"photoRoom.manualSetupDesc" = "اسحب لضبط جدران الغرفة";
+"photoRoom.selectPhoto" = "اختر صورة";
+"photoRoom.fromLibrary" = "من مكتبة الصور";
+"photoRoom.loading" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
+"photoRoom.downloadSuccess" = "تم تنزيل %@ بنجاح. يمكنك عرضه في قائمة النماذج.";
+"photoRoom.saveSuccess" = "تم حفظ النموذج ثلاثي الأبعاد بنجاح.";
 "photoRoom.error" = "حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.";
 "photoRoom.buildingRoom" = "جاري بناء غرفتك ثلاثية الأبعاد...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "عمودي";
+"orientation.landscape" = "أفقي";
+"orientation.heldVertically" = "ممسوك عمودياً";
+"orientation.heldHorizontally" = "ممسوك أفقياً";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "لا تختر لقطات شاشة — قد تسبب بقعاً سوداء";
+
+// MARK: - i18n sync (Arabic)
+"common.or" = "أو";
+"common.retry" = "إعادة المحاولة";
+"settings.furnitureSegmentationSection" = "تجزئة الأثاث";
+"settings.furnitureFitOnnxRuntime" = "استخدام ONNX Runtime لـ YOLO-E";
+"settings.furnitureFitOnnxRuntimeDescription" = "إيقاف (افتراضي): Core ML مع letterbox ومسار القناع القياسي. تشغيل: نفس نموذج Core ML مع معالجة مسبقة بالتمديد ودمج قناع مثل Android و blacklist.json. إذا لم يُحمّل النموذج، يُستخدم ملف .onnx المرفق مع ONNX Runtime عند التوفر.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: السماح بـ GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "إيقاف (افتراضي): المعالج فقط — أبطأ لكن يقلل الأعطال في بعض إصدارات YOLO-E 26L Core ML. تشغيل: معالج+GPU للسرعة؛ قد يحدث SIGABRT أثناء التجزئة إذا لم يعمل التصدير على Metal.";
+"settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";
+"settings.showRoomFurnitureCalibrateDescription" = "يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).";
+"settings.roomMeasurementSection" = "قياس الغرفة";
+"settings.yoloWallDimensionsOnSave" = "أبعاد الجدار YOLO عند الحفظ";
+"settings.yoloWallDimensionsOnSaveDescription" = "عند تسمية وحفظ غرفة SHARP، يُقدَّر عرض وارتفاع الجدار الأمامي باستخدام YOLO (فئة جدار أو صندوق شبيه)، وعمق SHARP أحادي المحفوظ مع الغرفة، وبيانات EXIF للكاميرا. يتطلب thumbnail.png ويفضّل sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "المسافة المفترضة إلى الجدار (م)";
+"settings.wallAssumedCeilingM" = "الارتفاع المفترض للجدار/السقف (م)";
+"settings.roomMeasurementFooter" = "بدون عمق أحادي على SHARP iOS، يستخدم الحفظ عمقاً مفترضاً وأحياناً هذا ارتفاع السقف. إذا كان العرض أقل من شريط القياس، زد المسافة المفترضة (العرض يتناسب تقريباً خطياً). اضبط ارتفاع الجدار قرب قياسك (مثلاً 2.86 م). أو استخدم ⋮ → معايرة بالجدار قبل الحفظ.";
+"camera.takePhoto" = "التقاط صورة";
+"camera.chooseOrientationShort" = "عمودي أو أفقي";
+"sharp.downloadingEngine" = "جاري تنزيل محرك ثلاثي الأبعاد...";
+"sharp.downloadingEnginePercent" = "جاري تنزيل محرك ثلاثي الأبعاد... %d%%";
+"sharp.downloadComplete" = "اكتمل التنزيل";
+"sharp.downloadFailed" = "فشل التنزيل";
+"sharp.gettingReady" = "جاري التجهيز...";
+"sharp.notEnoughSpace" = "لا توجد مساحة كافية على الجهاز";
+"sharp.settingThingsUp" = "جاري الإعداد...";
+"sharp.ready" = "جاهز!";
+"sharp.couldNotGetReady" = "تعذر إكمال التجهيز";
+"sharp.somethingWentWrong" = "حدث خطأ ما";
+"sharp.preparingPhoto" = "جاري تجهيز صورتك...";
+"sharp.creatingRoom" = "جاري إنشاء غرفتك ثلاثية الأبعاد...";
+"sharp.almostDone" = "أوشكنا على الانتهاء...";
+"sharp.done" = "تم!";
+"sharp.couldNotCreateRoom" = "تعذر إنشاء الغرفة";
+"sharp.cancelled" = "أُلغي";
+"photoRoom.odrOneTimeDownload" = "تنزيل لمرة واحدة (~1.2 غيغابايت)";
+"photoRoom.modelGeneratedTitle" = "تم إنشاء النموذج ثلاثي الأبعاد";
+"photoRoom.generationFailedTitle" = "فشل الإنشاء";
+"photoRoom.loading3DRoom" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "جاري رفع الصورة";
+"generationProgress.generating3DModel" = "جاري إنشاء النموذج ثلاثي الأبعاد";
+"generationProgress.downloadingModel" = "جاري تنزيل النموذج";
+"generationProgress.complete" = "اكتمل!";
+"generationProgress.preparing" = "جاري التحضير...";
+"generationProgress.mayTakeFewMinutes" = "قد يستغرق هذا بضع دقائق";

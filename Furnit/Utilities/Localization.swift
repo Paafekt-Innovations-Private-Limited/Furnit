@@ -37,6 +37,8 @@ enum L10n {
         static let save = "common.save".localized
         static let close = "common.close".localized
         static let apply = "common.apply".localized
+        static let or = "common.or".localized
+        static let retry = "common.retry".localized
     }
 
     // MARK: Login
@@ -149,6 +151,34 @@ enum L10n {
         static let yoloeCoreMLAllowGPUDescription = "settings.yoloeCoreMLAllowGPUDescription".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
+        static let roomMeasurementSection = "settings.roomMeasurementSection".localized
+        static let yoloWallDimensionsOnSave = "settings.yoloWallDimensionsOnSave".localized
+        static let yoloWallDimensionsOnSaveDescription = "settings.yoloWallDimensionsOnSaveDescription".localized
+        static let wallAssumedDepthM = "settings.wallAssumedDepthM".localized
+        static let wallAssumedCeilingM = "settings.wallAssumedCeilingM".localized
+        static let roomMeasurementFooter = "settings.roomMeasurementFooter".localized
+    }
+
+    /// SHARP on-device status messages (model load + generation)
+    enum Sharp {
+        static let downloadingEngine = "sharp.downloadingEngine".localized
+        static func downloadingEnginePercent(_ percent: Int) -> String {
+            String(format: "sharp.downloadingEnginePercent".localized, locale: .current, percent)
+        }
+        static let downloadComplete = "sharp.downloadComplete".localized
+        static let downloadFailed = "sharp.downloadFailed".localized
+        static let gettingReady = "sharp.gettingReady".localized
+        static let notEnoughSpace = "sharp.notEnoughSpace".localized
+        static let settingThingsUp = "sharp.settingThingsUp".localized
+        static let ready = "sharp.ready".localized
+        static let couldNotGetReady = "sharp.couldNotGetReady".localized
+        static let somethingWentWrong = "sharp.somethingWentWrong".localized
+        static let preparingPhoto = "sharp.preparingPhoto".localized
+        static let creatingRoom = "sharp.creatingRoom".localized
+        static let almostDone = "sharp.almostDone".localized
+        static let done = "sharp.done".localized
+        static let couldNotCreateRoom = "sharp.couldNotCreateRoom".localized
+        static let cancelled = "sharp.cancelled".localized
     }
 
     // MARK: Licenses & Attributions
@@ -217,10 +247,38 @@ enum L10n {
         static let createSubtitle = "photoRoom.createSubtitle".localized
         static let quickPhoto = "photoRoom.quickPhoto".localized
         static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
+        static let buildingRoom = "photoRoom.buildingRoom".localized
         static let backAlertTitle = "photoRoom.backAlertTitle".localized
         static let backAlertMessage = "photoRoom.backAlertMessage".localized
         static let backAlertAI = "photoRoom.backAlertAI".localized
         static let backAlertManual = "photoRoom.backAlertManual".localized
+        static let selectPhoto = "photoRoom.selectPhoto".localized
+        static let fromLibrary = "photoRoom.fromLibrary".localized
+        static let screenshotWarning = "photoRoom.screenshotWarning".localized
+        static let odrOneTimeDownload = "photoRoom.odrOneTimeDownload".localized
+        static let modelGeneratedTitle = "photoRoom.modelGeneratedTitle".localized
+        static let generationFailedTitle = "photoRoom.generationFailedTitle".localized
+        static let loading3DRoom = "photoRoom.loading3DRoom".localized
+        static let saveSuccessMessage = "photoRoom.saveSuccess".localized
+        static let errorMessage = "photoRoom.error".localized
+        static func downloadSuccess(fileName: String) -> String {
+            String(format: "photoRoom.downloadSuccess".localized, locale: .current, fileName)
+        }
+    }
+
+    enum Camera {
+        static let takePhoto = "camera.takePhoto".localized
+        static let chooseOrientationShort = "camera.chooseOrientationShort".localized
+    }
+
+    /// Progress overlay during remote/API 3D generation (upload → process → download)
+    enum GenerationProgress {
+        static let uploadingImage = "generationProgress.uploadingImage".localized
+        static let generating3DModel = "generationProgress.generating3DModel".localized
+        static let downloadingModel = "generationProgress.downloadingModel".localized
+        static let complete = "generationProgress.complete".localized
+        static let preparing = "generationProgress.preparing".localized
+        static let mayTakeFewMinutes = "generationProgress.mayTakeFewMinutes".localized
     }
 
     // MARK: Room Viewer

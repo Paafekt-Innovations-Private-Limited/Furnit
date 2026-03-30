@@ -1729,15 +1729,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Classic PLY rotation - flip 180° around X
+                    // Classic SHARP PLY: single 180° flip around X aligns splat with camera (SparkJS).
+                    // Do not add portrait-only Z rotation — it tilts portrait captures ~90° vs device upright.
                     splatMesh.rotation.x = Math.PI;
-                    // For portrait photos, also rotate 90° around Z
-                    if (isPortrait) {
-                        splatMesh.rotation.z = Math.PI / 2;
-                        console.log('SplatMesh: rotated 180° X + 90° Z (portrait)');
-                    } else {
-                        console.log('SplatMesh: rotated 180° X only (landscape)');
-                    }
+                    splatMesh.rotation.z = 0;
+                    console.log('SplatMesh: rotated 180° X (portrait/landscape)');
 
                     let autoFrameRoomRetryCount = 0;
                     const AUTO_FRAME_MAX_RETRIES = 60;
@@ -1814,17 +1810,9 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                             autoFrameRoomRetryCount = 0;
                             const center = box.getCenter(new THREE.Vector3());
-                            // After 90° Z rotation, axes mapping depends on photo orientation
-                            // Portrait: width = X (narrower), height = Y (taller)
-                            // Landscape: width = Y, height = X
-                            let roomWidth, roomHeight;
-                            if (isPortrait) {
-                                roomWidth  = size.x;
-                                roomHeight = size.y;
-                            } else {
-                                roomWidth  = size.y;
-                                roomHeight = size.x;
-                            }
+                            // With 180° X only, use same width/height axes for both orientations (matches landscape path).
+                            const roomWidth  = size.y;
+                            const roomHeight = size.x;
                             let roomDepth  = size.z;
 
                             const box3Msg = 'Box3 raw size: ' + roomWidth.toFixed(2) + ' x ' + roomHeight.toFixed(2) + ' (isPortrait: ' + isPortrait + ')';

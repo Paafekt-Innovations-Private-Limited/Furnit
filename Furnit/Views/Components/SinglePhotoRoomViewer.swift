@@ -320,7 +320,7 @@ struct RoomBoundaryDetectionView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.orange)
 
-                Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                Text(L10n.PhotoRoom.buildingRoom)
                     .font(.caption)
                     .foregroundColor(.gray)
             }
@@ -987,9 +987,9 @@ struct SinglePhotoRoomView: View {
                                     .foregroundColor(.blue)
 
                                 VStack(spacing: 4) {
-                                    Text(NSLocalizedString("camera.takePhoto", comment: ""))
+                                    Text(L10n.Camera.takePhoto)
                                         .font(.headline)
-                                    Text(NSLocalizedString("camera.chooseOrientationShort", comment: ""))
+                                    Text(L10n.Camera.chooseOrientationShort)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -1010,7 +1010,7 @@ struct SinglePhotoRoomView: View {
                             Rectangle()
                                 .fill(Color.secondary.opacity(0.3))
                                 .frame(height: 1)
-                            Text(NSLocalizedString("common.or", comment: ""))
+                            Text(L10n.Common.or)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 8)
@@ -1031,9 +1031,9 @@ struct SinglePhotoRoomView: View {
                                     .foregroundColor(.green)
 
                                 VStack(spacing: 4) {
-                                    Text(NSLocalizedString("photoRoom.selectPhoto", comment: ""))
+                                    Text(L10n.PhotoRoom.selectPhoto)
                                         .font(.headline)
-                                    Text(NSLocalizedString("photoRoom.fromLibrary", comment: ""))
+                                    Text(L10n.PhotoRoom.fromLibrary)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -1053,7 +1053,7 @@ struct SinglePhotoRoomView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.subheadline)
-                            Text(NSLocalizedString("photoRoom.screenshotWarning", comment: ""))
+                            Text(L10n.PhotoRoom.screenshotWarning)
                                 .font(.subheadline)
                         }
                         .foregroundColor(.red)
@@ -1090,7 +1090,7 @@ struct SinglePhotoRoomView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.purple)
 
-                    Text("One-time download (~1.2 GB)")
+                    Text(L10n.PhotoRoom.odrOneTimeDownload)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1159,7 +1159,7 @@ struct SinglePhotoRoomView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.orange)
 
-                    Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                    Text(L10n.PhotoRoom.buildingRoom)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1169,7 +1169,7 @@ struct SinglePhotoRoomView: View {
                 .shadow(radius: 10)
             }
         }
-        .navigationTitle("Photo to 3D Room")
+        .navigationTitle(L10n.PhotoRoom.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -1331,31 +1331,31 @@ struct SinglePhotoRoomView: View {
             }
         }
         // Success alert for API-generated PLY file
-        .alert("3D Model Generated", isPresented: $showGenerationSuccess) {
-            Button("Done") {
+        .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
+            Button(L10n.Common.done) {
                 // Dismiss the sheet and notify home to refresh
                 NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
             }
         } message: {
             if let url = splatViewerDestination?.plyURL {
                 let fileName = url.lastPathComponent
-                Text("Successfully downloaded \(fileName). View it in your models list.")
+                Text(L10n.PhotoRoom.downloadSuccess(fileName: fileName))
             } else {
-                Text("Your 3D model has been saved successfully.")
+                Text(L10n.PhotoRoom.saveSuccessMessage)
             }
         }
         // Handle generation errors
-        .alert("Generation Failed", isPresented: Binding(
+        .alert(L10n.PhotoRoom.generationFailedTitle, isPresented: Binding(
             get: {
                 if case .failed = sharpService.status { return true }
                 return false
             },
             set: { _ in }
         )) {
-            Button("OK", role: .cancel) {
+            Button(L10n.Common.ok, role: .cancel) {
                 selectedImage = nil
             }
-            Button("Retry") {
+            Button(L10n.Common.retry) {
                 if let image = selectedImage {
                     startSHARPGeneration(image: image)
                 }
@@ -1364,7 +1364,7 @@ struct SinglePhotoRoomView: View {
             if case .failed(let errorMessage) = sharpService.status {
                 Text(errorMessage)
             } else {
-                Text("An error occurred while generating your 3D model.")
+                Text(L10n.PhotoRoom.errorMessage)
             }
         }
     }
@@ -1637,7 +1637,7 @@ struct CameraCaptureView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "camera.fill")
                                 .font(.title2)
-                            Text(NSLocalizedString("camera.takePhoto", comment: "Take Photo"))
+                            Text(L10n.Camera.takePhoto)
                                 .font(.headline)
                         }
                         .foregroundColor(.white)
@@ -2161,7 +2161,7 @@ struct SceneKitViewer: View {
                             .scaleEffect(1.5)
                             .tint(.orange)
 
-                        Text("Loading 3D Room...")
+                        Text(L10n.PhotoRoom.loading3DRoom)
                             .font(.headline)
                             .foregroundColor(.white)
                     }

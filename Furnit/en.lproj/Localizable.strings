@@ -23,6 +23,7 @@
 "common.close" = "Close";
 "common.apply" = "Apply";
 "common.or" = "or";
+"common.retry" = "Retry";
 
 // MARK: - Login View
 "login.yourName" = "Your Name";
@@ -141,6 +142,12 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "Off (default): CPU only — slower but avoids crashes on some YOLO-E 26L Core ML builds. On: CPU+GPU for speed; may SIGABRT during segmentation if the export does not run on Metal on your device.";
 "settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
 "settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
+"settings.roomMeasurementSection" = "Room measurement";
+"settings.yoloWallDimensionsOnSave" = "YOLO wall dimensions when saving";
+"settings.yoloWallDimensionsOnSaveDescription" = "When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.";
+"settings.wallAssumedDepthM" = "Assumed distance to wall (m)";
+"settings.wallAssumedCeilingM" = "Assumed wall height ceiling (m)";
+"settings.roomMeasurementFooter" = "Without monodepth on SHARP iOS, save uses assumed depth and sometimes this ceiling for height. If width is low vs a tape measure, increase Assumed distance (width scales about linearly). Set Assumed wall height near your tape measure (e.g. 2.86 m). Or use ⋮ → Calibrate by wall before Save.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
@@ -291,6 +298,36 @@
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
 "photoRoom.buildingRoom" = "Building your 3D room...";
+"photoRoom.odrOneTimeDownload" = "One-time download (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D Model Generated";
+"photoRoom.generationFailedTitle" = "Generation Failed";
+"photoRoom.loading3DRoom" = "Loading 3D Room...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "Uploading Image";
+"generationProgress.generating3DModel" = "Generating 3D Model";
+"generationProgress.downloadingModel" = "Downloading Model";
+"generationProgress.complete" = "Complete!";
+"generationProgress.preparing" = "Preparing...";
+"generationProgress.mayTakeFewMinutes" = "This may take a few minutes";
+
+// MARK: - SHARP (on-device)
+"sharp.downloadingEngine" = "Downloading 3D engine...";
+"sharp.downloadingEnginePercent" = "Downloading 3D engine... %d%%";
+"sharp.downloadComplete" = "Download complete";
+"sharp.downloadFailed" = "Download failed";
+"sharp.gettingReady" = "Getting ready...";
+"sharp.notEnoughSpace" = "Not enough space on device";
+"sharp.settingThingsUp" = "Setting things up...";
+"sharp.ready" = "Ready!";
+"sharp.couldNotGetReady" = "Couldn't get ready";
+"sharp.somethingWentWrong" = "Something went wrong";
+"sharp.preparingPhoto" = "Preparing your photo...";
+"sharp.creatingRoom" = "Creating your 3D room...";
+"sharp.almostDone" = "Almost done...";
+"sharp.done" = "Done!";
+"sharp.couldNotCreateRoom" = "Couldn't create room";
+"sharp.cancelled" = "Cancelled";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "3D Room View";
@@ -357,6 +394,7 @@
 // MARK: - Camera Capture
 "camera.title" = "Camera";
 "camera.takePhoto" = "Take Photo";
+"camera.chooseOrientationShort" = "Portrait or landscape";
 "camera.chooseMode" = "Choose Camera Mode";
 "camera.chooseModeHint" = "Select camera lens for your room";
 "camera.standard" = "Standard";

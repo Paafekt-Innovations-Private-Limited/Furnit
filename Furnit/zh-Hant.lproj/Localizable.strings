@@ -324,24 +324,71 @@
 "faq.whatIsMemoryDisplayAnswer" = "房間中顯示的 MB（兆位元組）表示檔案大小。這有助於您管理儲存空間。所有房間使用的總儲存空間顯示在主畫面頂部。";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "您想如何建立3D房間？";
+"photoRoom.tapOption" = "點選下方選項以繼續";
+"photoRoom.aiPowered" = "AI 驅動的3D建構";
+"photoRoom.manualSetup" = "手動設定";
+"photoRoom.manualSetupDesc" = "拖曳以調整房間牆面";
+"photoRoom.selectPhoto" = "選擇照片";
+"photoRoom.fromLibrary" = "從照片圖庫";
+"photoRoom.loading" = "正在載入3D房間...";
+"photoRoom.downloadSuccess" = "已成功下載 %@。請在模型列表中查看。";
+"photoRoom.saveSuccess" = "您的3D模型已成功儲存。";
 "photoRoom.error" = "產生3D模型時發生錯誤。";
 "photoRoom.buildingRoom" = "正在建構您的3D房間...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "直向";
+"orientation.landscape" = "橫向";
+"orientation.heldVertically" = "直握";
+"orientation.heldHorizontally" = "橫握";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "請勿選擇螢幕截圖 — 可能出現黑色區塊";
+
+// MARK: - i18n sync (繁體中文)
+"common.or" = "或";
+"common.retry" = "重試";
+"settings.furnitureSegmentationSection" = "傢俱分割";
+"settings.furnitureFitOnnxRuntime" = "YOLO-E 使用 ONNX Runtime";
+"settings.furnitureFitOnnxRuntimeDescription" = "關（預設）：Core ML + letterbox 與標準遮罩路徑。開：同一 Core ML 模型 + 拉伸預處理、Android 式邊界框遮罩融合與 blacklist.json。若模型未載入，在可用時使用隨附的 .onnx 與 ONNX Runtime。";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML：允許 GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "關（預設）：僅 CPU — 較慢但可避免部分 YOLO-E 26L Core ML 組建當機。開：CPU+GPU 提速；若匯出無法在您裝置的 Metal 上執行，分割時可能 SIGABRT。";
+"settings.showRoomFurnitureCalibrate" = "顯示房間與傢俱校準";
+"settings.showRoomFurnitureCalibrateDescription" = "在房間選單中顯示「校準牆面」，並在 SmartyPants（大腦）開啟時顯示「點一下校準」提示條。";
+"settings.roomMeasurementSection" = "房間測量";
+"settings.yoloWallDimensionsOnSave" = "儲存時以 YOLO 估計牆尺寸";
+"settings.yoloWallDimensionsOnSaveDescription" = "為 SHARP 房間命名並儲存時，使用 YOLO（牆類別或類牆框）、隨房間儲存的 SHARP 單眼深度與相機 EXIF 估計前牆寬高。需要 thumbnail.png，最佳效果需要 sharp_monodepth.bin。";
+"settings.wallAssumedDepthM" = "假設到牆距離（公尺）";
+"settings.wallAssumedCeilingM" = "假設牆／頂高度（公尺）";
+"settings.roomMeasurementFooter" = "在 SHARP iOS 無單眼深度時，儲存會使用假設深度並有時用此頂高。若寬度相對捲尺偏小，增大假設距離（寬度約線性縮放）。將牆高設為接近捲尺讀數（如 2.86 公尺）。或在儲存前使用 ⋮ → 依牆校準。";
+"camera.takePhoto" = "拍照";
+"camera.chooseOrientationShort" = "直向或橫向";
+"sharp.downloadingEngine" = "正在下載3D引擎...";
+"sharp.downloadingEnginePercent" = "正在下載3D引擎... %d%%";
+"sharp.downloadComplete" = "下載完成";
+"sharp.downloadFailed" = "下載失敗";
+"sharp.gettingReady" = "正在準備...";
+"sharp.notEnoughSpace" = "裝置儲存空間不足";
+"sharp.settingThingsUp" = "正在設定...";
+"sharp.ready" = "就緒！";
+"sharp.couldNotGetReady" = "無法完成準備";
+"sharp.somethingWentWrong" = "發生問題";
+"sharp.preparingPhoto" = "正在處理照片...";
+"sharp.creatingRoom" = "正在建立3D房間...";
+"sharp.almostDone" = "即將完成...";
+"sharp.done" = "完成！";
+"sharp.couldNotCreateRoom" = "無法建立房間";
+"sharp.cancelled" = "已取消";
+"photoRoom.odrOneTimeDownload" = "一次性下載（約 1.2 GB）";
+"photoRoom.modelGeneratedTitle" = "已產生3D模型";
+"photoRoom.generationFailedTitle" = "產生失敗";
+"photoRoom.loading3DRoom" = "正在載入3D房間...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "正在上傳圖片";
+"generationProgress.generating3DModel" = "正在產生 3D 模型";
+"generationProgress.downloadingModel" = "正在下載模型";
+"generationProgress.complete" = "完成！";
+"generationProgress.preparing" = "準備中...";
+"generationProgress.mayTakeFewMinutes" = "這可能需要幾分鐘";

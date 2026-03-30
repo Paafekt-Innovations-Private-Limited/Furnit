@@ -39,7 +39,7 @@ class SHARPService: ObservableObject {
     @Published var status: GenerationStatus = .idle
 
     /// Human-readable status message
-    @Published var statusMessage: String = "Ready"
+    @Published var statusMessage: String = L10n.Sharp.ready
 
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
@@ -218,7 +218,7 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Starting ODR download...")
         isDownloadingResources = true
         downloadProgress = 0.0
-        statusMessage = "Downloading 3D engine..."
+        statusMessage = L10n.Sharp.downloadingEngine
 
         let tags: Set<String> = [Self.sharpModelTag]
         let request = NSBundleResourceRequest(tags: tags)
@@ -229,7 +229,7 @@ class SHARPService: ObservableObject {
             Task { @MainActor in
                 self?.downloadProgress = progress.fractionCompleted
                 let percent = Int(progress.fractionCompleted * 100)
-                self?.statusMessage = "Downloading 3D engine... \(percent)%"
+                self?.statusMessage = L10n.Sharp.downloadingEnginePercent(percent)
             }
         }
 
@@ -240,7 +240,7 @@ class SHARPService: ObservableObject {
             resourcesAvailable = true
             isDownloadingResources = false
             downloadProgress = 1.0
-            statusMessage = "Download complete"
+            statusMessage = L10n.Sharp.downloadComplete
 
             // Keep the request alive
             self.resourceRequest = request
@@ -252,7 +252,7 @@ class SHARPService: ObservableObject {
 
             isDownloadingResources = false
             downloadProgress = 0.0
-            statusMessage = "Download failed"
+            statusMessage = L10n.Sharp.downloadFailed
             progressObservation = nil
 
             throw error
@@ -297,7 +297,7 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
-        statusMessage = "Getting ready..."
+        statusMessage = L10n.Sharp.gettingReady
         progress = 0.1
 
         // Check physical memory - INT8 model (~663MB) needs ~2GB available
@@ -310,7 +310,7 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Device has insufficient RAM, need 2GB+")
             logDebug("SHARP: Model will not be loaded - use fallback or remote API")
             isLoadingModel = false
-            statusMessage = "Not enough space on device"
+            statusMessage = L10n.Sharp.notEnoughSpace
             return
         }
 
@@ -329,7 +329,7 @@ class SHARPService: ObservableObject {
         }
 
         progress = 0.3
-        statusMessage = "Setting things up..."
+        statusMessage = L10n.Sharp.settingThingsUp
 
         do {
             // Configuration matching mlsharpondevice2 style
@@ -343,11 +343,11 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Model loaded successfully")
 
             progress = 1.0
-            statusMessage = "Ready!"
+            statusMessage = L10n.Sharp.ready
 
         } catch {
             logDebug("SHARP: Failed to load model: \(error)")
-            statusMessage = "Couldn't get ready"
+            statusMessage = L10n.Sharp.couldNotGetReady
         }
 
         isLoadingModel = false
@@ -369,13 +369,13 @@ class SHARPService: ObservableObject {
 
         guard model != nil else {
             status = .failed("SHARP model failed to load. Check device memory.")
-            statusMessage = "Something went wrong"
+            statusMessage = L10n.Sharp.somethingWentWrong
             throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
         }
 
         // Reset state
         status = .processing
-        statusMessage = "Preparing your photo..."
+        statusMessage = L10n.Sharp.preparingPhoto
         progress = 0.0
 
         do {
@@ -388,13 +388,13 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
             // Step 2: Run inference
-            statusMessage = "Creating your 3D room..."
+            statusMessage = L10n.Sharp.creatingRoom
             progress = 0.2
             let gaussianParams = try await runInference(inputBuffer)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
             // Step 3: Write PLY files (original + classic for antimatter15)
-            statusMessage = "Almost done..."
+            statusMessage = L10n.Sharp.almostDone
             progress = 0.8
             let plyURLs = try await writePLY(gaussianParams)
             logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
@@ -407,7 +407,7 @@ class SHARPService: ObservableObject {
             // Complete
             progress = 1.0
             status = .completed(fileURL: plyURL)
-            statusMessage = "Done!"
+            statusMessage = L10n.Sharp.done
 
             releaseInferenceMemoryAfterGeneration()
 
@@ -415,7 +415,7 @@ class SHARPService: ObservableObject {
         } catch {
             // Update status on failure so UI can show error
             status = .failed(error.localizedDescription)
-            statusMessage = "Couldn't create room"
+            statusMessage = L10n.Sharp.couldNotCreateRoom
             logDebug("SHARP: Generation failed: \(error)")
             throw error
         }
@@ -423,8 +423,8 @@ class SHARPService: ObservableObject {
 
     /// Cancel current generation (if any)
     func cancelGeneration() {
-        status = .failed("Cancelled")
-        statusMessage = "Cancelled"
+        status = .failed(L10n.Sharp.cancelled)
+        statusMessage = L10n.Sharp.cancelled
     }
 
     // MARK: - Image Preprocessing

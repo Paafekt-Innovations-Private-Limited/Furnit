@@ -324,24 +324,71 @@
 "faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en los cuartos indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todos los cuartos se muestra en la parte superior de la pantalla de inicio.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "¿Cómo quieres crear tu cuarto 3D?";
+"photoRoom.tapOption" = "Toca una opción abajo para continuar";
+"photoRoom.aiPowered" = "Construcción 3D con IA";
+"photoRoom.manualSetup" = "Configuración manual";
+"photoRoom.manualSetupDesc" = "Arrastra para ajustar las paredes";
+"photoRoom.selectPhoto" = "Elegir foto";
+"photoRoom.fromLibrary" = "De tu galería de fotos";
+"photoRoom.loading" = "Cargando cuarto 3D...";
+"photoRoom.downloadSuccess" = "Se descargó %@ correctamente. Consúltalo en tu lista de modelos.";
+"photoRoom.saveSuccess" = "Tu modelo 3D se guardó correctamente.";
 "photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
 "photoRoom.buildingRoom" = "Construyendo tu cuarto 3D...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "Vertical";
+"orientation.landscape" = "Horizontal";
+"orientation.heldVertically" = "Sostenido en vertical";
+"orientation.heldHorizontally" = "Sostenido en horizontal";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "No elijas capturas de pantalla: pueden causar manchas negras";
+
+// MARK: - i18n sync (Spanish Mexico)
+"common.or" = "o";
+"common.retry" = "Reintentar";
+"settings.furnitureSegmentationSection" = "Segmentación de muebles";
+"settings.furnitureFitOnnxRuntime" = "Usar ONNX Runtime para YOLO-E";
+"settings.furnitureFitOnnxRuntimeDescription" = "Desactivado (predeterminado): Core ML con letterbox y máscara estándar. Activado: el mismo modelo Core ML con preprocesado de estiramiento, fusión de máscara tipo Android y blacklist.json. Si el modelo no está cargado, usa el .onnx incluido con ONNX Runtime si está disponible.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: permitir GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "Desactivado (predeterminado): solo CPU — más lento pero evita cierres en algunas compilaciones YOLO-E 26L Core ML. Activado: CPU+GPU para velocidad; puede producir SIGABRT en segmentación si la exportación no corre en Metal.";
+"settings.showRoomFurnitureCalibrate" = "Mostrar calibración de cuarto y muebles";
+"settings.showRoomFurnitureCalibrateDescription" = "Muestra «Calibrar pared» en el menú del cuarto y la pastilla «Toca para calibrar» cuando SmartyPants (cerebro) está activo.";
+"settings.roomMeasurementSection" = "Medidas del cuarto";
+"settings.yoloWallDimensionsOnSave" = "Dimensiones YOLO del muro al guardar";
+"settings.yoloWallDimensionsOnSaveDescription" = "Al poner nombre y guardar un cuarto SHARP, estima ancho y alto del muro frontal con YOLO (clase pared o caja similar), monoprofundidad SHARP guardada con el cuarto y EXIF de la cámara. Requiere thumbnail.png y, para mejores resultados, sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "Distancia supuesta al muro (m)";
+"settings.wallAssumedCeilingM" = "Altura supuesta del muro/techo (m)";
+"settings.roomMeasurementFooter" = "Sin monoprofundidad en SHARP iOS, al guardar se usa la profundidad supuesta y a veces esta altura de techo. Si el ancho es bajo respecto a la cinta, aumenta la distancia supuesta (el ancho escala casi linealmente). Ajusta la altura del muro cerca de tu medida (p. ej. 2,86 m). O usa ⋮ → Calibrar por pared antes de guardar.";
+"camera.takePhoto" = "Tomar foto";
+"camera.chooseOrientationShort" = "Vertical u horizontal";
+"sharp.downloadingEngine" = "Descargando motor 3D...";
+"sharp.downloadingEnginePercent" = "Descargando motor 3D... %d%%";
+"sharp.downloadComplete" = "Descarga completada";
+"sharp.downloadFailed" = "Error en la descarga";
+"sharp.gettingReady" = "Preparando...";
+"sharp.notEnoughSpace" = "No hay espacio suficiente en el dispositivo";
+"sharp.settingThingsUp" = "Configurando...";
+"sharp.ready" = "¡Listo!";
+"sharp.couldNotGetReady" = "No se pudo preparar";
+"sharp.somethingWentWrong" = "Algo salió mal";
+"sharp.preparingPhoto" = "Preparando tu foto...";
+"sharp.creatingRoom" = "Creando tu cuarto 3D...";
+"sharp.almostDone" = "Casi listo...";
+"sharp.done" = "¡Listo!";
+"sharp.couldNotCreateRoom" = "No se pudo crear el cuarto";
+"sharp.cancelled" = "Cancelado";
+"photoRoom.odrOneTimeDownload" = "Descarga única (~1,2 GB)";
+"photoRoom.modelGeneratedTitle" = "Modelo 3D generado";
+"photoRoom.generationFailedTitle" = "Error al generar";
+"photoRoom.loading3DRoom" = "Cargando cuarto 3D...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "Subiendo imagen";
+"generationProgress.generating3DModel" = "Generando modelo 3D";
+"generationProgress.downloadingModel" = "Descargando modelo";
+"generationProgress.complete" = "¡Listo!";
+"generationProgress.preparing" = "Preparando...";
+"generationProgress.mayTakeFewMinutes" = "Esto puede tardar unos minutos";
