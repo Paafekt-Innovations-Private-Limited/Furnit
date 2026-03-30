@@ -368,7 +368,7 @@ struct SharpRoomView: View {
     // Detected furniture size (from FurnitureFit, in meters - before calibration)
     @State private var detectedFurnitureWidth: Float?
     @State private var detectedFurnitureHeight: Float?
-    /// Optional AR-based furniture height (when AR-assisted sizing is active).
+    /// Optional AR-based furniture height when ARKit world tracking is active in Furniture Fit.
     @State private var detectedFurnitureHeightAR: Float?
 
     // User-input real furniture dimensions for room calibration
@@ -406,6 +406,7 @@ struct SharpRoomView: View {
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showDiscardUnsavedAlert = false
     @State private var isDismissing = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
@@ -457,34 +458,51 @@ struct SharpRoomView: View {
         .navigationBarHidden(isCapturingSnapshot)
         .navigationTitle(navigationTitleWithDimensions)
         .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
+        .navigationBarBackButtonHidden(allowSave)
+        .toolbar {
+            if allowSave {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if saveWasSuccessful {
+                            dismiss()
+                        } else {
+                            showDiscardUnsavedAlert = true
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text(L10n.Common.back)
+                        }
+                    }
+                }
+            }
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
                     // One ellipsis menu in portrait and landscape so the nav title (W×H) stays visible.
                     Menu {
                         if authManager.canShare {
                             Button(action: { showShareSheet = true }) {
-                                Label("Share", systemImage: "square.and.arrow.up")
+                                Label(L10n.RoomViewer.share, systemImage: "square.and.arrow.up")
                             }
                         }
                         if allowSave {
                             Button(action: { showRoomNameInput = true }) {
-                                Label("Save Room", systemImage: "square.and.arrow.down")
+                                Label(L10n.RoomViewer.saveRoom, systemImage: "square.and.arrow.down")
                             }
                         }
                         if showRoomFurnitureCalibrate {
                             Button(action: { showWallCalibration = true }) {
-                                Label("Calibrate Wall", systemImage: "ruler")
+                                Label(L10n.RoomViewer.calibrateWall, systemImage: "ruler")
                             }
                         }
                         Button(action: {
                             NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
                         }) {
-                            Label("Recenter View", systemImage: "viewfinder")
+                            Label(L10n.RoomViewer.recenterView, systemImage: "viewfinder")
                         }
                         Button(action: {
                             NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitResetOverlayScale"), object: nil)
                         }) {
-                            Label("Reset Overlay Scale", systemImage: "arrow.counterclockwise")
+                            Label(L10n.RoomViewer.resetOverlayScale, systemImage: "arrow.counterclockwise")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -515,13 +533,13 @@ struct SharpRoomView: View {
             }
         }
         .onDisappear { OrientationLockManager.shared.unlock() }
-        .alert("Save Room", isPresented: $showRoomNameInput) {
-            TextField("Room name", text: $roomName)
-            Button("Cancel", role: .cancel) { }
-            Button("Save") { startSavingRoom() }.disabled(roomName.isEmpty)
-        } message: { Text(NSLocalizedString("roomViewer.enterName", comment: "")) }
-        .alert("Room Save", isPresented: $showSaveAlert) {
-            Button("OK", role: .cancel) {
+        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+            TextField(L10n.RoomViewer.roomName, text: $roomName)
+            Button(L10n.Common.cancel, role: .cancel) { }
+            Button(L10n.Common.save) { startSavingRoom() }.disabled(roomName.isEmpty)
+        } message: { Text(L10n.RoomViewer.enterName) }
+        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
+            Button(L10n.Common.ok, role: .cancel) {
                 if saveWasSuccessful {
                     isDismissing = true
                     DispatchQueue.global(qos: .userInitiated).async {
@@ -532,19 +550,28 @@ struct SharpRoomView: View {
                 }
             }
         } message: { Text(saveAlertMessage) }
-        .alert("Check measurement", isPresented: $showCalibrationRejectAlert) { Button("OK", role: .cancel) { } } message: { Text(calibrationRejectMessage) }
+        .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) { Button(L10n.Common.ok, role: .cancel) { } } message: { Text(calibrationRejectMessage) }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
+        }
         .overlay {
             if isDismissing {
                 ZStack {
                     Color.black.opacity(0.7).ignoresSafeArea()
                     VStack(spacing: 16) {
                         ProgressView().scaleEffect(1.5).tint(.white)
-                        Text("Going back...").foregroundColor(.white).font(.headline)
+                        Text(L10n.RoomViewer.goingBack).foregroundColor(.white).font(.headline)
                     }
                 }
             }
         }
         .defersSystemGestures(on: .all)
+        .disableBackSwipeIf(allowSave)
     }
 
     private var webGLAndGestureLayer: some View {
@@ -732,11 +759,11 @@ struct SharpRoomView: View {
                 .ignoresSafeArea()
                 .onTapGesture { showFurnitureDimensionsInput = false }
             VStack(spacing: 16) {
-                Text("Calibrate Room").font(.headline).foregroundColor(.white)
-                Text("Enter real furniture height (meters)").font(.caption).foregroundColor(.gray)
-                Text("Full height: floor to top (e.g. 0.9 m for a chair)").font(.caption2).foregroundColor(.gray.opacity(0.9))
+                Text(L10n.RoomViewer.calibrateRoomTitle).font(.headline).foregroundColor(.white)
+                Text(L10n.RoomViewer.enterFurnitureHeightMeters).font(.caption).foregroundColor(.gray)
+                Text(L10n.RoomViewer.furnitureFullHeightHint).font(.caption2).foregroundColor(.gray.opacity(0.9))
                 if let h = detectedFurnitureHeight {
-                    Text(String(format: "Detected: %.2fm", h)).font(.caption2).foregroundColor(.orange)
+                    Text(L10n.RoomViewer.detectedMeters(h)).font(.caption2).foregroundColor(.orange)
                 }
                 Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
                     .font(.system(size: 32, weight: .bold, design: .monospaced))
@@ -746,13 +773,13 @@ struct SharpRoomView: View {
                     .cornerRadius(8)
                 calibrationNumberPadView
                 HStack(spacing: 16) {
-                    Button("Cancel") {
+                    Button(L10n.Common.cancel) {
                         inputFurnitureHeight = ""
                         showFurnitureDimensionsInput = false
                     }
                     .font(.body.bold()).foregroundColor(.red)
                     .frame(width: 80, height: 40).background(Color.red.opacity(0.2)).cornerRadius(8)
-                    Button("Apply") { applyCalibration() }
+                    Button(L10n.Common.apply) { applyCalibration() }
                     .font(.body.bold()).foregroundColor(.green)
                     .frame(width: 80, height: 40).background(Color.green.opacity(0.2)).cornerRadius(8)
                     .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
@@ -890,10 +917,10 @@ struct SharpRoomView: View {
                 .ignoresSafeArea()
                 .onTapGesture { showWallCalibration = false }
             VStack(spacing: 16) {
-                Text("Calibrate by wall")
+                Text(L10n.RoomViewer.calibrateByWallTitle)
                     .font(.headline)
                     .foregroundColor(.white)
-                Text("Enter tape-measured front wall (meters), e.g. 3.15 × 2.86")
+                Text(L10n.RoomViewer.enterWallDimensionsHint)
                     .font(.caption)
                     .foregroundColor(.gray)
                 HStack(spacing: 12) {
@@ -908,13 +935,13 @@ struct SharpRoomView: View {
                         .frame(width: 80)
                 }
                 HStack(spacing: 16) {
-                    Button("Cancel") {
+                    Button(L10n.Common.cancel) {
                         inputWallWidth = ""
                         inputWallHeight = ""
                         showWallCalibration = false
                     }
                     .foregroundColor(.red)
-                    Button("Apply") { applyWallCalibration() }
+                    Button(L10n.Common.apply) { applyWallCalibration() }
                         .foregroundColor(.green)
                         .disabled((Float(inputWallWidth) ?? 0) <= 0 || (Float(inputWallHeight) ?? 0) <= 0)
                 }
@@ -931,13 +958,13 @@ struct SharpRoomView: View {
         let displayH = detectedFurnitureHeightAR ?? detectedFurnitureHeight ?? 0
         return VStack(spacing: 2) {
             if let calibH = calibratedRoomHeight {
-                Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
+                Text(L10n.RoomViewer.roomMetersShort(calibH)).font(.caption2).foregroundColor(.green)
             }
-            Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? displayH))
+            Text(L10n.RoomViewer.furnitureMetersShort(realFurnitureHeight ?? displayH))
                 .font(.caption.bold())
                 .foregroundColor(realFurnitureHeight != nil ? .green : .white)
             if showTapHint {
-                Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+                Text(L10n.RoomViewer.tapToCalibrate).font(.system(size: 9)).foregroundColor(.gray)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1129,7 +1156,7 @@ struct SharpRoomView: View {
                         .foregroundColor(.green)
                 }
 
-                Text("Saving Room...")
+                Text(L10n.RoomViewer.savingRoomEllipsis)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
@@ -1142,7 +1169,7 @@ struct SharpRoomView: View {
                     .font(.headline)
                     .foregroundColor(.gray)
 
-                Button("Cancel") {
+                Button(L10n.Common.cancel) {
                     cancelSavingRoom()
                 }
                 .foregroundColor(.red)
@@ -1238,10 +1265,10 @@ struct SharpRoomView: View {
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             if success {
-                                saveAlertMessage = "Room '\(savedName)' saved successfully!"
+                                saveAlertMessage = L10n.RoomViewer.saveSuccess(savedName)
                                 saveWasSuccessful = true
                             } else {
-                                saveAlertMessage = "Failed to save: \(error ?? "Unknown error")"
+                                saveAlertMessage = L10n.RoomViewer.saveFailed(error ?? L10n.RoomViewer.saveErrorUnknown)
                                 saveWasSuccessful = false
                             }
                             showSaveAlert = true

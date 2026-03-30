@@ -17,7 +17,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Metric helpers for AR-assisted FurnitureFit overlay scale (Android / ARCore), mirroring iOS [FurnitureFitARSupport].
+ * Metric helpers for ARCore-based FurnitureFit overlay scale (Android), mirroring iOS [FurnitureFitARSupport].
  */
 object FurnitureFitArMetrics {
 

@@ -24,7 +24,6 @@ import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
 import com.furnit.android.services.ExecutorchFixedSettings
 import com.furnit.android.services.ExecutorchInt8Sharp
-import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.WallMeasurementEstimator
 import com.furnit.android.utils.DebugLogger
@@ -151,49 +150,6 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(qualitySection)
 
         val furnitureFitSection = createSection(getString(R.string.settings_furniture_segmentation))
-
-        if (ArSupportChecker.isArCoreSupported(this)) {
-            val arSizingLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 8, 0, 8)
-            }
-            val arSizingLabel = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            arSizingLabel.addView(
-                TextView(this).apply {
-                    text = getString(R.string.settings_ar_assisted_furniture_sizing)
-                    textSize = 16f
-                    setTextColor(Color.parseColor("#333333"))
-                },
-            )
-            arSizingLabel.addView(
-                TextView(this).apply {
-                    text = getString(R.string.settings_ar_assisted_furniture_sizing_description)
-                    textSize = 12f
-                    setTextColor(Color.parseColor("#666666"))
-                },
-            )
-            val arSizingSwitch = createStyledSwitch(
-                prefs.getBoolean(FurnitureFitManager.KEY_AR_ASSISTED_FURNITURE_SIZING, true),
-            ) { isChecked ->
-                prefs.edit().putBoolean(FurnitureFitManager.KEY_AR_ASSISTED_FURNITURE_SIZING, isChecked).apply()
-            }
-            arSizingLayout.addView(arSizingLabel)
-            arSizingLayout.addView(arSizingSwitch)
-            furnitureFitSection.addView(arSizingLayout)
-        } else {
-            furnitureFitSection.addView(
-                TextView(this).apply {
-                    text = getString(R.string.settings_ar_assisted_furniture_sizing_not_supported)
-                    textSize = 12f
-                    setTextColor(Color.parseColor("#666666"))
-                    setPadding(0, 8, 0, 8)
-                },
-            )
-        }
 
         val calibrateUiRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL

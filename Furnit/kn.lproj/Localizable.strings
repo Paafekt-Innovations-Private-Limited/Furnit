@@ -21,6 +21,7 @@
 "common.error" = "ದೋಷ";
 "common.save" = "ಉಳಿಸು";
 "common.close" = "ಮುಚ್ಚು";
+"common.apply" = "ಅನ್ವಯಿಸು";
 
 // MARK: - Login View
 "login.yourName" = "ನಿಮ್ಮ ಹೆಸರು";
@@ -178,6 +179,8 @@
 "faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
+"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
+"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
 "faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
@@ -191,7 +194,7 @@
 "faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";
 "faq.generationFailingAnswer" = "ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.";
 "faq.howManyRooms" = "ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?";
-"faq.howManyRoomsAnswer" = "ನೀವು 10 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
+"faq.howManyRoomsAnswer" = "ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
@@ -205,7 +208,6 @@
 "faq.multiplePiecesAnswer" = "ಹೌದು! AI ಒಂದೇ ಫೋಟೋದಲ್ಲಿ ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ಪತ್ತೆಹಚ್ಚಬಹುದು. ಪ್ರತಿ ಪತ್ತೆಯಾದ ವಸ್ತುವನ್ನು ಪ್ರತ್ಯೇಕವಾಗಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ ನೀವು ಯಾವುದನ್ನು ಬಳಸಬೇಕೆಂದು ಆಯ್ಕೆ ಮಾಡಲು.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D ಕೊಠಡಿ & ಅಳವಡಿಕೆ";
 "faq.howToView" = "ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?";
 "faq.howToViewAnswer" = "3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.";
 "faq.howToPlace" = "ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?";
@@ -216,6 +218,15 @@
 "faq.accuracyAnswer" = "3D ಮಾದರಿ ನಿಮ್ಮ ಕೊಠಡಿ ವಿನ್ಯಾಸದ ಉತ್ತಮ ಅಂದಾಜನ್ನು ಒದಗಿಸುತ್ತದೆ. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ, ನಿಮ್ಮ ಮೂಲ ಫೋಟೋ ಗೋಚರ ಮೂಲೆಗಳು ಮತ್ತು ಅಂಚುಗಳೊಂದಿಗೆ ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ಸೆರೆಹಿಡಿಯುತ್ತದೆ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
 "faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
 "faq.adjustDimensionsAnswer" = "ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.";
+"faq.furnitureMeasurements" = "Furniture & measurements";
+"faq.arAssistedSizing" = "ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?";
+"faq.arAssistedSizingAnswer" = "ARKit ವಿಶ್ವ ಟ್ರ್ಯಾಕಿಂಗ್ ಬೆಂಬಲವಿರುವ ಸಾಧನಗಳಲ್ಲಿ, ಅಪ್ಲಿಕೇಶನ್ ಕ್ಯಾಮೆರಾ ಆಳ ಮತ್ತು ಇಂಟ್ರಿನ್ಸಿಕ್ಸ್ ಬಳಸಿ ನೀವು ಚಲಿಸಿದಂತೆ ಓವರ್ಲೇಯನ್ನು ನೈಜ ಮೀಟರ್‌ಗಳಲ್ಲಿ ಸ್ಕೇಲ್ ಮಾಡುತ್ತದೆ. AR ಬೆಂಬಲವಿಲ್ಲದಿದ್ದರೆ, ನಿಮ್ಮ 3D ಕೊಠಡಿ ಅಳತೆಗಳನ್ನು ಬಳಸಲಾಗುತ್ತದೆ; ನೀವು ಇನ್ನೂ ಪಿಂಚ್ ಮಾಡಿ ಓವರ್ಲೇ ಹೊಂದಿಸಬಹುದು.";
+"faq.measurementPill" = "What is the small measurement readout?";
+"faq.measurementPillAnswer" = "While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.";
+"faq.resetOverlayScale" = "The furniture mask looks wrongly zoomed—what can I do?";
+"faq.resetOverlayScaleAnswer" = "Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.";
+"faq.roomFitment" = "How do I check if furniture fits?";
+"faq.roomFitmentAnswer" = "After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "ಕೊಠಡಿ ಗಡಿಗಳು";
@@ -259,6 +270,29 @@
 "roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
 "roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
 "roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomPreview.unsavedTitle" = "ಉಳಿಸದೆಯೇ ಹಿಂದೆ ಹೋಗುವುದೇ?";
+"roomPreview.unsavedMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.";
+"roomPreview.stay" = "ಇಲ್ಲೇ ಇರಿ";
+"roomPreview.leave" = "ಹಿಂದೆ ಹೋಗು";
+"roomViewer.share" = "ಹಂಚಿಕೊಳ್ಳಿ";
+"roomViewer.calibrateWall" = "ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.recenterView" = "ನೋಟ ಮಧ್ಯಕ್ಕೆ";
+"roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
+"roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
+"roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
+"roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";
+"roomViewer.calibrateRoomTitle" = "ಕೊಠಡಿ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.enterFurnitureHeightMeters" = "ನಿಜವಾದ ಪೀಠೋಪಕರಣ ಎತ್ತರ ನಮೂದಿಸಿ (ಮೀಟರ್)";
+"roomViewer.furnitureFullHeightHint" = "ಪೂರ್ಣ ಎತ್ತರ: ನೆಲದಿಂದ ಮೇಲ್ಭಾಗ (ಉದಾ. ಕುರ್ಚಿಗೆ 0.9 ಮೀ)";
+"roomViewer.calibrateByWallTitle" = "ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.enterWallDimensionsHint" = "ಟೇಪ್‌ನಿಂದ ಅಳೆದ ಮುಂಭಾಗದ ಗೋಡೆ (ಮೀಟರ್) ನಮೂದಿಸಿ, ಉದಾ. 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
+"roomViewer.detectedMeters" = "ಪತ್ತೆ: %.2f ಮೀ";
+"roomViewer.roomMetersShort" = "ಕೊಠಡಿ: %.2f ಮೀ";
+"roomViewer.furnitureMetersShort" = "ಪೀಠೋ: %.2f ಮೀ";
+"roomViewer.wallWidthPlaceholder" = "ಅಗಲ";
+"roomViewer.wallHeightPlaceholder" = "ಎತ್ತರ";
+"roomViewer.saveErrorUnknown" = "ಅಜ್ಞಾತ ದೋಷ";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "ವರದಿ ಸಲ್ಲಿಸು";

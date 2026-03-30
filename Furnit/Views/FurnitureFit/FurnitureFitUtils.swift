@@ -1,8 +1,9 @@
 // FurnitureFitUtils.swift
 // Utility functions for FurnitureFit segmentation - extracted for testability
 
-import Foundation
 import CoreGraphics
+import Darwin
+import Foundation
 
 // MARK: - Detection Structure
 /// Represents a detected object with bounding box, confidence, class, and mask coefficients
@@ -264,5 +265,19 @@ public struct FurnitureFitBBox {
                       candidate.x2 >= primary.x2 && candidate.y2 >= primary.y2
 
         return isLarger && contains
+    }
+}
+
+// MARK: - YOLO letterbox fill (Ultralytics)
+/// Letterbox padding must match Ultralytics default RGB **(114, 114, 114)** (opaque BGRA on device).
+/// `scripts/probe_yoloe26_coreml.py` / `visualize_yoloe26_coreml.py` use the same value; using 128×4 gray skews Core ML confidences vs PyTorch export.
+public enum YoloUltralyticsLetterboxFill {
+    public static func fillOpaqueBGRA114(dstBase: UnsafeMutableRawPointer, totalByteCount: Int) {
+        precondition(totalByteCount >= 0 && totalByteCount % 4 == 0)
+        guard totalByteCount > 0 else { return }
+        var pattern = (UInt8(114), UInt8(114), UInt8(114), UInt8(255))
+        withUnsafePointer(to: &pattern) {
+            memset_pattern4(dstBase, UnsafeRawPointer($0), totalByteCount)
+        }
     }
 }

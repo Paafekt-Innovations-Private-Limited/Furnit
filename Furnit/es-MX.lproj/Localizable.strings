@@ -21,6 +21,7 @@
 "common.error" = "Error";
 "common.save" = "Guardar";
 "common.close" = "Cerrar";
+"common.apply" = "Aplicar";
 
 // MARK: - Login View
 "login.yourName" = "Tu nombre";
@@ -178,20 +179,22 @@
 "faq.howToCreateAnswer" = "Toca el ícono de foto en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu cuarto. Verás dos opciones para elegir cómo crear tu cuarto 3D.";
 "faq.howToTakePhoto" = "¿Cómo tomo una foto para crear un cuarto?";
 "faq.howToTakePhotoAnswer" = "Toca el ícono de cámara en la pantalla de inicio para tomar una foto directamente. Puedes elegir entre lente Estándar (1x) o Gran Angular (0.5x ultra ancho). Mantén tu dispositivo firme y toca el botón de captura. La foto se usará para crear tu cuarto 3D.";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "¿Ayuda tomar la foto en la app?";
+"faq.depthAwareRoomPhotoAnswer" = "Sí. En dispositivos compatibles, «Tomar una foto» usa la cámara de la app con profundidad si está disponible, lo que puede mejorar el cuarto 3D.";
+"faq.twoMethods" = "¿Cuáles son las dos opciones para crear un cuarto?";
+"faq.twoMethodsAnswer" = "Al elegir una foto: 1) Cuarto 3D con IA – crea automáticamente un cuarto realista, o 2) Configuración manual – dibujas los límites tú mismo para más control.";
+"faq.whatIsAIRoom" = "¿Qué es el cuarto 3D con IA?";
+"faq.whatIsAIRoomAnswer" = "Convierte tu foto automáticamente en un cuarto 3D que puedes recorrer. Elige una foto y la app hace el resto.";
+"faq.whatIsManualRoom" = "¿Qué es la configuración manual?";
+"faq.whatIsManualRoomAnswer" = "Dibujas el contorno de las paredes en la foto para controlar mejor la forma del cuarto 3D.";
+"faq.whichMethodBetter" = "¿Qué método elijo?";
+"faq.whichMethodBetterAnswer" = "Prueba primero la IA: es más rápida y suele funcionar bien. Si no convence, usa la configuración manual. ¡Puedes probar ambas!";
 "faq.bestPhotos" = "¿Qué tipo de fotos funcionan mejor?";
 "faq.bestPhotosAnswer" = "Para mejores resultados, toma fotos con buena iluminación y la cámara en horizontal. Intenta capturar todo el cuarto incluyendo pisos, paredes y bordes del techo. Evita fotos borrosas u oscuras.";
 "faq.generationFailing" = "¿Por qué falla la generación de mi cuarto?";
 "faq.generationFailingAnswer" = "La generación de cuarto puede fallar si la foto es muy oscura, borrosa o no muestra suficientes características del cuarto. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.";
 "faq.howManyRooms" = "¿Cuántos cuartos puedo crear?";
-"faq.howManyRoomsAnswer" = "Puedes crear hasta 10 cuartos. Elimina cuartos viejos para hacer espacio para nuevos. El conteo de cuartos se muestra en la parte superior de tu pantalla de inicio.";
+"faq.howManyRoomsAnswer" = "Puedes crear hasta 1000 cuartos. Elimina cuartos viejos para liberar espacio. Arriba verás el número de cuartos y el almacenamiento usado.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentación de muebles";
@@ -205,7 +208,8 @@
 "faq.multiplePiecesAnswer" = "¡Sí! La IA puede detectar múltiples muebles en una sola foto. Cada elemento detectado se mostrará por separado para que puedas elegir cuáles usar.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "Cuarto 3D y colocación";
+"faq.roomFitment" = "¿Cómo compruebo si el mueble encaja?";
+"faq.roomFitmentAnswer" = "Tras añadir un mueble, redimensiónalo y muévelo en el cuarto 3D para ver cómo encaja con el espacio y otros muebles.";
 "faq.howToView" = "¿Cómo veo mi cuarto 3D?";
 "faq.howToViewAnswer" = "Toca cualquier cuarto en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por el cuarto usando gestos táctiles.";
 "faq.howToPlace" = "¿Cómo coloco muebles en mi cuarto?";
@@ -216,6 +220,13 @@
 "faq.accuracyAnswer" = "El modelo 3D proporciona una buena aproximación del diseño de tu cuarto. Para mayor precisión, asegúrate de que tu foto original capture claramente las dimensiones del cuarto con esquinas y bordes visibles.";
 "faq.adjustDimensions" = "¿Puedo ajustar las dimensiones del cuarto?";
 "faq.adjustDimensionsAnswer" = "Sí, ve a Configuración y busca las opciones de Dimensiones de cuarto donde puedes afinar el tamaño y proporciones de tu cuarto generado.";
+"faq.furnitureMeasurements" = "Muebles y medidas";
+"faq.arAssistedSizing" = "¿Qué es el tamaño de muebles asistido por AR?";
+"faq.arAssistedSizingAnswer" = "Si está activado en Configuración, la app combina profundidad de cámara y detección de objetos para escalar la superposición con más realismo al acercarte o alejarte. Mejor con buena luz y el objeto bien visible.";
+"faq.measurementPill" = "¿Qué es la pequeña lectura de medidas?";
+"faq.measurementPillAnswer" = "Con SmartyPants activo puede mostrarse la altura estimada del mueble y del cuarto. Toca para introducir medidas reales. Si la foto es con gran angular (0,5×), indícalo.";
+"faq.resetOverlayScale" = "La máscara se ve mal ampliada — ¿qué hago?";
+"faq.resetOverlayScaleAnswer" = "En el cuarto 3D abre el menú (⋮) y elige Restablecer escala de superposición. Quita el zoom automático de la máscara.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Límites del cuarto";
@@ -259,6 +270,29 @@
 "roomViewer.saveSuccess" = "¡Cuarto '%@' guardado correctamente!";
 "roomViewer.saveFailed" = "Error al guardar cuarto: %@";
 "roomViewer.roomSaveTitle" = "Guardar cuarto";
+"roomPreview.unsavedTitle" = "¿Salir sin guardar?";
+"roomPreview.unsavedMessage" = "El cuarto aún no se ha guardado. Si regresas ahora, perderás esta vista previa.";
+"roomPreview.stay" = "Quedarse";
+"roomPreview.leave" = "Salir";
+"roomViewer.share" = "Compartir";
+"roomViewer.calibrateWall" = "Calibrar pared";
+"roomViewer.recenterView" = "Recentrar vista";
+"roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
+"roomViewer.checkMeasurement" = "Revisar medida";
+"roomViewer.goingBack" = "Regresando…";
+"roomViewer.savingRoomEllipsis" = "Guardando cuarto…";
+"roomViewer.calibrateRoomTitle" = "Calibrar cuarto";
+"roomViewer.enterFurnitureHeightMeters" = "Ingresa la altura real del mueble (metros)";
+"roomViewer.furnitureFullHeightHint" = "Altura total: del piso arriba (p. ej., 0,9 m para una silla)";
+"roomViewer.calibrateByWallTitle" = "Calibrar por pared";
+"roomViewer.enterWallDimensionsHint" = "Ingresa la pared frontal medida con cinta (metros), p. ej. 3,15 × 2,86";
+"roomViewer.tapToCalibrate" = "Toca para calibrar";
+"roomViewer.detectedMeters" = "Detectado: %.2f m";
+"roomViewer.roomMetersShort" = "Cuarto: %.2f m";
+"roomViewer.furnitureMetersShort" = "Mueble: %.2f m";
+"roomViewer.wallWidthPlaceholder" = "Ancho";
+"roomViewer.wallHeightPlaceholder" = "Alto";
+"roomViewer.saveErrorUnknown" = "Error desconocido";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Enviar reporte";

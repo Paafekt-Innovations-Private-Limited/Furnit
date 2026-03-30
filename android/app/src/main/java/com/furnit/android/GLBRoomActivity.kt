@@ -205,7 +205,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 background = bg
                 val size = dpToPx(40)
                 layoutParams = LinearLayout.LayoutParams(size, size)
-                setOnClickListener { finish() }
+                setOnClickListener { handleBackNavigation() }
             }
             barContainer.addView(backBtn)
 
@@ -768,12 +768,33 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
+    private fun handleBackNavigation() {
+        if (isPreviewMode) {
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                showUnsavedPreviewLeaveDialog()
+            }
         } else {
-            super.onBackPressed()
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                finish()
+            }
         }
+    }
+
+    private fun showUnsavedPreviewLeaveDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.room_preview_leave_title)
+            .setMessage(R.string.room_preview_leave_message)
+            .setNegativeButton(R.string.room_preview_leave_stay, null)
+            .setPositiveButton(R.string.room_preview_leave_confirm) { _, _ -> finish() }
+            .show()
+    }
+
+    override fun onBackPressed() {
+        handleBackNavigation()
     }
 
     override fun onDestroy() {

@@ -21,6 +21,7 @@
 "common.error" = "錯誤";
 "common.save" = "儲存";
 "common.close" = "關閉";
+"common.apply" = "套用";
 
 // MARK: - Login View
 "login.yourName" = "你的名字";
@@ -178,20 +179,22 @@
 "faq.howToCreateAnswer" = "點擊主畫面左上角的照片圖示，然後拍攝或選擇房間的照片。您將看到兩個選項來建立您的3D房間。";
 "faq.howToTakePhoto" = "如何拍照來建立房間？";
 "faq.howToTakePhotoAnswer" = "點擊主畫面上的相機圖示直接拍照。您可以選擇標準(1x)或廣角(0.5x超廣角)鏡頭。保持裝置穩定並點擊拍攝按鈕。照片將用於建立您的3D房間。";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "用應用程式內建相機拍照會比較好嗎？";
+"faq.depthAwareRoomPhotoAnswer" = "會。在支援的裝置上，建立房間時選拍照而非從相簿挑圖，可使用內建相機搭配深度（若裝置提供），有助於 3D 房間的建立與比例。";
+"faq.twoMethods" = "兩種房間建立方式是什麼？";
+"faq.twoMethodsAnswer" = "選擇照片後，您可以選擇：1) AI 驅動的 3D 房間 - 使用人工智慧自動建立逼真的 3D 房間，或 2) 手動設定 - 您自己繪製房間邊界以獲得更多控制。";
+"faq.whatIsAIRoom" = "什麼是 AI 驅動的 3D 房間？";
+"faq.whatIsAIRoomAnswer" = "此選項使用智能技術自動將您的照片轉換為可漫步的 3D 房間。只需選擇一張照片，應用程式會完成其餘工作，無需繪製或調整。";
+"faq.whatIsManualRoom" = "什麼是手動設定？";
+"faq.whatIsManualRoomAnswer" = "手動設定時，您在照片上繪製房間牆壁的輪廓。這樣您可以更精確地控制 3D 房間的外觀。當您想自己微調房間形狀時非常有用。";
+"faq.whichMethodBetter" = "我該選哪種方式？";
+"faq.whichMethodBetterAnswer" = "建議先試 AI 驅動 - 更快，對大多數房間效果很好。如果結果不太理想，用手動設定在您想要的位置繪製牆壁。兩種都可以試試看您更喜歡哪種！";
 "faq.bestPhotos" = "什麼樣的照片效果最好？";
 "faq.bestPhotosAnswer" = "為獲得最佳效果，請在光線充足的環境下拍攝，並保持相機水平。盡量拍攝整個房間，包括地板、牆壁和天花板邊緣。避免模糊或昏暗的照片。";
 "faq.generationFailing" = "為什麼我的房間產生失敗？";
 "faq.generationFailingAnswer" = "如果照片太暗、模糊或沒有顯示足夠的房間特徵，房間產生可能會失敗。請嘗試在更好的光線下以更寬的角度拍攝新照片。";
 "faq.howManyRooms" = "我可以建立多少個房間？";
-"faq.howManyRoomsAnswer" = "你最多可以建立10個房間。刪除舊房間以騰出空間。房間數量顯示在主畫面頂部。";
+"faq.howManyRoomsAnswer" = "你最多可以建立1000個房間。刪除舊房間以騰出新空間。主畫面頂部會顯示房間數量與已使用的儲存空間。";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "傢俱分割";
@@ -205,7 +208,8 @@
 "faq.multiplePiecesAnswer" = "可以！AI可以在單張照片中偵測多件傢俱。每個偵測到的物品將單獨顯示，供你選擇使用。";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D房間與佈置";
+"faq.roomFitment" = "如何確認傢俱是否合適？";
+"faq.roomFitmentAnswer" = "加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。";
 "faq.howToView" = "如何檢視我的3D房間？";
 "faq.howToViewAnswer" = "點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。";
 "faq.howToPlace" = "如何在房間中放置傢俱？";
@@ -216,6 +220,13 @@
 "faq.accuracyAnswer" = "3D模型能很好地近似你的房間佈局。為獲得最佳準確度，請確保原始照片清晰地捕捉房間尺寸，包括可見的角落和邊緣。";
 "faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
 "faq.adjustDimensionsAnswer" = "可以，進入設定並找到房間尺寸選項，你可以微調產生房間的大小和比例。";
+"faq.furnitureMeasurements" = "傢俱與測量";
+"faq.arAssistedSizing" = "什麼是 AR 輔助傢俱尺寸？";
+"faq.arAssistedSizingAnswer" = "在設定中開啟後，應用程式會結合相機深度與物件偵測，在你靠近或遠離時更合理地縮放傢俱疊圖。光線充足、物品清晰時效果最佳。";
+"faq.measurementPill" = "畫面上小小的測量資訊是什麼？";
+"faq.measurementPillAnswer" = "SmartyPants 開啟時，可能會顯示預估的傢俱高度與房間高度。點一下可輸入實際尺寸以提高準確度。若房間照片以廣角（0.5×）拍攝，請一併標示，畫面構圖才會一致。";
+"faq.resetOverlayScale" = "偵測遮罩的縮放看起來不對，怎麼辦？";
+"faq.resetOverlayScaleAnswer" = "在 3D 房間開啟右上角選單（⋮），選擇重設疊圖縮放，可清除套在偵測遮罩上的自動縮放，方便在你移動後重新穩定。";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "房間邊界";
@@ -259,6 +270,29 @@
 "roomViewer.saveSuccess" = "房間「%@」儲存成功！";
 "roomViewer.saveFailed" = "儲存房間失敗：%@";
 "roomViewer.roomSaveTitle" = "儲存房間";
+"roomPreview.unsavedTitle" = "不儲存就返回？";
+"roomPreview.unsavedMessage" = "房間尚未儲存。若現在返回，將遺失此預覽。";
+"roomPreview.stay" = "留下";
+"roomPreview.leave" = "離開";
+"roomViewer.share" = "分享";
+"roomViewer.calibrateWall" = "校準牆面";
+"roomViewer.recenterView" = "檢視畫面置中";
+"roomViewer.resetOverlayScale" = "重設疊加比例";
+"roomViewer.checkMeasurement" = "檢查測量";
+"roomViewer.goingBack" = "正在返回…";
+"roomViewer.savingRoomEllipsis" = "正在儲存房間…";
+"roomViewer.calibrateRoomTitle" = "校準房間";
+"roomViewer.enterFurnitureHeightMeters" = "輸入家具實際高度（公尺）";
+"roomViewer.furnitureFullHeightHint" = "總高度：從地面到頂部（例如椅子 0.9 公尺）";
+"roomViewer.calibrateByWallTitle" = "依牆校準";
+"roomViewer.enterWallDimensionsHint" = "輸入捲尺測量的前牆尺寸（公尺），例如 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "點一下以校準";
+"roomViewer.detectedMeters" = "偵測到：%.2f 公尺";
+"roomViewer.roomMetersShort" = "房間：%.2f 公尺";
+"roomViewer.furnitureMetersShort" = "家具：%.2f 公尺";
+"roomViewer.wallWidthPlaceholder" = "寬度";
+"roomViewer.wallHeightPlaceholder" = "高度";
+"roomViewer.saveErrorUnknown" = "未知錯誤";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交報告";

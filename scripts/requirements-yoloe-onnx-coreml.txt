@@ -1,0 +1,8 @@
+# Isolated environment for ONNX → Core ML (legacy neural network path).
+# Run with: env -u PYTHONPATH /path/to/venv/bin/python scripts/yoloe_onnx_to_coreml_ct5.py ...
+#
+# NumPy 2.x breaks coremltools 5.2 (np.issubclass_); NumPy 1.24+ breaks np.bool alias.
+coremltools==5.2.0
+numpy>=1.21,<1.24
+onnx
+onnxruntime

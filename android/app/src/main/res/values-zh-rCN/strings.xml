@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">为什么我的房间产生失败？</string>
     <string name="faq_generation_failing_answer">如果照片太暗、模糊或没有显示足够的房间特征，房间产生可能会失败。请尝试在更好的光线下以更宽的角度拍摄新照片。</string>
     <string name="faq_how_many_rooms">我可以建立多少个房间？</string>
-    <string name="faq_how_many_rooms_answer">你最多可以建立10个房间。删除舊房间以腾出空间。房间数量显示在主画面顶部。</string>
+    <string name="faq_how_many_rooms_answer">你最多可以创建1000个房间。删除旧房间以腾出空间。主屏幕顶部会显示房间数量和已用存储空间。</string>
     <string name="faq_furniture_segmentation">家具分割</string>
     <string name="faq_what_is_segmentation">什么是家具分割？</string>
     <string name="faq_what_is_segmentation_answer">家具分割使用AI识别和分离照片中的家具，让你看到每件家具在3D房间中的效果。</string>
@@ -163,7 +163,8 @@
     <string name="faq_not_detected_answer">家具侦测在清晰、光线充足且家具明显可见的照片中效果最佳。确保家具没有被部分遮挡或与背景融合。</string>
     <string name="faq_multiple_pieces">我可以分割多件家具嗎？</string>
     <string name="faq_multiple_pieces_answer">可以！AI可以在单张照片中侦测多件家具。每个侦测到的物品将单獨显示，供你选择使用。</string>
-    <string name="faq_room_fitment">3D房间与布置</string>
+    <string name="faq_room_fitment">如何查看家具是否合适？</string>
+    <string name="faq_room_fitment_answer">添加家具后，你可以在 3D 房间中缩放和移动它，对照现有空间和其他家具查看是否合适。</string>
     <string name="faq_how_to_view">如何检视我的3D房间？</string>
     <string name="faq_how_to_view_answer">点擊主画面上的任何房间以开启3D检视器。你可以使用触控手势旋转、缩放和平移房间。</string>
     <string name="faq_how_to_place">如何在房间中放置家具？</string>
@@ -174,6 +175,15 @@
     <string name="faq_accuracy_answer">3D模型能很好地近似你的房间布局。为获得最佳准确度，请确保原始照片清晰地捕捉房间尺寸，包括可见的角落和边緣。</string>
     <string name="faq_adjust_dimensions">我可以调整房间尺寸嗎？</string>
     <string name="faq_adjust_dimensions_answer">可以，进入设定并找到房间尺寸选項，你可以微调产生房间的大小和比例。</string>
+    <string name="faq_furniture_measurements">家具与测量</string>
+    <string name="faq_ar_assisted_sizing">什么是 AR 辅助家具尺寸？</string>
+    <string name="faq_ar_assisted_sizing_answer">在设置中开启后，应用会结合相机深度与物体检测，在你靠近或远离时更合理地缩放家具叠加层。光线充足、物品清晰时效果最佳。</string>
+    <string name="faq_measurement_pill">画面上小小的测量提示是什么？</string>
+    <string name="faq_measurement_pill_answer">SmartyPants 开启时，可能会显示预估的家具高度和房间高度。点击可输入实际尺寸以提高准确度。若房间照片用广角（0.5×）拍摄，请一并标记，画面构图才会一致。</string>
+    <string name="faq_reset_overlay_scale">检测遮罩缩放看起来不对怎么办？</string>
+    <string name="faq_reset_overlay_scale_answer">在 3D 房间打开右上角菜单（⋮），选择「重置叠加缩放」，可清除套在检测遮罩上的自动缩放，便于移动后重新稳定。</string>
+    <string name="faq_depth_aware_room_photo">用应用内相机拍照会更好吗？</string>
+    <string name="faq_depth_aware_room_photo_answer">会。在支持的设备上，创建房间时选择「拍照」而非从相册选取，可使用内置相机与深度信息（若设备提供），有助于构建与比例。</string>
     <string name="boundary_title">房间边界</string>
     <string name="boundary_instructions">拖拽圆圈调整边界</string>
     <string name="boundary_floor">地板</string>

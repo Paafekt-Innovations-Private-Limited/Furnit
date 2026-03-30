@@ -151,6 +151,15 @@ extension View {
     func disableBackSwipe() -> some View {
         self.modifier(DisableBackSwipeModifier())
     }
+
+    @ViewBuilder
+    func disableBackSwipeIf(_ condition: Bool) -> some View {
+        if condition {
+            self.disableBackSwipe()
+        } else {
+            self
+        }
+    }
 }
 
 // MARK: - UIView Extension to Find Navigation Controller
@@ -188,6 +197,7 @@ struct GLBRoomView: View {
     @State private var furnitureFitInitialSegmentationDone = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
+    @State private var showDiscardUnsavedAlert = false
 
     var body: some View {
         ZStack {
@@ -266,15 +276,17 @@ struct GLBRoomView: View {
         .background(Color.gray)
         .navigationTitle(formatDimensions())
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
+            if savedRoomModel == nil {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showDiscardUnsavedAlert = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text(L10n.Common.back)
+                        }
                     }
                 }
             }
@@ -300,8 +312,16 @@ struct GLBRoomView: View {
         .onDisappear {
             OrientationLockManager.shared.unlock()
         }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
+        }
         .defersSystemGestures(on: .all)
-        .disableBackSwipe()
+        .disableBackSwipeIf(savedRoomModel == nil)
     }
 
     private func formatDimensions() -> String {

@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">لماذا يفشل إنشاء غرفتي؟</string>
     <string name="faq_generation_failing_answer">قد يفشل إنشاء الغرفة إذا كانت الصورة مظلمة جداً أو ضبابية أو لا تُظهر ميزات كافية للغرفة. جرب التقاط صورة جديدة بإضاءة أفضل وزاوية أوسع.</string>
     <string name="faq_how_many_rooms">كم عدد الغرف التي يمكنني إنشاؤها؟</string>
-    <string name="faq_how_many_rooms_answer">يمكنك إنشاء حتى 10 غرف. احذف الغرف القديمة لإفساح المجال. يُعرض عدد الغرف في أعلى شاشتك الرئيسية.</string>
+    <string name="faq_how_many_rooms_answer">يمكنك إنشاء ما يصل إلى 1000 غرفة. احذف الغرف القديمة لإفساح المجال للجديدة. يُعرض عدد الغرف والتخزين المستخدم في أعلى الشاشة الرئيسية.</string>
     <string name="faq_ai_features">ميزات الذكاء الاصطناعي</string>
     <string name="faq_what_is_brain_icon">ماذا تفعل أيقونة الدماغ؟</string>
     <string name="faq_what_is_brain_icon_answer">تُفعّل أيقونة الدماغ ميزة SmartyPants - وهي ميزة كشف الأجسام المدعومة بالذكاء الاصطناعي. تستخدم الكاميرا لتحديد الأثاث والأجسام في الوقت الفعلي، وتعرض التسميات ومربعات الإحاطة حول العناصر المكتشفة.</string>
@@ -177,7 +177,8 @@
     <string name="faq_what_do_arrows_do_answer">أزرار الأسهم على جانب العرض ثلاثي الأبعاد تحرك الكاميرا: الأعلى والأسفل يغيران ارتفاع المنظر؛ اليسار واليمين يحركان الكاميرا أفقياً. يمكنك أيضاً السحب على الشاشة لتدوير الغرفة وزر إعادة التمركز (أيقونة محدد المنظر) لإعادة ضبط المنظر.</string>
     <string name="faq_what_is_memory_display">ماذا يعني رقم MB؟</string>
     <string name="faq_what_is_memory_display_answer">يشير MB (ميجابايت) المعروض في الغرف إلى حجم الملف. يساعدك هذا على إدارة التخزين. يُعرض إجمالي التخزين المستخدم في أعلى الشاشة الرئيسية.</string>
-    <string name="faq_room_fitment">الغرفة ثلاثية الأبعاد والتركيب</string>
+    <string name="faq_room_fitment">كيف أتحقق من ملاءمة الأثاث؟</string>
+    <string name="faq_room_fitment_answer">بعد إضافة الأثاث، يمكنك تغيير حجمه وموضعه في الغرفة ثلاثية الأبعاد لمعرفة مدى ملاءمته لمساحتك وللأثاث الآخر.</string>
     <string name="faq_how_to_view">كيف أعرض غرفتي ثلاثية الأبعاد؟</string>
     <string name="faq_how_to_view_answer">اضغط على أي غرفة في الشاشة الرئيسية لفتح العارض ثلاثي الأبعاد. يمكنك تدوير الغرفة وتكبيرها وتحريكها باستخدام إيماءات اللمس.</string>
     <string name="faq_how_to_place">كيف أضع الأثاث في غرفتي؟</string>
@@ -188,6 +189,15 @@
     <string name="faq_accuracy_answer">يوفر النموذج ثلاثي الأبعاد تقريباً جيداً لتخطيط غرفتك. للحصول على أفضل دقة، تأكد من أن صورتك الأصلية تلتقط أبعاد الغرفة بوضوح مع زوايا وحواف مرئية.</string>
     <string name="faq_adjust_dimensions">هل يمكنني ضبط أبعاد الغرفة؟</string>
     <string name="faq_adjust_dimensions_answer">نعم، انتقل إلى الإعدادات وابحث عن خيارات أبعاد الغرفة حيث يمكنك ضبط حجم ونسب الغرفة المنشأة بدقة.</string>
+    <string name="faq_furniture_measurements">الأثاث والقياسات</string>
+    <string name="faq_ar_assisted_sizing">ما هو تحديد حجم الأثاث بمساعدة الواقع المعزز؟</string>
+    <string name="faq_ar_assisted_sizing_answer">عند تفعيله في الإعدادات، يجمع التطبيق بين عمق الكاميرا واكتشاف الأجسام ليضبط حجم طبقة الأثاث بشكل أوضح عند اقترابك أو ابتعادك. يعمل أفضل مع إضاءة جيدة ورؤية واضحة للقطعة.</string>
+    <string name="faq_measurement_pill">ما هي القراءة الصغيرة للقياسات؟</string>
+    <string name="faq_measurement_pill_answer">عندما يكون SmartyPants نشطاً، قد تظهر تقديرات لارتفاع الأثاث والغرفة. اضغط لإدخال قياسات فعلية لدقة أفضل. إذا كانت صورة الغرفة بالزاوية الواسعة (0.5×)، حدد ذلك.</string>
+    <string name="faq_reset_overlay_scale">تبدو القناع مكبراً بشكل خاطئ—ماذا أفعل؟</string>
+    <string name="faq_reset_overlay_scale_answer">في الغرفة ثلاثية الأبعاد افتح القائمة (⋮) واختر إعادة ضبط مقياس الطبقة. يزيل التكبير التلقائي المطبق على قناع الكشف.</string>
+    <string name="faq_depth_aware_room_photo">هل يساعد التقاط الصورة داخل التطبيق على جودة الغرفة؟</string>
+    <string name="faq_depth_aware_room_photo_answer">نعم. على الأجهزة المدعومة، خيار «التقاط صورة» بدلاً من المعرض يستخدم كاميرا التطبيق مع العمق عند توفره، مما قد يحسن بناء الغرفة ثلاثية الأبعاد وحجمها.</string>
     <string name="boundary_title">حدود الغرفة</string>
     <string name="boundary_instructions">اسحب الدوائر لضبط الحدود</string>
     <string name="boundary_floor">الأرضية</string>

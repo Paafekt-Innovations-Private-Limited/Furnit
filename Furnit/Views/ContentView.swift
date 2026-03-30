@@ -1035,6 +1035,8 @@ struct SupportView: View {
                 icon: "camera.fill",
                 items: [
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
+                    FAQItem(question: "faq.howToTakePhoto".localized, answer: "faq.howToTakePhotoAnswer".localized),
+                    FAQItem(question: "faq.depthAwareRoomPhoto".localized, answer: "faq.depthAwareRoomPhotoAnswer".localized),
                     FAQItem(question: "faq.twoMethods".localized, answer: "faq.twoMethodsAnswer".localized),
                     FAQItem(question: "faq.whatIsAIRoom".localized, answer: "faq.whatIsAIRoomAnswer".localized),
                     FAQItem(question: "faq.whatIsManualRoom".localized, answer: "faq.whatIsManualRoomAnswer".localized),
@@ -1054,6 +1056,18 @@ struct SupportView: View {
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
                     FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.furnitureMeasurements".localized,
+                icon: "ruler",
+                items: [
+                    FAQItem(question: "faq.arAssistedSizing".localized, answer: "faq.arAssistedSizingAnswer".localized),
+                    FAQItem(question: "faq.measurementPill".localized, answer: "faq.measurementPillAnswer".localized),
+                    FAQItem(question: "faq.resetOverlayScale".localized, answer: "faq.resetOverlayScaleAnswer".localized),
+                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized),
+                    FAQItem(question: "faq.roomFitment".localized, answer: "faq.roomFitmentAnswer".localized)
                 ]
             ),
             FAQSection(

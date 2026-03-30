@@ -21,7 +21,7 @@ class YOLOEModelService: ObservableObject {
 
     // MARK: - On-Demand Resources
 
-    /// Tag assigned to yoloe-11l-seg-pf.mlpackage in Xcode's ODR settings
+    /// Tag assigned to the bundled YOLOE model package in Xcode's ODR settings
     private static let yoloeModelTag = "YOLOEModel"
 
     /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource
@@ -75,6 +75,13 @@ class YOLOEModelService: ObservableObject {
         Task {
             await loadModel()
         }
+    }
+
+    /// Reload after toggling Core ML GPU in Settings (`computeUnits` are fixed at load time).
+    func reloadForComputeUnitsChange() async {
+        model = nil
+        isLoadingModel = false
+        await loadModel()
     }
 
     /// Wait until `model` is non-nil or `maxWaitSeconds` elapses (for one-shot room calibration after ODR).
@@ -208,14 +215,20 @@ class YOLOEModelService: ObservableObject {
 
         statusMessage = "Loading detection model…"
 
-        // Try loading from bundle (works in both Debug and ODR-downloaded Release)
+        // One-to-many 26L seg export (`scripts/export_yoloe26_onemany_user.py` → `_seg_o2m`), then legacy names.
         let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
-            ("yoloe-11l-seg-pf", "mlpackage"),
+            ("yoloe-26l-seg-pf_seg_o2m", "mlmodelc"),
+            ("yoloe-26l-seg-pf_seg_o2m", "mlpackage"),
+            ("yoloe-26l-seg-pf", "mlmodelc"),
+            ("yoloe-26l-seg-pf", "mlpackage"),
         ]
 
         let config = MLModelConfiguration()
-        config.computeUnits = .cpuOnly
+        // Default CPU-only: this Core ML export can SIGABRT inside `prediction` when using GPU
+        // or ANE (Swift `try?` does not catch that). Optional GPU is in Settings.
+        let allowGPU = UserDefaults.standard.bool(forKey: QualitySettings.yoloeCoreMLAllowGPUKey)
+        config.computeUnits = allowGPU ? .cpuAndGPU : .cpuOnly
+        logDebug("YOLOE: Core ML computeUnits=\(allowGPU ? "cpuAndGPU (experimental)" : "cpuOnly (stable)")")
 
         for (name, ext) in candidateNames {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {

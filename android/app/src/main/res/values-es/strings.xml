@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">¿Por qué falla la generación de mi habitación?</string>
     <string name="faq_generation_failing_answer">La generación de habitación puede fallar si la foto es demasiado oscura, borrosa o no muestra suficientes características de la habitación. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.</string>
     <string name="faq_how_many_rooms">¿Cuántas habitaciones puedo crear?</string>
-    <string name="faq_how_many_rooms_answer">Puedes crear hasta 10 habitaciones. Elimina habitaciones antiguas para hacer espacio para nuevas. El recuento de habitaciones se muestra en la parte superior de tu pantalla de inicio.</string>
+    <string name="faq_how_many_rooms_answer">Puedes crear hasta 1000 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior de la pantalla de inicio verás el número de habitaciones y el almacenamiento usado.</string>
     <string name="faq_furniture_segmentation">Segmentación de muebles</string>
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
     <string name="faq_what_is_segmentation_answer">La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza encajaría en tu habitación 3D.</string>
@@ -174,6 +174,15 @@
     <string name="faq_accuracy_answer">El modelo 3D proporciona una buena aproximación del diseño de tu habitación. Para mayor precisión, asegúrate de que tu foto original capture claramente las dimensiones de la habitación con esquinas y bordes visibles.</string>
     <string name="faq_adjust_dimensions">¿Puedo ajustar las dimensiones de la habitación?</string>
     <string name="faq_adjust_dimensions_answer">Sí, ve a Ajustes y busca las opciones de Dimensiones de habitación donde puedes afinar el tamaño y proporciones de tu habitación generada.</string>
+    <string name="faq_furniture_measurements">Muebles y medidas</string>
+    <string name="faq_ar_assisted_sizing">¿Qué es el tamaño de muebles asistido por AR?</string>
+    <string name="faq_ar_assisted_sizing_answer">Si está activado en Ajustes, la app combina profundidad de cámara y detección de objetos para escalar la superposición del mueble con más realismo al acercarte o alejarte. Funciona mejor con buena luz y el objeto bien visible.</string>
+    <string name="faq_measurement_pill">¿Qué es la pequeña lectura de medidas?</string>
+    <string name="faq_measurement_pill_answer">Con SmartyPants activo puede mostrarse la altura estimada del mueble y de la habitación. Toca para introducir medidas reales. Si la foto de la habitación es con gran angular (0,5×), indícalo para mantener el encuadre coherente.</string>
+    <string name="faq_reset_overlay_scale">La máscara parece mal ampliada — ¿qué hago?</string>
+    <string name="faq_reset_overlay_scale_answer">En la habitación 3D abre el menú (⋮) y elige Restablecer escala de superposición. Borra el zoom automático de la máscara de detección para que se estabilice al moverte.</string>
+    <string name="faq_depth_aware_room_photo">¿Ayuda tomar la foto dentro de la app?</string>
+    <string name="faq_depth_aware_room_photo_answer">Sí. En dispositivos compatibles, «Tomar una foto» (en lugar de la galería) usa la cámara de la app con profundidad si está disponible, lo que puede mejorar la escala y reconstrucción 3D.</string>
     <string name="boundary_title">Límites de habitación</string>
     <string name="boundary_instructions">Arrastra los círculos para ajustar los límites</string>
     <string name="boundary_floor">Suelo</string>

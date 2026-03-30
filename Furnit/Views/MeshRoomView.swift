@@ -34,6 +34,7 @@ struct MeshRoomView: View {
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showDiscardUnsavedAlert = false
 
     // Brain mode (furniture detection)
     @State private var showingFurnitureFit = false
@@ -146,7 +147,24 @@ struct MeshRoomView: View {
         .background(Color.gray)
         .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
+            if savedRoomModel == nil {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if saveWasSuccessful {
+                            dismiss()
+                        } else {
+                            showDiscardUnsavedAlert = true
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text(L10n.Common.back)
+                        }
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 // Save Room button
                 Button(action: {
@@ -191,6 +209,14 @@ struct MeshRoomView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(saveAlertMessage)
+        }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
         }
         .defersSystemGestures(on: .all)
         .disableBackSwipe()

@@ -23,7 +23,7 @@ class FurnitureFitMaskTest {
 
         // Copy ONNX model from assets to cache
         val modelFile = File(context.cacheDir, "yolo11l-seg.onnx")
-        context.assets.open("yoloe-11l-seg-pf.onnx").use { input ->
+        context.assets.open("yoloe-26l-seg-pf_seg_o2m.onnx").use { input ->
             FileOutputStream(modelFile).use { output ->
                 input.copyTo(output)
             }

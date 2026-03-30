@@ -1,5 +1,4 @@
 import SwiftUI
-import ARKit
 
 struct SettingsView: View {
     @ObservedObject private var appState = AppStateManager.shared
@@ -171,29 +170,37 @@ struct SettingsView: View {
 
                 // Furniture segmentation (FurnitureFit)
                 Section {
-                    if ARWorldTrackingConfiguration.isSupported {
-                        Toggle(isOn: $appState.qualitySettings.enableArAssistedFurnitureSizing) {
-                            HStack {
-                                Image(systemName: "camera.metering.matrix")
-                                    .foregroundColor(.teal)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(L10n.Settings.arAssistedFurnitureSizing)
-                                        .font(.headline)
-                                    Text(L10n.Settings.arAssistedFurnitureSizingDescription)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                    Toggle(isOn: $appState.qualitySettings.furnitureFitUseOnnxRuntime) {
+                        HStack {
+                            Image(systemName: "cube.transparent")
+                                .foregroundColor(.teal)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.furnitureFitOnnxRuntime)
+                                    .font(.headline)
+                                Text(L10n.Settings.furnitureFitOnnxRuntimeDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
-                        .tint(.teal)
-                    } else {
+                    }
+                    .tint(.teal)
+
+                    Toggle(isOn: $appState.qualitySettings.yoloeCoreMLAllowGPU) {
                         HStack {
-                            Image(systemName: "camera.metering.matrix")
-                                .foregroundColor(.secondary)
-                            Text(L10n.Settings.arAssistedNotSupported)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Image(systemName: "cpu")
+                                .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.yoloeCoreMLAllowGPU)
+                                    .font(.headline)
+                                Text(L10n.Settings.yoloeCoreMLAllowGPUDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                    }
+                    .tint(.indigo)
+                    .onChange(of: appState.qualitySettings.yoloeCoreMLAllowGPU) { _, _ in
+                        Task { await YOLOEModelService.shared.reloadForComputeUnitsChange() }
                     }
 
                     Toggle(isOn: $showRoomFurnitureCalibrate) {

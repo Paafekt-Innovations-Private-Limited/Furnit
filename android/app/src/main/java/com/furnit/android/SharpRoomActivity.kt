@@ -51,7 +51,9 @@ import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.services.WallMeasurementEstimator
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
@@ -201,8 +203,9 @@ class SharpRoomActivity : AppCompatActivity() {
     // Brain (SmartyPants) overlay: show progress in same Activity so room stays visible
     private var brainOverlayVisible = false
     private var furnitureFitManager: FurnitureFitManager? = null
+    private var brainModelWarmupJob: Deferred<FurnitureFitManager?>? = null
     private var cameraProvider: ProcessCameraProvider? = null
-    /** Brain flow: ARCore camera when AR-assisted sizing is on and supported. */
+    /** Brain flow: ARCore camera when ARCore is supported (metric overlay sizing). */
     private var brainArController: FurnitureFitArCameraController? = null
     /** [setContentView] root — used to insert/remove AR [GLSurfaceView] for brain mode. */
     private lateinit var sharpRoomContentRoot: FrameLayout
@@ -489,6 +492,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
         sharpRoomContentRoot = rootLayout
+        prewarmBrainSegmentationIfNeeded()
 
         // Apply status bar insets; pan overlay sits below top bar
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
@@ -562,7 +566,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     setColor(Color.parseColor("#3A3A3C"))
                 }
                 background = bg
-                setOnClickListener { finish() }
+                setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             }
             barContainer.addView(
                 backBtn,
@@ -630,6 +634,15 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
         }
+    }
+
+    private fun showUnsavedPreviewLeaveDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.room_preview_leave_title)
+            .setMessage(R.string.room_preview_leave_message)
+            .setNegativeButton(R.string.room_preview_leave_stay, null)
+            .setPositiveButton(R.string.room_preview_leave_confirm) { _, _ -> finish() }
+            .show()
     }
 
     private fun showHelpDialog() {
@@ -1229,6 +1242,24 @@ class SharpRoomActivity : AppCompatActivity() {
         setBrainCalibrationPillVisible(false)
     }
 
+    private fun createInitializedFurnitureFitManager(): FurnitureFitManager? {
+        val initializedManager = FurnitureFitManager(this)
+        if (initializedManager.initializeAuto()) {
+            return initializedManager
+        }
+        initializedManager.close()
+        return null
+    }
+
+    private fun prewarmBrainSegmentationIfNeeded() {
+        if (furnitureFitManager != null) return
+        val existingWarmupJob = brainModelWarmupJob
+        if (existingWarmupJob != null && existingWarmupJob.isActive) return
+        brainModelWarmupJob = lifecycleScope.async(Dispatchers.IO) {
+            createInitializedFurnitureFitManager()
+        }
+    }
+
     private fun startBrainDetection() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
         // Reset per-session state and any pending timeout from a previous brain run.
@@ -1236,10 +1267,15 @@ class SharpRoomActivity : AppCompatActivity() {
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
         disableArBrainThisSession = false
+        prewarmBrainSegmentationIfNeeded()
         lifecycleScope.launch {
-            val manager = withContext(Dispatchers.IO) {
-                val m = FurnitureFitManager(this@SharpRoomActivity)
-                if (m.initializeAuto()) m else null
+            val warmedManager = furnitureFitManager ?: brainModelWarmupJob?.await()
+            if (furnitureFitManager == null && warmedManager != null) {
+                furnitureFitManager = warmedManager
+            }
+            brainModelWarmupJob = null
+            val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
+                createInitializedFurnitureFitManager()
             }
             if (manager == null) {
                 DebugLogger.eDebugMode(TAG, "Brain: SmartyPants failed to initialize")
@@ -2571,15 +2607,15 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             return
         }
-        if (openedFromSinglePhotoRoom) {
-            finish()
+        if (allowSave && !hasSavedRoom) {
+            showUnsavedPreviewLeaveDialog()
             return
         }
         if (webView.canGoBack()) {
             webView.goBack()
-        } else {
-            super.onBackPressed()
+            return
         }
+        super.onBackPressed()
     }
 
     override fun onDestroy() {
@@ -2587,6 +2623,8 @@ class SharpRoomActivity : AppCompatActivity() {
             deleteTempSharpRoomIfNeeded()
         }
         stopBrainDetection()
+        brainModelWarmupJob?.cancel()
+        brainModelWarmupJob = null
         if (!cameraExecutor.isShutdown) {
             cameraExecutor.shutdown()
         }

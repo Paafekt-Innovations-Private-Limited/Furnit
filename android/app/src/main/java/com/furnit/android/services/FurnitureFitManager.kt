@@ -15,13 +15,17 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
 import ai.onnxruntime.OrtException
 import com.furnit.android.DetectionResult
+import com.furnit.android.ar.ArSupportChecker
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
+import java.util.Arrays
+import kotlin.math.ceil
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -53,19 +57,17 @@ class FurnitureFitManager(private val context: Context) {
     private val supportingTableClassIds = setOf(1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564)
 
     companion object {
-        /** Shared with [com.furnit.android.SettingsActivity] — ARCore metric distance + pinhole overlay scale. */
-        const val KEY_AR_ASSISTED_FURNITURE_SIZING = "ar_assisted_furniture_sizing"
-
         /**
          * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
          * Default false — same as iOS @AppStorage default.
          */
         const val KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI = "show_room_furniture_calibrate"
 
-        fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean {
-            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                .getBoolean(KEY_AR_ASSISTED_FURNITURE_SIZING, true)
-        }
+        /**
+         * Metric overlay sizing uses ARCore depth/planes when the device supports ARCore; otherwise non-metric fallback.
+         */
+        fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean =
+            ArSupportChecker.isArCoreSupported(context)
 
         fun isRoomFurnitureCalibrateUiEnabled(context: Context): Boolean {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
@@ -202,7 +204,7 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /** Initialize ONNX Runtime session from asset ONNX model. */
-    fun initializeOnnx(onnxAssetName: String = "yoloe-11l-seg-pf.onnx") {
+    fun initializeOnnx(onnxAssetName: String = "yoloe-26l-seg-pf_seg_o2m.onnx") {
         LogUtil.i("FurnitureFitManager", "initializeOnnx called with '$onnxAssetName'")
         try {
             LogUtil.d("FurnitureFitManager", "Copying asset to cache...")
@@ -385,30 +387,71 @@ class FurnitureFitManager(private val context: Context) {
     private fun createBboxMask(frame: Bitmap, detections: List<NcnnYoloe.Detection>): Bitmap {
         val mask = Bitmap.createBitmap(frame.width, frame.height, Config.ARGB_8888)
         val pixels = IntArray(frame.width * frame.height)
-
-        // Fill with transparent
-        for (i in pixels.indices) {
-            pixels[i] = 0x00000000
-        }
+        pixels.fill(0)
 
         // Draw filled rectangles for each detection
+        val fw = frame.width
         for (det in detections) {
             val left = maxOf(0, det.left.toInt())
             val top = maxOf(0, det.top.toInt())
             val right = minOf(frame.width - 1, det.right.toInt())
             val bottom = minOf(frame.height - 1, det.bottom.toInt())
 
-            // Fill with semi-transparent green
             val color = 0xCC00FF00.toInt()
             for (y in top..bottom) {
-                for (x in left..right) {
-                    pixels[y * frame.width + x] = color
-                }
+                val row = y * fw
+                Arrays.fill(pixels, row + left, row + right + 1, color)
             }
         }
 
         mask.setPixels(pixels, 0, frame.width, 0, 0, frame.width, frame.height)
         return mask
+    }
+
+    /**
+     * Nearest-neighbor map from prototype mask to full frame, copy camera ARGB only where mask > [threshold].
+     * Fills [outPixels] with transparent black, then only scans the primary band [x0,x1)×[y0,y1) and uses
+     * horizontal spans that share the same proto column (fewer branches than per-pixel double loop).
+     */
+    private fun composeNearestProtoMaskCutoutArgb(
+        framePixels: IntArray,
+        outPixels: IntArray,
+        maskProto: FloatArray,
+        frameW: Int,
+        frameH: Int,
+        protoW: Int,
+        protoH: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        threshold: Float = 0.5f,
+    ) {
+        outPixels.fill(0)
+        if (x0 >= x1 || y0 >= y1 || frameW <= 0 || frameH <= 0) return
+        val xStart = x0.coerceIn(0, frameW)
+        val xEnd = x1.coerceIn(0, frameW)
+        val yStart = y0.coerceIn(0, frameH)
+        val yEnd = y1.coerceIn(0, frameH)
+        if (xStart >= xEnd || yStart >= yEnd) return
+
+        for (y in yStart until yEnd) {
+            val protoY = (y * protoH) / frameH
+            val protoRow = protoY * protoW
+            val rowBase = y * frameW
+            var x = xStart
+            while (x < xEnd) {
+                val protoX = (x * protoW) / frameW
+                val nextX = minOf(
+                    xEnd,
+                    ((protoX + 1) * frameW + protoW - 1) / protoW,
+                )
+                if (maskProto[protoRow + protoX] > threshold) {
+                    System.arraycopy(framePixels, rowBase + x, outPixels, rowBase + x, nextX - x)
+                }
+                x = nextX
+            }
+        }
     }
 
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
@@ -1042,26 +1085,34 @@ class FurnitureFitManager(private val context: Context) {
 
                 val frameW = frame.width
                 val frameH = frame.height
-                val scaleX = frameW.toFloat() / protoW
-                val scaleY = frameH.toFloat() / protoH
+                val sxf = frameW.toFloat() / inputW.toFloat()
+                val syf = frameH.toFloat() / inputH.toFloat()
+                val px0 = primaryDet.x - primaryDet.w / 2f
+                val px1 = primaryDet.x + primaryDet.w / 2f
+                val py0 = primaryDet.y - primaryDet.h / 2f
+                val py1 = primaryDet.y + primaryDet.h / 2f
+                val bandX0 = floor((px0 * sxf).toDouble()).toInt().coerceIn(0, frameW)
+                val bandX1 = ceil((px1 * sxf).toDouble()).toInt().coerceIn(0, frameW)
+                val bandY0 = floor((py0 * syf).toDouble()).toInt().coerceIn(0, frameH)
+                val bandY1 = ceil((py1 * syf).toDouble()).toInt().coerceIn(0, frameH)
 
                 val framePixels = IntArray(frameW * frameH)
                 frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
 
                 val outPixels = IntArray(frameW * frameH)
-                for (y in 0 until frameH) {
-                    val protoY = (y / scaleY).toInt().coerceIn(0, protoH - 1)
-                    for (x in 0 until frameW) {
-                        val protoX = (x / scaleX).toInt().coerceIn(0, protoW - 1)
-                        val maskVal = maskProto[protoY * protoW + protoX]
-                        val frameIdx = y * frameW + x
-                        if (maskVal > 0.5f) {
-                            outPixels[frameIdx] = framePixels[frameIdx]
-                        } else {
-                            outPixels[frameIdx] = 0x00000000
-                        }
-                    }
-                }
+                composeNearestProtoMaskCutoutArgb(
+                    framePixels = framePixels,
+                    outPixels = outPixels,
+                    maskProto = maskProto,
+                    frameW = frameW,
+                    frameH = frameH,
+                    protoW = protoW,
+                    protoH = protoH,
+                    x0 = bandX0,
+                    x1 = bandX1,
+                    y0 = bandY0,
+                    y1 = bandY1,
+                )
 
                 val maskBmp = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888)
                 maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)

@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
@@ -60,6 +61,9 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var orientationLabel: LinearLayout
     private lateinit var boundaryManager: RoomBoundaryManager
     private var isPreviewMode = false
+    /** True while showing an on-disk GLB preview that has not been saved to the library yet. */
+    private var unsavedPreviewActive = false
+    private lateinit var previewBackCallback: OnBackPressedCallback
 
     // Touch-anywhere drag for camera control
     private var lastTouchX = 0f
@@ -92,8 +96,21 @@ class ModelDetailActivity : AppCompatActivity() {
         screenshotButton = findViewById(R.id.screenshotButton)
         orientationLabel = findViewById(R.id.orientationLabel)
 
+        previewBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                showUnsavedPreviewLeaveDialog()
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, previewBackCallback)
+
         val backButton: ImageButton = findViewById(R.id.backButton)
-        backButton.setOnClickListener { finish() }
+        backButton.setOnClickListener {
+            if (unsavedPreviewActive) {
+                showUnsavedPreviewLeaveDialog()
+            } else {
+                finish()
+            }
+        }
 
         // Help button
         helpButton.setOnClickListener { showHelpDialog() }
@@ -113,6 +130,8 @@ class ModelDetailActivity : AppCompatActivity() {
 
         if (directGlbPath != null) {
             // Direct GLB path mode (preview before save)
+            unsavedPreviewActive = true
+            previewBackCallback.isEnabled = true
             glbPath = directGlbPath
             modelTitle.text = getString(R.string.model_detail_preview)
             LogUtil.d(TAG, "Preview mode - GLB path: $directGlbPath")
@@ -221,6 +240,19 @@ class ModelDetailActivity : AppCompatActivity() {
                 saveRoom(name)
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showUnsavedPreviewLeaveDialog() {
+        AlertDialog.Builder(this, R.style.DarkDialogTheme)
+            .setTitle(R.string.room_preview_leave_title)
+            .setMessage(R.string.room_preview_leave_message)
+            .setNegativeButton(R.string.room_preview_leave_stay, null)
+            .setPositiveButton(R.string.room_preview_leave_confirm) { _, _ ->
+                unsavedPreviewActive = false
+                previewBackCallback.isEnabled = false
+                finish()
+            }
             .show()
     }
 

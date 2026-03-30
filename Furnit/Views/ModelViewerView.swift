@@ -46,10 +46,6 @@ struct ModelViewerView: View {
         self.model = model
     }
 
-    private var anyCameraOverlayActive: Bool {
-        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit
-    }
-
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -66,11 +62,11 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // FurnitureFit overlay (yoloe-11l 1280)
+                    // FurnitureFit overlay (YOLOE Core ML)
                     if showingFurnitureFit {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
-                            roomImage: roomSnapshot,
+                            roomImage: nil,
                             mlModel: yoloeService.model,
                             processInterval: 0.07,
                             active: true,
@@ -157,17 +153,16 @@ struct ModelViewerView: View {
                                 if showingFurnitureFit {
                                     showingFurnitureFit = false
                                 } else {
-                                    logDebug("BRAIN FLOW: requesting snapshot")
-                                    // Trigger ARView snapshot
-                                    shouldCaptureARViewSnapshot = true
-                                    
+                                    logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
+                                    yoloeService.ensureModelLoaded()
+
                                     // Hide other overlays
                                     showingCameraPreview = false
                                     showingSegmentExamine = false
                                     showingSegmentForeground = false
                                     showingSegmentFurniture = false
                                     
-                                    // Wait briefly for snapshot to complete
+                                    // Open after the current UI update cycle; no AR snapshot needed here.
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         logDebug("BRAIN FLOW: showing FurnitureFit overlay")
                                         self.furnitureFitInitialSegmentationDone = false
@@ -227,7 +222,16 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingFurnitureFit) { _, _ in manageARSessionForOverlays() }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            manageARSessionForOverlays()
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            } else {
+                roomSnapshot = nil
+                capturedImage = nil
+                furnitureFitEstimatedHeightM = nil
+            }
+        }
         .onAppear {
             isARActive = true
             yoloeService.ensureModelLoaded()
@@ -469,7 +473,11 @@ struct ModelViewerView: View {
     }
 
     private func manageARSessionForOverlays() {
-        let shouldRunAR = !anyCameraOverlayActive
+        let shouldRunAR = !(showingCameraPreview ||
+                            showingSegmentExamine ||
+                            showingSegmentForeground ||
+                            showingSegmentFurniture ||
+                            showingFurnitureFit)
         if isARActive != shouldRunAR {
             isARActive = shouldRunAR
         }

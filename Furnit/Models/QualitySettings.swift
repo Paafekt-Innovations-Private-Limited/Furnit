@@ -125,6 +125,11 @@ enum AssetQuality: String, CaseIterable, Identifiable {
 
 // ObservableObject to manage quality settings across the app
 class QualitySettings: ObservableObject {
+
+    /// UserDefaults key for ``furnitureFitUseOnnxRuntime`` (read in ``FurnitureFitContainerView`` to branch to ONNX path).
+    static let furnitureFitUseOnnxRuntimeStorageKey = "furniture_fit_use_onnx_runtime"
+    /// UserDefaults key for optional Core ML GPU path (read by ``YOLOEModelService`` at model load).
+    static let yoloeCoreMLAllowGPUKey = "yoloe_core_ml_allow_gpu"
     // Current selected quality (published for UI updates)
     @Published var selectedQuality: AssetQuality {
         didSet {
@@ -157,10 +162,17 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When enabled and ARKit is supported: use AR depth / plane raycast + intrinsics for metric overlay sizing (falls back to 1× overlay scale + AV camera when off or unsupported).
-    @Published var enableArAssistedFurnitureSizing: Bool {
+    /// When `false` (default): Furniture Fit uses Core ML YOLO-E from ``YOLOEModelService`` (`yoloe-26l-seg-pf_seg_o2m`, one-to-many 640). When `true`: ONNX Runtime on bundled `yoloe-26l-seg-pf_seg_o2m.onnx` (fallback `yoloe-11l-seg-pf.onnx`) with Android-aligned NMS / primary / mask (see ``FurnitureFitOnnxStylePipeline``).
+    @Published var furnitureFitUseOnnxRuntime: Bool {
         didSet {
-            saveArAssistedFurnitureSizing()
+            saveFurnitureFitUseOnnxRuntime()
+        }
+    }
+
+    /// When `false` (default): YOLOE Core ML loads with CPU only (avoids SIGABRT on some 26L exports). When `true`: CPU+GPU (faster if stable on your device).
+    @Published var yoloeCoreMLAllowGPU: Bool {
+        didSet {
+            saveYoloeCoreMLAllowGPU()
         }
     }
 
@@ -169,8 +181,8 @@ class QualitySettings: ObservableObject {
     private let movementSpeedKey = "selected_movement_speed"
     private let debugModeKey = "debug_mode"
     private let bboxInMaskThresholdKey = "bbox_in_mask_threshold"
-    private let arAssistedFurnitureSizingKey = "ar_assisted_furniture_sizing"
-    
+    private let furnitureFitUseOnnxRuntimeKey = QualitySettings.furnitureFitUseOnnxRuntimeStorageKey
+
     // Initialize with saved quality or default to high
     init() {
         if let savedQuality = UserDefaults.standard.string(forKey: qualityKey),
@@ -197,10 +209,17 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-        if UserDefaults.standard.object(forKey: arAssistedFurnitureSizingKey) != nil {
-            self.enableArAssistedFurnitureSizing = UserDefaults.standard.bool(forKey: arAssistedFurnitureSizingKey)
+        // Default Core ML path (false); ONNX optional for Android-parity experiments
+        if UserDefaults.standard.object(forKey: furnitureFitUseOnnxRuntimeKey) != nil {
+            self.furnitureFitUseOnnxRuntime = UserDefaults.standard.bool(forKey: furnitureFitUseOnnxRuntimeKey)
         } else {
-            self.enableArAssistedFurnitureSizing = true
+            self.furnitureFitUseOnnxRuntime = false
+        }
+
+        if UserDefaults.standard.object(forKey: Self.yoloeCoreMLAllowGPUKey) != nil {
+            self.yoloeCoreMLAllowGPU = UserDefaults.standard.bool(forKey: Self.yoloeCoreMLAllowGPUKey)
+        } else {
+            self.yoloeCoreMLAllowGPU = false
         }
     }
     
@@ -228,12 +247,16 @@ class QualitySettings: ObservableObject {
         logDebug("💾 Saved bbox-in-mask threshold setting: \(bboxInMaskThreshold)")
     }
 
-    private func saveArAssistedFurnitureSizing() {
-        UserDefaults.standard.set(enableArAssistedFurnitureSizing, forKey: arAssistedFurnitureSizingKey)
-        logDebug("💾 Saved AR-assisted furniture sizing: \(enableArAssistedFurnitureSizing)")
-        NotificationCenter.default.post(name: .furnitureFitArAssistedSettingChanged, object: nil)
+    private func saveFurnitureFitUseOnnxRuntime() {
+        UserDefaults.standard.set(furnitureFitUseOnnxRuntime, forKey: furnitureFitUseOnnxRuntimeKey)
+        logDebug("💾 Saved Furniture Fit ONNX preference: \(furnitureFitUseOnnxRuntime)")
     }
-    
+
+    private func saveYoloeCoreMLAllowGPU() {
+        UserDefaults.standard.set(yoloeCoreMLAllowGPU, forKey: Self.yoloeCoreMLAllowGPUKey)
+        logDebug("💾 Saved YOLOE Core ML GPU preference: \(yoloeCoreMLAllowGPU)")
+    }
+
     // Get all available quality options for UI
     var availableQualities: [AssetQuality] {
         return AssetQuality.allCases
@@ -272,13 +295,9 @@ class QualitySettings: ObservableObject {
         selectedMovementSpeed = .normal
         debugMode = false
         bboxInMaskThreshold = 0.30
-        enableArAssistedFurnitureSizing = true
+        furnitureFitUseOnnxRuntime = false
+        yoloeCoreMLAllowGPU = false
     }
-}
-
-extension Notification.Name {
-    /// Posted when `enableArAssistedFurnitureSizing` is saved so FurnitureFit can switch AR vs classic camera.
-    static let furnitureFitArAssistedSettingChanged = Notification.Name("furnitureFitArAssistedSettingChanged")
 }
 
 // Extension for RealityKit rendering configuration

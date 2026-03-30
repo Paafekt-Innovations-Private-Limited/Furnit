@@ -21,6 +21,7 @@
 "common.error" = "Error";
 "common.save" = "Save";
 "common.close" = "Close";
+"common.apply" = "Apply";
 "common.or" = "or";
 
 // MARK: - Login View
@@ -134,9 +135,10 @@
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 "settings.furnitureSegmentationSection" = "Furniture segmentation";
-"settings.arAssistedFurnitureSizing" = "AR-assisted furniture sizing";
-"settings.arAssistedFurnitureSizingDescription" = "Use ARKit depth and planes with camera intrinsics to size the overlay in meters. When off, the regular camera is used and the overlay stays at 1× scale (pinch still adjusts size).";
-"settings.arAssistedNotSupported" = "ARKit world tracking is not available on this device.";
+"settings.furnitureFitOnnxRuntime" = "Use ONNX Runtime for YOLO-E";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off (default): Core ML YOLO-E. On: Furniture Fit uses bundled yoloe-11l-seg-pf.onnx at 640× with Android-style NMS, primary pick, and bbox-limited mask (no blacklist.json). Requires the .onnx file in the app bundle.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: allow GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "Off (default): CPU only — slower but avoids crashes on some YOLO-E 26L Core ML builds. On: CPU+GPU for speed; may SIGABRT during segmentation if the export does not run on Metal on your device.";
 "settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
 "settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
 
@@ -236,6 +238,19 @@
 "faq.accuracyAnswer" = "The 3D model provides a visual approximation of your room's layout. The dimensions shown are relative units from the AI model, not exact real-world measurements.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";
 "faq.adjustDimensionsAnswer" = "For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.";
+"faq.furnitureMeasurements" = "Furniture & measurements";
+"faq.arAssistedSizing" = "How is furniture overlay size estimated?";
+"faq.arAssistedSizingAnswer" = "On devices with ARKit world tracking, the app uses camera depth and intrinsics so the overlay scales in real-world meters as you move. Without AR support, sizing uses your 3D room dimensions; you can still pinch to adjust the overlay.";
+"faq.measurementPill" = "What is the small measurement readout?";
+"faq.measurementPillAnswer" = "While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.";
+"faq.resetOverlayScale" = "The furniture mask looks wrongly zoomed—what can I do?";
+"faq.resetOverlayScaleAnswer" = "Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.";
+"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
+"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
+"faq.multiplePieces" = "Can I add multiple furniture pieces?";
+"faq.multiplePiecesAnswer" = "Yes! You can add multiple furniture pieces to your room. Simply segment each piece and add them one by one.";
+"faq.roomFitment" = "How do I check if furniture fits?";
+"faq.roomFitmentAnswer" = "After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Room Boundaries";
@@ -291,6 +306,29 @@
 "roomViewer.saveSuccess" = "Room '%@' saved successfully!";
 "roomViewer.saveFailed" = "Failed to save room: %@";
 "roomViewer.roomSaveTitle" = "Room Save";
+"roomPreview.unsavedTitle" = "Leave without saving?";
+"roomPreview.unsavedMessage" = "Your room has not been saved yet. If you go back now, you will lose this preview.";
+"roomPreview.stay" = "Stay";
+"roomPreview.leave" = "Leave";
+"roomViewer.share" = "Share";
+"roomViewer.calibrateWall" = "Calibrate Wall";
+"roomViewer.recenterView" = "Recenter View";
+"roomViewer.resetOverlayScale" = "Reset Overlay Scale";
+"roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.goingBack" = "Going back...";
+"roomViewer.savingRoomEllipsis" = "Saving Room...";
+"roomViewer.calibrateRoomTitle" = "Calibrate Room";
+"roomViewer.enterFurnitureHeightMeters" = "Enter real furniture height (meters)";
+"roomViewer.furnitureFullHeightHint" = "Full height: floor to top (e.g. 0.9 m for a chair)";
+"roomViewer.calibrateByWallTitle" = "Calibrate by wall";
+"roomViewer.enterWallDimensionsHint" = "Enter tape-measured front wall (meters), e.g. 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "Tap to calibrate";
+"roomViewer.detectedMeters" = "Detected: %.2f m";
+"roomViewer.roomMetersShort" = "Room: %.2f m";
+"roomViewer.furnitureMetersShort" = "Furn: %.2f m";
+"roomViewer.wallWidthPlaceholder" = "Width";
+"roomViewer.wallHeightPlaceholder" = "Height";
+"roomViewer.saveErrorUnknown" = "Unknown error";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Submit Report";

@@ -208,7 +208,8 @@ enum FurnitureFitARSupport {
         return fy * Float(bgraHeight) / Float(ref.height)
     }
 
-    /// Build metrics from the **same** `ARFrame` as the BGRA buffer passed to YOLO (call on the AR session delegate queue only).
+    /// Build metrics from an `ARFrame` aligned with the **segmentation** buffer: either the same frame as `copyCapturedImageToBGRA`,
+    /// or (hybrid path) `arSession.currentFrame` sampled beside an `AVCapture` pixel buffer of size `bgraWidth`×`bgraHeight`.
     static func makeDepthSnapshot(
         frame: ARFrame,
         bgraWidth: Int,

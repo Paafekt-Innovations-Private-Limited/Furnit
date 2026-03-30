@@ -32,7 +32,7 @@ class FinalMaskTest {
 
         // Initialize FurnitureFitManager with ONNX
         val manager = FurnitureFitManager(context)
-        manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
+        manager.initializeOnnx("yoloe-26l-seg-pf_seg_o2m.onnx")
 
         // Run segmentation
         val latch = CountDownLatch(1)

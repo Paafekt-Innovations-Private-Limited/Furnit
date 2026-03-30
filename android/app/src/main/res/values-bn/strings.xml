@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">আমার রুম তৈরি কেন ব্যর্থ হচ্ছে?</string>
     <string name="faq_generation_failing_answer">ছবি খুব অন্ধকার, ঝাপসা, বা পর্যাপ্ত রুমের বৈশিষ্ট্য না দেখালে রুম তৈরি ব্যর্থ হতে পারে। ভালো আলো এবং প্রশস্ত কোণে নতুন ছবি তোলার চেষ্টা করুন।</string>
     <string name="faq_how_many_rooms">কতগুলো রুম তৈরি করতে পারি?</string>
-    <string name="faq_how_many_rooms_answer">আপনি ১০টি পর্যন্ত রুম তৈরি করতে পারেন। জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা আপনার হোম স্ক্রিনের শীর্ষে প্রদর্শিত হয়।</string>
+    <string name="faq_how_many_rooms_answer">আপনি ১০০০টি পর্যন্ত রুম তৈরি করতে পারেন। নতুন রুমের জন্য জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা ও ব্যবহৃত স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।</string>
     <string name="faq_ai_features">AI বৈশিষ্ট্য</string>
     <string name="faq_what_is_brain_icon">ব্রেইন আইকন কী করে?</string>
     <string name="faq_what_is_brain_icon_answer">ব্রেইন আইকন SmartyPants সক্রিয় করে - একটি AI-চালিত বস্তু শনাক্তকরণ বৈশিষ্ট্য। এটি রিয়েল-টাইমে ফার্নিচার এবং বস্তু শনাক্ত করতে আপনার ক্যামেরা ব্যবহার করে, শনাক্ত আইটেমের চারপাশে লেবেল এবং বাউন্ডিং বক্স দেখায়।</string>
@@ -177,7 +177,8 @@
     <string name="faq_what_do_arrows_do_answer">3D ভিউয়ের পাশের তীর বোতামগুলো ক্যামেরা সরায়: উপরে ও নিচে দৃশ্যের উচ্চতা বদলায়; বাম ও ডান প্যান করে। পর্দায় টেনে ঘর ঘোরাতে পারেন এবং দৃশ্য রিসেট করতে রিসেন্টার বোতাম (ভিউফাইন্ডার আইকন) ব্যবহার করতে পারেন।</string>
     <string name="faq_what_is_memory_display">MB সংখ্যা কী বোঝায়?</string>
     <string name="faq_what_is_memory_display_answer">রুমে প্রদর্শিত MB (মেগাবাইট) ফাইলের আকার নির্দেশ করে। এটি আপনাকে স্টোরেজ পরিচালনা করতে সাহায্য করে। সব রুমের মোট স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।</string>
-    <string name="faq_room_fitment">3D রুম ও ফিটমেন্ট</string>
+    <string name="faq_room_fitment">ফার্নিচার মানানসই কিনা কীভাবে যাচাই করব?</string>
+    <string name="faq_room_fitment_answer">ফার্নিচার যোগ করার পর 3D রুমে আকার বদলিয়ে ও সরিয়ে দেখুন এটি আপনার স্থান ও অন্য ফার্নিচারের সাথে কেমন মানায়।</string>
     <string name="faq_how_to_view">আমার 3D রুম কিভাবে দেখব?</string>
     <string name="faq_how_to_view_answer">3D ভিউয়ার খুলতে হোম স্ক্রিনে যেকোনো রুমে ট্যাপ করুন। টাচ জেসচার ব্যবহার করে রুম ঘোরাতে, জুম করতে এবং প্যান করতে পারেন।</string>
     <string name="faq_how_to_place">আমার রুমে ফার্নিচার কিভাবে রাখব?</string>
@@ -188,6 +189,15 @@
     <string name="faq_accuracy_answer">3D মডেল আপনার রুম লেআউটের ভালো আনুমানিক প্রদান করে। সেরা নির্ভুলতার জন্য, নিশ্চিত করুন আপনার মূল ছবি দৃশ্যমান কোণা এবং প্রান্ত সহ রুমের মাত্রা স্পষ্টভাবে ক্যাপচার করে।</string>
     <string name="faq_adjust_dimensions">রুমের মাত্রা সামঞ্জস্য করতে পারি?</string>
     <string name="faq_adjust_dimensions_answer">হ্যাঁ, সেটিংসে যান এবং রুম মাত্রা অপশন খুঁজুন যেখানে আপনি তৈরি রুমের আকার ও অনুপাত সূক্ষ্ম-সুর করতে পারেন।</string>
+    <string name="faq_furniture_measurements">ফার্নিচার ও মাপ</string>
+    <string name="faq_ar_assisted_sizing">AR-সহায়িত ফার্নিচার সাইজিং কী?</string>
+    <string name="faq_ar_assisted_sizing_answer">সেটিংসে চালু থাকলে অ্যাপ ক্যামেরার গভীরতা ও অবজেক্ট শনাক্তকরণ মিলিয়ে আপনি কাছে বা দূরে গেলে ওভারলেকে আরও বাস্তবসম্মত স্কেল দেয়। ভালো আলো ও পরিষ্কার দৃশ্যে সেরা কাজ করে।</string>
+    <string name="faq_measurement_pill">ছোট মাপের রিডআউট কী?</string>
+    <string name="faq_measurement_pill_answer">SmartyPants সক্রিয় থাকলে আনুমানিক ফার্নিচার ও রুমের উচ্চতা দেখাতে পারে। সঠিকতার জন্য ট্যাপ করে আসল মাপ লিখুন। রুমের ছবি ওয়াইড-অ্যাঙ্গেল (0.5×) হলে তা চিহ্নিত করুন।</string>
+    <string name="faq_reset_overlay_scale">মাস্ক ভুল জুম লাগছে—কী করব?</string>
+    <string name="faq_reset_overlay_scale_answer">3D রুমে ওভারফ্লো মেনু (⋮) খুলে Reset overlay scale বেছে নিন। শনাক্তকরণ মাস্কের স্বয়ংক্রিয় জুম মুছে যাবে।</string>
+    <string name="faq_depth_aware_room_photo">অ্যাপে ছবি তোলা রুমের মান উন্নত করে?</string>
+    <string name="faq_depth_aware_room_photo_answer">হ্যাঁ। সমর্থিত ডিভাইসে গ্যালারির বদলে Take a photo ইন-অ্যাপ ক্যামেরা ও উপলব্ধ হলে গভীরতা ব্যবহার করে, যা 3D রুম তৈরি উন্নত করতে পারে।</string>
     <string name="boundary_title">রুম সীমানা</string>
     <string name="boundary_instructions">সীমানা সামঞ্জস্য করতে বৃত্ত টানুন</string>
     <string name="boundary_floor">মেঝে</string>

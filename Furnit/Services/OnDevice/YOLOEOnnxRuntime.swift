@@ -11,8 +11,8 @@ final class YOLOEOnnxRuntime {
     let modelInputSize = 640
 
     private let inputName = "images"
-    private let detectionOutputName = "output0"
-    private let prototypeOutputName = "output1"
+    private var detectionOutputName = "det_output"
+    private var prototypeOutputName = "proto_output"
     private let inputShape: [NSNumber]
     private let lock = NSLock()
 
@@ -75,8 +75,14 @@ final class YOLOEOnnxRuntime {
 
         didAttemptLoad = true
 
-        guard let modelURL = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "onnx") else {
-            logDebug("YOLOE ONNX: bundled model missing")
+        let onnxResourceNames = [
+            "yoloe-26l-seg-pf_seg_o2m",
+            "yoloe-11l-seg-pf",
+        ]
+        guard let modelURL = onnxResourceNames.compactMap({ name in
+            Bundle.main.url(forResource: name, withExtension: "onnx")
+        }).first else {
+            logDebug("YOLOE ONNX: bundled model missing (tried \(onnxResourceNames.joined(separator: ", ")))")
             return nil
         }
 
@@ -92,8 +98,22 @@ final class YOLOEOnnxRuntime {
             self.session = session
 
             let inputNames = try session.inputNames()
-            let outputNames = try session.outputNames()
-            logDebug("YOLOE ONNX: loaded session inputs=\(inputNames) outputs=\(outputNames)")
+            let outputNameList = try session.outputNames()
+            logDebug("YOLOE ONNX: loaded \(modelURL.lastPathComponent) inputs=\(inputNames) outputs=\(outputNameList)")
+
+            let outputSet = Set(outputNameList)
+            if outputSet.contains("det_output"), outputSet.contains("proto_output") {
+                detectionOutputName = "det_output"
+                prototypeOutputName = "proto_output"
+            } else if outputSet.contains("output0"), outputSet.contains("output1") {
+                detectionOutputName = "output0"
+                prototypeOutputName = "output1"
+            } else {
+                logDebug("YOLOE ONNX: unexpected output names \(outputNameList); need det_output/proto_output or output0/output1")
+                self.session = nil
+                self.env = nil
+                return nil
+            }
 
             return session
         } catch {

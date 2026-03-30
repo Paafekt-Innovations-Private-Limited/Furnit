@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">मेरा कमरा जनरेशन क्यों विफल हो रहा है?</string>
     <string name="faq_generation_failing_answer">यदि फोटो बहुत अंधेरी, धुंधली है या पर्याप्त कमरे की विशेषताएं नहीं दिखाती है तो कमरा जनरेशन विफल हो सकता है। बेहतर रोशनी और व्यापक कोण के साथ नई फोटो लेने का प्रयास करें।</string>
     <string name="faq_how_many_rooms">मैं कितने कमरे बना सकता हूं?</string>
-    <string name="faq_how_many_rooms_answer">आप 10 कमरे तक बना सकते हैं। नए के लिए जगह बनाने के लिए पुराने कमरे हटाएं। कमरों की संख्या आपकी होम स्क्रीन के शीर्ष पर दिखाई जाती है।</string>
+    <string name="faq_how_many_rooms_answer">आप 1000 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।</string>
     <string name="faq_furniture_segmentation">फर्नीचर सेगमेंटेशन</string>
     <string name="faq_what_is_segmentation">फर्नीचर सेगमेंटेशन क्या है?</string>
     <string name="faq_what_is_segmentation_answer">फर्नीचर सेगमेंटेशन AI का उपयोग करके आपकी फोटो में फर्नीचर आइटम की पहचान करता है और उन्हें अलग करता है, जिससे आप देख सकते हैं कि प्रत्येक टुकड़ा आपके 3D कमरे में कैसे फिट होगा।</string>
@@ -163,7 +163,8 @@
     <string name="faq_not_detected_answer">फर्नीचर पहचान स्पष्ट, अच्छी रोशनी वाली फोटो में सबसे अच्छा काम करती है जहां फर्नीचर स्पष्ट रूप से दिखाई देता है। सुनिश्चित करें कि फर्नीचर आंशिक रूप से छिपा नहीं है या पृष्ठभूमि के साथ मिश्रित नहीं है।</string>
     <string name="faq_multiple_pieces">क्या मैं एक से अधिक फर्नीचर पीस सेगमेंट कर सकता हूं?</string>
     <string name="faq_multiple_pieces_answer">हां! AI एक ही फोटो में कई फर्नीचर पीस का पता लगा सकता है। प्रत्येक पहचाना गया आइटम अलग से दिखाया जाएगा ताकि आप चुन सकें कि कौन से उपयोग करने हैं।</string>
-    <string name="faq_room_fitment">3D कमरा और फिटमेंट</string>
+    <string name="faq_room_fitment">फर्नीचर फिट है या नहीं कैसे जांचें?</string>
+    <string name="faq_room_fitment_answer">फर्नीचर जोड़ने के बाद अपने 3D कमरे में इसका आकार बदलकर और स्थान बदलकर देखें कि यह आपकी जगह और अन्य फर्नीचर के साथ कैसा बैठता है।</string>
     <string name="faq_how_to_view">अपना 3D कमरा कैसे देखें?</string>
     <string name="faq_how_to_view_answer">3D व्यूअर खोलने के लिए अपनी होम स्क्रीन पर किसी भी कमरे पर टैप करें। आप टच जेस्चर का उपयोग करके घुमा सकते हैं, ज़ूम कर सकते हैं और पैन कर सकते हैं।</string>
     <string name="faq_how_to_place">अपने कमरे में फर्नीचर कैसे रखें?</string>
@@ -174,6 +175,15 @@
     <string name="faq_accuracy_answer">3D मॉडल आपके कमरे के लेआउट का अच्छा अनुमान प्रदान करता है। सर्वोत्तम सटीकता के लिए, सुनिश्चित करें कि आपकी मूल फोटो दृश्यमान कोनों और किनारों के साथ कमरे के आयामों को स्पष्ट रूप से कैप्चर करती है।</string>
     <string name="faq_adjust_dimensions">क्या मैं कमरे के आयाम समायोजित कर सकता हूं?</string>
     <string name="faq_adjust_dimensions_answer">हां, सेटिंग्स पर जाएं और कमरे के आयाम विकल्प खोजें जहां आप अपने जनरेटेड रूम के आकार और अनुपात को फाइन-ट्यून कर सकते हैं।</string>
+    <string name="faq_furniture_measurements">फर्नीचर और माप</string>
+    <string name="faq_ar_assisted_sizing">AR-सहायता वाला फर्नीचर साइज़िंग क्या है?</string>
+    <string name="faq_ar_assisted_sizing_answer">सेटिंग्स में चालू होने पर ऐप कैमरा की गहराई और ऑब्जेक्ट डिटेक्शन मिलाकर जैसे ही आप पास या दूर जाते हैं ओवरले को यथार्थवादी स्केल देता है। अच्छी रोशनी और साफ दृश्य में सबसे अच्छा काम करता है।</string>
+    <string name="faq_measurement_pill">छोटा माप रीडआउट क्या है?</string>
+    <string name="faq_measurement_pill_answer">SmartyPants चालू होने पर अनुमानित फर्नीचर और कमरे की ऊँचाई दिख सकती है। सटीकता के लिए टैप करके वास्तविक माप दर्ज करें। अगर कमरे की फोटो वाइड-एंगल (0.5×) से ली गई हो तो उसे चिह्नित करें।</string>
+    <string name="faq_reset_overlay_scale">मास्क गलत ज़ूम लग रहा है—क्या करें?</string>
+    <string name="faq_reset_overlay_scale_answer">3D कमरे में ओवरफ़्लो मेनू (⋮) खोलकर Reset overlay scale चुनें। डिटेक्शन मास्क पर लगा ऑटो ज़ूम हट जाएगा।</string>
+    <string name="faq_depth_aware_room_photo">क्या ऐप में फोटो लेने से कमरे की गुणवत्ता बेहतर होती है?</string>
+    <string name="faq_depth_aware_room_photo_answer">हाँ। समर्थित डिवाइसों पर गैलरी के बजाय Take a photo इन-ऐप कैमरा और उपलब्ध होने पर गहराई का उपयोग करता है, जिससे 3D कमरा बेहतर बन सकता है।</string>
     <string name="boundary_title">कमरे की सीमाएं</string>
     <string name="boundary_instructions">सीमाओं को समायोजित करने के लिए सर्कल खींचें</string>
     <string name="boundary_floor">फर्श</string>

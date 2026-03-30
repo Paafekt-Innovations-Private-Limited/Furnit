@@ -139,9 +139,6 @@
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="settings_show_room_furniture_calibrate">Show room and furniture calibrate</string>
     <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
-    <string name="settings_ar_assisted_furniture_sizing">AR-assisted furniture sizing</string>
-    <string name="settings_ar_assisted_furniture_sizing_description">Use ARCore planes and camera intrinsics to estimate furniture height and scale the overlay. When off, the regular camera is used and the overlay stays at 1× scale (pinch still adjusts size).</string>
-    <string name="settings_ar_assisted_furniture_sizing_not_supported">AR-assisted sizing requires ARCore on a supported device.</string>
     <string name="settings_wall_measurement_title">YOLO wall dimensions when saving</string>
     <string name="settings_wall_measurement_description">On Save room, estimate front-wall width and height using YOLO wall detection, SHARP monodepth (saved when the room is generated), and camera EXIF. If monodepth is missing, uses an assumed camera-to-wall distance. Depth can be scaled to match the new width.</string>
     <string name="settings_wall_measurement_scale_depth">Scale room depth with measured width</string>
@@ -256,6 +253,17 @@
     <string name="faq_adjust_dimensions">Can I adjust room dimensions?</string>
     <string name="faq_adjust_dimensions_answer">For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.</string>
 
+    <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
+    <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
+    <string name="faq_ar_assisted_sizing">How is furniture overlay size estimated?</string>
+    <string name="faq_ar_assisted_sizing_answer">On devices with ARCore, the app uses depth and camera intrinsics so the overlay scales in real-world meters as you move. Without ARCore, sizing uses your 3D room; you can still pinch to adjust the overlay.</string>
+    <string name="faq_measurement_pill">What is the small measurement readout?</string>
+    <string name="faq_measurement_pill_answer">While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.</string>
+    <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
+    <string name="faq_reset_overlay_scale_answer">Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.</string>
+    <string name="faq_depth_aware_room_photo">Does taking a photo in the app help room quality?</string>
+    <string name="faq_depth_aware_room_photo_answer">Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.</string>
+
     <!-- Room Boundary Detection -->
     <string name="boundary_title">Room Boundaries</string>
     <string name="boundary_instructions">Drag the circles to adjust boundaries</string>
@@ -323,6 +331,10 @@
     <string name="room_viewer_save_failed">Failed to save room: %s</string>
     <string name="room_viewer_room_save_title">Room Save</string>
     <string name="room_viewer_opening">Opening %s…</string>
+    <string name="room_preview_leave_title">Leave without saving?</string>
+    <string name="room_preview_leave_message">Your room has not been saved yet. If you go back now, you will lose this preview.</string>
+    <string name="room_preview_leave_stay">Stay</string>
+    <string name="room_preview_leave_confirm">Leave</string>
 
     <!-- Crash Report -->
     <string name="crash_report_title">Something went wrong</string>

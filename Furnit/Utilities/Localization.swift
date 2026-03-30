@@ -36,6 +36,7 @@ enum L10n {
         static let error = "common.error".localized
         static let save = "common.save".localized
         static let close = "common.close".localized
+        static let apply = "common.apply".localized
     }
 
     // MARK: Login
@@ -142,9 +143,10 @@ enum L10n {
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
-        static let arAssistedFurnitureSizing = "settings.arAssistedFurnitureSizing".localized
-        static let arAssistedFurnitureSizingDescription = "settings.arAssistedFurnitureSizingDescription".localized
-        static let arAssistedNotSupported = "settings.arAssistedNotSupported".localized
+        static let furnitureFitOnnxRuntime = "settings.furnitureFitOnnxRuntime".localized
+        static let furnitureFitOnnxRuntimeDescription = "settings.furnitureFitOnnxRuntimeDescription".localized
+        static let yoloeCoreMLAllowGPU = "settings.yoloeCoreMLAllowGPU".localized
+        static let yoloeCoreMLAllowGPUDescription = "settings.yoloeCoreMLAllowGPUDescription".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
     }
@@ -240,6 +242,39 @@ enum L10n {
             "roomViewer.saveFailed".localized(error)
         }
         static let roomSaveTitle = "roomViewer.roomSaveTitle".localized
+        static let share = "roomViewer.share".localized
+        static let calibrateWall = "roomViewer.calibrateWall".localized
+        static let recenterView = "roomViewer.recenterView".localized
+        static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
+        static let checkMeasurement = "roomViewer.checkMeasurement".localized
+        static let goingBack = "roomViewer.goingBack".localized
+        static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized
+        static let calibrateRoomTitle = "roomViewer.calibrateRoomTitle".localized
+        static let enterFurnitureHeightMeters = "roomViewer.enterFurnitureHeightMeters".localized
+        static let furnitureFullHeightHint = "roomViewer.furnitureFullHeightHint".localized
+        static let calibrateByWallTitle = "roomViewer.calibrateByWallTitle".localized
+        static let enterWallDimensionsHint = "roomViewer.enterWallDimensionsHint".localized
+        static let tapToCalibrate = "roomViewer.tapToCalibrate".localized
+        static func detectedMeters(_ value: Float) -> String {
+            String(format: "roomViewer.detectedMeters".localized, locale: .current, value)
+        }
+        static func roomMetersShort(_ value: Float) -> String {
+            String(format: "roomViewer.roomMetersShort".localized, locale: .current, value)
+        }
+        static func furnitureMetersShort(_ value: Float) -> String {
+            String(format: "roomViewer.furnitureMetersShort".localized, locale: .current, value)
+        }
+        static let wallWidthPlaceholder = "roomViewer.wallWidthPlaceholder".localized
+        static let wallHeightPlaceholder = "roomViewer.wallHeightPlaceholder".localized
+        static let saveErrorUnknown = "roomViewer.saveErrorUnknown".localized
+    }
+
+    /// Unsaved room preview (back without saving)
+    enum RoomPreview {
+        static let unsavedTitle = "roomPreview.unsavedTitle".localized
+        static let unsavedMessage = "roomPreview.unsavedMessage".localized
+        static let stay = "roomPreview.stay".localized
+        static let leave = "roomPreview.leave".localized
     }
 
     // MARK: Model Viewer

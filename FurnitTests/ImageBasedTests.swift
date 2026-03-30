@@ -28,8 +28,8 @@ final class ImageBasedTests: XCTestCase {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine
 
-        // Try different model names
-        let modelNames = ["yoloe-11l-seg-pf"]
+        // Tests follow the app's current iOS packaging: 26l only.
+        let modelNames = ["yoloe-26l-seg-pf_seg_o2m", "yoloe-26l-seg-pf"]
 
         for modelName in modelNames {
             if let modelURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
@@ -387,7 +387,7 @@ final class ImageBasedTests: XCTestCase {
 
         // Load model - skip test if model not available (common in CI/test environments)
         guard let model = loadYOLOEModel() else {
-            throw XCTSkip("Skipping ML inference test - yoloe-11l-seg-pf model not available in test environment")
+            throw XCTSkip("Skipping ML inference test - no YOLOE model available in test environment")
         }
 
         print("Image size: \(image.size.width) x \(image.size.height)")
@@ -420,8 +420,8 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Fill with gray (letterbox padding) - 128/255 = 0.502 matches FurnitureFitView
-        context.setFillColor(gray: 128.0/255.0, alpha: 1.0)
+        // Ultralytics letterbox padding RGB gray 114/255 (matches `YoloUltralyticsLetterboxFill` / probe scripts)
+        context.setFillColor(gray: 114.0/255.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: modelSize, height: modelSize))
 
         // Calculate letterbox dimensions
@@ -443,13 +443,13 @@ final class ImageBasedTests: XCTestCase {
             let input = try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
             let output = try model.prediction(from: input)
 
-            // Get output tensors using same names as FurnitureFitView
-            guard let detArray = output.featureValue(for: "var_2374")?.multiArrayValue,
-                  let protoArray = output.featureValue(for: "var_2412")?.multiArrayValue else {
+            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
                 let availableOutputs = output.featureNames.joined(separator: ", ")
-                XCTFail("Missing expected output tensors (var_2374, var_2412). Found: \(availableOutputs)")
+                XCTFail("Missing expected detection/proto tensors. Found: \(availableOutputs)")
                 return
             }
+            let detArray = pair.det
+            let protoArray = pair.proto
 
             // Validate tensor shapes
             let detShape = detArray.shape.map { $0.intValue }
@@ -624,7 +624,7 @@ final class ImageBasedTests: XCTestCase {
 
         // Load model
         guard let model = loadYOLOEModel() else {
-            throw XCTSkip("Skipping - yoloe-11l-seg-pf model not available")
+            throw XCTSkip("Skipping - no YOLOE model available")
         }
 
         // Load blacklist for filtering
@@ -665,8 +665,8 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Fill with gray letterbox padding
-        context.setFillColor(gray: 128.0/255.0, alpha: 1.0)
+        // Ultralytics letterbox padding (114/255)
+        context.setFillColor(gray: 114.0/255.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: modelSize, height: modelSize))
 
         // Calculate letterbox dimensions
@@ -687,11 +687,11 @@ final class ImageBasedTests: XCTestCase {
             let input = try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
             let output = try model.prediction(from: input)
 
-            // Get output tensors
-            guard let detArray = output.featureValue(for: "var_2374")?.multiArrayValue else {
-                XCTFail("Missing detection tensor")
+            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
+                XCTFail("Missing detection/proto tensors")
                 return
             }
+            let detArray = pair.det
 
             let detShape = detArray.shape.map { $0.intValue }
             print("Detection tensor shape: \(detShape)")

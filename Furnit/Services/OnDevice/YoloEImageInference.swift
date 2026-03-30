@@ -104,6 +104,7 @@ enum YoloEImageInference {
             confidenceThreshold: confidenceThreshold,
             classBlacklist: classBlacklist
         )
+        YoloEDetectionParser.releaseF16Scratch()
         let map = LetterboxMapping(
             modelSide: modelSide,
             gain: sq.gain,
@@ -193,7 +194,7 @@ enum YoloEImageInference {
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
 
         let rowBytes = CVPixelBufferGetBytesPerRow(dst)
-        memset(dstBase, 128, rowBytes * size)
+        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114(dstBase: dstBase, totalByteCount: rowBytes * size)
 
         var srcBuffer = vImage_Buffer(data: srcBase, height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: CVPixelBufferGetBytesPerRow(src))
         let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)

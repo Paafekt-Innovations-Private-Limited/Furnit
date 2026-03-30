@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">¿Por qué falla la generación de mi cuarto?</string>
     <string name="faq_generation_failing_answer">La generación de cuarto puede fallar si la foto es muy oscura, borrosa o no muestra suficientes características del cuarto. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.</string>
     <string name="faq_how_many_rooms">¿Cuántos cuartos puedo crear?</string>
-    <string name="faq_how_many_rooms_answer">Puedes crear hasta 10 cuartos. Elimina cuartos viejos para hacer espacio para nuevos. El conteo de cuartos se muestra en la parte superior de tu pantalla de inicio.</string>
+    <string name="faq_how_many_rooms_answer">Puedes crear hasta 1000 cuartos. Elimina cuartos viejos para liberar espacio. Arriba en la pantalla de inicio verás el número de cuartos y el almacenamiento usado.</string>
     <string name="faq_furniture_segmentation">Segmentación de muebles</string>
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
     <string name="faq_what_is_segmentation_answer">La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza quedaría en tu cuarto 3D.</string>
@@ -174,6 +174,15 @@
     <string name="faq_accuracy_answer">El modelo 3D proporciona una buena aproximación del diseño de tu cuarto. Para mayor precisión, asegúrate de que tu foto original capture claramente las dimensiones del cuarto con esquinas y bordes visibles.</string>
     <string name="faq_adjust_dimensions">¿Puedo ajustar las dimensiones del cuarto?</string>
     <string name="faq_adjust_dimensions_answer">Sí, ve a Configuración y busca las opciones de Dimensiones de cuarto donde puedes afinar el tamaño y proporciones de tu cuarto generado.</string>
+    <string name="faq_furniture_measurements">Muebles y medidas</string>
+    <string name="faq_ar_assisted_sizing">¿Qué es el tamaño de muebles asistido por AR?</string>
+    <string name="faq_ar_assisted_sizing_answer">Si está activado en Configuración, la app combina profundidad de cámara y detección de objetos para escalar la superposición con más realismo al acercarte o alejarte. Mejor con buena luz y el objeto bien visible.</string>
+    <string name="faq_measurement_pill">¿Qué es la pequeña lectura de medidas?</string>
+    <string name="faq_measurement_pill_answer">Con SmartyPants activo puede mostrarse la altura estimada del mueble y del cuarto. Toca para introducir medidas reales. Si la foto es con gran angular (0,5×), indícalo para un encuadre coherente.</string>
+    <string name="faq_reset_overlay_scale">La máscara se ve mal ampliada — ¿qué hago?</string>
+    <string name="faq_reset_overlay_scale_answer">En el cuarto 3D abre el menú (⋮) y elige Restablecer escala de superposición. Quita el zoom automático de la máscara para que se estabilice al moverte.</string>
+    <string name="faq_depth_aware_room_photo">¿Ayuda tomar la foto en la app?</string>
+    <string name="faq_depth_aware_room_photo_answer">Sí. En dispositivos compatibles, «Tomar una foto» usa la cámara de la app con profundidad si está disponible, lo que puede mejorar el cuarto 3D.</string>
     <string name="boundary_title">Límites del cuarto</string>
     <string name="boundary_instructions">Arrastra los círculos para ajustar los límites</string>
     <string name="boundary_floor">Piso</string>
