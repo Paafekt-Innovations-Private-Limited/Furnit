@@ -52,6 +52,56 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
+    /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
+    private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
+        let b = ProcessInfo.processInfo.physicalMemory
+        if b < 5 * 1024 * 1024 * 1024 { return 2048 }
+        if b < 7 * 1024 * 1024 * 1024 { return 2560 }
+        return 3072
+    }
+
+    /// Downscale in **oriented** pixel space (`UIImage.draw` applies orientation) before 1536 preprocess.
+    private static func downscaledImageForSharpMemoryIfNeeded(_ image: UIImage) -> UIImage {
+        let w = image.size.width * image.scale
+        let h = image.size.height * image.scale
+        guard w > 1, h > 1 else { return image }
+        let maxEdge = max(w, h)
+        let limit = maxSourcePixelDimensionBeforeSharp()
+        guard maxEdge > limit else { return image }
+
+        let scaleDown = limit / maxEdge
+        let newW = max(1, Int((w * scaleDown).rounded(.down)))
+        let newH = max(1, Int((h * scaleDown).rounded(.down)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH), format: format)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
+        }
+        logDebug("SHARP: Downscaled photo for memory \(Int(w))×\(Int(h)) → \(newW)×\(newH) (max edge ≤\(Int(limit))px)")
+        return rendered
+    }
+
+    /// Wall-measurement thumbnail: avoid full-res `pngData()` (second memory spike after inference).
+    private static func imageForWallMeasurementThumbnail(_ image: UIImage, maxPixel: CGFloat = 1024) -> UIImage {
+        let w = image.size.width * image.scale
+        let h = image.size.height * image.scale
+        guard w > 1, h > 1 else { return image }
+        let maxEdge = max(w, h)
+        guard maxEdge > maxPixel else { return image }
+        let scaleDown = maxPixel / maxEdge
+        let newW = max(1, Int((w * scaleDown).rounded(.down)))
+        let newH = max(1, Int((h * scaleDown).rounded(.down)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH), format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
+        }
+    }
+
     // MARK: - CoreML Model
 
     /// The compiled SHARP CoreML model
@@ -329,9 +379,12 @@ class SHARPService: ObservableObject {
         progress = 0.0
 
         do {
+            // High-res library photos + SHARP model + Core ML outputs exceed ~4GB device RAM without downscaling first.
+            let workingImage = Self.downscaledImageForSharpMemoryIfNeeded(image)
+
             // Step 1: Preprocess image
             progress = 0.1
-            let inputBuffer = try await preprocessImage(image)
+            let inputBuffer = try await preprocessImage(workingImage)
             logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
             // Step 2: Run inference
@@ -347,7 +400,8 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
             logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
-            saveThumbnailForWallMeasurement(image: image, classicPlyURL: plyURLs.classic)
+            let thumbSource = Self.imageForWallMeasurementThumbnail(workingImage, maxPixel: 1024)
+            saveThumbnailForWallMeasurement(image: thumbSource, classicPlyURL: plyURLs.classic)
             let plyURL = plyURLs.original
 
             // Complete
@@ -421,9 +475,11 @@ class SHARPService: ObservableObject {
             throw GenerationError.serverError("Failed to create graphics context")
         }
 
-        // Draw resized image into pixel buffer
-        context.interpolationQuality = .high
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+        // Draw resized image into pixel buffer (pool releases transient decode pressure from Core Graphics)
+        autoreleasepool {
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+        }
 
         return buffer
     }
@@ -488,6 +544,8 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: Inference complete, extracting outputs...")
 
+        // Drain Core ML Obj-C temporaries while copying into Swift `[Float]` (reduces peak RAM on 4GB devices).
+        return try autoreleasepool { () throws -> [Float] in
         // SHARP_f32 outputs separate arrays:
         // - var_5420: positions (1 × N × 3)
         // - var_5424: scales (1 × N × 3)
@@ -606,6 +664,7 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: Extracted \(result.count) values (\(gaussianCount) gaussians × 14 params)")
         return result
+        }
     }
 
     // MARK: - Splat Filtering
