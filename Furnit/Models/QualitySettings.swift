@@ -126,7 +126,7 @@ enum AssetQuality: String, CaseIterable, Identifiable {
 // ObservableObject to manage quality settings across the app
 class QualitySettings: ObservableObject {
 
-    /// UserDefaults key for ``furnitureFitUseOnnxRuntime`` (read in ``FurnitureFitContainerView`` to branch to ONNX path).
+    /// UserDefaults key for ``furnitureFitUseOnnxRuntime`` (read in ``FurnitureFitView`` to branch to Android-style stretch + postprocess).
     static let furnitureFitUseOnnxRuntimeStorageKey = "furniture_fit_use_onnx_runtime"
     /// UserDefaults key for optional Core ML GPU path (read by ``YOLOEModelService`` at model load).
     static let yoloeCoreMLAllowGPUKey = "yoloe_core_ml_allow_gpu"
@@ -162,7 +162,7 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When `false` (default): Furniture Fit uses Core ML YOLO-E from ``YOLOEModelService`` (`yoloe-26l-seg-pf_seg_o2m`, one-to-many 640). When `true`: ONNX Runtime on bundled `yoloe-26l-seg-pf_seg_o2m.onnx` (fallback `yoloe-11l-seg-pf.onnx`) with Android-aligned NMS / primary / mask (see ``FurnitureFitOnnxStylePipeline``).
+    /// When `false` (default): Furniture Fit uses Core ML with letterbox preprocess and the standard mask pipeline. When `true`: same Core ML ``mlmodel`` with **stretch** preprocess and Android-aligned NMS / primary / mask (``FurnitureFitOnnxStylePipeline``). If the Core ML model is not loaded, falls back to bundled ONNX Runtime when a `.onnx` is present.
     @Published var furnitureFitUseOnnxRuntime: Bool {
         didSet {
             saveFurnitureFitUseOnnxRuntime()
@@ -209,7 +209,7 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-        // Default Core ML path (false); ONNX optional for Android-parity experiments
+        // Default letterbox Core ML path (false); optional Android-style stretch + postprocess (same mlmodel when loaded)
         if UserDefaults.standard.object(forKey: furnitureFitUseOnnxRuntimeKey) != nil {
             self.furnitureFitUseOnnxRuntime = UserDefaults.standard.bool(forKey: furnitureFitUseOnnxRuntimeKey)
         } else {

@@ -352,8 +352,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
-    /// Smoothed primary bbox in image coordinates (for temporal stabilization and clipping)
-    private var smoothedPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
+    /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
+    private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
     private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
     private let bboxExpandMargin: Float = 0.08     // 8% expansion on each side
 
@@ -907,7 +907,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         userPinchScale = 1.0
         userLockedAssistedOverlayScale = false
         lastOverlayPrimaryClassIdx = -1
-        smoothedPrimaryBbox = nil
+        smoothedTightPrimaryBbox = nil
         maskImageView.transform = .identity
     }
     
@@ -1205,7 +1205,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
     }
 
-    /// Bundled `yoloe-26l-seg-pf_seg_o2m.onnx` at 640× with Android `runOnnxSegmentationOnce`–style postprocess (no `blacklist.json`).
+    /// Bundled `.onnx` + ONNX Runtime — used only when Android-style pipeline is on and ``mlModel`` is not loaded.
     private func processFrameOnnxAndroidStyle(
         processBuffer: CVPixelBuffer,
         arDepthSnapshot: FurnitureFitARDepthSnapshot?,
@@ -1218,7 +1218,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
-            logDebug("⏱️ ONNX PATH (Android parity) @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
+            logDebug("⏱️ ONNX RUNTIME (fallback) @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
             logDebug("⏱️ Buffer: \(bufW)x\(bufH) → stretch \(onnxSide)x\(onnxSide), isLandscape: \(isLandscape)")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
@@ -1226,29 +1226,181 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         setProgress(0.15, text: "Preprocessing…")
         let t1 = Date()
         guard let stretched = resizeStretchToSquare(processBuffer, size: onnxSide) else {
-            if debugMode { logDebug("❌ ONNX STAGE 1 FAILED: stretch resize") }
+            if debugMode { logDebug("❌ ONNX RUNTIME STAGE 1 FAILED: stretch resize") }
             resetProcessingFlag()
             return
         }
         if debugMode {
-            logDebug("⏱️ ONNX STAGE 1 - Preprocess (stretch): \(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms")
+            logDebug("⏱️ ONNX RUNTIME STAGE 1 - Preprocess (stretch): \(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms")
         }
 
         setProgress(0.40, text: "Running ONNX…")
         let t2 = Date()
         guard let pair = YOLOEOnnxRuntime.shared.run(pixelBuffer: stretched) else {
-            if debugMode { logDebug("❌ ONNX STAGE 2 FAILED: inference") }
+            if debugMode { logDebug("❌ ONNX RUNTIME STAGE 2 FAILED: inference") }
             resetProcessingFlag()
             return
         }
         if debugMode {
-            logDebug("⏱️ ONNX STAGE 2 - Inference: \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
+            logDebug("⏱️ ONNX RUNTIME STAGE 2 - Inference: \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
             logMemory("AFTER ONNX INFERENCE")
         }
 
+        processFrameOnnxStyleCommon(
+            processBuffer: processBuffer,
+            arDepthSnapshot: arDepthSnapshot,
+            frameStart: frameStart,
+            detArray: pair.det,
+            protoArray: pair.proto,
+            modelSide: onnxSide,
+            stage2DebugLabel: "ONNX Runtime"
+        )
+    }
+
+    /// Android-style pipeline (stretch, NMS, primary, mask) using the same Core ML ``mlModel`` as the default letterbox path.
+    private func processFrameOnnxStyleCoreML(
+        processBuffer: CVPixelBuffer,
+        model: MLModel,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        frameStart: Date
+    ) {
+        let bufW = CVPixelBufferGetWidth(processBuffer)
+        let bufH = CVPixelBufferGetHeight(processBuffer)
+        let isLandscape = bufW > bufH
+
+        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
+        let modelInputSize: Int
+        if let imageConstraint = imageInputDesc?.imageConstraint {
+            modelInputSize = imageConstraint.pixelsWide
+        } else {
+            modelInputSize = 1280
+        }
+
+        if debugMode {
+            logDebug("\n⏱️ ═══════════════════════════════════════════")
+            logDebug("⏱️ ONNX-STYLE + CORE ML @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
+            logDebug("⏱️ Buffer: \(bufW)x\(bufH) → stretch \(modelInputSize)x\(modelInputSize), isLandscape: \(isLandscape)")
+            logDebug("⏱️ ═══════════════════════════════════════════")
+        }
+
+        setProgress(0.15, text: "Preprocessing…")
+        let t1 = Date()
+        guard let stretched = resizeStretchToSquare(processBuffer, size: modelInputSize) else {
+            if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: stretch resize") }
+            resetProcessingFlag()
+            return
+        }
+        if debugMode {
+            logDebug("⏱️ ONNX-STYLE STAGE 1 - Preprocess (stretch): \(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms")
+        }
+
+        let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
+        let expectsImage = inputDesc?.type == .image
+
+        let inputProvider: MLFeatureProvider
+        if expectsImage {
+            guard let imageValue = MLFeatureValue(pixelBuffer: stretched) as MLFeatureValue?,
+                  let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
+                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep") }
+                resetProcessingFlag()
+                return
+            }
+            inputProvider = provider
+        } else {
+            guard let inputArray = pixelBufferToMLMultiArray(stretched),
+                  let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
+                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep (MultiArray)") }
+                resetProcessingFlag()
+                return
+            }
+            inputProvider = provider
+        }
+
+        setProgress(0.40, text: "Running model…")
+        let t2 = Date()
+        guard let output = try? model.prediction(from: inputProvider) else {
+            if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 2 FAILED: Model inference") }
+            resetProcessingFlag()
+            return
+        }
+        if debugMode {
+            logDebug("⏱️ ONNX-STYLE STAGE 2 - Inference (Core ML): \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
+            logMemory("AFTER ONNX-STYLE Core ML INFERENCE")
+        }
+
+        guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
+            if debugMode {
+                logDebug("❌ ONNX-STYLE Core ML: Missing output tensors")
+                let availableOutputs = output.featureNames.joined(separator: ", ")
+                logDebug("   Available outputs: \(availableOutputs)")
+            }
+            resetProcessingFlag()
+            return
+        }
+
+        processFrameOnnxStyleCommon(
+            processBuffer: processBuffer,
+            arDepthSnapshot: arDepthSnapshot,
+            frameStart: frameStart,
+            detArray: pair.det,
+            protoArray: pair.proto,
+            modelSide: modelInputSize,
+            stage2DebugLabel: "Core ML"
+        )
+    }
+
+    /// Same primary index as the default letterbox Core ML path (STAGE 4: conf^1.5 × areaNorm^0.8 × center^0.5 with min conf/area gates).
+    private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide: Int) -> Int? {
+        var bestIdx: Int?
+        var maxScore: Float = -1
+        let minConf: Float = 0.15
+        let minAreaNorm: Float = 0.02
+        let frameArea = Float(modelSide * modelSide)
+        let frameW = Float(modelSide)
+        let frameH = Float(modelSide)
+        let frameCx = frameW / 2
+        let frameCy = frameH / 2
+
+        for (i, d) in candidates.enumerated() {
+            let areaNorm = (d.w * d.h) / frameArea
+            guard d.confidence >= minConf, areaNorm >= minAreaNorm else { continue }
+
+            let dx = (d.x - frameCx) / frameCx
+            let dy = (d.y - frameCy) / frameCy
+            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
+            let centerScore = 1.0 - centerDist
+
+            let confTerm = pow(d.confidence, 1.5)
+            let areaTerm = pow(areaNorm, 0.8)
+            let centerTerm = pow(max(0, centerScore), 0.5)
+
+            let score = confTerm * areaTerm * centerTerm
+            if score > maxScore {
+                maxScore = score
+                bestIdx = i
+            }
+        }
+        return bestIdx
+    }
+
+    /// Shared postprocess after stretch + inference: **same detection list, NMS, and primary as letterbox Core ML**; mask fusion remains Android-style bbox-limited proto + collectMaskDetections.
+    private func processFrameOnnxStyleCommon(
+        processBuffer: CVPixelBuffer,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        frameStart: Date,
+        detArray: MLMultiArray,
+        protoArray: MLMultiArray,
+        modelSide: Int,
+        stage2DebugLabel: String
+    ) {
+        let bufW = CVPixelBufferGetWidth(processBuffer)
+        let bufH = CVPixelBufferGetHeight(processBuffer)
+        let isLandscape = bufW > bufH
+        let onnxSide = modelSide
+
         let t3 = Date()
-        guard let protoInfo = parsePrototypes(pair.proto) else {
-            if debugMode { logDebug("❌ ONNX: parse prototypes failed") }
+        guard let protoInfo = parsePrototypes(protoArray) else {
+            if debugMode { logDebug("❌ ONNX-STYLE (\(stage2DebugLabel)): parse prototypes failed") }
             resetProcessingFlag()
             return
         }
@@ -1256,28 +1408,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let pW = protoInfo.width
         let pH = protoInfo.height
 
+        // Detection list + NMS + primary: match default letterbox path (`confidenceThreshold`, `clsToIgnore`, IoU 0.5, STAGE 4 scoring).
         var rawDetections = YoloEDetectionParser.parseDetections(
-            detArray: pair.det,
-            confidenceThreshold: FurnitureFitOnnxStylePipeline.confidenceThreshold,
-            classBlacklist: []
+            detArray: detArray,
+            confidenceThreshold: confidenceThreshold,
+            classBlacklist: clsToIgnore
         )
-        rawDetections.sort { $0.confidence > $1.confidence }
-        let cappedForNms = Array(rawDetections.prefix(FurnitureFitOnnxStylePipeline.maxDetectionsBeforeNms))
-        let nmsDetections = FurnitureFitNMS.apply(detections: cappedForNms, iouThreshold: FurnitureFitOnnxStylePipeline.iouThresholdNms)
+        YoloEDetectionParser.releaseF16Scratch()
 
-        if debugMode {
-            logDebug("📦 ONNX dets after NMS: \(nmsDetections.count) (conf≥\(FurnitureFitOnnxStylePipeline.confidenceThreshold), IoU≤\(FurnitureFitOnnxStylePipeline.iouThresholdNms))")
-            for (i, d) in nmsDetections.prefix(20).enumerated() {
-                logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
-            }
-        }
-
-        guard let primaryIdx = FurnitureFitOnnxStylePipeline.pickPrimaryIndex(
-            detections: nmsDetections,
-            frameWidth: Float(onnxSide),
-            frameHeight: Float(onnxSide)
-        ) else {
-            if debugMode { logDebug("⚠️ ONNX: no primary candidate") }
+        if rawDetections.isEmpty {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse (Core ML thresholds/blacklist)") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.resetOverlayScalesForEmptyMask()
@@ -1285,43 +1425,98 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             resetProcessingFlag()
             return
         }
-        let primary = nmsDetections[primaryIdx]
-        let maskDetections = FurnitureFitOnnxStylePipeline.collectMaskDetections(primaryIndex: primaryIdx, detections: nmsDetections)
+
+        let candidates: [FurnitureFitDetection]
+        if rawDetections.count > 1 {
+            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
+            let capped = Array(sorted.prefix(100))
+            candidates = FurnitureFitNMS.apply(detections: capped, iouThreshold: 0.5)
+        } else {
+            candidates = rawDetections
+        }
+
+        if debugMode {
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS IoU≤0.5, blacklist \(clsToIgnore.count) ids)")
+            for (i, d) in candidates.prefix(20).enumerated() {
+                logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
+            }
+        }
+
+        guard let primaryIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate (Core ML STAGE 4 gates)") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
+            resetProcessingFlag()
+            return
+        }
+        let primary = candidates[primaryIdx]
+        let maskDetections = FurnitureFitOnnxStylePipeline.collectMaskDetections(primaryIndex: primaryIdx, detections: candidates)
+
+        // Proto mask logits are only evaluated inside each detection bbox; expand **primary** only (explicit `primary`,
+        // not positional `[0]`) so legs/wheels get logits. Drop the unexpanded primary from the fusion list via IoU.
+        let expandedPrimaryForMask = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
+        let maskDetectionsForBuild = [expandedPrimaryForMask] + maskDetections.filter {
+            FurnitureFitIoU.calculate($0, primary) < 0.999
+        }
 
         var maskSmall = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMask(
             planes: planes,
             protoW: pW,
             protoH: pH,
             modelSide: Float(onnxSide),
-            detections: maskDetections
+            detections: maskDetectionsForBuild
         )
         if furnitureFitUseMorphologicalCloseMask {
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
 
-        let maskFull = upscaleMaskProtoToCameraBufferSize(maskSmall: maskSmall, protoW: pW, protoH: pH, origW: bufW, origH: bufH)
+        // Core ML parity: clear proto mask outside **tight** primary rect (model space). Stops secondary-instance
+        // fusion from painting into the expanded compositing band beyond the primary box.
+        let protoScaleX = Float(pW) / Float(onnxSide)
+        let protoScaleY = Float(pH) / Float(onnxSide)
+        let protoPx1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScaleX)))
+        let protoPy1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScaleY)))
+        let protoPx2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScaleX)))
+        let protoPy2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScaleY)))
+        clipProtoPlanarMaskOutsideRect(
+            mask: &maskSmall,
+            protoW: pW,
+            protoH: pH,
+            clipPx1: protoPx1,
+            clipPy1: protoPy1,
+            clipPx2: protoPx2,
+            clipPy2: protoPy2
+        )
 
         let scaleX = Float(bufW) / Float(onnxSide)
         let scaleY = Float(bufH) / Float(onnxSide)
-        let primaryBx1 = max(0, Int((primary.x - primary.w * 0.5) * scaleX))
-        let primaryBy1 = max(0, Int((primary.y - primary.h * 0.5) * scaleY))
-        let primaryBx2 = min(bufW, Int((primary.x + primary.w * 0.5) * scaleX))
-        let primaryBy2 = min(bufH, Int((primary.y + primary.h * 0.5) * scaleY))
+        let tightFx1 = (primary.x - primary.w * 0.5) * scaleX
+        let tightFy1 = (primary.y - primary.h * 0.5) * scaleY
+        let tightFx2 = (primary.x + primary.w * 0.5) * scaleX
+        let tightFy2 = (primary.y + primary.h * 0.5) * scaleY
+        let primaryBx1 = max(0, Int(tightFx1))
+        let primaryBy1 = max(0, Int(tightFy1))
+        let primaryBx2 = min(bufW, Int(tightFx2))
+        let primaryBy2 = min(bufH, Int(tightFy2))
 
-        var maskClipped = maskFull
-        clipFullMaskToPrimaryBbox(
-            mask: &maskClipped,
-            origW: bufW,
-            origH: bufH,
-            px1: primaryBx1,
-            py1: primaryBy1,
-            px2: primaryBx2,
-            py2: primaryBy2
-        )
+        // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
+        // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
+        let bw = max(1, tightFx2 - tightFx1)
+        let bh = max(1, tightFy2 - tightFy1)
+        let compMarginW = bw * bboxExpandMargin
+        let compMarginH = bh * bboxExpandMargin
+        let compBx1 = max(0, Int(floor(tightFx1 - compMarginW)))
+        let compBy1 = max(0, Int(floor(tightFy1 - compMarginH)))
+        let compBx2 = min(bufW, Int(ceil(tightFx2 + compMarginW)))
+        let compBy2 = min(bufH, Int(ceil(tightFy2 + compMarginH)))
 
         if debugMode {
-            logDebug("⏱️ ONNX STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
+            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
             logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] mask dets=\(maskDetections.count)")
+            logDebug("   🖼️ composite band (expanded): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
+            logDebug("   ✂️ proto mask clip (tight primary): [\(protoPx1),\(protoPy1)]→[\(protoPx2),\(protoPy2)] (proto \(pW)×\(pH))")
         }
 
         let normX1 = CGFloat(primaryBx1) / CGFloat(bufW)
@@ -1372,15 +1567,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         setProgress(0.92, text: "Compositing…")
         let compStart = Date()
-        let composedImage = compositeCpuMaskOnly(
+        // Nearest map proto → frame (Android `composeNearestProtoMaskCutoutArgb`). Bilinear upscale of a 0/255 mask
+        // was smearing edges and could make most of the primary band fully opaque (A=255) while the cutout failed visually.
+        let composedImage = compositeCpuNearestProtoMaskCutout(
             processBuffer: processBuffer,
-            maskFull: maskClipped,
+            maskProto: maskSmall,
+            protoW: pW,
+            protoH: pH,
             origW: bufW,
             origH: bufH,
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2
+            x0: compBx1,
+            x1: compBx2,
+            y0: compBy1,
+            y1: compBy2,
+            debugTag: "ONNX-style CPU composite"
         )
 
         if let finalImage = composedImage {
@@ -1394,7 +1594,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
 
-        if maskClipped.contains(where: { $0 > 0 }) {
+        if maskSmall.contains(where: { $0 > 0 }) {
             finishFirstDetectionIfNeeded()
         }
 
@@ -1402,10 +1602,82 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if debugMode {
             let compMs = Date().timeIntervalSince(compStart) * 1000
             let frameTotalMs = Date().timeIntervalSince(frameStart) * 1000
-            logDebug("🖼️ ONNX compositing: \(String(format: "%.2f", compMs)) ms")
+            logDebug("🖼️ ONNX-STYLE (\(stage2DebugLabel)) compositing: \(String(format: "%.2f", compMs)) ms")
             logMemory("FRAME END")
-            logDebug("⏱️ ONNX FRAME TOTAL: \(String(format: "%.2f", frameTotalMs)) ms")
+            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) FRAME TOTAL: \(String(format: "%.2f", frameTotalMs)) ms")
             logDebug("⏱️ ═══════════════════════════════════════════\n")
+        }
+    }
+
+    /// Expands primary width/height for ONNX-style proto mask synthesis (legs/wheels), clamped to model square.
+    private func onnxStyleExpandedPrimaryForMaskBuild(_ primary: FurnitureFitDetection, onnxSide: Int) -> FurnitureFitDetection {
+        let side = Float(onnxSide)
+        let maxHalfW = min(primary.x, side - primary.x)
+        let maxHalfH = min(primary.y, side - primary.y)
+        let capW = 2 * max(maxHalfW, 1)
+        let capH = 2 * max(maxHalfH, 1)
+        let ew = min(primary.w * (1 + 2 * bboxExpandMargin), capW)
+        let eh = min(primary.h * (1 + 2 * bboxExpandMargin), capH)
+        return FurnitureFitDetection(
+            x: primary.x,
+            y: primary.y,
+            w: ew,
+            h: eh,
+            confidence: primary.confidence,
+            classIdx: primary.classIdx,
+            coeffs: primary.coeffs
+        )
+    }
+
+    /// Zeros planar proto mask outside [clipPx1, clipPx2) × [clipPy1, clipPy2) (same idea as Core ML stage 15d clip in full-res).
+    private func clipProtoPlanarMaskOutsideRect(
+        mask: inout [UInt8],
+        protoW: Int,
+        protoH: Int,
+        clipPx1: Int,
+        clipPy1: Int,
+        clipPx2: Int,
+        clipPy2: Int
+    ) {
+        let clipX1 = max(0, clipPx1)
+        let clipY1 = max(0, clipPy1)
+        let clipX2 = min(protoW, clipPx2)
+        let clipY2 = min(protoH, clipPy2)
+        guard mask.count >= protoW * protoH else { return }
+        guard clipX1 < clipX2, clipY1 < clipY2 else {
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, protoW * protoH) }
+            }
+            return
+        }
+        if clipY1 > 0 {
+            let topBytes = clipY1 * protoW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, topBytes) }
+            }
+        }
+        if clipY2 < protoH {
+            let bottomStart = clipY2 * protoW
+            let bottomBytes = (protoH - clipY2) * protoW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    memset(base.advanced(by: bottomStart), 0, bottomBytes)
+                }
+            }
+        }
+        if clipX1 > 0 || clipX2 < protoW {
+            mask.withUnsafeMutableBytes { raw in
+                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                for y in clipY1..<clipY2 {
+                    let rowStart = y * protoW
+                    if clipX1 > 0 {
+                        memset(base.advanced(by: rowStart), 0, clipX1)
+                    }
+                    if clipX2 < protoW {
+                        memset(base.advanced(by: rowStart + clipX2), 0, protoW - clipX2)
+                    }
+                }
+            }
         }
     }
 
@@ -1547,6 +1819,93 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         logDebug("🎨 [RGBA \(tag)] center (\(cx),\(cy)) premul R=\(red) G=\(green) B=\(blue) A=\(alpha)")
     }
 
+    /// Android `composeNearestProtoMaskCutoutArgb`: nearest-neighbor lookup from proto-sized mask (no bilinear upscale of 0/255 mask).
+    /// Optional future: bilinear sampling of float proto logits before threshold would soften edges vs ~4px blocks at 160→720.
+    private func compositeCpuNearestProtoMaskCutout(
+        processBuffer: CVPixelBuffer,
+        maskProto: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        origW: Int,
+        origH: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        debugTag: String
+    ) -> CGImage? {
+        let pw = protoW
+        let ph = protoH
+        guard pw > 0, ph > 0, maskProto.count >= pw * ph, origW > 0, origH > 0 else { return nil }
+        let xStart = max(0, min(origW, x0))
+        let xEnd = max(0, min(origW, x1))
+        let yStart = max(0, min(origH, y0))
+        let yEnd = max(0, min(origH, y1))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+
+        // Must match `compositeCpuCameraBandAccelerated` + historical contexts: premultipliedLast **without**
+        // byteOrder32Little — adding byteOrder32Little makes CoreGraphics reinterpret R,G,B,A bytes and tints (e.g. red).
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        guard let outData = ctx.data else { return nil }
+        let outBase = outData.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRowOut = origW * 4
+
+        for y in 0..<origH {
+            memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
+        }
+
+        let fw = origW
+        let fh = origH
+
+        for y in yStart..<yEnd {
+            let protoY = min(ph - 1, max(0, (y * ph) / fh))
+            let protoRowBase = protoY * pw
+            let outRow = outBase.advanced(by: y * bytesPerRowOut)
+            let camRow = origBase.advanced(by: y * camRowBytes)
+            for x in xStart..<xEnd {
+                let protoX = min(pw - 1, max(0, (x * pw) / fw))
+                let a8 = maskProto[protoRowBase + protoX]
+                guard a8 > 127 else { continue }
+                let mf = Float(a8) * (1.0 / 255.0)
+                let cx = x * 4
+                // Camera BGRA → premultiplied RGBA (same channel assignment as vDSP composite path).
+                let rf = Float(camRow[cx + 2]) * mf
+                let gf = Float(camRow[cx + 1]) * mf
+                let bf = Float(camRow[cx]) * mf
+                outRow[cx] = UInt8(min(255, max(0, rf + 0.5)))
+                outRow[cx + 1] = UInt8(min(255, max(0, gf + 0.5)))
+                outRow[cx + 2] = UInt8(min(255, max(0, bf + 0.5)))
+                outRow[cx + 3] = a8
+            }
+        }
+
+        logPremultipliedRGBASampleIfDebug(
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            width: origW,
+            height: origH,
+            x0: xStart,
+            x1: xEnd,
+            y0: yStart,
+            y1: yEnd,
+            tag: debugTag
+        )
+        return ctx.makeImage()
+    }
+
     private func compositeCpuMaskOnly(
         processBuffer: CVPixelBuffer,
         maskFull: [UInt8],
@@ -1603,41 +1962,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             x1: x1,
             y0: y0,
             y1: y1,
-            tag: "ONNX CPU composite"
+            tag: "ONNX-style CPU composite"
         )
         return ctx.makeImage()
-    }
-
-    private func upscaleMaskProtoToCameraBufferSize(
-        maskSmall: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        origW: Int,
-        origH: Int
-    ) -> [UInt8] {
-        guard protoW > 0, protoH > 0, origW > 0, origH > 0 else {
-            return [UInt8](repeating: 0, count: max(0, origW * origH))
-        }
-        var maskFull = [UInt8](repeating: 0, count: origW * origH)
-        maskFull.withUnsafeMutableBufferPointer { dstPtr in
-            maskSmall.withUnsafeBufferPointer { srcPtr in
-                var s = vImage_Buffer(
-                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
-                    height: vImagePixelCount(protoH),
-                    width: vImagePixelCount(protoW),
-                    rowBytes: protoW
-                )
-                var d = vImage_Buffer(
-                    data: dstPtr.baseAddress!,
-                    height: vImagePixelCount(origH),
-                    width: vImagePixelCount(origW),
-                    rowBytes: origW
-                )
-                let flags: vImage_Flags = useBilinearUpscaling ? vImage_Flags(kvImageHighQualityResampling) : vImage_Flags(kvImageNoFlags)
-                _ = vImageScale_Planar8(&s, &d, nil, flags)
-            }
-        }
-        return maskFull
     }
 
     /// Stretch to fill `size`×`size` (matches Android ONNX `createScaledBitmap` preprocessing).
@@ -1685,10 +2012,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let frameStart = Date()
         if debugMode { logMemory("FRAME START") }
 
-        let onnxRuntimePreferred = UserDefaults.standard.bool(forKey: QualitySettings.furnitureFitUseOnnxRuntimeStorageKey)
-        if onnxRuntimePreferred, YOLOEOnnxRuntime.shared.isAvailable {
-            processFrameOnnxAndroidStyle(processBuffer: pixelBuffer, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
-            return
+        let onnxStylePreferred = UserDefaults.standard.bool(forKey: QualitySettings.furnitureFitUseOnnxRuntimeStorageKey)
+        if onnxStylePreferred {
+            if let model = mlModel {
+                processFrameOnnxStyleCoreML(processBuffer: pixelBuffer, model: model, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
+                return
+            }
+            if YOLOEOnnxRuntime.shared.isAvailable {
+                processFrameOnnxAndroidStyle(processBuffer: pixelBuffer, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
+                return
+            }
         }
 
         guard let model = mlModel else {
@@ -1896,44 +2229,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 3 - Parse outputs: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms (\(allDets.count) dets, \(pW)x\(pH) protos)")
         }
 
-        // STAGE 4: Select primary (confidence × area × center scoring)
+        // STAGE 4: Select primary (confidence × area × center scoring) — shared with ONNX-style path.
         let t4 = Date()
         setProgress(0.65, text: "Selecting primary…")
 
-        var primaryIdx = -1
-        var maxScore: Float = -1
-        let minConf: Float = 0.15
-        let minAreaNorm: Float = 0.02
-        let frameArea = Float(modelInputSize * modelInputSize)
-        let frameW = Float(modelInputSize)
-        let frameH = Float(modelInputSize)
-        let frameCx = frameW / 2
-        let frameCy = frameH / 2
-
-        // Select primary using composite scoring:
-        //   score = conf^1.5 * areaNorm^0.8 * centerScore^0.5
-        // where centerScore is 1 at frame center and falls off toward corners.
-        for (i, d) in candidates.enumerated() {
-            let areaNorm = (d.w * d.h) / frameArea
-            guard d.confidence >= minConf, areaNorm >= minAreaNorm else { continue }
-
-            let dx = (d.x - frameCx) / frameCx
-            let dy = (d.y - frameCy) / frameCy
-            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
-            let centerScore = 1.0 - centerDist
-
-            let confTerm = pow(d.confidence, 1.5)
-            let areaTerm = pow(areaNorm, 0.8)
-            let centerTerm = pow(max(0, centerScore), 0.5)
-
-            let score = confTerm * areaTerm * centerTerm
-            if score > maxScore {
-                maxScore = score
-                primaryIdx = i
-            }
-        }
-
-        if primaryIdx < 0 {
+        guard let primaryIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: modelInputSize) else {
             if debugMode { logDebug("   ⚠️ No valid primary candidate") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
@@ -2219,31 +2519,37 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
         }
 
-        // Compute PRIMARY bbox in image coordinates (for clipping mask later)
-        // Primary bbox from letterboxed detection (26L o2m uses model-reported input size, typically 640)
-        var rawPBx1 = Float(max(0, Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain))))
-        var rawPBy1 = Float(max(0, Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain))))
-        var rawPBx2 = Float(min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain))))
-        var rawPBy2 = Float(min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain))))
+        // Tight primary bbox in image coordinates (letterboxed detection → full buffer).
+        var tightPBx1 = Float(max(0, Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain))))
+        var tightPBy1 = Float(max(0, Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain))))
+        var tightPBx2 = Float(min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain))))
+        var tightPBy2 = Float(min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain))))
 
-        // Expand by margin to capture parts of the object that the raw bbox may miss (e.g. top of tall chairs).
-        let marginW = (rawPBx2 - rawPBx1) * bboxExpandMargin
-        let marginH = (rawPBy2 - rawPBy1) * bboxExpandMargin
-        rawPBx1 = max(0, rawPBx1 - marginW)
-        rawPBy1 = max(0, rawPBy1 - marginH)
-        rawPBx2 = min(Float(origW), rawPBx2 + marginW)
-        rawPBy2 = min(Float(origH), rawPBy2 + marginH)
-
-        // EMA smoothing across frames to reduce jitter-induced mask flicker.
-        if let prev = smoothedPrimaryBbox {
+        // EMA on tight box first (stable clip + stable base for display margin).
+        if let prev = smoothedTightPrimaryBbox {
             let a = bboxSmoothingAlpha
             let b = 1.0 - a
-            rawPBx1 = prev.x1 * b + rawPBx1 * a
-            rawPBy1 = prev.y1 * b + rawPBy1 * a
-            rawPBx2 = prev.x2 * b + rawPBx2 * a
-            rawPBy2 = prev.y2 * b + rawPBy2 * a
+            tightPBx1 = prev.x1 * b + tightPBx1 * a
+            tightPBy1 = prev.y1 * b + tightPBy1 * a
+            tightPBx2 = prev.x2 * b + tightPBx2 * a
+            tightPBy2 = prev.y2 * b + tightPBy2 * a
         }
-        smoothedPrimaryBbox = (rawPBx1, rawPBy1, rawPBx2, rawPBy2)
+        smoothedTightPrimaryBbox = (tightPBx1, tightPBy1, tightPBx2, tightPBy2)
+
+        // Mask clip: **tight** box only (no bboxExpandMargin). With multi-candidate Stage 5, max-logit fusion
+        // can otherwise pull in pixels just outside the glass / thin objects while the expanded rect still “allows” them.
+        let clipMaskBx1 = max(0, Int(round(tightPBx1)))
+        let clipMaskBy1 = max(0, Int(round(tightPBy1)))
+        let clipMaskBx2 = min(origW, Int(round(tightPBx2)))
+        let clipMaskBy2 = min(origH, Int(round(tightPBy2)))
+
+        // UI / AR: expand from smoothed tight (margin helps tall chairs etc.; does not widen mask clip).
+        let marginW = (tightPBx2 - tightPBx1) * bboxExpandMargin
+        let marginH = (tightPBy2 - tightPBy1) * bboxExpandMargin
+        var rawPBx1 = max(0, tightPBx1 - marginW)
+        var rawPBy1 = max(0, tightPBy1 - marginH)
+        var rawPBx2 = min(Float(origW), tightPBx2 + marginW)
+        var rawPBy2 = min(Float(origH), tightPBy2 + marginH)
 
         let primaryBx1 = max(0, Int(rawPBx1))
         let primaryBy1 = max(0, Int(rawPBy1))
@@ -2251,7 +2557,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let primaryBy2 = min(origH, Int(rawPBy2))
 
         if debugMode {
-            logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
+            logDebug("   PRIMARY bbox (UI/AR, expanded): [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
+            logDebug("   MASK clip (tight primary): [\(clipMaskBx1),\(clipMaskBy1)]→[\(clipMaskBx2),\(clipMaskBy2)]")
         }
 
         // Store primary bbox in normalized coordinates (0-1) for gesture hit testing
@@ -2467,11 +2774,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER BUILD MASK")
         }
 
-        // 15d: Always clear mask outside the primary detection bbox.
-        let clipPx1 = primaryBx1
-        let clipPy1 = primaryBy1
-        let clipPx2 = primaryBx2
-        let clipPy2 = primaryBy2
+        // 15d: Clear outside **tight** primary bbox (same rect as fused shader). Expanded box is UI/AR only.
+        let clipPx1 = clipMaskBx1
+        let clipPy1 = clipMaskBy1
+        let clipPx2 = clipMaskBx2
+        let clipPy2 = clipMaskBy2
         if clipPy1 > 0 {
             let topBytes = clipPy1 * origW
             _ = maskFull.withUnsafeMutableBufferPointer { ptr in
@@ -2611,10 +2918,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 6)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 7)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 8)
-                        var bx1_u = UInt32(primaryBx1)
-                        var by1_u = UInt32(primaryBy1)
-                        var bx2_u = UInt32(primaryBx2)
-                        var by2_u = UInt32(primaryBy2)
+                        var bx1_u = UInt32(clipMaskBx1)
+                        var by1_u = UInt32(clipMaskBy1)
+                        var bx2_u = UInt32(clipMaskBx2)
+                        var by2_u = UInt32(clipMaskBy2)
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 9)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 10)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 11)
@@ -2710,10 +3017,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
                         // Outside primary bbox → transparent (GPU skips logits there).
-                        var bx1_u = UInt32(primaryBx1)
-                        var by1_u = UInt32(primaryBy1)
-                        var bx2_u = UInt32(primaryBx2)
-                        var by2_u = UInt32(primaryBy2)
+                        var bx1_u = UInt32(clipMaskBx1)
+                        var by1_u = UInt32(clipMaskBy1)
+                        var bx2_u = UInt32(clipMaskBx2)
+                        var by2_u = UInt32(clipMaskBy2)
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
@@ -2798,10 +3105,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let origBase = CVPixelBufferGetBaseAddress(processBuffer)!.assumingMemoryBound(to: UInt8.self)
             let bytesPerRowOut = origW * 4
             let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
-            let x0 = max(0, primaryBx1)
-            let x1 = min(origW, primaryBx2)
-            let y0 = max(0, primaryBy1)
-            let y1 = min(origH, primaryBy2)
+            let x0 = max(0, clipMaskBx1)
+            let x1 = min(origW, clipMaskBx2)
+            let y0 = max(0, clipMaskBy1)
+            let y1 = min(origH, clipMaskBy2)
             for y in 0..<origH {
                 memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
             }
@@ -2920,10 +3227,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         if debugMode, let dbgCtx = ctx, let raw = dbgCtx.data {
-            let bandX0 = max(0, primaryBx1)
-            let bandX1 = min(origW, primaryBx2)
-            let bandY0 = max(0, primaryBy1)
-            let bandY1 = min(origH, primaryBy2)
+            let bandX0 = max(0, clipMaskBx1)
+            let bandX1 = min(origW, clipMaskBx2)
+            let bandY0 = max(0, clipMaskBy1)
+            let bandY1 = min(origH, clipMaskBy2)
             logPremultipliedRGBASampleIfDebug(
                 outBase: raw.assumingMemoryBound(to: UInt8.self),
                 bytesPerRowOut: bytesPerRow,
