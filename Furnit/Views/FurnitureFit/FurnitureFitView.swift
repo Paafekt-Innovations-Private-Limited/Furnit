@@ -1408,8 +1408,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let pW = protoInfo.width
         let pH = protoInfo.height
 
-        // Detection list + NMS + primary: match default letterbox path (`confidenceThreshold`, `clsToIgnore`, IoU 0.5, STAGE 4 scoring).
-        var rawDetections = YoloEDetectionParser.parseDetections(
+        // Detection list + NMS + primary: match default letterbox path (`confidenceThreshold`, `blacklist.json` → `clsToIgnore`, IoU 0.5, STAGE 4 scoring).
+        let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
             classBlacklist: clsToIgnore
@@ -1417,7 +1417,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         YoloEDetectionParser.releaseF16Scratch()
 
         if rawDetections.isEmpty {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse (Core ML thresholds/blacklist)") }
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse (Core ML thresholds + blacklist.json)") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.resetOverlayScalesForEmptyMask()
@@ -1426,7 +1426,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        let candidates: [FurnitureFitDetection]
+        var candidates: [FurnitureFitDetection]
         if rawDetections.count > 1 {
             let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
             let capped = Array(sorted.prefix(100))
@@ -1435,8 +1435,19 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             candidates = rawDetections
         }
 
+        candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
+        if candidates.isEmpty {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
+            resetProcessingFlag()
+            return
+        }
+
         if debugMode {
-            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS IoU≤0.5, blacklist \(clsToIgnore.count) ids)")
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS IoU≤0.5, blacklist.json \(clsToIgnore.count) ids)")
             for (i, d) in candidates.prefix(20).enumerated() {
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
@@ -1458,7 +1469,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // not positional `[0]`) so legs/wheels get logits. Drop the unexpanded primary from the fusion list via IoU.
         let expandedPrimaryForMask = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
         let maskDetectionsForBuild = [expandedPrimaryForMask] + maskDetections.filter {
-            FurnitureFitIoU.calculate($0, primary) < 0.999
+            FurnitureFitIoU.calculate($0, primary) < 0.999 && !clsToIgnore.contains($0.classIdx)
         }
 
         var maskSmall = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMask(
@@ -1583,7 +1594,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             debugTag: "ONNX-style CPU composite"
         )
 
-        if let finalImage = composedImage {
+        let withDebugOverlay: CGImage? = {
+            guard debugMode,
+                  let base = composedImage else { return composedImage }
+            return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
+                composed: base,
+                candidates: candidates,
+                primaryIndex: primaryIdx,
+                origW: bufW,
+                origH: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            ) ?? base
+        }()
+
+        if let finalImage = withDebugOverlay {
             let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
             DispatchQueue.main.async {
                 var out = finalImage
@@ -1906,6 +1931,92 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         return ctx.makeImage()
     }
 
+    /// ONNX-style stretch coords → buffer pixels; CGContext stroke uses bottom-left origin, so flip Y like STAGE 7 letterbox debug.
+    private func drawOnnxStyleDebugDetectionBboxesOnComposedImage(
+        composed: CGImage,
+        candidates: [FurnitureFitDetection],
+        primaryIndex: Int,
+        origW: Int,
+        origH: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGImage? {
+        let bytesPerRow = origW * 4
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+
+        func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
+            let tightFx1 = (d.x - d.w * 0.5) * scaleX
+            let tightFy1 = (d.y - d.h * 0.5) * scaleY
+            let tightFx2 = (d.x + d.w * 0.5) * scaleX
+            let tightFy2 = (d.y + d.h * 0.5) * scaleY
+            let bx1 = max(0, Int(tightFx1))
+            let by1 = max(0, Int(tightFy1))
+            let bx2 = min(origW, Int(tightFx2))
+            let by2 = min(origH, Int(tightFy2))
+            let bw = max(1, bx2 - bx1)
+            let bh = max(1, by2 - by1)
+            return (bx1, by1, bw, bh)
+        }
+
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
+
+        for (_, d) in candidates.enumerated() {
+            let r = bufferRect(for: d)
+            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
+            ctx.setLineWidth(2.0)
+            ctx.setStrokeColor(UIColor.cyan.cgColor)
+            ctx.stroke(cgRect)
+
+            let plainName = classNames[d.classIdx] ?? "unknown"
+            let confidence = String(format: "%.2f", d.confidence)
+            let labelText = "\(plainName) (\(confidence))"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.white
+            ]
+            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+            let line = CTLineCreateWithAttributedString(attributedString)
+            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            let labelX = CGFloat(r.bx1)
+            let labelY = CGFloat(origH - r.by1 + 4)
+            let textBackgroundRect = CGRect(
+                x: labelX - 2,
+                y: labelY - textBounds.height - 2,
+                width: textBounds.width + 4,
+                height: textBounds.height + 4
+            )
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            ctx.fill(textBackgroundRect)
+            ctx.saveGState()
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
+            ctx.setFillColor(UIColor.white.cgColor)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
+        }
+
+        if primaryIndex >= 0, primaryIndex < candidates.count {
+            let d = candidates[primaryIndex]
+            let r = bufferRect(for: d)
+            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
+            ctx.setStrokeColor(UIColor.red.cgColor)
+            ctx.setLineWidth(4.0)
+            ctx.stroke(cgRect)
+        }
+
+        return ctx.makeImage()
+    }
+
     private func compositeCpuMaskOnly(
         processBuffer: CVPixelBuffer,
         maskFull: [UInt8],
@@ -2011,8 +2122,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func processFrameInner(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
         let frameStart = Date()
         if debugMode { logMemory("FRAME START") }
+        loadBlacklistOnce()
 
-        let onnxStylePreferred = UserDefaults.standard.bool(forKey: QualitySettings.furnitureFitUseOnnxRuntimeStorageKey)
+        let onnxStylePreferred = QualitySettings.furnitureFitOnnxStyleEnabled()
         if onnxStylePreferred {
             if let model = mlModel {
                 processFrameOnnxStyleCoreML(processBuffer: pixelBuffer, model: model, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
@@ -2546,10 +2658,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // UI / AR: expand from smoothed tight (margin helps tall chairs etc.; does not widen mask clip).
         let marginW = (tightPBx2 - tightPBx1) * bboxExpandMargin
         let marginH = (tightPBy2 - tightPBy1) * bboxExpandMargin
-        var rawPBx1 = max(0, tightPBx1 - marginW)
-        var rawPBy1 = max(0, tightPBy1 - marginH)
-        var rawPBx2 = min(Float(origW), tightPBx2 + marginW)
-        var rawPBy2 = min(Float(origH), tightPBy2 + marginH)
+        let rawPBx1 = max(0, tightPBx1 - marginW)
+        let rawPBy1 = max(0, tightPBy1 - marginH)
+        let rawPBx2 = min(Float(origW), tightPBx2 + marginW)
+        let rawPBy2 = min(Float(origH), tightPBy2 + marginH)
 
         let primaryBx1 = max(0, Int(rawPBx1))
         let primaryBy1 = max(0, Int(rawPBy1))

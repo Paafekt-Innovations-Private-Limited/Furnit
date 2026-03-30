@@ -136,7 +136,7 @@
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 "settings.furnitureSegmentationSection" = "Furniture segmentation";
 "settings.furnitureFitOnnxRuntime" = "Use ONNX Runtime for YOLO-E";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off (default): Core ML with letterbox and the standard mask path. On: same Core ML model with stretch preprocessing and Android-style NMS, primary pick, and bbox-limited mask (no blacklist.json). If the model is not loaded, uses bundled .onnx with ONNX Runtime when available.";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off (default): Core ML with letterbox and the standard mask path. On: same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection as the default path. If the model is not loaded, uses bundled .onnx with ONNX Runtime when available.";
 "settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: allow GPU";
 "settings.yoloeCoreMLAllowGPUDescription" = "Off (default): CPU only — slower but avoids crashes on some YOLO-E 26L Core ML builds. On: CPU+GPU for speed; may SIGABRT during segmentation if the export does not run on Metal on your device.";
 "settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";

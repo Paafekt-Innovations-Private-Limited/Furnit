@@ -128,6 +128,8 @@ class QualitySettings: ObservableObject {
 
     /// UserDefaults key for ``furnitureFitUseOnnxRuntime`` (read in ``FurnitureFitView`` to branch to Android-style stretch + postprocess).
     static let furnitureFitUseOnnxRuntimeStorageKey = "furniture_fit_use_onnx_runtime"
+    /// Value used when the key has never been written (fresh install). Must stay in sync with ``furnitureFitOnnxStyleEnabled()``.
+    static let furnitureFitUseOnnxRuntimeDefaultValue = true
     /// UserDefaults key for optional Core ML GPU path (read by ``YOLOEModelService`` at model load).
     static let yoloeCoreMLAllowGPUKey = "yoloe_core_ml_allow_gpu"
     // Current selected quality (published for UI updates)
@@ -162,7 +164,7 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When `false` (default): Furniture Fit uses Core ML with letterbox preprocess and the standard mask pipeline. When `true`: same Core ML ``mlmodel`` with **stretch** preprocess and Android-aligned NMS / primary / mask (``FurnitureFitOnnxStylePipeline``). If the Core ML model is not loaded, falls back to bundled ONNX Runtime when a `.onnx` is present.
+    /// When `false`: Furniture Fit uses Core ML with letterbox preprocess and the standard mask pipeline. When `true` (default): same Core ML ``mlmodel`` with **stretch** preprocess, Android-style bbox-limited mask (``FurnitureFitOnnxStylePipeline``), and the same ``blacklist.json`` / primary selection as the letterbox path. If the Core ML model is not loaded, falls back to bundled ONNX Runtime when a `.onnx` is present.
     @Published var furnitureFitUseOnnxRuntime: Bool {
         didSet {
             saveFurnitureFitUseOnnxRuntime()
@@ -209,11 +211,11 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-        // Default letterbox Core ML path (false); optional Android-style stretch + postprocess (same mlmodel when loaded)
+        // Default ONNX-style stretch + postprocess when unset (same mlmodel when loaded)
         if UserDefaults.standard.object(forKey: furnitureFitUseOnnxRuntimeKey) != nil {
             self.furnitureFitUseOnnxRuntime = UserDefaults.standard.bool(forKey: furnitureFitUseOnnxRuntimeKey)
         } else {
-            self.furnitureFitUseOnnxRuntime = false
+            self.furnitureFitUseOnnxRuntime = Self.furnitureFitUseOnnxRuntimeDefaultValue
         }
 
         if UserDefaults.standard.object(forKey: Self.yoloeCoreMLAllowGPUKey) != nil {
@@ -295,8 +297,16 @@ class QualitySettings: ObservableObject {
         selectedMovementSpeed = .normal
         debugMode = false
         bboxInMaskThreshold = 0.30
-        furnitureFitUseOnnxRuntime = false
+        furnitureFitUseOnnxRuntime = Self.furnitureFitUseOnnxRuntimeDefaultValue
         yoloeCoreMLAllowGPU = false
+    }
+
+    /// Effective ONNX-style flag for code that reads UserDefaults without a ``QualitySettings`` instance (e.g. ``FurnitureFitView``). When the key is missing, returns ``furnitureFitUseOnnxRuntimeDefaultValue``.
+    static func furnitureFitOnnxStyleEnabled(userDefaults: UserDefaults = .standard) -> Bool {
+        if userDefaults.object(forKey: furnitureFitUseOnnxRuntimeStorageKey) != nil {
+            return userDefaults.bool(forKey: furnitureFitUseOnnxRuntimeStorageKey)
+        }
+        return furnitureFitUseOnnxRuntimeDefaultValue
     }
 }
 
