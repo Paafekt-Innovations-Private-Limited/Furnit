@@ -1,6 +1,6 @@
 # FurnitureFit Segmentation Pipeline
 
-Real-time furniture segmentation using YOLO-E 11L with instance segmentation masks.
+Real-time furniture segmentation using YOLO-E **26L PF** (Core ML / optional ONNX; typically **640×640** input) with instance segmentation masks.
 
 ## Architecture Overview
 
@@ -184,12 +184,12 @@ if (m <= 0.0f) { ... }
 ## Pipeline Stages
 
 ### STAGE 1: Preprocess
-- Resize input to square (1280×1280)
+- Resize input to square (model constraint, usually **640×640** for 26L PF)
 - Letterbox padding with gray (128)
 - Convert to MLMultiArray
 
 ### STAGE 2: Inference
-- Run YOLO-E 11L model
+- Run YOLO-E 26L PF model (`YoloEImageInference.modelInputSize` / Core ML image constraint)
 - Output: detection tensor + prototype masks
 
 ### STAGE 3: Parse Outputs

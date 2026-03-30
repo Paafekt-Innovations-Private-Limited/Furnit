@@ -14,8 +14,20 @@ enum WallMeasurementEstimator {
     }
 
     private static let lvisWall = 571
-    private static let lvisDoor = 537
     private static let standardDoorM: Float = 2.03
+
+    /// YOLOE `classes.json` is not byte-identical to LVIS IDs; e.g. **537 is "bowl"** in our bundle, not door.
+    /// Door calibration must use **label text**, not a hard-coded LVIS door id, or a bowl can drive scale and inflate width/height.
+    private static let doorLabelNegativeSubstrings: [String] = [
+        "doormat", "doorbell", "doorstop", "car door",
+    ]
+
+    private static func isDoorCalibrationLabel(_ raw: String) -> Bool {
+        let lower = raw.lowercased()
+        guard lower.contains("door") else { return false }
+        if doorLabelNegativeSubstrings.contains(where: { lower.contains($0) }) { return false }
+        return true
+    }
 
     /// YOLO-E outputs ~33k anchor rows. Floor **0** keeps almost all anchors; tier 1 then picks the **largest-area class 571**,
     /// which can be a **0.01-confidence** box and **beat** a better tier-2 “room” box — wrong wall height. **0.05** drops
@@ -470,9 +482,7 @@ enum WallMeasurementEstimator {
 
     private static func doorBounds(detections: [FurnitureFitDetection], imageWidth: Int, imageHeight: Int) -> CGRect? {
         let names = loadClassNames()
-        let doors = detections.filter {
-            $0.classIdx == lvisDoor || (names[$0.classIdx] ?? "").lowercased().contains("door")
-        }
+        let doors = detections.filter { isDoorCalibrationLabel(names[$0.classIdx] ?? "") }
         guard let best = doors.max(by: { ($0.confidence * $0.w * $0.h) < ($1.confidence * $1.w * $1.h) }) else { return nil }
         return detToRect(best, iw: CGFloat(imageWidth), ih: CGFloat(imageHeight))
     }

@@ -15,8 +15,8 @@ import kotlin.math.max
 /**
  * YOLO segmentation + SHARP monodepth (persisted) + camera EXIF → front-wall width/height in meters.
  * Uses [YoloEImageInference] (same NCNN thresholds / model side as [FurnitureFitManager]; no furniture blacklist).
- * LVIS class IDs are used when the NCNN export includes them; otherwise wall-like boxes fall back to
- * [YoloRatioCalibration] heuristics (COCO 80).
+ * Wall tier-1 uses LVIS wall class 571 when present. Door calibration uses class **names** containing "door"
+ * (not a fixed id — bundled `classes.json` ids differ from classic LVIS).
  */
 object WallMeasurementEstimator {
 
@@ -36,8 +36,16 @@ object WallMeasurementEstimator {
     const val CAL_CEILING = "ceiling"
 
     private const val LVIS_WALL = 571
-    private const val LVIS_DOOR = 537
     private const val STANDARD_DOOR_M = 2.03f
+
+    // YOLOE classes.json is not identical to LVIS: e.g. 537 is "bowl" in assets, not door. Never match door by a fixed id.
+    private val doorLabelNegatives = listOf("doormat", "doorbell", "doorstop", "car door")
+
+    private fun isDoorCalibrationLabel(raw: String): Boolean {
+        val lower = raw.lowercase()
+        if (!lower.contains("door")) return false
+        return doorLabelNegatives.none { lower.contains(it) }
+    }
 
     /** ~33k NCNN anchors; 0 keeps all and tier 1 can pick a 0.01-conf “wall” over a better tier-2 label. 0.05 drops anchor noise only (not Furniture Fit 0.25). */
     private const val YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR = 0.05f
@@ -451,7 +459,7 @@ object WallMeasurementEstimator {
         classNames: Map<Int, String>,
     ): Rect? {
         val door = dets.filter {
-            it.classId == LVIS_DOOR || classNameFor(it, classNames).contains("door", ignoreCase = true)
+            isDoorCalibrationLabel(classNameFor(it, classNames))
         }
             .maxByOrNull { it.confidence * it.width * it.height }
         return door?.let { detToRect(it, iw, ih) }

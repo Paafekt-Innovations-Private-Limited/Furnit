@@ -634,7 +634,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
     var roomImage: UIImage?
-    var mlModel: MLModel?  // yoloe-11l 1280 model
+    var mlModel: MLModel?  // yoloe-26l-seg-pf (640) via YOLOEModelService
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true

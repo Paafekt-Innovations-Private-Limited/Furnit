@@ -1244,13 +1244,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let bufH = CVPixelBufferGetHeight(processBuffer)
         let isLandscape = bufW > bufH
 
-        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
-        let modelInputSize: Int
-        if let imageConstraint = imageInputDesc?.imageConstraint {
-            modelInputSize = imageConstraint.pixelsWide
-        } else {
-            modelInputSize = 1280
-        }
+        let modelInputSize = YoloEImageInference.modelInputSize(for: model)
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
@@ -2169,19 +2163,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
-        // Determine model's expected input size from input description
-        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
-        let modelInputSize: Int
-        if let imageConstraint = imageInputDesc?.imageConstraint {
-            modelInputSize = imageConstraint.pixelsWide
-            if debugMode {
-                logDebug("📐 Model expects input size: \(modelInputSize)x\(imageConstraint.pixelsHigh)")
-            }
-        } else {
-            modelInputSize = 1280  // Fallback to default
-            if debugMode {
-                logDebug("📐 Using default input size: \(modelInputSize)")
-            }
+        // Same resolution logic as still-image / wall measurement (`YoloEImageInference`); 26L PF → typically 640.
+        let modelInputSize = YoloEImageInference.modelInputSize(for: model)
+        if debugMode {
+            logDebug("📐 Model input side: \(modelInputSize) (from Core ML image constraint / 26L default)")
         }
 
         // STAGE 1: Preprocess (resize + input prep)

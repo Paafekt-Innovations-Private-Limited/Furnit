@@ -15,7 +15,7 @@ Related code:
 
 **YOLO-E** here is the **open-vocabulary / LVIS-style** segmentation model shipped as:
 
-- **iOS:** CoreML `yoloe-11l-seg-pf.mlmodelc` (loaded via `YOLOEModelService`).
+- **iOS:** CoreML `yoloe-26l-seg-pf_seg_o2m` (loaded via `YOLOEModelService`; letterbox side usually **640**).
 - **Android:** NCNN `yoloe-11l-seg` (same role as Furniture Fit).
 
 **Detection** means: for a **still image** (the room **thumbnail** next to the SHARP folder), the model outputs many **candidate boxes** (and mask coeffs). Each candidate has:
@@ -32,7 +32,7 @@ Wall measurement **does not** use Furniture Fit’s `blacklist.json` — it pass
 
 | Concept | Typical value | Role |
 |--------|----------------|------|
-| **Model input** | **1280×1280** letterboxed square (`yolo_side` / `modelInputSize`) | What CoreML/NCNN runs on. |
+| **Model input** | **640×640** letterboxed square on iOS 26L PF (`yolo_side` / `modelInputSize`; NCNN Android may differ) | What CoreML/NCNN runs on. |
 | **Source thumbnail** | e.g. **4284×5712** px | `reference_image size`; boxes are mapped **here** for wall math. |
 
 So: inference is on a **1280** square; **metrics** use the **full thumbnail** width/height.

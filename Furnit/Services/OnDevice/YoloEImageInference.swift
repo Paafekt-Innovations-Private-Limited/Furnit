@@ -16,7 +16,7 @@ enum YoloEImageInference {
         let sourceHeight: Int
     }
 
-    /// Matches `FurnitureFitView` (`imageConstraint.pixelsWide`, fallback 1280) plus enumerated/range constraints.
+    /// Square side for letterbox/stretch (from Core ML `image` constraint). **26L seg PF** exports use **640**; fallback matches that, not legacy 11L 1280.
     static func modelInputSize(for model: MLModel) -> Int {
         let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
         if let imageConstraint = imageInputDesc?.imageConstraint {
@@ -33,7 +33,7 @@ enum YoloEImageInference {
                 }
             } else if sc.type == .range {
                 let r = sc.pixelsWideRange
-                let target = 1280
+                let target = 640
                 let lo = Int(r.lowerBound)
                 let hi = Int(r.upperBound)
                 if lo > 0 && hi >= lo {
@@ -41,7 +41,7 @@ enum YoloEImageInference {
                 }
             }
         }
-        return 1280
+        return 640
     }
 
     /// Same pipeline as `FurnitureFitView.processFrame`: letterbox → `prediction` → `YoloEDetectionParser`.

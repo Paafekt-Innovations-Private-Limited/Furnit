@@ -41,6 +41,7 @@ data class SegmentationResult(
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val bboxExpandMargin = 0.08f
     private val includeSupportingTableForMonitorScene = true
     private val enableMorphCloseForMask = false
     private val monitorLikeClassIds = setOf(1063, 2675, 4105)
@@ -783,6 +784,23 @@ class FurnitureFitManager(private val context: Context) {
             } else {
                 emptyList()
             }
+            val maskDetectionsForBuild = if (primaryDet != null) {
+                val expandedPrimary = expandedPrimaryForMaskBuild(
+                    primaryDetection = primaryDet,
+                    frameWidth = inputW.toFloat(),
+                    frameHeight = inputH.toFloat(),
+                )
+                buildList {
+                    add(expandedPrimary)
+                    for (detection in maskDetections) {
+                        if (calculateIoUForMaskSelection(detection, primaryDet) < 0.999f) {
+                            add(detection)
+                        }
+                    }
+                }
+            } else {
+                emptyList()
+            }
 
             val detectionResults = if (primaryDet != null) {
                 listOf(
@@ -798,6 +816,16 @@ class FurnitureFitManager(private val context: Context) {
             } else {
                 emptyList()
             }
+            if (primaryDet != null) {
+                val topLabels = keepDets
+                    .take(3)
+                    .joinToString(", ") { "${labelForClassId(it.classId)}:${String.format("%.2f", it.confidence)}" }
+                LogUtil.d(
+                    "FurnitureFitManager",
+                    "Primary=${labelForClassId(primaryDet.classId)} conf=${String.format("%.2f", primaryDet.confidence)} " +
+                        "maskBuildDets=${maskDetectionsForBuild.size} keepDets=${keepDets.size} top=[$topLabels]",
+                )
+            }
 
             var maskResult: Bitmap? = null
             if (primaryDet != null && proto.isNotEmpty()) {
@@ -805,7 +833,7 @@ class FurnitureFitManager(private val context: Context) {
                 val protoScaleY = inputH.toFloat() / protoH.toFloat()
                 val maskProto = FloatArray(protoH * protoW)
 
-                for (detection in maskDetections) {
+                for (detection in maskDetectionsForBuild) {
                     val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
                     val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
                     val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
@@ -839,19 +867,34 @@ class FurnitureFitManager(private val context: Context) {
                         threshold = 0.5f,
                     )
                 }
+                val protoClipLeft = floor(((primaryDet.x - primaryDet.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
+                val protoClipTop = floor(((primaryDet.y - primaryDet.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
+                val protoClipRight = ceil(((primaryDet.x + primaryDet.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
+                val protoClipBottom = ceil(((primaryDet.y + primaryDet.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
+                clipProtoMaskOutsideRect(
+                    mask = maskProto,
+                    protoW = protoW,
+                    protoH = protoH,
+                    clipX0 = protoClipLeft,
+                    clipY0 = protoClipTop,
+                    clipX1 = protoClipRight,
+                    clipY1 = protoClipBottom,
+                )
 
                 val frameW = frame.width
                 val frameH = frame.height
                 val sxf = frameW.toFloat() / inputW.toFloat()
                 val syf = frameH.toFloat() / inputH.toFloat()
-                val px0 = primaryDet.x - primaryDet.w / 2f
-                val px1 = primaryDet.x + primaryDet.w / 2f
-                val py0 = primaryDet.y - primaryDet.h / 2f
-                val py1 = primaryDet.y + primaryDet.h / 2f
-                val bandX0 = floor((px0 * sxf).toDouble()).toInt().coerceIn(0, frameW)
-                val bandX1 = ceil((px1 * sxf).toDouble()).toInt().coerceIn(0, frameW)
-                val bandY0 = floor((py0 * syf).toDouble()).toInt().coerceIn(0, frameH)
-                val bandY1 = ceil((py1 * syf).toDouble()).toInt().coerceIn(0, frameH)
+                val tightFx0 = (primaryDet.x - primaryDet.w / 2f) * sxf
+                val tightFx1 = (primaryDet.x + primaryDet.w / 2f) * sxf
+                val tightFy0 = (primaryDet.y - primaryDet.h / 2f) * syf
+                val tightFy1 = (primaryDet.y + primaryDet.h / 2f) * syf
+                val bandMarginW = max(1f, tightFx1 - tightFx0) * bboxExpandMargin
+                val bandMarginH = max(1f, tightFy1 - tightFy0) * bboxExpandMargin
+                val bandX0 = floor((tightFx0 - bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
+                val bandX1 = ceil((tightFx1 + bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
+                val bandY0 = floor((tightFy0 - bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
+                val bandY1 = ceil((tightFy1 + bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
 
                 val framePixels = IntArray(frameW * frameH)
                 frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
@@ -1125,6 +1168,59 @@ class FurnitureFitManager(private val context: Context) {
             maskDetections += supportingTableDetection
         }
         return maskDetections
+    }
+
+    private fun expandedPrimaryForMaskBuild(
+        primaryDetection: Detection,
+        frameWidth: Float,
+        frameHeight: Float,
+    ): Detection {
+        val maxHalfW = min(primaryDetection.x, frameWidth - primaryDetection.x)
+        val maxHalfH = min(primaryDetection.y, frameHeight - primaryDetection.y)
+        val capW = 2f * max(maxHalfW, 1f)
+        val capH = 2f * max(maxHalfH, 1f)
+        val expandedW = min(primaryDetection.w * (1f + 2f * bboxExpandMargin), capW)
+        val expandedH = min(primaryDetection.h * (1f + 2f * bboxExpandMargin), capH)
+        return primaryDetection.copy(
+            w = expandedW,
+            h = expandedH,
+        )
+    }
+
+    private fun clipProtoMaskOutsideRect(
+        mask: FloatArray,
+        protoW: Int,
+        protoH: Int,
+        clipX0: Int,
+        clipY0: Int,
+        clipX1: Int,
+        clipY1: Int,
+    ) {
+        if (protoW <= 0 || protoH <= 0 || mask.size != protoW * protoH) return
+        val x0 = clipX0.coerceIn(0, protoW)
+        val y0 = clipY0.coerceIn(0, protoH)
+        val x1 = clipX1.coerceIn(0, protoW)
+        val y1 = clipY1.coerceIn(0, protoH)
+        if (x0 >= x1 || y0 >= y1) {
+            mask.fill(0f)
+            return
+        }
+
+        for (y in 0 until protoH) {
+            val rowBase = y * protoW
+            if (y < y0 || y >= y1) {
+                for (x in 0 until protoW) {
+                    mask[rowBase + x] = 0f
+                }
+                continue
+            }
+            for (x in 0 until x0) {
+                mask[rowBase + x] = 0f
+            }
+            for (x in x1 until protoW) {
+                mask[rowBase + x] = 0f
+            }
+        }
     }
 
     private fun extractFloatArray(value: Any?): FloatArray {

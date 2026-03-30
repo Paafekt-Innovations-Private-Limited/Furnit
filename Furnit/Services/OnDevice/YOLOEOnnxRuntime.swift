@@ -77,7 +77,6 @@ final class YOLOEOnnxRuntime {
 
         let onnxResourceNames = [
             "yoloe-26l-seg-pf_seg_o2m",
-            "yoloe-11l-seg-pf",
         ]
         guard let modelURL = onnxResourceNames.compactMap({ name in
             Bundle.main.url(forResource: name, withExtension: "onnx")
