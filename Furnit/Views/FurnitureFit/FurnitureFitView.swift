@@ -358,7 +358,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let bboxExpandMargin: Float = 0.08     // 8% expansion on each side
 
     /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
-    private var useMultiCandidateStage5 = false
+    private var useMultiCandidateStage5 = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
