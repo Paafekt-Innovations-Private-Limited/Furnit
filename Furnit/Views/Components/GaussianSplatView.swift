@@ -18,7 +18,7 @@ private enum GaussianSplatLoadError: LocalizedError {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// Camera framing uses ``RoomBounds/defaultSplatCameraEyeAndTarget`` (inside room, back → front wall).
+/// Camera framing uses ``RoomBounds/defaultSplatCameraEyeAndTarget`` (inside room, back → front wall). Prefer SHARP `_classic.ply` (uchar RGB) for Metal.
 /// View matrix does **not** apply a π‑X mesh rotation: MetalSplatter 1.x projects with this matrix,
 /// and SH **degree 0** splats use view-independent colour; a π‑X right-multiply inverted the scene.
 struct GaussianSplatView: UIViewRepresentable {
@@ -148,6 +148,8 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneBoundsMin: SIMD3<Float>?
         private var sceneBoundsMax: SIMD3<Float>?
         private var sceneCentroid: SIMD3<Float>?
+        /// SHARP `_classic.ply` applies `(x,y,z) → (x,-y,-z)` vs `_3dgs`; undo in view space so Metal matches 3DGS orientation.
+        private var classicSHARPPLYCoordinateFlip: Bool = false
 
         // Camera orbit & pan state
         var cameraYaw:    Float = 0
@@ -163,10 +165,10 @@ struct GaussianSplatView: UIViewRepresentable {
         private let exteriorCameraZ: Float = -8.0
         private let fovy:            Float = 65 * (.pi / 180)   // 65° → radians
 
-        /// Linear RGB multiplier after splat raster (`BrightnessAdjust.metal`). Use **1.0** when `_3dgs.ply` was post-processed with `correctPLYColors` (SHARP path); uncorrected PLYs often need ~3.5–4.0 to match WebGL.
+        /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`). **1.0** + shadow lift **0.10** with `_classic.ply` uchar colors.
         var splatCompositeExposure: Float = 1.0
-        /// Additive lift in **dark** linear samples only (smoothstep mask); lower apparent shadow / crush. Set `0` to disable.
-        var splatCompositeShadowLift: Float = 0.11
+        /// Additive lift on dark tonemapped samples (smoothstep mask). **0.10** with uniform boost 1.5 + exposure 1.0.
+        var splatCompositeShadowLift: Float = 0.10
 
         // ── Init ──────────────────────────────────────────────────────────────
         init(
@@ -210,6 +212,7 @@ struct GaussianSplatView: UIViewRepresentable {
             drawableSize      = mtkView.drawableSize
             self.view         = mtkView
             currentURL        = plyURL
+            classicSHARPPLYCoordinateFlip = plyURL.lastPathComponent.contains("_classic")
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -262,13 +265,23 @@ struct GaussianSplatView: UIViewRepresentable {
                     let points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
 
-                    var boundsMin = points[0].position
-                    var boundsMax = points[0].position
+                    // Trimmed P3–P97 per axis: camera framing. Full AABB: `onBoundsAvailable` (wall measurement).
+                    let splatCount = points.count
+                    let sortedX = points.map(\.position.x).sorted()
+                    let sortedY = points.map(\.position.y).sorted()
+                    let sortedZ = points.map(\.position.z).sorted()
+                    let lo = min(splatCount - 1, max(0, Int(Float(splatCount) * 0.03)))
+                    let hi = min(splatCount - 1, max(lo, Int(Float(splatCount) * 0.97)))
+                    let trimmedMin = SIMD3<Float>(sortedX[lo], sortedY[lo], sortedZ[lo])
+                    let trimmedMax = SIMD3<Float>(sortedX[hi], sortedY[hi], sortedZ[hi])
+
+                    var fullMin = points[0].position
+                    var fullMax = points[0].position
                     var positionSum = SIMD3<Float>.zero
                     for point in points {
                         let position = point.position
-                        boundsMin = simd_min(boundsMin, position)
-                        boundsMax = simd_max(boundsMax, position)
+                        fullMin = simd_min(fullMin, position)
+                        fullMax = simd_max(fullMax, position)
                         positionSum += position
                     }
                     let centroid = positionSum / Float(points.count)
@@ -291,17 +304,19 @@ struct GaussianSplatView: UIViewRepresentable {
                     _ = await renderer.addChunk(chunk)
 
                     let bounds = RoomBounds(
-                        minX: boundsMin.x, maxX: boundsMax.x,
-                        minY: boundsMin.y, maxY: boundsMax.y,
-                        minZ: boundsMin.z, maxZ: boundsMax.z
+                        minX: fullMin.x, maxX: fullMax.x,
+                        minY: fullMin.y, maxY: fullMax.y,
+                        minZ: fullMin.z, maxZ: fullMax.z
                     )
-                    let splatCount = renderer.splatCount
+                    let loadedSplatCount = renderer.splatCount
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
                         guard let self else { return }
-                        logDebug("✅ [GaussianSplatView] Loaded \(splatCount) splats centroid=\(centroid)")
+                        logDebug("📐 [GaussianSplatView] Full bounds: X[\(fullMin.x),\(fullMax.x)] Y[\(fullMin.y),\(fullMax.y)] Z[\(fullMin.z),\(fullMax.z)]")
+                        logDebug("📐 [GaussianSplatView] Trimmed P3–P97: X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
+                        logDebug("✅ [GaussianSplatView] Loaded \(loadedSplatCount) splats centroid=\(centroid) (mean of all points; framing AABB trimmed P3–P97)")
                         self.onBoundsAvailable?(bounds)
-                        self.sceneBoundsMin = boundsMin
-                        self.sceneBoundsMax = boundsMax
+                        self.sceneBoundsMin = trimmedMin
+                        self.sceneBoundsMax = trimmedMax
                         self.sceneCentroid = centroid
                         self.splatRenderer = renderer
                         self.isLoading = false
@@ -403,12 +418,9 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Viewport — camera & MetalSplatter matrix
         //
-        // MetalSplatter multiplies splat positions by this view matrix for projection (and SH ≥1 uses
-        // camera pose derived from it). A π‑X right-multiply (SparkJS-style mesh flip) **rotates the
-        // projected image**, which read as upside‑down with SHARP `_3dgs.ply` while not being needed
-        // for SH **degree 0** colour (shader uses DC only, no view direction).
-        // If you load SH1+ PLYs and colours look wrong vs WebGL, revisit a training-frame fix without
-        // flipping the entire projection.
+        // MetalSplatter uses this view matrix. SHARP `_classic.ply` stores uchar `red/green/blue` (direct sRGB) and
+        // point inversion `(x,-y,-z)` for WebGL; we apply `scale(1,-1,-1)` after `lookAt` so orientation matches `_3dgs`.
+        // `_3dgs.ply` uses `f_dc` SH0 — no classic flip. If the room looks mirrored, try `(-1,1,-1)` or `(1,1,-1)`.
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
@@ -463,7 +475,13 @@ struct GaussianSplatView: UIViewRepresentable {
                 up:     SIMD3<Float>(0, 1, 0)
             )
 
-            let viewMatrix = viewBase * scaleMatrix
+            let viewMatrix: simd_float4x4
+            if classicSHARPPLYCoordinateFlip {
+                let classicPLYFix = matrix4x4Scale(1, -1, -1)
+                viewMatrix = viewBase * classicPLYFix * scaleMatrix
+            } else {
+                viewMatrix = viewBase * scaleMatrix
+            }
 
             let mtlViewport = MTLViewport(
                 originX: 0, originY: 0,
@@ -730,83 +748,6 @@ struct GaussianSplatView: UIViewRepresentable {
                 SIMD4<Float>(0,  0,  0,  1)
             ))
         }
-    }
-}
-
-// MARK: - 3DGS PLY f_dc correction (MetalSplatter)
-
-private enum GaussianSplatPLYColorCorrectionError: Error {
-    case missingEndHeader
-    case invalidVertexCount
-    case missingFdcProperties
-    case binarySizeMismatch(expected: Int, actual: Int)
-}
-
-extension GaussianSplatView {
-
-    /// Converts SHARP’s effective log-RGB `f_dc` into standard 3DGS encoding so MetalSplatter’s
-    /// `C0 * f_dc + 0.5` yields **`exp(old_f_dc) × boost`** (overlap + wall brightness). Default boost **2.5**;
-    /// use **2.0** if highlights clip. Output `f_dc` is clamped so `C0*f_dc+0.5` stays in **[0, 1]**.
-    ///
-    /// Expects binary PLY with only `property float` fields per vertex (our `_3dgs.ply` layout).
-    static func correctPLYColors(at url: URL, boostFactor: Float = 2.5) throws {
-        var data = try Data(contentsOf: url)
-        guard let headerRange = data.range(of: Data("end_header\n".utf8)) else {
-            logDebug("⚠️ [PLY] No end_header found: \(url.lastPathComponent)")
-            throw GaussianSplatPLYColorCorrectionError.missingEndHeader
-        }
-        let binaryStart = headerRange.upperBound
-
-        let headerData = data.subdata(in: data.startIndex..<headerRange.lowerBound)
-        let header = String(data: headerData, encoding: .utf8) ?? ""
-
-        guard let vertexLine = header.split(separator: "\n", omittingEmptySubsequences: false)
-            .first(where: { $0.hasPrefix("element vertex") }),
-              let vertexCount = Int(vertexLine.split(separator: " ").last ?? "") else {
-            logDebug("⚠️ [PLY] Cannot parse vertex count: \(url.lastPathComponent)")
-            throw GaussianSplatPLYColorCorrectionError.invalidVertexCount
-        }
-
-        let propNames: [Substring] = header.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { $0.hasPrefix("property float") }
-            .map { $0.split(separator: " ").last ?? "" }
-
-        let stride = propNames.count * MemoryLayout<Float>.size
-        guard let dc0idx = propNames.firstIndex(of: "f_dc_0"),
-              let dc1idx = propNames.firstIndex(of: "f_dc_1"),
-              let dc2idx = propNames.firstIndex(of: "f_dc_2") else {
-            logDebug("⚠️ [PLY] No f_dc_* float properties: \(url.lastPathComponent)")
-            throw GaussianSplatPLYColorCorrectionError.missingFdcProperties
-        }
-
-        let expectedBinary = vertexCount * stride
-        let actualBinary = data.count - binaryStart
-        guard actualBinary == expectedBinary else {
-            logDebug("⚠️ [PLY] Binary size mismatch expected=\(expectedBinary) actual=\(actualBinary): \(url.lastPathComponent)")
-            throw GaussianSplatPLYColorCorrectionError.binarySizeMismatch(expected: expectedBinary, actual: actualBinary)
-        }
-
-        let c0: Float = 0.282_094_791_773_878_14
-
-        try data.withUnsafeMutableBytes { raw in
-            guard let base = raw.baseAddress else {
-                throw GaussianSplatPLYColorCorrectionError.binarySizeMismatch(expected: expectedBinary, actual: 0)
-            }
-            let vertexBytes = stride
-            for vertexIndex in 0..<vertexCount {
-                let vertexBase = base.advanced(by: binaryStart + vertexIndex * vertexBytes)
-                for dcIndex in [dc0idx, dc1idx, dc2idx] {
-                    let ptr = vertexBase.advanced(by: dcIndex * MemoryLayout<Float>.size)
-                        .assumingMemoryBound(to: Float.self)
-                    let oldVal = ptr.pointee
-                    let linear = min(1.0, max(0.0, expf(oldVal) * boostFactor))
-                    ptr.pointee = (linear - 0.5) / c0
-                }
-            }
-        }
-
-        try data.write(to: url)
-        logDebug("✅ [PLY] Corrected f_dc for \(vertexCount) vertices (boost=\(boostFactor)): \(url.lastPathComponent)")
     }
 }
 

@@ -72,7 +72,7 @@ struct SharpRoomView: View {
     let savedRoomModel: USDZModel?
     @Environment(\.dismiss) private var dismiss
 
-    /// PLY chosen for display: prefer `_3dgs.ply`, then `_classic.ply`, else base.
+    /// PLY for MetalSplatter: prefer `_classic.ply` (uchar RGB, WebGL parity); else `_3dgs.ply` (`f_dc`), else base.
     private let viewerPlyURL: URL
     /// Classic PLY (front-rotated) when available; falls back to base.
     private let classicPlyURL: URL
@@ -97,10 +97,10 @@ struct SharpRoomView: View {
         let classic = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_classic.ply"))
         let fm = FileManager.default
 
-        if fm.fileExists(atPath: threeDGS.path) {
-            self.viewerPlyURL = threeDGS
-        } else if fm.fileExists(atPath: classic.path) {
+        if fm.fileExists(atPath: classic.path) {
             self.viewerPlyURL = classic
+        } else if fm.fileExists(atPath: threeDGS.path) {
+            self.viewerPlyURL = threeDGS
         } else {
             self.viewerPlyURL = plyURL
         }

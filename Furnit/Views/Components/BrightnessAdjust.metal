@@ -17,24 +17,25 @@ vertex FullscreenV compositeOverGrayVertex(uint vid [[vertex_id]]) {
     return out;
 }
 
-// Matches Swift `compositeParams`: [exposure, shadowLift] via `setFragmentBytes(..., index: 0)`.
-struct CompositeParams {
-    float exposure;
-    float shadowLift;
-};
-
-// exposure + shadowLift: MetalSplatter 1.x outputs linear RGB from the splat shader (`sRGBToLinear` in SplatProcessing.metal).
-// shadowLift nudges dark regions only (luma mask); use exposure ≈ 1 when PLY f_dc was corrected for Metal (`correctPLYColors`).
+// Swift: `setFragmentBytes` with [exposure, shadowLift] at index 0.
+// Nearest sampling + soft highlight rolloff + S-curve contrast (lighter than global Reinhard).
 fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
                                           texture2d<float> splatTex [[texture(0)]],
-                                          constant CompositeParams &params [[buffer(0)]]) {
-    constexpr sampler s(filter::linear);
+                                          constant float *params [[buffer(0)]]) {
+    constexpr sampler s(filter::nearest);
+    float exposure = params[0];
+    float shadowLift = params[1];
     float4 c = splatTex.sample(s, in.uv);
-    c.rgb *= params.exposure;
+    c.rgb *= exposure;
+    // Soft highlight blend toward 1-exp(-x) only when rgb is high; midtones mostly unchanged.
+    float3 highlightWeight = smoothstep(0.7, 1.0, c.rgb);
+    c.rgb = mix(c.rgb, 1.0 - exp(-c.rgb), highlightWeight);
+    // S-curve around 0.5 (smoothstep polynomial): x²(3-2x)
+    c.rgb = c.rgb * c.rgb * (3.0 - 2.0 * c.rgb);
     float luma = dot(c.rgb, float3(0.299, 0.587, 0.114));
-    float mask = 1.0 - smoothstep(0.0, 0.25, luma);
-    c.rgb += params.shadowLift * mask;
+    float mask = 1.0 - smoothstep(0.0, 0.2, luma);
+    c.rgb += shadowLift * mask;
     float3 gray = float3(0.5, 0.5, 0.5);
     float3 result = c.rgb + gray * (1.0 - c.a);
-    return float4(result, 1.0);
+    return float4(saturate(result), 1.0);
 }
