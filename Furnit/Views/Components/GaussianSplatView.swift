@@ -148,8 +148,8 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneBoundsMin: SIMD3<Float>?
         private var sceneBoundsMax: SIMD3<Float>?
         private var sceneCentroid: SIMD3<Float>?
-        /// SHARP `_classic.ply` applies `(x,y,z) → (x,-y,-z)` vs `_3dgs`; undo in view space so Metal matches 3DGS orientation.
-        private var classicSHARPPLYCoordinateFlip: Bool = false
+        /// True when loading `_classic.ply` (SHARP writes `y'=-y`, `z'=-z` vs raw model — camera needs inverted world up).
+        private var useSharpClassicInteriorCamera: Bool = false
 
         // Camera orbit & pan state
         var cameraYaw:    Float = 0
@@ -165,9 +165,9 @@ struct GaussianSplatView: UIViewRepresentable {
         private let exteriorCameraZ: Float = -8.0
         private let fovy:            Float = 65 * (.pi / 180)   // 65° → radians
 
-        /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`). **1.0** + shadow lift **0.10** with `_classic.ply` uchar colors.
+        /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         var splatCompositeExposure: Float = 1.0
-        /// Additive lift on dark tonemapped samples (smoothstep mask). **0.10** with uniform boost 1.5 + exposure 1.0.
+        /// Additive lift on dark tonemapped samples (smoothstep mask); keep low for `_classic` to avoid milky mids.
         var splatCompositeShadowLift: Float = 0.10
 
         // ── Init ──────────────────────────────────────────────────────────────
@@ -212,7 +212,14 @@ struct GaussianSplatView: UIViewRepresentable {
             drawableSize      = mtkView.drawableSize
             self.view         = mtkView
             currentURL        = plyURL
-            classicSHARPPLYCoordinateFlip = plyURL.lastPathComponent.contains("_classic")
+            useSharpClassicInteriorCamera = plyURL.lastPathComponent.contains("_classic")
+            if useSharpClassicInteriorCamera {
+                splatCompositeShadowLift = 0.03
+                splatCompositeExposure = 1.05
+            } else {
+                splatCompositeShadowLift = 0.10
+                splatCompositeExposure = 1.0
+            }
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -418,9 +425,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Viewport — camera & MetalSplatter matrix
         //
-        // MetalSplatter uses this view matrix. SHARP `_classic.ply` stores uchar `red/green/blue` (direct sRGB) and
-        // point inversion `(x,-y,-z)` for WebGL; we apply `scale(1,-1,-1)` after `lookAt` so orientation matches `_3dgs`.
-        // `_3dgs.ply` uses `f_dc` SH0 — no classic flip. If the room looks mirrored, try `(-1,1,-1)` or `(1,1,-1)`.
+        // `_classic.ply`: same back→front framing as `_3dgs` via `RoomBounds.defaultSplatCameraEyeAndTarget` (maxZ = front wall).
+        // World Y is negated in SHARP classic export — use camera up = (0,-1,0) so the room is not vertically inverted.
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
@@ -469,19 +475,16 @@ struct GaussianSplatView: UIViewRepresentable {
             let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
             let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
 
+            let worldUp: SIMD3<Float> = useSharpClassicInteriorCamera
+                ? SIMD3<Float>(0, -1, 0)
+                : SIMD3<Float>(0, 1, 0)
             let viewBase = matrixLookAt(
                 eye:    rotatedEye,
                 target: lookAt,
-                up:     SIMD3<Float>(0, 1, 0)
+                up:     worldUp
             )
 
-            let viewMatrix: simd_float4x4
-            if classicSHARPPLYCoordinateFlip {
-                let classicPLYFix = matrix4x4Scale(1, -1, -1)
-                viewMatrix = viewBase * classicPLYFix * scaleMatrix
-            } else {
-                viewMatrix = viewBase * scaleMatrix
-            }
+            let viewMatrix = viewBase * scaleMatrix
 
             let mtlViewport = MTLViewport(
                 originX: 0, originY: 0,

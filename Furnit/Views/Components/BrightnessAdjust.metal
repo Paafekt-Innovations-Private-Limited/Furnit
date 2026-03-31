@@ -18,11 +18,11 @@ vertex FullscreenV compositeOverGrayVertex(uint vid [[vertex_id]]) {
 }
 
 // Swift: `setFragmentBytes` with [exposure, shadowLift] at index 0.
-// Nearest sampling + soft highlight rolloff + S-curve contrast (lighter than global Reinhard).
+// Linear sampling avoids blocky resample when copying scratch → drawable; light S-curve for contrast.
 fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
                                           texture2d<float> splatTex [[texture(0)]],
                                           constant float *params [[buffer(0)]]) {
-    constexpr sampler s(filter::nearest);
+    constexpr sampler s(filter::linear, mip_filter::none, address::clamp_to_edge);
     float exposure = params[0];
     float shadowLift = params[1];
     float4 c = splatTex.sample(s, in.uv);
@@ -30,12 +30,15 @@ fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
     // Soft highlight blend toward 1-exp(-x) only when rgb is high; midtones mostly unchanged.
     float3 highlightWeight = smoothstep(0.7, 1.0, c.rgb);
     c.rgb = mix(c.rgb, 1.0 - exp(-c.rgb), highlightWeight);
-    // S-curve around 0.5 (smoothstep polynomial): x²(3-2x)
-    c.rgb = c.rgb * c.rgb * (3.0 - 2.0 * c.rgb);
+    // Gentle S-curve (blend toward full smoothstep to reduce mushy / over-soft mids)
+    float3 curved = c.rgb * c.rgb * (3.0 - 2.0 * c.rgb);
+    // Lower mix keeps mids from going uniformly milky when many splats have soft alpha.
+    c.rgb = mix(c.rgb, curved, 0.38);
     float luma = dot(c.rgb, float3(0.299, 0.587, 0.114));
     float mask = 1.0 - smoothstep(0.0, 0.2, luma);
     c.rgb += shadowLift * mask;
-    float3 gray = float3(0.5, 0.5, 0.5);
+    // Darker than 0.5 so (1−α) gray fill does not read as heavy fog over the splat field.
+    float3 gray = float3(0.32, 0.32, 0.32);
     float3 result = c.rgb + gray * (1.0 - c.a);
     return float4(saturate(result), 1.0);
 }
