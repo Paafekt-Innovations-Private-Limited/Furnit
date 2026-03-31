@@ -284,17 +284,18 @@ final class ImageBasedTests: XCTestCase {
 
         let manager = RoomBoundaryManager(bounds: bounds)
         let camera = manager.getCameraAtBackWall()
+        let expected = bounds.defaultSplatCameraEyeAndTarget()
 
-        // Camera should be positioned inside the room, near front wall
-        XCTAssertEqual(camera.eye.x, 0, accuracy: 0.1, "Camera X should be at room center")
-        XCTAssertEqual(camera.eye.y, 1.5, accuracy: 0.1, "Camera Y should be at room center height")
+        // Back-center camera (Android parity): inside room from back wall, look at front wall center — not room centroid.
+        XCTAssertEqual(camera.eye.x, expected.eye.x, accuracy: 0.001)
+        XCTAssertEqual(camera.eye.y, expected.eye.y, accuracy: 0.001)
+        XCTAssertEqual(camera.eye.z, expected.eye.z, accuracy: 0.001)
+        XCTAssertEqual(camera.target.x, expected.target.x, accuracy: 0.001)
+        XCTAssertEqual(camera.target.y, expected.target.y, accuracy: 0.001)
+        XCTAssertEqual(camera.target.z, expected.target.z, accuracy: 0.001)
         XCTAssertGreaterThan(camera.eye.z, bounds.minZ, "Camera should be inside room")
-        XCTAssertLessThan(camera.eye.z, bounds.maxZ, "Camera should not be outside front wall")
-
-        // Camera should look at room center
-        XCTAssertEqual(camera.target.x, 0, accuracy: 0.1)
-        XCTAssertEqual(camera.target.y, 1.5, accuracy: 0.1)
-        XCTAssertEqual(camera.target.z, -2, accuracy: 0.1, "Target should be at room center Z")
+        XCTAssertLessThan(camera.eye.z, bounds.maxZ, "Camera should not be past front wall")
+        XCTAssertEqual(camera.target.z, bounds.maxZ, accuracy: 0.001, "Look-at should be front wall Z")
 
         print("Camera position: eye=\(camera.eye), target=\(camera.target)")
     }

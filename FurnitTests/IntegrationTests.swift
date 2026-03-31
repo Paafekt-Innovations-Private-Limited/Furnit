@@ -193,30 +193,19 @@ final class IntegrationTests: XCTestCase {
         )
     }
 
-    /// Test camera position calculation matches RoomBoundaryManager.getCameraAtBackWall
+    /// `RoomBoundaryManager` delegates to `RoomBounds.defaultSplatCameraEyeAndTarget()` (depth-adaptive inset; not `SharpRoomCameraUtils` fixed insideFactor).
     func testCameraUtilsMatchBoundaryManager() {
         let bounds = RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
         let manager = RoomBoundaryManager(bounds: bounds)
-
-        // Get camera position from manager
         let managerCamera = manager.getCameraAtBackWall(fovDegrees: 60)
+        let fromBounds = bounds.defaultSplatCameraEyeAndTarget()
 
-        // Calculate using utility (with same insideFactor of 0.15)
-        let utilityCamera = SharpRoomCameraUtils.calculateCameraPosition(
-            frontWallZ: manager.frontWallZ,
-            backWallZ: manager.backWallZ,
-            centerX: manager.centerX,
-            centerY: manager.centerY,
-            centerZ: manager.centerZ,
-            insideFactor: 0.15
-        )
-
-        XCTAssertEqual(utilityCamera.eye.x, managerCamera.eye.x, accuracy: 0.001, "eye.x mismatch")
-        XCTAssertEqual(utilityCamera.eye.y, managerCamera.eye.y, accuracy: 0.001, "eye.y mismatch")
-        XCTAssertEqual(utilityCamera.eye.z, managerCamera.eye.z, accuracy: 0.001, "eye.z mismatch")
-        XCTAssertEqual(utilityCamera.target.x, managerCamera.target.x, accuracy: 0.001, "target.x mismatch")
-        XCTAssertEqual(utilityCamera.target.y, managerCamera.target.y, accuracy: 0.001, "target.y mismatch")
-        XCTAssertEqual(utilityCamera.target.z, managerCamera.target.z, accuracy: 0.001, "target.z mismatch")
+        XCTAssertEqual(fromBounds.eye.x, managerCamera.eye.x, accuracy: 0.001, "eye.x mismatch")
+        XCTAssertEqual(fromBounds.eye.y, managerCamera.eye.y, accuracy: 0.001, "eye.y mismatch")
+        XCTAssertEqual(fromBounds.eye.z, managerCamera.eye.z, accuracy: 0.001, "eye.z mismatch")
+        XCTAssertEqual(fromBounds.target.x, managerCamera.target.x, accuracy: 0.001, "target.x mismatch")
+        XCTAssertEqual(fromBounds.target.y, managerCamera.target.y, accuracy: 0.001, "target.y mismatch")
+        XCTAssertEqual(fromBounds.target.z, managerCamera.target.z, accuracy: 0.001, "target.z mismatch")
     }
 
     // MARK: - Plane Detection Integration Tests

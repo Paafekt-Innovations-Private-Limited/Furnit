@@ -45,13 +45,13 @@ struct GaussianSplatView: UIViewRepresentable {
 
         mtkView.device = device
 
-        // Match pixel formats from local MetalSplatter SimpleApp
+        // sRGB drawable: correct gamma for display (linear unorm would look darker on sRGB screens).
         mtkView.colorPixelFormat = .bgra8Unorm_srgb
         mtkView.depthStencilPixelFormat = .depth32Float
         mtkView.sampleCount = 1
 
-        // Clear color with alpha 0 (required for front-to-back rendering)
-        mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        // Dark gray instead of pure black — semi-transparent splat edges blend toward this.
+        mtkView.clearColor = MTLClearColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 0)
 
         // Set delegate for rendering callbacks
         mtkView.delegate = context.coordinator
@@ -107,6 +107,18 @@ struct GaussianSplatView: UIViewRepresentable {
         private var device: MTLDevice?
         private var commandQueue: MTLCommandQueue?
         private weak var view: MTKView?
+
+        /// Optional post-pass: scales RGB (tune ``exposureValue`` if scene is too dark/bright).
+        /// Cannot use ``CAMetalDrawable.texture`` for compute `read_write` — it lacks `shaderWrite` usage → SIGABRT.
+        /// Cannot blit *to* the drawable texture either — it is not a blit destination → SIGABRT. We render to ``postExposureColorTexture``, adjust in compute, then draw a full-screen triangle to the drawable.
+        private var brightnessPipeline: MTLComputePipelineState?
+        private var presentToDrawablePipeline: MTLRenderPipelineState?
+        /// Post-splat RGB multiplier (`brightnessAdjust` kernel); 1.25 ≈ 25% brighter.
+        private var exposureValue: Float = 1.25
+        private var postExposureColorTexture: MTLTexture?
+        private var postExposureBackingWidth: Int = 0
+        private var postExposureBackingHeight: Int = 0
+        private var postExposurePixelFormat: MTLPixelFormat = .invalid
 
         // MetalSplatter renderer (protected by a small lock; setup runs on a Task, draw runs on MTKView's render loop).
         private let rendererLock = NSLock()
@@ -197,6 +209,14 @@ struct GaussianSplatView: UIViewRepresentable {
             self.drawableSize = mtkView.drawableSize
             self.view = mtkView
             self.currentURL = plyURL
+
+            if let library = device.makeDefaultLibrary(),
+               let fn = library.makeFunction(name: "brightnessAdjust") {
+                brightnessPipeline = try? device.makeComputePipelineState(function: fn)
+            } else {
+                brightnessPipeline = nil
+            }
+
             if !didRegisterSharpRoomNotifications {
                 didRegisterSharpRoomNotifications = true
                 registerSharpRoomParityNotifications()
@@ -216,6 +236,10 @@ struct GaussianSplatView: UIViewRepresentable {
                         maxViewCount: 1,
                         maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders
                     )
+
+                    // MetalSplatter's `SplatRenderer` has no `exposure` / `brightness` API; it uses `clearColor` on its render pass.
+                    // Keep it in sync with `mtkView.clearColor` so sparse/transparent edges match the view background.
+                    renderer.clearColor = mtkView.clearColor
 
                     // Load PLY file into renderer (async)
                     try await renderer.read(from: plyURL)
@@ -258,6 +282,37 @@ struct GaussianSplatView: UIViewRepresentable {
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
             drawableSize = size
+            postExposureColorTexture = nil
+            postExposureBackingWidth = 0
+            postExposureBackingHeight = 0
+            postExposurePixelFormat = .invalid
+        }
+
+        /// Writable color target: splat render → exposure compute → fullscreen draw to the drawable (iOS drawable cannot be compute `read_write` or blit destination).
+        private func ensurePostExposureColorTexture(device: MTLDevice, view: MTKView, drawable: CAMetalDrawable) -> MTLTexture? {
+            let width = drawable.texture.width
+            let height = drawable.texture.height
+            let format = view.colorPixelFormat
+            if let existing = postExposureColorTexture,
+               postExposureBackingWidth == width,
+               postExposureBackingHeight == height,
+               postExposurePixelFormat == format {
+                return existing
+            }
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: format,
+                width: width,
+                height: height,
+                mipmapped: false
+            )
+            descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
+            descriptor.storageMode = .private
+            guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+            postExposureColorTexture = texture
+            postExposureBackingWidth = width
+            postExposureBackingHeight = height
+            postExposurePixelFormat = format
+            return texture
         }
 
         func draw(in view: MTKView) {
@@ -284,12 +339,29 @@ struct GaussianSplatView: UIViewRepresentable {
                 semaphore.signal()
             }
 
+            let useExposurePass: Bool = {
+                guard brightnessPipeline != nil,
+                      presentToDrawablePipeline != nil,
+                      view.multisampleColorTexture == nil,
+                      let device = view.device else { return false }
+                return ensurePostExposureColorTexture(device: device, view: view, drawable: drawable) != nil
+            }()
+
             // Use the new render API - pass textures directly to commandBuffer
             do {
+                let colorTarget: MTLTexture
+                let colorStore: MTLStoreAction
+                if useExposurePass, let device = view.device, let postTex = ensurePostExposureColorTexture(device: device, view: view, drawable: drawable) {
+                    colorTarget = postTex
+                    colorStore = .store
+                } else {
+                    colorTarget = view.multisampleColorTexture ?? drawable.texture
+                    colorStore = view.multisampleColorTexture == nil ? .store : .multisampleResolve
+                }
                 try renderer.render(
                     viewports: [viewport],
-                    colorTexture: view.multisampleColorTexture ?? drawable.texture,
-                    colorStoreAction: view.multisampleColorTexture == nil ? .store : .multisampleResolve,
+                    colorTexture: colorTarget,
+                    colorStoreAction: colorStore,
                     depthTexture: view.depthStencilTexture,
                     rasterizationRateMap: nil,
                     renderTargetArrayLength: 0,
@@ -297,6 +369,37 @@ struct GaussianSplatView: UIViewRepresentable {
                 )
             } catch {
                 logDebug("❌ [GaussianSplatView] Render error: \(error)")
+            }
+
+            if useExposurePass,
+               let pipeline = brightnessPipeline,
+               let device = view.device,
+               let postTex = ensurePostExposureColorTexture(device: device, view: view, drawable: drawable),
+               let computeEncoder = commandBuffer.makeComputeCommandEncoder() {
+                var exposure = exposureValue
+                computeEncoder.setComputePipelineState(pipeline)
+                computeEncoder.setTexture(postTex, index: 0)
+                computeEncoder.setBytes(&exposure, length: MemoryLayout<Float>.size, index: 0)
+                let threadWidth = pipeline.threadExecutionWidth
+                let threadHeight = max(1, pipeline.maxTotalThreadsPerThreadgroup / threadWidth)
+                computeEncoder.dispatchThreads(
+                    MTLSize(width: postTex.width, height: postTex.height, depth: 1),
+                    threadsPerThreadgroup: MTLSize(width: threadWidth, height: threadHeight, depth: 1)
+                )
+                computeEncoder.endEncoding()
+
+                if let presentPipeline = presentToDrawablePipeline {
+                    let pass = MTLRenderPassDescriptor()
+                    pass.colorAttachments[0].texture = drawable.texture
+                    pass.colorAttachments[0].loadAction = .dontCare
+                    pass.colorAttachments[0].storeAction = .store
+                    if let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
+                        renderEncoder.setRenderPipelineState(presentPipeline)
+                        renderEncoder.setFragmentTexture(postTex, index: 0)
+                        renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                        renderEncoder.endEncoding()
+                    }
+                }
             }
 
             // Present drawable
@@ -327,18 +430,18 @@ struct GaussianSplatView: UIViewRepresentable {
             // Scene scale (e.g. wall calibration / Furniture Fit)
             let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y, 1)
 
-            // Camera position: use raw PLY bounds to place camera at FRONT WALL looking INTO the room.
-            // Raw PLY: Z is negative; maxZ (least negative) ≈ front wall, minZ ≈ back wall.
+            // Default camera: just inside the front wall, look at centroid (matches post-SHARP preview).
+            // Do not use list-room / back-center framing here — that path is for other viewers; Metal preview + list must match.
             let cameraPos: SIMD3<Float>
             let lookTarget: SIMD3<Float>
 
             if let renderer = splatRenderer,
                let bbox = renderer.boundingBox,
                let centroid = renderer.centroid {
-                let frontZ = bbox.max.z                  // e.g. -1.16 (front wall)
-                let camZ = frontZ + 0.3                  // just in front of front wall (still negative)
-                let camX = centroid.x                    // centered horizontally
-                let camY = centroid.y + 0.2              // slight eye-level raise
+                let frontZ = bbox.max.z
+                let camZ = frontZ + 0.3
+                let camX = centroid.x
+                let camY = centroid.y + 0.2
 
                 cameraPos = SIMD3<Float>(camX, camY, camZ) + cameraOffset
                 lookTarget = centroid + cameraOffset

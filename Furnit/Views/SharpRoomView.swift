@@ -47,15 +47,11 @@ struct RoomBoundaryManager {
 
     /// Calculate camera position using Android formula: back center, depth-adaptive inset, look at front wall.
     func getCameraAtBackCenter() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        let result = bounds.defaultSplatCameraEyeAndTarget(cameraPadding: cameraPadding)
         let fraction = Self.backCenterInsetFraction(depth: depth)
         let insetFromBack = max(depth * fraction, cameraPadding)
-        // PLY: back wall = minZ, so camera Z = backWallZ + insetFromBack (inside room from back)
-        let camZ = backWallZ + insetFromBack
-        let camY = centerY + 0.4
-        let eye = SIMD3<Float>(centerX, camY, camZ)
-        let target = SIMD3<Float>(centerX, centerY, frontWallZ)
-        logDebug("📷 [BoundaryManager] getCameraAtBackCenter depth=\(depth) fraction=\(fraction) inset=\(insetFromBack) eye=(\(eye.x),\(eye.y),\(eye.z)) target=(\(target.x),\(target.y),\(target.z))")
-        return (eye: eye, target: target)
+        logDebug("📷 [BoundaryManager] getCameraAtBackCenter depth=\(depth) fraction=\(fraction) inset=\(insetFromBack) eye=(\(result.eye.x),\(result.eye.y),\(result.eye.z)) target=(\(result.target.x),\(result.target.y),\(result.target.z))")
+        return result
     }
 
     /// Calculate camera position just INSIDE the room (matches Android formula for list / created room).
