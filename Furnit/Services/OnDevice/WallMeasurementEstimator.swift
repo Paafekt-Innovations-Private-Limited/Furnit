@@ -97,14 +97,20 @@ enum WallMeasurementEstimator {
 
     // MARK: - Public entry point
 
-    static func measure(roomFolder: URL, thumbnail: UIImage, model: MLModel?) async -> Result? {
+    static func measure(
+        roomFolder: URL,
+        thumbnail: UIImage,
+        model: MLModel?,
+        photoOrientation: PhotoOrientation = .portrait,
+        plyBounds: RoomBounds? = nil
+    ) async -> Result? {
         let ceilingM = floatPref(keyCeiling, default: 2.5)
         let sensorMm = floatPref(keySensorMm, default: 6.4)
         let assumedZ = floatPref(keyAssumedZ, default: 2.5)
         let calPref = UserDefaults.standard.string(forKey: keyCalibration) ?? calAuto
 
         logWallMeasurement(
-            "measure begin folder=\(roomFolder.lastPathComponent) enabled=\(isEnabled) cal=\(calPref) ceiling_m=\(ceilingM) assumed_z_m=\(assumedZ) sensor_mm=\(sensorMm)",
+            "measure begin folder=\(roomFolder.lastPathComponent) enabled=\(isEnabled) cal=\(calPref) ceiling_m=\(ceilingM) assumed_z_m=\(assumedZ) sensor_mm=\(sensorMm) plyBounds=\(plyBounds != nil)",
         )
 
         guard isEnabled else {
@@ -115,6 +121,8 @@ enum WallMeasurementEstimator {
             logWallMeasurement("measure abort: no ML model")
             return nil
         }
+
+        // --- YOLO detections (needed for depth + fallback dimensions) ---
 
         let detsRaw: [FurnitureFitDetection]
         let mapping: YoloEImageInference.LetterboxMapping
@@ -156,10 +164,8 @@ enum WallMeasurementEstimator {
         let exif = loadExifJson(roomFolder: roomFolder)
         let (focalPx, focalHow) = focalLengthPx(imageWidth: iw, exif: exif, sensorMm: sensorMm)
         logWallMeasurement("focal_px=\(focalPx) focal_reason=\(focalHow) exif_json=\(exif != nil)")
-        guard focalPx.isFinite, focalPx > 1e-3 else {
-            logWallMeasurement("measure abort: invalid focal_px")
-            return nil
-        }
+
+        // --- Depth: monodepth → EXIF subject distance → assumed Z ---
 
         let monoURL = roomFolder.appendingPathComponent("sharp_monodepth.bin")
         let mono = MonodepthBuffer.load(url: monoURL)
@@ -183,6 +189,19 @@ enum WallMeasurementEstimator {
         }
         logWallMeasurement("wall_depth value=\(wallDepth) source=\(depthSource)")
 
+        // --- Width / Height: YOLO pinhole (targets the wall surface) ---
+        // PLY AABB measures the whole 3D scene, not the front wall — it over-estimates
+        // width (side-wall splats) and under-estimates height (fog trim cuts floor/ceiling).
+        // YOLO specifically detects the wall rect and projects to meters via pinhole camera.
+
+        let maxRealisticWidth: Float = (photoOrientation == .portrait) ? 5.0 : 8.0
+        let maxRealisticHeight: Float = (photoOrientation == .portrait) ? 3.5 : 3.2
+
+        guard focalPx.isFinite, focalPx > 1e-3 else {
+            logWallMeasurement("measure abort: invalid focal_px")
+            return nil
+        }
+
         let wallPxW = Float(max(1, wallRect.width))
         let wallPxH = Float(max(1, wallRect.height))
         let rawW = (wallPxW / focalPx) * wallDepth
@@ -201,18 +220,38 @@ enum WallMeasurementEstimator {
             ceilingM: ceilingM,
         )
 
-        var wm = rawW * scale
-        var hm = rawH * scale
-        wm = wm.clamped(to: 1.5...12)
-        hm = hm.clamped(to: 1.5...5)
+        var wm = (rawW * scale).clamped(to: 1.5...maxRealisticWidth)
+        var hm = (rawH * scale).clamped(to: 1.5...maxRealisticHeight)
+
+        // PLY bounds as sanity cap: the front wall can't be wider/taller than the
+        // whole scene AABB (un-trimmed). Catches outlier YOLO+pinhole over-estimates.
+        if let bounds = plyBounds {
+            if wm > bounds.width { wm = bounds.width.clamped(to: 1.5...maxRealisticWidth) }
+            if hm > bounds.height { hm = bounds.height.clamped(to: 1.5...maxRealisticHeight) }
+            logWallMeasurement(
+                "ply_sanity_cap scene_w=\(String(format: "%.3f", bounds.width)) scene_h=\(String(format: "%.3f", bounds.height)) " +
+                    "capped_w=\(String(format: "%.3f", wm)) capped_h=\(String(format: "%.3f", hm))",
+            )
+        }
+
+        // PLY depth (Z span) is a direct 3D measurement — better than camera-to-wall distance for room depth.
+        let roomDepth: Float
+        let depthMode: String
+        if let bounds = plyBounds, bounds.depth > 0.1 {
+            roomDepth = bounds.depth
+            depthMode = "\(depthSource)+ply_z"
+        } else {
+            roomDepth = wallDepth
+            depthMode = depthSource
+        }
 
         logWallMeasurement(
             "measure_final mode=\(calMode) width_m=\(String(format: "%.3f", wm)) height_m=\(String(format: "%.3f", hm)) " +
-                "scale=\(String(format: "%.4f", scale)) focal_px=\(String(format: "%.1f", focalPx))(\(focalHow)) " +
-                "depth=\(String(format: "%.3f", wallDepth))(\(depthSource)) wall_source=\(wallSource) " +
-                "raw_geom_m w=\(String(format: "%.3f", rawW)) h=\(String(format: "%.3f", rawH))",
+                "depth=\(String(format: "%.3f", roomDepth))(\(depthMode)) wall_source=\(wallSource) " +
+                "focal_px=\(String(format: "%.1f", focalPx))(\(focalHow)) " +
+                "raw_geom_m w=\(String(format: "%.3f", rawW)) h=\(String(format: "%.3f", rawH)) scale=\(String(format: "%.4f", scale))",
         )
-        return Result(widthMeters: wm, heightMeters: hm, depthMeters: wallDepth, calibrationMode: calMode)
+        return Result(widthMeters: wm, heightMeters: hm, depthMeters: roomDepth, calibrationMode: calMode)
     }
 
     // MARK: - Wall rect (tiered)

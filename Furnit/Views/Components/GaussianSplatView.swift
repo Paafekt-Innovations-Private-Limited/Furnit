@@ -1,694 +1,834 @@
 import SwiftUI
 import MetalKit
 import MetalSplatter
+import SplatIO
 import simd
 
-/// SwiftUI wrapper for MetalSplatter Gaussian splat rendering
-/// Renders PLY files containing 3D Gaussian splat data using Metal
+private enum GaussianSplatLoadError: LocalizedError {
+    case emptyScene
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyScene: return "The splat file contains no points."
+        }
+    }
+}
+
+// MARK: - GaussianSplatView
+
+/// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
+///
+/// Camera framing uses ``RoomBounds/defaultSplatCameraEyeAndTarget`` (inside room, back → front wall).
+/// View matrix does **not** apply a π‑X mesh rotation: MetalSplatter 1.x projects with this matrix,
+/// and SH **degree 0** splats use view-independent colour; a π‑X right-multiply inverted the scene.
 struct GaussianSplatView: UIViewRepresentable {
 
-    // MARK: - Properties
+    // MARK: Public interface
 
-    /// URL to the PLY file to render
+    /// URL of the .ply file to load and render.
     let plyURL: URL
 
-    /// Binding to track loading state
+    /// Binding updated on the main thread; true while the PLY is being read.
     @Binding var isLoading: Bool
 
-    /// Binding to report loading errors
+    /// Binding updated on the main thread; non-nil when loading fails.
     @Binding var loadError: String?
 
-    /// Binding to control zoom level from parent view
+    /// Zoom multiplier – clamped to 0.5 … 3.0 by the pinch gesture handler.
     @Binding var zoomLevel: Float
 
-    /// Optional callback for room bounds (MetalSplatter's `boundingBox` → `RoomBounds`).
-    let onBoundsAvailable: ((RoomBounds) -> Void)?
+    /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
+    var onBoundsAvailable: ((RoomBounds) -> Void)?
 
-    // MARK: - Constants
+    // MARK: Concurrency guard
 
-    /// Maximum number of simultaneous render operations
-    private static let maxSimultaneousRenders = 3
+    /// Maximum number of frames that may be encoded simultaneously.
+    nonisolated static let maxSimultaneousRenders = 3
 
-    // MARK: - UIViewRepresentable
+    // MARK: UIViewRepresentable
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            isLoading: $isLoading,
+            loadError: $loadError,
+            zoomLevel: $zoomLevel,
+            onBoundsAvailable: onBoundsAvailable
+        )
+    }
 
     func makeUIView(context: Context) -> MTKView {
-        // Create Metal view for rendering
-        let mtkView = MTKView()
-
-        // Configure Metal device
         guard let device = MTLCreateSystemDefaultDevice() else {
-            DispatchQueue.main.async {
-                loadError = "Metal is not supported on this device"
-            }
-            return mtkView
+            fatalError("[GaussianSplatView] No Metal device available on this hardware.")
         }
 
-        mtkView.device = device
+        let mtkView = MTKView(frame: .zero, device: device)
 
-        // sRGB drawable: correct gamma for display (linear unorm would look darker on sRGB screens).
-        mtkView.colorPixelFormat = .bgra8Unorm_srgb
-        mtkView.depthStencilPixelFormat = .depth32Float
-        mtkView.sampleCount = 1
+        // Pixel formats
+        mtkView.colorPixelFormat          = .bgra8Unorm_srgb
+        mtkView.depthStencilPixelFormat   = .depth32Float
+        mtkView.sampleCount               = 1
 
-        // Dark gray instead of pure black — semi-transparent splat edges blend toward this.
-        mtkView.clearColor = MTLClearColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 0)
+        // Alpha 0 is required so that the compositor can blend splats over the
+        // gray background using front-to-back order (pre-multiplied alpha).
+        mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
 
-        // Set delegate for rendering callbacks
+        // On-demand rendering – only redraw when explicitly requested.
+        mtkView.enableSetNeedsDisplay    = true
+        mtkView.isPaused                  = true
+        mtkView.preferredFramesPerSecond  = 60
+
+        // Gesture recognisers
+        let pan   = UIPanGestureRecognizer(target: context.coordinator,
+                                           action: #selector(Coordinator.handlePan(_:)))
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator,
+                                              action: #selector(Coordinator.handlePinch(_:)))
+        mtkView.addGestureRecognizer(pan)
+        mtkView.addGestureRecognizer(pinch)
+
         mtkView.delegate = context.coordinator
-
-        // On-demand rendering: only redraw when camera state changes to avoid 60fps idle drain.
-        mtkView.enableSetNeedsDisplay = true
-        mtkView.isPaused = true
-        mtkView.preferredFramesPerSecond = 60
-
-        // Add gesture recognizers for camera control
-        let panGesture = UIPanGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handlePan(_:))
-        )
-        mtkView.addGestureRecognizer(panGesture)
-
-        let pinchGesture = UIPinchGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handlePinch(_:))
-        )
-        mtkView.addGestureRecognizer(pinchGesture)
-
-        // Initialize coordinator with Metal resources and start loading
-        context.coordinator.setup(
-            device: device,
-            mtkView: mtkView,
-            plyURL: plyURL
-        )
+        context.coordinator.setup(view: mtkView, plyURL: plyURL)
 
         return mtkView
     }
 
-    func updateUIView(_ uiView: MTKView, context: Context) {
-        // Reload splat when SwiftUI reuses this view for a different PLY URL.
-        if context.coordinator.currentURL != plyURL, let device = uiView.device {
-            context.coordinator.setup(device: device, mtkView: uiView, plyURL: plyURL)
-        }
-        // Keep coordinator's zoom level in sync with external state (e.g. sliders).
-        context.coordinator.zoomLevel = zoomLevel
-    }
+    func updateUIView(_ mtkView: MTKView, context: Context) {
+        let coordinator = context.coordinator
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(isLoading: $isLoading, loadError: $loadError, zoomLevel: $zoomLevel, onBoundsAvailable: onBoundsAvailable)
+        // Reload when the URL changes
+        if coordinator.currentURL != plyURL {
+            coordinator.setup(view: mtkView, plyURL: plyURL)
+        }
+
+        // Sync zoom for rendering only — do **not** assign `coordinator.zoomLevel` (a `@Binding`)
+        // here; that writes the parent `@State` during `updateUIView` and triggers
+        // “Modifying state during view update”.
+        coordinator.appliedZoomLevel = zoomLevel
+        mtkView.setNeedsDisplay()
     }
 
     // MARK: - Coordinator
 
-    /// Coordinator handles Metal rendering and gesture input
-    class Coordinator: NSObject, MTKViewDelegate {
+    final class Coordinator: NSObject, MTKViewDelegate {
 
-        // MARK: - Metal Resources
+        // ── Bindings ──────────────────────────────────────────────────────────
+        @Binding var isLoading: Bool
+        @Binding var loadError: String?
+        @Binding var zoomLevel: Float
+        /// Zoom used for projection (updated from parent in `updateUIView` without writing the binding).
+        var appliedZoomLevel: Float = 1.0
+        var onBoundsAvailable: ((RoomBounds) -> Void)?
 
-        private var device: MTLDevice?
-        private var commandQueue: MTLCommandQueue?
-        private weak var view: MTKView?
+        // ── Metal objects ─────────────────────────────────────────────────────
+        var device: MTLDevice?
+        var commandQueue: MTLCommandQueue?
+        weak var view: MTKView?
 
-        /// Optional post-pass: scales RGB (tune ``exposureValue`` if scene is too dark/bright).
-        /// Cannot use ``CAMetalDrawable.texture`` for compute `read_write` — it lacks `shaderWrite` usage → SIGABRT.
-        /// Cannot blit *to* the drawable texture either — it is not a blit destination → SIGABRT. We render to ``postExposureColorTexture``, adjust in compute, then draw a full-screen triangle to the drawable.
-        private var brightnessPipeline: MTLComputePipelineState?
-        private var presentToDrawablePipeline: MTLRenderPipelineState?
-        /// Post-splat RGB multiplier (`brightnessAdjust` kernel); 1.25 ≈ 25% brighter.
-        private var exposureValue: Float = 1.25
-        private var postExposureColorTexture: MTLTexture?
-        private var postExposureBackingWidth: Int = 0
-        private var postExposureBackingHeight: Int = 0
-        private var postExposurePixelFormat: MTLPixelFormat = .invalid
+        /// Pipeline that composites the splat scratch texture over a solid gray background.
+        var compositePipeline: MTLRenderPipelineState?
 
-        // MetalSplatter renderer (protected by a small lock; setup runs on a Task, draw runs on MTKView's render loop).
-        private let rendererLock = NSLock()
+        /// Intermediate texture – splats are rendered here first so we can composite over gray.
+        var splatScratchTexture: MTLTexture?
+        private var scratchWidth:  Int = 0
+        private var scratchHeight: Int = 0
+
+        // ── SplatRenderer (thread-safe) ───────────────────────────────────────
+        private let rendererLock  = NSLock()
         private var _splatRenderer: SplatRenderer?
-        private var splatRenderer: SplatRenderer? {
-            get {
-                rendererLock.lock()
-                defer { rendererLock.unlock() }
-                return _splatRenderer
-            }
-            set {
-                rendererLock.lock()
-                _splatRenderer = newValue
-                rendererLock.unlock()
-            }
+        var splatRenderer: SplatRenderer? {
+            get { rendererLock.lock(); defer { rendererLock.unlock() }; return _splatRenderer }
+            set { rendererLock.lock(); defer { rendererLock.unlock() }; _splatRenderer = newValue }
         }
 
-        /// Last loaded URL so `updateUIView` can trigger a reload on navigation changes.
+        // ── State ─────────────────────────────────────────────────────────────
         var currentURL: URL?
+        private let inFlightSemaphore = DispatchSemaphore(value: GaussianSplatView.maxSimultaneousRenders)
+        var drawableSize: CGSize = .zero
 
-        // Semaphore for limiting concurrent renders
-        private let inFlightSemaphore = DispatchSemaphore(value: maxSimultaneousRenders)
+        /// Axis-aligned bounds from loaded `SplatPoint` positions (MetalSplatter 1.x `SplatRenderer` does not expose `boundingBox` / `centroid`).
+        private var sceneBoundsMin: SIMD3<Float>?
+        private var sceneBoundsMax: SIMD3<Float>?
+        private var sceneCentroid: SIMD3<Float>?
 
-        // Current drawable size
-        private var drawableSize: CGSize = .zero
-
-        // MARK: - Camera State
-
-        /// Camera yaw angle - initialized to 0 to face into the room
-        private var cameraYaw: Float = 0
-
-        /// Camera pitch angle (vertical rotation around X-axis)
-        private var cameraPitch: Float = 0
-
-        /// Camera position offset from centroid (for movement)
-        private var cameraOffset: SIMD3<Float> = .zero
-
-        /// XY scale applied in scene space (Furniture Fit / wall calibration via `WebGLScaleRoom` parity).
-        private var sceneScale: SIMD2<Float> = SIMD2(1, 1)
-
-        /// Zoom level binding from parent view
-        @Binding var zoomLevel: Float
+        // Camera orbit & pan state
+        var cameraYaw:    Float = 0
+        var cameraPitch:  Float = 0
+        var cameraOffset: SIMD3<Float> = .zero
+        var sceneScale:   SIMD2<Float> = SIMD2(1, 1)
 
         private var didRegisterSharpRoomNotifications = false
 
-        /// Callback back into SwiftUI for `RoomBounds` once MetalSplatter has loaded the PLY.
-        private let onBoundsAvailable: ((RoomBounds) -> Void)?
-
-        // MARK: - Camera Constants
-
-        /// Maximum pitch angle (prevents camera flip) - ~80 degrees
-        private let maxPitch: Float = 1.4
-
-        /// Drag sensitivity - radians per point
+        // ── Camera constants ──────────────────────────────────────────────────
+        private let maxPitch:        Float = 1.4
         private let dragSensitivity: Float = 0.005
-
-        /// Exterior camera mode distance (fallback when centroid unavailable)
         private let exteriorCameraZ: Float = -8.0
+        private let fovy:            Float = 65 * (.pi / 180)   // 65° → radians
 
-        /// Field of view in radians (~65 degrees)
-        private let fovy: Float = 65.0 * .pi / 180.0
+        /// Linear RGB multiplier after splat raster (`BrightnessAdjust.metal`). Use **1.0** when `_3dgs.ply` was post-processed with `correctPLYColors` (SHARP path); uncorrected PLYs often need ~3.5–4.0 to match WebGL.
+        var splatCompositeExposure: Float = 1.0
+        /// Additive lift in **dark** linear samples only (smoothstep mask); lower apparent shadow / crush. Set `0` to disable.
+        var splatCompositeShadowLift: Float = 0.11
 
-        // MARK: - Bindings
-
-        @Binding var isLoading: Bool
-        @Binding var loadError: String?
-
-        // MARK: - Initialization
-
-        init(isLoading: Binding<Bool>, loadError: Binding<String?>, zoomLevel: Binding<Float>, onBoundsAvailable: ((RoomBounds) -> Void)?) {
-            self._isLoading = isLoading
-            self._loadError = loadError
-            self._zoomLevel = zoomLevel
+        // ── Init ──────────────────────────────────────────────────────────────
+        init(
+            isLoading: Binding<Bool>,
+            loadError: Binding<String?>,
+            zoomLevel:  Binding<Float>,
+            onBoundsAvailable: ((RoomBounds) -> Void)?
+        ) {
+            _isLoading = isLoading
+            _loadError = loadError
+            _zoomLevel = zoomLevel
             self.onBoundsAvailable = onBoundsAvailable
             super.init()
         }
 
-        deinit {
-            NotificationCenter.default.removeObserver(self)
+        // MARK: Setup
+
+        /// Defers work until after SwiftUI finishes the current update transaction.
+        private func scheduleSwiftUIBindingUpdates(_ updates: @escaping () -> Void) {
+            Task { @MainActor in
+                await Task.yield()
+                updates()
+            }
         }
 
-        // MARK: - Setup
-
-        /// Initialize Metal resources and load PLY file
-        func setup(device: MTLDevice, mtkView: MTKView, plyURL: URL) {
-            cameraYaw = 0
-            cameraPitch = 0
+        func setup(view mtkView: MTKView, plyURL: URL) {
+            // ── Reset camera ─────────────────────────────────────────────────
+            cameraYaw    = 0
+            cameraPitch  = 0
             cameraOffset = .zero
-            sceneScale = SIMD2(1, 1)
+            sceneScale   = SIMD2(1, 1)
+            appliedZoomLevel = zoomLevel
 
-            self.device = device
-            self.commandQueue = device.makeCommandQueue()
-            self.drawableSize = mtkView.drawableSize
-            self.view = mtkView
-            self.currentURL = plyURL
-
-            brightnessPipeline = nil
-            presentToDrawablePipeline = nil
-            if let library = device.makeDefaultLibrary() {
-                if let fn = library.makeFunction(name: "brightnessAdjust") {
-                    brightnessPipeline = try? device.makeComputePipelineState(function: fn)
-                }
-                if let vtx = library.makeFunction(name: "fullscreenBlitVertex"),
-                   let frag = library.makeFunction(name: "fullscreenBlitFragment") {
-                    let desc = MTLRenderPipelineDescriptor()
-                    desc.vertexFunction = vtx
-                    desc.fragmentFunction = frag
-                    desc.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
-                    presentToDrawablePipeline = try? device.makeRenderPipelineState(descriptor: desc)
-                }
+            // ── Metal basics ─────────────────────────────────────────────────
+            guard let device = mtkView.device ?? MTLCreateSystemDefaultDevice() else {
+                print("❌ [GaussianSplatView] No Metal device")
+                return
             }
+            self.device       = device
+            commandQueue      = device.makeCommandQueue()
+            drawableSize      = mtkView.drawableSize
+            self.view         = mtkView
+            currentURL        = plyURL
 
+            // ── Composite pipeline ────────────────────────────────────────────
+            if let library = device.makeDefaultLibrary(),
+               let vertFn  = library.makeFunction(name: "compositeOverGrayVertex"),
+               let fragFn  = library.makeFunction(name: "compositeOverGrayFragment") {
+                let desc = MTLRenderPipelineDescriptor()
+                desc.vertexFunction   = vertFn
+                desc.fragmentFunction = fragFn
+                desc.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
+
+                // Standard over-compositing blend
+                desc.colorAttachments[0].isBlendingEnabled             = true
+                desc.colorAttachments[0].rgbBlendOperation             = .add
+                desc.colorAttachments[0].alphaBlendOperation           = .add
+                desc.colorAttachments[0].sourceRGBBlendFactor          = .sourceAlpha
+                desc.colorAttachments[0].destinationRGBBlendFactor     = .oneMinusSourceAlpha
+                desc.colorAttachments[0].sourceAlphaBlendFactor        = .one
+                desc.colorAttachments[0].destinationAlphaBlendFactor   = .oneMinusSourceAlpha
+
+                compositePipeline = try? device.makeRenderPipelineState(descriptor: desc)
+            }
+            logDebug("🔧 [GaussianSplatView] composite pipeline=\(compositePipeline != nil)")
+
+            // ── Notifications ─────────────────────────────────────────────────
             if !didRegisterSharpRoomNotifications {
-                didRegisterSharpRoomNotifications = true
                 registerSharpRoomParityNotifications()
+                didRegisterSharpRoomNotifications = true
             }
 
+            // ── Load PLY ──────────────────────────────────────────────────────
             logDebug("🎨 [GaussianSplatView] Starting to load PLY: \(plyURL.lastPathComponent)")
 
-            let viewClearColor = mtkView.clearColor
-            let viewColorFormat = mtkView.colorPixelFormat
-            let viewDepthFormat = mtkView.depthStencilPixelFormat
-            let viewSampleCount = mtkView.sampleCount
+            // Capture view properties before async hop
+            let clearColor   = mtkView.clearColor
+            let colorFormat  = mtkView.colorPixelFormat
+            let depthFormat  = mtkView.depthStencilPixelFormat
+            let sampleCount  = mtkView.sampleCount
 
-            // Load PLY asynchronously - local MetalSplatter uses async API
-            Task { [weak self] in
-                do {
-                    let renderer = try await SplatRenderer(
+            splatRenderer = nil
+            sceneBoundsMin = nil
+            sceneBoundsMax = nil
+            sceneCentroid = nil
+
+            scheduleSwiftUIBindingUpdates {
+                self.isLoading = true
+                self.loadError = nil
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                    let points = try await AutodetectSceneReader(plyURL).readAll()
+                    guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
+
+                    var boundsMin = points[0].position
+                    var boundsMax = points[0].position
+                    var positionSum = SIMD3<Float>.zero
+                    for point in points {
+                        let position = point.position
+                        boundsMin = simd_min(boundsMin, position)
+                        boundsMax = simd_max(boundsMax, position)
+                        positionSum += position
+                    }
+                    let centroid = positionSum / Float(points.count)
+
+                    #if DEBUG
+                    logSphericalHarmonicsSanityCheck(points: points, plyFileName: plyURL.lastPathComponent)
+                    #endif
+
+                    let renderer = try SplatRenderer(
                         device: device,
-                        colorFormat: viewColorFormat,
-                        depthFormat: viewDepthFormat,
-                        sampleCount: viewSampleCount,
+                        colorFormat: colorFormat,
+                        depthFormat: depthFormat,
+                        sampleCount: sampleCount,
                         maxViewCount: 1,
-                        maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders
+                        maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders,
+                        highQualityDepth: true,
+                        clearColor: clearColor
                     )
+                    let chunk = try SplatChunk(device: device, from: points)
+                    _ = await renderer.addChunk(chunk)
 
-                    renderer.clearColor = viewClearColor
-
-                    // Load PLY file into renderer (async)
-                    try await renderer.read(from: plyURL)
-
-                    await MainActor.run { [weak self] in
-                        guard let self = self else { return }
-
-                        logDebug("✅ [GaussianSplatView] PLY loaded with \(renderer.splatCount) splats")
-
-                        // Log centroid for interior camera positioning
-                        if let centroid = renderer.centroid {
-                            logDebug("📍 [GaussianSplatView] Splat centroid: \(centroid)")
-                        }
-
-                        if let bbox = renderer.boundingBox {
-                            let bounds = RoomBounds(
-                                minX: bbox.min.x, maxX: bbox.max.x,
-                                minY: bbox.min.y, maxY: bbox.max.y,
-                                minZ: bbox.min.z, maxZ: bbox.max.z
-                            )
-                            logDebug("📐 [GaussianSplatView] MetalSplatter bounds X[\(bounds.minX), \(bounds.maxX)] Y[\(bounds.minY), \(bounds.maxY)] Z[\(bounds.minZ), \(bounds.maxZ)]")
-                            self.onBoundsAvailable?(bounds)
-                        }
-
+                    let bounds = RoomBounds(
+                        minX: boundsMin.x, maxX: boundsMax.x,
+                        minY: boundsMin.y, maxY: boundsMax.y,
+                        minZ: boundsMin.z, maxZ: boundsMax.z
+                    )
+                    let splatCount = renderer.splatCount
+                    self.scheduleSwiftUIBindingUpdates { [weak self] in
+                        guard let self else { return }
+                        logDebug("✅ [GaussianSplatView] Loaded \(splatCount) splats centroid=\(centroid)")
+                        self.onBoundsAvailable?(bounds)
+                        self.sceneBoundsMin = boundsMin
+                        self.sceneBoundsMax = boundsMax
+                        self.sceneCentroid = centroid
                         self.splatRenderer = renderer
                         self.isLoading = false
-                        self.view?.setNeedsDisplay()
+                        mtkView.setNeedsDisplay()
                     }
                 } catch {
-                    await MainActor.run { [weak self] in
-                        logDebug("❌ [GaussianSplatView] PLY load failed: \(error)")
-                        self?.loadError = "Failed to load PLY: \(error.localizedDescription)"
-                        self?.isLoading = false
+                    self.scheduleSwiftUIBindingUpdates { [weak self] in
+                        guard let self else { return }
+                        logDebug("❌ [GaussianSplatView] Failed to load PLY: \(error)")
+                        self.loadError = error.localizedDescription
+                        self.isLoading = false
                     }
+                }
                 }
             }
         }
 
-        // MARK: - MTKViewDelegate
+        // MARK: MTKViewDelegate
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
             drawableSize = size
-            postExposureColorTexture = nil
-            postExposureBackingWidth = 0
-            postExposureBackingHeight = 0
-            postExposurePixelFormat = .invalid
-        }
-
-        /// Writable color target: splat render → exposure compute → fullscreen draw to the drawable (iOS drawable cannot be compute `read_write` or blit destination).
-        private func ensurePostExposureColorTexture(device: MTLDevice, view: MTKView, drawable: CAMetalDrawable) -> MTLTexture? {
-            let width = drawable.texture.width
-            let height = drawable.texture.height
-            let format = view.colorPixelFormat
-            if let existing = postExposureColorTexture,
-               postExposureBackingWidth == width,
-               postExposureBackingHeight == height,
-               postExposurePixelFormat == format {
-                return existing
-            }
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: format,
-                width: width,
-                height: height,
-                mipmapped: false
-            )
-            descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
-            descriptor.storageMode = .private
-            guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
-            postExposureColorTexture = texture
-            postExposureBackingWidth = width
-            postExposureBackingHeight = height
-            postExposurePixelFormat = format
-            return texture
+            splatScratchTexture = nil
+            scratchWidth = 0
+            scratchHeight = 0
         }
 
         func draw(in view: MTKView) {
-            // Skip rendering if not ready
             guard let renderer = splatRenderer,
                   let commandQueue = commandQueue,
-                  let drawable = view.currentDrawable else {
-                return
-            }
+                  let drawable = view.currentDrawable,
+                  let metalDevice = device
+            else { return }
 
-            // Wait for available render slot
-            guard inFlightSemaphore.wait(timeout: .now() + 0.1) == .success else {
-                return
-            }
+            let timeout = DispatchTime.now() + 0.1
+            guard inFlightSemaphore.wait(timeout: timeout) == .success else { return }
 
             guard let commandBuffer = commandQueue.makeCommandBuffer() else {
                 inFlightSemaphore.signal()
                 return
             }
-
-            // Signal semaphore when command buffer completes
-            let semaphore = inFlightSemaphore
-            commandBuffer.addCompletedHandler { _ in
-                semaphore.signal()
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                self?.inFlightSemaphore.signal()
             }
 
-            let useExposurePass: Bool = {
-                guard brightnessPipeline != nil,
-                      presentToDrawablePipeline != nil,
-                      view.multisampleColorTexture == nil,
-                      let device = view.device else { return false }
-                return ensurePostExposureColorTexture(device: device, view: view, drawable: drawable) != nil
-            }()
+            let vp = viewport
 
-            // Use the new render API - pass textures directly to commandBuffer
-            do {
-                let colorTarget: MTLTexture
-                let colorStore: MTLStoreAction
-                if useExposurePass, let device = view.device, let postTex = ensurePostExposureColorTexture(device: device, view: view, drawable: drawable) {
-                    colorTarget = postTex
-                    colorStore = .store
-                } else {
-                    colorTarget = view.multisampleColorTexture ?? drawable.texture
-                    colorStore = view.multisampleColorTexture == nil ? .store : .multisampleResolve
+            if let pipeline = compositePipeline,
+               let scratch = ensureSplatScratchTexture(
+                   device: metalDevice,
+                   drawable: drawable,
+                   pixelFormat: view.colorPixelFormat
+               ),
+               let depthScratch = makeDepthTexture(device: metalDevice, width: scratch.width, height: scratch.height) {
+                do {
+                    try renderer.render(
+                        viewports: [vp],
+                        colorTexture: scratch,
+                        colorStoreAction: .store,
+                        depthTexture: depthScratch,
+                        rasterizationRateMap: nil,
+                        renderTargetArrayLength: 0,
+                        to: commandBuffer
+                    )
+                } catch {
+                    logDebug("❌ [GaussianSplatView] Render error: \(error)")
                 }
-                try renderer.render(
-                    viewports: [viewport],
-                    colorTexture: colorTarget,
-                    colorStoreAction: colorStore,
-                    depthTexture: view.depthStencilTexture,
-                    rasterizationRateMap: nil,
-                    renderTargetArrayLength: 0,
-                    to: commandBuffer
-                )
-            } catch {
-                logDebug("❌ [GaussianSplatView] Render error: \(error)")
-            }
 
-            if useExposurePass,
-               let pipeline = brightnessPipeline,
-               let device = view.device,
-               let postTex = ensurePostExposureColorTexture(device: device, view: view, drawable: drawable),
-               let computeEncoder = commandBuffer.makeComputeCommandEncoder() {
-                var exposure = exposureValue
-                computeEncoder.setComputePipelineState(pipeline)
-                computeEncoder.setTexture(postTex, index: 0)
-                computeEncoder.setBytes(&exposure, length: MemoryLayout<Float>.size, index: 0)
-                let threadWidth = pipeline.threadExecutionWidth
-                let threadHeight = max(1, pipeline.maxTotalThreadsPerThreadgroup / threadWidth)
-                computeEncoder.dispatchThreads(
-                    MTLSize(width: postTex.width, height: postTex.height, depth: 1),
-                    threadsPerThreadgroup: MTLSize(width: threadWidth, height: threadHeight, depth: 1)
-                )
-                computeEncoder.endEncoding()
-
-                if let presentPipeline = presentToDrawablePipeline {
-                    let pass = MTLRenderPassDescriptor()
-                    pass.colorAttachments[0].texture = drawable.texture
-                    pass.colorAttachments[0].loadAction = .dontCare
-                    pass.colorAttachments[0].storeAction = .store
-                    if let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
-                        renderEncoder.setRenderPipelineState(presentPipeline)
-                        renderEncoder.setFragmentTexture(postTex, index: 0)
-                        renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-                        renderEncoder.endEncoding()
-                    }
+                let compPassDesc = MTLRenderPassDescriptor()
+                compPassDesc.colorAttachments[0].texture = drawable.texture
+                compPassDesc.colorAttachments[0].loadAction = .dontCare
+                compPassDesc.colorAttachments[0].storeAction = .store
+                if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: compPassDesc) {
+                    encoder.setRenderPipelineState(pipeline)
+                    encoder.setFragmentTexture(scratch, index: 0)
+                    var compositeParams: [Float] = [splatCompositeExposure, splatCompositeShadowLift]
+                    encoder.setFragmentBytes(&compositeParams, length: MemoryLayout<Float>.stride * 2, index: 0)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                    encoder.endEncoding()
+                }
+            } else {
+                do {
+                    try renderer.render(
+                        viewports: [vp],
+                        colorTexture: drawable.texture,
+                        colorStoreAction: .store,
+                        depthTexture: view.depthStencilTexture,
+                        rasterizationRateMap: nil,
+                        renderTargetArrayLength: 0,
+                        to: commandBuffer
+                    )
+                } catch {
+                    logDebug("❌ [GaussianSplatView] Render error: \(error)")
                 }
             }
 
-            // Present drawable
             commandBuffer.present(drawable)
             commandBuffer.commit()
         }
 
-        // MARK: - Viewport Calculation
+        // MARK: Viewport — camera & MetalSplatter matrix
+        //
+        // MetalSplatter multiplies splat positions by this view matrix for projection (and SH ≥1 uses
+        // camera pose derived from it). A π‑X right-multiply (SparkJS-style mesh flip) **rotates the
+        // projected image**, which read as upside‑down with SHARP `_3dgs.ply` while not being needed
+        // for SH **degree 0** colour (shader uses DC only, no view direction).
+        // If you load SH1+ PLYs and colours look wrong vs WebGL, revisit a training-frame fix without
+        // flipping the entire projection.
 
-        /// Calculate viewport descriptor for current frame
         private var viewport: SplatRenderer.ViewportDescriptor {
-            let aspectRatio = Float(drawableSize.width / drawableSize.height)
+            let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
+            let zoomedFovy  = fovy / appliedZoomLevel
 
-            // Apply zoom by adjusting FOV (smaller FOV = zoom in, larger = zoom out)
-            let zoomedFovy = fovy / zoomLevel
             let projectionMatrix = matrixPerspectiveRightHand(
-                fovyRadians: zoomedFovy,
-                aspectRatio: aspectRatio,
-                nearZ: 0.01,
-                farZ: 100.0
+                fovyRadians:  zoomedFovy,
+                aspectRatio:  aspectRatio,
+                nearZ:        0.01,
+                farZ:         100.0
             )
 
-            // Scene scale (e.g. wall calibration / Furniture Fit)
             let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y, 1)
 
-            let renderer = splatRenderer
-            let bbox = renderer?.boundingBox
-            let centroid = renderer?.centroid
+            let boundsMin = sceneBoundsMin
+            let boundsMax = sceneBoundsMax
+            let centroid = sceneCentroid
 
-            let cameraPos: SIMD3<Float>
-            let lookTarget: SIMD3<Float>
+            // ── Camera: inside room, back → front wall (``RoomBounds`` / Android parity) ──
+            var camPos: SIMD3<Float>
+            var lookAt: SIMD3<Float>
 
-            if let bbox, let centroid {
-                let frontZ = bbox.max.z
-                let camZ = frontZ + 0.3
-                let camX = centroid.x
-                let camY = centroid.y + 0.2
-
-                cameraPos = SIMD3<Float>(camX, camY, camZ) + cameraOffset
-                lookTarget = centroid + cameraOffset
+            if let boundsMin, let boundsMax {
+                let rb = RoomBounds(
+                    minX: boundsMin.x, maxX: boundsMax.x,
+                    minY: boundsMin.y, maxY: boundsMax.y,
+                    minZ: boundsMin.z, maxZ: boundsMax.z
+                )
+                let (eye, target) = rb.defaultSplatCameraEyeAndTarget(cameraPadding: 0.3)
+                camPos = eye + cameraOffset
+                lookAt = target + cameraOffset
             } else if let centroid {
-                cameraPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + 3) + cameraOffset
-                lookTarget = centroid + cameraOffset
+                camPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + 3) + cameraOffset
+                lookAt = centroid + cameraOffset
             } else {
-                cameraPos = SIMD3<Float>(0, 0, 3) + cameraOffset
-                lookTarget = SIMD3<Float>(0, 0, 0) + cameraOffset
+                camPos = SIMD3<Float>(0, 0, 3) + cameraOffset
+                lookAt = SIMD3<Float>(0, 0, 0) + cameraOffset
             }
 
-            // Orbit: rotate camera position around look target, then build look-at.
-            let yawMatrix = matrix4x4Rotation(radians: cameraYaw, axis: SIMD3<Float>(0, 1, 0))
-            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch, axis: SIMD3<Float>(1, 0, 0))
+            // ── Apply user orbit ─────────────────────────────────────────────
+            let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
+                                                 axis: SIMD3<Float>(0, 1, 0))
+            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
+                                                 axis: SIMD3<Float>(1, 0, 0))
             let userRotation = pitchMatrix * yawMatrix
-            let offset4 = userRotation * SIMD4<Float>(cameraPos - lookTarget, 0)
-            let rotatedEye = lookTarget + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
+            let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
+            let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
 
             let viewBase = matrixLookAt(
-                eye: rotatedEye,
-                target: lookTarget,
-                up: SIMD3<Float>(0, 1, 0)
+                eye:    rotatedEye,
+                target: lookAt,
+                up:     SIMD3<Float>(0, 1, 0)
             )
 
             let viewMatrix = viewBase * scaleMatrix
 
-            // Create Metal viewport
             let mtlViewport = MTLViewport(
                 originX: 0, originY: 0,
-                width: drawableSize.width, height: drawableSize.height,
-                znear: 0, zfar: 1
+                width:   drawableSize.width,
+                height:  drawableSize.height,
+                znear:   0, zfar: 1
             )
 
             return SplatRenderer.ViewportDescriptor(
-                viewport: mtlViewport,
+                viewport:         mtlViewport,
                 projectionMatrix: projectionMatrix,
-                viewMatrix: viewMatrix,
-                screenSize: SIMD2(x: Int(drawableSize.width), y: Int(drawableSize.height))
+                viewMatrix:       viewMatrix,
+                screenSize:       SIMD2(x: Int(drawableSize.width),
+                                        y: Int(drawableSize.height))
             )
         }
 
-        // MARK: - Matrix Utilities
+        // MARK: Gesture Handlers
 
-        /// Create perspective projection matrix (right-handed)
-        private func matrixPerspectiveRightHand(fovyRadians fovy: Float, aspectRatio: Float, nearZ: Float, farZ: Float) -> simd_float4x4 {
-            let ys = 1 / tanf(fovy * 0.5)
-            let xs = ys / aspectRatio
-            let zs = farZ / (nearZ - farZ)
-
-            return simd_float4x4(columns: (
-                SIMD4<Float>(xs, 0, 0, 0),
-                SIMD4<Float>(0, ys, 0, 0),
-                SIMD4<Float>(0, 0, zs, -1),
-                SIMD4<Float>(0, 0, zs * nearZ, 0)
-            ))
-        }
-
-        /// Create rotation matrix around arbitrary axis
-        private func matrix4x4Rotation(radians: Float, axis: SIMD3<Float>) -> simd_float4x4 {
-            let unitAxis = normalize(axis)
-            let ct = cosf(radians)
-            let st = sinf(radians)
-            let ci = 1 - ct
-            let x = unitAxis.x, y = unitAxis.y, z = unitAxis.z
-
-            return simd_float4x4(columns: (
-                SIMD4<Float>(ct + x * x * ci, y * x * ci + z * st, z * x * ci - y * st, 0),
-                SIMD4<Float>(x * y * ci - z * st, ct + y * y * ci, z * y * ci + x * st, 0),
-                SIMD4<Float>(x * z * ci + y * st, y * z * ci - x * st, ct + z * z * ci, 0),
-                SIMD4<Float>(0, 0, 0, 1)
-            ))
-        }
-
-        /// Look-at matrix (right-handed): positions camera at `eye` looking at `target` with `up` vector.
-        private func matrixLookAt(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) -> simd_float4x4 {
-            let f = normalize(target - eye)           // Forward
-            let r = normalize(cross(f, up))           // Right
-            let u = cross(r, f)                       // True up
-
-            return simd_float4x4(columns: (
-                SIMD4<Float>(r.x, u.x, -f.x, 0),
-                SIMD4<Float>(r.y, u.y, -f.y, 0),
-                SIMD4<Float>(r.z, u.z, -f.z, 0),
-                SIMD4<Float>(-dot(r, eye), -dot(u, eye), dot(f, eye), 1)
-            ))
-        }
-
-        /// Create translation matrix
-        private func matrix4x4Translation(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
-            return simd_float4x4(columns: (
-                SIMD4<Float>(1, 0, 0, 0),
-                SIMD4<Float>(0, 1, 0, 0),
-                SIMD4<Float>(0, 0, 1, 0),
-                SIMD4<Float>(x, y, z, 1)
-            ))
-        }
-
-        private func matrix4x4Scale(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
-            simd_float4x4(columns: (
-                SIMD4<Float>(x, 0, 0, 0),
-                SIMD4<Float>(0, y, 0, 0),
-                SIMD4<Float>(0, 0, z, 0),
-                SIMD4<Float>(0, 0, 0, 1)
-            ))
-        }
-
-        // MARK: - SharpRoomView notification parity (same names as WebGL viewer)
-
-        private func registerSharpRoomParityNotifications() {
-            let center = NotificationCenter.default
-            center.addObserver(self, selector: #selector(onRecenter), name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
-            center.addObserver(self, selector: #selector(onJoystickMove(_:)), name: NSNotification.Name("WebGLJoystickMove"), object: nil)
-            center.addObserver(self, selector: #selector(onScaleRoom(_:)), name: NSNotification.Name("WebGLScaleRoom"), object: nil)
-            center.addObserver(self, selector: #selector(onCameraMoveUp), name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
-            center.addObserver(self, selector: #selector(onCameraMoveDown), name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
-            center.addObserver(self, selector: #selector(onCameraMoveLeft), name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil)
-            center.addObserver(self, selector: #selector(onCameraMoveRight), name: NSNotification.Name("WebGLCameraMoveRight"), object: nil)
-        }
-
-        @objc private func onRecenter() {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraYaw = 0
-                self.cameraPitch = 0
-                self.cameraOffset = .zero
-                self.zoomLevel = 1.0
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onJoystickMove(_ notification: Notification) {
-            guard let ui = notification.userInfo, let offset = ui["offset"] as? CGSize else { return }
-            let dx = Float(offset.width) * 0.012
-            let dy = Float(-offset.height) * 0.012
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraOffset.x += dx
-                self.cameraOffset.z += dy
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onScaleRoom(_ notification: Notification) {
-            guard let userInfo = notification.userInfo else { return }
-            let scaleX: Double? = (userInfo["scaleX"] as? NSNumber)?.doubleValue ?? userInfo["scaleX"] as? Double
-            let scaleY: Double? = (userInfo["scaleY"] as? NSNumber)?.doubleValue ?? userInfo["scaleY"] as? Double
-            if let sx = scaleX, let sy = scaleY {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.sceneScale.x *= Float(sx)
-                    self.sceneScale.y *= Float(sy)
-                    self.view?.setNeedsDisplay()
-                }
-                return
-            }
-            let factor: Double?
-            if let d = userInfo["factor"] as? Double {
-                factor = d
-            } else if let n = userInfo["factor"] as? NSNumber {
-                factor = n.doubleValue
-            } else {
-                factor = nil
-            }
-            guard let f = factor else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                let ff = Float(f)
-                self.sceneScale.x *= ff
-                self.sceneScale.y *= ff
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onCameraMoveUp() {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraOffset.y += 0.15
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onCameraMoveDown() {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraOffset.y -= 0.15
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onCameraMoveLeft() {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraOffset.x -= 0.2
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        @objc private func onCameraMoveRight() {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.cameraOffset.x += 0.2
-                self.view?.setNeedsDisplay()
-            }
-        }
-
-        // MARK: - Gesture Handlers
-
-        /// Handle pan gesture for orbital scene rotation
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
             let translation = gesture.translation(in: gesture.view)
-
-            // Horizontal drag rotates scene around Y-axis (reversed for orbital control)
-            cameraYaw -= Float(translation.x) * dragSensitivity
-
-            // Vertical drag rotates scene around X-axis, clamped to prevent flip
+            cameraYaw   -= Float(translation.x) * dragSensitivity
             cameraPitch -= Float(translation.y) * dragSensitivity
-            cameraPitch = max(-maxPitch, min(maxPitch, cameraPitch))
-
+            cameraPitch  = min(max(cameraPitch, -maxPitch), maxPitch)
             gesture.setTranslation(.zero, in: gesture.view)
             view?.setNeedsDisplay()
         }
 
-        /// Handle pinch gesture for zoom
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-            // Adjust zoom level via binding (syncs with slider)
-            var newZoom = zoomLevel * Float(gesture.scale)
-
-            // Clamp zoom range to match slider bounds
-            newZoom = max(0.5, min(3.0, newZoom))
-            zoomLevel = newZoom
-
+            let newZoom = appliedZoomLevel * Float(gesture.scale)
+            let clamped = min(max(newZoom, 0.5), 3.0)
+            appliedZoomLevel = clamped
+            zoomLevel = clamped
             gesture.scale = 1.0
             view?.setNeedsDisplay()
         }
+
+        // MARK: Scratch Texture
+
+        /// Returns a cached MTLTexture suitable for the splat render pass.
+        /// Re-creates the texture only when the drawable dimensions change.
+        func ensureSplatScratchTexture(
+            device:      MTLDevice,
+            drawable:    CAMetalDrawable,
+            pixelFormat: MTLPixelFormat
+        ) -> MTLTexture? {
+            let w = drawable.texture.width
+            let h = drawable.texture.height
+            if splatScratchTexture != nil, scratchWidth == w, scratchHeight == h {
+                return splatScratchTexture
+            }
+            let desc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: pixelFormat,
+                width:       w,
+                height:      h,
+                mipmapped:   false
+            )
+            desc.usage        = [.renderTarget, .shaderRead]
+            desc.storageMode  = .private
+            splatScratchTexture = device.makeTexture(descriptor: desc)
+            scratchWidth        = w
+            scratchHeight       = h
+            return splatScratchTexture
+        }
+
+        // MARK: Depth Texture Helper
+
+        private func makeDepthTexture(device: MTLDevice, width: Int, height: Int) -> MTLTexture? {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .depth32Float,
+                width:       width,
+                height:      height,
+                mipmapped:   false
+            )
+            desc.usage       = .renderTarget
+            desc.storageMode = .private
+            return device.makeTexture(descriptor: desc)
+        }
+
+        // MARK: Notification Registration
+
+        func registerSharpRoomParityNotifications() {
+            let nc = NotificationCenter.default
+
+            // Recenter: restore default camera orientation
+            nc.addObserver(
+                forName: NSNotification.Name("RecenterWebGLCamera"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.cameraYaw    = 0
+                    self.cameraPitch  = 0
+                    self.cameraOffset = .zero
+                    self.appliedZoomLevel = 1.0
+                    self.zoomLevel = 1.0
+                    self.view?.setNeedsDisplay()
+                }
+            }
+
+            // Joystick pan: forward/back and left/right strafe
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLJoystickMove"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] note in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          let offset = note.userInfo?["offset"] as? CGSize else { return }
+                    let dx = Float(offset.width) * 0.012
+                    let dy = Float(-offset.height) * 0.012
+                    self.cameraOffset.x += dx
+                    self.cameraOffset.z += dy
+                    self.view?.setNeedsDisplay()
+                }
+            }
+
+            // Scale: supports both (scaleX, scaleY) dict and single (factor) value
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLScaleRoom"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] note in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if let sx = note.userInfo?["scaleX"] as? NSNumber,
+                       let sy = note.userInfo?["scaleY"] as? NSNumber {
+                        self.sceneScale.x *= Float(truncating: sx)
+                        self.sceneScale.y *= Float(truncating: sy)
+                    } else if let sx = note.userInfo?["scaleX"] as? Double,
+                              let sy = note.userInfo?["scaleY"] as? Double {
+                        self.sceneScale.x *= Float(sx)
+                        self.sceneScale.y *= Float(sy)
+                    } else if let f = note.userInfo?["factor"] as? NSNumber {
+                        let ff = Float(truncating: f)
+                        self.sceneScale.x *= ff
+                        self.sceneScale.y *= ff
+                    } else if let f = note.userInfo?["factor"] as? Double {
+                        let ff = Float(f)
+                        self.sceneScale.x *= ff
+                        self.sceneScale.y *= ff
+                    }
+                    self.view?.setNeedsDisplay()
+                }
+            }
+
+            // Vertical pan
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLCameraMoveUp"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in
+                    self?.cameraOffset.y += 0.15
+                    self?.view?.setNeedsDisplay()
+                }
+            }
+
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLCameraMoveDown"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in
+                    self?.cameraOffset.y -= 0.15
+                    self?.view?.setNeedsDisplay()
+                }
+            }
+
+            // Horizontal pan
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLCameraMoveLeft"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in
+                    self?.cameraOffset.x -= 0.2
+                    self?.view?.setNeedsDisplay()
+                }
+            }
+
+            nc.addObserver(
+                forName: NSNotification.Name("WebGLCameraMoveRight"),
+                object:  nil,
+                queue:   nil
+            ) { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in
+                    self?.cameraOffset.x += 0.2
+                    self?.view?.setNeedsDisplay()
+                }
+            }
+        }
+
+        // MARK: - Matrix Utilities
+        // All matrices are column-major simd_float4x4 matching Metal's convention.
+
+        /// Standard right-handed perspective projection.
+        private func matrixPerspectiveRightHand(
+            fovyRadians: Float,
+            aspectRatio: Float,
+            nearZ:       Float,
+            farZ:        Float
+        ) -> simd_float4x4 {
+            let ys  = 1 / tanf(fovyRadians * 0.5)
+            let xs  = ys / aspectRatio
+            let zs  = farZ / (nearZ - farZ)
+            return simd_float4x4(columns: (
+                SIMD4<Float>(xs,  0,       0,  0),
+                SIMD4<Float>( 0, ys,       0,  0),
+                SIMD4<Float>( 0,  0,      zs, -1),
+                SIMD4<Float>( 0,  0, nearZ*zs,  0)
+            ))
+        }
+
+        /// Rotation matrix around an arbitrary normalised axis.
+        private func matrix4x4Rotation(radians: Float, axis: SIMD3<Float>) -> simd_float4x4 {
+            let a = normalize(axis)
+            let c = cosf(radians)
+            let s = sinf(radians)
+            let t = 1 - c
+            return simd_float4x4(columns: (
+                SIMD4<Float>(t*a.x*a.x + c,      t*a.x*a.y + s*a.z, t*a.x*a.z - s*a.y, 0),
+                SIMD4<Float>(t*a.x*a.y - s*a.z,  t*a.y*a.y + c,     t*a.y*a.z + s*a.x, 0),
+                SIMD4<Float>(t*a.x*a.z + s*a.y,  t*a.y*a.z - s*a.x, t*a.z*a.z + c,     0),
+                SIMD4<Float>(0,                   0,                  0,                  1)
+            ))
+        }
+
+        /// Standard look-at view matrix.
+        private func matrixLookAt(
+            eye:    SIMD3<Float>,
+            target: SIMD3<Float>,
+            up:     SIMD3<Float>
+        ) -> simd_float4x4 {
+            let z = normalize(eye - target)        // forward (from target to eye)
+            let x = normalize(cross(up, z))        // right
+            let y = cross(z, x)                    // recomputed up
+            let t = SIMD3<Float>(-dot(x, eye), -dot(y, eye), -dot(z, eye))
+            return simd_float4x4(columns: (
+                SIMD4<Float>(x.x, y.x, z.x, 0),
+                SIMD4<Float>(x.y, y.y, z.y, 0),
+                SIMD4<Float>(x.z, y.z, z.z, 0),
+                SIMD4<Float>(t.x, t.y, t.z, 1)
+            ))
+        }
+
+        /// Translation matrix.
+        private func matrix4x4Translation(_ tx: Float, _ ty: Float, _ tz: Float) -> simd_float4x4 {
+            simd_float4x4(columns: (
+                SIMD4<Float>(1, 0, 0, 0),
+                SIMD4<Float>(0, 1, 0, 0),
+                SIMD4<Float>(0, 0, 1, 0),
+                SIMD4<Float>(tx, ty, tz, 1)
+            ))
+        }
+
+        /// Non-uniform scale matrix.
+        private func matrix4x4Scale(_ sx: Float, _ sy: Float, _ sz: Float) -> simd_float4x4 {
+            simd_float4x4(columns: (
+                SIMD4<Float>(sx, 0,  0,  0),
+                SIMD4<Float>(0,  sy, 0,  0),
+                SIMD4<Float>(0,  0,  sz, 0),
+                SIMD4<Float>(0,  0,  0,  1)
+            ))
+        }
     }
 }
+
+// MARK: - 3DGS PLY f_dc correction (MetalSplatter)
+
+private enum GaussianSplatPLYColorCorrectionError: Error {
+    case missingEndHeader
+    case invalidVertexCount
+    case missingFdcProperties
+    case binarySizeMismatch(expected: Int, actual: Int)
+}
+
+extension GaussianSplatView {
+
+    /// Converts SHARP’s effective log-RGB `f_dc` into standard 3DGS encoding so MetalSplatter’s
+    /// `C0 * f_dc + 0.5` yields **`exp(old_f_dc) × boost`** (overlap + wall brightness). Default boost **2.5**;
+    /// use **2.0** if highlights clip. Output `f_dc` is clamped so `C0*f_dc+0.5` stays in **[0, 1]**.
+    ///
+    /// Expects binary PLY with only `property float` fields per vertex (our `_3dgs.ply` layout).
+    static func correctPLYColors(at url: URL, boostFactor: Float = 2.5) throws {
+        var data = try Data(contentsOf: url)
+        guard let headerRange = data.range(of: Data("end_header\n".utf8)) else {
+            logDebug("⚠️ [PLY] No end_header found: \(url.lastPathComponent)")
+            throw GaussianSplatPLYColorCorrectionError.missingEndHeader
+        }
+        let binaryStart = headerRange.upperBound
+
+        let headerData = data.subdata(in: data.startIndex..<headerRange.lowerBound)
+        let header = String(data: headerData, encoding: .utf8) ?? ""
+
+        guard let vertexLine = header.split(separator: "\n", omittingEmptySubsequences: false)
+            .first(where: { $0.hasPrefix("element vertex") }),
+              let vertexCount = Int(vertexLine.split(separator: " ").last ?? "") else {
+            logDebug("⚠️ [PLY] Cannot parse vertex count: \(url.lastPathComponent)")
+            throw GaussianSplatPLYColorCorrectionError.invalidVertexCount
+        }
+
+        let propNames: [Substring] = header.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.hasPrefix("property float") }
+            .map { $0.split(separator: " ").last ?? "" }
+
+        let stride = propNames.count * MemoryLayout<Float>.size
+        guard let dc0idx = propNames.firstIndex(of: "f_dc_0"),
+              let dc1idx = propNames.firstIndex(of: "f_dc_1"),
+              let dc2idx = propNames.firstIndex(of: "f_dc_2") else {
+            logDebug("⚠️ [PLY] No f_dc_* float properties: \(url.lastPathComponent)")
+            throw GaussianSplatPLYColorCorrectionError.missingFdcProperties
+        }
+
+        let expectedBinary = vertexCount * stride
+        let actualBinary = data.count - binaryStart
+        guard actualBinary == expectedBinary else {
+            logDebug("⚠️ [PLY] Binary size mismatch expected=\(expectedBinary) actual=\(actualBinary): \(url.lastPathComponent)")
+            throw GaussianSplatPLYColorCorrectionError.binarySizeMismatch(expected: expectedBinary, actual: actualBinary)
+        }
+
+        let c0: Float = 0.282_094_791_773_878_14
+
+        try data.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else {
+                throw GaussianSplatPLYColorCorrectionError.binarySizeMismatch(expected: expectedBinary, actual: 0)
+            }
+            let vertexBytes = stride
+            for vertexIndex in 0..<vertexCount {
+                let vertexBase = base.advanced(by: binaryStart + vertexIndex * vertexBytes)
+                for dcIndex in [dc0idx, dc1idx, dc2idx] {
+                    let ptr = vertexBase.advanced(by: dcIndex * MemoryLayout<Float>.size)
+                        .assumingMemoryBound(to: Float.self)
+                    let oldVal = ptr.pointee
+                    let linear = min(1.0, max(0.0, expf(oldVal) * boostFactor))
+                    ptr.pointee = (linear - 0.5) / c0
+                }
+            }
+        }
+
+        try data.write(to: url)
+        logDebug("✅ [PLY] Corrected f_dc for \(vertexCount) vertices (boost=\(boostFactor)): \(url.lastPathComponent)")
+    }
+}
+
+#if DEBUG
+/// Samples parsed SH0 (DC) coefficients — same slot as typical `f_dc` in 3DGS PLY — after load. See `SANITY CHECK` on `Coordinator`’s SH calibration comment block.
+private func logSphericalHarmonicsSanityCheck(points: [SplatPoint], plyFileName: String) {
+    let sampleCount = min(8, points.count)
+    guard sampleCount > 0 else { return }
+    let degreeLabel = points.first.map { String(describing: $0.color.shDegree) } ?? "?"
+    var positiveDCCount = 0
+    var parts: [String] = []
+    parts.reserveCapacity(sampleCount)
+    for index in 0..<sampleCount {
+        let sh0 = points[index].color.sh0
+        if sh0.x > 0 || sh0.y > 0 || sh0.z > 0 { positiveDCCount += 1 }
+        parts.append("#\(index) sh0=\(String(format: "%.3f,%.3f,%.3f", sh0.x, sh0.y, sh0.z))")
+    }
+    logDebug("🔬 [GaussianSplatView][SH sanity] \(plyFileName): file SH degree≈\(degreeLabel) — \(parts.joined(separator: " | "))")
+    logDebug("🔬 [GaussianSplatView][SH sanity] \(positiveDCCount)/\(sampleCount) sampled splats have any SH0 component >0 (negative SH0 is normal for dark surfaces; coarse hint only). For SH1+ PLYs, compare view-dependent colour vs WebGL if needed.")
+    logDebug("🔬 [GaussianSplatView][SH sanity] Pass criteria vs WebGL/SparkJS: neutral walls within ~±10% brightness; colored view-dependent gradients oriented identically.")
+}
+#endif
 
 // MARK: - Preview
 
@@ -696,7 +836,7 @@ struct GaussianSplatView: UIViewRepresentable {
     GaussianSplatView(
         plyURL: URL(fileURLWithPath: "/tmp/test.ply"),
         isLoading: .constant(true),
-        loadError: .constant(nil),
+        loadError: .constant(nil as String?),
         zoomLevel: .constant(1.0),
         onBoundsAvailable: nil
     )

@@ -112,7 +112,7 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Bounds from MetalSplatter (`SplatRenderer.boundingBox`) for the displayed PLY.
+    /// Bounds from the splat PLY (computed when loading; see `GaussianSplatView.onBoundsAvailable`).
     @State private var metalBounds: RoomBounds?
 
     /// Parsed bounds from the displayed PLY file (now fed by MetalSplatter, not a second PLY parse).
@@ -331,13 +331,15 @@ struct SharpRoomView: View {
         )
         .ignoresSafeArea()
         .onAppear {
-            if !allowSave {
+            guard !allowSave else { return }
+            Task { @MainActor in
+                await Task.yield()
                 metalSplatterZoom = 1.0
             }
         }
     }
 
-    /// WebGL reported Box3 front wall; Metal path now uses MetalSplatter's AABB (`boundingBox`) with fog trim + caps until save/YOLO updates.
+    /// WebGL reported Box3 front wall; Metal path uses the loaded splat AABB from `GaussianSplatView` with fog trim + caps until save/YOLO updates.
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {
         guard jsFrontWallWidth == nil, jsFrontWallHeight == nil, let b = effectiveBounds else { return }
 
@@ -1012,7 +1014,8 @@ struct SharpRoomView: View {
             if thumbImage == nil || yoloModel == nil {
                 logWallMeasurement("saveRoom wall measure skipped (need thumbnail + YOLO model)")
             } else if let m = yoloModel, let img = thumbImage {
-                if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m) {
+                let boundsSnapshot = await MainActor.run { effectiveBounds }
+                if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m, photoOrientation: photoOrientation, plyBounds: boundsSnapshot) {
                     roomW = measured.widthMeters
                     roomH = measured.heightMeters
                     roomD = measured.depthMeters

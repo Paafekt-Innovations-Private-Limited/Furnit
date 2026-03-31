@@ -1,5 +1,5 @@
 {
-  "originHash" : "68fb9d9d02bf6c40fce0aa49414ad4000f2ebd51ea48873bfc851bdfae09bcd9",
+  "originHash" : "cc391a2e48621730523c8e614e1fcd831e15c844c2d49db8e27f87238126217b",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -103,10 +103,10 @@
     {
       "identity" : "metalsplatter",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/psramaswamy/MetalSplatter.git",
+      "location" : "https://github.com/scier/MetalSplatter.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "e946f6f1a64eb8aaa1b5479e14b4579271240c74"
+        "revision" : "71ff248e3016ac43c0a9271e322538421b28c360",
+        "version" : "1.0.1"
       }
     },
     {
@@ -125,6 +125,15 @@
       "state" : {
         "revision" : "540318ecedd63d883069ae7f1ed811a2df00b6ac",
         "version" : "2.4.0"
+      }
+    },
+    {
+      "identity" : "spz-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/scier/spz-swift.git",
+      "state" : {
+        "revision" : "e2410c91bceba2539c11157ad92e488ef6e16416",
+        "version" : "2.1.0"
       }
     },
     {

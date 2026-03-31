@@ -581,10 +581,10 @@
 		};
 		61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/psramaswamy/MetalSplatter.git";
+			repositoryURL = "https://github.com/scier/MetalSplatter.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = exactVersion;
+				version = 1.0.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

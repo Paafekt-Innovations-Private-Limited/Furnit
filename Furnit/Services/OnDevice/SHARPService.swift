@@ -52,6 +52,15 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
+    /// Extra **linear** scale applied only in `_3dgs.ply` for MetalSplatter (SparkJS `maxStdDev`–style overlap).
+    /// Stored scales are log(σ); we add `log(factor)` per axis so σ grows by this factor (fills gaps / wall seams).
+    /// Tune down (e.g. 1.35) if splats look mushy; up (e.g. 2.2) if banding remains.
+    private static let threeDGSMetalViewerLinearScaleFactor: Float = 1.65
+
+    /// After `_3dgs.ply` is written: `f_dc` remap so MetalSplatter’s `C0*f_dc+0.5` ≈ `exp(SHARP f_dc)×boost` (Spark overlap + taupe wall target).
+    /// ~2.5 matches ~0.65 linear on typical dark SHARP DCs; try **2.0** if windows/lights clip to white too often (`min(1,…)` in `correctPLYColors`).
+    private static let threeDGSMetalViewerFdcBoostFactor: Float = 2.5
+
     /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
     /// Keep long-edge small vs device RAM: FP32 SHARP + 1536² input + multi-array extraction peaks on 4–6GB phones.
     private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
@@ -405,6 +414,8 @@ class SHARPService: ObservableObject {
             statusMessage = L10n.Sharp.almostDone
             progress = 0.8
             let plyURLs = try await writePLY(gaussianParams)
+            // Remap `_3dgs.ply` f_dc for MetalSplatter **after** the file is closed and **before** SharpRoomView / GaussianSplatView reads it (never mutate from the viewer).
+            try GaussianSplatView.correctPLYColors(at: plyURLs.threeDGS, boostFactor: Self.threeDGSMetalViewerFdcBoostFactor)
             logSharpMilestone(
                 "PLY files written on Swift/Core ML path (not C++): classic=\(plyURLs.classic.lastPathComponent) — WebView loads these next",
             )
@@ -832,6 +843,7 @@ class SHARPService: ObservableObject {
         // Debug: Log final PLY values for first few gaussians
         var debugCount = 0
         let debugMax = 3
+        let threeDGSExtraLogScale = log(Self.threeDGSMetalViewerLinearScaleFactor)
 
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
@@ -935,11 +947,14 @@ class SHARPService: ObservableObject {
             threeDGSData.append(Data(bytes: &f_dc_1, count: 4))
             threeDGSData.append(Data(bytes: &f_dc_2, count: 4))
 
-            // 3DGS format: opacity, scale, rotation
+            // 3DGS format: opacity, scale, rotation (wider σ for Metal path only — reduces dark seams vs raw covariance)
+            var sg0 = s0 + threeDGSExtraLogScale
+            var sg1 = s1 + threeDGSExtraLogScale
+            var sg2 = s2 + threeDGSExtraLogScale
             threeDGSData.append(Data(bytes: &opacity, count: 4))
-            threeDGSData.append(Data(bytes: &s0, count: 4))
-            threeDGSData.append(Data(bytes: &s1, count: 4))
-            threeDGSData.append(Data(bytes: &s2, count: 4))
+            threeDGSData.append(Data(bytes: &sg0, count: 4))
+            threeDGSData.append(Data(bytes: &sg1, count: 4))
+            threeDGSData.append(Data(bytes: &sg2, count: 4))
             threeDGSData.append(Data(bytes: &r0, count: 4))
             threeDGSData.append(Data(bytes: &r1, count: 4))
             threeDGSData.append(Data(bytes: &r2, count: 4))
@@ -989,7 +1004,7 @@ class SHARPService: ObservableObject {
         let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
         logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
-        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat compatible")
+        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat compatible; Metal σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log scale)")
 
         // Log room measurements (SHARP units are roughly meters)
         let width = maxX - minX
