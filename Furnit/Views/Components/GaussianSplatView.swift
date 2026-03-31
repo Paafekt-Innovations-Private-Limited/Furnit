@@ -204,17 +204,31 @@ struct GaussianSplatView: UIViewRepresentable {
 
         /// Initialize Metal resources and load PLY file
         func setup(device: MTLDevice, mtkView: MTKView, plyURL: URL) {
+            cameraYaw = 0
+            cameraPitch = 0
+            cameraOffset = .zero
+            sceneScale = SIMD2(1, 1)
+
             self.device = device
             self.commandQueue = device.makeCommandQueue()
             self.drawableSize = mtkView.drawableSize
             self.view = mtkView
             self.currentURL = plyURL
 
-            if let library = device.makeDefaultLibrary(),
-               let fn = library.makeFunction(name: "brightnessAdjust") {
-                brightnessPipeline = try? device.makeComputePipelineState(function: fn)
-            } else {
-                brightnessPipeline = nil
+            brightnessPipeline = nil
+            presentToDrawablePipeline = nil
+            if let library = device.makeDefaultLibrary() {
+                if let fn = library.makeFunction(name: "brightnessAdjust") {
+                    brightnessPipeline = try? device.makeComputePipelineState(function: fn)
+                }
+                if let vtx = library.makeFunction(name: "fullscreenBlitVertex"),
+                   let frag = library.makeFunction(name: "fullscreenBlitFragment") {
+                    let desc = MTLRenderPipelineDescriptor()
+                    desc.vertexFunction = vtx
+                    desc.fragmentFunction = frag
+                    desc.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
+                    presentToDrawablePipeline = try? device.makeRenderPipelineState(descriptor: desc)
+                }
             }
 
             if !didRegisterSharpRoomNotifications {
@@ -224,22 +238,24 @@ struct GaussianSplatView: UIViewRepresentable {
 
             logDebug("🎨 [GaussianSplatView] Starting to load PLY: \(plyURL.lastPathComponent)")
 
+            let viewClearColor = mtkView.clearColor
+            let viewColorFormat = mtkView.colorPixelFormat
+            let viewDepthFormat = mtkView.depthStencilPixelFormat
+            let viewSampleCount = mtkView.sampleCount
+
             // Load PLY asynchronously - local MetalSplatter uses async API
             Task { [weak self] in
                 do {
-                    // Initialize SplatRenderer with Metal configuration
                     let renderer = try await SplatRenderer(
                         device: device,
-                        colorFormat: mtkView.colorPixelFormat,
-                        depthFormat: mtkView.depthStencilPixelFormat,
-                        sampleCount: mtkView.sampleCount,
+                        colorFormat: viewColorFormat,
+                        depthFormat: viewDepthFormat,
+                        sampleCount: viewSampleCount,
                         maxViewCount: 1,
                         maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders
                     )
 
-                    // MetalSplatter's `SplatRenderer` has no `exposure` / `brightness` API; it uses `clearColor` on its render pass.
-                    // Keep it in sync with `mtkView.clearColor` so sparse/transparent edges match the view background.
-                    renderer.clearColor = mtkView.clearColor
+                    renderer.clearColor = viewClearColor
 
                     // Load PLY file into renderer (async)
                     try await renderer.read(from: plyURL)
@@ -422,22 +438,17 @@ struct GaussianSplatView: UIViewRepresentable {
                 farZ: 100.0
             )
 
-            // User orbit rotation: Yaw (Y-axis) then Pitch (X-axis)
-            let yawMatrix = matrix4x4Rotation(radians: cameraYaw, axis: SIMD3<Float>(0, 1, 0))
-            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch, axis: SIMD3<Float>(1, 0, 0))
-            let userRotation = pitchMatrix * yawMatrix
-
             // Scene scale (e.g. wall calibration / Furniture Fit)
             let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y, 1)
 
-            // Default camera: just inside the front wall, look at centroid (matches post-SHARP preview).
-            // Do not use list-room / back-center framing here — that path is for other viewers; Metal preview + list must match.
+            let renderer = splatRenderer
+            let bbox = renderer?.boundingBox
+            let centroid = renderer?.centroid
+
             let cameraPos: SIMD3<Float>
             let lookTarget: SIMD3<Float>
 
-            if let renderer = splatRenderer,
-               let bbox = renderer.boundingBox,
-               let centroid = renderer.centroid {
+            if let bbox, let centroid {
                 let frontZ = bbox.max.z
                 let camZ = frontZ + 0.3
                 let camX = centroid.x
@@ -445,26 +456,28 @@ struct GaussianSplatView: UIViewRepresentable {
 
                 cameraPos = SIMD3<Float>(camX, camY, camZ) + cameraOffset
                 lookTarget = centroid + cameraOffset
-            } else if let centroid = splatRenderer?.centroid {
-                // Fallback: position camera a bit in front of centroid along +Z looking back at centroid.
+            } else if let centroid {
                 cameraPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + 3) + cameraOffset
                 lookTarget = centroid + cameraOffset
             } else {
-                // Last resort: simple exterior camera looking at origin.
                 cameraPos = SIMD3<Float>(0, 0, 3) + cameraOffset
                 lookTarget = SIMD3<Float>(0, 0, 0) + cameraOffset
             }
 
-            // Build look-at view matrix from eye/target/up.
+            // Orbit: rotate camera position around look target, then build look-at.
+            let yawMatrix = matrix4x4Rotation(radians: cameraYaw, axis: SIMD3<Float>(0, 1, 0))
+            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch, axis: SIMD3<Float>(1, 0, 0))
+            let userRotation = pitchMatrix * yawMatrix
+            let offset4 = userRotation * SIMD4<Float>(cameraPos - lookTarget, 0)
+            let rotatedEye = lookTarget + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
+
             let viewBase = matrixLookAt(
-                eye: cameraPos,
+                eye: rotatedEye,
                 target: lookTarget,
                 up: SIMD3<Float>(0, 1, 0)
             )
 
-            // Final view: user orbit around look-target, then apply scene scale.
-            // We stay in raw PLY coordinates (no calibration flip).
-            let viewMatrix = userRotation * viewBase * scaleMatrix
+            let viewMatrix = viewBase * scaleMatrix
 
             // Create Metal viewport
             let mtlViewport = MTLViewport(
@@ -565,6 +578,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 self.cameraYaw = 0
                 self.cameraPitch = 0
                 self.cameraOffset = .zero
+                self.zoomLevel = 1.0
                 self.view?.setNeedsDisplay()
             }
         }

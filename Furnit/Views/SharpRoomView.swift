@@ -330,6 +330,11 @@ struct SharpRoomView: View {
             }
         )
         .ignoresSafeArea()
+        .onAppear {
+            if !allowSave {
+                metalSplatterZoom = 1.0
+            }
+        }
     }
 
     /// WebGL reported Box3 front wall; Metal path now uses MetalSplatter's AABB (`boundingBox`) with fog trim + caps until save/YOLO updates.
@@ -1024,7 +1029,7 @@ struct SharpRoomView: View {
             await MainActor.run { saveProgress = 0.55 }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 modelManager.savePLY(
-                    from: classicPlyURL,
+                    from: viewerPlyURL,
                     name: savedName,
                     photoOrientation: photoOrientation,
                     roomWidth: roomW,
