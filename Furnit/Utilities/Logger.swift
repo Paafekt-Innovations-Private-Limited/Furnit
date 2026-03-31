@@ -22,9 +22,24 @@ func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n
 
 // MARK: - Always-on diagnostics (not gated by Settings debug mode)
 
-/// YOLO wall measurement on save — always printed. Filter in Console: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
+/// Always-on diagnostics use **only** Unified Logging (`Logger`). Using both `print` and `Logger` made Xcode show **every line twice**. `print`/stdout also often **stalls** on device during long Core ML; `Logger` keeps streaming. Filter debug console or Console.app by subsystem or `SHARP` / `WALL_MEAS`.
+private enum AlwaysOnOSLog {
+    static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
+    static let sharp = Logger(subsystem: subsystem, category: "SHARP")
+    static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
+}
+
+/// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
 func logWallMeasurement(_ message: String) {
-    print("[WALL_MEAS] \(message)")
+    let line = "[WALL_MEAS] \(message)"
+    AlwaysOnOSLog.wallMeas.notice("\(line, privacy: .public)")
+}
+
+/// SHARP Core ML / pipeline milestones — not gated by Settings debug mode.
+/// Filter: category `SHARP` or search `[SHARP]`.
+func logSharpMilestone(_ message: String) {
+    let line = "[SHARP] \(message)"
+    AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
 }
 
 /// PLY bounds / navigation — always printed. Filter: `PLY_BOUNDS`.

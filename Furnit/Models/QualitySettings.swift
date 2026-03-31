@@ -164,7 +164,7 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When `false`: Furniture Fit uses Core ML with letterbox preprocess and the standard mask pipeline. When `true` (default): same Core ML ``mlmodel`` with **stretch** preprocess, Android-style bbox-limited mask (``FurnitureFitOnnxStylePipeline``), and the same ``blacklist.json`` / primary selection as the letterbox path. If the Core ML model is not loaded, falls back to bundled ONNX Runtime when a `.onnx` is present.
+    /// When `false`: Furniture Fit uses Core ML with letterbox preprocess and the standard mask pipeline. When `true` (default): same Core ML ``mlmodel`` with **stretch** preprocess, Android-style bbox-limited mask (``FurnitureFitOnnxStylePipeline``), and the same ``blacklist.json`` / primary selection as the letterbox path. Requires the Core ML model to be loaded (no ONNX fallback).
     @Published var furnitureFitUseOnnxRuntime: Bool {
         didSet {
             saveFurnitureFitUseOnnxRuntime()
@@ -251,7 +251,7 @@ class QualitySettings: ObservableObject {
 
     private func saveFurnitureFitUseOnnxRuntime() {
         UserDefaults.standard.set(furnitureFitUseOnnxRuntime, forKey: furnitureFitUseOnnxRuntimeKey)
-        logDebug("💾 Saved Furniture Fit ONNX preference: \(furnitureFitUseOnnxRuntime)")
+        logDebug("💾 Saved Furniture Fit stretch-pipeline preference: \(furnitureFitUseOnnxRuntime)")
     }
 
     private func saveYoloeCoreMLAllowGPU() {

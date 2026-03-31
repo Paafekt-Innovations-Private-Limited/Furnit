@@ -350,8 +350,8 @@
 "common.or" = "లేదా";
 "common.retry" = "మళ్లీ ప్రయత్నించండి";
 "settings.furnitureSegmentationSection" = "ఫర్నిచర్ సెగ్మెంటేషన్";
-"settings.furnitureFitOnnxRuntime" = "YOLO-E కోసం ONNX రన్‌టైమ్ వాడండి";
-"settings.furnitureFitOnnxRuntimeDescription" = "ఆఫ్ (డిఫాల్ట్): Core ML, letterbox, స్టాండర్డ్ మాస్క్ మార్గం. ఆన్: అదే Core ML మోడల్, స్ట్రెచ్ ప్రీప్రాసెసింగ్, Android-శైలి bbox మాస్క్ ఫ్యూజన్, blacklist.json. మోడల్ లోడ్ కాకపోతే అందుబాటులో ఉంటే బండిల్ .onnx, ONNX రన్‌టైమ్.";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
 "settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU అనుమతించు";
 "settings.yoloeCoreMLAllowGPUDescription" = "ఆఫ్ (డిఫాల్ట్): CPU మాత్రమే — నెమ్మది కానీ కొన్ని YOLO-E 26L Core ML బిల్డ్‌లలో క్రాష్‌లను తగ్గిస్తుంది. ఆన్: వేగానికి CPU+GPU; Metal పై ఎగుమతి నడకపోతే సెగ్మెంటేషన్‌లో SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు";

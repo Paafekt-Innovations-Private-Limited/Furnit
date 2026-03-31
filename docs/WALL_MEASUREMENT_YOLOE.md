@@ -35,7 +35,7 @@ Wall measurement **does not** use Furniture Fit’s `blacklist.json` — it pass
 | **Model input** | **640×640** letterboxed square on iOS 26L PF (`yolo_side` / `modelInputSize`; NCNN Android may differ) | What CoreML/NCNN runs on. |
 | **Source thumbnail** | e.g. **4284×5712** px | `reference_image size`; boxes are mapped **here** for wall math. |
 
-So: inference is on a **1280** square; **metrics** use the **full thumbnail** width/height.
+So: inference is on the model square (e.g. **640**); **metrics** use the **full thumbnail** width/height.
 
 ---
 
@@ -43,34 +43,40 @@ So: inference is on a **1280** square; **metrics** use the **full thumbnail** wi
 
 The raw model output can contain **~tens of thousands of anchor rows** (iOS) or many NCNN candidates (Android). Two extremes:
 
-- **Floor = 0:** Almost every anchor is kept → tier 1 can pick a **huge but meaningless** LVIS **571** box at **~0.01** score and **override** a better semantic tier-2 box → unstable wall height.
-- **Floor = 0.25 (Furniture Fit default):** Tends to **drop** weak but valid **wall** candidates → tier 1 often empty; tier 2 semantic picks dominate.
+- **Floor = 0:** Almost every anchor is kept → a **low-score** LVIS **571** box can win tier 1 over a better **room** label → unstable sizes.
+- **Floor = 0.25 (Furniture Fit default):** Tends to **drop** weak but valid **wall** candidates → tier 1 often empty; room/wall-word tiers pick up.
 
 **Wall measurement** uses a **middle floor: `0.05`** (constant `yoloWallMeasureClassScoreFloor` / `YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR`):
 
 - Drops **anchor noise** without applying the full Furniture Fit **0.25** gate.
-- **Semantic / geometry tiers** still pick the actual wall.
+- **Semantic tiers** still pick a usable box when class 571 is missing.
 
 ---
 
-## Wall bbox selection (priority order)
+## Wall bbox selection (four tiers)
 
-After filtering by the score floor, candidates are **not** “the wall” yet — we pick **one** rectangle using **tiers** (first tier with at least one candidate wins; **within tier**, **largest bbox area**):
+After the score floor, we pick **one** rectangle: first tier with any candidate wins; **within tier**, **largest bbox area** (pixel `w × h` in source/thumbnail space).
 
-1. **LVIS class 571** (`wall`) — preferred when present above the floor.
-2. **Semantic labels** from `classes.json`: whole-word **wall** / **room**, venue/interior phrases (hotel, playroom, …), with negatives for things like **wall lamp** / **office chair** (not a furniture blacklist — wall measurement never uses `blacklist.json`).
-3. **Heuristic wide strip:** wide/tall aspect ratios similar to a **wall panel** (see code for thresholds).
-4. **Fallback:** large **wide** boxes (aspect + area fraction), **no** extra confidence gate (geometry only).
+1. **LVIS class 571** (`wall`).
+2. **`\bwall\b` in label**, excluding wall-mounted object phrases (wall lamp, wallpaper, wall clock, …).
+3. **`\broom\b` in label** (living room, bedroom, hospital room, …), excluding object-style negatives (e.g. kitchen cabinet, hospital bed) via the same substring list as iOS/Android code.  
+   **Important:** Scene-style room boxes often span **floor + wall + ceiling** (a large fraction of the image). The bbox is **not** treated as the wall surface height directly. We **crop vertically inside that rect**: remove **~10% from the top** (ceiling band) and **~25% from the bottom** (floor band), then use the **remaining band** as the wall strip for geometry. This avoids inflated heights (e.g. ~3.8 m from a full-scene box when the real wall band is ~2.5 m).
+4. **Full-image fallback** when no class-571 / wall-word / room-word match: a **conservative crop** of the frame — **5%** side margin, **y** from **10%** of image height, **height** **65%** of image (roughly the middle “wall band” when the user aimed at a wall).
 
-**Furniture `blacklist.json` is not used** for this path (logged explicitly).
+**Furniture `blacklist.json` is not used** for this path. Tier 4 guarantees a rectangle so measurement does not abort solely for “no wall label.”
 
 ---
 
 ## From wall rectangle to meters (on save)
 
 - **Thumbnail EXIF** (if `camera_exif.json` exists) → **focal length in pixels**; else **fallback** `4.5 mm / sensor_width_mm × imageWidth` (pref `wall_measurement_sensor_width_mm`).
-- **Monodepth** (`sharp_monodepth.bin`) if present → median depth in the wall rect → **metric** width/height via **door** or **ceiling** calibration prefs.
-- If monodepth is **missing** → **assumed depth** `Z` from `wall_measurement_assumed_depth_m` (`wm = (wall_px_w / focal_px) * Z`, height uses geometry with **ceiling** / **strip** rules when bbox height is unreliable).
+- **Depth `Z` at the wall:** median of `sharp_monodepth.bin` over the chosen wall rect when the file exists and the sample is valid; otherwise **`wall_measurement_assumed_depth_m`** clamped to about **0.5…20 m** (`assumed_z`).
+- **Pinhole raw size:** `rawW = (wall_px_w / focal_px) * Z`, `rawH = (wall_px_h / focal_px) * Z`.
+- **Single calibration scale** (iOS `calibrationScale` / Android equivalent):  
+  - If pref is **`auto`** or **`door`**: try **door** scale = `2.03 m / door_height_raw` using a **door** label bbox; door depth uses monodepth at the door rect if available, else the same **`Z`** as the wall.  
+  - Else (or if door scale is unavailable): **ceiling** scale = `assumed_ceiling_m / rawH` with `wall_measurement_assumed_ceiling_m` clamped to **2.0…4.5 m**.  
+  - If pref is **`door`** only and no usable door was found, the ceiling path is still used but the mode is logged as **`ceiling_fallback`**.
+- **Final meters:** `width_m = rawW * scale`, `height_m = rawH * scale`, then clamps (currently about **1.5…12 m** width, **1.5…5 m** height).
 
 ---
 
@@ -82,8 +88,8 @@ After filtering by the score floor, candidates are **not** “the wall” yet �
 Useful lines:
 
 - `reference_image`, `class_score_floor`, `yolo_detections count`
-- `wall_pick_priority`, `wall_pick_tier_skip`, `yolo_wall_pick`, `yolo_wall_pick_reason`
-- `measure_final` — final **width_m**, **height_m**, inputs, **wall_detection_source**
+- `wall_pick`, `wall_pick_skip`, `yolo_wall_pick`, `yolo_wall_pick_reason`, `room_scene_crop` (tier 3 vertical trim)
+- `measure_final` — final **width_m**, **height_m**, **scale**, **depth** source (`monodepth` vs `assumed_z`), **wall_source** / **wall_detection_source**
 
 ---
 

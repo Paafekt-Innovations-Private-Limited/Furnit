@@ -2,6 +2,7 @@ import SwiftUI
 import SceneKit
 import Accelerate
 import CoreML
+import Photos
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -858,6 +859,12 @@ struct SinglePhotoRoomView: View {
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
     @State private var showBackMethodAlert = false
     @Environment(\.dismiss) private var dismiss
+    /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
+    @State private var sharpSourceImageURL: URL?
+    /// In-app camera metadata (`mediaMetadata`) — EXIF including SubjectDistance when available.
+    @State private var sharpCaptureMediaMetadata: [AnyHashable: Any]?
+    /// Library asset id for EXIF via `PHImageManager.requestImageDataAndOrientation` when `imageURL` is nil.
+    @State private var sharpPhotoLibraryAssetLocalId: String?
 
     var body: some View {
         ZStack {
@@ -1198,7 +1205,12 @@ struct SinglePhotoRoomView: View {
             Text(L10n.PhotoRoom.backAlertMessage)
         }
         .sheet(isPresented: $showImagePicker) {
-            PhotoPickerView(selectedImage: $selectedImage)
+            PhotoPickerView(
+                selectedImage: $selectedImage,
+                sourceImageURL: $sharpSourceImageURL,
+                captureMediaMetadata: $sharpCaptureMediaMetadata,
+                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+            )
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
                     if selectedImage != nil {
@@ -1210,7 +1222,13 @@ struct SinglePhotoRoomView: View {
                 }
         }
         .sheet(isPresented: $showCameraCapture) {
-            CameraCaptureView(selectedImage: $selectedImage, selectedOrientation: $captureOrientation)
+            CameraCaptureView(
+                selectedImage: $selectedImage,
+                selectedOrientation: $captureOrientation,
+                sourceImageURL: $sharpSourceImageURL,
+                captureMediaMetadata: $sharpCaptureMediaMetadata,
+                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+            )
                 .onDisappear {
                     logDebug("📷 [View] Camera capture dismissed")
                     if selectedImage != nil {
@@ -1221,7 +1239,12 @@ struct SinglePhotoRoomView: View {
                     }
                 }
         }
-        .onChange(of: selectedImage) { oldValue, newValue in
+        .onChange(of: selectedImage) { _, newValue in
+            if newValue == nil {
+                sharpSourceImageURL = nil
+                sharpCaptureMediaMetadata = nil
+                sharpPhotoLibraryAssetLocalId = nil
+            }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
             // Store the fixed image for later use
@@ -1265,11 +1288,8 @@ struct SinglePhotoRoomView: View {
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
-            // Dimensions are now managed by @AppStorage
-
-            // Pre-load SHARP model so "Setting things up..." progress bar shows.
-            // Needed after releaseResources() clears the model on previous use.
-            sharpService.ensureModelLoaded()
+            // Do not preload SHARP here — holding FP32 Core ML + a 4K `selectedImage` after returning from
+            // SharpRoomView/WebKit was peaking RAM on the 2nd room. `generateGaussians` loads on demand.
         }
         // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
@@ -1441,7 +1461,12 @@ struct SinglePhotoRoomView: View {
 
         Task {
             do {
-                let plyURL = try await sharpService.generateGaussians(from: image)
+                let plyURL = try await sharpService.generateGaussians(
+                    from: image,
+                    sourceImageURL: sharpSourceImageURL,
+                    captureMediaMetadata: sharpCaptureMediaMetadata,
+                    photoLibraryAssetLocalId: sharpPhotoLibraryAssetLocalId,
+                )
 
                 logDebug("✅ [View] PLY file generated: \(plyURL.path)")
                 await MainActor.run {
@@ -1457,8 +1482,11 @@ struct SinglePhotoRoomView: View {
 // MARK: - Photo Picker View
 struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
-    
+
     func makeUIViewController(context: Context) -> UIImagePickerController {
         logDebug("📱 [PhotoPicker] Creating UIImagePickerController")
         let picker = UIImagePickerController()
@@ -1481,6 +1509,13 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📱 [PhotoPicker] Image picked from library")
+            parent.captureMediaMetadata = nil
+            parent.sourceImageURL = info[.imageURL] as? URL
+            if #available(iOS 11, *) {
+                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
+            } else {
+                parent.photoLibraryAssetLocalId = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
                 // Pass original image - EXIF needed for orientation detection
@@ -1529,6 +1564,9 @@ enum CaptureOrientation: String, CaseIterable {
 struct CameraCaptureView: View {
     @Binding var selectedImage: UIImage?
     @Binding var selectedOrientation: CaptureOrientation
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     @State private var showCamera = false
@@ -1662,16 +1700,27 @@ struct CameraCaptureView: View {
             .fullScreenCover(isPresented: $showCamera) {
                 CameraViewRepresentable(
                     capturedImage: $capturedImage,
-                    orientation: selectedOrientation
+                    sourceImageURL: $sourceImageURL,
+                    captureMediaMetadata: $captureMediaMetadata,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    orientation: selectedOrientation,
                 )
                 .ignoresSafeArea()
             }
             .fullScreenCover(isPresented: $showWideAngleCamera) {
-                WideAngleCameraView(capturedImage: $capturedImage)
-                    .ignoresSafeArea()
+                WideAngleCameraView(
+                    capturedImage: $capturedImage,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                )
+                .ignoresSafeArea()
             }
             .sheet(isPresented: $showPhotoPicker) {
-                PhotoLibraryPicker(selectedImage: $capturedImage)
+                PhotoLibraryPicker(
+                    selectedImage: $capturedImage,
+                    sourceImageURL: $sourceImageURL,
+                    captureMediaMetadata: $captureMediaMetadata,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                )
             }
             .onChange(of: capturedImage) { _, newImage in
                 if let image = newImage {
@@ -1687,6 +1736,9 @@ struct CameraCaptureView: View {
 // MARK: - Photo Library Picker
 struct PhotoLibraryPicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -1709,6 +1761,13 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            parent.captureMediaMetadata = nil
+            parent.sourceImageURL = info[.imageURL] as? URL
+            if #available(iOS 11, *) {
+                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
+            } else {
+                parent.photoLibraryAssetLocalId = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
                 parent.selectedImage = image
@@ -1727,6 +1786,7 @@ import AVFoundation
 
 struct WideAngleCameraView: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> WideAngleCameraViewController {
@@ -1748,6 +1808,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCapture(_ image: UIImage) {
             logDebug("📷 [WideAngle] Captured image: \(image.size)")
+            parent.photoLibraryAssetLocalId = nil
             parent.capturedImage = image.fixedOrientation()
             parent.dismiss()
         }
@@ -2060,6 +2121,9 @@ struct OrientationOptionButton: View {
 // MARK: - Standard Camera View (UIImagePickerController - works in any orientation)
 struct CameraViewRepresentable: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     let orientation: CaptureOrientation
     @Environment(\.dismiss) var dismiss
 
@@ -2087,6 +2151,13 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📷 [Camera] Photo captured")
+            parent.sourceImageURL = nil
+            parent.photoLibraryAssetLocalId = nil
+            if let md = info[.mediaMetadata] {
+                parent.captureMediaMetadata = md as? [AnyHashable: Any]
+            } else {
+                parent.captureMediaMetadata = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("✅ [Camera] Got UIImage: \(image.size)")
                 parent.capturedImage = image.fixedOrientation()

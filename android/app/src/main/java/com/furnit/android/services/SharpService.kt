@@ -13,6 +13,7 @@ import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -481,31 +482,92 @@ class SharpService private constructor(private val context: Context) {
                 "center=($roomCenterX,$roomCenterY,$roomCenterZ) photoOrientation=$photoOrientation " +
                 "path=${roomFolder.absolutePath}",
         )
-        writeCameraExifSidecar(roomFolder, sourcePhotoPath)
+        writeCameraExifSidecar(roomFolder, sourcePhotoUri, sourcePhotoPath)
     }
 
-    private fun writeCameraExifSidecar(roomFolder: File, sourcePhotoPath: String?) {
-        val path = sourcePhotoPath?.trim()?.takeIf { it.isNotEmpty() } ?: return
-        val file = File(path)
-        if (!file.isFile) return
-        try {
-            val exif = ExifInterface(file)
-            val o = JSONObject()
+    /**
+     * Writes [camera_exif.json] for [WallMeasurementEstimator] (focal length, 35mm equiv, subject distance in meters).
+     *
+     * Gallery picks usually have [sourcePhotoUri] (`content://`) but no usable [sourcePhotoPath]; camera may supply a file path.
+     * Merge order: filesystem path first, then content URI fills missing keys (parity with iOS file → PHAsset).
+     */
+    private fun writeCameraExifSidecar(roomFolder: File, sourcePhotoUri: Uri?, sourcePhotoPath: String?) {
+        val merged = JSONObject()
+        fun absorbFromExif(exif: ExifInterface) {
             val focal = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, Double.NaN)
-            if (focal.isFinite() && focal > 0) {
-                o.put("focalLengthMm", focal)
+            if (focal.isFinite() && focal > 0 && !merged.has("focalLengthMm")) {
+                merged.put("focalLengthMm", focal)
             }
             val fl35 = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, Double.NaN)
-            if (fl35.isFinite() && fl35 > 0) {
-                o.put("focalLength35mmEquivMm", fl35)
+            if (fl35.isFinite() && fl35 > 0 && !merged.has("focalLength35mmEquivMm")) {
+                merged.put("focalLength35mmEquivMm", fl35)
             }
-            if (o.length() == 0) return
+            parseExifSubjectDistanceMeters(exif)?.let { d ->
+                if (!merged.has("subjectDistanceMeters")) merged.put("subjectDistanceMeters", d)
+            }
+        }
+
+        val path = sourcePhotoPath?.trim()?.takeIf { it.isNotEmpty() }
+        if (path != null) {
+            val file = File(path)
+            if (file.isFile) {
+                try {
+                    absorbFromExif(ExifInterface(file))
+                } catch (e: Exception) {
+                    LogUtil.w(TAG, "writeCameraExifSidecar path=$path: ${e.message}")
+                }
+            }
+        }
+
+        if (sourcePhotoUri != null) {
+            try {
+                context.contentResolver.openInputStream(sourcePhotoUri)?.use { raw ->
+                    BufferedInputStream(raw).use { buffered ->
+                        absorbFromExif(ExifInterface(buffered))
+                    }
+                } ?: LogUtil.w(TAG, "writeCameraExifSidecar: openInputStream null for $sourcePhotoUri")
+            } catch (e: Exception) {
+                LogUtil.w(TAG, "writeCameraExifSidecar uri=$sourcePhotoUri: ${e.message}")
+            }
+        }
+
+        if (merged.length() == 0) {
+            LogUtil.i(
+                "WALL_MEAS",
+                "camera_exif_sidecar skip (no EXIF) hasPath=${!path.isNullOrBlank()} hasUri=${sourcePhotoUri != null} folder=${roomFolder.name}",
+            )
+            return
+        }
+        try {
             val exifOut = File(roomFolder, "camera_exif.json")
-            exifOut.writeText(o.toString())
-            LogUtil.d(TAG, "Wrote camera_exif.json for YOLO wall measurement")
-            LogUtil.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${o.keys().asSequence().toList()}")
+            exifOut.writeText(merged.toString())
+            LogUtil.d(TAG, "Wrote camera_exif.json for wall measurement")
+            LogUtil.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${merged.keys().asSequence().toList()}")
         } catch (e: Exception) {
-            LogUtil.w(TAG, "writeCameraExifSidecar: ${e.message}")
+            LogUtil.w(TAG, "writeCameraExifSidecar write: ${e.message}")
+        }
+    }
+
+    /** EXIF SubjectDistance — rational string (e.g. `250/100` m) or plain decimal. */
+    private fun parseExifSubjectDistanceMeters(exif: ExifInterface): Double? {
+        val raw = exif.getAttribute(ExifInterface.TAG_SUBJECT_DISTANCE)?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+        val d = parseExifRationalToDouble(raw) ?: return null
+        return d.takeIf { it in 0.1..50.0 }
+    }
+
+    private fun parseExifRationalToDouble(s: String): Double? {
+        val t = s.trim()
+        if (t.isEmpty()) return null
+        val parts = t.split('/')
+        return when (parts.size) {
+            1 -> parts[0].toDoubleOrNull()
+            2 -> {
+                val a = parts[0].trim().toDoubleOrNull() ?: return null
+                val b = parts[1].trim().toDoubleOrNull() ?: return null
+                if (b == 0.0) null else a / b
+            }
+            else -> null
         }
     }
 

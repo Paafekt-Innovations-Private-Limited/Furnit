@@ -350,8 +350,8 @@
 "common.or" = "或";
 "common.retry" = "重试";
 "settings.furnitureSegmentationSection" = "家具分割";
-"settings.furnitureFitOnnxRuntime" = "YOLO-E 使用 ONNX Runtime";
-"settings.furnitureFitOnnxRuntimeDescription" = "关（默认）：Core ML + letterbox 与标准遮罩路径。开：同一 Core ML 模型 + 拉伸预处理、Android 式边界框遮罩融合与 blacklist.json。若模型未加载，在可用时使用捆绑的 .onnx 与 ONNX Runtime。";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
 "settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML：允许 GPU";
 "settings.yoloeCoreMLAllowGPUDescription" = "关（默认）：仅 CPU — 较慢但可避免部分 YOLO-E 26L Core ML 构建崩溃。开：CPU+GPU 提速；若导出无法在您设备的 Metal 上运行，分割时可能 SIGABRT。";
 "settings.showRoomFurnitureCalibrate" = "显示房间与家具校准";

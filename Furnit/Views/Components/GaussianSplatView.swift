@@ -21,6 +21,9 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Binding to control zoom level from parent view
     @Binding var zoomLevel: Float
 
+    /// Optional callback for room bounds (MetalSplatter's `boundingBox` → `RoomBounds`).
+    let onBoundsAvailable: ((RoomBounds) -> Void)?
+
     // MARK: - Constants
 
     /// Maximum number of simultaneous render operations
@@ -53,9 +56,9 @@ struct GaussianSplatView: UIViewRepresentable {
         // Set delegate for rendering callbacks
         mtkView.delegate = context.coordinator
 
-        // Enable continuous rendering
-        mtkView.enableSetNeedsDisplay = false
-        mtkView.isPaused = false
+        // On-demand rendering: only redraw when camera state changes to avoid 60fps idle drain.
+        mtkView.enableSetNeedsDisplay = true
+        mtkView.isPaused = true
         mtkView.preferredFramesPerSecond = 60
 
         // Add gesture recognizers for camera control
@@ -82,11 +85,16 @@ struct GaussianSplatView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: MTKView, context: Context) {
-        // Handle URL changes if needed
+        // Reload splat when SwiftUI reuses this view for a different PLY URL.
+        if context.coordinator.currentURL != plyURL, let device = uiView.device {
+            context.coordinator.setup(device: device, mtkView: uiView, plyURL: plyURL)
+        }
+        // Keep coordinator's zoom level in sync with external state (e.g. sliders).
+        context.coordinator.zoomLevel = zoomLevel
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(isLoading: $isLoading, loadError: $loadError, zoomLevel: $zoomLevel)
+        Coordinator(isLoading: $isLoading, loadError: $loadError, zoomLevel: $zoomLevel, onBoundsAvailable: onBoundsAvailable)
     }
 
     // MARK: - Coordinator
@@ -98,9 +106,26 @@ struct GaussianSplatView: UIViewRepresentable {
 
         private var device: MTLDevice?
         private var commandQueue: MTLCommandQueue?
+        private weak var view: MTKView?
 
-        // MetalSplatter renderer
-        private var splatRenderer: SplatRenderer?
+        // MetalSplatter renderer (protected by a small lock; setup runs on a Task, draw runs on MTKView's render loop).
+        private let rendererLock = NSLock()
+        private var _splatRenderer: SplatRenderer?
+        private var splatRenderer: SplatRenderer? {
+            get {
+                rendererLock.lock()
+                defer { rendererLock.unlock() }
+                return _splatRenderer
+            }
+            set {
+                rendererLock.lock()
+                _splatRenderer = newValue
+                rendererLock.unlock()
+            }
+        }
+
+        /// Last loaded URL so `updateUIView` can trigger a reload on navigation changes.
+        var currentURL: URL?
 
         // Semaphore for limiting concurrent renders
         private let inFlightSemaphore = DispatchSemaphore(value: maxSimultaneousRenders)
@@ -119,8 +144,16 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Camera position offset from centroid (for movement)
         private var cameraOffset: SIMD3<Float> = .zero
 
+        /// XY scale applied in scene space (Furniture Fit / wall calibration via `WebGLScaleRoom` parity).
+        private var sceneScale: SIMD2<Float> = SIMD2(1, 1)
+
         /// Zoom level binding from parent view
         @Binding var zoomLevel: Float
+
+        private var didRegisterSharpRoomNotifications = false
+
+        /// Callback back into SwiftUI for `RoomBounds` once MetalSplatter has loaded the PLY.
+        private let onBoundsAvailable: ((RoomBounds) -> Void)?
 
         // MARK: - Camera Constants
 
@@ -143,11 +176,16 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: - Initialization
 
-        init(isLoading: Binding<Bool>, loadError: Binding<String?>, zoomLevel: Binding<Float>) {
+        init(isLoading: Binding<Bool>, loadError: Binding<String?>, zoomLevel: Binding<Float>, onBoundsAvailable: ((RoomBounds) -> Void)?) {
             self._isLoading = isLoading
             self._loadError = loadError
             self._zoomLevel = zoomLevel
+            self.onBoundsAvailable = onBoundsAvailable
             super.init()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
         }
 
         // MARK: - Setup
@@ -157,6 +195,12 @@ struct GaussianSplatView: UIViewRepresentable {
             self.device = device
             self.commandQueue = device.makeCommandQueue()
             self.drawableSize = mtkView.drawableSize
+            self.view = mtkView
+            self.currentURL = plyURL
+            if !didRegisterSharpRoomNotifications {
+                didRegisterSharpRoomNotifications = true
+                registerSharpRoomParityNotifications()
+            }
 
             logDebug("🎨 [GaussianSplatView] Starting to load PLY: \(plyURL.lastPathComponent)")
 
@@ -186,8 +230,19 @@ struct GaussianSplatView: UIViewRepresentable {
                             logDebug("📍 [GaussianSplatView] Splat centroid: \(centroid)")
                         }
 
+                        if let bbox = renderer.boundingBox {
+                            let bounds = RoomBounds(
+                                minX: bbox.min.x, maxX: bbox.max.x,
+                                minY: bbox.min.y, maxY: bbox.max.y,
+                                minZ: bbox.min.z, maxZ: bbox.max.z
+                            )
+                            logDebug("📐 [GaussianSplatView] MetalSplatter bounds X[\(bounds.minX), \(bounds.maxX)] Y[\(bounds.minY), \(bounds.maxY)] Z[\(bounds.minZ), \(bounds.maxZ)]")
+                            self.onBoundsAvailable?(bounds)
+                        }
+
                         self.splatRenderer = renderer
                         self.isLoading = false
+                        self.view?.setNeedsDisplay()
                     }
                 } catch {
                     await MainActor.run { [weak self] in
@@ -214,7 +269,9 @@ struct GaussianSplatView: UIViewRepresentable {
             }
 
             // Wait for available render slot
-            _ = inFlightSemaphore.wait(timeout: .distantFuture)
+            guard inFlightSemaphore.wait(timeout: .now() + 0.1) == .success else {
+                return
+            }
 
             guard let commandBuffer = commandQueue.makeCommandBuffer() else {
                 inFlightSemaphore.signal()
@@ -258,32 +315,53 @@ struct GaussianSplatView: UIViewRepresentable {
             let projectionMatrix = matrixPerspectiveRightHand(
                 fovyRadians: zoomedFovy,
                 aspectRatio: aspectRatio,
-                nearZ: 0.1,
+                nearZ: 0.01,
                 farZ: 100.0
             )
 
-            // Rotation matrices: Yaw (Y-axis) then Pitch (X-axis)
+            // User orbit rotation: Yaw (Y-axis) then Pitch (X-axis)
             let yawMatrix = matrix4x4Rotation(radians: cameraYaw, axis: SIMD3<Float>(0, 1, 0))
             let pitchMatrix = matrix4x4Rotation(radians: cameraPitch, axis: SIMD3<Float>(1, 0, 0))
-            let rotationMatrix = pitchMatrix * yawMatrix
+            let userRotation = pitchMatrix * yawMatrix
 
-            // Interior mode: use centroid to position camera inside the room
-            let translationMatrix: simd_float4x4
-            if let centroid = splatRenderer?.centroid {
-                // Interior mode: camera at splat centroid, offset down for eye level
-                let eyeLevelOffset = SIMD3<Float>(0, -0.3, 0)  // Lower camera for better view
-                let cameraPos = centroid + cameraOffset + eyeLevelOffset
-                translationMatrix = matrix4x4Translation(-cameraPos.x, -cameraPos.y, -cameraPos.z)
+            // Scene scale (e.g. wall calibration / Furniture Fit)
+            let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y, 1)
+
+            // Camera position: use raw PLY bounds to place camera at FRONT WALL looking INTO the room.
+            // Raw PLY: Z is negative; maxZ (least negative) ≈ front wall, minZ ≈ back wall.
+            let cameraPos: SIMD3<Float>
+            let lookTarget: SIMD3<Float>
+
+            if let renderer = splatRenderer,
+               let bbox = renderer.boundingBox,
+               let centroid = renderer.centroid {
+                let frontZ = bbox.max.z                  // e.g. -1.16 (front wall)
+                let camZ = frontZ + 0.3                  // just in front of front wall (still negative)
+                let camX = centroid.x                    // centered horizontally
+                let camY = centroid.y + 0.2              // slight eye-level raise
+
+                cameraPos = SIMD3<Float>(camX, camY, camZ) + cameraOffset
+                lookTarget = centroid + cameraOffset
+            } else if let centroid = splatRenderer?.centroid {
+                // Fallback: position camera a bit in front of centroid along +Z looking back at centroid.
+                cameraPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + 3) + cameraOffset
+                lookTarget = centroid + cameraOffset
             } else {
-                // Exterior mode: camera outside looking at origin
-                translationMatrix = matrix4x4Translation(0.0, 0.0, exteriorCameraZ * zoomLevel)
+                // Last resort: simple exterior camera looking at origin.
+                cameraPos = SIMD3<Float>(0, 0, 3) + cameraOffset
+                lookTarget = SIMD3<Float>(0, 0, 0) + cameraOffset
             }
 
-            // Calibration flip - turns model rightside-up (common for 3DGS PLY files)
-            let calibrationMatrix = matrix4x4Rotation(radians: .pi, axis: SIMD3<Float>(0, 0, 1))
+            // Build look-at view matrix from eye/target/up.
+            let viewBase = matrixLookAt(
+                eye: cameraPos,
+                target: lookTarget,
+                up: SIMD3<Float>(0, 1, 0)
+            )
 
-            // Orbital scene rotation: calibration first, then rotation (rotates scene around camera)
-            let viewMatrix = translationMatrix * calibrationMatrix * rotationMatrix
+            // Final view: user orbit around look-target, then apply scene scale.
+            // We stay in raw PLY coordinates (no calibration flip).
+            let viewMatrix = userRotation * viewBase * scaleMatrix
 
             // Create Metal viewport
             let mtlViewport = MTLViewport(
@@ -332,6 +410,20 @@ struct GaussianSplatView: UIViewRepresentable {
             ))
         }
 
+        /// Look-at matrix (right-handed): positions camera at `eye` looking at `target` with `up` vector.
+        private func matrixLookAt(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) -> simd_float4x4 {
+            let f = normalize(target - eye)           // Forward
+            let r = normalize(cross(f, up))           // Right
+            let u = cross(r, f)                       // True up
+
+            return simd_float4x4(columns: (
+                SIMD4<Float>(r.x, u.x, -f.x, 0),
+                SIMD4<Float>(r.y, u.y, -f.y, 0),
+                SIMD4<Float>(r.z, u.z, -f.z, 0),
+                SIMD4<Float>(-dot(r, eye), -dot(u, eye), dot(f, eye), 1)
+            ))
+        }
+
         /// Create translation matrix
         private func matrix4x4Translation(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
             return simd_float4x4(columns: (
@@ -340,6 +432,113 @@ struct GaussianSplatView: UIViewRepresentable {
                 SIMD4<Float>(0, 0, 1, 0),
                 SIMD4<Float>(x, y, z, 1)
             ))
+        }
+
+        private func matrix4x4Scale(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
+            simd_float4x4(columns: (
+                SIMD4<Float>(x, 0, 0, 0),
+                SIMD4<Float>(0, y, 0, 0),
+                SIMD4<Float>(0, 0, z, 0),
+                SIMD4<Float>(0, 0, 0, 1)
+            ))
+        }
+
+        // MARK: - SharpRoomView notification parity (same names as WebGL viewer)
+
+        private func registerSharpRoomParityNotifications() {
+            let center = NotificationCenter.default
+            center.addObserver(self, selector: #selector(onRecenter), name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
+            center.addObserver(self, selector: #selector(onJoystickMove(_:)), name: NSNotification.Name("WebGLJoystickMove"), object: nil)
+            center.addObserver(self, selector: #selector(onScaleRoom(_:)), name: NSNotification.Name("WebGLScaleRoom"), object: nil)
+            center.addObserver(self, selector: #selector(onCameraMoveUp), name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+            center.addObserver(self, selector: #selector(onCameraMoveDown), name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
+            center.addObserver(self, selector: #selector(onCameraMoveLeft), name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil)
+            center.addObserver(self, selector: #selector(onCameraMoveRight), name: NSNotification.Name("WebGLCameraMoveRight"), object: nil)
+        }
+
+        @objc private func onRecenter() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraYaw = 0
+                self.cameraPitch = 0
+                self.cameraOffset = .zero
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onJoystickMove(_ notification: Notification) {
+            guard let ui = notification.userInfo, let offset = ui["offset"] as? CGSize else { return }
+            let dx = Float(offset.width) * 0.012
+            let dy = Float(-offset.height) * 0.012
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraOffset.x += dx
+                self.cameraOffset.z += dy
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onScaleRoom(_ notification: Notification) {
+            guard let userInfo = notification.userInfo else { return }
+            let scaleX: Double? = (userInfo["scaleX"] as? NSNumber)?.doubleValue ?? userInfo["scaleX"] as? Double
+            let scaleY: Double? = (userInfo["scaleY"] as? NSNumber)?.doubleValue ?? userInfo["scaleY"] as? Double
+            if let sx = scaleX, let sy = scaleY {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.sceneScale.x *= Float(sx)
+                    self.sceneScale.y *= Float(sy)
+                    self.view?.setNeedsDisplay()
+                }
+                return
+            }
+            let factor: Double?
+            if let d = userInfo["factor"] as? Double {
+                factor = d
+            } else if let n = userInfo["factor"] as? NSNumber {
+                factor = n.doubleValue
+            } else {
+                factor = nil
+            }
+            guard let f = factor else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let ff = Float(f)
+                self.sceneScale.x *= ff
+                self.sceneScale.y *= ff
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onCameraMoveUp() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraOffset.y += 0.15
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onCameraMoveDown() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraOffset.y -= 0.15
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onCameraMoveLeft() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraOffset.x -= 0.2
+                self.view?.setNeedsDisplay()
+            }
+        }
+
+        @objc private func onCameraMoveRight() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.cameraOffset.x += 0.2
+                self.view?.setNeedsDisplay()
+            }
         }
 
         // MARK: - Gesture Handlers
@@ -356,18 +555,20 @@ struct GaussianSplatView: UIViewRepresentable {
             cameraPitch = max(-maxPitch, min(maxPitch, cameraPitch))
 
             gesture.setTranslation(.zero, in: gesture.view)
+            view?.setNeedsDisplay()
         }
 
         /// Handle pinch gesture for zoom
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             // Adjust zoom level via binding (syncs with slider)
-            var newZoom = zoomLevel / Float(gesture.scale)
+            var newZoom = zoomLevel * Float(gesture.scale)
 
             // Clamp zoom range to match slider bounds
             newZoom = max(0.5, min(3.0, newZoom))
             zoomLevel = newZoom
 
             gesture.scale = 1.0
+            view?.setNeedsDisplay()
         }
     }
 }
@@ -379,6 +580,7 @@ struct GaussianSplatView: UIViewRepresentable {
         plyURL: URL(fileURLWithPath: "/tmp/test.ply"),
         isLoading: .constant(true),
         loadError: .constant(nil),
-        zoomLevel: .constant(1.0)
+        zoomLevel: .constant(1.0),
+        onBoundsAvailable: nil
     )
 }

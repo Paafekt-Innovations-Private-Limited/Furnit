@@ -39,7 +39,8 @@ struct GaussianSplatViewerView: View {
                     plyURL: url,
                     isLoading: $isLoading,
                     loadError: $loadError,
-                    zoomLevel: $zoomLevel
+                    zoomLevel: $zoomLevel,
+                    onBoundsAvailable: nil
                 )
                 .ignoresSafeArea()
                 .onTapGesture {

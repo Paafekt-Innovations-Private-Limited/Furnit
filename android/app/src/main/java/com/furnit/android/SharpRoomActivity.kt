@@ -65,6 +65,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * SharpRoomActivity - WebGL-based 3D Gaussian Splat viewer
@@ -218,6 +219,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
+    /** Monotonic generation for live brain runs so old callbacks cannot repaint after stop/restart. */
+    private val brainSessionGeneration = AtomicInteger(0)
     /**
      * False as soon as brain segmentation is torn down. Inference callbacks may still be scheduled;
      * they must bail out so they do not repopulate height / the calibration pill after stop.
@@ -1238,6 +1241,8 @@ class SharpRoomActivity : AppCompatActivity() {
         setBrainSegmentationButtonActive(false)
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
+        brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        hideBrainProgressOverlay()
         stopBrainDetection()
         setBrainCalibrationPillVisible(false)
     }
@@ -1262,6 +1267,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun startBrainDetection() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        val sessionGeneration = brainSessionGeneration.incrementAndGet()
         // Reset per-session state and any pending timeout from a previous brain run.
         brainFirstResultReceived = false
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
@@ -1288,7 +1294,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             DebugLogger.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
             furnitureFitManager = manager
-            runOnUiThread { bindBrainCamera(manager) }
+            runOnUiThread { bindBrainCamera(manager, sessionGeneration) }
 
             // If ARCore path fails to produce any segmentation result (e.g. camera not available or ARCore
             // session cannot be created), fall back to classic CameraX brain path instead of leaving the
@@ -1302,7 +1308,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     hideBrainProgressOverlay()
                     disableArBrainThisSession = true
                     furnitureFitManager?.let { mgr ->
-                        bindBrainCamera(mgr)
+                        val fallbackGeneration = brainSessionGeneration.incrementAndGet()
+                        bindBrainCamera(mgr, fallbackGeneration)
                     }
                 }
             }.also { runnable ->
@@ -1337,9 +1344,9 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    private fun bindBrainCamera(manager: FurnitureFitManager) {
+    private fun bindBrainCamera(manager: FurnitureFitManager, sessionGeneration: Int) {
         if (shouldUseArBrainCamera()) {
-            bindBrainArCoreCamera(manager)
+            bindBrainArCoreCamera(manager, sessionGeneration)
             return
         }
         // Switching from ARCore brain path to CameraX: remove GL surface or we keep AR frames while AR is off in prefs.
@@ -1381,7 +1388,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
-                            if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
+                            if (!brainSegmentationAcceptingUpdates || brainSessionGeneration.get() != sessionGeneration) return@runOnUiThread
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
                                 brainFirstResultReceived = true
@@ -1431,7 +1438,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    private fun bindBrainArCoreCamera(manager: FurnitureFitManager) {
+    private fun bindBrainArCoreCamera(manager: FurnitureFitManager, sessionGeneration: Int) {
         DebugLogger.d(TAG, "Brain: bindBrainArCoreCamera() - ARCore path")
         cameraProvider?.unbindAll()
         cameraProvider = null
@@ -1461,7 +1468,7 @@ class SharpRoomActivity : AppCompatActivity() {
             manager.segmentWithDetectionsAsync(bitmap) { result ->
                 runOnUiThread {
                     isBrainInferenceRunning.set(false)
-                    if (!brainSegmentationAcceptingUpdates) return@runOnUiThread
+                    if (!brainSegmentationAcceptingUpdates || brainSessionGeneration.get() != sessionGeneration) return@runOnUiThread
                     if (!hasFirstResult[0]) {
                         hasFirstResult[0] = true
                         brainFirstResultReceived = true
@@ -1523,6 +1530,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun stopBrainDetection() {
         DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera / AR")
+        brainSessionGeneration.incrementAndGet()
         brainSegmentationAcceptingUpdates = false
         // Must clear even if a pending segmentWithDetectionsAsync callback returns early (acceptingUpdates false),
         // or the next brain session never processes frames (CameraX analyzer gates on this flag).
@@ -1531,6 +1539,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
         disableArBrainThisSession = false
+        brainArController?.clearBboxHint()
         teardownBrainArCoreController()
         brainLockedFurnitureWidthMeters = null
         brainLockedFurnitureHeightMeters = null
@@ -2314,16 +2323,24 @@ class SharpRoomActivity : AppCompatActivity() {
             measured?.let { m ->
                 rw = m.widthMeters
                 rh = m.heightMeters
-                if (prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)) {
+                val scaleDepth = prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)
+                if (scaleDepth) {
                     val prevW = roomWidth.coerceAtLeast(0.01f)
-                    rd = roomDepth * (m.widthMeters / prevW)
+                    val widthRatio = m.widthMeters / prevW
+                    // Same idea as iOS metadata: persist estimator depth when viewer depth was never set (~0).
+                    val baseDepth =
+                        if (roomDepth > 1e-3f) roomDepth else m.depthMeters
+                    rd = baseDepth * widthRatio
+                } else {
+                    rd = m.depthMeters
                 }
                 roomWidth = rw
                 roomHeight = rh
                 roomDepth = rd
                 LogUtil.i(
                     "WALL_MEAS",
-                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd depthScaled=${prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)}",
+                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd " +
+                        "depth_m_from_measure=${m.depthMeters} depthScaled=$scaleDepth",
                 )
             }
 
@@ -2579,7 +2596,7 @@ class SharpRoomActivity : AppCompatActivity() {
             val wantAr = shouldUseArBrainCamera()
             val hasAr = brainArController != null
             if (wantAr != hasAr) {
-                bindBrainCamera(mgr)
+                bindBrainCamera(mgr, brainSessionGeneration.get())
             }
             setBrainCalibrationPillVisible(true)
             updateBrainCalibrationPill()

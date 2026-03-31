@@ -47,6 +47,7 @@ class FurnitureFitManager(private val context: Context) {
     private val monitorLikeClassIds = setOf(1063, 2675, 4105)
     private val supportingTableClassIds = setOf(1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564)
     private val classNames: Map<Int, String> by lazy(LazyThreadSafetyMode.NONE) { loadClassNames() }
+    private val ignoredClassIds: Set<Int> by lazy(LazyThreadSafetyMode.NONE) { loadIgnoredClassIds() }
 
     companion object {
         /**
@@ -748,6 +749,9 @@ class FurnitureFitManager(private val context: Context) {
                     val y = det3d[0][1][anchor]
                     val bw = det3d[0][2][anchor]
                     val bh = det3d[0][3][anchor]
+                    if (bestClass in ignoredClassIds) {
+                        continue
+                    }
                     val coeffs = FloatArray(numMaskCoeffs)
                     for (c in 0 until numMaskCoeffs) {
                         coeffs[c] = det3d[0][maskCoeffStartIdx + c][anchor]
@@ -766,6 +770,7 @@ class FurnitureFitManager(private val context: Context) {
 
             for (i in sortedDets.indices) {
                 if (suppressed[i]) continue
+                if (sortedDets[i].classId in ignoredClassIds) continue
                 keepDets.add(sortedDets[i])
                 for (j in i + 1 until sortedDets.size) {
                     if (suppressed[j]) continue
@@ -1117,6 +1122,7 @@ class FurnitureFitManager(private val context: Context) {
         val bboxKept = mutableListOf<Detection>()
         for (detection in detections) {
             if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
+            if (detection.classId != primaryDetection.classId) continue
 
             val candidateLeft = detection.x - detection.w / 2f
             val candidateTop = detection.y - detection.h / 2f
@@ -1421,6 +1427,22 @@ class FurnitureFitManager(private val context: Context) {
         } catch (e: Exception) {
             LogUtil.w("FurnitureFitManager", "loadClassNames failed: ${e.message}")
             emptyMap()
+        }
+    }
+
+    private fun loadIgnoredClassIds(): Set<Int> {
+        return try {
+            context.assets.open("blacklist.json").bufferedReader().use { reader ->
+                val json = JSONObject(reader.readText())
+                buildSet {
+                    json.keys().forEach { key ->
+                        key.toIntOrNull()?.let { add(it) }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            LogUtil.w("FurnitureFitManager", "loadIgnoredClassIds failed: ${e.message}")
+            emptySet()
         }
     }
 

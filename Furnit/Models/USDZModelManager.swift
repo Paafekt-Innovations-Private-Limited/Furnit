@@ -501,11 +501,11 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Save a PLY file to SavedRooms directory
-    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, completion: @escaping (Bool, String?) -> Void) {
+    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, roomDepth: Float? = nil, completion: @escaping (Bool, String?) -> Void) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         if debugMode {
-            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue), width: \(roomWidth ?? 0), height: \(roomHeight ?? 0))")
+            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue), width: \(roomWidth ?? 0), height: \(roomHeight ?? 0), depth: \(roomDepth ?? 0))")
         }
 
         let fileName = sanitizeFileName(name)
@@ -540,6 +540,9 @@ class USDZModelManager: ObservableObject {
             }
             if let height = roomHeight {
                 metadata["roomHeight"] = String(format: "%.2f", height)
+            }
+            if let depth = roomDepth {
+                metadata["roomDepth"] = String(format: "%.2f", depth)
             }
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)

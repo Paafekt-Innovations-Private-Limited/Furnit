@@ -350,8 +350,8 @@
 "common.or" = "அல்லது";
 "common.retry" = "மீண்டும் முயல்க";
 "settings.furnitureSegmentationSection" = "தளபாட பிரிப்பு";
-"settings.furnitureFitOnnxRuntime" = "YOLO-E க்கு ONNX ரன்டைம் பயன்படுத்து";
-"settings.furnitureFitOnnxRuntimeDescription" = "ஆஃப் (இயல்பு): Core ML, letterbox, நிலையான முகமூடி பாதை. ஆன்: அதே Core ML மாதிரி, நீட்டிப்பு முன் செயலாக்கம், Android-பாணி bbox முகமூடி இணைப்பு, blacklist.json. மாதிரி ஏற்றப்படாவிட்டால் கிடைக்கும்போது தொகுப்பு .onnx மற்றும் ONNX ரன்டைம்.";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
 "settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU அனுமதி";
 "settings.yoloeCoreMLAllowGPUDescription" = "ஆஃப் (இயல்பு): CPU மட்டும் — மெதுவானது ஆனால் சில YOLO-E 26L Core ML கட்டமைப்புகளில் செயலிழப்பைத் தவிர்க்கும். ஆன்: வேகத்திற்கு CPU+GPU; Metal இல் ஏற்றுமதி ஓடாவிட்டால் பிரிப்பில் SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";

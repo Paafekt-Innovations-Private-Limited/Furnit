@@ -20,9 +20,9 @@ struct SettingsView: View {
 
     /// Match Android `WallMeasurementEstimator.PREF_ENABLED` — YOLO + monodepth + EXIF when saving a SHARP room.
     @AppStorage("wall_measurement_yolo_on_save") private var wallMeasurementYoloOnSave = true
-    /// Distance from camera to front wall (m). Width on save scales ~linearly with this when SHARP monodepth is missing.
+    /// Assumed camera–wall distance (m) when `sharp_monodepth.bin` is absent: both width and height use (bbox_px/focal)×Z, then clamps.
     @AppStorage("wall_measurement_assumed_depth_m") private var wallAssumedDepthM: Double = 2.5
-    /// Used when the YOLO box is a short strip; should be near your tape-measured wall height (e.g. 2.86 m).
+    /// With monodepth: ceiling height prior for scale (door mode or ceiling mode). Tape-measured room height is a good value.
     @AppStorage("wall_measurement_assumed_ceiling_m") private var wallAssumedCeilingM: Double = 2.5
 
     var body: some View {

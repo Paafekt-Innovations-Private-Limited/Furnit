@@ -2,21 +2,18 @@
 
 This document describes the **ONNX-style** segmentation path on iOS: how a frame moves from the camera through model inference, detection post-processing, prototype mask fusion, and compositing. It is aimed at engineers debugging parity with Android or tuning quality/performance.
 
-## Naming: “ONNX-style” vs ONNX Runtime
+## Naming: “ONNX-style”
 
 - **ONNX-style** means: **stretch** resize to the model square (like Android’s `createScaledBitmap` / ONNX preprocessing), then **Android-aligned** mask logic (`FurnitureFitOnnxStylePipeline`: bbox-limited prototype fusion, max sigmoid, supporting-table heuristic, etc.).
-- On iOS this path usually runs **Core ML** (`MLModel`) with the same weights as the shipped ONNX export — not ONNX Runtime.
-- **ONNX Runtime** (`YOLOEOnnxRuntime`) is a **fallback** used only when ONNX-style mode is on **and** no Core ML model is loaded but a bundled `.onnx` is present.
+- On iOS this path runs **Core ML** (`MLModel`) only. There is **no** ONNX Runtime dependency on iOS.
 
 Relevant sources:
 
 | Piece | Location |
 |--------|-----------|
 | Branching + Core ML ONNX-style entry | `Furnit/Views/FurnitureFit/FurnitureFitView.swift` — `processFrameInner`, `processFrameOnnxStyleCoreML`, `processFrameOnnxStyleCommon` |
-| ONNX Runtime fallback | `Furnit/Views/FurnitureFit/FurnitureFitView.swift` — `processFrameOnnxAndroidStyle` |
 | Android-parity helpers | `Furnit/Services/OnDevice/FurnitureFitOnnxStylePipeline.swift` |
 | Detection tensor decode | `Furnit/Services/OnDevice/YoloEDetectionParser.swift` |
-| ORT wrapper | `Furnit/Services/OnDevice/YOLOEOnnxRuntime.swift` |
 | User toggle | `Furnit/Models/QualitySettings.swift` — `furnitureFitOnnxStyleEnabled()` / Settings UI |
 
 ---
@@ -35,10 +32,7 @@ Relevant sources:
 captureOutput (BGRA CVPixelBuffer, camera rotation already applied)
     → processFrame (autoreleasepool)
         → processFrameInner
-            → if furnitureFitOnnxStyleEnabled():
-                  if mlModel != nil → processFrameOnnxStyleCoreML
-                  else if YOLOEOnnxRuntime.isAvailable → processFrameOnnxAndroidStyle
-                  else fall through
+            → if furnitureFitOnnxStyleEnabled() && mlModel != nil → processFrameOnnxStyleCoreML
             → else: letterbox Core ML pipeline (separate doc-worthy path)
 ```
 
@@ -71,22 +65,7 @@ All heavy work runs on the **detection queue** (serial); UI updates are dispatch
 
 ### Stage 3 — Shared postprocess (`processFrameOnnxStyleCommon`)
 
-From here, **Core ML** and **ONNX Runtime** paths are **identical** (same `MLMultiArray` det/proto tensors).
-
----
-
-## Path B — ONNX-style + ONNX Runtime (fallback)
-
-### Stage 1 — Preprocess
-
-- Same **stretch** to **`YOLOEOnnxRuntime.modelInputSize` (640)** via `resizeStretchToSquare`.
-
-### Stage 2 — ORT inference
-
-- **Session:** Lazy-loaded; tries bundled **`yoloe-26l-seg-pf_seg_o2m.onnx`** then **`yoloe-11l-seg-pf.onnx`**.
-- **Input tensor:** `"images"`, shape **1×3×H×W** (NCHW).
-- **Outputs:** `det_output` + `proto_output`, or **`output0` / `output1`** aliases.
-- **Conversion:** ORT values → `MLMultiArray` for reuse of the same parser/mask code.
+From here, post-processing uses the same `MLMultiArray` det/proto tensors regardless of how inference was run.
 
 ---
 
@@ -236,7 +215,7 @@ Steps:
 | Pre-NMS top-K | `100` |
 | Primary min conf / area (STAGE 4) | `0.15` / `0.02` normalized |
 | Morphological close | `furnitureFitUseMorphologicalCloseMask = true` |
-| ORT input size | `640` — `YOLOEOnnxRuntime.modelInputSize` |
+| Model input side (typical) | `640` — from Core ML image constraint / `YoloEImageInference.modelInputSize` |
 | Proto channels | `32` |
 
 ---

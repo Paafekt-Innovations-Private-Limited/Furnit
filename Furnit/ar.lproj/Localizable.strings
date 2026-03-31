@@ -350,8 +350,8 @@
 "common.or" = "أو";
 "common.retry" = "إعادة المحاولة";
 "settings.furnitureSegmentationSection" = "تجزئة الأثاث";
-"settings.furnitureFitOnnxRuntime" = "استخدام ONNX Runtime لـ YOLO-E";
-"settings.furnitureFitOnnxRuntimeDescription" = "إيقاف (افتراضي): Core ML مع letterbox ومسار القناع القياسي. تشغيل: نفس نموذج Core ML مع معالجة مسبقة بالتمديد ودمج قناع مثل Android و blacklist.json. إذا لم يُحمّل النموذج، يُستخدم ملف .onnx المرفق مع ONNX Runtime عند التوفر.";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
 "settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: السماح بـ GPU";
 "settings.yoloeCoreMLAllowGPUDescription" = "إيقاف (افتراضي): المعالج فقط — أبطأ لكن يقلل الأعطال في بعض إصدارات YOLO-E 26L Core ML. تشغيل: معالج+GPU للسرعة؛ قد يحدث SIGABRT أثناء التجزئة إذا لم يعمل التصدير على Metal.";
 "settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";

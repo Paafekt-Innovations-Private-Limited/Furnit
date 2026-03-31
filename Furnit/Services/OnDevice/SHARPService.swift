@@ -53,10 +53,12 @@ class SHARPService: ObservableObject {
     private static let paramsPerGaussian: Int = 14
 
     /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
+    /// Keep long-edge small vs device RAM: FP32 SHARP + 1536² input + multi-array extraction peaks on 4–6GB phones.
     private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
         let b = ProcessInfo.processInfo.physicalMemory
-        if b < 5 * 1024 * 1024 * 1024 { return 2048 }
-        if b < 7 * 1024 * 1024 * 1024 { return 2560 }
+        if b < 4 * 1024 * 1024 * 1024 { return 1536 }
+        if b < 6 * 1024 * 1024 * 1024 { return 1920 }
+        if b < 8 * 1024 * 1024 * 1024 { return 2048 }
         return 3072
     }
 
@@ -356,9 +358,18 @@ class SHARPService: ObservableObject {
     // MARK: - Main Generation API
 
     /// Generate 3D Gaussian splat from an image
-    /// - Parameter image: The source image
+    /// - Parameters:
+    ///   - image: The source image (possibly downscaled for SHARP memory).
+    ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
+    ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
+    ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
     /// - Returns: URL of the primary PLY written by `writePLY`.
-    func generateGaussians(from image: UIImage) async throws -> URL {
+    func generateGaussians(
+        from image: UIImage,
+        sourceImageURL: URL? = nil,
+        captureMediaMetadata: [AnyHashable: Any]? = nil,
+        photoLibraryAssetLocalId: String? = nil,
+    ) async throws -> URL {
         logDebug("SHARP: Starting Gaussian generation")
 
         // Load model on-demand if not already loaded
@@ -382,26 +393,33 @@ class SHARPService: ObservableObject {
             // High-res library photos + SHARP model + Core ML outputs exceed ~4GB device RAM without downscaling first.
             let workingImage = Self.downscaledImageForSharpMemoryIfNeeded(image)
 
-            // Step 1: Preprocess image
+            // Step 1–2: Preprocess + inference in an isolated scope so the 1536² CVPixelBuffer is released
+            // before we allocate the huge `[Float]` PLY path (lowers peak RAM on back-to-back rooms).
             progress = 0.1
-            let inputBuffer = try await preprocessImage(workingImage)
-            logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
-
-            // Step 2: Run inference
             statusMessage = L10n.Sharp.creatingRoom
             progress = 0.2
-            let gaussianParams = try await runInference(inputBuffer)
+            let gaussianParams = try await preprocessAndRunInference(workingImage: workingImage)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
             // Step 3: Write PLY files (original + classic for antimatter15)
             statusMessage = L10n.Sharp.almostDone
             progress = 0.8
             let plyURLs = try await writePLY(gaussianParams)
+            logSharpMilestone(
+                "PLY files written on Swift/Core ML path (not C++): classic=\(plyURLs.classic.lastPathComponent) — WebView loads these next",
+            )
             logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
             logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
             let thumbSource = Self.imageForWallMeasurementThumbnail(workingImage, maxPixel: 1024)
             saveThumbnailForWallMeasurement(image: thumbSource, classicPlyURL: plyURLs.classic)
+            let roomFolder = plyURLs.classic.deletingLastPathComponent()
+            await CameraExifSidecar.writeMerged(
+                roomFolder: roomFolder,
+                imageURL: sourceImageURL,
+                mediaMetadata: captureMediaMetadata,
+                photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+            )
             let plyURL = plyURLs.original
 
             // Complete
@@ -416,7 +434,9 @@ class SHARPService: ObservableObject {
             // Update status on failure so UI can show error
             status = .failed(error.localizedDescription)
             statusMessage = L10n.Sharp.couldNotCreateRoom
+            logSharpMilestone("generation failed: \(error.localizedDescription)")
             logDebug("SHARP: Generation failed: \(error)")
+            releaseInferenceMemoryAfterGeneration()
             throw error
         }
     }
@@ -425,6 +445,7 @@ class SHARPService: ObservableObject {
     func cancelGeneration() {
         status = .failed(L10n.Sharp.cancelled)
         statusMessage = L10n.Sharp.cancelled
+        releaseInferenceMemoryAfterGeneration()
     }
 
     // MARK: - Image Preprocessing
@@ -486,6 +507,13 @@ class SHARPService: ObservableObject {
 
     // MARK: - Model Inference
 
+    /// Preprocess then infer in one scope so the 1536² `CVPixelBuffer` can be released before PLY allocation.
+    private func preprocessAndRunInference(workingImage: UIImage) async throws -> [Float] {
+        let inputBuffer = try await preprocessImage(workingImage)
+        logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+        return try await runInference(inputBuffer)
+    }
+
     /// Run SHARP model inference
     /// SHARP_fp16 outputs 5 separate arrays that we combine into interleaved format
     private func runInference(_ input: CVPixelBuffer) async throws -> [Float] {
@@ -539,8 +567,24 @@ class SHARPService: ObservableObject {
         let imageFeature = MLFeatureValue(pixelBuffer: input)
         let inputFeatures = try MLDictionaryFeatureProvider(dictionary: ["image": imageFeature])
 
+        logSharpMilestone(
+            "Core ML prediction starting (cpuOnly — can take several minutes; heartbeat every 15s until this step completes)",
+        )
+        let t0 = CFAbsoluteTimeGetCurrent()
+        // Core ML gives no callbacks mid-flight; detached heartbeat proves the app is alive in Console.
+        let heartbeat = Task.detached(priority: .utility) {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard !Task.isCancelled else { break }
+                let elapsed = CFAbsoluteTimeGetCurrent() - t0
+                logSharpMilestone(String(format: "Core ML prediction still running… %.0fs elapsed", elapsed))
+            }
+        }
+        defer { heartbeat.cancel() }
         // Run prediction (mlprogram requires async in iOS 16+)
         let output = try await model.prediction(from: inputFeatures)
+        let elapsed = CFAbsoluteTimeGetCurrent() - t0
+        logSharpMilestone(String(format: "Core ML prediction finished in %.1fs — extracting outputs", elapsed))
 
         logDebug("SHARP: Inference complete, extracting outputs...")
 

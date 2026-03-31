@@ -1181,58 +1181,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Bundled `.onnx` + ONNX Runtime — used only when Android-style pipeline is on and ``mlModel`` is not loaded.
-    private func processFrameOnnxAndroidStyle(
-        processBuffer: CVPixelBuffer,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
-        frameStart: Date
-    ) {
-        let onnxSide = YOLOEOnnxRuntime.shared.modelInputSize
-        let bufW = CVPixelBufferGetWidth(processBuffer)
-        let bufH = CVPixelBufferGetHeight(processBuffer)
-        let isLandscape = bufW > bufH
-
-        if debugMode {
-            logDebug("\n⏱️ ═══════════════════════════════════════════")
-            logDebug("⏱️ ONNX RUNTIME (fallback) @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
-            logDebug("⏱️ Buffer: \(bufW)x\(bufH) → stretch \(onnxSide)x\(onnxSide), isLandscape: \(isLandscape)")
-            logDebug("⏱️ ═══════════════════════════════════════════")
-        }
-
-        setProgress(0.15, text: "Preprocessing…")
-        let t1 = Date()
-        guard let stretched = resizeStretchToSquare(processBuffer, size: onnxSide) else {
-            if debugMode { logDebug("❌ ONNX RUNTIME STAGE 1 FAILED: stretch resize") }
-            resetProcessingFlag()
-            return
-        }
-        if debugMode {
-            logDebug("⏱️ ONNX RUNTIME STAGE 1 - Preprocess (stretch): \(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms")
-        }
-
-        setProgress(0.40, text: "Running ONNX…")
-        let t2 = Date()
-        guard let pair = YOLOEOnnxRuntime.shared.run(pixelBuffer: stretched) else {
-            if debugMode { logDebug("❌ ONNX RUNTIME STAGE 2 FAILED: inference") }
-            resetProcessingFlag()
-            return
-        }
-        if debugMode {
-            logDebug("⏱️ ONNX RUNTIME STAGE 2 - Inference: \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
-            logMemory("AFTER ONNX INFERENCE")
-        }
-
-        processFrameOnnxStyleCommon(
-            processBuffer: processBuffer,
-            arDepthSnapshot: arDepthSnapshot,
-            frameStart: frameStart,
-            detArray: pair.det,
-            protoArray: pair.proto,
-            modelSide: onnxSide,
-            stage2DebugLabel: "ONNX Runtime"
-        )
-    }
-
     /// Android-style pipeline (stretch, NMS, primary, mask) using the same Core ML ``mlModel`` as the default letterbox path.
     private func processFrameOnnxStyleCoreML(
         processBuffer: CVPixelBuffer,
@@ -2127,15 +2075,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         loadBlacklistOnce()
 
         let onnxStylePreferred = QualitySettings.furnitureFitOnnxStyleEnabled()
-        if onnxStylePreferred {
-            if let model = mlModel {
-                processFrameOnnxStyleCoreML(processBuffer: pixelBuffer, model: model, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
-                return
-            }
-            if YOLOEOnnxRuntime.shared.isAvailable {
-                processFrameOnnxAndroidStyle(processBuffer: pixelBuffer, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
-                return
-            }
+        if onnxStylePreferred, let model = mlModel {
+            processFrameOnnxStyleCoreML(processBuffer: pixelBuffer, model: model, arDepthSnapshot: arDepthSnapshot, frameStart: frameStart)
+            return
         }
 
         guard let model = mlModel else {

@@ -11,12 +11,17 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
- * YOLO segmentation + SHARP monodepth (persisted) + camera EXIF → front-wall width/height in meters.
+ * YOLO segmentation + SHARP monodepth (persisted) + camera EXIF → front-wall width/height in meters
+ * plus **camera-to-wall depth** ([Result.depthMeters]) for room metadata (matches iOS `WallMeasurementEstimator`).
+ *
  * Uses [YoloEImageInference] (same NCNN thresholds / model side as [FurnitureFitManager]; no furniture blacklist).
- * Wall tier-1 uses LVIS wall class 571 when present. Door calibration uses class **names** containing "door"
- * (not a fixed id — bundled `classes.json` ids differ from classic LVIS).
+ * Tier 1: LVIS wall 571. Tier 2: `\bwall\b` (excluding wall lamp / wallpaper, …). Tier 3: `\broom\b` scene labels with a
+ * **vertical crop** (trim ~10% top / ~25% bottom) so floor+ceiling scene boxes do not inflate height. Tier 4: conservative
+ * full-image crop. Calibration: door (auto/door) then ceiling / `ceiling_fallback`; depth for geometry is monodepth median
+ * at the wall rect or assumed Z from [PREF_ASSUMED_DEPTH_M].
  */
 object WallMeasurementEstimator {
 
@@ -56,6 +61,8 @@ object WallMeasurementEstimator {
     data class Result(
         val widthMeters: Float,
         val heightMeters: Float,
+        /** Camera-to-front-wall distance (m): monodepth median at wall rect, or assumed Z. */
+        val depthMeters: Float,
         val calibrationMode: String,
     )
 
@@ -97,12 +104,7 @@ object WallMeasurementEstimator {
             "yolo_detections count=${dets.size} sample=${dets.take(5).joinToString { "c${it.classId}:${classNameFor(it, classNames)}:${it.confidence}" }}",
         )
 
-        val wallBounds = wallBoundsFromDetections(dets, iw, ih, classNames)
-        if (wallBounds == null) {
-            LogUtil.w(TAG, "measure abort: no wall-like detection")
-            return null
-        }
-        val (wallRect, wallSource) = wallBounds
+        val (wallRect, wallSource) = wallBoundsFromDetections(dets, iw, ih, classNames)
         LogUtil.i(TAG, "wall_rect source=$wallSource rect=[${wallRect.left},${wallRect.top},${wallRect.right},${wallRect.bottom}] px")
 
         val exif = loadCameraExif(roomFolder)
@@ -119,118 +121,73 @@ object WallMeasurementEstimator {
         val wallPixelW = max(1f, wallRect.width().toFloat())
         val wallPixelH = max(1f, wallRect.height().toFloat())
 
-        val wallDepthSharp: Float = if (mono != null) {
-            medianMonodepthAt(mono, wallRect, iw, ih) ?: Float.NaN
-        } else {
-            Float.NaN
+        val subjectDistanceM = exif?.let { jo ->
+            val d = jo.optDouble("subjectDistanceMeters", Double.NaN)
+            if (d.isFinite() && d > 0.1 && d < 30.0) d.toFloat() else null
         }
-        LogUtil.i(TAG, "wall_depth_sharp median=$wallDepthSharp (invalid → assumed Z path)")
-
-        if (!wallDepthSharp.isFinite() || wallDepthSharp <= 0f) {
-            val z = prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f).coerceIn(0.5f, 20f)
-            val wm = (wallPixelW / focalPx) * z
-            var hm = (wallPixelH / focalPx) * z
-            val ceiling = prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f).coerceIn(2.0f, 4.5f)
-            val fracH = wallPixelH / ih.toFloat()
-            val thinStrip = fracH < 0.28f
-            val hmTooShort = hm < 1.8f
-            val heightRule: String = if (thinStrip || hmTooShort) {
-                LogUtil.i(
-                    TAG,
-                    "assumed_depth_z: bbox height unreliable (thin strip or short hm: hm=${hm}m fracH=$fracH) — using ceiling_m=$ceiling for height",
-                )
-                hm = ceiling
-                "hm=ceiling_pref_m (thin_strip fracH<0.28 OR hm<1.8m)"
-            } else {
-                hm = hm.coerceIn(1.8f, 4.5f)
-                if (hm > ceiling * 1.08f) {
-                    LogUtil.i(
-                        TAG,
-                        "assumed_depth_z: geometry hm=${hm}m (fracH=$fracH) above ceiling pref $ceiling — kept within 1.8…4.5m",
-                    )
-                }
-                "hm=geometry_from_pixels_clamped_1.8_4.5m (tall_bbox fracH>=0.28)"
+        val wallDepthMono = mono?.let { medianMonodepthAt(it, wallRect, iw, ih) }
+        val wallDepth: Float
+        val depthSource: String
+        when {
+            wallDepthMono != null && wallDepthMono.isFinite() && wallDepthMono > 0f -> {
+                wallDepth = wallDepthMono
+                depthSource = "monodepth"
             }
-            LogUtil.i(TAG, "result assumed_depth_z wm=${wm}m hm=${hm}m Z=$z wSharpN/A")
-            LogUtil.i(
-                TAG,
-                "measure_final mode=assumed_depth_z width_m=$wm height_m=$hm " +
-                    "wall_bbox_px_w=$wallPixelW wall_bbox_px_h=$wallPixelH image_px=${iw}x$ih fracH=${"%.3f".format(fracH)} " +
-                    "focal_px=$focalPx ($focalReason) Z_assumed_m=$z (pref $PREF_ASSUMED_DEPTH_M) " +
-                    "formula wm=(wall_bbox_px_w/focal_px)*Z hm per height_rule height_rule=$heightRule " +
-                "wall_detection_source=$wallSource monodepth=absent",
-            )
-            return Result(wm, hm, "assumed_depth_z")
+            subjectDistanceM != null -> {
+                wallDepth = subjectDistanceM
+                depthSource = "exif_subject_distance"
+            }
+            else -> {
+                wallDepth = prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f).coerceIn(0.5f, 20f)
+                depthSource = "assumed_z"
+            }
         }
+        LogUtil.i(TAG, "wall_depth value=$wallDepth source=$depthSource")
 
-        val wSharp = (wallPixelW / focalPx) * wallDepthSharp
-        val hSharp = (wallPixelH / focalPx) * wallDepthSharp
-        LogUtil.i(TAG, "sharp_geom wSharp=$wSharp hSharp=$hSharp (pre-scale)")
+        val rawW = (wallPixelW / focalPx) * wallDepth
+        val rawH = (wallPixelH / focalPx) * wallDepth
+        LogUtil.i(TAG, "raw_geom_m rawW=$rawW rawH=$rawH (pre-scale)")
 
         val calibrationMode = prefs.getString(PREF_CALIBRATION, CAL_AUTO) ?: CAL_AUTO
+        val (scale, modeStr) = calibrationScale(
+            rawH = rawH,
+            dets = dets,
+            classNames = classNames,
+            mono = mono,
+            wallDepth = wallDepth,
+            focalPx = focalPx,
+            iw = iw,
+            ih = ih,
+            calibrationMode = calibrationMode,
+            prefs = prefs,
+        )
 
-        var scale: Float? = null
-        var modeStr = "ceiling"
-
-        val wantDoor = calibrationMode == CAL_DOOR || calibrationMode == CAL_AUTO
-        if (wantDoor && mono != null) {
-            val doorRect = findDoorDetection(dets, iw, ih, classNames)
-            if (doorRect != null) {
-                val dDepth = medianMonodepthAt(mono, doorRect, iw, ih) ?: wallDepthSharp
-                val doorHSharp = (doorRect.height().toFloat() / focalPx) * dDepth
-                LogUtil.i(TAG, "door_calibration door_rect=[${doorRect.left},${doorRect.top},${doorRect.right},${doorRect.bottom}] dDepth=$dDepth doorHSharp=$doorHSharp")
-                if (doorHSharp > 1e-4f) {
-                    scale = STANDARD_DOOR_M / doorHSharp
-                    modeStr = "door"
-                    LogUtil.i(TAG, "door_calibration scale=$scale (std_door_m=$STANDARD_DOOR_M)")
-                }
-            } else {
-                LogUtil.i(TAG, "door_calibration skipped: no door detection")
-            }
-        }
-
-        if (scale == null && calibrationMode != CAL_DOOR) {
-            val ceiling = prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f).coerceIn(2.0f, 4.5f)
-            if (hSharp > 1e-6f) {
-                scale = ceiling / hSharp
-                modeStr = "ceiling"
-                LogUtil.i(TAG, "ceiling_calibration ceiling_m=$ceiling scale=$scale")
-            }
-        }
-
-        if (scale == null && calibrationMode == CAL_DOOR) {
-            val ceiling = prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f).coerceIn(2.0f, 4.5f)
-            if (hSharp > 1e-6f) {
-                scale = ceiling / hSharp
-                modeStr = "ceiling_fallback"
-                LogUtil.i(TAG, "ceiling_fallback door-only mode failed ceiling_m=$ceiling scale=$scale")
-            }
-        }
-
-        val s = scale
-        if (s == null || !s.isFinite() || s <= 0f) {
-            LogUtil.w(TAG, "measure abort: could not calibrate scale (scale=$scale hSharp=$hSharp)")
+        if (!scale.isFinite() || scale <= 0f) {
+            LogUtil.w(TAG, "measure abort: invalid scale=$scale")
             return null
         }
 
-        val widthM = wSharp * s
-        val heightM = hSharp * s
-        LogUtil.i(TAG, "measure ok mode=$modeStr scale=$s wm=${widthM}m hm=${heightM}m wallSource=$wallSource")
+        var widthM = rawW * scale
+        var heightM = rawH * scale
+        widthM = widthM.coerceIn(1.5f, 12f)
+        heightM = heightM.coerceIn(1.5f, 5f)
+        LogUtil.i(TAG, "measure ok mode=$modeStr scale=$scale wm=${widthM}m hm=${heightM}m wallSource=$wallSource")
         val scaleWhy = when (modeStr) {
-            "door" -> "scale=${STANDARD_DOOR_M}m_std_door/doorHSharp (door bbox + depth → metric scale)"
-            "ceiling" -> "scale=ceiling_pref_m/hSharp (room height from SHARP depth + ceiling pref)"
-            "ceiling_fallback" -> "scale=ceiling_pref_m/hSharp (door calibration unavailable in door-only mode)"
-            else -> "scale=$s"
+            "door" -> "scale=${STANDARD_DOOR_M}m_std_door/doorH_raw (door bbox + depth → metric scale)"
+            "ceiling" -> "scale=ceiling_pref_m/rawH"
+            "ceiling_fallback" -> "scale=ceiling_pref_m/rawH (door calibration unavailable in door-only mode)"
+            "none" -> "scale=1.0 (rawH near zero)"
+            else -> "scale=$scale"
         }
         LogUtil.i(
             TAG,
-            "measure_final mode=$modeStr width_m=$widthM height_m=$heightM " +
+            "measure_final mode=$modeStr width_m=$widthM height_m=$heightM depth_meters=$wallDepth ($depthSource) " +
                 "wall_bbox_px_w=$wallPixelW wall_bbox_px_h=$wallPixelH image_px=${iw}x$ih " +
-                "focal_px=$focalPx ($focalReason) wall_depth_median_m=$wallDepthSharp " +
-                "pre_scale wSharp_m=$wSharp hSharp_m=$hSharp scale=$s ($scaleWhy) " +
-                "formula width_m=wSharp*scale height_m=hSharp*scale wall_detection_source=$wallSource monodepth=used",
+                "focal_px=$focalPx ($focalReason) " +
+                "pre_scale rawW_m=$rawW rawH_m=$rawH scale=$scale ($scaleWhy) " +
+                "formula width_m=rawW*scale height_m=rawH*scale wall_source=$wallSource",
         )
-        return Result(widthM, heightM, modeStr)
+        return Result(widthM, heightM, wallDepth, modeStr)
     }
 
     private data class MonoBuffer(val w: Int, val h: Int, val c: Int, val data: FloatArray)
@@ -291,6 +248,50 @@ object WallMeasurementEstimator {
         return med
     }
 
+    /** Door (auto/door) then ceiling; matches iOS `calibrationScale`. */
+    private fun calibrationScale(
+        rawH: Float,
+        dets: List<NcnnYoloe.Detection>,
+        classNames: Map<Int, String>,
+        mono: MonoBuffer?,
+        wallDepth: Float,
+        focalPx: Float,
+        iw: Int,
+        ih: Int,
+        calibrationMode: String,
+        prefs: SharedPreferences,
+    ): Pair<Float, String> {
+        val tryDoor = calibrationMode == CAL_AUTO || calibrationMode == CAL_DOOR
+        if (tryDoor) {
+            val doorRect = findDoorDetection(dets, iw, ih, classNames)
+            if (doorRect != null) {
+                val dDepth = if (mono != null) {
+                    medianMonodepthAt(mono, doorRect, iw, ih) ?: wallDepth
+                } else {
+                    wallDepth
+                }
+                val doorH = (doorRect.height().toFloat() / focalPx) * dDepth
+                if (doorH > 0.1f) {
+                    val s = STANDARD_DOOR_M / doorH
+                    LogUtil.i(TAG, "door_cal doorH_m=$doorH scale=$s")
+                    return s to "door"
+                }
+            }
+        }
+        val ceiling = prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f).coerceIn(2.0f, 4.5f)
+        if (rawH > 1e-6f) {
+            val s = ceiling / rawH
+            if (calibrationMode == CAL_DOOR) {
+                LogUtil.i(TAG, "ceiling_fallback door calibration unavailable — scale from ceiling pref")
+                return s to "ceiling_fallback"
+            }
+            LogUtil.i(TAG, "ceiling_calibration ceiling_m=$ceiling scale=$s")
+            return s to "ceiling"
+        }
+        LogUtil.w(TAG, "calibration_scale fallback 1.0 (rawH near zero)")
+        return 1.0f to "none"
+    }
+
     /** Substrings that contain "wall" but are not building walls (furniture blacklist.json is not applied here). */
     private val wallLabelNegativeSubstrings = listOf(
         "wall lamp", "wallpaper", "wall clock", "wall socket", "wall outlet", "wall plug",
@@ -298,9 +299,9 @@ object WallMeasurementEstimator {
     )
 
     private val regexWordWall = Regex("\\bwall\\b", RegexOption.IGNORE_CASE)
-    private val regexWordRoom = Regex("\\broom\\b", RegexOption.IGNORE_CASE)
+    private val regexRoomWord = Regex("\\broom\\b", RegexOption.IGNORE_CASE)
 
-    /** Object-level labels in classes.json — block before venue regex (same list as iOS). */
+    /** Object-level labels — block spurious “room” matches (same list as iOS). */
     private val venueLabelNegativeSubstrings = listOf(
         "hospital bed", "building block", "building material", "office chair", "office desk", "office supply",
         "kitchen knife", "kitchen cabinet", "kitchen counter", "kitchen floor", "kitchen hood", "kitchen island",
@@ -309,17 +310,16 @@ object WallMeasurementEstimator {
         "brick building", "glass building", "church tower", "empire state building",
     )
 
-    /** Interior / venue tokens from LVIS-style classes.json (hotel, hospital, lobby, facade, …). */
-    private val interiorVenueRegex = Regex(
-        """(?i)\b(hotel|hospital|hallway|facade|lobby|hall|ballroom|classroom|restaurant|office|building|kitchen|bedroom|bathroom|boutique|skyscraper|apartment|penthouse|studio|warehouse|playroom|bookstore|showroom|building\s+facade|office\s+building|home\s+interior|boutique\s+hotel|hotel\s+lobby|hotel\s+room|hospital\s+room|interior\s+design|living\s+room|dining\s+room|family\s+room|guest\s+room|meeting\s+room|conference\s+hall|entrance\s+hall|elevator\s+lobby|banquet\s+hall|concert\s+hall|lecture\s+hall|kindergarden\s+classroom|office\s+window|office\s+cubicle|computer\s+room|dance\s+room|dressing\s+room|laundry\s+room|clean\s+room|auto\s+showroom|bus\s+interior|car\s+interior|home\s+office|wine\s+cellar|city\s+hall|department\s+store|coffee\s+shop|fastfood\s+restaurant|fabric\s+store|general\s+store|convenience\s+store|clothing\s+store|childs\s+room|factory\s+workshop|lecture\s+room|waiting\s+room|locker\s+room|storage\s+room|engine\s+room|greenhouse)\b""",
-    )
+    private fun isRoomSceneLabel(rawName: String): Boolean {
+        val lower = rawName.lowercase()
+        if (venueLabelNegativeSubstrings.any { lower.contains(it) }) return false
+        return regexRoomWord.containsMatchIn(lower)
+    }
 
-    private fun isWallLikeLabel(rawName: String): Boolean {
+    private fun isWallWordLabel(rawName: String): Boolean {
         val lower = rawName.lowercase()
         if (wallLabelNegativeSubstrings.any { lower.contains(it) }) return false
-        if (regexWordWall.containsMatchIn(lower) || regexWordRoom.containsMatchIn(lower)) return true
-        if (venueLabelNegativeSubstrings.any { lower.contains(it) }) return false
-        return interiorVenueRegex.containsMatchIn(lower)
+        return regexWordWall.containsMatchIn(lower)
     }
 
     private fun logWallPick(source: String, d: NcnnYoloe.Detection, iw: Int, ih: Int, classNames: Map<Int, String>) {
@@ -337,109 +337,72 @@ object WallMeasurementEstimator {
         LogUtil.i(TAG, "yolo_wall_pick_reason source=$source rule=$rule")
     }
 
-    /** Returns wall rect and source tag for debugging. */
+    /** Wall rect and source tag; tier 4 always returns a conservative full-image crop (parity with iOS). */
     private fun wallBoundsFromDetections(
         dets: List<NcnnYoloe.Detection>,
         iw: Int,
         ih: Int,
         classNames: Map<Int, String>,
-    ): Pair<Rect, String>? {
-        val imgArea = max(1, iw * ih).toFloat()
-
+    ): Pair<Rect, String> {
         LogUtil.i(
             TAG,
-                "wall_pick_priority: 1) LVIS class $LVIS_WALL (wall) — preferred 2) semantic wall/room/venue " +
-                "3) heuristic_wide_strip 4) largest_wide_bbox — first tier with ≥1 candidate wins; within tier: largest bbox area; " +
-                "yolo_anchor_class_score_floor=$YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR (not 0.25 Furniture Fit; drops raw anchor noise only)",
+            "wall_pick: 1) class_$LVIS_WALL 2) label \\bwall\\b 3) label \\broom\\b (cropped) 4) full_image_crop — largest area per tier; " +
+                "yolo_anchor_class_score_floor=$YOLO_WALL_MEASURE_CLASS_SCORE_FLOOR",
         )
 
-        // 1) LVIS wall class — largest bbox among that class.
         val byClass = dets.filter { it.classId == LVIS_WALL }
         if (byClass.isEmpty()) {
-            LogUtil.i(TAG, "wall_pick_tier_skip tier=1 LVIS_class_$LVIS_WALL reason=no_detections_try_next_tier")
+            LogUtil.i(TAG, "wall_pick_skip tier=1 class_$LVIS_WALL reason=no_detections")
         }
         if (byClass.isNotEmpty()) {
-            val best = byClass.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("class_$LVIS_WALL", best, iw, ih, classNames)
-            logWallPickReason(
-                "class_$LVIS_WALL",
-                "tier1_LVIS_wall_class_${LVIS_WALL}_largest_bbox_area (wall detection preferred)",
-            )
-            return detToRect(best, iw, ih) to "class_$LVIS_WALL"
+            val best = byClass.maxByOrNull { it.width * it.height }!!
+            logWallPick("class_571_wall", best, iw, ih, classNames)
+            logWallPickReason("class_571_wall", "tier1_LVIS_wall_largest_area")
+            return detToRect(best, iw, ih) to "class_571_wall"
         }
 
-        // 2) classes.json semantics: wall/room + venue/interior (hotel, hospital, lobby, facade, …).
-        val byLabel = dets.filter { isWallLikeLabel(classNameFor(it, classNames)) }
-        if (byLabel.isEmpty()) {
-            LogUtil.i(TAG, "wall_pick_tier_skip tier=2 semantic_wall_room_venue reason=no_label_matches_try_next_tier")
+        val byWallWord = dets.filter { isWallWordLabel(classNameFor(it, classNames)) }
+        if (byWallWord.isEmpty()) {
+            LogUtil.i(TAG, "wall_pick_skip tier=2 wall_word reason=no_label_matches")
         }
-        if (byLabel.isNotEmpty()) {
-            val best = byLabel.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("label_wall_room_venue", best, iw, ih, classNames)
-            logWallPickReason("label_wall_room_venue", "tier2_classes_json_semantic_largest_bbox_area")
-            return detToRect(best, iw, ih) to "label_wall_room_venue"
+        if (byWallWord.isNotEmpty()) {
+            val best = byWallWord.maxByOrNull { it.width * it.height }!!
+            logWallPick("label_wall", best, iw, ih, classNames)
+            logWallPickReason("label_wall", "tier2_word_wall_largest_area")
+            return detToRect(best, iw, ih) to "label_wall"
         }
 
-        val boxes = dets.map { det ->
-            YoloRatioCalibration.CalibrationBox(
-                label = classNameFor(det, classNames),
-                centerX = det.x,
-                centerY = det.y,
-                width = det.width,
-                height = det.height,
-                confidence = det.confidence,
-            )
+        val byRoom = dets.filter { isRoomSceneLabel(classNameFor(it, classNames)) }
+        if (byRoom.isEmpty()) {
+            LogUtil.i(TAG, "wall_pick_skip tier=3 room_scene reason=no_label_matches")
         }
-        val fracWall = YoloRatioCalibration.wallHeightFractionOrFullFrame(iw, ih, boxes)
-        if (fracWall >= 0.99f) {
-            LogUtil.w(
+        if (byRoom.isNotEmpty()) {
+            val best = byRoom.maxByOrNull { it.width * it.height }!!
+            logWallPick("label_room_scene_raw", best, iw, ih, classNames)
+            logWallPickReason("label_room_scene_raw", "tier3_word_room_largest_area_before_crop")
+            val raw = detToRect(best, iw, ih)
+            val rh = raw.height()
+            val cropTop = (rh * 0.10).roundToInt().coerceAtLeast(0)
+            val cropBottom = (rh * 0.25).roundToInt().coerceAtLeast(0)
+            val newH = max(1, rh - cropTop - cropBottom)
+            val adjusted = Rect(raw.left, raw.top + cropTop, raw.right, raw.top + cropTop + newH)
+            val label = classNameFor(best, classNames)
+            LogUtil.i(
                 TAG,
-                "wall_pick_abort reason=wallHeightFractionOrFullFrame=${"%.3f".format(fracWall)}>=0.99 (no distinct wall strip)",
+                "room_scene_crop label=\"$label\" raw_h=$rh → adjusted_h=${adjusted.height()} " +
+                    "(trim top 10% ceiling band + bottom 25% floor band)",
             )
-            return null
+            return adjusted to "label_room_scene"
         }
 
-        // 3) Wide-strip geometry — largest among detections that look like a wall panel.
-        val heurDets = dets.filter { d ->
-            val wf = d.width / iw.toFloat()
-            val hf = d.height / ih.toFloat()
-            val aspect = d.width / d.height.coerceAtLeast(1e-4f)
-            wf >= 0.55f && hf in 0.04f..0.55f && aspect >= 1.8f
-        }
-        if (heurDets.isEmpty()) {
-            LogUtil.i(TAG, "wall_pick_tier_skip tier=3 heuristic_wide_strip reason=no_boxes_match_wide_strip_geometry")
-        }
-        if (heurDets.isNotEmpty()) {
-            val best = heurDets.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("heuristic_wide_strip", best, iw, ih, classNames)
-            logWallPickReason(
-                "heuristic_wide_strip",
-                "tier3_wide_strip_w>=0.55_image h in (0.04,0.55)_image aspect>=1.8 largest_area",
-            )
-            return detToRect(best, iw, ih) to "heuristic_wide_strip"
-        }
-
-        // 4) Fallback: largest plausible wide bbox (not raw global max area — avoids tiny/tall boxes).
-        val wideFallback = dets.filter { d ->
-            val ar = d.width / d.height.coerceAtLeast(1e-4f)
-            val fracA = (d.width * d.height) / imgArea
-            ar >= 1.25f && fracA >= 0.02f
-        }
-        if (wideFallback.isEmpty()) {
-            LogUtil.i(TAG, "wall_pick_tier_skip tier=4 largest_wide_bbox reason=no_box_aspect>=1.25_area>=2pct_image")
-        }
-        if (wideFallback.isNotEmpty()) {
-            val best = wideFallback.maxByOrNull { it.width * it.height } ?: return null
-            logWallPick("largest_wide_bbox", best, iw, ih, classNames)
-            logWallPickReason(
-                "largest_wide_bbox",
-                "tier4_fallback_aspect>=1.25_frac_area>=0.02_largest_area",
-            )
-            return detToRect(best, iw, ih) to "largest_wide_bbox"
-        }
-
-        LogUtil.w(TAG, "measure abort: wall_pick all tiers empty")
-        return null
+        val margin = 0.05
+        val l = (iw * margin).roundToInt().coerceIn(0, iw - 1)
+        val t = (ih * 0.10).roundToInt().coerceIn(0, ih - 1)
+        val wPx = (iw * (1 - 2 * margin)).roundToInt().coerceAtLeast(1)
+        val hPx = (ih * 0.65).roundToInt().coerceAtLeast(1)
+        val fullWall = Rect(l, t, (l + wPx).coerceAtMost(iw), (t + hPx).coerceAtMost(ih))
+        LogUtil.i(TAG, "wall_pick tier=4 full_image_crop (no class_571_wall / wall / room label)")
+        return fullWall to "full_image"
     }
 
     private fun detToRect(d: NcnnYoloe.Detection, iw: Int, ih: Int): Rect {

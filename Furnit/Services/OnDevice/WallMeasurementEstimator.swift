@@ -3,36 +3,28 @@ import CoreML
 import Foundation
 import UIKit
 
-/// YOLO wall segmentation + SHARP monodepth (on disk) + camera EXIF → front wall width/height in meters.
+/// YOLO wall segmentation + SHARP monodepth (on disk) + camera EXIF → front wall width/height in meters
+/// plus **camera-to-wall depth** (`Result.depthMeters`) for room metadata.
 /// UserDefaults keys match Android `WallMeasurementEstimator` prefs.
+///
+/// **Room-scene boxes** (e.g. “hospital room”) often span floor + wall + ceiling. Tier 3 crops the bbox
+/// (trim top ~10%, bottom ~25%) before using it as a wall strip. **Tier 4** uses a conservative full-image crop when no label matches.
 enum WallMeasurementEstimator {
 
     struct Result {
         let widthMeters: Float
         let heightMeters: Float
+        /// Distance from camera to the front wall (monodepth median at wall rect, or assumed Z).
+        let depthMeters: Float
         let calibrationMode: String
     }
 
+    // MARK: - Constants
+
     private static let lvisWall = 571
     private static let standardDoorM: Float = 2.03
-
-    /// YOLOE `classes.json` is not byte-identical to LVIS IDs; e.g. **537 is "bowl"** in our bundle, not door.
-    /// Door calibration must use **label text**, not a hard-coded LVIS door id, or a bowl can drive scale and inflate width/height.
-    private static let doorLabelNegativeSubstrings: [String] = [
-        "doormat", "doorbell", "doorstop", "car door",
-    ]
-
-    private static func isDoorCalibrationLabel(_ raw: String) -> Bool {
-        let lower = raw.lowercased()
-        guard lower.contains("door") else { return false }
-        if doorLabelNegativeSubstrings.contains(where: { lower.contains($0) }) { return false }
-        return true
-    }
-
-    /// YOLO-E outputs ~33k anchor rows. Floor **0** keeps almost all anchors; tier 1 then picks the **largest-area class 571**,
-    /// which can be a **0.01-confidence** box and **beat** a better tier-2 “room” box — wrong wall height. **0.05** drops
-    /// anchor noise only (not Furniture Fit’s 0.25); semantic wall/room/heuristic tiers unchanged.
-    private static let yoloWallMeasureClassScoreFloor: Float = 0.05
+    /// YOLO-E anchor floor — low enough for wall/room classes (not Furniture Fit’s 0.25).
+    private static let classScoreFloor: Float = 0.05
 
     private static let keyEnabled = "wall_measurement_yolo_on_save"
     private static let keyCalibration = "wall_measurement_calibration"
@@ -44,7 +36,49 @@ enum WallMeasurementEstimator {
     private static let calDoor = "door"
     private static let calCeiling = "ceiling"
 
-    /// SwiftUI `@AppStorage` and other writers may store numbers as Double, Float, Int, or NSNumber.
+    // MARK: - Label matchers
+
+    private static let doorNegative = [
+        "doormat", "doorbell", "doorstop", "car door",
+    ]
+
+    private static func isDoorLabel(_ raw: String) -> Bool {
+        let l = raw.lowercased()
+        guard l.contains("door") else { return false }
+        return !doorNegative.contains(where: { l.contains($0) })
+    }
+
+    private static let wallNegative = [
+        "wall lamp", "wallpaper", "wall clock", "wall socket", "wall outlet",
+        "wall plug", "wall sconce", "wall light", "wall strip", "wall sticker", "wall decal",
+    ]
+
+    private static func isWallLabel(_ raw: String) -> Bool {
+        let l = raw.lowercased()
+        if wallNegative.contains(where: { l.contains($0) }) { return false }
+        return l.range(of: #"\bwall\b"#, options: .regularExpression) != nil
+    }
+
+    /// Scene labels: “living room”, “hospital room”, “bedroom”, etc. Bbox is usually the whole visible scene, not the wall surface alone.
+    private static let roomObjectNegative = [
+        "hospital bed", "building block", "building material",
+        "office chair", "office desk", "office supply",
+        "kitchen knife", "kitchen cabinet", "kitchen counter", "kitchen floor",
+        "kitchen hood", "kitchen island", "kitchen sink", "kitchen table",
+        "kitchen utensil", "kitchen window", "kitchenware",
+        "bathroom accessory", "bathroom door", "bathroom mirror", "bathroom sink",
+        "bathroom cabinet", "bathroom window",
+        "brick building", "glass building", "church tower", "empire state building",
+    ]
+
+    private static func isRoomSceneLabel(_ raw: String) -> Bool {
+        let l = raw.lowercased()
+        if roomObjectNegative.contains(where: { l.contains($0) }) { return false }
+        return l.range(of: #"\broom\b"#, options: .regularExpression) != nil
+    }
+
+    // MARK: - Prefs
+
     private static func floatPref(_ key: String, default def: Float) -> Float {
         guard let o = UserDefaults.standard.object(forKey: key) else { return def }
         switch o {
@@ -56,26 +90,24 @@ enum WallMeasurementEstimator {
         }
     }
 
-    /// Default **on** when the key has never been set (`bool(forKey:)` is false for missing keys).
-    private static var isWallMeasurementEnabled: Bool {
-        if UserDefaults.standard.object(forKey: keyEnabled) == nil {
-            return true
-        }
+    private static var isEnabled: Bool {
+        if UserDefaults.standard.object(forKey: keyEnabled) == nil { return true }
         return UserDefaults.standard.bool(forKey: keyEnabled)
     }
 
-    /// Runs YOLO + depth; call from a background task. Pass `thumbnail` from `thumbnail.png` in `roomFolder`.
+    // MARK: - Public entry point
+
     static func measure(roomFolder: URL, thumbnail: UIImage, model: MLModel?) async -> Result? {
-        let ceilingPref = floatPref(keyCeiling, default: 2.5)
+        let ceilingM = floatPref(keyCeiling, default: 2.5)
         let sensorMm = floatPref(keySensorMm, default: 6.4)
         let assumedZ = floatPref(keyAssumedZ, default: 2.5)
-        let calStr = UserDefaults.standard.string(forKey: keyCalibration) ?? calAuto
+        let calPref = UserDefaults.standard.string(forKey: keyCalibration) ?? calAuto
+
         logWallMeasurement(
-            "measure begin folder=\(roomFolder.path) pref_enabled=\(isWallMeasurementEnabled) calibration=\(calStr) " +
-                "ceiling_m=\(ceilingPref) assumed_z_m=\(assumedZ) sensor_mm=\(sensorMm)",
+            "measure begin folder=\(roomFolder.lastPathComponent) enabled=\(isEnabled) cal=\(calPref) ceiling_m=\(ceilingM) assumed_z_m=\(assumedZ) sensor_mm=\(sensorMm)",
         )
 
-        guard isWallMeasurementEnabled else {
+        guard isEnabled else {
             logWallMeasurement("measure skip: \(keyEnabled) is false")
             return nil
         }
@@ -85,407 +117,240 @@ enum WallMeasurementEstimator {
         }
 
         let detsRaw: [FurnitureFitDetection]
-        let letterboxMap: YoloEImageInference.LetterboxMapping
+        let mapping: YoloEImageInference.LetterboxMapping
         do {
-            // Same YOLO-E + parser as Furniture Fit; **never** pass `blacklist.json` classes here (wall/door would be removed).
-            (detsRaw, letterboxMap) = try YoloEImageInference.runDetections(
+            (detsRaw, mapping) = try YoloEImageInference.runDetections(
                 image: thumbnail,
                 model: model,
                 classBlacklist: [],
-                confidenceThreshold: yoloWallMeasureClassScoreFloor,
+                confidenceThreshold: classScoreFloor,
             )
         } catch {
             logWallMeasurement("measure abort: yolo \(error.localizedDescription)")
             return nil
         }
-        let iw = letterboxMap.sourceWidth
-        let ih = letterboxMap.sourceHeight
-        logWallMeasurement(
-            "reference_image size=\(iw)x\(ih) yolo_side=\(letterboxMap.modelSide) class_score_floor=\(yoloWallMeasureClassScoreFloor) (FurnitureFit pipeline, classBlacklist=empty)",
-        )
+
+        let iw = mapping.sourceWidth
+        let ih = mapping.sourceHeight
+        logWallMeasurement("reference_image size=\(iw)x\(ih) yolo_side=\(mapping.modelSide) class_score_floor=\(classScoreFloor)")
         guard iw > 8, ih > 8 else {
             logWallMeasurement("measure abort: image too small")
             return nil
         }
 
-        let dets = detsRaw.map { YoloEImageInference.mapDetectionToSourceImage(det: $0, mapping: letterboxMap) }
-        let sample = dets.prefix(5).map { "c\($0.classIdx):\($0.confidence)" }.joined(separator: ",")
-        logWallMeasurement("yolo_detections count=\(dets.count) sample=[\(sample)]")
+        let mapped = detsRaw.map { YoloEImageInference.mapDetectionToSourceImage(det: $0, mapping: mapping) }
+        let sample = mapped.prefix(5).map { "c\($0.classIdx):\($0.confidence)" }.joined(separator: ",")
+        logWallMeasurement("yolo_detections count=\(mapped.count) sample=[\(sample)]")
 
-        guard let (wallRect, wallSource) = wallBoundsWithSource(detections: dets, imageWidth: iw, imageHeight: ih) else {
-            logWallMeasurement("measure abort: no wall-like detection")
-            return nil
-        }
+        let names = loadClassNames()
+        let (wallRect, wallSource) = findWallRect(
+            detections: mapped,
+            names: names,
+            imageWidth: iw,
+            imageHeight: ih,
+        )
         logWallMeasurement(
             "wall_rect source=\(wallSource) rect=[\(Int(wallRect.minX)),\(Int(wallRect.minY)),\(Int(wallRect.maxX)),\(Int(wallRect.maxY))] px",
         )
 
         let exif = loadExifJson(roomFolder: roomFolder)
-        let (focalPx, focalReason) = focalLengthPixelsWithReason(imageWidth: iw, exif: exif)
-        logWallMeasurement("focal_px=\(focalPx) focal_reason=\(focalReason) exif_json=\(exif != nil)")
-
-        let monoURL = roomFolder.appendingPathComponent("sharp_monodepth.bin")
-        let mono = MonodepthBuffer.load(url: monoURL)
-        if let mono {
-            logWallMeasurement("monodepth_file=true path=\(monoURL.path) buffer=\(mono.w)x\(mono.h)x\(mono.c)")
-        } else {
-            logWallMeasurement("monodepth_file=\(FileManager.default.fileExists(atPath: monoURL.path)) path=\(monoURL.path) buffer=nil")
-        }
-
-        let wallPixelW = max(1, Float(wallRect.width))
-        let wallPixelH = max(1, Float(wallRect.height))
-
-        let wallDepthSharp: Float
-        if let mono {
-            wallDepthSharp = mono.medianAt(rect: wallRect, imageWidth: iw, imageHeight: ih) ?? .nan
-        } else {
-            wallDepthSharp = .nan
-        }
-        logWallMeasurement("wall_depth_sharp median=\(wallDepthSharp) (invalid → assumed Z path)")
-
-        if !focalPx.isFinite || focalPx <= 1e-3 {
+        let (focalPx, focalHow) = focalLengthPx(imageWidth: iw, exif: exif, sensorMm: sensorMm)
+        logWallMeasurement("focal_px=\(focalPx) focal_reason=\(focalHow) exif_json=\(exif != nil)")
+        guard focalPx.isFinite, focalPx > 1e-3 else {
             logWallMeasurement("measure abort: invalid focal_px")
             return nil
         }
 
-        if !wallDepthSharp.isFinite || wallDepthSharp <= 0 {
-            let z = assumedZ
-            let zc = max(0.5, min(20, z))
-            let wm = (wallPixelW / focalPx) * zc
-            var hm = (wallPixelH / focalPx) * zc
-            // Without monodepth: short bbox height (thin strip) makes hm meaningless — use ceiling pref.
-            // Tall bboxes (high fracH) can yield hm slightly above ceiling pref; that is still plausible — do not force ceiling.
-            let ceiling = max(2.0, min(4.5, ceilingPref))
-            let fracH = Float(wallRect.height) / Float(ih)
-            let thinStrip = fracH < 0.28
-            let hmTooShort = hm < 1.8
-            var heightRule: String
-            if thinStrip || hmTooShort {
-                logWallMeasurement(
-                    "assumed_depth_z: bbox height unreliable (thin strip or short hm: hm=\(hm)m fracH=\(String(format: "%.3f", fracH))) — using ceiling \(ceiling)m for height",
-                )
-                hm = ceiling
-                heightRule = "hm=ceiling_pref_m (thin_strip fracH<0.28 OR hm<1.8m before clamp)"
-            } else {
-                hm = min(max(hm, 1.8), 4.5)
-                if hm > ceiling * 1.08 {
-                    logWallMeasurement(
-                        "assumed_depth_z: geometry hm=\(hm)m (fracH=\(String(format: "%.3f", fracH))) above ceiling pref \(ceiling)m — kept within 1.8…4.5m",
-                    )
-                }
-                heightRule = "hm=geometry_from_pixels_clamped_1.8_4.5m (tall_bbox fracH≥0.28)"
-            }
-            logWallMeasurement("result assumed_depth_z wm=\(wm)m hm=\(hm)m Z=\(zc) wallSource=\(wallSource)")
-            logWallMeasurement(
-                "measure_final mode=assumed_depth_z width_m=\(wm) height_m=\(hm) " +
-                    "wall_bbox_px_w=\(Int(wallPixelW)) wall_bbox_px_h=\(Int(wallPixelH)) image_px=\(iw)x\(ih) fracH=\(String(format: "%.3f", fracH)) " +
-                    "focal_px=\(focalPx) (\(focalReason)) Z_assumed_m=\(zc) (UserDefaults \(keyAssumedZ)) " +
-                    "formula wm=(wall_bbox_px_w/focal_px)*Z hm derived per heightRule " +
-                    "height_rule=\(heightRule) wall_detection_source=\(wallSource) monodepth=absent",
-            )
-            return Result(widthMeters: wm, heightMeters: hm, calibrationMode: "assumed_depth_z")
+        let monoURL = roomFolder.appendingPathComponent("sharp_monodepth.bin")
+        let mono = MonodepthBuffer.load(url: monoURL)
+        if mono != nil {
+            logWallMeasurement("monodepth_file=true path=\(monoURL.path)")
+        } else {
+            logWallMeasurement("monodepth_file=false path=\(monoURL.path)")
         }
 
-        let wSharp = (wallPixelW / focalPx) * wallDepthSharp
-        let hSharp = (wallPixelH / focalPx) * wallDepthSharp
-        logWallMeasurement("sharp_geom wSharp=\(wSharp) hSharp=\(hSharp) (pre-scale)")
-
-        let calMode = UserDefaults.standard.string(forKey: keyCalibration) ?? calAuto
-
-        var scale: Float?
-        var modeStr = "ceiling"
-
-        let wantDoor = calMode == calDoor || calMode == calAuto
-        if wantDoor, let mono {
-            if let doorRect = doorBounds(detections: dets, imageWidth: iw, imageHeight: ih) {
-                let dDepth = mono.medianAt(rect: doorRect, imageWidth: iw, imageHeight: ih) ?? wallDepthSharp
-                let doorHSharp = (Float(doorRect.height) / focalPx) * dDepth
-                logWallMeasurement(
-                    "door_calibration door_rect=[\(Int(doorRect.minX)),\(Int(doorRect.minY)),\(Int(doorRect.maxX)),\(Int(doorRect.maxY))] dDepth=\(dDepth) doorHSharp=\(doorHSharp)",
-                )
-                if doorHSharp > 1e-4 {
-                    scale = standardDoorM / doorHSharp
-                    modeStr = "door"
-                }
-            }
+        let wallDepth: Float
+        let depthSource: String
+        if let mono, let md = mono.medianAt(rect: wallRect, imageWidth: iw, imageHeight: ih), md > 0 {
+            wallDepth = md
+            depthSource = "monodepth"
+        } else if let sd = exif.flatMap({ numericExifValue($0["subjectDistanceMeters"]) }), sd > 0.1, sd < 30 {
+            wallDepth = Float(sd)
+            depthSource = "exif_subject_distance"
+        } else {
+            wallDepth = max(0.5, min(20, assumedZ))
+            depthSource = "assumed_z"
         }
+        logWallMeasurement("wall_depth value=\(wallDepth) source=\(depthSource)")
 
-        if scale == nil, calMode != calDoor {
-            let ceiling = floatPref(keyCeiling, default: 2.5)
-            let c = max(2.0, min(4.5, ceiling))
-            if hSharp > 1e-6 {
-                scale = c / hSharp
-                modeStr = "ceiling"
-            }
-        }
+        let wallPxW = Float(max(1, wallRect.width))
+        let wallPxH = Float(max(1, wallRect.height))
+        let rawW = (wallPxW / focalPx) * wallDepth
+        let rawH = (wallPxH / focalPx) * wallDepth
 
-        if scale == nil, calMode == calDoor {
-            let ceiling = floatPref(keyCeiling, default: 2.5)
-            let c = max(2.0, min(4.5, ceiling))
-            if hSharp > 1e-6 {
-                scale = c / hSharp
-                modeStr = "ceiling_fallback"
-            }
-        }
-
-        guard let s = scale, s.isFinite, s > 0 else {
-            logWallMeasurement("measure abort: scale nil or invalid (mode would be \(calMode))")
-            return nil
-        }
-
-        let widthM = wSharp * s
-        let heightM = hSharp * s
-        logWallMeasurement("measure ok mode=\(modeStr) scale=\(s) W×H=\(widthM)×\(heightM)m wallSource=\(wallSource)")
-        let scaleWhy: String
-        switch modeStr {
-        case "door":
-            scaleWhy = "scale=\(standardDoorM)m_std_door/doorHSharp (door bbox + depth → metric scale)"
-        case "ceiling":
-            scaleWhy = "scale=ceiling_pref_m/hSharp (room height from SHARP depth + ceiling pref)"
-        case "ceiling_fallback":
-            scaleWhy = "scale=ceiling_pref_m/hSharp (door calibration unavailable in door-only mode)"
-        default:
-            scaleWhy = "scale=\(s)"
-        }
-        logWallMeasurement(
-            "measure_final mode=\(modeStr) width_m=\(widthM) height_m=\(heightM) " +
-                "wall_bbox_px_w=\(Int(wallPixelW)) wall_bbox_px_h=\(Int(wallPixelH)) image_px=\(iw)x\(ih) " +
-                "focal_px=\(focalPx) (\(focalReason)) wall_depth_median_m=\(wallDepthSharp) " +
-                "pre_scale wSharp_m=\(wSharp) hSharp_m=\(hSharp) scale=\(s) (\(scaleWhy)) " +
-                "formula width_m=wSharp*scale height_m=hSharp*scale wall_detection_source=\(wallSource) monodepth=used",
+        let (scale, calMode) = calibrationScale(
+            rawH: rawH,
+            detections: mapped,
+            names: names,
+            mono: mono,
+            wallDepth: wallDepth,
+            focalPx: focalPx,
+            imageWidth: iw,
+            imageHeight: ih,
+            calPref: calPref,
+            ceilingM: ceilingM,
         )
-        return Result(widthMeters: widthM, heightMeters: heightM, calibrationMode: modeStr)
+
+        var wm = rawW * scale
+        var hm = rawH * scale
+        wm = wm.clamped(to: 1.5...12)
+        hm = hm.clamped(to: 1.5...5)
+
+        logWallMeasurement(
+            "measure_final mode=\(calMode) width_m=\(String(format: "%.3f", wm)) height_m=\(String(format: "%.3f", hm)) " +
+                "scale=\(String(format: "%.4f", scale)) focal_px=\(String(format: "%.1f", focalPx))(\(focalHow)) " +
+                "depth=\(String(format: "%.3f", wallDepth))(\(depthSource)) wall_source=\(wallSource) " +
+                "raw_geom_m w=\(String(format: "%.3f", rawW)) h=\(String(format: "%.3f", rawH))",
+        )
+        return Result(widthMeters: wm, heightMeters: hm, depthMeters: wallDepth, calibrationMode: calMode)
     }
 
-    private struct MonodepthBuffer {
-        let w: Int
-        let h: Int
-        let c: Int
-        let data: [Float]
+    // MARK: - Wall rect (tiered)
 
-        static func load(url: URL) -> MonodepthBuffer? {
-            guard let data = try? Data(contentsOf: url), data.count >= 12 else { return nil }
-            let w = readLE32(data, 0)
-            let h = readLE32(data, 4)
-            let c = readLE32(data, 8)
-            if w <= 0 || h <= 0 || c <= 0 { return nil }
-            let expected = w * h * c
-            let need = 12 + expected * 4
-            guard data.count >= need else { return nil }
-            var floats = [Float](repeating: 0, count: expected)
-            floats.withUnsafeMutableBytes { dst in
-                data.withUnsafeBytes { raw in
-                    let src = raw.baseAddress!.advanced(by: 12)
-                    memcpy(dst.baseAddress, src, expected * 4)
-                }
-            }
-            return MonodepthBuffer(w: w, h: h, c: c, data: floats)
-        }
-
-        private static func readLE32(_ data: Data, _ offset: Int) -> Int {
-            data.subdata(in: offset..<(offset + 4)).withUnsafeBytes {
-                Int(Int32(littleEndian: $0.load(as: Int32.self)))
-            }
-        }
-
-        func medianAt(rect: CGRect, imageWidth: Int, imageHeight: Int) -> Float? {
-            let cx = Float((rect.minX + rect.maxX) * 0.5).clamped(to: 0...Float(imageWidth - 1))
-            let cy = Float((rect.minY + rect.maxY) * 0.5).clamped(to: 0...Float(imageHeight - 1))
-            let mx = Int(cx / Float(imageWidth) * Float(w)).clamped(to: 0...w - 1)
-            let my = Int(cy / Float(imageHeight) * Float(h)).clamped(to: 0...h - 1)
-            var samples: [Float] = []
-            samples.reserveCapacity(64)
-            for dy in -3...3 {
-                for dx in -3...3 {
-                    let x = (mx + dx).clamped(to: 0...w - 1)
-                    let y = (my + dy).clamped(to: 0...h - 1)
-                    let idx = (y * w + x) * c
-                    if idx < data.count {
-                        let v = data[idx]
-                        if v.isFinite && v > 0 { samples.append(v) }
-                    }
-                }
-            }
-            guard !samples.isEmpty else { return nil }
-            samples.sort()
-            return samples[samples.count / 2]
-        }
-    }
-
-    private static func loadExifJson(roomFolder: URL) -> [String: Double]? {
-        let u = roomFolder.appendingPathComponent("camera_exif.json")
-        guard let data = try? Data(contentsOf: u),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        var out: [String: Double] = [:]
-        if let v = obj["focalLengthMm"] as? Double { out["focalLengthMm"] = v }
-        if let v = obj["focalLength35mmEquivMm"] as? Double { out["focalLength35mmEquivMm"] = v }
-        return out.isEmpty ? nil : out
-    }
-
-    /// Substrings that contain "wall" but are not building walls (do **not** use furniture blacklist.json here).
-    private static let wallLabelNegativeSubstrings: [String] = [
-        "wall lamp", "wallpaper", "wall clock", "wall socket", "wall outlet", "wall plug",
-        "wall sconce", "wall light", "wall strip", "wall sticker", "wall decal",
-    ]
-
-    /// Labels that look like venue/interior in `classes.json` but are **objects** (not a scene wall).
-    private static let venueLabelNegativeSubstrings: [String] = [
-        "hospital bed", "building block", "building material", "office chair", "office desk", "office supply",
-        "kitchen knife", "kitchen cabinet", "kitchen counter", "kitchen floor", "kitchen hood", "kitchen island",
-        "kitchen sink", "kitchen table", "kitchen utensil", "kitchen window", "kitchenware",
-        "bathroom accessory", "bathroom door", "bathroom mirror", "bathroom sink", "bathroom cabinet", "bathroom window",
-        "brick building", "glass building", "church tower", "empire state building",
-    ]
-
-    /// Interior / venue / building semantics from LVIS-style `classes.json` (e.g. hotel, hospital, lobby, facade).
-    private static let interiorVenueLabelPattern =
-        #"(?i)\b(hotel|hospital|hallway|facade|lobby|hall|ballroom|classroom|restaurant|office|building|kitchen|bedroom|bathroom|boutique|skyscraper|apartment|penthouse|studio|warehouse|playroom|bookstore|showroom|building\s+facade|office\s+building|home\s+interior|boutique\s+hotel|hotel\s+lobby|hotel\s+room|hospital\s+room|interior\s+design|living\s+room|dining\s+room|family\s+room|guest\s+room|meeting\s+room|conference\s+hall|entrance\s+hall|elevator\s+lobby|banquet\s+hall|concert\s+hall|lecture\s+hall|kindergarden\s+classroom|office\s+window|office\s+cubicle|computer\s+room|dance\s+room|dressing\s+room|laundry\s+room|clean\s+room|auto\s+showroom|bus\s+interior|car\s+interior|home\s+office|wine\s+cellar|city\s+hall|department\s+store|coffee\s+shop|fastfood\s+restaurant|fabric\s+store|general\s+store|convenience\s+store|clothing\s+store|childs\s+room|factory\s+workshop|lecture\s+room|waiting\s+room|locker\s+room|storage\s+room|engine\s+room|greenhouse)\b"#
-
-    /// True if class name suggests a real wall/room or scene-scale venue from `classes.json`, excluding object-level false positives.
-    private static func isWallLikeLabel(_ rawName: String) -> Bool {
-        let lower = rawName.lowercased()
-        if wallLabelNegativeSubstrings.contains(where: { lower.contains($0) }) {
-            return false
-        }
-        // Whole-word "wall" or "room" (e.g. "living room"), not "wallpaper" / "bedroom" alone unless it has \broom\b
-        if let _ = lower.range(of: #"\bwall\b"#, options: .regularExpression) {
-            return true
-        }
-        if let _ = lower.range(of: #"\broom\b"#, options: .regularExpression) {
-            return true
-        }
-        if venueLabelNegativeSubstrings.contains(where: { lower.contains($0) }) {
-            return false
-        }
-        if let _ = lower.range(of: interiorVenueLabelPattern, options: .regularExpression) {
-            return true
-        }
-        return false
-    }
-
-    private static func focalLengthPixelsWithReason(imageWidth: Int, exif: [String: Double]?) -> (Float, String) {
-        let sensorMm = floatPref(keySensorMm, default: 6.4)
-        let s = max(3, min(12, sensorMm))
-        if let f = exif?["focalLengthMm"], f > 0.1 {
-            let px = Float((f / Double(s)) * Double(imageWidth))
-            return (px, "exif focalLengthMm/\(String(format: "%.2f", s))mm sensor * imageWidth")
-        }
-        if let f35 = exif?["focalLength35mmEquivMm"], f35 > 1 {
-            let px = Float((f35 / 36.0) * Double(imageWidth))
-            return (px, "exif focalLength35mmEquivMm/36 * imageWidth")
-        }
-        let px = Float((4.5 / Double(s)) * Double(imageWidth))
-        return (px, "fallback 4.5mm/\(String(format: "%.2f", s))mm sensor, no exif (\(keySensorMm) pref)")
-    }
-
-    private static func focalLengthPixels(imageWidth: Int, exif: [String: Double]?) -> Float {
-        focalLengthPixelsWithReason(imageWidth: imageWidth, exif: exif).0
-    }
-
-    private static func wallBoundsWithSource(detections: [FurnitureFitDetection], imageWidth: Int, imageHeight: Int) -> (CGRect, String)? {
+    /// Wall rect + source tag. **Tier 4** always provides a conservative full-image crop so measure does not abort here.
+    private static func findWallRect(
+        detections: [FurnitureFitDetection],
+        names: [Int: String],
+        imageWidth: Int,
+        imageHeight: Int,
+    ) -> (CGRect, String) {
         let iw = CGFloat(imageWidth)
         let ih = CGFloat(imageHeight)
-        let names = loadClassNames()
         let imgArea = Float(imageWidth * imageHeight)
-
-        logWallMeasurement(
-            "wall_pick_priority: 1) LVIS class \(lvisWall) (wall) — **preferred** 2) semantic wall/room/venue labels " +
-                "3) heuristic_wide_strip 4) largest_wide_bbox — first tier with ≥1 candidate wins; within tier: largest bbox area; " +
-                "yolo_anchor_class_score_floor=\(yoloWallMeasureClassScoreFloor) (not 0.25 Furniture Fit; drops raw anchor noise only)",
-        )
 
         func logPick(_ source: String, _ d: FurnitureFitDetection) {
             let lbl = names[d.classIdx] ?? "?"
             let areaPx = d.w * d.h
             let frac = areaPx / max(imgArea, 1)
             logWallMeasurement(
-                "yolo_wall_pick source=\(source) id=\(d.classIdx) label=\"\(lbl)\" area_px=\(Int(areaPx)) frac_image=\(String(format: "%.3f", frac)) conf=\(d.confidence) (furniture blacklist.json NOT used)",
+                "yolo_wall_pick source=\(source) id=\(d.classIdx) label=\"\(lbl)\" area_px=\(Int(areaPx)) frac_image=\(String(format: "%.3f", frac)) conf=\(d.confidence)",
             )
         }
 
-        func logPickReason(_ source: String, _ rule: String) {
-            logWallMeasurement("yolo_wall_pick_reason source=\(source) rule=\(rule)")
+        // Tier 1: LVIS wall class
+        if let best = detections.filter({ $0.classIdx == lvisWall }).max(by: { $0.w * $0.h < $1.w * $1.h }) {
+            logPick("class_571_wall", best)
+            return (detToRect(best, iw: iw, ih: ih), "class_571_wall")
         }
+        logWallMeasurement("wall_pick_skip tier=1 class_571 reason=no_detections")
 
-        // 1) LVIS wall class — largest bbox among that class.
-        let byWallClass = detections.filter { $0.classIdx == lvisWall }
-        if byWallClass.isEmpty {
-            logWallMeasurement("wall_pick_tier_skip tier=1 LVIS_class_\(lvisWall) reason=no_detections_try_next_tier")
+        // Tier 2: `\bwall\b` label (not wall lamp / wallpaper, …)
+        if let best = detections.filter({ isWallLabel(names[$0.classIdx] ?? "") }).max(by: { $0.w * $0.h < $1.w * $1.h }) {
+            logPick("label_wall", best)
+            return (detToRect(best, iw: iw, ih: ih), "label_wall")
         }
-        if let best = byWallClass.max(by: { $0.w * $0.h < $1.w * $1.h }) {
-            logPick("class_571", best)
-            logPickReason("class_571", "tier1_LVIS_wall_class_\(lvisWall)_largest_bbox_area (wall detection preferred)")
-            return (detToRect(best, iw: iw, ih: ih), "class_571")
-        }
+        logWallMeasurement("wall_pick_skip tier=2 wall_word reason=no_label_matches")
 
-        // 2) Semantic labels from classes.json: wall/room + venue/interior (hotel, hospital, lobby, facade, …).
-        let byLabel = detections.filter { isWallLikeLabel(names[$0.classIdx] ?? "") }
-        if byLabel.isEmpty {
-            logWallMeasurement("wall_pick_tier_skip tier=2 semantic_wall_room_venue reason=no_label_matches_try_next_tier")
-        }
-        if let best = byLabel.max(by: { $0.w * $0.h < $1.w * $1.h }) {
-            logPick("label_wall_room_venue", best)
-            logPickReason("label_wall_room_venue", "tier2_classes_json_semantic_largest_bbox_area")
-            return (detToRect(best, iw: iw, ih: ih), "label_wall_room_venue")
-        }
-
-        let boxes: [YoloCalibrationBox] = detections.map {
-            YoloCalibrationBox(
-                label: names[$0.classIdx] ?? "obj",
-                centerX: CGFloat($0.x),
-                centerY: CGFloat($0.y),
-                width: CGFloat($0.w),
-                height: CGFloat($0.h),
-                confidence: $0.confidence
+        // Tier 3: room scene — crop top 10% + bottom 25% to approximate wall band (not floor + ceiling).
+        if let best = detections.filter({ isRoomSceneLabel(names[$0.classIdx] ?? "") }).max(by: { $0.w * $0.h < $1.w * $1.h }) {
+            logPick("label_room_scene_raw", best)
+            let raw = detToRect(best, iw: iw, ih: ih)
+            let cropTop = raw.height * 0.10
+            let cropBottom = raw.height * 0.25
+            let newH = max(CGFloat(1), raw.height - cropTop - cropBottom)
+            let adjusted = CGRect(x: raw.minX, y: raw.minY + cropTop, width: raw.width, height: newH)
+            let label = names[best.classIdx] ?? "?"
+            logWallMeasurement(
+                "room_scene_crop label=\"\(label)\" raw_h=\(Int(raw.height)) → adjusted_h=\(Int(adjusted.height)) " +
+                    "(trim top 10% ceiling band + bottom 25% floor band)",
             )
+            return (adjusted, "label_room_scene")
         }
-        let frac = YoloRatioCalibration.wallHeightFractionOrFullFrame(imageSize: CGSize(width: iw, height: ih), boxes: boxes)
-        if frac >= 0.99 {
-            logWallMeasurement("wall_pick_abort reason=wallHeightFractionOrFullFrame=\(String(format: "%.3f", frac))>=0.99 (no distinct wall strip)")
-            return nil
-        }
+        logWallMeasurement("wall_pick_skip tier=3 room_scene reason=no_label_matches")
 
-        // 3) Wide-strip geometry heuristic — largest among boxes that look like a wall panel.
-        let heurDets = detections.filter { d in
-            let wf = CGFloat(d.w) / iw
-            let hf = CGFloat(d.h) / ih
-            let aspect = CGFloat(d.w) / max(CGFloat(d.h), 1)
-            return wf >= 0.55 && hf > 0.04 && hf < 0.55 && aspect >= 1.8
-        }
-        if heurDets.isEmpty {
-            logWallMeasurement("wall_pick_tier_skip tier=3 heuristic_wide_strip reason=no_boxes_match_wide_strip_geometry")
-        }
-        if let best = heurDets.max(by: { $0.w * $0.h < $1.w * $1.h }) {
-            logPick("heuristic_wide_strip", best)
-            logPickReason("heuristic_wide_strip", "tier3_wide_strip_w≥0.55_image h∈(0.04,0.55)_image aspect≥1.8_largest_area")
-            return (detToRect(best, iw: iw, ih: ih), "heuristic_wide_strip")
-        }
-
-        // 4) Fallback: largest wide bbox (avoid tall narrow / tiny boxes). No confidence gate — geometry only.
-        let wideFallback = detections.filter { d in
-            let ar = d.w / max(d.h, 1e-4)
-            let fracA = (d.w * d.h) / max(imgArea, 1)
-            return ar >= 1.25 && fracA >= 0.02
-        }
-        if wideFallback.isEmpty {
-            logWallMeasurement("wall_pick_tier_skip tier=4 largest_wide_bbox reason=no_box_aspect≥1.25_area≥2pct_image")
-        }
-        if let best = wideFallback.max(by: { $0.w * $0.h < $1.w * $1.h }) {
-            logPick("largest_wide_bbox", best)
-            logPickReason("largest_wide_bbox", "tier4_fallback_aspect≥1.25_frac_area≥0.02_largest_area")
-            return (detToRect(best, iw: iw, ih: ih), "largest_wide_bbox")
-        }
-
-        logWallMeasurement("measure abort: wall_pick all tiers empty")
-        return nil
+        // Tier 4: conservative full-frame crop (no YOLO wall/room)
+        let margin: CGFloat = 0.05
+        let fullWall = CGRect(
+            x: iw * margin,
+            y: ih * 0.10,
+            width: iw * (1 - 2 * margin),
+            height: ih * 0.65,
+        )
+        logWallMeasurement("wall_pick tier=4 full_image_crop (no class_571 / wall / room label)")
+        return (fullWall, "full_image")
     }
 
-    private static func doorBounds(detections: [FurnitureFitDetection], imageWidth: Int, imageHeight: Int) -> CGRect? {
-        let names = loadClassNames()
-        let doors = detections.filter { isDoorCalibrationLabel(names[$0.classIdx] ?? "") }
+    // MARK: - Calibration scale
+
+    private static func calibrationScale(
+        rawH: Float,
+        detections: [FurnitureFitDetection],
+        names: [Int: String],
+        mono: MonodepthBuffer?,
+        wallDepth: Float,
+        focalPx: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        calPref: String,
+        ceilingM: Float,
+    ) -> (Float, String) {
+        let tryDoor = calPref == calAuto || calPref == calDoor
+        if tryDoor, let doorRect = doorBounds(detections: detections, names: names, imageWidth: imageWidth, imageHeight: imageHeight) {
+            let dDepth: Float
+            if let mono, let md = mono.medianAt(rect: doorRect, imageWidth: imageWidth, imageHeight: imageHeight), md > 0 {
+                dDepth = md
+            } else {
+                dDepth = wallDepth
+            }
+            let doorH = (Float(doorRect.height) / focalPx) * dDepth
+            if doorH > 0.1 {
+                let s = standardDoorM / doorH
+                logWallMeasurement("door_cal doorH_m=\(String(format: "%.3f", doorH)) scale=\(String(format: "%.4f", s))")
+                return (s, "door")
+            }
+        }
+
+        let c = ceilingM.clamped(to: 2.0...4.5)
+        if rawH > 1e-6 {
+            let s = c / rawH
+            if calPref == calDoor {
+                logWallMeasurement("ceiling_fallback door calibration unavailable — scale from ceiling pref")
+                return (s, "ceiling_fallback")
+            }
+            return (s, "ceiling")
+        }
+
+        logWallMeasurement("calibration_scale fallback 1.0 (rawH near zero)")
+        return (1.0, "none")
+    }
+
+    // MARK: - Door detection
+
+    private static func doorBounds(
+        detections: [FurnitureFitDetection],
+        names: [Int: String],
+        imageWidth: Int,
+        imageHeight: Int,
+    ) -> CGRect? {
+        let doors = detections.filter { isDoorLabel(names[$0.classIdx] ?? "") }
         guard let best = doors.max(by: { ($0.confidence * $0.w * $0.h) < ($1.confidence * $1.w * $1.h) }) else { return nil }
         return detToRect(best, iw: CGFloat(imageWidth), ih: CGFloat(imageHeight))
     }
+
+    // MARK: - Focal length
+
+    private static func focalLengthPx(imageWidth: Int, exif: [String: Double]?, sensorMm: Float) -> (Float, String) {
+        let s = sensorMm.clamped(to: Float(3)...Float(12))
+        if let f = exif?["focalLengthMm"], f > 0.1 {
+            return (Float(f / Double(s)) * Float(imageWidth), "exif focalLengthMm/\(String(format: "%.2f", s))mm")
+        }
+        if let f35 = exif?["focalLength35mmEquivMm"], f35 > 1 {
+            return (Float(f35 / 36.0) * Float(imageWidth), "exif focalLength35mmEquivMm/36")
+        }
+        return (Float(4.5 / Double(s)) * Float(imageWidth), "fallback 4.5mm/\(String(format: "%.2f", s))mm sensor")
+    }
+
+    // MARK: - Helpers
 
     private static func detToRect(_ d: FurnitureFitDetection, iw: CGFloat, ih: CGFloat) -> CGRect {
         let l = CGFloat(d.x - d.w * 0.5).clamped(to: 0...iw - 1)
@@ -495,9 +360,28 @@ enum WallMeasurementEstimator {
         return CGRect(x: l, y: t, width: max(1, r - l), height: max(1, b - t))
     }
 
+    private static func loadExifJson(roomFolder: URL) -> [String: Double]? {
+        let u = roomFolder.appendingPathComponent("camera_exif.json")
+        guard let data = try? Data(contentsOf: u),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        var out: [String: Double] = [:]
+        if let v = numericExifValue(obj["focalLengthMm"]) { out["focalLengthMm"] = v }
+        if let v = numericExifValue(obj["focalLength35mmEquivMm"]) { out["focalLength35mmEquivMm"] = v }
+        if let v = numericExifValue(obj["subjectDistanceMeters"]) { out["subjectDistanceMeters"] = v }
+        return out.isEmpty ? nil : out
+    }
+
+    private static func numericExifValue(_ any: Any?) -> Double? {
+        guard let any else { return nil }
+        if let d = any as? Double { return d }
+        if let n = any as? NSNumber { return n.doubleValue }
+        if let i = any as? Int { return Double(i) }
+        return nil
+    }
+
     private static var cachedClassNames: [Int: String]?
     private static func loadClassNames() -> [Int: String] {
-        if let cachedClassNames { return cachedClassNames }
+        if let c = cachedClassNames { return c }
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
@@ -510,6 +394,62 @@ enum WallMeasurementEstimator {
         }
         cachedClassNames = m
         return m
+    }
+
+    // MARK: - Monodepth buffer
+
+    private struct MonodepthBuffer {
+        let w: Int
+        let h: Int
+        let c: Int
+        let data: [Float]
+
+        static func load(url: URL) -> MonodepthBuffer? {
+            guard let raw = try? Data(contentsOf: url), raw.count >= 12 else { return nil }
+            let w = readLE32(raw, 0)
+            let h = readLE32(raw, 4)
+            let c = readLE32(raw, 8)
+            guard w > 0, h > 0, c > 0 else { return nil }
+            let n = w * h * c
+            guard raw.count >= 12 + n * 4 else { return nil }
+            var floats = [Float](repeating: 0, count: n)
+            floats.withUnsafeMutableBytes { dst in
+                raw.withUnsafeBytes { srcBuf in
+                    let src = srcBuf.baseAddress!.advanced(by: 12)
+                    memcpy(dst.baseAddress, src, n * 4)
+                }
+            }
+            return MonodepthBuffer(w: w, h: h, c: c, data: floats)
+        }
+
+        private static func readLE32(_ d: Data, _ o: Int) -> Int {
+            d.subdata(in: o..<(o + 4)).withUnsafeBytes {
+                Int(Int32(littleEndian: $0.load(as: Int32.self)))
+            }
+        }
+
+        func medianAt(rect: CGRect, imageWidth: Int, imageHeight: Int) -> Float? {
+            let cx = Float((rect.minX + rect.maxX) * 0.5).clamped(to: 0...Float(imageWidth - 1))
+            let cy = Float((rect.minY + rect.maxY) * 0.5).clamped(to: 0...Float(imageHeight - 1))
+            let mx = Int(cx / Float(imageWidth) * Float(w)).clamped(to: 0...w - 1)
+            let my = Int(cy / Float(imageHeight) * Float(h)).clamped(to: 0...h - 1)
+            var samples: [Float] = []
+            samples.reserveCapacity(49)
+            for dy in -3...3 {
+                for dx in -3...3 {
+                    let x = (mx + dx).clamped(to: 0...w - 1)
+                    let y = (my + dy).clamped(to: 0...h - 1)
+                    let idx = (y * w + x) * c
+                    if idx < data.count {
+                        let v = data[idx]
+                        if v.isFinite, v > 0 { samples.append(v) }
+                    }
+                }
+            }
+            guard !samples.isEmpty else { return nil }
+            samples.sort()
+            return samples[samples.count / 2]
+        }
     }
 }
 
