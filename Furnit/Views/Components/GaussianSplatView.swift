@@ -146,6 +146,8 @@ struct GaussianSplatView: UIViewRepresentable {
         private let inFlightSemaphore = DispatchSemaphore(value: GaussianSplatView.maxSimultaneousRenders)
         var drawableSize: CGSize = .zero
         private var warmupEndTime: CFAbsoluteTime?
+        private var depthScratchTexture: MTLTexture?
+        private var setupGeneration: Int = 0
 
         /// Axis-aligned bounds from loaded `SplatPoint` positions (MetalSplatter 1.x `SplatRenderer` does not expose `boundingBox` / `centroid`).
         private var sceneBoundsMin: SIMD3<Float>?
@@ -161,6 +163,7 @@ struct GaussianSplatView: UIViewRepresentable {
         var sceneScale:   SIMD2<Float> = SIMD2(1, 1)
 
         private var didRegisterSharpRoomNotifications = false
+        private var notificationTokens: [NSObjectProtocol] = []
 
         // ── Camera constants ──────────────────────────────────────────────────
         private let maxPitch:        Float = 1.4
@@ -192,6 +195,13 @@ struct GaussianSplatView: UIViewRepresentable {
             super.init()
         }
 
+        deinit {
+            let nc = NotificationCenter.default
+            for token in notificationTokens {
+                nc.removeObserver(token)
+            }
+        }
+
         // MARK: Setup
 
         /// Defers work until after SwiftUI finishes the current update transaction (must run UIKit / bindings on the main actor).
@@ -203,6 +213,9 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         func setup(view mtkView: MTKView, plyURL: URL) {
+            setupGeneration += 1
+            let thisGeneration = setupGeneration
+
             // ── Reset camera ─────────────────────────────────────────────────
             cameraPitch  = 0
             cameraOffset = .zero
@@ -273,6 +286,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 self.loadError = nil
                 Task { [weak self] in
                     guard let self else { return }
+                    guard self.setupGeneration == thisGeneration else { return }
                     do {
                     let points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
@@ -298,20 +312,9 @@ struct GaussianSplatView: UIViewRepresentable {
                     }
                     let centroid = positionSum / Float(points.count)
 
-                    // For classic PLY, flip Y and Z of bounds/centroid to canonical space
-                    // (matches the (1,-1,-1) view scale applied during rendering).
-                    let cameraBoundsMin: SIMD3<Float>
-                    let cameraBoundsMax: SIMD3<Float>
-                    let cameraCentroid: SIMD3<Float>
-                    if self.isSharpClassicPly {
-                        cameraBoundsMin = SIMD3<Float>(trimmedMin.x, -trimmedMax.y, -trimmedMax.z)
-                        cameraBoundsMax = SIMD3<Float>(trimmedMax.x, -trimmedMin.y, -trimmedMin.z)
-                        cameraCentroid = SIMD3<Float>(centroid.x, -centroid.y, -centroid.z)
-                    } else {
-                        cameraBoundsMin = trimmedMin
-                        cameraBoundsMax = trimmedMax
-                        cameraCentroid = centroid
-                    }
+                    let cameraBoundsMin = trimmedMin
+                    let cameraBoundsMax = trimmedMax
+                    let cameraCentroid  = centroid
 
                     #if DEBUG
                     if !plyURL.lastPathComponent.contains("_classic") {
@@ -341,7 +344,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     )
                     let loadedSplatCount = renderer.splatCount
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
-                        guard let self else { return }
+                        guard let self, self.setupGeneration == thisGeneration else { return }
                         logDebug("📐 [GaussianSplatView] Full bounds: X[\(fullMin.x),\(fullMax.x)] Y[\(fullMin.y),\(fullMax.y)] Z[\(fullMin.z),\(fullMax.z)]")
                         logDebug("📐 [GaussianSplatView] Trimmed P3–P97: X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
                         logDebug("📐 [GaussianSplatView] Camera framing AABB: X[\(cameraBoundsMin.x),\(cameraBoundsMax.x)] Y[\(cameraBoundsMin.y),\(cameraBoundsMax.y)] Z[\(cameraBoundsMin.z),\(cameraBoundsMax.z)]")
@@ -357,7 +360,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     }
                 } catch {
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
-                        guard let self else { return }
+                        guard let self, self.setupGeneration == thisGeneration else { return }
                         logDebug("❌ [GaussianSplatView] Failed to load PLY: \(error)")
                         self.loadError = error.localizedDescription
                         self.isLoading = false
@@ -384,7 +387,13 @@ struct GaussianSplatView: UIViewRepresentable {
             else { return }
 
             let timeout = DispatchTime.now() + 0.1
-            guard inFlightSemaphore.wait(timeout: timeout) == .success else { return }
+            if inFlightSemaphore.wait(timeout: timeout) != .success {
+                // If we are in warm-up, reschedule so we do not stall the sharpening loop.
+                if warmupEndTime != nil {
+                    view.setNeedsDisplay()
+                }
+                return
+            }
 
             guard let commandBuffer = commandQueue.makeCommandBuffer() else {
                 inFlightSemaphore.signal()
@@ -402,7 +411,7 @@ struct GaussianSplatView: UIViewRepresentable {
                    drawable: drawable,
                    pixelFormat: view.colorPixelFormat
                ),
-               let depthScratch = makeDepthTexture(device: metalDevice, width: scratch.width, height: scratch.height) {
+               let depthScratch = ensureDepthScratchTexture(device: metalDevice, width: scratch.width, height: scratch.height) {
                 do {
                     try renderer.render(
                         viewports: [vp],
@@ -457,7 +466,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Viewport — camera & MetalSplatter matrix
         //
-        // `_classic.ply`: view scale (1,-1,-1); scene bounds are pre-flipped so camera math matches rendered geometry.
+        // `_classic.ply`: view scale (1,-1,-1); camera and geometry are both seen in the flipped space.
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
@@ -498,11 +507,17 @@ struct GaussianSplatView: UIViewRepresentable {
                 camPos = eye + cameraOffset
                 lookAt = target + cameraOffset
             } else if let centroid {
-                camPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + 3) + cameraOffset
+                camPos = SIMD3<Float>(centroid.x, centroid.y, centroid.z + exteriorCameraZ) + cameraOffset
                 lookAt = centroid + cameraOffset
             } else {
                 camPos = SIMD3<Float>(0, 0, 3) + cameraOffset
                 lookAt = SIMD3<Float>(0, 0, 0) + cameraOffset
+            }
+
+            // Classic PLY: apply the same Y/Z flip to the camera so it sees the room in the same space as the scaled geometry.
+            if isSharpClassicPly {
+                camPos = SIMD3<Float>(camPos.x, -camPos.y, -camPos.z)
+                lookAt = SIMD3<Float>(lookAt.x, -lookAt.y, -lookAt.z)
             }
 
             // Infinite Zoom: convert pinch scaling into dolly along the view ray instead of narrowing the field of view.
@@ -605,7 +620,12 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Depth Texture Helper
 
-        private func makeDepthTexture(device: MTLDevice, width: Int, height: Int) -> MTLTexture? {
+        private func ensureDepthScratchTexture(device: MTLDevice, width: Int, height: Int) -> MTLTexture? {
+            if let existing = depthScratchTexture,
+               existing.width == width,
+               existing.height == height {
+                return existing
+            }
             let desc = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .depth32Float,
                 width:       width,
@@ -614,7 +634,8 @@ struct GaussianSplatView: UIViewRepresentable {
             )
             desc.usage       = .renderTarget
             desc.storageMode = .private
-            return device.makeTexture(descriptor: desc)
+            depthScratchTexture = device.makeTexture(descriptor: desc)
+            return depthScratchTexture
         }
 
         // MARK: Notification Registration
@@ -623,7 +644,7 @@ struct GaussianSplatView: UIViewRepresentable {
             let nc = NotificationCenter.default
 
             // Recenter: restore default camera orientation
-            nc.addObserver(
+            let recenterToken = nc.addObserver(
                 forName: NSNotification.Name("RecenterWebGLCamera"),
                 object:  nil,
                 queue:   nil
@@ -638,9 +659,10 @@ struct GaussianSplatView: UIViewRepresentable {
                     self.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(recenterToken)
 
             // Joystick pan: forward/back and left/right strafe
-            nc.addObserver(
+            let joystickToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLJoystickMove"),
                 object:  nil,
                 queue:   nil
@@ -655,9 +677,10 @@ struct GaussianSplatView: UIViewRepresentable {
                     self.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(joystickToken)
 
             // Scale: supports both (scaleX, scaleY) dict and single (factor) value
-            nc.addObserver(
+            let scaleToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLScaleRoom"),
                 object:  nil,
                 queue:   nil
@@ -684,9 +707,10 @@ struct GaussianSplatView: UIViewRepresentable {
                     self.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(scaleToken)
 
             // Vertical pan
-            nc.addObserver(
+            let moveUpToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLCameraMoveUp"),
                 object:  nil,
                 queue:   nil
@@ -696,8 +720,9 @@ struct GaussianSplatView: UIViewRepresentable {
                     self?.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(moveUpToken)
 
-            nc.addObserver(
+            let moveDownToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLCameraMoveDown"),
                 object:  nil,
                 queue:   nil
@@ -707,9 +732,10 @@ struct GaussianSplatView: UIViewRepresentable {
                     self?.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(moveDownToken)
 
             // Horizontal pan
-            nc.addObserver(
+            let moveLeftToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLCameraMoveLeft"),
                 object:  nil,
                 queue:   nil
@@ -719,8 +745,9 @@ struct GaussianSplatView: UIViewRepresentable {
                     self?.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(moveLeftToken)
 
-            nc.addObserver(
+            let moveRightToken = nc.addObserver(
                 forName: NSNotification.Name("WebGLCameraMoveRight"),
                 object:  nil,
                 queue:   nil
@@ -730,6 +757,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     self?.view?.setNeedsDisplay()
                 }
             }
+            notificationTokens.append(moveRightToken)
         }
 
         // MARK: - Matrix Utilities
