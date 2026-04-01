@@ -14,7 +14,7 @@ enum YoloEImageInference {
         let sourceHeight: Int
     }
 
-    /// Square side for stretch (from Core ML `image` constraint). **26L seg PF** exports use **640**; fallback matches that, not legacy 11L 1280.
+    /// Square side for stretch (from Core ML `image` constraint). **YOLOE 26L PF** exports use **640**; fallback **640** if unconstrained (not legacy 1280 inputs).
     static func modelInputSize(for model: MLModel) -> Int {
         let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
         if let imageConstraint = imageInputDesc?.imageConstraint {

@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "ஆஃப் (இயல்பு): CPU மட்டும் — மெதுவானது ஆனால் சில YOLO-E 26L Core ML கட்டமைப்புகளில் செயலிழப்பைத் தவிர்க்கும். ஆன்: வேகத்திற்கு CPU+GPU; Metal இல் ஏற்றுமதி ஓடாவிட்டால் பிரிப்பில் SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";
 "settings.showRoomFurnitureCalibrateDescription" = "அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.";
+"settings.furnitureFitARCompanion" = "AR உதவி தளபாட அளவு";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit இல் கேமராவுடன் ARKit காட்சி ஆழத்தை இயக்குகிறது (LiDAR). வீடியோ பிடிப்புடன் மோதல் இருக்கலாம். மாற்றிய பின் அறையை மீண்டும் திறக்கவும்.";
+"settings.furnitureFitARCompanionUnavailable" = "இந்த சாதனத்தில் காட்சி ஆழம் இல்லை.";
 "settings.roomMeasurementSection" = "அறை அளவீடுகள்";
 "settings.yoloWallDimensionsOnSave" = "சேமிக்கும்போது YOLO சுவர் அளவுகள்";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP அறைக்கு பெயரிட்டு சேமிக்கும்போது, YOLO (சுவர் வகுப்பு அல்லது சுவர்போன்ற பெட்டி), அறையுடன் சேமிக்கப்பட்ட SHARP ஒற்றை ஆழம், கேமரா EXIF ஆகியவற்றால் முன் சுவரின் அகலம் மற்றும் உயரம் மதிப்பிடப்படுகிறது. thumbnail.png தேவை; சிறந்த முடிவுக்கு sharp_monodepth.bin.";

@@ -692,7 +692,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             var fx: Float = 1
             var fy: Float = 1
             var distSource = "none"
-            var hasDepthMap = false
             var bgraIsRotatedFromCaptured = false
             let trackingName: String = {
                 guard let s = arSession.currentFrame?.camera.trackingState else { return "nil" }
@@ -705,7 +704,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }()
 
             if let snap = arDepthSnapshot {
-                hasDepthMap = snap.depthMap != nil
                 bgraIsRotatedFromCaptured = snap.bgraIsRotatedFromCaptured
                 fy = snap.focalLengthY
                 fx = snap.focalLengthX
@@ -723,6 +721,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 if distM == nil {
                     distM = FurnitureFitARSupport.depthMeters(snapshot: snap, normalizedBgraNX: nx, normalizedBgraNY: ny)
                     distSource = distM != nil ? "depth_snapshot_center" : "depth_snapshot_miss"
+                }
+                // Snapshot exists but depth buffer missing/invalid this frame — align overlay with live `sceneDepth` (same as meter sizing fallback).
+                if distM == nil, let frame = arSession.currentFrame {
+                    let norm = CGPoint(x: nx, y: ny)
+                    distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
+                    if distM != nil { distSource = "scene_depth_snapshot_miss_fallback" }
                 }
                 // No plane raycast here: that would use `arSession.currentFrame` and desync from the YOLO frame.
             } else if let frame = arSession.currentFrame {
@@ -818,7 +822,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     if nowLog - lastFurnitureFitARFrameLogAt >= furnitureFitARLogInterval {
                         lastFurnitureFitARFrameLogAt = nowLog
                         logFurnitureFitAR(
-                            "platform=ios phase=frame tracking=\(trackingName) distSource=\(distSource) dist_m=\(String(format: "%.4f", d)) fx_px=\(String(format: "%.2f", fx)) fy_px=\(String(format: "%.2f", fy)) bboxWH_px=(\(String(format: "%.1f", Float(max(1, bboxMaxX - bboxMinX)))),\(String(format: "%.2f", bboxHeightImagePx))) imageWH=(\(imageWidth)x\(imageHeight)) norm_bgra=(\(String(format: "%.4f", nx)),\(String(format: "%.4f", ny))) estH_m=\(String(format: "%.4f", estH)) stdH_m=\(String(format: "%.2f", stdH)) rawScale=\(String(format: "%.4f", raw)) smoothedScale=\(String(format: "%.4f", Double(autoScaleFromAR))) hasDepthMap=\(hasDepthMap) bgraRotated=\(bgraIsRotatedFromCaptured) snap=\(arDepthSnapshot != nil)"
+                            "platform=ios phase=frame tracking=\(trackingName) distSource=\(distSource) dist_m=\(String(format: "%.4f", d)) fx_px=\(String(format: "%.2f", fx)) fy_px=\(String(format: "%.2f", fy)) bboxWH_px=(\(String(format: "%.1f", Float(max(1, bboxMaxX - bboxMinX)))),\(String(format: "%.2f", bboxHeightImagePx))) imageWH=(\(imageWidth)x\(imageHeight)) norm_bgra=(\(String(format: "%.4f", nx)),\(String(format: "%.4f", ny))) estH_m=\(String(format: "%.4f", estH)) stdH_m=\(String(format: "%.2f", stdH)) rawScale=\(String(format: "%.4f", raw)) smoothedScale=\(String(format: "%.4f", Double(autoScaleFromAR))) depthMapBufferInSnap=\(arDepthSnapshot?.depthMap != nil) bgraRotated=\(bgraIsRotatedFromCaptured) snapAttached=\(arDepthSnapshot != nil)"
                         )
                     }
                     if debugMode {
@@ -1050,14 +1054,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func requestCameraPermissionAndStart() {
-        // Single back-camera consumer: `AVCaptureSession` only. Do not run a parallel `ARSession` for world tracking here
-        // (Fig -17281 / failed capture). `FurnitureFitAsyncDepthSampler` remains for a possible AR-only video path later.
+        // Default: AVCapture only. Optional parallel `ARSession` when Settings enable AR depth companion (LiDAR); can cause Fig -17281 on some devices.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             startClassicCameraPathIfNeeded()
-            if debugMode {
-                logDebug("📷 [FurnitureFit] AVCaptureSession (classic path, no parallel ARSession)")
-            }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 guard granted else { return }
@@ -1068,30 +1068,48 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// AVCapture only; pauses container `ARSession`.
+    /// AVCapture for video; optionally runs `ARSession` in parallel for scene depth when enabled in Settings (LiDAR-class devices).
     private func startClassicCameraPathIfNeeded() {
         isUsingARCameraPath = false
-        isARDepthCompanionSessionRunning = false
         frameLock.lock()
         arPausedForSegmentation = false
         frameLock.unlock()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.arSession.pause()
-            self.setupCamera()
+            let wantCompanion = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+            self.isARDepthCompanionSessionRunning = wantCompanion
+            if wantCompanion {
+                self.setupCamera()
+                let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+                self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
+                if self.debugMode {
+                    logDebug("📷 [FurnitureFit] AVCaptureSession + AR depth companion (Settings)")
+                }
+            } else {
+                self.arSession.pause()
+                self.setupCamera()
+                if self.debugMode {
+                    logDebug("📷 [FurnitureFit] AVCaptureSession (classic path, AR companion off)")
+                }
+            }
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
                 if !self.captureSession.isRunning {
                     self.captureSession.startRunning()
                 }
             }
-        }
-        if debugMode { logDebug("📷 [FurnitureFit] AVCaptureSession (classic camera path)") }
-        if !Self.didLogFurnitureFitSizingPolicy {
-            Self.didLogFurnitureFitSizingPolicy = true
-            logFurnitureFitSize(
-                "policy=classic_camera arDepthCompanion=off → depthSnapshot=nil every frame; 📐 [OVERLAY] wantAR=false (no LiDAR sync to YOLO). Size uses av_focal+room_depth_proxy unless companion is re-enabled. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
-            )
+            if !Self.didLogFurnitureFitSizingPolicy {
+                Self.didLogFurnitureFitSizingPolicy = true
+                if wantCompanion {
+                    logFurnitureFitSize(
+                        "policy=classic_camera arDepthCompanion=on → depthSnapshot from ARFrame when available; 📐 [OVERLAY] uses AR depth for scale when valid. May hit Fig -17281 on some OS builds if camera contends — turn off in Settings. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
+                    )
+                } else {
+                    logFurnitureFitSize(
+                        "policy=classic_camera arDepthCompanion=off → depthSnapshot=nil every frame unless companion enabled in Settings on a LiDAR/scene-depth device. Size uses av_focal+room_depth_proxy. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
+                    )
+                }
+            }
         }
     }
 
@@ -1200,6 +1218,45 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let depthM = max(0.04, min(wM, hM) * 0.12)
                 let tag = "lidar_intrinsics_\(pipelineDepthTag)"
                 return (FurnitureSceneSize(width: wM, height: hM, depth: depthM), tag, d)
+            }
+        }
+
+        // Live `ARFrame` scene depth: same source as overlay when `arDepthSnapshot` is nil or its depth copy failed
+        // (hybrid AVCapture + ARSession, tracking limited, etc.) — avoids ~room proxy meters while AR shows ~0.2m.
+        if let frame = arSession.currentFrame,
+           let dLive = FurnitureFitARSupport.sceneDepthMeters(
+            frame: frame,
+            normalizedImagePoint: CGPoint(x: CGFloat(midX), y: CGFloat(midYTop))
+           ),
+           dLive > 0.05 {
+            let cap = frame.capturedImage
+            let cw = CVPixelBufferGetWidth(cap)
+            let ch = CVPixelBufferGetHeight(cap)
+            let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
+            let bgraRotated = needsPortrait && cw > ch
+            let fxLive = FurnitureFitARSupport.focalLengthXForProcessedBGRA(
+                camera: frame.camera,
+                bgraWidth: imageWidth,
+                bgraIsRotatedFromCaptured: bgraRotated
+            )
+            let fyLive = FurnitureFitARSupport.focalLengthYForProcessedBGRA(
+                camera: frame.camera,
+                bgraHeight: imageHeight,
+                bgraIsRotatedFromCaptured: bgraRotated
+            )
+            if fxLive > 1, fyLive > 1,
+               let wM = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
+                bboxWidthPixels: bboxWpx,
+                distanceMeters: dLive,
+                focalLengthXPixels: fxLive
+               ),
+               let hM = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
+                bboxHeightPixels: bboxHpx,
+                distanceMeters: dLive,
+                focalLengthYPixels: fyLive
+               ) {
+                let depthM = max(0.04, min(wM, hM) * 0.12)
+                return (FurnitureSceneSize(width: wM, height: hM, depth: depthM), "ar_frame_scene_depth_intrinsics", dLive)
             }
         }
 

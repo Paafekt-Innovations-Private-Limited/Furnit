@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "ఆఫ్ (డిఫాల్ట్): CPU మాత్రమే — నెమ్మది కానీ కొన్ని YOLO-E 26L Core ML బిల్డ్‌లలో క్రాష్‌లను తగ్గిస్తుంది. ఆన్: వేగానికి CPU+GPU; Metal పై ఎగుమతి నడకపోతే సెగ్మెంటేషన్‌లో SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు";
 "settings.showRoomFurnitureCalibrateDescription" = "గది మెనూలో «గోడ క్యాలిబ్రేట్ చేయి», SmartyPants (మెదడు) ఆన్‌లో ఉన్నప్పుడు «క్యాలిబ్రేట్ చేయడానికి ట్యాప్» పిల్ చూపిస్తుంది.";
+"settings.furnitureFitARCompanion" = "AR-సహాయిత ఫర్నిచర్ కొలత";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit లో కెమెరాతో పాటు ARKit దృశ్య లోతును నడుపుతుంది (LiDAR). వీడియో క్యాప్చర్‌తో ఘర్షణ కావచ్చు. మార్చిన తర్వాత గదిని మళ్లీ తెరవండి.";
+"settings.furnitureFitARCompanionUnavailable" = "ఈ పరికరంలో దృశ్య లోతు అందుబాటులో లేదు.";
 "settings.roomMeasurementSection" = "గది కొలతలు";
 "settings.yoloWallDimensionsOnSave" = "సేవ్ చేసేటప్పుడు YOLO గోడ కొలతలు";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP గదికి పేరు పెట్టి సేవ్ చేసినప్పుడు, YOLO (గోడ తరగతి లేదా గోడ లాంటి బాక్స్), గదితో సేవ్ చేసిన SHARP మోనోడెప్త్, కెమెరా EXIF తో ముందు గోడ వెడల్పు మరియు ఎత్తు అంచనా. thumbnail.png అవసరం; ఉత్తమ ఫలితానికి sharp_monodepth.bin.";

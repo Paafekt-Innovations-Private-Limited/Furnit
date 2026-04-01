@@ -370,6 +370,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "Aus (Standard): nur CPU — langsamer, vermeidet aber Abstürze bei manchen YOLO-E-26L-Core-ML-Builds. An: CPU+GPU für Geschwindigkeit; bei Segmentation möglicherweise SIGABRT, wenn der Export auf Ihrem Gerät nicht auf Metal läuft.";
 "settings.showRoomFurnitureCalibrate" = "Raum- und Möbel-Kalibrierung anzeigen";
 "settings.showRoomFurnitureCalibrateDescription" = "Zeigt „Wand kalibrieren“ im Raummenü und die „Tippen zum Kalibrieren“-Pille, wenn SmartyPants (Gehirn) aktiv ist.";
+"settings.furnitureFitARCompanion" = "AR-unterstützte Möbelgröße";
+"settings.furnitureFitARCompanionDescription" = "Startet ARKit-Szenentiefe parallel zur Kamera in Furniture Fit (LiDAR). Kann auf manchen Geräten mit der Videoaufnahme kollidieren. Raum nach Änderung erneut öffnen.";
+"settings.furnitureFitARCompanionUnavailable" = "Szenentiefe ist auf diesem Gerät nicht verfügbar.";
 "settings.roomMeasurementSection" = "Raummaße";
 "settings.yoloWallDimensionsOnSave" = "YOLO-Wandmaße beim Speichern";
 "settings.yoloWallDimensionsOnSaveDescription" = "Wenn Sie einen SHARP-Raum benennen und speichern, werden Breite und Höhe der Vorderwand per YOLO (Wandklasse oder wandähnliche Box), gespeicherter SHARP-Monotiefe des Raums und Kamera-EXIF geschätzt. Benötigt thumbnail.png und idealerweise sharp_monodepth.bin.";

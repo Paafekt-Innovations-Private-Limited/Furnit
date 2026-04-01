@@ -1,5 +1,7 @@
 # YOLOE Core ML vs PyTorch (confidence parity)
 
+**Furnit iOS** ships **26L PF** (`yoloe-26l-seg-pf` / `_seg_o2m`) only. Smaller checkpoints (e.g. 11L) may still appear in Android or backup export docs.
+
 ## Why on-device “chair” can sit around 0.6 while you expect ~0.9
 
 1. **Different checkpoint** — `yoloe-26l-seg-pf` ≠ `yoloe-11l-seg-pf`. Scores are not comparable across sizes.

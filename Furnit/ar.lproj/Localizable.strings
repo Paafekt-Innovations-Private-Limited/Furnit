@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "إيقاف (افتراضي): المعالج فقط — أبطأ لكن يقلل الأعطال في بعض إصدارات YOLO-E 26L Core ML. تشغيل: معالج+GPU للسرعة؛ قد يحدث SIGABRT أثناء التجزئة إذا لم يعمل التصدير على Metal.";
 "settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";
 "settings.showRoomFurnitureCalibrateDescription" = "يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).";
+"settings.furnitureFitARCompanion" = "قياس الأثاث بمساعدة AR";
+"settings.furnitureFitARCompanionDescription" = "يشغّل عمق المشهد من ARKit بجانب الكاميرا في Furniture Fit (LiDAR). قد يتعارض مع التقاط الفيديو. أعد فتح الغرفة بعد التغيير.";
+"settings.furnitureFitARCompanionUnavailable" = "عمق المشهد غير متاح على هذا الجهاز.";
 "settings.roomMeasurementSection" = "قياس الغرفة";
 "settings.yoloWallDimensionsOnSave" = "أبعاد الجدار YOLO عند الحفظ";
 "settings.yoloWallDimensionsOnSaveDescription" = "عند تسمية وحفظ غرفة SHARP، يُقدَّر عرض وارتفاع الجدار الأمامي باستخدام YOLO (فئة جدار أو صندوق شبيه)، وعمق SHARP أحادي المحفوظ مع الغرفة، وبيانات EXIF للكاميرا. يتطلب thumbnail.png ويفضّل sharp_monodepth.bin.";

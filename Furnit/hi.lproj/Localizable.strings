@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "बंद (डिफ़ॉल्ट): केवल CPU — धीमा लेकिन कुछ YOLO-E 26L Core ML बिल्ड पर क्रैश कम। चालू: गति के लिए CPU+GPU; Metal पर एक्सपोर्ट न चले तो सेगमेंटेशन में SIGABRT हो सकता है।";
 "settings.showRoomFurnitureCalibrate" = "कमरा और फर्नीचर कैलिब्रेशन दिखाएँ";
 "settings.showRoomFurnitureCalibrateDescription" = "कमरा मेनू में «दीवार कैलिब्रेट करें» और SmartyPants (दिमाग) चालू होने पर «कैलिब्रेट करने के लिए टैप» पिल दिखाता है।";
+"settings.furnitureFitARCompanion" = "AR-सहायित फर्नीचर आकार";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit में कैमरे के साथ ARKit दृश्य गहराई चलाता है (LiDAR)। कुछ डिवाइस पर वीडियो कैप्चर से टकराव हो सकता है। बदलने के बाद कमरा फिर खोलें।";
+"settings.furnitureFitARCompanionUnavailable" = "इस डिवाइस पर दृश्य गहराई उपलब्ध नहीं है।";
 "settings.roomMeasurementSection" = "कमरे का माप";
 "settings.yoloWallDimensionsOnSave" = "सहेजते समय YOLO दीवार माप";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP कमरे को नाम देकर सहेजने पर, YOLO (दीवार वर्ग या दीवार जैसा बॉक्स), कमरे के साथ सहेजी SHARP मोनोडेप्थ और कैमरा EXIF से सामने की दीवार की चौड़ाई और ऊँचाई अनुमान। thumbnail.png ज़रूरी; सर्वोत्तम परिणाम के लिए sharp_monodepth.bin।";

@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "বন্ধ (ডিফল্ট): শুধু CPU — ধীর কিন্তু কিছু YOLO-E 26L Core ML বিল্ডে ক্র্যাশ এড়ায়। চালু: গতির জন্য CPU+GPU; Metal এ এক্সপোর্ট না চললে সেগমেন্টেশনে SIGABRT হতে পারে।";
 "settings.showRoomFurnitureCalibrate" = "রুম ও ফার্নিচার ক্যালিব্রেশন UI দেখান";
 "settings.showRoomFurnitureCalibrateDescription" = "রুম মেনুতে «দেয়াল ক্যালিব্রেট» এবং SmartyPants (মস্তিষ্ক) চালু থাকলে «ক্যালিব্রেট করতে ট্যাপ» পিল দেখায়।";
+"settings.furnitureFitARCompanion" = "AR-সহায়িত ফার্নিচার মাপ";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit-এ ক্যামেরার পাশাপাশি ARKit দৃশ্যের গভীরতা চালায় (LiDAR)। ভিডিও ক্যাপচারের সঙ্গে দ্বন্দ্ব হতে পারে। পরিবর্তনের পর রুম আবার খুলুন।";
+"settings.furnitureFitARCompanionUnavailable" = "এই ডিভাইসে দৃশ্যের গভীরতা নেই।";
 "settings.roomMeasurementSection" = "রুম মাপ";
 "settings.yoloWallDimensionsOnSave" = "সংরক্ষণে YOLO দেয়ালের মাপ";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP রুম নাম দিয়ে সংরক্ষণ করলে, YOLO (দেয়াল ক্লাস বা দেয়ালসদৃশ বক্স), রুমের সাথে সংরক্ষিত SHARP মোনোডেপথ ও ক্যামেরা EXIF দিয়ে সামনের দেয়ালের প্রস্থ ও উচ্চতা আনুমান। thumbnail.png দরকার; সেরা ফলের জন্য sharp_monodepth.bin।";

@@ -1,3 +1,4 @@
+import ARKit
 import Foundation
 import SwiftUI
 
@@ -128,6 +129,15 @@ class QualitySettings: ObservableObject {
 
     /// UserDefaults key for optional Core ML GPU path (read by ``YOLOEModelService`` at model load).
     static let yoloeCoreMLAllowGPUKey = "yoloe_core_ml_allow_gpu"
+    /// UserDefaults key: run ARKit scene-depth session alongside AVCapture in Furniture Fit (LiDAR-class devices).
+    static let furnitureFitARDepthCompanionEnabledKey = "furniture_fit_ar_depth_companion_enabled"
+
+    /// `true` when this device can supply scene/smoothed scene depth for Furniture Fit’s AR companion.
+    static var supportsFurnitureFitARSceneDepth: Bool {
+        ARWorldTrackingConfiguration.isSupported
+            && (ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+                || ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth))
+    }
     // Current selected quality (published for UI updates)
     @Published var selectedQuality: AssetQuality {
         didSet {
@@ -167,6 +177,18 @@ class QualitySettings: ObservableObject {
         }
     }
 
+    /// When `true` and the device supports scene depth, Furniture Fit runs an ARSession beside AVCapture for metric overlay sizing.
+    @Published var furnitureFitARDepthCompanionEnabled: Bool {
+        didSet {
+            saveFurnitureFitARDepthCompanionEnabled()
+        }
+    }
+
+    /// Effective companion: user preference plus hardware capability.
+    var furnitureFitARDepthCompanionRuntimeActive: Bool {
+        furnitureFitARDepthCompanionEnabled && Self.supportsFurnitureFitARSceneDepth
+    }
+
     // UserDefaults keys for persistence
     private let qualityKey = "selected_asset_quality"
     private let movementSpeedKey = "selected_movement_speed"
@@ -204,6 +226,12 @@ class QualitySettings: ObservableObject {
         } else {
             self.yoloeCoreMLAllowGPU = false
         }
+
+        if UserDefaults.standard.object(forKey: Self.furnitureFitARDepthCompanionEnabledKey) != nil {
+            self.furnitureFitARDepthCompanionEnabled = UserDefaults.standard.bool(forKey: Self.furnitureFitARDepthCompanionEnabledKey)
+        } else {
+            self.furnitureFitARDepthCompanionEnabled = false
+        }
     }
     
     // Save quality setting to UserDefaults
@@ -233,6 +261,11 @@ class QualitySettings: ObservableObject {
     private func saveYoloeCoreMLAllowGPU() {
         UserDefaults.standard.set(yoloeCoreMLAllowGPU, forKey: Self.yoloeCoreMLAllowGPUKey)
         logDebug("💾 Saved YOLOE Core ML GPU preference: \(yoloeCoreMLAllowGPU)")
+    }
+
+    private func saveFurnitureFitARDepthCompanionEnabled() {
+        UserDefaults.standard.set(furnitureFitARDepthCompanionEnabled, forKey: Self.furnitureFitARDepthCompanionEnabledKey)
+        logDebug("💾 Saved Furniture Fit AR depth companion: \(furnitureFitARDepthCompanionEnabled)")
     }
 
     // Get all available quality options for UI
@@ -274,6 +307,7 @@ class QualitySettings: ObservableObject {
         debugMode = false
         bboxInMaskThreshold = 0.30
         yoloeCoreMLAllowGPU = false
+        furnitureFitARDepthCompanionEnabled = false
     }
 }
 

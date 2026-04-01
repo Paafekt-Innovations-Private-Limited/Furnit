@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "關（預設）：僅 CPU — 較慢但可避免部分 YOLO-E 26L Core ML 組建當機。開：CPU+GPU 提速；若匯出無法在您裝置的 Metal 上執行，分割時可能 SIGABRT。";
 "settings.showRoomFurnitureCalibrate" = "顯示房間與傢俱校準";
 "settings.showRoomFurnitureCalibrateDescription" = "在房間選單中顯示「校準牆面」，並在 SmartyPants（大腦）開啟時顯示「點一下校準」提示條。";
+"settings.furnitureFitARCompanion" = "AR 輔助家具尺寸";
+"settings.furnitureFitARCompanionDescription" = "在 Furniture Fit 中與相機並行執行 ARKit 場景深度（LiDAR）。可能與影片擷取衝突。變更後請重新開啟房間。";
+"settings.furnitureFitARCompanionUnavailable" = "此裝置不支援場景深度。";
 "settings.roomMeasurementSection" = "房間測量";
 "settings.yoloWallDimensionsOnSave" = "儲存時以 YOLO 估計牆尺寸";
 "settings.yoloWallDimensionsOnSaveDescription" = "為 SHARP 房間命名並儲存時，使用 YOLO（牆類別或類牆框）、隨房間儲存的 SHARP 單眼深度與相機 EXIF 估計前牆寬高。需要 thumbnail.png，最佳效果需要 sharp_monodepth.bin。";

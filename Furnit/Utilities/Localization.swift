@@ -147,6 +147,9 @@ enum L10n {
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
         static let yoloeCoreMLAllowGPU = "settings.yoloeCoreMLAllowGPU".localized
         static let yoloeCoreMLAllowGPUDescription = "settings.yoloeCoreMLAllowGPUDescription".localized
+        static let furnitureFitARCompanion = "settings.furnitureFitARCompanion".localized
+        static let furnitureFitARCompanionDescription = "settings.furnitureFitARCompanionDescription".localized
+        static let furnitureFitARCompanionUnavailable = "settings.furnitureFitARCompanionUnavailable".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
         static let roomMeasurementSection = "settings.roomMeasurementSection".localized

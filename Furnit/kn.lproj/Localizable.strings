@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "ಆಫ್ (ಡೀಫಾಲ್ಟ್): CPU ಮಾತ್ರ — ನಿಧಾನ, ಆದರೆ ಕೆಲವು YOLO-E 26L Core ML ಬಿಲ್ಡ್‌ಗಳಲ್ಲಿ ಕ್ರ್ಯಾಶ್ ತಪ್ಪಿಸುತ್ತದೆ. ಆನ್: ವೇಗಕ್ಕಾಗಿ CPU+GPU; ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿ Metal ರನ್ ಆಗದ ಫಲಿತಾಂಶದಲ್ಲಿ ಸೆಗ್ಮೆಂಟೇಶನ್ ಸಮಯದಲ್ಲಿ SIGABRT ಆಗಬಹುದು.";
 "settings.showRoomFurnitureCalibrate" = "ಕೊಠಡಿ ಮತ್ತು ಪೀಠೋಪಕರಣ ಕ್ಯಾಲಿಬ್ರೇಷನ್ UI ತೋರಿಸಿ";
 "settings.showRoomFurnitureCalibrateDescription" = "ಕೊಠಡಿ ಮೆನುವಿನಲ್ಲಿ ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮತ್ತು SmartyPants (ಮೆದುಳು) ಆನ್ ಇದ್ದಾಗ ‘ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ತಟ್ಟಿ’ ಪಿಲ್ ತೋರಿಸುತ್ತದೆ.";
+"settings.furnitureFitARCompanion" = "AR-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರ";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit ನಲ್ಲಿ ಕ್ಯಾಮರಾವೊಂದಿಗೆ ARKit ದೃಶ್ಯಾಂತರ ಚಲಾಯಿಸುತ್ತದೆ (LiDAR). ವೀಡಿಯೊ ಕ್ಯಾಪ್ಚರ್‌ನೊಂದಿಗೆ ಸಂಘರ್ಷವಾಗಬಹುದು. ಬದಲಾಯಿಸಿದ ನಂತರ ಕೊಠಡಿಯನ್ನು ಮತ್ತೆ ತೆರೆಯಿರಿ.";
+"settings.furnitureFitARCompanionUnavailable" = "ಈ ಸಾಧನದಲ್ಲಿ ದೃಶ್ಯಾಂತರ ಲಭ್ಯವಿಲ್ಲ.";
 "settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
 "settings.yoloWallDimensionsOnSave" = "ಉಳಿಸುವಾಗ YOLO ಗೋಡೆ ಆಯಾಮಗಳು";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP ಕೊಠಡಿಗೆ ಹೆಸರು ನೀಡಿ ಉಳಿಸುವಾಗ, YOLO (ಗೋಡೆ ವರ್ಗ ಅಥವಾ ಗೋಡೆಯಂತಹ ಬಾಕ್ಸ್), ಉಳಿಸಿದ SHARP ಮೊನೊಡೆಪ್ತ್ ಮತ್ತು ಕ್ಯಾಮೆರಾ EXIF ಬಳಸಿ ಮುಂಭಾಗದ ಗೋಡೆಯ ಅಗಲ ಮತ್ತು ಎತ್ತರ ಅಂದಾಜು ಮಾಡುತ್ತದೆ. thumbnail.png ಅಗತ್ಯ; ಉತ್ತಮ ಫಲಿತಾಂಶಕ್ಕೆ sharp_monodepth.bin.";

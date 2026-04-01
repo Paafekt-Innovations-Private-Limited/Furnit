@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "ഓഫ് (ഡിഫോൾട്ട്): CPU മാത്രം — പക്ഷേ ചില YOLO-E 26L Core ML ബിൽഡുകളിൽ ക്രാഷ് കുറയ്ക്കും. ഓൺ: വേഗതയ്ക്ക് CPU+GPU; Metal-ൽ എക്സ്പോർട്ട് ഓടാത്തപ്പോൾ സെഗ്മെന്റേഷനിൽ SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "മുറിയും ഫർണിച്ചർ കാലിബ്രേഷനും കാണിക്കുക";
 "settings.showRoomFurnitureCalibrateDescription" = "മുറി മെനുവിൽ «മതിൽ കാലിബ്രേറ്റ് ചെയ്യുക», SmartyPants (മസ്തിഷ്കം) ഓണായാൽ «കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക» പിൽ കാണിക്കുന്നു.";
+"settings.furnitureFitARCompanion" = "AR-സഹായിത ഫർണിച്ചർ വലുപ്പം";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit-ൽ ക്യാമറയോടൊപ്പം ARKit ദൃശ്യ ആഴം പ്രവർത്തിപ്പിക്കുന്നു (LiDAR). വീഡിയോ ക്യാപ്ചറുമായി കലഹം ഉണ്ടാകാം. മാറ്റിയ ശേഷം മുറി വീണ്ടും തുറക്കുക.";
+"settings.furnitureFitARCompanionUnavailable" = "ഈ ഉപകരണത്തിൽ ദൃശ്യ ആഴം ലഭ്യമല്ല.";
 "settings.roomMeasurementSection" = "മുറി അളവുകൾ";
 "settings.yoloWallDimensionsOnSave" = "സേവ് ചെയ്യുമ്പോൾ YOLO മതിൽ അളവുകൾ";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP മുറിക്ക് പേരിട്ട് സേവ് ചെയ്യുമ്പോൾ, YOLO (മതിൽ ക്ലാസ് അല്ലെങ്കിൽ മതിൽപോലുള്ള ബോക്സ്), മുറിയോടൊപ്പം സേവ് ചെയ്ത SHARP മോണോഡെപ്ത്, ക്യാമറ EXIF എന്നിവ ഉപയോഗിച്ച് മുൻമതിലിന്റെ വീതിയും ഉയരവും അനുമാനിക്കുന്നു. thumbnail.png വേണം; മികച്ച ഫലത്തിന് sharp_monodepth.bin.";

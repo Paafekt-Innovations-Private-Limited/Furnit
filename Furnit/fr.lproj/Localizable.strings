@@ -358,6 +358,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "Désactivé (défaut) : CPU uniquement — plus lent mais évite des plantages sur certaines versions YOLO-E 26L Core ML. Activé : CPU+GPU pour la vitesse ; risque de SIGABRT si l'export ne tourne pas sur Metal.";
 "settings.showRoomFurnitureCalibrate" = "Afficher calibrage pièce et meubles";
 "settings.showRoomFurnitureCalibrateDescription" = "Affiche « Calibrer le mur » dans le menu de la pièce et la pastille « Toucher pour calibrer » lorsque SmartyPants (cerveau) est actif.";
+"settings.furnitureFitARCompanion" = "Dimensionnement meubles assisté par RA";
+"settings.furnitureFitARCompanionDescription" = "Lance la profondeur de scène ARKit en parallèle de la caméra dans Furniture Fit (LiDAR). Peut entrer en conflit avec la capture vidéo. Rouvrez la pièce après modification.";
+"settings.furnitureFitARCompanionUnavailable" = "La profondeur de scène n’est pas disponible sur cet appareil.";
 "settings.roomMeasurementSection" = "Mesures de la pièce";
 "settings.yoloWallDimensionsOnSave" = "Dimensions du mur YOLO à l'enregistrement";
 "settings.yoloWallDimensionsOnSaveDescription" = "Lorsque vous nommez et enregistrez une pièce SHARP, estime la largeur et la hauteur du mur avant avec YOLO (classe mur ou boîte proche), la monoprofondeur SHARP enregistrée avec la pièce et les EXIF. Nécessite thumbnail.png et de préférence sharp_monodepth.bin.";

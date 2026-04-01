@@ -108,7 +108,7 @@ enum FitmentCheck {
         logDebug("📐 [Fitment] Ratios vs raycast room (furniture ÷ room, same scene-unit space)")
         logDebug("📐 [Fitment] width ratio  \(String(format: "%.3f", widthRatio)) (\(String(format: "%.0f", widthRatio * 100))%)")
         logDebug("📐 [Fitment] height ratio \(String(format: "%.3f", heightRatio)) (\(String(format: "%.0f", heightRatio * 100))%)")
-        logDebug("📐 [Fitment] depth ratio  \(String(format: "%.3f", depthRatio)) (\(String(format: "%.0f", depthRatio * 100))%)")
+        logDebug("📐 [Fitment] depth ratio  \(String(format: "%.3f", depthRatio)) (\(String(format: "%.0f", depthRatio * 100))%) — furniture depth is a thickness proxy (pinhole + bbox), often ≪ room depth span; low % is normal")
 
         var results: [FitResult] = []
         if widthRatio > 1.0 {

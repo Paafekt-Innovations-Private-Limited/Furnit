@@ -188,6 +188,27 @@ struct SettingsView: View {
                         Task { await YOLOEModelService.shared.reloadForComputeUnitsChange() }
                     }
 
+                    Toggle(isOn: $appState.qualitySettings.furnitureFitARDepthCompanionEnabled) {
+                        HStack {
+                            Image(systemName: "arkit")
+                                .foregroundColor(.cyan)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.furnitureFitARCompanion)
+                                    .font(.headline)
+                                Text(L10n.Settings.furnitureFitARCompanionDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                if !QualitySettings.supportsFurnitureFitARSceneDepth {
+                                    Text(L10n.Settings.furnitureFitARCompanionUnavailable)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .tint(.cyan)
+                    .disabled(!QualitySettings.supportsFurnitureFitARSceneDepth)
+
                     Toggle(isOn: $showRoomFurnitureCalibrate) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")

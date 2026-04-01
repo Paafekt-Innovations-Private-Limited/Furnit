@@ -142,6 +142,9 @@
 "settings.yoloeCoreMLAllowGPUDescription" = "Off (default): CPU only — slower but avoids crashes on some YOLO-E 26L Core ML builds. On: CPU+GPU for speed; may SIGABRT during segmentation if the export does not run on Metal on your device.";
 "settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
 "settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
+"settings.furnitureFitARCompanion" = "AR-assisted furniture sizing";
+"settings.furnitureFitARCompanionDescription" = "Runs ARKit scene depth alongside the camera in Furniture Fit (LiDAR). May conflict with video capture on some devices. Reopen the room after changing this.";
+"settings.furnitureFitARCompanionUnavailable" = "Scene depth is not available on this device.";
 "settings.roomMeasurementSection" = "Room measurement";
 "settings.yoloWallDimensionsOnSave" = "YOLO wall dimensions when saving";
 "settings.yoloWallDimensionsOnSaveDescription" = "When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.";
