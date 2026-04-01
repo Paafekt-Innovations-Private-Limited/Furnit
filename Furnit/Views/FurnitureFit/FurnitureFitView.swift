@@ -162,6 +162,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Not started while `AVCaptureSession` runs — a second `ARSession` still grabs the back camera (Fig -17281).
     private let asyncDepthSampler = FurnitureFitAsyncDepthSampler()
+    /// Bumps on each `startClassicCameraPathIfNeeded` so a stale deferred AR `run` cannot fire after reconfigure.
+    private var arCompanionStartGeneration: UInt64 = 0
+    /// Set when AVCapture reports Fig-style contention so we drop AR for the rest of this container session (until `stop()`).
+    private var suppressARDepthCompanionAfterCaptureFailure = false
     private var furnitureFitCameraStartupInitiated = false
     /// Log `[FurnitureFitSize]` policy once so Console filtering explains `wantAR=false` / nil depth snapshot.
     private static var didLogFurnitureFitSizingPolicy = false
@@ -540,6 +544,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             name: NSNotification.Name("FurnitureFitResetOverlayScale"),
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCaptureSessionRuntimeError(_:)),
+            name: AVCaptureSession.runtimeErrorNotification,
+            object: captureSession
+        )
+        arSession.delegate = self
         
         setupCamera()
         setupMetal()
@@ -895,14 +907,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Public
     func setModel(_ model: MLModel?) {
-        // Avoid blocking sync call if model hasn't changed
-        if model === mlModel { return }
-        detectionQueue.sync { self.mlModel = model }
-        // Log model outputs for debugging
-        if let model = model {
-            let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
-            let outputNames = model.modelDescription.outputDescriptionsByName.keys
-            logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+        // Must not `sync` onto `detectionQueue` from the main thread: SwiftUI calls this from
+        // `updateUIView` while `processFrameInner` can run for hundreds of ms — main would freeze (“hung” UI).
+        detectionQueue.async { [weak self] in
+            guard let self else { return }
+            if model === self.mlModel { return }
+            self.mlModel = model
+            if let model = model {
+                let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
+                let outputNames = model.modelDescription.outputDescriptionsByName.keys
+                logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+            }
         }
         // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
     }
@@ -1001,6 +1016,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         invalidatePendingAssistedMeasurement()
         asyncDepthSampler.stop()
         furnitureFitCameraStartupInitiated = false
+        arCompanionStartGeneration &+= 1
+        suppressARDepthCompanionAfterCaptureFailure = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -1054,21 +1071,93 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func requestCameraPermissionAndStart() {
-        // Default: AVCapture only. Optional parallel `ARSession` when Settings enable AR depth companion (LiDAR); can cause Fig -17281 on some devices.
+        // Camera permission still gates the AR-as-camera path because ARKit uses the same hardware.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            startClassicCameraPathIfNeeded()
+            startPreferredCameraPathIfNeeded()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 guard granted else { return }
-                self.startClassicCameraPathIfNeeded()
+                self.startPreferredCameraPathIfNeeded()
             }
         default:
             break
         }
     }
 
-    /// AVCapture for video; optionally runs `ARSession` in parallel for scene depth when enabled in Settings (LiDAR-class devices).
+    private func startPreferredCameraPathIfNeeded() {
+        let wantARCamera = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+            && !suppressARDepthCompanionAfterCaptureFailure
+        if wantARCamera {
+            startARCameraPathIfNeeded()
+        } else {
+            startClassicCameraPathIfNeeded()
+        }
+    }
+
+    /// Single camera owner: ARKit supplies both video (`capturedImage`) and depth, so there is no AVCapture + AR contention.
+    private func startARCameraPathIfNeeded() {
+        frameLock.lock()
+        arPausedForSegmentation = false
+        frameLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.arCompanionStartGeneration &+= 1
+            self.isUsingARCameraPath = true
+            self.isARDepthCompanionSessionRunning = false
+
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { return }
+                if self.captureSession.isRunning {
+                    self.captureSession.stopRunning()
+                }
+            }
+
+            let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+            self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
+            if self.debugMode {
+                logDebug("📷 [FurnitureFit] ARSession camera path (single-camera, no AVCapture)")
+            }
+
+            if !Self.didLogFurnitureFitSizingPolicy {
+                Self.didLogFurnitureFitSizingPolicy = true
+                logFurnitureFitSize(
+                    "policy=ar_camera_only → segmentation uses ARFrame.capturedImage and scene depth from the same ARSession. No parallel AVCapture session, avoids Fig -17281 dual-camera contention. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
+                )
+            }
+        }
+    }
+
+    /// Fig / AVFoundation codes often logged when `ARSession` + `AVCaptureSession` fight over the back camera.
+    private static let figCameraContentionErrorCodes: Set<Int> = [-17281, -12784, -12710]
+
+    private static func captureErrorIndicatesCameraContention(_ error: NSError) -> Bool {
+        var visited = Set<ObjectIdentifier>()
+        var current: NSError? = error
+        while let e = current {
+            let oid = ObjectIdentifier(e)
+            if visited.contains(oid) { break }
+            visited.insert(oid)
+            if figCameraContentionErrorCodes.contains(e.code) { return true }
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
+    }
+
+    @objc private func handleCaptureSessionRuntimeError(_ notification: Notification) {
+        guard let err = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else { return }
+        guard Self.captureErrorIndicatesCameraContention(err) else { return }
+        logDebug("📷 [FurnitureFit] AVCaptureSession runtime error \(err.domain) code=\(err.code) — AR+camera contention; turning off AR companion for this Furniture Fit session.")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let settingsOn = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+            guard settingsOn || self.isARDepthCompanionSessionRunning else { return }
+            self.suppressARDepthCompanionAfterCaptureFailure = true
+            self.startPreferredCameraPathIfNeeded()
+        }
+    }
+
+    /// AVCapture-only fallback path used when AR camera is disabled or ARSession failed.
     private func startClassicCameraPathIfNeeded() {
         isUsingARCameraPath = false
         frameLock.lock()
@@ -1076,39 +1165,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         frameLock.unlock()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let wantCompanion = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
-            self.isARDepthCompanionSessionRunning = wantCompanion
-            if wantCompanion {
-                self.setupCamera()
-                let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
-                self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
-                if self.debugMode {
-                    logDebug("📷 [FurnitureFit] AVCaptureSession + AR depth companion (Settings)")
-                }
-            } else {
-                self.arSession.pause()
-                self.setupCamera()
-                if self.debugMode {
-                    logDebug("📷 [FurnitureFit] AVCaptureSession (classic path, AR companion off)")
-                }
-            }
+            self.arCompanionStartGeneration &+= 1
+            self.isARDepthCompanionSessionRunning = false
+            self.arSession.pause()
+            self.setupCamera()
+
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
                 if !self.captureSession.isRunning {
                     self.captureSession.startRunning()
                 }
             }
+
+            if self.debugMode {
+                logDebug("📷 [FurnitureFit] AVCaptureSession (classic path, AR companion off or suppressed after capture error)")
+            }
+
             if !Self.didLogFurnitureFitSizingPolicy {
                 Self.didLogFurnitureFitSizingPolicy = true
-                if wantCompanion {
-                    logFurnitureFitSize(
-                        "policy=classic_camera arDepthCompanion=on → depthSnapshot from ARFrame when available; 📐 [OVERLAY] uses AR depth for scale when valid. May hit Fig -17281 on some OS builds if camera contends — turn off in Settings. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
-                    )
-                } else {
-                    logFurnitureFitSize(
-                        "policy=classic_camera arDepthCompanion=off → depthSnapshot=nil every frame unless companion enabled in Settings on a LiDAR/scene-depth device. Size uses av_focal+room_depth_proxy. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
-                    )
-                }
+                logFurnitureFitSize(
+                    "policy=classic_camera arDepthCompanion=off → depthSnapshot=nil unless AR camera path is enabled in Settings. Size uses av_focal+room_depth_proxy. Filters: FurnitureFitSize | FurnitureFitAR | 📐 [Fitment] | 📐 [OVERLAY]"
+                )
             }
         }
     }
@@ -3021,9 +3098,15 @@ extension FurnitureFitContainerView {
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
-        logDebug("⚠️ [FurnitureFit] ARSession failed: \(error.localizedDescription) — using AVCapture")
-        DispatchQueue.main.async {
-            self.startClassicCameraPathIfNeeded()
+        let nsError = error as NSError
+        logDebug("⚠️ [FurnitureFit] ARSession failed: \(nsError.domain) code=\(nsError.code) — falling back to AVCapture (AR companion off for this session)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            suppressARDepthCompanionAfterCaptureFailure = true
+            isUsingARCameraPath = false
+            isARDepthCompanionSessionRunning = false
+            arSession.pause()
+            startClassicCameraPathIfNeeded()
         }
     }
 }

@@ -23,6 +23,8 @@ class SHARPService: ObservableObject {
 
     /// Resource request for ODR
     private var resourceRequest: NSBundleResourceRequest?
+    /// Background model load started from UI flows like old room-generation screens.
+    private var modelLoadTask: Task<Void, Never>?
 
     /// Whether the ODR resources are currently being downloaded
     @Published var isDownloadingResources: Bool = false
@@ -300,16 +302,21 @@ class SHARPService: ObservableObject {
 
     /// Release ODR resources (call when no longer needed to free disk space)
     func releaseResources() {
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
         resourceRequest?.endAccessingResources()
         resourceRequest = nil
         resourcesAvailable = false
         model = nil
+        isLoadingModel = false
         logDebug("SHARP: Released ODR resources")
     }
 
     /// Drop the in-memory CoreML model after PLY is written so `WKWebView` / WebKit can allocate.
     /// Without this, peak RAM (SHARP + YOLOE + WebKit) can fail heap allocation at `WKWebViewConfiguration()`.
     func releaseInferenceMemoryAfterGeneration() {
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
         model = nil
         isLoadingModel = false
         logDebug("SHARP: Inference model released after generation (free RAM for splat viewer)")
@@ -324,7 +331,9 @@ class SHARPService: ObservableObject {
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
         guard model == nil && !isLoadingModel else { return }
-        Task {
+        modelLoadTask?.cancel()
+        modelLoadTask = Task { [weak self] in
+            guard let self else { return }
             await loadModel()
         }
     }
@@ -333,6 +342,7 @@ class SHARPService: ObservableObject {
     private func loadModel() async {
         // Prevent double-loading if another Task already started
         guard !isLoadingModel && model == nil else { return }
+        defer { modelLoadTask = nil }
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
@@ -357,6 +367,10 @@ class SHARPService: ObservableObject {
         if !resourcesAvailable && !isRunningFromXcode {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
+                if Task.isCancelled {
+                    isLoadingModel = false
+                    return
+                }
                 if downloaded {
                     logDebug("SHARP: ODR download succeeded")
                 } else {
@@ -378,6 +392,10 @@ class SHARPService: ObservableObject {
             // Use FP32 model
             logDebug("SHARP: Loading via auto-generated model class (async) - FP32...")
             let sharpModel = try await SHARP_fp32_1536.load(configuration: config)
+            if Task.isCancelled {
+                isLoadingModel = false
+                return
+            }
             model = sharpModel.model
             logDebug("SHARP: Model loaded successfully")
 
