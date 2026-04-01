@@ -11,6 +11,9 @@ import UIKit
 /// sampling stay time-aligned (avoid using `arSession.currentFrame` after async inference).
 struct FurnitureFitARDepthSnapshot {
     let depthMap: CVPixelBuffer?
+    /// Focal length in **pixels** along BGRA **horizontal** (for width in pinhole formula).
+    let focalLengthX: Float
+    /// Focal length in **pixels** along BGRA **vertical** (for height in pinhole formula).
     let focalLengthY: Float
     let capturedImageWidth: Int
     let capturedImageHeight: Int
@@ -208,6 +211,25 @@ enum FurnitureFitARSupport {
         return fy * Float(bgraHeight) / Float(ref.height)
     }
 
+    /// Focal length in **pixels** along BGRA **horizontal** (width axis of the segmentation buffer).
+    static func focalLengthXForProcessedBGRA(
+        camera: ARCamera,
+        bgraWidth: Int,
+        bgraIsRotatedFromCaptured: Bool
+    ) -> Float {
+        let ref = camera.imageResolution
+        let K = camera.intrinsics
+        let fx = K.columns.0.x
+        let fy = K.columns.1.y
+        guard ref.width > 0, ref.height > 0 else { return fx }
+
+        if bgraIsRotatedFromCaptured {
+            // Horizontal axis in BGRA corresponds to vertical axis in captured image.
+            return fy * Float(bgraWidth) / Float(ref.height)
+        }
+        return fx * Float(bgraWidth) / Float(ref.width)
+    }
+
     /// Build metrics from an `ARFrame` aligned with the **segmentation** buffer: either the same frame as `copyCapturedImageToBGRA`,
     /// or (hybrid path) `arSession.currentFrame` sampled beside an `AVCapture` pixel buffer of size `bgraWidth`×`bgraHeight`.
     static func makeDepthSnapshot(
@@ -228,6 +250,11 @@ enum FurnitureFitARSupport {
             bgraHeight: bgraHeight,
             bgraIsRotatedFromCaptured: bgraIsRotatedFromCaptured
         )
+        let focalX = focalLengthXForProcessedBGRA(
+            camera: frame.camera,
+            bgraWidth: bgraWidth,
+            bgraIsRotatedFromCaptured: bgraIsRotatedFromCaptured
+        )
 
         let depthCopy: CVPixelBuffer? = {
             guard let depthData = frame.sceneDepth ?? frame.smoothedSceneDepth else { return nil }
@@ -236,6 +263,7 @@ enum FurnitureFitARSupport {
 
         return FurnitureFitARDepthSnapshot(
             depthMap: depthCopy,
+            focalLengthX: focalX,
             focalLengthY: focalY,
             capturedImageWidth: srcW,
             capturedImageHeight: srcH,
@@ -276,6 +304,38 @@ enum FurnitureFitARSupport {
         return depthMetersFromDepthMap(depthMap, normalizedDepthPoint: CGPoint(x: uw, y: uh))
     }
 
+    /// Minimum scene depth (m) over a grid in **BGRA-normalized** coords (origin top-left), preferring the **nearest**
+    /// surface in the bbox. Reduces inflated sizes when a loose YOLO box spans object + far wall and the center hits the wall.
+    static func depthMetersMinInNormalizedBgraRect(
+        snapshot: FurnitureFitARDepthSnapshot,
+        nxMin: CGFloat,
+        nyMinTop: CGFloat,
+        nxMax: CGFloat,
+        nyMaxTop: CGFloat,
+        samplesPerAxis: Int = 5
+    ) -> Float? {
+        guard snapshot.depthMap != nil else { return nil }
+        guard samplesPerAxis >= 1 else { return nil }
+        let x0 = min(max(min(nxMin, nxMax), 0), 1)
+        let x1 = min(max(max(nxMin, nxMax), 0), 1)
+        let y0 = min(max(min(nyMinTop, nyMaxTop), 0), 1)
+        let y1 = min(max(max(nyMinTop, nyMaxTop), 0), 1)
+        var best: Float?
+        for iy in 0..<samplesPerAxis {
+            for ix in 0..<samplesPerAxis {
+                let tx = (CGFloat(ix) + 0.5) / CGFloat(samplesPerAxis)
+                let ty = (CGFloat(iy) + 0.5) / CGFloat(samplesPerAxis)
+                let nx = x0 + (x1 - x0) * tx
+                let ny = y0 + (y1 - y0) * ty
+                if let d = depthMeters(snapshot: snapshot, normalizedBgraNX: nx, normalizedBgraNY: ny),
+                   d > 0.1, d < 50, d.isFinite {
+                    if best == nil || d < best! { best = d }
+                }
+            }
+        }
+        return best
+    }
+
     /// Pinhole: physical height (m) from bbox height in **full image pixels** and distance in meters.
     static func estimatedPhysicalHeightMeters(
         bboxHeightPixels: Float,
@@ -284,6 +344,16 @@ enum FurnitureFitARSupport {
     ) -> Float? {
         guard bboxHeightPixels > 1, distanceMeters > 0.1, focalLengthYPixels > 1 else { return nil }
         return (bboxHeightPixels / focalLengthYPixels) * distanceMeters
+    }
+
+    /// Pinhole: physical width (m) from bbox width in **full image pixels** and distance in meters.
+    static func estimatedPhysicalWidthMeters(
+        bboxWidthPixels: Float,
+        distanceMeters: Float,
+        focalLengthXPixels: Float
+    ) -> Float? {
+        guard bboxWidthPixels > 1, distanceMeters > 0.1, focalLengthXPixels > 1 else { return nil }
+        return (bboxWidthPixels / focalLengthXPixels) * distanceMeters
     }
 
     /// Target overlay scale vs 1.0: AR-estimated height relative to standard catalog height, clamped.

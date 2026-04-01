@@ -61,6 +61,26 @@ enum FurnitureMonocularMeasurer {
         return FurnitureSceneSize(width: w, height: h, depth: max(depthExtent, w * 0.15))
     }
 
+    /// Maps furniture size in **meters** (pinhole + depth) into **scene units** matching ``RoomRaycastDimensions``,
+    /// using per-axis scale `roomRaycast / roomMeters` from the Sharp nav / YOLO room box.
+    static func furnitureMetersMappedToRaycastSceneUnits(
+        furnitureMeters: FurnitureSceneSize,
+        roomMetersWidth: Float,
+        roomMetersHeight: Float,
+        roomMetersDepth: Float,
+        roomRaycastScene: RoomRaycastDimensions
+    ) -> FurnitureSceneSize? {
+        guard roomMetersWidth > 1e-5, roomMetersHeight > 1e-5, roomMetersDepth > 1e-5 else { return nil }
+        let scaleW = roomRaycastScene.width / roomMetersWidth
+        let scaleH = roomRaycastScene.height / roomMetersHeight
+        let scaleD = roomRaycastScene.depth / roomMetersDepth
+        return FurnitureSceneSize(
+            width: furnitureMeters.width * scaleW,
+            height: furnitureMeters.height * scaleH,
+            depth: furnitureMeters.depth * scaleD
+        )
+    }
+
     /// Placeholder when no real per-pixel depth map is wired: weak vertical gradient so depth extent is non-zero.
     private static func sampleNormalizedDepthProxy(nx: Float, ny: Float) -> Float {
         0.5 + (ny - 0.5) * 0.08 + (nx - 0.5) * 0.02

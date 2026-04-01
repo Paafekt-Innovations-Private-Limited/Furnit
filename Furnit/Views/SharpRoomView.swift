@@ -1026,12 +1026,38 @@ struct SharpRoomView: View {
         let savedName = roomName
         logDebug("💾 [SharpRoomView] Starting room save: \(savedName)")
 
-        withAnimation(.easeIn(duration: 0.3)) {
-            isSavingRoom = true
-            saveProgress = 0.0
-        }
-
         Task {
+            // Depth raycast uses the Metal scratch buffer. Run it *before* the full-screen save overlay:
+            // occluding the MTKView can stop drawable updates and yields empty / invalid depth ("rays missed").
+            await MainActor.run {
+                splatMeasurementHost.requestRedrawForDepthMeasure()
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+
+            var sceneRaycast: RoomRaycastDimensions? = await MainActor.run {
+                splatMeasurementHost.measureRoom()
+            }
+            if sceneRaycast == nil {
+                sceneRaycast = await MainActor.run { raycastRoomDimensions }
+                if sceneRaycast != nil {
+                    logWallMeasurement("saveRoom depth-raycast: using cached scene units from an earlier frame")
+                }
+            }
+            if let r = sceneRaycast {
+                await MainActor.run { raycastRoomDimensions = r }
+                logWallMeasurement("saveRoom scene-raycast su W×H×D=\(r.width)×\(r.height)×\(r.depth)")
+                logDebug("📐 [SharpRoomView] Save: scene-raycast W×H×D=\(r.width)×\(r.height)×\(r.depth) su")
+            } else {
+                logWallMeasurement("saveRoom depth-raycast failed and no cached scene units")
+            }
+
+            await MainActor.run {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    isSavingRoom = true
+                    saveProgress = 0.0
+                }
+            }
+
             await MainActor.run { saveProgress = 0.12 }
             let folder = classicPlyURL.deletingLastPathComponent()
             let thumbURL = resolvedThumbnailURL(forClassicPly: classicPlyURL)
@@ -1055,42 +1081,26 @@ struct SharpRoomView: View {
             var roomW = await MainActor.run { displayRoomWidth }
             var roomH = await MainActor.run { displayRoomHeight }
             var roomD = await MainActor.run { displayRoomDepth }
-            logWallMeasurement("saveRoom before measure display W×H×D=\(roomW)×\(roomH)×\(roomD)")
+            logWallMeasurement("saveRoom baseline display W×H×D=\(roomW)×\(roomH)×\(roomD)")
 
-            var sceneRaycast: RoomRaycastDimensions?
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            let rayMain = await MainActor.run { splatMeasurementHost.measureRoom() }
-            if let r = rayMain {
-                sceneRaycast = r
-                roomW = r.width
-                roomH = r.height
-                roomD = r.depth
-                logWallMeasurement("saveRoom depth-raycast W×H×D=\(roomW)×\(roomH)×\(roomD) (scene units)")
-                logDebug("📐 [SharpRoomView] Save: splat depth raycast W×H×D=\(roomW)×\(roomH)×\(roomD)")
-                await MainActor.run {
-                    raycastRoomDimensions = r
-                    jsFrontWallWidth = roomW
-                    jsFrontWallHeight = roomH
-                }
-            } else {
-                logWallMeasurement("saveRoom depth-raycast failed — trying YOLO wall / display fallback")
-                if thumbImage == nil || yoloModel == nil {
-                    logWallMeasurement("saveRoom wall measure skipped (need thumbnail + YOLO model)")
-                } else if let m = yoloModel, let img = thumbImage {
-                    let boundsSnapshot = await MainActor.run { effectiveBounds }
-                    if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m, photoOrientation: photoOrientation, plyBounds: boundsSnapshot) {
-                        roomW = measured.widthMeters
-                        roomH = measured.heightMeters
-                        roomD = measured.depthMeters
-                        logWallMeasurement("saveRoom applied W×H×D=\(roomW)×\(roomH)×\(roomD) mode=\(measured.calibrationMode)")
-                        logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH)×\(roomD) m (\(measured.calibrationMode))")
-                        await MainActor.run {
-                            jsFrontWallWidth = roomW
-                            jsFrontWallHeight = roomH
-                        }
-                    } else {
-                        logWallMeasurement("saveRoom measure returned nil — keeping display W×H×D=\(roomW)×\(roomH)×\(roomD)")
+            // Saved width/height/depth in `.meta` stay in **meters** (YOLO wall path when enabled). Scene-raycast `su`
+            // values go only to `roomScene*` for fitment ratios — do not overwrite meter fields with scene units.
+            if thumbImage == nil || yoloModel == nil {
+                logWallMeasurement("saveRoom YOLO wall skipped (need thumbnail + YOLO model)")
+            } else if let m = yoloModel, let img = thumbImage {
+                let boundsSnapshot = await MainActor.run { effectiveBounds }
+                if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m, photoOrientation: photoOrientation, plyBounds: boundsSnapshot) {
+                    roomW = measured.widthMeters
+                    roomH = measured.heightMeters
+                    roomD = measured.depthMeters
+                    logWallMeasurement("saveRoom YOLO wall W×H×D=\(roomW)×\(roomH)×\(roomD) mode=\(measured.calibrationMode)")
+                    logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH)×\(roomD) m (\(measured.calibrationMode))")
+                    await MainActor.run {
+                        jsFrontWallWidth = roomW
+                        jsFrontWallHeight = roomH
                     }
+                } else {
+                    logWallMeasurement("saveRoom YOLO measure nil — keeping display W×H×D=\(roomW)×\(roomH)×\(roomD)")
                 }
             }
 

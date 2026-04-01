@@ -52,6 +52,11 @@ func logFurnitureFitAR(_ message: String) {
     print("[FurnitureFitAR] \(message)")
 }
 
+/// Furniture W×H estimate and pipeline tag (always printed). Filter Xcode / Console.app: `FurnitureFitSize`.
+func logFurnitureFitSize(_ message: String) {
+    print("[FurnitureFitSize] \(message)")
+}
+
 /// Centralized logging utility using os_log framework
 /// - Debug/Info logs only appear when debug mode is enabled in Settings
 /// - Error/Critical logs always appear for crash reporting

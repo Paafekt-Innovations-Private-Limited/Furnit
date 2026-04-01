@@ -582,6 +582,11 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: - Room measurement (depth buffer raycast)
 
+        /// Queues one redraw so depth / view–proj matrices match the current camera before a CPU depth read.
+        func requestRedrawForDepthMeasure() {
+            view?.setNeedsDisplay()
+        }
+
         /// Copies the last rendered splat depth texture to CPU and raycasts five screen samples into world space.
         /// Requires the composite path (scratch color + depth); call after at least one successful ``draw(in:)``.
         func measureRoomFromDepthBuffer() -> RoomRaycastDimensions? {
