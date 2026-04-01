@@ -52,7 +52,7 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
-    /// Extra **linear** scale applied only in `_3dgs.ply` (SuperSplat / export). Metal viewer uses `_classic.ply` (no σ bump here).
+    /// Extra **linear** scale applied only in `_3dgs.ply` (SuperSplat / external viewers). In-app Metal uses `_classic.ply`, not this file.
     /// Stored scales are log(σ); we add `log(factor)` per axis. Tune down if export looks mushy; up if banding in external viewers.
     private static let threeDGSMetalViewerLinearScaleFactor: Float = 1.65
 
@@ -87,6 +87,39 @@ class SHARPService: ObservableObject {
         }
         logDebug("SHARP: Downscaled photo for memory \(Int(w))×\(Int(h)) → \(newW)×\(newH) (max edge ≤\(Int(limit))px)")
         return rendered
+    }
+
+    /// Pixel size after applying UIImage orientation semantics.
+    private static func orientedPixelSize(for image: UIImage) -> CGSize {
+        let baseWidth: CGFloat
+        let baseHeight: CGFloat
+        if let cgImage = image.cgImage {
+            baseWidth = CGFloat(cgImage.width)
+            baseHeight = CGFloat(cgImage.height)
+        } else {
+            baseWidth = image.size.width * image.scale
+            baseHeight = image.size.height * image.scale
+        }
+
+        switch image.imageOrientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            return CGSize(width: baseHeight, height: baseWidth)
+        default:
+            return CGSize(width: baseWidth, height: baseHeight)
+        }
+    }
+
+    /// Match Android's post-inference correction when a non-square photo was stretched into SHARP's square input.
+    static func sharpAspectCorrectionFactors(for imageSize: CGSize) -> (x: Float, y: Float) {
+        let width = max(Float(imageSize.width), 1)
+        let height = max(Float(imageSize.height), 1)
+        guard abs(width - height) > 0.5 else { return (1, 1) }
+
+        let rawCorrX = Float(inputSize) / width
+        let rawCorrY = Float(inputSize) / height
+        let geomMean = sqrt(rawCorrX * rawCorrY)
+        guard geomMean.isFinite, geomMean > 0 else { return (1, 1) }
+        return (rawCorrX / geomMean, rawCorrY / geomMean)
     }
 
     /// Wall-measurement thumbnail: avoid full-res `pngData()` (second memory spike after inference).
@@ -395,7 +428,8 @@ class SHARPService: ObservableObject {
 
         do {
             // High-res library photos + SHARP model + Core ML outputs exceed ~4GB device RAM without downscaling first.
-            let workingImage = Self.downscaledImageForSharpMemoryIfNeeded(image)
+            let orientedImage = image.imageOrientation == .up ? image : image.fixedOrientation()
+            let workingImage = Self.downscaledImageForSharpMemoryIfNeeded(orientedImage)
 
             // Step 1–2: Preprocess + inference in an isolated scope so the 1536² CVPixelBuffer is released
             // before we allocate the huge `[Float]` PLY path (lowers peak RAM on back-to-back rooms).
@@ -408,7 +442,11 @@ class SHARPService: ObservableObject {
             // Step 3: Write PLY files (original + classic for antimatter15)
             statusMessage = L10n.Sharp.almostDone
             progress = 0.8
-            let plyURLs = try await writePLY(gaussianParams)
+            let plyURLs = try await writePLY(
+                gaussianParams,
+                sourceImageSize: Self.orientedPixelSize(for: workingImage),
+                applyAspectCorrection: true
+            )
             logSharpMilestone(
                 "PLY files written on Swift/Core ML path (not C++): classic=\(plyURLs.classic.lastPathComponent) — WebView loads these next",
             )
@@ -749,11 +787,22 @@ class SHARPService: ObservableObject {
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
-    private func writePLY(_ params: [Float]) async throws -> (original: URL, classic: URL, threeDGS: URL) {
+    private func writePLY(
+        _ params: [Float],
+        sourceImageSize: CGSize,
+        applyAspectCorrection: Bool,
+    ) async throws -> (original: URL, classic: URL, threeDGS: URL) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
         let gaussianCount = filteredParams.count / Self.paramsPerGaussian
+        let aspectCorrection = applyAspectCorrection
+            ? Self.sharpAspectCorrectionFactors(for: sourceImageSize)
+            : (x: Float(1), y: Float(1))
+        logDebug(
+            "SHARP: PLY aspect correction image=\(Int(sourceImageSize.width))x\(Int(sourceImageSize.height)) " +
+            "corr=(\(String(format: "%.4f", aspectCorrection.x)), \(String(format: "%.4f", aspectCorrection.y)))"
+        )
 
         // Ensure output directory exists
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
@@ -847,8 +896,8 @@ class SHARPService: ObservableObject {
             let origX = filteredParams[offset + 0]
             let origY = filteredParams[offset + 1]
             let origZ = filteredParams[offset + 2]
-            var x = origX
-            var y = -origY
+            var x = origX * aspectCorrection.x
+            var y = -(origY * aspectCorrection.y)
             var z = -origZ
 
             // Track bounding box and collect positions
@@ -997,7 +1046,7 @@ class SHARPService: ObservableObject {
         let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
         logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
-        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). Metal uses `_classic.ply`.")
+        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). In-app Metal uses `_classic.ply`.")
 
         // Log room measurements (SHARP units are roughly meters)
         let width = maxX - minX

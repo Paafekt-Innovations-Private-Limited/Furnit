@@ -18,9 +18,7 @@ private enum GaussianSplatLoadError: LocalizedError {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// Camera framing uses ``RoomBounds/defaultSplatCameraEyeAndTarget`` (inside room, back → front wall). Prefer SHARP `_classic.ply` (uchar RGB) for Metal.
-/// View matrix does **not** apply a π‑X mesh rotation: MetalSplatter 1.x projects with this matrix,
-/// and SH **degree 0** splats use view-independent colour; a π‑X right-multiply inverted the scene.
+/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. Camera: trimmed P3–P97 bounds, ``RoomBounds/defaultSplatCameraEyeAndTarget``; `_classic` uses view scale `(1,-1,-1)` and default yaw π so the opening view faces into the room.
 struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: Public interface
@@ -148,8 +146,8 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneBoundsMin: SIMD3<Float>?
         private var sceneBoundsMax: SIMD3<Float>?
         private var sceneCentroid: SIMD3<Float>?
-        /// True when loading `_classic.ply` (SHARP writes `y'=-y`, `z'=-z` vs raw model — camera needs inverted world up).
-        private var useSharpClassicInteriorCamera: Bool = false
+        /// True when viewing a SHARP `_classic.ply` splat; used to undo the extra (y,z) → (-y,-z) flip applied at export so the room is not upside down.
+        private var isSharpClassicPly: Bool = false
 
         // Camera orbit & pan state
         var cameraYaw:    Float = 0
@@ -167,7 +165,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         var splatCompositeExposure: Float = 1.0
-        /// Additive lift on dark tonemapped samples (smoothstep mask); keep low for `_classic` to avoid milky mids.
+        /// Additive lift on dark tonemapped samples (smoothstep mask).
         var splatCompositeShadowLift: Float = 0.10
 
         // ── Init ──────────────────────────────────────────────────────────────
@@ -186,8 +184,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Setup
 
-        /// Defers work until after SwiftUI finishes the current update transaction.
-        private func scheduleSwiftUIBindingUpdates(_ updates: @escaping () -> Void) {
+        /// Defers work until after SwiftUI finishes the current update transaction (must run UIKit / bindings on the main actor).
+        private func scheduleSwiftUIBindingUpdates(_ updates: @escaping @MainActor () -> Void) {
             Task { @MainActor in
                 await Task.yield()
                 updates()
@@ -196,7 +194,6 @@ struct GaussianSplatView: UIViewRepresentable {
 
         func setup(view mtkView: MTKView, plyURL: URL) {
             // ── Reset camera ─────────────────────────────────────────────────
-            cameraYaw    = 0
             cameraPitch  = 0
             cameraOffset = .zero
             sceneScale   = SIMD2(1, 1)
@@ -212,14 +209,11 @@ struct GaussianSplatView: UIViewRepresentable {
             drawableSize      = mtkView.drawableSize
             self.view         = mtkView
             currentURL        = plyURL
-            useSharpClassicInteriorCamera = plyURL.lastPathComponent.contains("_classic")
-            if useSharpClassicInteriorCamera {
-                splatCompositeShadowLift = 0.03
-                splatCompositeExposure = 1.05
-            } else {
-                splatCompositeShadowLift = 0.10
-                splatCompositeExposure = 1.0
-            }
+            splatCompositeExposure = 1.0
+            splatCompositeShadowLift = 0.10
+            isSharpClassicPly = plyURL.lastPathComponent.contains("_classic")
+            // Classic frame + `defaultSplatCameraEyeAndTarget` disagree on which Z is “into” the room — orbit 180° so you face the scene, not the wall behind you.
+            cameraYaw = isSharpClassicPly ? Float.pi : 0
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -425,8 +419,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Viewport — camera & MetalSplatter matrix
         //
-        // `_classic.ply`: same back→front framing as `_3dgs` via `RoomBounds.defaultSplatCameraEyeAndTarget` (maxZ = front wall).
-        // World Y is negated in SHARP classic export — use camera up = (0,-1,0) so the room is not vertically inverted.
+        // `_classic.ply`: view scale (1,-1,-1) aligns axes with `_3dgs`; default yaw π faces into the room vs back-wall camera math.
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
@@ -439,7 +432,12 @@ struct GaussianSplatView: UIViewRepresentable {
                 farZ:         100.0
             )
 
-            let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y, 1)
+            // SHARP `_classic.ply` stores positions in a frame rotated by 180° around Y and Z relative to `_3dgs` / base:
+            // Pc = (x,  y,  z) = (x_a, -y_a, -z_a). To bring classic back into the canonical frame that `RoomBounds` / camera expects,
+            // apply the same (1,-1,-1) again in view space when loading `_classic`.
+            let flipY: Float = isSharpClassicPly ? -1 : 1
+            let flipZ: Float = isSharpClassicPly ? -1 : 1
+            let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y * flipY, flipZ)
 
             let boundsMin = sceneBoundsMin
             let boundsMax = sceneBoundsMax
@@ -475,13 +473,10 @@ struct GaussianSplatView: UIViewRepresentable {
             let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
             let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
 
-            let worldUp: SIMD3<Float> = useSharpClassicInteriorCamera
-                ? SIMD3<Float>(0, -1, 0)
-                : SIMD3<Float>(0, 1, 0)
             let viewBase = matrixLookAt(
                 eye:    rotatedEye,
                 target: lookAt,
-                up:     worldUp
+                up:     SIMD3<Float>(0, 1, 0)
             )
 
             let viewMatrix = viewBase * scaleMatrix
@@ -577,7 +572,7 @@ struct GaussianSplatView: UIViewRepresentable {
             ) { [weak self] _ in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.cameraYaw    = 0
+                    self.cameraYaw    = self.isSharpClassicPly ? Float.pi : 0
                     self.cameraPitch  = 0
                     self.cameraOffset = .zero
                     self.appliedZoomLevel = 1.0

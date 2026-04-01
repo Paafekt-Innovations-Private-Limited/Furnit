@@ -510,6 +510,7 @@ class USDZModelManager: ObservableObject {
 
         let fileName = sanitizeFileName(name)
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
+        let classicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         // Check if source exists
@@ -529,9 +530,21 @@ class USDZModelManager: ObservableObject {
             if FileManager.default.fileExists(atPath: metadataURL.path) {
                 try FileManager.default.removeItem(at: metadataURL)
             }
+            if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
+                try FileManager.default.removeItem(at: classicSidecarURL)
+            }
 
             // Copy PLY file
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+            // SHARP save uses `Room_*_classic.ply` as the Metal source; copied to `Name.ply` loses the `_classic` suffix.
+            // Duplicate as `Name_classic.ply` so `SharpRoomView` picks the same URL as preview and `GaussianSplatView` applies classic camera/flip.
+            if sourceURL.lastPathComponent.contains("_classic") {
+                try FileManager.default.copyItem(at: destinationURL, to: classicSidecarURL)
+                if debugMode {
+                    logDebug("💾 [USDZModelManager] Also saved classic sidecar: \(classicSidecarURL.lastPathComponent)")
+                }
+            }
 
             // Save metadata (orientation and dimensions)
             var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]

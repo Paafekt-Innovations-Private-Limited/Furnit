@@ -72,7 +72,7 @@ struct SharpRoomView: View {
     let savedRoomModel: USDZModel?
     @Environment(\.dismiss) private var dismiss
 
-    /// PLY for MetalSplatter: prefer `_classic.ply` (uchar RGB, WebGL parity); else `_3dgs.ply` (`f_dc`), else base.
+    /// PLY for MetalSplatter: `_classic.ply` when present (uchar RGB); else the room base `.ply` (no `_3dgs` in this path).
     private let viewerPlyURL: URL
     /// Classic PLY (front-rotated) when available; falls back to base.
     private let classicPlyURL: URL
@@ -93,14 +93,11 @@ struct SharpRoomView: View {
         self.savedRoomModel = savedRoomModel
 
         let basePath = plyURL.path
-        let threeDGS = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_3dgs.ply"))
         let classic = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_classic.ply"))
         let fm = FileManager.default
 
         if fm.fileExists(atPath: classic.path) {
             self.viewerPlyURL = classic
-        } else if fm.fileExists(atPath: threeDGS.path) {
-            self.viewerPlyURL = threeDGS
         } else {
             self.viewerPlyURL = plyURL
         }
@@ -244,9 +241,7 @@ struct SharpRoomView: View {
                 }
             }
         .sheet(isPresented: $showShareSheet) {
-            let threeDGSPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
-            let shareURL = FileManager.default.fileExists(atPath: threeDGSPath) ? URL(fileURLWithPath: threeDGSPath) : plyURL
-            ShareSheet(activityItems: [shareURL])
+            ShareSheet(activityItems: [viewerPlyURL])
         }
         .onAppear {
             // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
