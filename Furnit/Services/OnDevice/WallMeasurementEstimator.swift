@@ -125,7 +125,7 @@ enum WallMeasurementEstimator {
         // --- YOLO detections (needed for depth + fallback dimensions) ---
 
         let detsRaw: [FurnitureFitDetection]
-        let mapping: YoloEImageInference.LetterboxMapping
+        let mapping: YoloEImageInference.OnnxStyleMapping
         do {
             (detsRaw, mapping) = try YoloEImageInference.runDetections(
                 image: thumbnail,

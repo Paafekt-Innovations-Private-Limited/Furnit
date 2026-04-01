@@ -168,23 +168,8 @@ struct SettingsView: View {
                     Text(L10n.Settings.roomViewerSection)
                 }
 
-                // Furniture segmentation (FurnitureFit)
+                // Furniture segmentation (FurnitureFit) — YOLO-E Core ML
                 Section {
-                    Toggle(isOn: $appState.qualitySettings.furnitureFitUseOnnxRuntime) {
-                        HStack {
-                            Image(systemName: "cube.transparent")
-                                .foregroundColor(.teal)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.furnitureFitOnnxRuntime)
-                                    .font(.headline)
-                                Text(L10n.Settings.furnitureFitOnnxRuntimeDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .tint(.teal)
-
                     Toggle(isOn: $appState.qualitySettings.yoloeCoreMLAllowGPU) {
                         HStack {
                             Image(systemName: "cpu")

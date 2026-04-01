@@ -145,8 +145,6 @@ enum L10n {
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
-        static let furnitureFitOnnxRuntime = "settings.furnitureFitOnnxRuntime".localized
-        static let furnitureFitOnnxRuntimeDescription = "settings.furnitureFitOnnxRuntimeDescription".localized
         static let yoloeCoreMLAllowGPU = "settings.yoloeCoreMLAllowGPU".localized
         static let yoloeCoreMLAllowGPUDescription = "settings.yoloeCoreMLAllowGPUDescription".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
