@@ -141,6 +141,8 @@
 "licenses.yoloe" = "यह ऐप YOLO (जैसे Ultralytics YOLO) आधारित मॉडल इस्तेमाल करता है। YOLO AGPL-3.0 के तहत लाइसेंस प्राप्त है। यह चरण 1 रिलीज़ गैर-वाणिज्यिक है। वाणिज्यिक उपयोग के लिए https://www.ultralytics.com/license देखें।";
 "licenses.sharpTitle" = "3D कमरा पुनर्निर्माण (SHARP)";
 "licenses.sharp" = "कॉपीराइट (c) SharpML योगदानकर्ता। MIT लाइसेंस के तहत लाइसेंस प्राप्त।";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "कॉपीराइट (c) Google LLC। Apache लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।";
 

@@ -333,7 +333,7 @@ struct GLBRoomView: View {
 
     private func formatDimensions() -> String {
         if let w = roomWidth, let h = roomHeight {
-            return String(format: "%.1f × %.1f m", w, h)
+            return String(format: "%.1f m × %.1f m", w, h)
         }
         return "3D Room"
     }

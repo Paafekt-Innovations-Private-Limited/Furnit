@@ -176,6 +176,10 @@ struct SharpRoomView: View {
     @State private var furnitureFitInitialSegmentationDone = false
     /// Pinch zoom for MetalSplatter (`GaussianSplatView`).
     @State private var metalSplatterZoom: Float = 1.0
+    /// Bridges splat ``GaussianSplatView/Coordinator`` for depth-buffer room raycast at save (and optional live refresh).
+    @StateObject private var splatMeasurementHost = GaussianSplatMeasurementHost()
+    /// Last successful depth-raycast room extents (scene units); refreshed after load and before save.
+    @State private var raycastRoomDimensions: RoomRaycastDimensions?
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -189,10 +193,27 @@ struct SharpRoomView: View {
         }
         .background(Color.gray)
         .navigationBarHidden(isCapturingSnapshot)
-        .navigationTitle(navigationTitleWithDimensions)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(allowSave)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text(navigationRoomMetersLine)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .multilineTextAlignment(.center)
+                    if let r = raycastRoomDimensions {
+                        Text(String(format: "Raycast %.2f × %.2f × %.2f su", r.width, r.height, r.depth))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
             if allowSave {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
@@ -327,9 +348,19 @@ struct SharpRoomView: View {
                     metalBounds = bounds
                     seedFrontWallDimensionsFromPlyBoundsIfNeeded()
                 }
-            }
+            },
+            measurementHost: splatMeasurementHost
         )
         .ignoresSafeArea()
+        .onChange(of: isLoading) { _, loading in
+            guard !loading else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                if let m = splatMeasurementHost.measureRoom() {
+                    raycastRoomDimensions = m
+                    logDebug("📏 [SharpRoomView] Live depth raycast W×H×D=\(m.width)×\(m.height)×\(m.depth) su")
+                }
+            }
+        }
         .onAppear {
             guard !allowSave else { return }
             Task { @MainActor in
@@ -468,8 +499,9 @@ struct SharpRoomView: View {
         savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
     }
 
-    private var navigationTitleWithDimensions: String {
-        String(format: "%.1f × %.1f m", displayRoomWidth, displayRoomHeight)
+    /// Nav bar: explicit **m** on each number; depth included (room scale used for Furniture Fit / save).
+    private var navigationRoomMetersLine: String {
+        String(format: "%.1f m × %.1f m × %.1f m", displayRoomWidth, displayRoomHeight, displayRoomDepth)
     }
 
     /// Baseline W/H before calibration — mirrors display priority minus `calibrated*`.
@@ -492,6 +524,16 @@ struct SharpRoomView: View {
 
     private var furnitureFitRoomHeight: Float { displayRoomHeight }
 
+    /// Scene-unit room from live raycast, else from saved `.meta` (`roomScene*`), for ratio fitment logs in Furniture Fit.
+    private var furnitureFitSceneDimensions: RoomRaycastDimensions? {
+        if let r = raycastRoomDimensions { return r }
+        if let m = savedRoomModel,
+           let w = m.roomSceneWidth, let h = m.roomSceneHeight, let d = m.roomSceneDepth {
+            return RoomRaycastDimensions(width: w, height: h, depth: d)
+        }
+        return nil
+    }
+
     private var furnitureFitOverlayView: some View {
         FurnitureFitUIView(
             capturedImage: .constant(nil),
@@ -502,6 +544,9 @@ struct SharpRoomView: View {
             lockedOrientation: photoOrientation,
             roomWidthMeters: furnitureFitRoomWidth,
             roomHeightMeters: furnitureFitRoomHeight,
+            roomDepthMeters: displayRoomDepth,
+            roomRaycastSceneDimensions: furnitureFitSceneDimensions,
+            cameraFocalLengthPixels: 0,
             onFurnitureSizeEstimated: { estimate in
                 // Keep numeric room + furniture measurements stable; AR height is used only
                 // for visual overlay sizing inside FurnitureFit, not for recalibrating the room.
@@ -1011,24 +1056,44 @@ struct SharpRoomView: View {
             var roomH = await MainActor.run { displayRoomHeight }
             var roomD = await MainActor.run { displayRoomDepth }
             logWallMeasurement("saveRoom before measure display W×H×D=\(roomW)×\(roomH)×\(roomD)")
-            if thumbImage == nil || yoloModel == nil {
-                logWallMeasurement("saveRoom wall measure skipped (need thumbnail + YOLO model)")
-            } else if let m = yoloModel, let img = thumbImage {
-                let boundsSnapshot = await MainActor.run { effectiveBounds }
-                if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m, photoOrientation: photoOrientation, plyBounds: boundsSnapshot) {
-                    roomW = measured.widthMeters
-                    roomH = measured.heightMeters
-                    roomD = measured.depthMeters
-                    logWallMeasurement("saveRoom applied W×H×D=\(roomW)×\(roomH)×\(roomD) mode=\(measured.calibrationMode)")
-                    logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH)×\(roomD) m (\(measured.calibrationMode))")
-                    await MainActor.run {
-                        jsFrontWallWidth = roomW
-                        jsFrontWallHeight = roomH
+
+            var sceneRaycast: RoomRaycastDimensions?
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            let rayMain = await MainActor.run { splatMeasurementHost.measureRoom() }
+            if let r = rayMain {
+                sceneRaycast = r
+                roomW = r.width
+                roomH = r.height
+                roomD = r.depth
+                logWallMeasurement("saveRoom depth-raycast W×H×D=\(roomW)×\(roomH)×\(roomD) (scene units)")
+                logDebug("📐 [SharpRoomView] Save: splat depth raycast W×H×D=\(roomW)×\(roomH)×\(roomD)")
+                await MainActor.run {
+                    raycastRoomDimensions = r
+                    jsFrontWallWidth = roomW
+                    jsFrontWallHeight = roomH
+                }
+            } else {
+                logWallMeasurement("saveRoom depth-raycast failed — trying YOLO wall / display fallback")
+                if thumbImage == nil || yoloModel == nil {
+                    logWallMeasurement("saveRoom wall measure skipped (need thumbnail + YOLO model)")
+                } else if let m = yoloModel, let img = thumbImage {
+                    let boundsSnapshot = await MainActor.run { effectiveBounds }
+                    if let measured = await WallMeasurementEstimator.measure(roomFolder: folder, thumbnail: img, model: m, photoOrientation: photoOrientation, plyBounds: boundsSnapshot) {
+                        roomW = measured.widthMeters
+                        roomH = measured.heightMeters
+                        roomD = measured.depthMeters
+                        logWallMeasurement("saveRoom applied W×H×D=\(roomW)×\(roomH)×\(roomD) mode=\(measured.calibrationMode)")
+                        logDebug("📐 [SharpRoomView] YOLO wall measurement: \(roomW)×\(roomH)×\(roomD) m (\(measured.calibrationMode))")
+                        await MainActor.run {
+                            jsFrontWallWidth = roomW
+                            jsFrontWallHeight = roomH
+                        }
+                    } else {
+                        logWallMeasurement("saveRoom measure returned nil — keeping display W×H×D=\(roomW)×\(roomH)×\(roomD)")
                     }
-                } else {
-                    logWallMeasurement("saveRoom measure returned nil — keeping display W×H×D=\(roomW)×\(roomH)×\(roomD)")
                 }
             }
+
             await MainActor.run { saveProgress = 0.55 }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 modelManager.savePLY(
@@ -1037,7 +1102,10 @@ struct SharpRoomView: View {
                     photoOrientation: photoOrientation,
                     roomWidth: roomW,
                     roomHeight: roomH,
-                    roomDepth: roomD
+                    roomDepth: roomD,
+                    roomSceneWidth: sceneRaycast?.width,
+                    roomSceneHeight: sceneRaycast?.height,
+                    roomSceneDepth: sceneRaycast?.depth
                 ) { success, error in
                     logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
                     Task { @MainActor in

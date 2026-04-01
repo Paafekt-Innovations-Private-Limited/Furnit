@@ -2303,7 +2303,7 @@ struct SceneKitViewer: View {
             }
             .zIndex(99995)
         }
-        .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
+        .navigationTitle(String(format: "%.1f m × %.1f m", roomWidth, roomHeight))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
 

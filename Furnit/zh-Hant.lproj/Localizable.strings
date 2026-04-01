@@ -141,6 +141,8 @@
 "licenses.yoloe" = "本應用使用基於 YOLO（如 Ultralytics YOLO）的模型。YOLO 依 AGPL-3.0 授權。本第一階段發布為非商業。商業使用請見 https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "3D 房間重建 (SHARP)";
 "licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "裝置端高斯 splat 渲染。Copyright (c) Sean Cier。依 MIT 授權條款授權。";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。";
 

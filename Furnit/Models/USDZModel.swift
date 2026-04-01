@@ -14,6 +14,11 @@ struct USDZModel: Identifiable, Hashable {
     let roomHeight: Float?  // Room height in meters
     let roomDepth: Float?  // Room depth in meters (for meshroom)
 
+    /// Optional splat depth-raycast dimensions in **scene units** (PLY space) for ratio fitment vs furniture.
+    let roomSceneWidth: Float?
+    let roomSceneHeight: Float?
+    let roomSceneDepth: Float?
+
     // MARK: - YOLO ratio calibration (optional; from *.meta JSON)
     /// Wall bbox height / reference image height, or 1.0 when using full-frame proxy.
     let yoloWallHeightFrac: Float?
@@ -37,6 +42,9 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = nil
         self.roomHeight = nil
         self.roomDepth = nil
+        self.roomSceneWidth = nil
+        self.roomSceneHeight = nil
+        self.roomSceneDepth = nil
         self.yoloWallHeightFrac = nil
         self.yoloFurnitureHeightFracByClass = nil
         self.yoloRefImageHeightPx = nil
@@ -57,6 +65,9 @@ struct USDZModel: Identifiable, Hashable {
         roomWidth: Float? = nil,
         roomHeight: Float? = nil,
         roomDepth: Float? = nil,
+        roomSceneWidth: Float? = nil,
+        roomSceneHeight: Float? = nil,
+        roomSceneDepth: Float? = nil,
         yoloWallHeightFrac: Float? = nil,
         yoloFurnitureHeightFracByClass: [String: Float]? = nil,
         yoloRefImageHeightPx: Int? = nil,
@@ -72,6 +83,9 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = roomWidth
         self.roomHeight = roomHeight
         self.roomDepth = roomDepth
+        self.roomSceneWidth = roomSceneWidth
+        self.roomSceneHeight = roomSceneHeight
+        self.roomSceneDepth = roomSceneDepth
         self.yoloWallHeightFrac = yoloWallHeightFrac
         self.yoloFurnitureHeightFracByClass = yoloFurnitureHeightFracByClass
         self.yoloRefImageHeightPx = yoloRefImageHeightPx

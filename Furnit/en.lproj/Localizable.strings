@@ -159,6 +159,8 @@
 "licenses.yoloe" = "Copyright (c) Ultralytics. Licensed under the GNU Affero General Public License v3.0. This Phase 1 release is non-commercial. For commercial use, see Ultralytics.";
 "licenses.sharpTitle" = "Sharp ML";
 "licenses.sharp" = "Copyright (c) SharpML contributors. Licensed under the MIT License.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Licensed under the Apache License 2.0.";
 

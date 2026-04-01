@@ -141,6 +141,8 @@
 "licenses.yoloe" = "இந்த ஆப் YOLO (எ.கா. Ultralytics YOLO) அடிப்படையிலான மாதிரிகளைப் பயன்படுத்துகிறது. YOLO AGPL-3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு https://www.ultralytics.com/license பார்க்கவும்.";
 "licenses.sharpTitle" = "3D அறை மறுகட்டமைப்பு (SHARP)";
 "licenses.sharp" = "பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.";
 

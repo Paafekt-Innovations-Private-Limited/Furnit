@@ -925,13 +925,25 @@ struct AboutView: View {
                 }
                 .padding(.vertical, 4)
             }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.metalSplatterTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.metalSplatter)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
         }
         .navigationTitle(L10n.Profile.about)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), Firebase (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0).
 struct LicensesView: View {
     private enum LicenseURL {
         static let agpl3 = URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!
@@ -977,6 +989,20 @@ struct LicensesView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     Text(L10n.Licenses.sharp)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.metalSplatterTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.metalSplatter)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)

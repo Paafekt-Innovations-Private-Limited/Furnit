@@ -643,6 +643,10 @@ struct FurnitureFitUIView: UIViewRepresentable {
     // Room dimensions from SHARP (in meters) for furniture sizing
     var roomWidthMeters: Float = 4.0
     var roomHeightMeters: Float = 3.0
+    var roomDepthMeters: Float = 4.0
+    /// Splat raycast / saved `.meta` scene units for ratio fitment logs.
+    var roomRaycastSceneDimensions: RoomRaycastDimensions? = nil
+    var cameraFocalLengthPixels: Float = 0
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
@@ -656,6 +660,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.lockedOrientation = lockedOrientation
         view.roomWidthMeters = roomWidthMeters
         view.roomHeightMeters = roomHeightMeters
+        view.roomDepthMeters = roomDepthMeters
+        view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        view.cameraFocalLengthPixels = cameraFocalLengthPixels
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
@@ -669,6 +676,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.lockedOrientation = lockedOrientation
         uiView.roomWidthMeters = roomWidthMeters
         uiView.roomHeightMeters = roomHeightMeters
+        uiView.roomDepthMeters = roomDepthMeters
+        uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         uiView.suppressStartupProgress = suppressStartupProgress

@@ -190,6 +190,8 @@ enum L10n {
         static let yoloe = "licenses.yoloe".localized
         static let sharpTitle = "licenses.sharpTitle".localized
         static let sharp = "licenses.sharp".localized
+        static let metalSplatterTitle = "licenses.metalSplatterTitle".localized
+        static let metalSplatter = "licenses.metalSplatter".localized
         static let firebaseTitle = "licenses.firebaseTitle".localized
         static let firebase = "licenses.firebase".localized
     }

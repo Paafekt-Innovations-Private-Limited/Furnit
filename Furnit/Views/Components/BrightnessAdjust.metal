@@ -29,7 +29,8 @@ fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
     // Exposure and shadowLift are set to neutral values from Swift (1.0 and 0.0 respectively).
     c.rgb *= exposure;
     // Subtle gray background so “void” pixels are present without harsh black borders.
-    float3 gray = float3(0.24, 0.24, 0.24);
+    // shadowLift brightens the void tint slightly when non-zero (no effect at 0).
+    float3 gray = saturate(float3(0.24, 0.24, 0.24) + float3(shadowLift));
     float3 result = c.rgb + gray * (1.0 - c.a);
     return float4(saturate(result), 1.0);
 }

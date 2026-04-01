@@ -141,6 +141,8 @@
 "licenses.yoloe" = "ఈ యాప్ YOLO (ఉదా. Ultralytics YOLO) ఆధారిత మోడల్‌లను ఉపయోగిస్తుంది. YOLO AGPL-3.0 క్రింద లైసెన్స్ పొందింది. ఈ ఫేజ్ 1 రిలీజ్ వాణిజ్యేతరం. వాణిజ్య వాడకానికి https://www.ultralytics.com/license చూడండి.";
 "licenses.sharpTitle" = "3D రూమ్ రీకన్స్ట్రక్షన్ (SHARP)";
 "licenses.sharp" = "కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "కాపీరైట్ (c) Google LLC. Apache లైసెన్స్ 2.0 క్రింద లైసెన్స్ పొందింది.";
 

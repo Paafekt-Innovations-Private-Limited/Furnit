@@ -1,5 +1,6 @@
 import SwiftUI
 import MetalKit
+import Metal
 import MetalSplatter
 import SplatIO
 import simd
@@ -40,6 +41,9 @@ struct GaussianSplatView: UIViewRepresentable {
 
     /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
     var onBoundsAvailable: ((RoomBounds) -> Void)?
+
+    /// Optional bridge so parents (e.g. ``SharpRoomView``) can call ``GaussianSplatMeasurementHost/measureRoom()`` after frames have rendered.
+    var measurementHost: GaussianSplatMeasurementHost? = nil
 
     // MARK: Concurrency guard
 
@@ -88,6 +92,7 @@ struct GaussianSplatView: UIViewRepresentable {
         mtkView.addGestureRecognizer(pinch)
 
         mtkView.delegate = context.coordinator
+        measurementHost?.coordinator = context.coordinator
         context.coordinator.setup(view: mtkView, plyURL: plyURL)
 
         return mtkView
@@ -105,6 +110,7 @@ struct GaussianSplatView: UIViewRepresentable {
         // here; that writes the parent `@State` during `updateUIView` and triggers
         // “Modifying state during view update”.
         coordinator.appliedZoomLevel = zoomLevel
+        measurementHost?.coordinator = coordinator
         mtkView.setNeedsDisplay()
     }
 
@@ -119,6 +125,10 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Zoom used for projection (updated from parent in `updateUIView` without writing the binding).
         var appliedZoomLevel: Float = 1.0
         var onBoundsAvailable: ((RoomBounds) -> Void)?
+
+        /// Last camera matrices used for splat rendering (for depth raycast).
+        private var lastProjectionMatrix: simd_float4x4 = matrix_identity_float4x4
+        private var lastViewMatrix: simd_float4x4 = matrix_identity_float4x4
 
         // ── Metal objects ─────────────────────────────────────────────────────
         var device: MTLDevice?
@@ -404,6 +414,8 @@ struct GaussianSplatView: UIViewRepresentable {
             }
 
             let vp = viewport
+            lastProjectionMatrix = vp.projectionMatrix
+            lastViewMatrix = vp.viewMatrix
 
             if let pipeline = compositePipeline,
                let scratch = ensureSplatScratchTexture(
@@ -566,6 +578,103 @@ struct GaussianSplatView: UIViewRepresentable {
                 screenSize:       SIMD2(x: Int(drawableSize.width),
                                         y: Int(drawableSize.height))
             )
+        }
+
+        // MARK: - Room measurement (depth buffer raycast)
+
+        /// Copies the last rendered splat depth texture to CPU and raycasts five screen samples into world space.
+        /// Requires the composite path (scratch color + depth); call after at least one successful ``draw(in:)``.
+        func measureRoomFromDepthBuffer() -> RoomRaycastDimensions? {
+            guard let metalDevice = device,
+                  let commandQueue = commandQueue,
+                  let depthTex = depthScratchTexture,
+                  splatRenderer != nil else {
+                logDebug("❌ [Measure] Missing device, queue, depth texture, or renderer")
+                return nil
+            }
+
+            let w = depthTex.width
+            let h = depthTex.height
+            guard w > 2, h > 2 else { return nil }
+
+            let bytesPerRow = w * MemoryLayout<Float>.stride
+            let totalBytes = bytesPerRow * h
+            guard let buffer = metalDevice.makeBuffer(length: totalBytes, options: .storageModeShared) else {
+                logDebug("❌ [Measure] Shared depth staging buffer allocation failed")
+                return nil
+            }
+
+            guard let cmdBuf = commandQueue.makeCommandBuffer(),
+                  let blit = cmdBuf.makeBlitCommandEncoder() else {
+                logDebug("❌ [Measure] Blit encoder failed")
+                return nil
+            }
+
+            blit.copy(
+                from: depthTex,
+                sourceSlice: 0,
+                sourceLevel: 0,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: w, height: h, depth: 1),
+                to: buffer,
+                destinationOffset: 0,
+                destinationBytesPerRow: bytesPerRow,
+                destinationBytesPerImage: totalBytes
+            )
+            blit.endEncoding()
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+
+            let invProj = simd_inverse(lastProjectionMatrix)
+            let invView = simd_inverse(lastViewMatrix)
+            let depths = buffer.contents().bindMemory(to: Float.self, capacity: w * h)
+
+            let margin: Float = 0.10
+            guard let center = unprojectDepthSample(nx: 0.5, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
+                  let left = unprojectDepthSample(nx: margin, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
+                  let right = unprojectDepthSample(nx: 1 - margin, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
+                  let top = unprojectDepthSample(nx: 0.5, ny: margin, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
+                  let bottom = unprojectDepthSample(nx: 0.5, ny: 1 - margin, w: w, h: h, depths: depths, invProj: invProj, invView: invView) else {
+                logDebug("❌ [Measure] Rays missed — depth invalid or room not visible in margin samples")
+                return nil
+            }
+
+            let widthWorld = simd_length(right - left)
+            let heightWorld = simd_length(top - bottom)
+            let camWorld = (invView * SIMD4<Float>(0, 0, 0, 1))
+            let camPos = SIMD3<Float>(camWorld.x, camWorld.y, camWorld.z)
+            let depthAlong = simd_length(center - camPos)
+
+            let dims = RoomRaycastDimensions(width: widthWorld, height: heightWorld, depth: depthAlong)
+            logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            logDebug("📏 [Measure] Raycast room W=\(String(format: "%.3f", dims.width)) H=\(String(format: "%.3f", dims.height)) D=\(String(format: "%.3f", dims.depth)) su")
+            logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return dims
+        }
+
+        private func unprojectDepthSample(
+            nx: Float,
+            ny: Float,
+            w: Int,
+            h: Int,
+            depths: UnsafeMutablePointer<Float>,
+            invProj: simd_float4x4,
+            invView: simd_float4x4
+        ) -> SIMD3<Float>? {
+            let px = min(max(Int(nx * Float(w - 1)), 0), w - 1)
+            let py = min(max(Int(ny * Float(h - 1)), 0), h - 1)
+            let d = depths[py * w + px]
+            guard d.isFinite, d > 0.001, d < 0.9999 else { return nil }
+
+            let zNdc = d * 2 - 1
+            let xNdc = nx * 2 - 1
+            let yNdc = -(ny * 2 - 1)
+            let clip = SIMD4<Float>(xNdc, yNdc, zNdc, 1)
+            var eye = invProj * clip
+            guard abs(eye.w) > 1e-6 else { return nil }
+            eye /= eye.w
+            let world = invView * eye
+            return SIMD3<Float>(world.x, world.y, world.z)
         }
 
         // MARK: Gesture Handlers
@@ -864,6 +973,7 @@ private func logSphericalHarmonicsSanityCheck(points: [SplatPoint], plyFileName:
         loadError: .constant(nil as String?),
         zoomLevel: .constant(1.0),
         infiniteZoom: true,
-        onBoundsAvailable: nil
+        onBoundsAvailable: nil,
+        measurementHost: nil
     )
 }

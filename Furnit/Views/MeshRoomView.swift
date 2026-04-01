@@ -145,7 +145,7 @@ struct MeshRoomView: View {
             }
         }
         .background(Color.gray)
-        .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
+        .navigationTitle(String(format: "%.1f m × %.1f m × %.1f m", roomWidth, roomHeight, roomDepth))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {

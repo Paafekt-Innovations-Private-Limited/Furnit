@@ -9,6 +9,10 @@ private struct SavedRoomDiskMetadata {
     let width: Float?
     let height: Float?
     let depth: Float?
+    /// Depth-raycast / PLY scene units (optional; ratio fitment).
+    let sceneWidth: Float?
+    let sceneHeight: Float?
+    let sceneDepth: Float?
     let yoloWallHeightFrac: Float?
     let yoloFurnitureHeightFracByClass: [String: Float]?
     let yoloRefImageHeightPx: Int?
@@ -21,6 +25,9 @@ private struct SavedRoomDiskMetadata {
         width: nil,
         height: nil,
         depth: nil,
+        sceneWidth: nil,
+        sceneHeight: nil,
+        sceneDepth: nil,
         yoloWallHeightFrac: nil,
         yoloFurnitureHeightFracByClass: nil,
         yoloRefImageHeightPx: nil,
@@ -33,6 +40,9 @@ private struct SavedRoomDiskMetadata {
         let width = metadata["roomWidth"].flatMap { Float($0) }
         let height = metadata["roomHeight"].flatMap { Float($0) }
         let depth = metadata["roomDepth"].flatMap { Float($0) }
+        let sceneW = metadata["roomSceneWidth"].flatMap { Float($0) }
+        let sceneH = metadata["roomSceneHeight"].flatMap { Float($0) }
+        let sceneD = metadata["roomSceneDepth"].flatMap { Float($0) }
         let yoloWall = metadata["yoloWallHeightFrac"].flatMap { Float($0) }
         let yoloRefH = metadata["yoloRefImageHeightPx"].flatMap { Int($0) }
         let sharpCap = metadata["sharpRoomHeightAtYoloCapture"].flatMap { Float($0) }
@@ -49,6 +59,9 @@ private struct SavedRoomDiskMetadata {
             width: width,
             height: height,
             depth: depth,
+            sceneWidth: sceneW,
+            sceneHeight: sceneH,
+            sceneDepth: sceneD,
             yoloWallHeightFrac: yoloWall,
             yoloFurnitureHeightFracByClass: furnMap,
             yoloRefImageHeightPx: yoloRefH,
@@ -222,6 +235,9 @@ class USDZModelManager: ObservableObject {
                     roomWidth: metadata.width,
                     roomHeight: metadata.height,
                     roomDepth: metadata.depth,
+                    roomSceneWidth: metadata.sceneWidth,
+                    roomSceneHeight: metadata.sceneHeight,
+                    roomSceneDepth: metadata.sceneDepth,
                     yoloWallHeightFrac: metadata.yoloWallHeightFrac,
                     yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
                     yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
@@ -501,7 +517,18 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Save a PLY file to SavedRooms directory
-    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, roomDepth: Float? = nil, completion: @escaping (Bool, String?) -> Void) {
+    func savePLY(
+        from sourceURL: URL,
+        name: String,
+        photoOrientation: PhotoOrientation = .portrait,
+        roomWidth: Float? = nil,
+        roomHeight: Float? = nil,
+        roomDepth: Float? = nil,
+        roomSceneWidth: Float? = nil,
+        roomSceneHeight: Float? = nil,
+        roomSceneDepth: Float? = nil,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         if debugMode {
@@ -556,6 +583,15 @@ class USDZModelManager: ObservableObject {
             }
             if let depth = roomDepth {
                 metadata["roomDepth"] = String(format: "%.2f", depth)
+            }
+            if let sw = roomSceneWidth {
+                metadata["roomSceneWidth"] = String(format: "%.4f", sw)
+            }
+            if let sh = roomSceneHeight {
+                metadata["roomSceneHeight"] = String(format: "%.4f", sh)
+            }
+            if let sd = roomSceneDepth {
+                metadata["roomSceneDepth"] = String(format: "%.4f", sd)
             }
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)

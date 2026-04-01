@@ -82,6 +82,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: Room Dimensions (from SHARP output, in meters)
     var roomWidthMeters: Float = 4.0   // Default fallback
     var roomHeightMeters: Float = 3.0  // Default fallback
+    /// Front-to-back span (m) for monocular depth fallback when AR depth is missing.
+    var roomDepthMeters: Float = 4.0
+
+    /// Optional splat depth-raycast room extents in **scene units** (same as saved `roomScene*` in `.meta`). Enables ratio fitment logs.
+    var roomRaycastSceneDimensions: RoomRaycastDimensions?
+    /// Pinhole focal length in pixels; `0` uses back camera horizontal FOV when available.
+    var cameraFocalLengthPixels: Float = 0
+
+    private var captureBackCamera: AVCaptureDevice?
+    private var lastSceneFitmentLogAt: CFAbsoluteTime = 0
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
@@ -199,6 +209,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         l.textColor = .white
         l.font = .systemFont(ofSize: 14, weight: .medium)
         l.textAlignment = .center
+        l.numberOfLines = 2
+        l.adjustsFontSizeToFitWidth = true
+        l.minimumScaleFactor = 0.72
         l.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         l.layer.cornerRadius = 10
         l.clipsToBounds = true
@@ -472,8 +485,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // Container centered horizontally, near top
             progressContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
             progressContainer.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 40),
-            progressContainer.widthAnchor.constraint(equalToConstant: 280),
-            progressContainer.heightAnchor.constraint(equalToConstant: 50),
+            progressContainer.widthAnchor.constraint(equalToConstant: 300),
+            progressContainer.heightAnchor.constraint(equalToConstant: 62),
 
             // Progress bar inside container
             progressView.leadingAnchor.constraint(equalTo: progressContainer.leadingAnchor),
@@ -483,8 +496,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // Label above progress bar
             progressLabel.centerXAnchor.constraint(equalTo: progressContainer.centerXAnchor),
             progressLabel.bottomAnchor.constraint(equalTo: progressView.topAnchor, constant: -6),
-            progressLabel.heightAnchor.constraint(equalToConstant: 24),
-            progressLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+            progressLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+            progressLabel.widthAnchor.constraint(equalTo: progressContainer.widthAnchor)
         ])
         
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
@@ -947,6 +960,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         
         captureSession.addInput(input)
+        captureBackCamera = device
         videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         videoOutput.alwaysDiscardsLateVideoFrames = true
@@ -1054,6 +1068,62 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         autoreleasepool {
             processFrameInner(pixelBuffer, arDepthSnapshot: arDepthSnapshot)
         }
+    }
+
+    /// Throttled logs: furniture vs room **ratio** space when ``roomRaycastSceneDimensions`` is set (Sharp / saved `.meta`).
+    private func maybeLogSceneFitmentFromPrimaryBbox(
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        guard let room = roomRaycastSceneDimensions,
+              room.width > 1e-5, room.height > 1e-5, room.depth > 1e-5 else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastSceneFitmentLogAt > 2.0 else { return }
+        lastSceneFitmentLogAt = now
+
+        let wN = Float(primaryBx2 - primaryBx1) / Float(imageWidth)
+        let hN = Float(primaryBy2 - primaryBy1) / Float(imageHeight)
+        let midX = Float(primaryBx1 + primaryBx2) / (2 * Float(imageWidth))
+        let midYTop = Float(primaryBy1 + primaryBy2) / (2 * Float(imageHeight))
+        let midYVision = 1 - midYTop
+        let visionBBox = CGRect(
+            x: CGFloat(midX - wN * 0.5),
+            y: CGFloat(midYVision - hN * 0.5),
+            width: CGFloat(wN),
+            height: CGFloat(hN)
+        )
+
+        var focal = cameraFocalLengthPixels
+        if focal < 1, let cam = captureBackCamera {
+            focal = FurnitureMonocularMeasurer.focalLengthPixels(
+                horizontalFieldOfViewDegrees: cam.activeFormat.videoFieldOfView,
+                imageWidth: Float(imageWidth)
+            )
+        }
+        if focal < 1 { focal = Float(imageWidth) * 0.73 }
+
+        var centerDepth = roomDepthMeters * 0.45
+        if let snap = arDepthSnapshot,
+           let d = FurnitureFitARSupport.depthMeters(snapshot: snap, normalizedBgraNX: CGFloat(midX), normalizedBgraNY: CGFloat(midYTop)),
+           d > 0.05 {
+            centerDepth = d
+        }
+
+        guard let furn = FurnitureMonocularMeasurer.estimateSize(
+            bbox: visionBBox,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            focalLengthPixels: focal,
+            centerDepth: centerDepth
+        ) else { return }
+
+        _ = FitmentCheck.check(furniture: furn, room: room)
+        _ = OverlayScale.compute(furniture: furn, room: room)
     }
 
     /// ONNX-style pipeline (stretch, NMS, primary, mask) using Core ML ``mlModel`` (parity with Android preprocessing).
@@ -1305,6 +1375,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBx2 = min(bufW, Int(tightFx2))
         let primaryBy2 = min(bufH, Int(tightFy2))
 
+        maybeLogSceneFitmentFromPrimaryBbox(
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2,
+            imageWidth: bufW,
+            imageHeight: bufH,
+            arDepthSnapshot: arDepthSnapshot
+        )
+
         // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
         // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
         let bw = max(1, tightFx2 - tightFx1)
@@ -1413,7 +1493,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         if maskSmall.contains(where: { $0 > 0 }) {
-            finishFirstDetectionIfNeeded()
+            let bboxW = CGFloat(max(1, primaryBx2 - primaryBx1))
+            let bboxH = CGFloat(max(1, primaryBy2 - primaryBy1))
+            let sizingForFirstFrame = FurnitureSizingCalculator(
+                roomWidth: roomWidthMeters,
+                roomHeight: roomHeightMeters,
+                viewWidth: CGFloat(bufW),
+                viewHeight: CGFloat(bufH)
+            )
+            let firstEst = sizingForFirstFrame.estimateRealWorldSize(
+                detectedWidthPixels: bboxW,
+                detectedHeightPixels: bboxH
+            )
+            finishFirstDetectionIfNeeded(
+                furnitureWidthMeters: firstEst.widthMeters,
+                furnitureHeightMeters: firstEst.heightMeters
+            )
         }
 
         resetProcessingFlag()
@@ -2437,13 +2532,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    private func finishFirstDetectionIfNeeded() {
+    /// First successful mask: optional bbox×room-scale size in **meters** on the progress chip, and callback for parents (Sharp room UI).
+    private func finishFirstDetectionIfNeeded(furnitureWidthMeters: Float?, furnitureHeightMeters: Float?) {
         guard !hasFirstDetection else { return }
         hasFirstDetection = true
         segmentationCompletedOnceThisSession = true
         onFirstSegmentationComplete?()
+
+        if let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
+            let est = FurnitureSizeEstimate(widthMeters: fw, heightMeters: fh, arHeightMeters: nil)
+            DispatchQueue.main.async {
+                self.onFurnitureSizeEstimated?(est)
+            }
+        }
+
+        let showMeterBanner = furnitureWidthMeters != nil && furnitureHeightMeters != nil && !suppressStartupProgress
+        let dismissDelay: TimeInterval = showMeterBanner ? 0.95 : 0
+
         DispatchQueue.main.async {
-            UIView.animate(withDuration: 0.25) {
+            if showMeterBanner, let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
+                self.progressContainer.isHidden = false
+                self.progressContainer.alpha = 1
+                self.progressView.progress = 1.0
+                self.progressLabel.text = String(format: "  ~%.2f m × %.2f m  \n  (bbox × room)  ", fw, fh)
+            }
+            UIView.animate(withDuration: 0.25, delay: dismissDelay, options: []) {
                 self.progressContainer.alpha = 0
             } completion: { _ in
                 self.progressContainer.isHidden = true

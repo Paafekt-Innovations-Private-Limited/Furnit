@@ -141,6 +141,8 @@
 "licenses.yoloe" = "ಈ ಅಪ್ಲಿಕೇಶನ್ YOLO (ಉದಾ. Ultralytics YOLO) ಆಧಾರಿತ ಮಾದರಿಗಳನ್ನು ಬಳಸುತ್ತದೆ. YOLO AGPL-3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ https://www.ultralytics.com/license ನೋಡಿ.";
 "licenses.sharpTitle" = "3D ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣ (SHARP)";
 "licenses.sharp" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 

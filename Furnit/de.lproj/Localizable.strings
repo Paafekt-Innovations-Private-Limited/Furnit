@@ -141,6 +141,8 @@
 "licenses.yoloe" = "Diese App nutzt auf YOLO basierende Modelle (z. B. Ultralytics YOLO). YOLO ist unter AGPL-3.0 lizenziert. Dieses Phase-1-Release ist nichtkommerziell. Für kommerzielle Nutzung siehe https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "3D-Raumrekonstruktion (SHARP)";
 "licenses.sharp" = "Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "Gaussian-Splat-Rendering auf dem Gerät. Copyright (c) Sean Cier. Lizenziert unter der MIT-Lizenz.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.";
 

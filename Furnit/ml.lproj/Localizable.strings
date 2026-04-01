@@ -141,6 +141,8 @@
 "licenses.yoloe" = "ഈ ആപ്പ് YOLO (ഉദാ. Ultralytics YOLO) അടിസ്ഥാനമാക്കിയ മോഡലുകൾ ഉപയോഗിക്കുന്നു. YOLO AGPL-3.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു. ഈ ഘട്ടം 1 റിലീസ് വാണിജ്യേതരമാണ്. വാണിജ്യ ഉപയോഗത്തിന് https://www.ultralytics.com/license കാണുക.";
 "licenses.sharpTitle" = "3D റൂം റീകൺസ്ട്രക്ഷൻ (SHARP)";
 "licenses.sharp" = "കൃതിസ്വാമ്യം (c) SharpML സംഭാവനക്കാർ. MIT ലൈസൻസ് അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "കൃതിസ്വാമ്യം (c) Google LLC. Apache ലൈസൻസ് 2.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.";
 
