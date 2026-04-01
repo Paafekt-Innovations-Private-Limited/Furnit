@@ -18,7 +18,7 @@ private enum GaussianSplatLoadError: LocalizedError {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. Camera: trimmed P3–P97 bounds, ``RoomBounds/defaultSplatCameraEyeAndTarget``; `_classic` uses view scale `(1,-1,-1)` and default yaw π so the opening view faces into the room.
+/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. Camera uses trimmed P3–P97 bounds in the same space as rendered geometry: for `_classic`, Y/Z are flipped to match view scale `(1,-1,-1)` before ``RoomBounds/defaultSplatCameraEyeAndTarget``.
 struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: Public interface
@@ -222,8 +222,8 @@ struct GaussianSplatView: UIViewRepresentable {
             splatCompositeExposure = 1.0
             splatCompositeShadowLift = 0.0
             isSharpClassicPly = plyURL.lastPathComponent.contains("_classic")
-            // Classic frame + `defaultSplatCameraEyeAndTarget` disagree on which Z is “into” the room — orbit 180° so you face the scene, not the wall behind you.
-            cameraYaw = isSharpClassicPly ? Float.pi : 0
+            // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
+            cameraYaw = 0
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -266,6 +266,7 @@ struct GaussianSplatView: UIViewRepresentable {
             sceneBoundsMin = nil
             sceneBoundsMax = nil
             sceneCentroid = nil
+            warmupEndTime = nil
 
             scheduleSwiftUIBindingUpdates {
                 self.isLoading = true
@@ -297,8 +298,27 @@ struct GaussianSplatView: UIViewRepresentable {
                     }
                     let centroid = positionSum / Float(points.count)
 
+                    // For classic PLY, flip Y and Z of bounds/centroid to canonical space
+                    // (matches the (1,-1,-1) view scale applied during rendering).
+                    let cameraBoundsMin: SIMD3<Float>
+                    let cameraBoundsMax: SIMD3<Float>
+                    let cameraCentroid: SIMD3<Float>
+                    if self.isSharpClassicPly {
+                        cameraBoundsMin = SIMD3<Float>(trimmedMin.x, -trimmedMax.y, -trimmedMax.z)
+                        cameraBoundsMax = SIMD3<Float>(trimmedMax.x, -trimmedMin.y, -trimmedMin.z)
+                        cameraCentroid = SIMD3<Float>(centroid.x, -centroid.y, -centroid.z)
+                    } else {
+                        cameraBoundsMin = trimmedMin
+                        cameraBoundsMax = trimmedMax
+                        cameraCentroid = centroid
+                    }
+
                     #if DEBUG
-                    logSphericalHarmonicsSanityCheck(points: points, plyFileName: plyURL.lastPathComponent)
+                    if !plyURL.lastPathComponent.contains("_classic") {
+                        logSphericalHarmonicsSanityCheck(points: points, plyFileName: plyURL.lastPathComponent)
+                    } else {
+                        logDebug("🔬 [GaussianSplatView] Skipping SH check — classic PLY uses uchar RGB (no SH)")
+                    }
                     #endif
 
                     let renderer = try SplatRenderer(
@@ -324,13 +344,15 @@ struct GaussianSplatView: UIViewRepresentable {
                         guard let self else { return }
                         logDebug("📐 [GaussianSplatView] Full bounds: X[\(fullMin.x),\(fullMax.x)] Y[\(fullMin.y),\(fullMax.y)] Z[\(fullMin.z),\(fullMax.z)]")
                         logDebug("📐 [GaussianSplatView] Trimmed P3–P97: X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
-                        logDebug("✅ [GaussianSplatView] Loaded \(loadedSplatCount) splats centroid=\(centroid) (mean of all points; framing AABB trimmed P3–P97)")
+                        logDebug("📐 [GaussianSplatView] Camera framing AABB: X[\(cameraBoundsMin.x),\(cameraBoundsMax.x)] Y[\(cameraBoundsMin.y),\(cameraBoundsMax.y)] Z[\(cameraBoundsMin.z),\(cameraBoundsMax.z)]")
+                        logDebug("✅ [GaussianSplatView] Loaded \(loadedSplatCount) splats centroid=\(centroid) cameraCentroid=\(cameraCentroid) (framing uses camera bounds)")
                         self.onBoundsAvailable?(bounds)
-                        self.sceneBoundsMin = trimmedMin
-                        self.sceneBoundsMax = trimmedMax
-                        self.sceneCentroid = centroid
+                        self.sceneBoundsMin = cameraBoundsMin
+                        self.sceneBoundsMax = cameraBoundsMax
+                        self.sceneCentroid = cameraCentroid
                         self.splatRenderer = renderer
                         self.isLoading = false
+                        self.warmupEndTime = CFAbsoluteTimeGetCurrent() + 3.0
                         mtkView.setNeedsDisplay()
                     }
                 } catch {
@@ -435,7 +457,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Viewport — camera & MetalSplatter matrix
         //
-        // `_classic.ply`: view scale (1,-1,-1) aligns axes with `_3dgs`; default yaw π faces into the room vs back-wall camera math.
+        // `_classic.ply`: view scale (1,-1,-1); scene bounds are pre-flipped so camera math matches rendered geometry.
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
@@ -608,7 +630,7 @@ struct GaussianSplatView: UIViewRepresentable {
             ) { [weak self] _ in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.cameraYaw    = self.isSharpClassicPly ? Float.pi : 0
+                    self.cameraYaw    = 0
                     self.cameraPitch  = 0
                     self.cameraOffset = .zero
                     self.appliedZoomLevel = 1.0
