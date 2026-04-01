@@ -32,8 +32,11 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Binding updated on the main thread; non-nil when loading fails.
     @Binding var loadError: String?
 
-    /// Zoom multiplier – clamped to 0.5 … 3.0 by the pinch gesture handler.
+    /// Zoom multiplier – clamped to 0.5 … 3.0 by the pinch gesture handler (or 0.1 … 50 when `infiniteZoom` is true).
     @Binding var zoomLevel: Float
+
+    /// When true, use dolly-style pinch zoom with a much wider range and smaller near plane (matches the Room Viewer “Infinite Zoom” setting).
+    let infiniteZoom: Bool
 
     /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
     var onBoundsAvailable: ((RoomBounds) -> Void)?
@@ -50,6 +53,7 @@ struct GaussianSplatView: UIViewRepresentable {
             isLoading: $isLoading,
             loadError: $loadError,
             zoomLevel: $zoomLevel,
+            infiniteZoom: infiniteZoom,
             onBoundsAvailable: onBoundsAvailable
         )
     }
@@ -141,6 +145,7 @@ struct GaussianSplatView: UIViewRepresentable {
         var currentURL: URL?
         private let inFlightSemaphore = DispatchSemaphore(value: GaussianSplatView.maxSimultaneousRenders)
         var drawableSize: CGSize = .zero
+        private var warmupEndTime: CFAbsoluteTime?
 
         /// Axis-aligned bounds from loaded `SplatPoint` positions (MetalSplatter 1.x `SplatRenderer` does not expose `boundingBox` / `centroid`).
         private var sceneBoundsMin: SIMD3<Float>?
@@ -163,21 +168,26 @@ struct GaussianSplatView: UIViewRepresentable {
         private let exteriorCameraZ: Float = -8.0
         private let fovy:            Float = 65 * (.pi / 180)   // 65° → radians
 
+        /// Whether to use wide-range dolly-style pinch zoom and a smaller near plane (matches the “Infinite Zoom” setting).
+        let infiniteZoom: Bool
+
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         var splatCompositeExposure: Float = 1.0
         /// Additive lift on dark tonemapped samples (smoothstep mask).
-        var splatCompositeShadowLift: Float = 0.10
+        var splatCompositeShadowLift: Float = 0.0
 
         // ── Init ──────────────────────────────────────────────────────────────
         init(
             isLoading: Binding<Bool>,
             loadError: Binding<String?>,
             zoomLevel:  Binding<Float>,
+            infiniteZoom: Bool,
             onBoundsAvailable: ((RoomBounds) -> Void)?
         ) {
             _isLoading = isLoading
             _loadError = loadError
             _zoomLevel = zoomLevel
+            self.infiniteZoom = infiniteZoom
             self.onBoundsAvailable = onBoundsAvailable
             super.init()
         }
@@ -210,7 +220,7 @@ struct GaussianSplatView: UIViewRepresentable {
             self.view         = mtkView
             currentURL        = plyURL
             splatCompositeExposure = 1.0
-            splatCompositeShadowLift = 0.10
+            splatCompositeShadowLift = 0.0
             isSharpClassicPly = plyURL.lastPathComponent.contains("_classic")
             // Classic frame + `defaultSplatCameraEyeAndTarget` disagree on which Z is “into” the room — orbit 180° so you face the scene, not the wall behind you.
             cameraYaw = isSharpClassicPly ? Float.pi : 0
@@ -415,6 +425,12 @@ struct GaussianSplatView: UIViewRepresentable {
 
             commandBuffer.present(drawable)
             commandBuffer.commit()
+            // During warm-up, keep requesting new frames so the room sharpens quickly even when idle.
+            if let warmupEndTime, CFAbsoluteTimeGetCurrent() < warmupEndTime {
+                view.setNeedsDisplay()
+            } else {
+                warmupEndTime = nil
+            }
         }
 
         // MARK: Viewport — camera & MetalSplatter matrix
@@ -423,13 +439,16 @@ struct GaussianSplatView: UIViewRepresentable {
 
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / max(drawableSize.height, 1))
-            let zoomedFovy  = fovy / appliedZoomLevel
+            let zoomedFovy  = infiniteZoom ? fovy : (fovy / appliedZoomLevel)
+
+            let nearZ: Float = infiniteZoom ? 0.001 : 0.01
+            let farZ: Float = infiniteZoom ? 250.0 : 100.0
 
             let projectionMatrix = matrixPerspectiveRightHand(
                 fovyRadians:  zoomedFovy,
                 aspectRatio:  aspectRatio,
-                nearZ:        0.01,
-                farZ:         100.0
+                nearZ:        nearZ,
+                farZ:         farZ
             )
 
             // SHARP `_classic.ply` stores positions in a frame rotated by 180° around Y and Z relative to `_3dgs` / base:
@@ -462,6 +481,21 @@ struct GaussianSplatView: UIViewRepresentable {
             } else {
                 camPos = SIMD3<Float>(0, 0, 3) + cameraOffset
                 lookAt = SIMD3<Float>(0, 0, 0) + cameraOffset
+            }
+
+            // Infinite Zoom: convert pinch scaling into dolly along the view ray instead of narrowing the field of view.
+            if infiniteZoom {
+                let baseDir = camPos - lookAt
+                let baseDistance = simd_length(baseDir)
+                if baseDistance > 0.0001 {
+                    let minZoom: Float = 0.1
+                    let maxZoom: Float = 50.0
+                    let clampedZoom = min(max(appliedZoomLevel, minZoom), maxZoom)
+                    let distanceScale = 1.0 / clampedZoom
+                    let newDistance = max(0.02, baseDistance * distanceScale)
+                    let dirNorm = baseDir / baseDistance
+                    camPos = lookAt + dirNorm * newDistance
+                }
             }
 
             // ── Apply user orbit ─────────────────────────────────────────────
@@ -510,7 +544,9 @@ struct GaussianSplatView: UIViewRepresentable {
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             let newZoom = appliedZoomLevel * Float(gesture.scale)
-            let clamped = min(max(newZoom, 0.5), 3.0)
+            let minZoom: Float = infiniteZoom ? 0.1 : 0.5
+            let maxZoom: Float = infiniteZoom ? 50.0 : 3.0
+            let clamped = min(max(newZoom, minZoom), maxZoom)
             appliedZoomLevel = clamped
             zoomLevel = clamped
             gesture.scale = 1.0
@@ -777,6 +813,7 @@ private func logSphericalHarmonicsSanityCheck(points: [SplatPoint], plyFileName:
         isLoading: .constant(true),
         loadError: .constant(nil as String?),
         zoomLevel: .constant(1.0),
+        infiniteZoom: true,
         onBoundsAvailable: nil
     )
 }

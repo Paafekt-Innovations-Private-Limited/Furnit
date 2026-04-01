@@ -18,7 +18,7 @@ vertex FullscreenV compositeOverGrayVertex(uint vid [[vertex_id]]) {
 }
 
 // Swift: `setFragmentBytes` with [exposure, shadowLift] at index 0.
-// Linear sampling avoids blocky resample when copying scratch → drawable; light S-curve for contrast.
+// Passthrough composite: keep splat colors as-is and only fill empty pixels with a neutral gray background.
 fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
                                           texture2d<float> splatTex [[texture(0)]],
                                           constant float *params [[buffer(0)]]) {
@@ -26,18 +26,10 @@ fragment float4 compositeOverGrayFragment(FullscreenV in [[stage_in]],
     float exposure = params[0];
     float shadowLift = params[1];
     float4 c = splatTex.sample(s, in.uv);
+    // Exposure and shadowLift are set to neutral values from Swift (1.0 and 0.0 respectively).
     c.rgb *= exposure;
-    // Soft highlight blend toward 1-exp(-x) only when rgb is high; midtones mostly unchanged.
-    float3 highlightWeight = smoothstep(0.7, 1.0, c.rgb);
-    c.rgb = mix(c.rgb, 1.0 - exp(-c.rgb), highlightWeight);
-    // Gentle S-curve; keep mix moderate — higher mix pulls dark mids darker (smoothstep shape).
-    float3 curved = c.rgb * c.rgb * (3.0 - 2.0 * c.rgb);
-    c.rgb = mix(c.rgb, curved, 0.28);
-    float luma = dot(c.rgb, float3(0.299, 0.587, 0.114));
-    float mask = 1.0 - smoothstep(0.0, 0.2, luma);
-    c.rgb += shadowLift * mask;
-    // Darker than 0.5 so (1−α) gray fill does not read as heavy fog over the splat field.
-    float3 gray = float3(0.32, 0.32, 0.32);
+    // Subtle gray background so “void” pixels are present without harsh black borders.
+    float3 gray = float3(0.24, 0.24, 0.24);
     float3 result = c.rgb + gray * (1.0 - c.a);
     return float4(saturate(result), 1.0);
 }

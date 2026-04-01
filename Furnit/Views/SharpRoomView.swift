@@ -155,6 +155,9 @@ struct SharpRoomView: View {
     /// When true, shows ⋮ Calibrate wall and the Tap to calibrate pill during brain (FurnitureFit). Default off (matches Android).
     @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
 
+    /// User-facing Infinite Zoom toggle for the room viewer (matches Settings).
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
+
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
@@ -241,7 +244,8 @@ struct SharpRoomView: View {
                 }
             }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: [viewerPlyURL])
+            // Share the classic/front-rotated PLY when available (matches what Metal renders).
+            ShareSheet(activityItems: [classicPlyURL])
         }
         .onAppear {
             // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
@@ -315,6 +319,7 @@ struct SharpRoomView: View {
             isLoading: $isLoading,
             loadError: $error,
             zoomLevel: $metalSplatterZoom,
+            infiniteZoom: infiniteZoomEnabled,
             onBoundsAvailable: { bounds in
                 // Defer state mutations to the next runloop tick to avoid
                 // "Modifying state during view update" warnings from SwiftUI.
