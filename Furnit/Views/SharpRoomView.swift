@@ -553,8 +553,8 @@ struct SharpRoomView: View {
     }
 
     /// Width/height for nav title, FurnitureFit, and save.
-    /// When Metal depth raycast has run, **W×H×D from `raycastRoomDimensions`** (scene units) drive the UI — user-validated vs splat caps.
-    /// Otherwise: live `jsFrontWall*` from splat / saved `.meta` / defaults. User calibration still wins when set.
+    /// **New session (`allowSave`):** live depth raycast (su) first, then splat / saved / defaults.
+    /// **Saved room from Home:** persisted `.meta` **meters** first so the toolbar matches what was shown at save time; live raycast is su and must not override meter fields (avoids wrong `m` labels and flicker).
     private var displayRoomWidth: Float {
         let rayW = raycastRoomDimensions?.width
         if allowSave {
@@ -565,8 +565,9 @@ struct SharpRoomView: View {
                 ?? 4.0
         }
         return calibratedRoomWidth
-            ?? rayW
             ?? savedRoomWidth
+            ?? savedRoomModel?.roomWidth
+            ?? rayW
             ?? jsFrontWallWidth
             ?? 4.0
     }
@@ -581,19 +582,25 @@ struct SharpRoomView: View {
                 ?? 3.0
         }
         return calibratedRoomHeight
-            ?? rayH
             ?? savedRoomHeight
+            ?? savedRoomModel?.roomHeight
+            ?? rayH
             ?? jsFrontWallHeight
             ?? 3.0
     }
 
-    /// Depth: prefer live depth raycast span when available; else saved `.meta` or splat Z span.
+    /// Depth: new session prefers live raycast; reopening a saved room prefers `.meta` depth in meters.
     private var displayRoomDepth: Float {
+        if allowSave {
+            if let d = raycastRoomDimensions?.depth { return d }
+            return savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
+        }
+        if let d = savedRoomModel?.roomDepth { return d }
         if let d = raycastRoomDimensions?.depth { return d }
-        return savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
+        return effectiveBounds?.depth ?? 4.0
     }
 
-    /// Nav bar: **only** Metal depth-raycast W×H×D (su) for new SHARP sessions once measured; no splat caps here.
+    /// Nav bar: live depth-raycast **su** for new SHARP sessions; saved rooms use the same **su** line as preview when `roomScene*` exists, else **m** from meta.
     private var navigationRoomMetersLine: String {
         if allowSave {
             if let r = raycastRoomDimensions {
@@ -604,6 +611,13 @@ struct SharpRoomView: View {
             }
             return "Measuring room…"
         }
+        if let m = savedRoomModel,
+           let sw = m.roomSceneWidth, let sh = m.roomSceneHeight, let sd = m.roomSceneDepth {
+            return String(
+                format: "%.3f × %.3f × %.3f su (saved depth raycast)",
+                sw, sh, sd
+            )
+        }
         return String(format: "%.1f m × %.1f m × %.1f m", displayRoomWidth, displayRoomHeight, displayRoomDepth)
     }
 
@@ -612,14 +626,14 @@ struct SharpRoomView: View {
         if allowSave {
             return raycastRoomDimensions?.width ?? jsFrontWallWidth ?? savedRoomWidth ?? 4.0
         }
-        return raycastRoomDimensions?.width ?? savedRoomWidth ?? jsFrontWallWidth ?? 4.0
+        return savedRoomWidth ?? savedRoomModel?.roomWidth ?? raycastRoomDimensions?.width ?? jsFrontWallWidth ?? 4.0
     }
 
     private var sourceRoomHeight: Float {
         if allowSave {
             return raycastRoomDimensions?.height ?? jsFrontWallHeight ?? savedRoomHeight ?? 3.0
         }
-        return raycastRoomDimensions?.height ?? savedRoomHeight ?? jsFrontWallHeight ?? 3.0
+        return savedRoomHeight ?? savedRoomModel?.roomHeight ?? raycastRoomDimensions?.height ?? jsFrontWallHeight ?? 3.0
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -627,8 +641,12 @@ struct SharpRoomView: View {
 
     private var furnitureFitRoomHeight: Float { displayRoomHeight }
 
-    /// Scene-unit room from live raycast, else from saved `.meta` (`roomScene*`), for ratio fitment logs in Furniture Fit.
+    /// Scene-unit room for Furniture Fit ratios: saved `.meta` when opened from Home (matches preview-at-save); live raycast when creating a new room.
     private var furnitureFitSceneDimensions: RoomRaycastDimensions? {
+        if !allowSave, let m = savedRoomModel,
+           let w = m.roomSceneWidth, let h = m.roomSceneHeight, let d = m.roomSceneDepth {
+            return RoomRaycastDimensions(width: w, height: h, depth: d)
+        }
         if let r = raycastRoomDimensions { return r }
         if let m = savedRoomModel,
            let w = m.roomSceneWidth, let h = m.roomSceneHeight, let d = m.roomSceneDepth {

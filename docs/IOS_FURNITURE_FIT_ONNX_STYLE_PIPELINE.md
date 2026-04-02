@@ -222,6 +222,7 @@ Steps:
 
 ## Related reading
 
+- `docs/IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md` — SHARP room vs splat AABB, pinhole vs proportion, fitment ratios, overlay scale (`[FurnitureFitSize]` / `[FurnitureFitOverlay]`).
 - `docs/YOLOE_COREML_FIX.md` — Core ML / export issues.
 - `docs/ON_DEMAND_RESOURCES.md` — YOLOE ODR (`YOLOEModelService`).
 - `scripts/README_YOLOE_COREML.md` — export / conversion scripts.

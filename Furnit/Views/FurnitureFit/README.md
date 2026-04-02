@@ -288,3 +288,9 @@ Enable via `QualitySettings.debugMode`. Shows:
 - `MetalMaskLogic.swift` - Metal buffer management
 - `classes.json` - Class ID to name mapping
 - `blacklist.json` - Classes to ignore (rooms, walls, etc.)
+
+## Related docs (room size, pinhole, overlay)
+
+For **depth raycast room vs splat AABB**, **pinhole vs proportion** furniture sizing, **fitment ratios**, and how **`autoScaleFromRoom`** combines with **AR** and **pinch**, see:
+
+- **`docs/IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`** (repo root `docs/`).
