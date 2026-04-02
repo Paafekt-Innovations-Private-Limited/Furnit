@@ -55,7 +55,7 @@ The verify script prints a hint if execution fails with a backend-not-registered
 - **In the app:** Feed the same patch (e.g. load from `part1_test_patch_f32.bin` or copy from .pt), run Part 1 .pte, then log: input shape/dtype, output0/output1 shapes, first 8 values of each, min/max/mean. Compare to the printed goldens. If shapes or values differ, the issue is export/runtime or layout/dtype; if they match, move on to Part 2.
 - **Fixtures without re-export:** Run `python generate_part1_test_fixtures.py --output-dir executorch_models` (optionally `--fp16`) to regenerate only the test patch and golden .bin files.
 
-**On-device verification:** You can skip Python .pte execution and verify directly on the Android device: export on host, push the `.pte` files with `push_sharp_executorch_models.sh` (or `push_sharp_vulkan_only.sh`), then run the app. If the app loads and runs Part1/Part2 without BackendFailed or crash, the export/runtime match on device. Use logcat (e.g. `sharp_executorch_full`, `VulkanDiag`) to confirm forward completion and any error codes.
+**On-device verification:** You can skip Python .pte execution and verify directly on the Android device: export on host, push the `.pte` files with `push_sharp_executorch_models.sh` (or `push_sharp_cpuvulkan_hybrid_androidstudio.sh`), then run the app. If the app loads and runs Part1/Part2 without BackendFailed or crash, the export/runtime match on device. Use logcat (e.g. `sharp_executorch_full`, `VulkanDiag`) to confirm forward completion and any error codes.
 
 **Location:** `android/verify_export_part1_part2.py`
 

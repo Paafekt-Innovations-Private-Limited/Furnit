@@ -169,7 +169,7 @@ class RoomViewerActivity : AppCompatActivity() {
             }
 
             // Add touch listener for pinch-to-zoom and pan
-            mainImageView.setOnTouchListener { v, event ->
+            mainImageView.setOnTouchListener { _, event ->
                 scaleGestureDetector.onTouchEvent(event)
 
                 when (event.actionMasked) {

@@ -3,16 +3,20 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
+import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -132,6 +136,12 @@ class SharpService private constructor(private val context: Context) {
 
     private val generationCancelled = AtomicBoolean(false)
 
+    /** Cancel the current background [startGenerationInBackground] job (same flag as [GenerationHandle.cancel]). */
+    fun cancelGeneration() {
+        generationCancelled.set(true)
+        LogUtil.d(TAG, "Generation cancel requested")
+    }
+
     /**
      * @param viewerPhotoOrientation "portrait" / "landscape" from SinglePhoto / EXIF fallback.
      * @param viewerPhotoWideAngle 0.5× ultra-wide; with [orientationLockedByUser] false, automatic landscape → portrait in metadata.
@@ -147,6 +157,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ): GenerationHandle {
         generationCancelled.set(false)
         val handle = object : GenerationHandle {
@@ -165,6 +176,7 @@ class SharpService private constructor(private val context: Context) {
                 orientationLockedByUser,
                 sourcePhotoUri,
                 sourcePhotoPath,
+                metricAnchors,
             )
         }.start()
         return handle
@@ -178,6 +190,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ) {
         generationCancelled.set(false)
         Thread {
@@ -190,6 +203,7 @@ class SharpService private constructor(private val context: Context) {
                 orientationLockedByUser,
                 sourcePhotoUri,
                 sourcePhotoPath,
+                metricAnchors,
             )
         }.start()
     }
@@ -203,6 +217,7 @@ class SharpService private constructor(private val context: Context) {
         orientationLockedByUser: Boolean = false,
         sourcePhotoUri: Uri? = null,
         sourcePhotoPath: String? = null,
+        metricAnchors: List<MetricAnchor>? = null,
     ) {
         LogUtil.d(TAG, "Starting generation: ${image.width}x${image.height}")
         LogUtil.d(
@@ -213,7 +228,8 @@ class SharpService private constructor(private val context: Context) {
                 "photoWideAngle=$viewerPhotoWideAngle " +
                 "orientationLockedByUser=$orientationLockedByUser " +
                 "sourceUri=${if (sourcePhotoUri != null) "yes" else "no"} " +
-                "sourcePath=${if (sourcePhotoPath.isNullOrBlank()) "no" else "yes"}",
+                "sourcePath=${if (sourcePhotoPath.isNullOrBlank()) "no" else "yes"} " +
+                "metricAnchors=${metricAnchors?.size ?: 0}",
         )
 
         try {
@@ -224,13 +240,17 @@ class SharpService private constructor(private val context: Context) {
                 callback.onError(lastInitFailureMessage ?: "SHARP model not available. Push model files to device.")
                 return
             }
-            if (isCancelled()) return
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
 
             LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
             callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
             val result = kotlinx.coroutines.runBlocking {
                 executorchInt8Sharp.inferStreaming(
                     bitmap = image,
+                    metricAnchors = metricAnchors,
                     progressCallback = { progress: Float, message: String ->
                         val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
                         callback.onProgress(mapped, message)
@@ -238,6 +258,10 @@ class SharpService private constructor(private val context: Context) {
                 )
             }
 
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
             if (result == null) {
                 val detail = executorchInt8Sharp.consumeInferStreamingFailureDetail()
                 callback.onError(detail ?: "SHARP ExecuTorch INT8 inference failed")
@@ -246,12 +270,31 @@ class SharpService private constructor(private val context: Context) {
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
             LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+            val (sanW, sanH, sanD) = SharpRoomDimensionSanitizer.sanitizeMeters(
+                result.roomWidth,
+                result.roomHeight,
+                result.roomDepth,
+            )
+            LogUtil.i(
+                "SHARP_ROOM_MEAS",
+                "[room_created] infer_done gaussians=${result.gaussianCount} " +
+                    "bbox_raw W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                    "bbox_san W×H×D=$sanW×$sanH×$sanD " +
+                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
+                    "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
+            )
+            try {
+                executorchInt8Sharp.persistLastMonodepthToFolder(result.plyFile.parentFile!!)
+            } catch (e: Exception) {
+                LogUtil.w(TAG, "persistLastMonodepthToFolder: ${e.message}")
+            }
             val feedOrientation = PhotoOrientation.fromBitmapDimensions(image)
             LogUtil.d(
                 TAG,
                 "[SHARP_ORIENTATION] post-infer bitmap_layout=${feedOrientation.value} " +
                     "(SHARP input pixels ${image.width}x${image.height}) " +
-                    "room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
+                    "room_raw=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
+                    "room_san=$sanW×$sanH×$sanD " +
                     "path=${result.plyFile.parentFile?.absolutePath}",
             )
 
@@ -259,9 +302,9 @@ class SharpService private constructor(private val context: Context) {
                 roomFolder = result.plyFile.parentFile!!,
                 image = image,
                 modelType = "sharp_executorch_int8",
-                roomWidth = result.roomWidth,
-                roomHeight = result.roomHeight,
-                roomDepth = result.roomDepth,
+                roomWidth = sanW,
+                roomHeight = sanH,
+                roomDepth = sanD,
                 roomCenterX = result.roomCenterX,
                 roomCenterY = result.roomCenterY,
                 roomCenterZ = result.roomCenterZ,
@@ -272,14 +315,19 @@ class SharpService private constructor(private val context: Context) {
                 sourcePhotoPath = sourcePhotoPath,
             )
 
+            if (isCancelled()) {
+                callback.onError("SHARP_CANCELLED")
+                return
+            }
+
             callback.onProgress(1.0f, "Done!")
             callback.onComplete(
                 GenerationResult(
                     plyFile = result.plyFile,
                     classicPlyFile = result.classicPlyFile,
-                    roomWidth = result.roomWidth,
-                    roomHeight = result.roomHeight,
-                    roomDepth = result.roomDepth,
+                    roomWidth = sanW,
+                    roomHeight = sanH,
+                    roomDepth = sanD,
                     roomCenterX = result.roomCenterX,
                     roomCenterY = result.roomCenterY,
                     roomCenterZ = result.roomCenterZ
@@ -288,6 +336,7 @@ class SharpService private constructor(private val context: Context) {
         } catch (e: Exception) {
             if (isCancelled()) {
                 LogUtil.d(TAG, "Generation stopped (cancelled)")
+                callback.onError("SHARP_CANCELLED")
                 return
             }
             LogUtil.e(TAG, "Generation failed", e)
@@ -329,8 +378,8 @@ class SharpService private constructor(private val context: Context) {
         }
 
         val metadataFile = File(roomFolder, "metadata.txt")
-        val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-        val roomName = "AI Room ${dateFormat.format(Date())}"
+        val createdAtMillis = System.currentTimeMillis()
+        val roomName = RoomDisplayName.aiRoomWithTimestamp(Date(createdAtMillis))
         val normalizedViewer = viewerPhotoOrientation?.trim()?.lowercase()
         val bitmapLayoutOrientation = PhotoOrientation.fromBitmapDimensions(image)
         fun orientationEnumToMetadataString(o: PhotoOrientation): String {
@@ -354,7 +403,7 @@ class SharpService private constructor(private val context: Context) {
                 val coercedUltraWide = !orientationLockedByUser &&
                     viewerPhotoWideAngle &&
                     normalizedViewer == "landscape"
-                photoOrientation = if (coercedUltraWide) "portrait" else normalizedViewer!!
+                photoOrientation = if (coercedUltraWide) "portrait" else normalizedViewer
                 orientationDecisionSource = if (coercedUltraWide) {
                     "explicit_viewer_ultrawide_to_portrait"
                 } else {
@@ -391,13 +440,13 @@ class SharpService private constructor(private val context: Context) {
                 "wide=$viewerPhotoWideAngle locked=$orientationLockedByUser " +
                 "image=${image.width}x${image.height}",
         )
-        val createdAtMillis = System.currentTimeMillis()
         val sb = StringBuilder()
         sb.append("name=$roomName\n")
         sb.append("created=$createdAtMillis\n")
         sb.append("type=$modelType\n")
         sb.append("photoOrientation=$photoOrientation\n")
         sb.append("photoWideAngle=$viewerPhotoWideAngle\n")
+        sb.append("previewOnly=true\n")
         roomWidth?.let { sb.append("roomWidth=$it\n") }
         roomHeight?.let { sb.append("roomHeight=$it\n") }
         roomDepth?.let { sb.append("roomDepth=$it\n") }
@@ -419,6 +468,7 @@ class SharpService private constructor(private val context: Context) {
                 roomCenterX = roomCenterX,
                 roomCenterY = roomCenterY,
                 roomCenterZ = roomCenterZ,
+                previewOnly = true,
             )
         )
         LogUtil.d(
@@ -426,6 +476,99 @@ class SharpService private constructor(private val context: Context) {
             "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} " +
                 "dims=${roomWidth}x${roomHeight}x${roomDepth} photoOrientation=$photoOrientation wide=$viewerPhotoWideAngle",
         )
+        LogUtil.i(
+            "SHARP_ROOM_MEAS",
+            "[metadata_written] roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth " +
+                "center=($roomCenterX,$roomCenterY,$roomCenterZ) photoOrientation=$photoOrientation " +
+                "path=${roomFolder.absolutePath}",
+        )
+        writeCameraExifSidecar(roomFolder, sourcePhotoUri, sourcePhotoPath)
+    }
+
+    /**
+     * Writes [camera_exif.json] for [WallMeasurementEstimator] (focal length, 35mm equiv, subject distance in meters).
+     *
+     * Gallery picks usually have [sourcePhotoUri] (`content://`) but no usable [sourcePhotoPath]; camera may supply a file path.
+     * Merge order: filesystem path first, then content URI fills missing keys (parity with iOS file → PHAsset).
+     */
+    private fun writeCameraExifSidecar(roomFolder: File, sourcePhotoUri: Uri?, sourcePhotoPath: String?) {
+        val merged = JSONObject()
+        fun absorbFromExif(exif: ExifInterface) {
+            val focal = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, Double.NaN)
+            if (focal.isFinite() && focal > 0 && !merged.has("focalLengthMm")) {
+                merged.put("focalLengthMm", focal)
+            }
+            val fl35 = exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, Double.NaN)
+            if (fl35.isFinite() && fl35 > 0 && !merged.has("focalLength35mmEquivMm")) {
+                merged.put("focalLength35mmEquivMm", fl35)
+            }
+            parseExifSubjectDistanceMeters(exif)?.let { d ->
+                if (!merged.has("subjectDistanceMeters")) merged.put("subjectDistanceMeters", d)
+            }
+        }
+
+        val path = sourcePhotoPath?.trim()?.takeIf { it.isNotEmpty() }
+        if (path != null) {
+            val file = File(path)
+            if (file.isFile) {
+                try {
+                    absorbFromExif(ExifInterface(file))
+                } catch (e: Exception) {
+                    LogUtil.w(TAG, "writeCameraExifSidecar path=$path: ${e.message}")
+                }
+            }
+        }
+
+        if (sourcePhotoUri != null) {
+            try {
+                context.contentResolver.openInputStream(sourcePhotoUri)?.use { raw ->
+                    BufferedInputStream(raw).use { buffered ->
+                        absorbFromExif(ExifInterface(buffered))
+                    }
+                } ?: LogUtil.w(TAG, "writeCameraExifSidecar: openInputStream null for $sourcePhotoUri")
+            } catch (e: Exception) {
+                LogUtil.w(TAG, "writeCameraExifSidecar uri=$sourcePhotoUri: ${e.message}")
+            }
+        }
+
+        if (merged.length() == 0) {
+            LogUtil.i(
+                "WALL_MEAS",
+                "camera_exif_sidecar skip (no EXIF) hasPath=${!path.isNullOrBlank()} hasUri=${sourcePhotoUri != null} folder=${roomFolder.name}",
+            )
+            return
+        }
+        try {
+            val exifOut = File(roomFolder, "camera_exif.json")
+            exifOut.writeText(merged.toString())
+            LogUtil.d(TAG, "Wrote camera_exif.json for wall measurement")
+            LogUtil.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${merged.keys().asSequence().toList()}")
+        } catch (e: Exception) {
+            LogUtil.w(TAG, "writeCameraExifSidecar write: ${e.message}")
+        }
+    }
+
+    /** EXIF SubjectDistance — rational string (e.g. `250/100` m) or plain decimal. */
+    private fun parseExifSubjectDistanceMeters(exif: ExifInterface): Double? {
+        val raw = exif.getAttribute(ExifInterface.TAG_SUBJECT_DISTANCE)?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+        val d = parseExifRationalToDouble(raw) ?: return null
+        return d.takeIf { it in 0.1..50.0 }
+    }
+
+    private fun parseExifRationalToDouble(s: String): Double? {
+        val t = s.trim()
+        if (t.isEmpty()) return null
+        val parts = t.split('/')
+        return when (parts.size) {
+            1 -> parts[0].toDoubleOrNull()
+            2 -> {
+                val a = parts[0].trim().toDoubleOrNull() ?: return null
+                val b = parts[1].trim().toDoubleOrNull() ?: return null
+                if (b == 0.0) null else a / b
+            }
+            else -> null
+        }
     }
 
     /**

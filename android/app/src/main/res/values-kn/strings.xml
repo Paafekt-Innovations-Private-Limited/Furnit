@@ -140,6 +140,8 @@
     <string name="faq_how_to_create_answer">ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.</string>
     <string name="faq_how_to_take_photo">ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?</string>
     <string name="faq_how_to_take_photo_answer">ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.</string>
+    <string name="faq_depth_aware_room_photo">Does taking a photo in the app help room quality?</string>
+    <string name="faq_depth_aware_room_photo_answer">Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.</string>
     <string name="faq_two_methods">ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?</string>
     <string name="faq_two_methods_answer">ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.</string>
     <string name="faq_what_is_ai_room">AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?</string>
@@ -153,7 +155,7 @@
     <string name="faq_generation_failing">ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?</string>
     <string name="faq_generation_failing_answer">ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.</string>
     <string name="faq_how_many_rooms">ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?</string>
-    <string name="faq_how_many_rooms_answer">ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.</string>
+    <string name="faq_how_many_rooms_answer">ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಹೊಸದಕ್ಕಾಗಿ ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆ ಮತ್ತು ಬಳಕೆಯ ಸ್ಟೋರೇಜ್ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ.</string>
     <string name="faq_furniture_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ</string>
     <string name="faq_what_is_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?</string>
     <string name="faq_what_is_segmentation_answer">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ AI ಬಳಸಿ ನಿಮ್ಮ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣಗಳನ್ನು ಗುರುತಿಸುತ್ತದೆ ಮತ್ತು ಬೇರ್ಪಡಿಸುತ್ತದೆ, ಪ್ರತಿ ತುಂಡು ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂಬುದನ್ನು ನೋಡಲು ಅನುಮತಿಸುತ್ತದೆ.</string>
@@ -163,7 +165,8 @@
     <string name="faq_not_detected_answer">ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.</string>
     <string name="faq_multiple_pieces">ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?</string>
     <string name="faq_multiple_pieces_answer">ಹೌದು! AI ಒಂದೇ ಫೋಟೋದಲ್ಲಿ ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ಪತ್ತೆಹಚ್ಚಬಹುದು. ಪ್ರತಿ ಪತ್ತೆಯಾದ ವಸ್ತುವನ್ನು ಪ್ರತ್ಯೇಕವಾಗಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ ನೀವು ಯಾವುದನ್ನು ಬಳಸಬೇಕೆಂದು ಆಯ್ಕೆ ಮಾಡಲು.</string>
-    <string name="faq_room_fitment">3D ಕೊಠಡಿ &amp; ಅಳವಡಿಕೆ</string>
+    <string name="faq_room_fitment">How do I check if furniture fits?</string>
+    <string name="faq_room_fitment_answer">After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.</string>
     <string name="faq_how_to_view">ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?</string>
     <string name="faq_how_to_view_answer">3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.</string>
     <string name="faq_how_to_place">ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?</string>
@@ -174,6 +177,13 @@
     <string name="faq_accuracy_answer">3D ಮಾದರಿ ನಿಮ್ಮ ಕೊಠಡಿ ವಿನ್ಯಾಸದ ಉತ್ತಮ ಅಂದಾಜನ್ನು ಒದಗಿಸುತ್ತದೆ. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ, ನಿಮ್ಮ ಮೂಲ ಫೋಟೋ ಗೋಚರ ಮೂಲೆಗಳು ಮತ್ತು ಅಂಚುಗಳೊಂದಿಗೆ ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ಸೆರೆಹಿಡಿಯುತ್ತದೆ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.</string>
     <string name="faq_adjust_dimensions">ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?</string>
     <string name="faq_adjust_dimensions_answer">ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.</string>
+    <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
+    <string name="faq_ar_assisted_sizing">ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?</string>
+    <string name="faq_ar_assisted_sizing_answer">ARCore ಬೆಂಬಲವಿರುವ ಸಾಧನಗಳಲ್ಲಿ, ಅಪ್ಲಿಕೇಶನ್ ಆಳ ಮತ್ತು ಕ್ಯಾಮೆರಾ ಇಂಟ್ರಿನ್ಸಿಕ್ಸ್ ಬಳಸಿ ನೀವು ಚಲಿಸಿದಂತೆ ಓವರ್ಲೇಯನ್ನು ನೈಜ ಮೀಟರ್‌ಗಳಲ್ಲಿ ಸ್ಕೇಲ್ ಮಾಡುತ್ತದೆ. ARCore ಇಲ್ಲದಿದ್ದರೆ, ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ಬಳಸಲಾಗುತ್ತದೆ; ನೀವು ಇನ್ನೂ ಪಿಂಚ್ ಮಾಡಿ ಓವರ್ಲೇ ಹೊಂದಿಸಬಹುದು.</string>
+    <string name="faq_measurement_pill">What is the small measurement readout?</string>
+    <string name="faq_measurement_pill_answer">While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.</string>
+    <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
+    <string name="faq_reset_overlay_scale_answer">Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.</string>
     <string name="boundary_title">ಕೊಠಡಿ ಗಡಿಗಳು</string>
     <string name="boundary_instructions">ಗಡಿಗಳನ್ನು ಹೊಂದಿಸಲು ವೃತ್ತಗಳನ್ನು ಎಳೆಯಿರಿ</string>
     <string name="boundary_floor">ನೆಲ</string>

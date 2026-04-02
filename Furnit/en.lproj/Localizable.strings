@@ -21,7 +21,9 @@
 "common.error" = "Error";
 "common.save" = "Save";
 "common.close" = "Close";
+"common.apply" = "Apply";
 "common.or" = "or";
+"common.retry" = "Retry";
 
 // MARK: - Login View
 "login.yourName" = "Your Name";
@@ -55,7 +57,10 @@
 "home.createRoom" = "Create Room from Photo";
 "home.roomsRemaining" = "%d of %d rooms remaining";
 "home.deleteHint" = "Delete old rooms to create new ones";
-"home.swipeHint" = "Swipe left to delete";
+"home.swipeHint" = "Swipe right to rename, left to delete";
+"home.renameRoom" = "Rename";
+"home.renameRoomMessage" = "This name appears in your room list. The saved file name stays the same.";
+"home.roomNamePlaceholder" = "Room name";
 "home.roomModel" = "3D Room Model";
 
 // MARK: - Room Limit
@@ -131,8 +136,21 @@
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 "settings.furnitureSegmentationSection" = "Furniture segmentation";
-"settings.multiFurniView" = "MultiFurniView";
-"settings.multiFurniViewDescription" = "When ON, segment multiple furniture. When OFF (default), one primary plus items in 10% margin (e.g. headboard).";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: allow GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "Off (default): CPU only — slower but avoids crashes on some YOLO-E 26L Core ML builds. On: CPU+GPU for speed; may SIGABRT during segmentation if the export does not run on Metal on your device.";
+"settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
+"settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
+"settings.furnitureFitARCompanion" = "AR-assisted furniture sizing";
+"settings.furnitureFitARCompanionDescription" = "LiDAR iPhones only: runs ARKit scene depth parallel to the camera for true pinhole range. Without LiDAR we do not start this session (parallel AR + capture causes Fig -17281 errors). Reopen the room after changing this.";
+"settings.furnitureFitARCompanionUnavailable" = "Scene depth is not available on this device.";
+"settings.roomMeasurementSection" = "Room measurement";
+"settings.yoloWallDimensionsOnSave" = "YOLO wall dimensions when saving";
+"settings.yoloWallDimensionsOnSaveDescription" = "When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.";
+"settings.wallAssumedDepthM" = "Assumed distance to wall (m)";
+"settings.wallAssumedCeilingM" = "Assumed wall height ceiling (m)";
+"settings.roomMeasurementFooter" = "Without monodepth on SHARP iOS, save uses assumed depth and sometimes this ceiling for height. If width is low vs a tape measure, increase Assumed distance (width scales about linearly). Set Assumed wall height near your tape measure (e.g. 2.86 m). Or use ⋮ → Calibrate by wall before Save.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
@@ -144,6 +162,8 @@
 "licenses.yoloe" = "Copyright (c) Ultralytics. Licensed under the GNU Affero General Public License v3.0. This Phase 1 release is non-commercial. For commercial use, see Ultralytics.";
 "licenses.sharpTitle" = "Sharp ML";
 "licenses.sharp" = "Copyright (c) SharpML contributors. Licensed under the MIT License.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Licensed under the Apache License 2.0.";
 
@@ -230,6 +250,19 @@
 "faq.accuracyAnswer" = "The 3D model provides a visual approximation of your room's layout. The dimensions shown are relative units from the AI model, not exact real-world measurements.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";
 "faq.adjustDimensionsAnswer" = "For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.";
+"faq.furnitureMeasurements" = "Furniture & measurements";
+"faq.arAssistedSizing" = "How is furniture overlay size estimated?";
+"faq.arAssistedSizingAnswer" = "On devices with ARKit world tracking, the app uses camera depth and intrinsics so the overlay scales in real-world meters as you move. Without AR support, sizing uses your 3D room dimensions; you can still pinch to adjust the overlay.";
+"faq.measurementPill" = "What is the small measurement readout?";
+"faq.measurementPillAnswer" = "While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.";
+"faq.resetOverlayScale" = "The furniture mask looks wrongly zoomed—what can I do?";
+"faq.resetOverlayScaleAnswer" = "Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.";
+"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
+"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
+"faq.multiplePieces" = "Can I add multiple furniture pieces?";
+"faq.multiplePiecesAnswer" = "Yes! You can add multiple furniture pieces to your room. Simply segment each piece and add them one by one.";
+"faq.roomFitment" = "How do I check if furniture fits?";
+"faq.roomFitmentAnswer" = "After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Room Boundaries";
@@ -270,6 +303,36 @@
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
 "photoRoom.buildingRoom" = "Building your 3D room...";
+"photoRoom.odrOneTimeDownload" = "One-time download (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D Model Generated";
+"photoRoom.generationFailedTitle" = "Generation Failed";
+"photoRoom.loading3DRoom" = "Loading 3D Room...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "Uploading Image";
+"generationProgress.generating3DModel" = "Generating 3D Model";
+"generationProgress.downloadingModel" = "Downloading Model";
+"generationProgress.complete" = "Complete!";
+"generationProgress.preparing" = "Preparing...";
+"generationProgress.mayTakeFewMinutes" = "This may take a few minutes";
+
+// MARK: - SHARP (on-device)
+"sharp.downloadingEngine" = "Downloading 3D engine...";
+"sharp.downloadingEnginePercent" = "Downloading 3D engine... %d%%";
+"sharp.downloadComplete" = "Download complete";
+"sharp.downloadFailed" = "Download failed";
+"sharp.gettingReady" = "Getting ready...";
+"sharp.notEnoughSpace" = "Not enough space on device";
+"sharp.settingThingsUp" = "Setting things up...";
+"sharp.ready" = "Ready!";
+"sharp.couldNotGetReady" = "Couldn't get ready";
+"sharp.somethingWentWrong" = "Something went wrong";
+"sharp.preparingPhoto" = "Preparing your photo...";
+"sharp.creatingRoom" = "Creating your 3D room...";
+"sharp.almostDone" = "Almost done...";
+"sharp.done" = "Done!";
+"sharp.couldNotCreateRoom" = "Couldn't create room";
+"sharp.cancelled" = "Cancelled";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "3D Room View";
@@ -285,6 +348,29 @@
 "roomViewer.saveSuccess" = "Room '%@' saved successfully!";
 "roomViewer.saveFailed" = "Failed to save room: %@";
 "roomViewer.roomSaveTitle" = "Room Save";
+"roomPreview.unsavedTitle" = "Leave without saving?";
+"roomPreview.unsavedMessage" = "Your room has not been saved yet. If you go back now, you will lose this preview.";
+"roomPreview.stay" = "Stay";
+"roomPreview.leave" = "Leave";
+"roomViewer.share" = "Share";
+"roomViewer.calibrateWall" = "Calibrate Wall";
+"roomViewer.recenterView" = "Recenter View";
+"roomViewer.resetOverlayScale" = "Reset Overlay Scale";
+"roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.goingBack" = "Going back...";
+"roomViewer.savingRoomEllipsis" = "Saving Room...";
+"roomViewer.calibrateRoomTitle" = "Calibrate Room";
+"roomViewer.enterFurnitureHeightMeters" = "Enter real furniture height (meters)";
+"roomViewer.furnitureFullHeightHint" = "Full height: floor to top (e.g. 0.9 m for a chair)";
+"roomViewer.calibrateByWallTitle" = "Calibrate by wall";
+"roomViewer.enterWallDimensionsHint" = "Enter tape-measured front wall (meters), e.g. 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "Tap to calibrate";
+"roomViewer.detectedMeters" = "Detected: %.2f m";
+"roomViewer.roomMetersShort" = "Room: %.2f m";
+"roomViewer.furnitureMetersShort" = "Furn: %.2f m";
+"roomViewer.wallWidthPlaceholder" = "Width";
+"roomViewer.wallHeightPlaceholder" = "Height";
+"roomViewer.saveErrorUnknown" = "Unknown error";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Submit Report";
@@ -305,10 +391,15 @@
 
 // MARK: - Photo Selection Warning
 "photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.backAlertTitle" = "Continue with AI or Manual?";
+"photoRoom.backAlertMessage" = "Tap AI or Manual to start creating your room, or OK to go back.";
+"photoRoom.backAlertAI" = "AI";
+"photoRoom.backAlertManual" = "Manual";
 
 // MARK: - Camera Capture
 "camera.title" = "Camera";
 "camera.takePhoto" = "Take Photo";
+"camera.chooseOrientationShort" = "Portrait or landscape";
 "camera.chooseMode" = "Choose Camera Mode";
 "camera.chooseModeHint" = "Select camera lens for your room";
 "camera.standard" = "Standard";

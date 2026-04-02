@@ -18,6 +18,9 @@ struct MeshRoomView: View {
     var ceilingY: CGFloat = 0.15
     var floorY: CGFloat = 0.85
 
+    /// Set when opening a saved mesh room from Home (YOLO ratio calibration).
+    var savedRoomModel: USDZModel? = nil
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -31,15 +34,17 @@ struct MeshRoomView: View {
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showDiscardUnsavedAlert = false
 
     // Brain mode (furniture detection)
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitInitialSegmentationDone = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     // WebView reference for GLTF export
     @State private var webView: WKWebView?
 
-    // Model manager for saving rooms
+    // Model manager for saving rooms (also used for YOLO ratio metadata merge when viewing saved room)
     @StateObject private var modelManager = USDZModelManager()
 
     var body: some View {
@@ -124,7 +129,9 @@ struct MeshRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth,
                     roomHeightMeters: roomHeight,
-                    onFurnitureSizeEstimated: { _, _ in }
+                    onFurnitureSizeEstimated: { _ in },
+                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -138,9 +145,26 @@ struct MeshRoomView: View {
             }
         }
         .background(Color.gray)
-        .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
+        .navigationTitle(String(format: "%.1f m × %.1f m × %.1f m", roomWidth, roomHeight, roomDepth))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
+            if savedRoomModel == nil {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if saveWasSuccessful {
+                            dismiss()
+                        } else {
+                            showDiscardUnsavedAlert = true
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text(L10n.Common.back)
+                        }
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 // Save Room button
                 Button(action: {
@@ -168,6 +192,13 @@ struct MeshRoomView: View {
                 OrientationLockManager.shared.lockToPortrait()
             }
         }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            } else {
+                yoloeService.releaseResources()
+            }
+        }
         .onDisappear {
             OrientationLockManager.shared.unlock()
         }
@@ -185,6 +216,14 @@ struct MeshRoomView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(saveAlertMessage)
+        }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
         }
         .defersSystemGestures(on: .all)
         .disableBackSwipe()
@@ -218,7 +257,12 @@ struct MeshRoomView: View {
             HStack {
                 // Brain button (bottom-left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))
@@ -257,7 +301,12 @@ struct MeshRoomView: View {
             HStack(spacing: 20) {
                 // Brain button (left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))

@@ -7,9 +7,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.models.RoomStructure
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Date
 import kotlin.math.max
 import kotlin.math.min
 
@@ -251,8 +253,9 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
 
         // Save metadata for ModelManager
         val metadataFile = File(roomFolder, "metadata.txt")
-        val roomName = "My Room ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date())}"
-        metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}\nglb=room.glb")
+        val createdAt = System.currentTimeMillis()
+        val roomName = RoomDisplayName.myRoomWithTimestamp(Date(createdAt))
+        metadataFile.writeText("name=$roomName\ncreated=$createdAt\nglb=room.glb")
 
         LogUtil.d(TAG, "Room created at: ${roomFolder.absolutePath}")
         return if (success) glbFile else File(roomFolder, "front_wall.png")

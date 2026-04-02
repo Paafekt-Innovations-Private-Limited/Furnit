@@ -32,7 +32,7 @@ The app also mirrors into internal storage under the same subdir name (`files/mo
 **Legacy `files/models/` is not used** — push only to `models_cpu` / `models_cpuvulkan_hybrid`.  
 **Legacy `files/models_vulkan/`:** on launch the app copies `sharp_split*.pte` into `models_cpuvulkan_hybrid`, removes matching sources, and deletes the old folder when empty.
 
-Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_vulkan_only.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_cpuvulkan_hybrid`.  
+Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_cpuvulkan_hybrid_androidstudio.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_cpuvulkan_hybrid`.  
 To migrate an old `files/models/` tree on device: `android/migrate_legacy_models_to_cpu_vulkan.sh`.
 
 ---

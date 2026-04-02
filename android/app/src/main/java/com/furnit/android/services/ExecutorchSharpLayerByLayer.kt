@@ -85,10 +85,9 @@ class ActivationPool(private val cfg: SharpConfig) {
                 "(requested ${bytes / 1024} KB, already allocated ${allocated / 1024} KB)"
         }
         allocated += bytes
-        buf = ByteBuffer.allocateDirect(elements * 4)
+        return ByteBuffer.allocateDirect(elements * 4)
             .order(ByteOrder.nativeOrder())
             .asFloatBuffer()
-        return buf
     }
 
     fun release(buf: FloatBuffer) {

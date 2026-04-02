@@ -159,7 +159,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
         ))
 
         // Instructions panel
-        val instructionsPanel = createControlsPanel(isHorizontal = false)
+        val instructionsPanel = createControlsPanel()
         mainLayout.addView(instructionsPanel)
 
         rootLayout.addView(mainLayout)
@@ -331,7 +331,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
         }
     }
 
-    private fun createControlsPanel(isHorizontal: Boolean): LinearLayout {
+    private fun createControlsPanel(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#2A2A2A"))

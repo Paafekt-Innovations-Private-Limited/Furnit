@@ -47,6 +47,8 @@ class HelpActivity : AppCompatActivity() {
                 icon = "camera",
                 items = listOf(
                     FAQItem(R.string.faq_how_to_create, R.string.faq_how_to_create_answer),
+                    FAQItem(R.string.faq_how_to_take_photo, R.string.faq_how_to_take_photo_answer),
+                    FAQItem(R.string.faq_depth_aware_room_photo, R.string.faq_depth_aware_room_photo_answer),
                     FAQItem(R.string.faq_two_methods, R.string.faq_two_methods_answer),
                     FAQItem(R.string.faq_what_is_ai_room, R.string.faq_what_is_ai_room_answer),
                     FAQItem(R.string.faq_what_is_manual_room, R.string.faq_what_is_manual_room_answer),
@@ -66,6 +68,18 @@ class HelpActivity : AppCompatActivity() {
                     FAQItem(R.string.faq_what_is_segmentation, R.string.faq_what_is_segmentation_answer),
                     FAQItem(R.string.faq_how_to_segment, R.string.faq_how_to_segment_answer),
                     FAQItem(R.string.faq_not_detected, R.string.faq_not_detected_answer)
+                )
+            ),
+            FAQSection(
+                titleResId = R.string.faq_furniture_measurements,
+                icon = "ruler",
+                items = listOf(
+                    FAQItem(R.string.faq_ar_assisted_sizing, R.string.faq_ar_assisted_sizing_answer),
+                    FAQItem(R.string.faq_measurement_pill, R.string.faq_measurement_pill_answer),
+                    FAQItem(R.string.faq_reset_overlay_scale, R.string.faq_reset_overlay_scale_answer),
+                    FAQItem(R.string.faq_how_to_place, R.string.faq_how_to_place_answer),
+                    FAQItem(R.string.faq_multiple_pieces, R.string.faq_multiple_pieces_answer),
+                    FAQItem(R.string.faq_room_fitment, R.string.faq_room_fitment_answer),
                 )
             ),
             FAQSection(
@@ -162,6 +176,7 @@ class HelpActivity : AppCompatActivity() {
             text = when (section.icon) {
                 "camera" -> "\uD83D\uDCF7"  // Camera emoji
                 "brain" -> "\uD83E\uDDE0"   // Brain emoji
+                "ruler" -> "\uD83D\uDCCF"   // Straight ruler emoji
                 "cube" -> "\uD83D\uDDBC"    // Cube emoji
                 else -> "\u2753"            // Question mark
             }

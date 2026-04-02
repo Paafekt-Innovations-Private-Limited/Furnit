@@ -72,6 +72,6 @@ Populated from **`android/sharp_vulkan_only/`** (Vulkan + **strategy A** fine-sp
 
 Other Part4b strategies (B–F) are still valid — swap in that file set and remove unused Part4b `.pte` from this folder to avoid confusion.
 
-Push: `./push_sharp_vulkan_only.sh ./models_cpuvulkan_hybrid`
+Push for Android Studio installs (default source is `models_cpuvulkan_hybrid/`; skips large `sharp_split_part1/2_vulkan_fp{16,32}.pte` not used in hybrid): `./push_sharp_cpuvulkan_hybrid_androidstudio.sh`
 
 `.pte` files are gitignored.

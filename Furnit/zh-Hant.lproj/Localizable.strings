@@ -21,6 +21,7 @@
 "common.error" = "錯誤";
 "common.save" = "儲存";
 "common.close" = "關閉";
+"common.apply" = "套用";
 
 // MARK: - Login View
 "login.yourName" = "你的名字";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "本應用使用基於 YOLO（如 Ultralytics YOLO）的模型。YOLO 依 AGPL-3.0 授權。本第一階段發布為非商業。商業使用請見 https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "3D 房間重建 (SHARP)";
 "licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "裝置端高斯 splat 渲染。Copyright (c) Sean Cier。依 MIT 授權條款授權。";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。";
 
@@ -178,20 +181,22 @@
 "faq.howToCreateAnswer" = "點擊主畫面左上角的照片圖示，然後拍攝或選擇房間的照片。您將看到兩個選項來建立您的3D房間。";
 "faq.howToTakePhoto" = "如何拍照來建立房間？";
 "faq.howToTakePhotoAnswer" = "點擊主畫面上的相機圖示直接拍照。您可以選擇標準(1x)或廣角(0.5x超廣角)鏡頭。保持裝置穩定並點擊拍攝按鈕。照片將用於建立您的3D房間。";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "用應用程式內建相機拍照會比較好嗎？";
+"faq.depthAwareRoomPhotoAnswer" = "會。在支援的裝置上，建立房間時選拍照而非從相簿挑圖，可使用內建相機搭配深度（若裝置提供），有助於 3D 房間的建立與比例。";
+"faq.twoMethods" = "兩種房間建立方式是什麼？";
+"faq.twoMethodsAnswer" = "選擇照片後，您可以選擇：1) AI 驅動的 3D 房間 - 使用人工智慧自動建立逼真的 3D 房間，或 2) 手動設定 - 您自己繪製房間邊界以獲得更多控制。";
+"faq.whatIsAIRoom" = "什麼是 AI 驅動的 3D 房間？";
+"faq.whatIsAIRoomAnswer" = "此選項使用智能技術自動將您的照片轉換為可漫步的 3D 房間。只需選擇一張照片，應用程式會完成其餘工作，無需繪製或調整。";
+"faq.whatIsManualRoom" = "什麼是手動設定？";
+"faq.whatIsManualRoomAnswer" = "手動設定時，您在照片上繪製房間牆壁的輪廓。這樣您可以更精確地控制 3D 房間的外觀。當您想自己微調房間形狀時非常有用。";
+"faq.whichMethodBetter" = "我該選哪種方式？";
+"faq.whichMethodBetterAnswer" = "建議先試 AI 驅動 - 更快，對大多數房間效果很好。如果結果不太理想，用手動設定在您想要的位置繪製牆壁。兩種都可以試試看您更喜歡哪種！";
 "faq.bestPhotos" = "什麼樣的照片效果最好？";
 "faq.bestPhotosAnswer" = "為獲得最佳效果，請在光線充足的環境下拍攝，並保持相機水平。盡量拍攝整個房間，包括地板、牆壁和天花板邊緣。避免模糊或昏暗的照片。";
 "faq.generationFailing" = "為什麼我的房間產生失敗？";
 "faq.generationFailingAnswer" = "如果照片太暗、模糊或沒有顯示足夠的房間特徵，房間產生可能會失敗。請嘗試在更好的光線下以更寬的角度拍攝新照片。";
 "faq.howManyRooms" = "我可以建立多少個房間？";
-"faq.howManyRoomsAnswer" = "你最多可以建立10個房間。刪除舊房間以騰出空間。房間數量顯示在主畫面頂部。";
+"faq.howManyRoomsAnswer" = "你最多可以建立1000個房間。刪除舊房間以騰出新空間。主畫面頂部會顯示房間數量與已使用的儲存空間。";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "傢俱分割";
@@ -205,7 +210,8 @@
 "faq.multiplePiecesAnswer" = "可以！AI可以在單張照片中偵測多件傢俱。每個偵測到的物品將單獨顯示，供你選擇使用。";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D房間與佈置";
+"faq.roomFitment" = "如何確認傢俱是否合適？";
+"faq.roomFitmentAnswer" = "加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。";
 "faq.howToView" = "如何檢視我的3D房間？";
 "faq.howToViewAnswer" = "點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。";
 "faq.howToPlace" = "如何在房間中放置傢俱？";
@@ -216,6 +222,13 @@
 "faq.accuracyAnswer" = "3D模型能很好地近似你的房間佈局。為獲得最佳準確度，請確保原始照片清晰地捕捉房間尺寸，包括可見的角落和邊緣。";
 "faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
 "faq.adjustDimensionsAnswer" = "可以，進入設定並找到房間尺寸選項，你可以微調產生房間的大小和比例。";
+"faq.furnitureMeasurements" = "傢俱與測量";
+"faq.arAssistedSizing" = "什麼是 AR 輔助傢俱尺寸？";
+"faq.arAssistedSizingAnswer" = "在設定中開啟後，應用程式會結合相機深度與物件偵測，在你靠近或遠離時更合理地縮放傢俱疊圖。光線充足、物品清晰時效果最佳。";
+"faq.measurementPill" = "畫面上小小的測量資訊是什麼？";
+"faq.measurementPillAnswer" = "SmartyPants 開啟時，可能會顯示預估的傢俱高度與房間高度。點一下可輸入實際尺寸以提高準確度。若房間照片以廣角（0.5×）拍攝，請一併標示，畫面構圖才會一致。";
+"faq.resetOverlayScale" = "偵測遮罩的縮放看起來不對，怎麼辦？";
+"faq.resetOverlayScaleAnswer" = "在 3D 房間開啟右上角選單（⋮），選擇重設疊圖縮放，可清除套在偵測遮罩上的自動縮放，方便在你移動後重新穩定。";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "房間邊界";
@@ -259,6 +272,29 @@
 "roomViewer.saveSuccess" = "房間「%@」儲存成功！";
 "roomViewer.saveFailed" = "儲存房間失敗：%@";
 "roomViewer.roomSaveTitle" = "儲存房間";
+"roomPreview.unsavedTitle" = "不儲存就返回？";
+"roomPreview.unsavedMessage" = "房間尚未儲存。若現在返回，將遺失此預覽。";
+"roomPreview.stay" = "留下";
+"roomPreview.leave" = "離開";
+"roomViewer.share" = "分享";
+"roomViewer.calibrateWall" = "校準牆面";
+"roomViewer.recenterView" = "檢視畫面置中";
+"roomViewer.resetOverlayScale" = "重設疊加比例";
+"roomViewer.checkMeasurement" = "檢查測量";
+"roomViewer.goingBack" = "正在返回…";
+"roomViewer.savingRoomEllipsis" = "正在儲存房間…";
+"roomViewer.calibrateRoomTitle" = "校準房間";
+"roomViewer.enterFurnitureHeightMeters" = "輸入家具實際高度（公尺）";
+"roomViewer.furnitureFullHeightHint" = "總高度：從地面到頂部（例如椅子 0.9 公尺）";
+"roomViewer.calibrateByWallTitle" = "依牆校準";
+"roomViewer.enterWallDimensionsHint" = "輸入捲尺測量的前牆尺寸（公尺），例如 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "點一下以校準";
+"roomViewer.detectedMeters" = "偵測到：%.2f 公尺";
+"roomViewer.roomMetersShort" = "房間：%.2f 公尺";
+"roomViewer.furnitureMetersShort" = "家具：%.2f 公尺";
+"roomViewer.wallWidthPlaceholder" = "寬度";
+"roomViewer.wallHeightPlaceholder" = "高度";
+"roomViewer.saveErrorUnknown" = "未知錯誤";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交報告";
@@ -290,24 +326,74 @@
 "faq.whatIsMemoryDisplayAnswer" = "房間中顯示的 MB（兆位元組）表示檔案大小。這有助於您管理儲存空間。所有房間使用的總儲存空間顯示在主畫面頂部。";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "您想如何建立3D房間？";
+"photoRoom.tapOption" = "點選下方選項以繼續";
+"photoRoom.aiPowered" = "AI 驅動的3D建構";
+"photoRoom.manualSetup" = "手動設定";
+"photoRoom.manualSetupDesc" = "拖曳以調整房間牆面";
+"photoRoom.selectPhoto" = "選擇照片";
+"photoRoom.fromLibrary" = "從照片圖庫";
+"photoRoom.loading" = "正在載入3D房間...";
+"photoRoom.downloadSuccess" = "已成功下載 %@。請在模型列表中查看。";
+"photoRoom.saveSuccess" = "您的3D模型已成功儲存。";
 "photoRoom.error" = "產生3D模型時發生錯誤。";
 "photoRoom.buildingRoom" = "正在建構您的3D房間...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "直向";
+"orientation.landscape" = "橫向";
+"orientation.heldVertically" = "直握";
+"orientation.heldHorizontally" = "橫握";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "請勿選擇螢幕截圖 — 可能出現黑色區塊";
+
+// MARK: - i18n sync (繁體中文)
+"common.or" = "或";
+"common.retry" = "重試";
+"settings.furnitureSegmentationSection" = "傢俱分割";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML：允許 GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "關（預設）：僅 CPU — 較慢但可避免部分 YOLO-E 26L Core ML 組建當機。開：CPU+GPU 提速；若匯出無法在您裝置的 Metal 上執行，分割時可能 SIGABRT。";
+"settings.showRoomFurnitureCalibrate" = "顯示房間與傢俱校準";
+"settings.showRoomFurnitureCalibrateDescription" = "在房間選單中顯示「校準牆面」，並在 SmartyPants（大腦）開啟時顯示「點一下校準」提示條。";
+"settings.furnitureFitARCompanion" = "AR 輔助家具尺寸";
+"settings.furnitureFitARCompanionDescription" = "在 Furniture Fit 中與相機並行執行 ARKit 場景深度（LiDAR）。可能與影片擷取衝突。變更後請重新開啟房間。";
+"settings.furnitureFitARCompanionUnavailable" = "此裝置不支援場景深度。";
+"settings.roomMeasurementSection" = "房間測量";
+"settings.yoloWallDimensionsOnSave" = "儲存時以 YOLO 估計牆尺寸";
+"settings.yoloWallDimensionsOnSaveDescription" = "為 SHARP 房間命名並儲存時，使用 YOLO（牆類別或類牆框）、隨房間儲存的 SHARP 單眼深度與相機 EXIF 估計前牆寬高。需要 thumbnail.png，最佳效果需要 sharp_monodepth.bin。";
+"settings.wallAssumedDepthM" = "假設到牆距離（公尺）";
+"settings.wallAssumedCeilingM" = "假設牆／頂高度（公尺）";
+"settings.roomMeasurementFooter" = "在 SHARP iOS 無單眼深度時，儲存會使用假設深度並有時用此頂高。若寬度相對捲尺偏小，增大假設距離（寬度約線性縮放）。將牆高設為接近捲尺讀數（如 2.86 公尺）。或在儲存前使用 ⋮ → 依牆校準。";
+"camera.takePhoto" = "拍照";
+"camera.chooseOrientationShort" = "直向或橫向";
+"sharp.downloadingEngine" = "正在下載3D引擎...";
+"sharp.downloadingEnginePercent" = "正在下載3D引擎... %d%%";
+"sharp.downloadComplete" = "下載完成";
+"sharp.downloadFailed" = "下載失敗";
+"sharp.gettingReady" = "正在準備...";
+"sharp.notEnoughSpace" = "裝置儲存空間不足";
+"sharp.settingThingsUp" = "正在設定...";
+"sharp.ready" = "就緒！";
+"sharp.couldNotGetReady" = "無法完成準備";
+"sharp.somethingWentWrong" = "發生問題";
+"sharp.preparingPhoto" = "正在處理照片...";
+"sharp.creatingRoom" = "正在建立3D房間...";
+"sharp.almostDone" = "即將完成...";
+"sharp.done" = "完成！";
+"sharp.couldNotCreateRoom" = "無法建立房間";
+"sharp.cancelled" = "已取消";
+"photoRoom.odrOneTimeDownload" = "一次性下載（約 1.2 GB）";
+"photoRoom.modelGeneratedTitle" = "已產生3D模型";
+"photoRoom.generationFailedTitle" = "產生失敗";
+"photoRoom.loading3DRoom" = "正在載入3D房間...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "正在上傳圖片";
+"generationProgress.generating3DModel" = "正在產生 3D 模型";
+"generationProgress.downloadingModel" = "正在下載模型";
+"generationProgress.complete" = "完成！";
+"generationProgress.preparing" = "準備中...";
+"generationProgress.mayTakeFewMinutes" = "這可能需要幾分鐘";

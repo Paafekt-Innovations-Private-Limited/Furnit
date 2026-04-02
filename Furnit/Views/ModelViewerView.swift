@@ -29,6 +29,8 @@ struct ModelViewerView: View {
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
     @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
+    @State private var furnitureFitInitialSegmentationDone = false
+    @State private var furnitureFitEstimatedHeightM: Float?
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -42,10 +44,6 @@ struct ModelViewerView: View {
 
     init(model: USDZModel) {
         self.model = model
-    }
-
-    private var anyCameraOverlayActive: Bool {
-        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit
     }
 
     var body: some View {
@@ -64,17 +62,41 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // FurnitureFit overlay (yoloe-11l 1280)
+                    // FurnitureFit overlay (YOLOE Core ML)
                     if showingFurnitureFit {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
-                            roomImage: roomSnapshot,
+                            roomImage: nil,
                             mlModel: yoloeService.model,
                             processInterval: 0.07,
                             active: true,
-                            lockedOrientation: model.photoOrientation
+                            lockedOrientation: model.photoOrientation,
+                            roomWidthMeters: model.roomWidth ?? 4.0,
+                            roomHeightMeters: model.roomHeight ?? 3.0,
+                            onFurnitureSizeEstimated: { estimate in
+                                furnitureFitEstimatedHeightM = estimate.heightMeters
+                            },
+                            suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                         )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .zIndex(9000)
+                    }
+
+                    if showingFurnitureFit, let fh = furnitureFitEstimatedHeightM {
+                        VStack {
+                            Spacer()
+                            Text(String(format: "Furniture height ~ %.2f m", fh))
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.black.opacity(0.55))
+                                .cornerRadius(8)
+                                .padding(.bottom, 96)
+                        }
+                        .zIndex(9001)
+                        .allowsHitTesting(false)
                     }
 
                     if isLandscape(geometry: geometry) {
@@ -132,19 +154,19 @@ struct ModelViewerView: View {
                                 if showingFurnitureFit {
                                     showingFurnitureFit = false
                                 } else {
-                                    logDebug("BRAIN FLOW: requesting snapshot")
-                                    // Trigger ARView snapshot
-                                    shouldCaptureARViewSnapshot = true
-                                    
+                                    logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
+                                    yoloeService.ensureModelLoaded()
+
                                     // Hide other overlays
                                     showingCameraPreview = false
                                     showingSegmentExamine = false
                                     showingSegmentForeground = false
                                     showingSegmentFurniture = false
                                     
-                                    // Wait briefly for snapshot to complete
+                                    // Open after the current UI update cycle; no AR snapshot needed here.
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                                        self.furnitureFitInitialSegmentationDone = false
                                         self.showingFurnitureFit = true
                                     }
                                 }
@@ -201,7 +223,17 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingFurnitureFit) { _, _ in manageARSessionForOverlays() }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            manageARSessionForOverlays()
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            } else {
+                roomSnapshot = nil
+                capturedImage = nil
+                furnitureFitEstimatedHeightM = nil
+                yoloeService.releaseResources()
+            }
+        }
         .onAppear {
             isARActive = true
             yoloeService.ensureModelLoaded()
@@ -401,6 +433,7 @@ struct ModelViewerView: View {
                 
                 if showingFurnitureFit {
                     showingFurnitureFit = false
+                    furnitureFitEstimatedHeightM = nil
                 } else {
                     // Trigger ARView snapshot
                     shouldCaptureARViewSnapshot = true
@@ -442,7 +475,11 @@ struct ModelViewerView: View {
     }
 
     private func manageARSessionForOverlays() {
-        let shouldRunAR = !anyCameraOverlayActive
+        let shouldRunAR = !(showingCameraPreview ||
+                            showingSegmentExamine ||
+                            showingSegmentForeground ||
+                            showingSegmentFurniture ||
+                            showingFurnitureFit)
         if isARActive != shouldRunAR {
             isARActive = shouldRunAR
         }
@@ -597,7 +634,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
     var roomImage: UIImage?
-    var mlModel: MLModel?  // yoloe-11l 1280 model
+    var mlModel: MLModel?  // yoloe-26l-seg-pf (640) via YOLOEModelService
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true
@@ -606,9 +643,16 @@ struct FurnitureFitUIView: UIViewRepresentable {
     // Room dimensions from SHARP (in meters) for furniture sizing
     var roomWidthMeters: Float = 4.0
     var roomHeightMeters: Float = 3.0
+    var roomDepthMeters: Float = 4.0
+    /// Splat raycast / saved `.meta` scene units for ratio fitment logs.
+    var roomRaycastSceneDimensions: RoomRaycastDimensions? = nil
+    var cameraFocalLengthPixels: Float = 0
 
-    // Callback for reporting estimated furniture size (width, height in meters)
-    var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
+    // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
+    var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
+    /// Sharp Room: skip “Starting camera…” progress after the first segmentation this session.
+    var suppressStartupProgress: Bool = false
+    var onFirstSegmentationComplete: (() -> Void)?
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -616,7 +660,13 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.lockedOrientation = lockedOrientation
         view.roomWidthMeters = roomWidthMeters
         view.roomHeightMeters = roomHeightMeters
+        view.roomDepthMeters = roomDepthMeters
+        view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        view.cameraFocalLengthPixels = cameraFocalLengthPixels
+        view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        view.suppressStartupProgress = suppressStartupProgress
+        view.onFirstSegmentationComplete = onFirstSegmentationComplete
         return view
     }
 
@@ -626,8 +676,19 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.lockedOrientation = lockedOrientation
         uiView.roomWidthMeters = roomWidthMeters
         uiView.roomHeightMeters = roomHeightMeters
+        uiView.roomDepthMeters = roomDepthMeters
+        uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
+        uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        uiView.suppressStartupProgress = suppressStartupProgress
+        uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
         if active { uiView.startIfNeeded() } else { uiView.stop() }
+    }
+
+    static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
+        uiView.setModel(nil)
+        uiView.stop()
     }
 }
 

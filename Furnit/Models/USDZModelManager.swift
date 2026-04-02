@@ -2,6 +2,75 @@ import Foundation
 import UIKit
 import SceneKit
 
+// MARK: - Saved room .meta JSON (room dims + optional YOLO ratios)
+
+private struct SavedRoomDiskMetadata {
+    let orientation: PhotoOrientation
+    let width: Float?
+    let height: Float?
+    let depth: Float?
+    /// Depth-raycast / PLY scene units (optional; ratio fitment).
+    let sceneWidth: Float?
+    let sceneHeight: Float?
+    let sceneDepth: Float?
+    let yoloWallHeightFrac: Float?
+    let yoloFurnitureHeightFracByClass: [String: Float]?
+    let yoloRefImageHeightPx: Int?
+    let sharpRoomHeightAtYoloCapture: Float?
+    /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
+    let displayName: String?
+
+    static let empty = SavedRoomDiskMetadata(
+        orientation: .portrait,
+        width: nil,
+        height: nil,
+        depth: nil,
+        sceneWidth: nil,
+        sceneHeight: nil,
+        sceneDepth: nil,
+        yoloWallHeightFrac: nil,
+        yoloFurnitureHeightFracByClass: nil,
+        yoloRefImageHeightPx: nil,
+        sharpRoomHeightAtYoloCapture: nil,
+        displayName: nil
+    )
+
+    static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
+        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
+        let width = metadata["roomWidth"].flatMap { Float($0) }
+        let height = metadata["roomHeight"].flatMap { Float($0) }
+        let depth = metadata["roomDepth"].flatMap { Float($0) }
+        let sceneW = metadata["roomSceneWidth"].flatMap { Float($0) }
+        let sceneH = metadata["roomSceneHeight"].flatMap { Float($0) }
+        let sceneD = metadata["roomSceneDepth"].flatMap { Float($0) }
+        let yoloWall = metadata["yoloWallHeightFrac"].flatMap { Float($0) }
+        let yoloRefH = metadata["yoloRefImageHeightPx"].flatMap { Int($0) }
+        let sharpCap = metadata["sharpRoomHeightAtYoloCapture"].flatMap { Float($0) }
+        var furnMap: [String: Float]?
+        if let json = metadata["yoloFurnitureHeightFracByClass"],
+           let data = json.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String: Float].self, from: data) {
+            furnMap = decoded
+        }
+        let rawName = metadata["displayName"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = (rawName?.isEmpty == false) ? rawName : nil
+        return SavedRoomDiskMetadata(
+            orientation: orientation,
+            width: width,
+            height: height,
+            depth: depth,
+            sceneWidth: sceneW,
+            sceneHeight: sceneH,
+            sceneDepth: sceneD,
+            yoloWallHeightFrac: yoloWall,
+            yoloFurnitureHeightFracByClass: furnMap,
+            yoloRefImageHeightPx: yoloRefH,
+            sharpRoomHeightAtYoloCapture: sharpCap,
+            displayName: displayName
+        )
+    }
+}
+
 class USDZModelManager: ObservableObject {
     @Published var models: [USDZModel] = []
     
@@ -13,6 +82,9 @@ class USDZModelManager: ObservableObject {
     private var modelsDirectory: URL {
         documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
     }
+
+    /// Exposed for reference image lookup in the room folder (e.g. room thumbnail / meshroom assets).
+    var savedRoomsDirectoryURL: URL { modelsDirectory }
     
     init() {
         if AppStateManager.shared.qualitySettings.debugMode {
@@ -90,7 +162,20 @@ class USDZModelManager: ObservableObject {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
-            let modelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            let allModelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            let plyStems = Set(
+                allModelFiles.compactMap { fileURL -> String? in
+                    guard fileURL.pathExtension.lowercased() == "ply" else { return nil }
+                    return fileURL.deletingPathExtension().lastPathComponent
+                }
+            )
+            let modelFiles = allModelFiles.filter { fileURL in
+                guard fileURL.pathExtension.lowercased() == "ply" else { return true }
+                let stem = fileURL.deletingPathExtension().lastPathComponent
+                guard stem.hasSuffix("_classic") else { return true }
+                let baseName = String(stem.dropLast("_classic".count))
+                return !plyStems.contains(baseName)
+            }
 
             if debugMode {
                 logDebug("📦 [USDZModelManager] Found \(modelFiles.count) model files in SavedRooms")
@@ -137,7 +222,7 @@ class USDZModelManager: ObservableObject {
                 }
 
                 // Load metadata based on file type
-                let metadata: (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?)
+                let metadata: SavedRoomDiskMetadata
                 switch fileType {
                 case .ply:
                     metadata = loadPLYMetadata(for: fileName)
@@ -146,7 +231,7 @@ class USDZModelManager: ObservableObject {
                 case .glb:
                     metadata = loadGLBMetadata(for: fileName)
                 default:
-                    metadata = (orientation: .portrait, width: nil, height: nil, depth: nil)
+                    metadata = loadUSDZMetadata(for: fileName)
                 }
 
                 if debugMode {
@@ -162,7 +247,15 @@ class USDZModelManager: ObservableObject {
                     photoOrientation: metadata.orientation,
                     roomWidth: metadata.width,
                     roomHeight: metadata.height,
-                    roomDepth: metadata.depth
+                    roomDepth: metadata.depth,
+                    roomSceneWidth: metadata.sceneWidth,
+                    roomSceneHeight: metadata.sceneHeight,
+                    roomSceneDepth: metadata.sceneDepth,
+                    yoloWallHeightFrac: metadata.yoloWallHeightFrac,
+                    yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
+                    yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
+                    sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
+                    customDisplayName: metadata.displayName
                 )
                 savedRoomModels.append(model)
             }
@@ -191,6 +284,37 @@ class USDZModelManager: ObservableObject {
         return models.first { $0.fileName == fileName }
     }
     
+    /// Merges YOLO ratio calibration keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
+    func mergeYoloCalibrationMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        wallHeightFrac: Float,
+        furnitureFractionsByClass: [String: Float],
+        referenceImageHeightPx: Int,
+        sharpRoomHeightAtCapture: Float?
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+
+        dict["yoloWallHeightFrac"] = String(format: "%.6f", wallHeightFrac)
+        dict["yoloRefImageHeightPx"] = String(referenceImageHeightPx)
+        if let h = sharpRoomHeightAtCapture {
+            dict["sharpRoomHeightAtYoloCapture"] = String(format: "%.4f", h)
+        }
+        if let jsonData = try? JSONEncoder().encode(furnitureFractionsByClass),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            dict["yoloFurnitureHeightFracByClass"] = jsonString
+        }
+
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
     func refreshModels() {
         if AppStateManager.shared.qualitySettings.debugMode {
             logDebug("🔄 [USDZModelManager] Refreshing models...")
@@ -200,6 +324,33 @@ class USDZModelManager: ObservableObject {
         if AppStateManager.shared.qualitySettings.debugMode {
             logDebug("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
         }
+    }
+
+    /// Writes `displayName` into the per-room `*.meta` sidecar (file name on disk unchanged).
+    func updateDisplayName(for model: USDZModel, newName: String) throws {
+        guard model.isSavedRoom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "USDZModelManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty name"])
+        }
+        let fileExtension: String
+        switch model.fileType {
+        case .ply: fileExtension = "ply"
+        case .meshroom: fileExtension = "meshroom"
+        case .glb: fileExtension = "glb"
+        case .usdz: fileExtension = "usdz"
+        }
+        let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+        dict["displayName"] = trimmed
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+        DispatchQueue.main.async { self.refreshModels() }
     }
     
     // ✅ NEW: Delete model functionality
@@ -250,14 +401,12 @@ class USDZModelManager: ObservableObject {
                     }
                 }
 
-                // Also delete metadata file for PLY, meshroom, and GLB files
-                if model.fileType == .ply || model.fileType == .meshroom || model.fileType == .glb {
-                    let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
-                    if FileManager.default.fileExists(atPath: metadataURL.path) {
-                        try FileManager.default.removeItem(at: metadataURL)
-                        if debugMode {
-                            logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
-                        }
+                // Also delete metadata sidecar (all saved types may have *.meta)
+                let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+                if FileManager.default.fileExists(atPath: metadataURL.path) {
+                    try FileManager.default.removeItem(at: metadataURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
                     }
                 }
             } catch {
@@ -381,15 +530,27 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Save a PLY file to SavedRooms directory
-    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, completion: @escaping (Bool, String?) -> Void) {
+    func savePLY(
+        from sourceURL: URL,
+        name: String,
+        photoOrientation: PhotoOrientation = .portrait,
+        roomWidth: Float? = nil,
+        roomHeight: Float? = nil,
+        roomDepth: Float? = nil,
+        roomSceneWidth: Float? = nil,
+        roomSceneHeight: Float? = nil,
+        roomSceneDepth: Float? = nil,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         if debugMode {
-            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue), width: \(roomWidth ?? 0), height: \(roomHeight ?? 0))")
+            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue), width: \(roomWidth ?? 0), height: \(roomHeight ?? 0), depth: \(roomDepth ?? 0))")
         }
 
         let fileName = sanitizeFileName(name)
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
+        let classicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         // Check if source exists
@@ -409,9 +570,21 @@ class USDZModelManager: ObservableObject {
             if FileManager.default.fileExists(atPath: metadataURL.path) {
                 try FileManager.default.removeItem(at: metadataURL)
             }
+            if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
+                try FileManager.default.removeItem(at: classicSidecarURL)
+            }
 
             // Copy PLY file
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+            // SHARP save uses `Room_*_classic.ply` as the Metal source; copied to `Name.ply` loses the `_classic` suffix.
+            // Duplicate as `Name_classic.ply` so `SharpRoomView` picks the same URL as preview and `GaussianSplatView` applies classic camera/flip.
+            if sourceURL.lastPathComponent.contains("_classic") {
+                try FileManager.default.copyItem(at: destinationURL, to: classicSidecarURL)
+                if debugMode {
+                    logDebug("💾 [USDZModelManager] Also saved classic sidecar: \(classicSidecarURL.lastPathComponent)")
+                }
+            }
 
             // Save metadata (orientation and dimensions)
             var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
@@ -420,6 +593,18 @@ class USDZModelManager: ObservableObject {
             }
             if let height = roomHeight {
                 metadata["roomHeight"] = String(format: "%.2f", height)
+            }
+            if let depth = roomDepth {
+                metadata["roomDepth"] = String(format: "%.2f", depth)
+            }
+            if let sw = roomSceneWidth {
+                metadata["roomSceneWidth"] = String(format: "%.4f", sw)
+            }
+            if let sh = roomSceneHeight {
+                metadata["roomSceneHeight"] = String(format: "%.4f", sh)
+            }
+            if let sd = roomSceneDepth {
+                metadata["roomSceneDepth"] = String(format: "%.4f", sd)
             }
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)
@@ -442,22 +627,17 @@ class USDZModelManager: ObservableObject {
         }
     }
 
-    /// Load all metadata from PLY metadata file (orientation, dimensions)
-    private func loadPLYMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    /// Load all metadata from PLY metadata file (orientation, dimensions, optional YOLO ratios)
+    private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)  // Default if no metadata
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
-
-        return (orientation: orientation, width: width, height: height, depth: depth)
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 
     /// Save a mesh room (image + metadata) to SavedRooms directory
@@ -516,21 +696,16 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Load metadata from mesh room metadata file
-    private func loadMeshRoomMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    private func loadMeshRoomMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).meshroom.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
-
-        return (orientation: orientation, width: width, height: height, depth: depth)
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 
     /// Save a GLB (GLTF binary) room to SavedRooms directory
@@ -585,20 +760,26 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Load metadata from GLB metadata file
-    private func loadGLBMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+    private func loadGLBMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).glb.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+            return .empty
         }
 
-        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
-        let width = metadata["roomWidth"].flatMap { Float($0) }
-        let height = metadata["roomHeight"].flatMap { Float($0) }
-        let depth = metadata["roomDepth"].flatMap { Float($0) }
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
+    }
 
-        return (orientation: orientation, width: width, height: height, depth: depth)
+    /// Optional metadata for saved USDZ rooms (`*.usdz.meta`).
+    private func loadUSDZMetadata(for fileName: String) -> SavedRoomDiskMetadata {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).usdz.meta")
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return .empty
+        }
+        return SavedRoomDiskMetadata.parse(dictionary: metadata)
     }
 }

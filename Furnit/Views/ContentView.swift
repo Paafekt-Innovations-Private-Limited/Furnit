@@ -19,6 +19,50 @@ struct LazyView<Content: View>: View {
     }
 }
 
+@ViewBuilder
+private func destinationView(for model: USDZModel) -> some View {
+    if let modelURL = model.temporaryURL {
+        if model.fileType == .ply {
+            SharpRoomView(
+                plyURL: modelURL,
+                allowSave: false,
+                photoOrientation: model.photoOrientation,
+                savedRoomWidth: model.roomWidth,
+                savedRoomHeight: model.roomHeight,
+                savedRoomModel: model
+            )
+        } else if model.fileType == .meshroom {
+            if let imageData = try? Data(contentsOf: modelURL),
+               let image = UIImage(data: imageData) {
+                MeshRoomView(
+                    roomWidth: model.roomWidth ?? 4.0,
+                    roomHeight: model.roomHeight ?? 3.0,
+                    roomDepth: model.roomDepth ?? 4.0,
+                    frontWallImage: image,
+                    photoOrientation: model.photoOrientation,
+                    savedRoomModel: model
+                )
+            } else {
+                Text("Failed to load room image")
+                    .foregroundColor(.red)
+            }
+        } else if model.fileType == .glb {
+            GLBRoomView(
+                glbURL: modelURL,
+                photoOrientation: model.photoOrientation,
+                roomWidth: model.roomWidth,
+                roomHeight: model.roomHeight,
+                savedRoomModel: model
+            )
+        } else {
+            ModelViewerView(model: model)
+        }
+    } else {
+        Text("❌ Model data unavailable: \(model.displayName)")
+            .foregroundColor(.red)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -68,7 +112,9 @@ struct HomeTab: View {
     @State private var showingHelp = false
     @State private var showingFileInfoSnackbar = false
     @State private var selectedModelForInfo: USDZModel?
-    
+    @State private var renameTarget: USDZModel?
+    @State private var renameDraft = ""
+
     var body: some View {
         NavigationStack {
             VStack {
@@ -142,7 +188,17 @@ struct HomeTab: View {
                         List {
                             ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
                                 modelRow(for: model, at: index)
-                                    // ✅ SWIPE TO DELETE ADDED HERE
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        if model.isSavedRoom {
+                                            Button {
+                                                renameTarget = model
+                                                renameDraft = model.displayName
+                                            } label: {
+                                                Label(L10n.Home.renameRoom, systemImage: "pencil")
+                                            }
+                                            .tint(.blue)
+                                        }
+                                    }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         Button(role: .destructive) {
                                             roomToDelete = model
@@ -205,18 +261,16 @@ struct HomeTab: View {
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
                     SinglePhotoRoomView()
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button(L10n.Common.back) {
-                                    showingPhotoRoomCreator = false
-                                }
-                            }
-                        }
                 }
             }
             // Refresh models when sheet closes
             .onChange(of: showingPhotoRoomCreator) { _, isShowing in
                 if !isShowing {
+                    // Photo room sheet fully closed — safe to drop heavy singletons (not during in-sheet navigation).
+                    Task { @MainActor in
+                        SHARPService.shared.releaseResources()
+                        YOLOEModelService.shared.releaseResources()
+                    }
                     modelManager.refreshModels()
                     limitManager.updateRoomCount()
                 }
@@ -262,6 +316,23 @@ struct HomeTab: View {
                 if let room = roomToDelete {
                     Text(L10n.DeleteRoom.message(room.displayName))
                 }
+            }
+            .alert(L10n.Home.renameRoom, isPresented: Binding(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )) {
+                TextField(L10n.Home.roomNamePlaceholder, text: $renameDraft)
+                Button(L10n.Common.cancel, role: .cancel) {
+                    renameTarget = nil
+                }
+                Button(L10n.Common.save) {
+                    if let room = renameTarget {
+                        try? modelManager.updateDisplayName(for: room, newName: renameDraft)
+                    }
+                    renameTarget = nil
+                }
+            } message: {
+                Text(L10n.Home.renameRoomMessage)
             }
         }
         .onAppear {
@@ -358,7 +429,14 @@ struct HomeTab: View {
                 if model.fileType == .ply {
                     NavigationLink {
                         LazyView {
-                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation, savedRoomWidth: model.roomWidth, savedRoomHeight: model.roomHeight)
+                            SharpRoomView(
+                                plyURL: modelURL,
+                                allowSave: false,
+                                photoOrientation: model.photoOrientation,
+                                savedRoomWidth: model.roomWidth,
+                                savedRoomHeight: model.roomHeight,
+                                savedRoomModel: model
+                            )
                         }
                     } label: {
                         HomeViewModelRow(model: model)
@@ -380,7 +458,8 @@ struct HomeTab: View {
                                     roomHeight: model.roomHeight ?? 3.0,
                                     roomDepth: model.roomDepth ?? 4.0,
                                     frontWallImage: image,
-                                    photoOrientation: model.photoOrientation
+                                    photoOrientation: model.photoOrientation,
+                                    savedRoomModel: model
                                 )
                             } else {
                                 // Fallback - show error
@@ -404,7 +483,8 @@ struct HomeTab: View {
                                 glbURL: modelURL,
                                 photoOrientation: model.photoOrientation,
                                 roomWidth: model.roomWidth,
-                                roomHeight: model.roomHeight
+                                roomHeight: model.roomHeight,
+                                savedRoomModel: model
                             )
                         }
                     } label: {
@@ -498,7 +578,11 @@ struct ExploreTab: View {
                             GridItem(.flexible(), spacing: 16)
                         ], spacing: 16) {
                             ForEach(filteredModels) { model in
-                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                NavigationLink {
+                                    LazyView {
+                                        destinationView(for: model)
+                                    }
+                                } label: {
                                     ExploreModelCard(model: model)
                                 }
                                 .onAppear {
@@ -541,7 +625,11 @@ struct FavoritesTab: View {
             } else {
                 List {
                     ForEach(favoriteModels) { model in
-                        NavigationLink(destination: ModelViewerView(model: model)) {
+                        NavigationLink {
+                            LazyView {
+                                destinationView(for: model)
+                            }
+                        } label: {
                             HomeViewModelRow(model: model)
                         }
                     }
@@ -901,13 +989,25 @@ struct AboutView: View {
                 }
                 .padding(.vertical, 4)
             }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.metalSplatterTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.metalSplatter)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
         }
         .navigationTitle(L10n.Profile.about)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), Firebase (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0).
 struct LicensesView: View {
     private enum LicenseURL {
         static let agpl3 = URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!
@@ -953,6 +1053,20 @@ struct LicensesView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     Text(L10n.Licenses.sharp)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.metalSplatterTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.metalSplatter)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
@@ -1011,6 +1125,8 @@ struct SupportView: View {
                 icon: "camera.fill",
                 items: [
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
+                    FAQItem(question: "faq.howToTakePhoto".localized, answer: "faq.howToTakePhotoAnswer".localized),
+                    FAQItem(question: "faq.depthAwareRoomPhoto".localized, answer: "faq.depthAwareRoomPhotoAnswer".localized),
                     FAQItem(question: "faq.twoMethods".localized, answer: "faq.twoMethodsAnswer".localized),
                     FAQItem(question: "faq.whatIsAIRoom".localized, answer: "faq.whatIsAIRoomAnswer".localized),
                     FAQItem(question: "faq.whatIsManualRoom".localized, answer: "faq.whatIsManualRoomAnswer".localized),
@@ -1030,6 +1146,18 @@ struct SupportView: View {
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
                     FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.furnitureMeasurements".localized,
+                icon: "ruler",
+                items: [
+                    FAQItem(question: "faq.arAssistedSizing".localized, answer: "faq.arAssistedSizingAnswer".localized),
+                    FAQItem(question: "faq.measurementPill".localized, answer: "faq.measurementPillAnswer".localized),
+                    FAQItem(question: "faq.resetOverlayScale".localized, answer: "faq.resetOverlayScaleAnswer".localized),
+                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized),
+                    FAQItem(question: "faq.roomFitment".localized, answer: "faq.roomFitmentAnswer".localized)
                 ]
             ),
             FAQSection(

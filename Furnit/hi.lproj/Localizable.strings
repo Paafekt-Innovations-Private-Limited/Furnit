@@ -21,6 +21,7 @@
 "common.error" = "त्रुटि";
 "common.save" = "सहेजें";
 "common.close" = "बंद करें";
+"common.apply" = "लागू करें";
 
 // MARK: - Login View
 "login.yourName" = "आपका नाम";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "यह ऐप YOLO (जैसे Ultralytics YOLO) आधारित मॉडल इस्तेमाल करता है। YOLO AGPL-3.0 के तहत लाइसेंस प्राप्त है। यह चरण 1 रिलीज़ गैर-वाणिज्यिक है। वाणिज्यिक उपयोग के लिए https://www.ultralytics.com/license देखें।";
 "licenses.sharpTitle" = "3D कमरा पुनर्निर्माण (SHARP)";
 "licenses.sharp" = "कॉपीराइट (c) SharpML योगदानकर्ता। MIT लाइसेंस के तहत लाइसेंस प्राप्त।";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "कॉपीराइट (c) Google LLC। Apache लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।";
 
@@ -178,20 +181,22 @@
 "faq.howToCreateAnswer" = "होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। आपको अपना 3D कमरा बनाने के लिए दो विकल्प दिखाई देंगे।";
 "faq.howToTakePhoto" = "कमरा बनाने के लिए फोटो कैसे लें?";
 "faq.howToTakePhotoAnswer" = "सीधे फोटो लेने के लिए होम स्क्रीन पर कैमरा आइकन टैप करें। आप स्टैंडर्ड (1x) या वाइड एंगल (0.5x अल्ट्रा-वाइड) लेंस में से चुन सकते हैं। अपने डिवाइस को स्थिर रखें और कैप्चर बटन टैप करें। फोटो का उपयोग आपका 3D कमरा बनाने के लिए किया जाएगा।";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "क्या ऐप में फोटो लेने से कमरे की गुणवत्ता बेहतर होती है?";
+"faq.depthAwareRoomPhotoAnswer" = "हाँ। समर्थित डिवाइसों पर गैलरी के बजाय Take a photo इन-ऐप कैमरा और उपलब्ध होने पर गहराई का उपयोग करता है, जिससे 3D कमरा बेहतर बन सकता है।";
+"faq.twoMethods" = "कमरा बनाने के दो विकल्प क्या हैं?";
+"faq.twoMethodsAnswer" = "फोटो चुनने पर आप चुन सकते हैं: 1) AI-संचालित 3D रूम – AI से अपने आप यथार्थवादी 3D कमरा बनाता है, या 2) मैनुअल सेटअप – आप खुद कमरे की सीमाएं खींचते हैं और ज़्यादा नियंत्रण रखते हैं।";
+"faq.whatIsAIRoom" = "AI-संचालित 3D रूम क्या है?";
+"faq.whatIsAIRoomAnswer" = "यह विकल्प आपकी फोटो को स्वचालित रूप से 3D रूम में बदलने के लिए स्मार्ट तकनीक का उपयोग करता है जिसमें आप चल सकते हैं। बस एक फोटो चुनें और ऐप बाकी करता है - ड्रॉइंग या एडजस्टमेंट की जरूरत नहीं। जादू की तरह काम करता है!";
+"faq.whatIsManualRoom" = "मैनुअल सेटअप क्या है?";
+"faq.whatIsManualRoomAnswer" = "मैनुअल सेटअप में आप फोटो पर कमरे की दीवारों का आउटलाइन खींचते हैं। इससे 3D कमरे का लुक आप खुद तय कर सकते हैं। कमरे का आकार खुद ठीक करने के लिए बढ़िया है।";
+"faq.whichMethodBetter" = "मुझे कौन सा तरीका चुनना चाहिए?";
+"faq.whichMethodBetterAnswer" = "पहले AI वाला आज़माएं – तेज़ है और ज़्यादातर कमरों के लिए अच्छा काम करता है। अगर नतीजा ठीक न लगे तो मैनुअल सेटअप से दीवारें जहाँ चाहें खींचें। दोनों आज़मा सकते हैं!";
 "faq.bestPhotos" = "किस तरह की फोटो सबसे अच्छी काम करती हैं?";
 "faq.bestPhotosAnswer" = "सर्वोत्तम परिणामों के लिए, अच्छी रोशनी में कैमरा समतल रखकर फोटो लें। फर्श, दीवारों और छत के किनारों सहित पूरे कमरे को कैप्चर करने का प्रयास करें। धुंधली या अंधेरी फोटो से बचें।";
 "faq.generationFailing" = "मेरा कमरा जनरेशन क्यों विफल हो रहा है?";
 "faq.generationFailingAnswer" = "यदि फोटो बहुत अंधेरी, धुंधली है या पर्याप्त कमरे की विशेषताएं नहीं दिखाती है तो कमरा जनरेशन विफल हो सकता है। बेहतर रोशनी और व्यापक कोण के साथ नई फोटो लेने का प्रयास करें।";
 "faq.howManyRooms" = "मैं कितने कमरे बना सकता हूं?";
-"faq.howManyRoomsAnswer" = "आप 10 कमरे तक बना सकते हैं। नए के लिए जगह बनाने के लिए पुराने कमरे हटाएं। कमरों की संख्या आपकी होम स्क्रीन के शीर्ष पर दिखाई जाती है।";
+"faq.howManyRoomsAnswer" = "आप 1000 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "फर्नीचर सेगमेंटेशन";
@@ -205,7 +210,6 @@
 "faq.multiplePiecesAnswer" = "हां! AI एक ही फोटो में कई फर्नीचर पीस का पता लगा सकता है। प्रत्येक पहचाना गया आइटम अलग से दिखाया जाएगा ताकि आप चुन सकें कि कौन से उपयोग करने हैं।";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D कमरा और फिटमेंट";
 "faq.howToView" = "अपना 3D कमरा कैसे देखें?";
 "faq.howToViewAnswer" = "3D व्यूअर खोलने के लिए अपनी होम स्क्रीन पर किसी भी कमरे पर टैप करें। आप टच जेस्चर का उपयोग करके घुमा सकते हैं, ज़ूम कर सकते हैं और पैन कर सकते हैं।";
 "faq.howToPlace" = "अपने कमरे में फर्नीचर कैसे रखें?";
@@ -216,6 +220,15 @@
 "faq.accuracyAnswer" = "3D मॉडल आपके कमरे के लेआउट का अच्छा अनुमान प्रदान करता है। सर्वोत्तम सटीकता के लिए, सुनिश्चित करें कि आपकी मूल फोटो दृश्यमान कोनों और किनारों के साथ कमरे के आयामों को स्पष्ट रूप से कैप्चर करती है।";
 "faq.adjustDimensions" = "क्या मैं कमरे के आयाम समायोजित कर सकता हूं?";
 "faq.adjustDimensionsAnswer" = "हां, सेटिंग्स पर जाएं और कमरे के आयाम विकल्प खोजें जहां आप अपने जनरेटेड रूम के आकार और अनुपात को फाइन-ट्यून कर सकते हैं।";
+"faq.furnitureMeasurements" = "फर्नीचर और माप";
+"faq.arAssistedSizing" = "AR-सहायता वाला फर्नीचर साइज़िंग क्या है?";
+"faq.arAssistedSizingAnswer" = "सेटिंग्स में चालू होने पर ऐप कैमरा की गहराई और ऑब्जेक्ट डिटेक्शन मिलाकर जैसे ही आप पास या दूर जाते हैं ओवरले को यथार्थवादी स्केल देता है। अच्छी रोशनी और साफ दृश्य में सबसे अच्छा काम करता है।";
+"faq.measurementPill" = "छोटा माप रीडआउट क्या है?";
+"faq.measurementPillAnswer" = "SmartyPants चालू होने पर अनुमानित फर्नीचर और कमरे की ऊँचाई दिख सकती है। सटीकता के लिए टैप करके वास्तविक माप दर्ज करें। अगर कमरे की फोटो वाइड-एंगल (0.5×) से ली गई हो तो उसे चिह्नित करें।";
+"faq.resetOverlayScale" = "मास्क गलत ज़ूम लग रहा है—क्या करें?";
+"faq.resetOverlayScaleAnswer" = "3D कमरे में ओवरफ़्लो मेनू (⋮) खोलकर Reset overlay scale चुनें। डिटेक्शन मास्क पर लगा ऑटो ज़ूम हट जाएगा।";
+"faq.roomFitment" = "फर्नीचर फिट है या नहीं कैसे जांचें?";
+"faq.roomFitmentAnswer" = "फर्नीचर जोड़ने के बाद अपने 3D कमरे में इसका आकार बदलकर और स्थान बदलकर देखें कि यह आपकी जगह और अन्य फर्नीचर के साथ कैसा बैठता है।";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "कमरे की सीमाएं";
@@ -259,6 +272,29 @@
 "roomViewer.saveSuccess" = "कमरा '%@' सफलतापूर्वक सहेजा गया!";
 "roomViewer.saveFailed" = "कमरा सहेजने में विफल: %@";
 "roomViewer.roomSaveTitle" = "कमरा सहेजें";
+"roomPreview.unsavedTitle" = "बिना सहेजे वापस जाएँ?";
+"roomPreview.unsavedMessage" = "आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।";
+"roomPreview.stay" = "रुकें";
+"roomPreview.leave" = "वापस जाएँ";
+"roomViewer.share" = "शेयर करें";
+"roomViewer.calibrateWall" = "दीवार कैलिब्रेट करें";
+"roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";
+"roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
+"roomViewer.checkMeasurement" = "माप जाँचें";
+"roomViewer.goingBack" = "वापस जा रहे हैं...";
+"roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";
+"roomViewer.calibrateRoomTitle" = "कमरा कैलिब्रेट करें";
+"roomViewer.enterFurnitureHeightMeters" = "वास्तविक फर्नीचर ऊँचाई दर्ज करें (मीटर)";
+"roomViewer.furnitureFullHeightHint" = "पूर्ण ऊँचाई: फर्श से शीर्ष तक (जैसे कुर्सी के लिए 0.9 मी)";
+"roomViewer.calibrateByWallTitle" = "दीवार से कैलिब्रेट करें";
+"roomViewer.enterWallDimensionsHint" = "टेप से नापी सामने की दीवार (मीटर) दर्ज करें, जैसे 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "कैलिब्रेट करने के लिए टैप करें";
+"roomViewer.detectedMeters" = "पता चला: %.2f मी";
+"roomViewer.roomMetersShort" = "कमरा: %.2f मी";
+"roomViewer.furnitureMetersShort" = "फर्नीचर: %.2f मी";
+"roomViewer.wallWidthPlaceholder" = "चौड़ाई";
+"roomViewer.wallHeightPlaceholder" = "ऊँचाई";
+"roomViewer.saveErrorUnknown" = "अज्ञात त्रुटि";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "रिपोर्ट सबमिट करें";
@@ -290,24 +326,74 @@
 "faq.whatIsMemoryDisplayAnswer" = "रूम में दिखाया गया MB (मेगाबाइट्स) फाइल साइज इंगित करता है। यह आपको स्टोरेज मैनेज करने में मदद करता है। सभी रूम द्वारा उपयोग किया गया कुल स्टोरेज होम स्क्रीन के शीर्ष पर दिखाया जाता है।";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "आप अपना 3D कमरा कैसे बनाना चाहते हैं?";
+"photoRoom.tapOption" = "जारी रखने के लिए नीचे एक विकल्प टैप करें";
+"photoRoom.aiPowered" = "AI से 3D निर्माण";
+"photoRoom.manualSetup" = "मैन्युअल सेटअप";
+"photoRoom.manualSetupDesc" = "दीवारें समायोजित करने के लिए खींचें";
+"photoRoom.selectPhoto" = "फ़ोटो चुनें";
+"photoRoom.fromLibrary" = "अपनी फ़ोटो लाइब्रेरी से";
+"photoRoom.loading" = "3D कमरा लोड हो रहा है...";
+"photoRoom.downloadSuccess" = "%@ सफलतापूर्वक डाउनलोड हो गया। इसे अपनी मॉडल सूची में देखें।";
+"photoRoom.saveSuccess" = "आपका 3D मॉडल सफलतापूर्वक सहेजा गया।";
 "photoRoom.error" = "आपका 3D मॉडल बनाते समय एक त्रुटि हुई।";
 "photoRoom.buildingRoom" = "आपका 3D कमरा बनाया जा रहा है...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "पोर्ट्रेट";
+"orientation.landscape" = "लैंडस्केप";
+"orientation.heldVertically" = "लंबवत पकड़ा";
+"orientation.heldHorizontally" = "क्षैतिज पकड़ा";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "स्क्रीनशॉट न चुनें — काले धब्बे पड़ सकते हैं";
+
+// MARK: - i18n sync (Hindi)
+"common.or" = "या";
+"common.retry" = "पुनः प्रयास";
+"settings.furnitureSegmentationSection" = "फर्नीचर सेगमेंटेशन";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU अनुमति";
+"settings.yoloeCoreMLAllowGPUDescription" = "बंद (डिफ़ॉल्ट): केवल CPU — धीमा लेकिन कुछ YOLO-E 26L Core ML बिल्ड पर क्रैश कम। चालू: गति के लिए CPU+GPU; Metal पर एक्सपोर्ट न चले तो सेगमेंटेशन में SIGABRT हो सकता है।";
+"settings.showRoomFurnitureCalibrate" = "कमरा और फर्नीचर कैलिब्रेशन दिखाएँ";
+"settings.showRoomFurnitureCalibrateDescription" = "कमरा मेनू में «दीवार कैलिब्रेट करें» और SmartyPants (दिमाग) चालू होने पर «कैलिब्रेट करने के लिए टैप» पिल दिखाता है।";
+"settings.furnitureFitARCompanion" = "AR-सहायित फर्नीचर आकार";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit में कैमरे के साथ ARKit दृश्य गहराई चलाता है (LiDAR)। कुछ डिवाइस पर वीडियो कैप्चर से टकराव हो सकता है। बदलने के बाद कमरा फिर खोलें।";
+"settings.furnitureFitARCompanionUnavailable" = "इस डिवाइस पर दृश्य गहराई उपलब्ध नहीं है।";
+"settings.roomMeasurementSection" = "कमरे का माप";
+"settings.yoloWallDimensionsOnSave" = "सहेजते समय YOLO दीवार माप";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP कमरे को नाम देकर सहेजने पर, YOLO (दीवार वर्ग या दीवार जैसा बॉक्स), कमरे के साथ सहेजी SHARP मोनोडेप्थ और कैमरा EXIF से सामने की दीवार की चौड़ाई और ऊँचाई अनुमान। thumbnail.png ज़रूरी; सर्वोत्तम परिणाम के लिए sharp_monodepth.bin।";
+"settings.wallAssumedDepthM" = "दीवार तक मानी दूरी (मी)";
+"settings.wallAssumedCeilingM" = "मानी दीवार/छत ऊँचाई (मी)";
+"settings.roomMeasurementFooter" = "SHARP iOS पर मोनोडेप्थ के बिना सहेजना मानी गहराई और कभी-कभी यह छत ऊँचाई उपयोग करता है। टेप से चौड़ाई कम लगे तो मानी दूरी बढ़ाएँ (चौड़ाई लगभग रैखिक स्केल)। दीवार की ऊँचाई टेप माप के पास सेट करें (जैसे 2.86 मी)। या सहेजने से पहले ⋮ → दीवार से कैलिब्रेट।";
+"camera.takePhoto" = "फ़ोटो लें";
+"camera.chooseOrientationShort" = "पोर्ट्रेट या लैंडस्केप";
+"sharp.downloadingEngine" = "3D इंजन डाउनलोड हो रहा है...";
+"sharp.downloadingEnginePercent" = "3D इंजन डाउनलोड हो रहा है... %d%%";
+"sharp.downloadComplete" = "डाउनलोड पूर्ण";
+"sharp.downloadFailed" = "डाउनलोड विफल";
+"sharp.gettingReady" = "तैयार हो रहा है...";
+"sharp.notEnoughSpace" = "डिवाइस पर पर्याप्त जगह नहीं";
+"sharp.settingThingsUp" = "सेटअप हो रहा है...";
+"sharp.ready" = "तैयार!";
+"sharp.couldNotGetReady" = "तैयारी पूरी नहीं हो सकी";
+"sharp.somethingWentWrong" = "कुछ गलत हो गया";
+"sharp.preparingPhoto" = "आपकी फ़ोटो तैयार की जा रही है...";
+"sharp.creatingRoom" = "आपका 3D कमरा बन रहा है...";
+"sharp.almostDone" = "लगभग हो गया...";
+"sharp.done" = "हो गया!";
+"sharp.couldNotCreateRoom" = "कमरा नहीं बन सका";
+"sharp.cancelled" = "रद्द";
+"photoRoom.odrOneTimeDownload" = "एक बार का डाउनलोड (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D मॉडल बन गया";
+"photoRoom.generationFailedTitle" = "निर्माण विफल";
+"photoRoom.loading3DRoom" = "3D कमरा लोड हो रहा है...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "छवि अपलोड हो रही है";
+"generationProgress.generating3DModel" = "3D मॉडल बन रहा है";
+"generationProgress.downloadingModel" = "मॉडल डाउनलोड हो रहा है";
+"generationProgress.complete" = "पूर्ण!";
+"generationProgress.preparing" = "तैयार किया जा रहा है...";
+"generationProgress.mayTakeFewMinutes" = "इसमें कुछ मिनट लग सकते हैं";

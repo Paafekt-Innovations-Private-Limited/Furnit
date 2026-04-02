@@ -20,6 +20,11 @@
             android:name="com.furnit.executorch.USE_VULKAN_AAR"
             android:value="${executorchVulkanAar}" />
 
+        <!-- ARCore optional: app installs on non-AR devices; ArMeasureActivity checks support at runtime. -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
+
         <!-- Auth Activities -->
         <activity
             android:name=".auth.LoginActivity"
@@ -33,7 +38,8 @@
         <activity
             android:name=".auth.OTPVerificationActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize|stateVisible" />
 
         <!-- Main Activities -->
         <activity android:name=".ContentActivity" android:exported="false" />
@@ -54,6 +60,16 @@
         <activity
             android:name=".SharpRoomActivity"
             android:exported="false"
+            android:theme="@style/Theme.Furnit.FullScreen" />
+        <activity
+            android:name=".ArMeasureActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Furnit.FullScreen" />
+        <activity
+            android:name=".ArDepthPhotoCaptureActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".GLBRoomActivity"

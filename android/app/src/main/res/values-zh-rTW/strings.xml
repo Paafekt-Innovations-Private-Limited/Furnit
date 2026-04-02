@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">為什麼我的房間產生失敗？</string>
     <string name="faq_generation_failing_answer">如果照片太暗、模糊或沒有顯示足夠的房間特徵，房間產生可能會失敗。請嘗試在更好的光線下以更寬的角度拍攝新照片。</string>
     <string name="faq_how_many_rooms">我可以建立多少個房間？</string>
-    <string name="faq_how_many_rooms_answer">你最多可以建立10個房間。刪除舊房間以騰出空間。房間數量顯示在主畫面頂部。</string>
+    <string name="faq_how_many_rooms_answer">你最多可以建立1000個房間。刪除舊房間以騰出新空間。主畫面頂部會顯示房間數量與已使用的儲存空間。</string>
     <string name="faq_furniture_segmentation">傢俱分割</string>
     <string name="faq_what_is_segmentation">什麼是傢俱分割？</string>
     <string name="faq_what_is_segmentation_answer">傢俱分割使用AI識別和分離照片中的傢俱，讓你看到每件傢俱在3D房間中的效果。</string>
@@ -163,7 +163,8 @@
     <string name="faq_not_detected_answer">傢俱偵測在清晰、光線充足且傢俱明顯可見的照片中效果最佳。確保傢俱沒有被部分遮擋或與背景融合。</string>
     <string name="faq_multiple_pieces">我可以分割多件傢俱嗎？</string>
     <string name="faq_multiple_pieces_answer">可以！AI可以在單張照片中偵測多件傢俱。每個偵測到的物品將單獨顯示，供你選擇使用。</string>
-    <string name="faq_room_fitment">3D房間與佈置</string>
+    <string name="faq_room_fitment">如何確認傢俱是否合適？</string>
+    <string name="faq_room_fitment_answer">加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。</string>
     <string name="faq_how_to_view">如何檢視我的3D房間？</string>
     <string name="faq_how_to_view_answer">點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。</string>
     <string name="faq_how_to_place">如何在房間中放置傢俱？</string>
@@ -174,6 +175,15 @@
     <string name="faq_accuracy_answer">3D模型能很好地近似你的房間佈局。為獲得最佳準確度，請確保原始照片清晰地捕捉房間尺寸，包括可見的角落和邊緣。</string>
     <string name="faq_adjust_dimensions">我可以調整房間尺寸嗎？</string>
     <string name="faq_adjust_dimensions_answer">可以，進入設定並找到房間尺寸選項，你可以微調產生房間的大小和比例。</string>
+    <string name="faq_furniture_measurements">傢俱與測量</string>
+    <string name="faq_ar_assisted_sizing">什麼是 AR 輔助傢俱尺寸？</string>
+    <string name="faq_ar_assisted_sizing_answer">在設定中開啟後，應用程式會結合相機深度與物件偵測，在你靠近或遠離時更合理地縮放傢俱疊圖。光線充足、物品清晰時效果最佳。</string>
+    <string name="faq_measurement_pill">畫面上小小的測量資訊是什麼？</string>
+    <string name="faq_measurement_pill_answer">SmartyPants 開啟時，可能會顯示預估的傢俱高度與房間高度。點一下可輸入實際尺寸以提高準確度。若房間照片以廣角（0.5×）拍攝，請一併標示，畫面構圖才會一致。</string>
+    <string name="faq_reset_overlay_scale">偵測遮罩的縮放看起來不對，怎麼辦？</string>
+    <string name="faq_reset_overlay_scale_answer">在 3D 房間開啟右上角選單（⋮），選擇「重設疊圖縮放」，可清除套在偵測遮罩上的自動縮放，方便在你移動後重新穩定。</string>
+    <string name="faq_depth_aware_room_photo">用應用程式內建相機拍照會比較好嗎？</string>
+    <string name="faq_depth_aware_room_photo_answer">會。在支援的裝置上，建立房間時選「拍照」而非從相簿挑圖，可使用內建相機搭配深度（若裝置提供），有助於 3D 房間的建立與比例。</string>
     <string name="boundary_title">房間邊界</string>
     <string name="boundary_instructions">拖曳圓圈調整邊界</string>
     <string name="boundary_floor">地板</string>

@@ -184,7 +184,7 @@ The core implementation lives in `ExecutorchInt8Sharp`:
    Export or place `sharp_split_part4b_int8.pte` into the same `executorch_models/` (or `executorch_int8_models/`) folder. On device, when this file is present next to `sharp_split_part4b.pte`, the C++ full INT8 pipeline will automatically run INT8 Part 4b; when it is absent, the FP32 `sharp_split_part4b.pte` is used as a safe fallback.
 
 2. **Push models to device** (optional if using packaged APK)  
-   Use **`files/models_cpu/`** (etCpu) or **`files/models_cpuvulkan_hybrid/`** (etVulkan), e.g. `push_sharp_executorch_cpu_models.sh` / `push_sharp_vulkan_only.sh` (see `docs/TEST_INT8_IN_APP.md`).
+   Use **`files/models_cpu/`** (etCpu) or **`files/models_cpuvulkan_hybrid/`** (etVulkan), e.g. `push_sharp_executorch_cpu_models.sh` / `push_sharp_cpuvulkan_hybrid_androidstudio.sh` (see `docs/TEST_INT8_IN_APP.md`).
 
    **Or package in APK for testing:**  
    Before building, ensure the 6 .pte files exist in `executorch_int8_models/` and `executorch_models/`.  

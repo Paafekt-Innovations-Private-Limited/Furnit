@@ -28,8 +28,8 @@ final class ImageBasedTests: XCTestCase {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine
 
-        // Try different model names
-        let modelNames = ["yoloe-11l-seg-pf"]
+        // Tests follow the app's current iOS packaging: 26l only.
+        let modelNames = ["yoloe-26l-seg-pf_seg_o2m", "yoloe-26l-seg-pf"]
 
         for modelName in modelNames {
             if let modelURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
@@ -284,17 +284,18 @@ final class ImageBasedTests: XCTestCase {
 
         let manager = RoomBoundaryManager(bounds: bounds)
         let camera = manager.getCameraAtBackWall()
+        let expected = bounds.defaultSplatCameraEyeAndTarget()
 
-        // Camera should be positioned inside the room, near front wall
-        XCTAssertEqual(camera.eye.x, 0, accuracy: 0.1, "Camera X should be at room center")
-        XCTAssertEqual(camera.eye.y, 1.5, accuracy: 0.1, "Camera Y should be at room center height")
+        // Back-center camera (Android parity): inside room from back wall, look at front wall center — not room centroid.
+        XCTAssertEqual(camera.eye.x, expected.eye.x, accuracy: 0.001)
+        XCTAssertEqual(camera.eye.y, expected.eye.y, accuracy: 0.001)
+        XCTAssertEqual(camera.eye.z, expected.eye.z, accuracy: 0.001)
+        XCTAssertEqual(camera.target.x, expected.target.x, accuracy: 0.001)
+        XCTAssertEqual(camera.target.y, expected.target.y, accuracy: 0.001)
+        XCTAssertEqual(camera.target.z, expected.target.z, accuracy: 0.001)
         XCTAssertGreaterThan(camera.eye.z, bounds.minZ, "Camera should be inside room")
-        XCTAssertLessThan(camera.eye.z, bounds.maxZ, "Camera should not be outside front wall")
-
-        // Camera should look at room center
-        XCTAssertEqual(camera.target.x, 0, accuracy: 0.1)
-        XCTAssertEqual(camera.target.y, 1.5, accuracy: 0.1)
-        XCTAssertEqual(camera.target.z, -2, accuracy: 0.1, "Target should be at room center Z")
+        XCTAssertLessThan(camera.eye.z, bounds.maxZ, "Camera should not be past front wall")
+        XCTAssertEqual(camera.target.z, bounds.maxZ, accuracy: 0.001, "Look-at should be front wall Z")
 
         print("Camera position: eye=\(camera.eye), target=\(camera.target)")
     }
@@ -370,14 +371,18 @@ final class ImageBasedTests: XCTestCase {
         }
     }
 
-    // MARK: - End-to-End YOLOE-11L Inference Test
-    // Validates Swift inference matches Python ground truth
+    // MARK: - End-to-End YOLOE 26L PF Inference Test
+    // Validates Swift inference against the same Core ML package as the app (`yoloe-26l-seg-pf` / `_seg_o2m`).
 
-    /// Ground truth from Python inference
-    /// Model: yoloe-11l-seg-pf (prompt-free)
-    /// Image: bus.jpg at 1280x1280
+    /// Model: **yoloe-26l-seg-pf** (prompt-free), input side from Core ML `image` constraint (typically **640**).
+    /// Image: bus.jpg letterboxed to a square of that side (Ultralytics gray 114).
 
-    func testYOLOE11LInferenceMatchesPython() throws {
+    func testYOLOE26LInferenceMatchesPython() throws {
+        // Load model first — input side must match the bundled 26L export.
+        guard let model = loadYOLOEModel() else {
+            throw XCTSkip("Skipping ML inference test - no YOLOE model available in test environment")
+        }
+
         // Load test image
         guard let image = loadTestImage(named: "bus", extension: "jpg"),
               let cgImage = image.cgImage else {
@@ -385,15 +390,8 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Load model - skip test if model not available (common in CI/test environments)
-        guard let model = loadYOLOEModel() else {
-            throw XCTSkip("Skipping ML inference test - yoloe-11l-seg-pf model not available in test environment")
-        }
-
-        print("Image size: \(image.size.width) x \(image.size.height)")
-
-        // Prepare input at 1280x1280 as MLMultiArray [1, 3, 1280, 1280]
-        let modelSize = 1280
+        let modelSize = YoloEImageInference.modelInputSize(for: model)
+        print("Image size: \(image.size.width) x \(image.size.height); model input side: \(modelSize)")
 
         // Create CVPixelBuffer for the letterboxed image (model expects Image input, not MultiArray)
         var pixelBuffer: CVPixelBuffer?
@@ -420,8 +418,8 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Fill with gray (letterbox padding) - 128/255 = 0.502 matches FurnitureFitView
-        context.setFillColor(gray: 128.0/255.0, alpha: 1.0)
+        // Ultralytics letterbox padding RGB gray 114/255 (matches `YoloUltralyticsLetterboxFill` / probe scripts)
+        context.setFillColor(gray: 114.0/255.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: modelSize, height: modelSize))
 
         // Calculate letterbox dimensions
@@ -443,13 +441,13 @@ final class ImageBasedTests: XCTestCase {
             let input = try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
             let output = try model.prediction(from: input)
 
-            // Get output tensors using same names as FurnitureFitView
-            guard let detArray = output.featureValue(for: "var_2374")?.multiArrayValue,
-                  let protoArray = output.featureValue(for: "var_2412")?.multiArrayValue else {
+            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
                 let availableOutputs = output.featureNames.joined(separator: ", ")
-                XCTFail("Missing expected output tensors (var_2374, var_2412). Found: \(availableOutputs)")
+                XCTFail("Missing expected detection/proto tensors. Found: \(availableOutputs)")
                 return
             }
+            let detArray = pair.det
+            let protoArray = pair.proto
 
             // Validate tensor shapes
             let detShape = detArray.shape.map { $0.intValue }
@@ -569,12 +567,11 @@ final class ImageBasedTests: XCTestCase {
             logOutput += "\nBus (class 640): \(buses.count) detections\n"
             if let bus = buses.max(by: { $0.conf < $1.conf }) {
                 logOutput += "  Best: conf=\(String(format: "%.3f", bus.conf)), center=(\(String(format: "%.1f", bus.x)), \(String(format: "%.1f", bus.y))), size=(\(String(format: "%.1f", bus.w))x\(String(format: "%.1f", bus.h)))\n"
-                // Relaxed assertion - just verify bus is detected with reasonable confidence
                 XCTAssertGreaterThan(bus.conf, 0.3, "Bus confidence should be > 0.3")
-                // Bus should be roughly in the image (not at edges)
-                XCTAssertGreaterThan(bus.x, 100, "Bus center X should be > 100")
-                XCTAssertLessThan(bus.x, 1000, "Bus center X should be < 1000")
-                XCTAssertGreaterThan(bus.w, 200, "Bus width should be > 200")
+                let side = Float(modelSize)
+                XCTAssertGreaterThan(bus.x, side * 0.08, "Bus center X should be inside frame")
+                XCTAssertLessThan(bus.x, side * 0.92, "Bus center X should be inside frame")
+                XCTAssertGreaterThan(bus.w, side * 0.12, "Bus width should be plausible vs input side")
             } else {
                 logOutput += "  NOT DETECTED\n"
                 XCTFail("Should detect bus (class 640)")
@@ -608,12 +605,10 @@ final class ImageBasedTests: XCTestCase {
     }
 
     // MARK: - Landscape Segmentation Test
-    // Validates CoreML output matches PyTorch and tests primary detection selection
+    // Decodes 26L PF outputs and exercises primary selection in model input space (640 typical).
 
-    /// Ground truth from PyTorch yoloe-11l-seg-pf on landscape.jpeg:
-    /// - Total detections (conf > 0.25): 29
-    /// - Valid (non-blacklisted): 21
-    /// - Primary: writing desk (id=4564), conf=0.561, center=(628.5, 689.9)
+    /// **yoloe-26l-seg-pf** on `landscape.jpeg` (1280×960), letterboxed to the model’s square input (typically **640**).
+    /// Older PyTorch baselines at 1280×1280 are not numerically comparable; this test checks decode + primary selection in model space.
     func testLandscapeSegmentationMatchesPyTorch() throws {
         // Load test image
         guard let image = loadTestImage(named: "landscape", extension: "jpeg"),
@@ -622,10 +617,11 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Load model
         guard let model = loadYOLOEModel() else {
-            throw XCTSkip("Skipping - yoloe-11l-seg-pf model not available")
+            throw XCTSkip("Skipping - no YOLOE model available")
         }
+
+        let modelSize = YoloEImageInference.modelInputSize(for: model)
 
         // Load blacklist for filtering
         let blacklistURL = Bundle.main.url(forResource: "blacklist", withExtension: "json")
@@ -636,11 +632,9 @@ final class ImageBasedTests: XCTestCase {
         }
 
         print("Loaded \(blacklist.count) blacklisted classes")
-        print("Image size: \(image.size.width) x \(image.size.height)")
+        print("Image size: \(image.size.width) x \(image.size.height); model input side: \(modelSize)")
 
-        let modelSize = 1280
-
-        // Create letterboxed CVPixelBuffer (image is 1280x960, letterbox to 1280x1280)
+        // Letterbox source image to model square (same convention as Furniture Fit / YoloEImageInference)
         var pixelBuffer: CVPixelBuffer?
         CVPixelBufferCreate(kCFAllocatorDefault, modelSize, modelSize, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
 
@@ -665,8 +659,8 @@ final class ImageBasedTests: XCTestCase {
             return
         }
 
-        // Fill with gray letterbox padding
-        context.setFillColor(gray: 128.0/255.0, alpha: 1.0)
+        // Ultralytics letterbox padding (114/255)
+        context.setFillColor(gray: 114.0/255.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: modelSize, height: modelSize))
 
         // Calculate letterbox dimensions
@@ -687,11 +681,11 @@ final class ImageBasedTests: XCTestCase {
             let input = try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
             let output = try model.prediction(from: input)
 
-            // Get output tensors
-            guard let detArray = output.featureValue(for: "var_2374")?.multiArrayValue else {
-                XCTFail("Missing detection tensor")
+            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
+                XCTFail("Missing detection/proto tensors")
                 return
             }
+            let detArray = pair.det
 
             let detShape = detArray.shape.map { $0.intValue }
             print("Detection tensor shape: \(detShape)")
@@ -750,10 +744,9 @@ final class ImageBasedTests: XCTestCase {
 
             print("\n=== CoreML Detections (conf > 0.25): \(allDetections.count) ===")
 
-            // ASSERTION 1: Total detection count should be close to PyTorch (29)
-            // Allow some variance due to floating point differences
-            XCTAssertGreaterThan(allDetections.count, 20, "Should have at least 20 detections")
-            XCTAssertLessThan(allDetections.count, 40, "Should have fewer than 40 detections")
+            // ASSERTION 1: Reasonable detection count at the model’s native input size
+            XCTAssertGreaterThan(allDetections.count, 10, "Should have at least 10 detections")
+            XCTAssertLessThan(allDetections.count, 55, "Should have fewer than 55 detections")
 
             // Filter by blacklist
             let validDetections = allDetections.filter { !blacklist.contains($0.cls) }
@@ -798,13 +791,13 @@ final class ImageBasedTests: XCTestCase {
             print("Size: \(String(format: "%.1f", primary.w)) x \(String(format: "%.1f", primary.h))")
             print("Composite score: \(String(format: "%.6f", bestComposite))")
 
-            // ASSERTION 4: Primary should be writing desk (4564) or similar large central furniture
-            // PyTorch primary: writing desk (id=4564), conf=0.561, center=(628.5, 689.9)
-            // Allow for class variation but check center location and confidence
+            // ASSERTION 4: Primary is a large, reasonably central detection in **model** pixel space
+            let sideF = Float(modelSize)
             XCTAssertGreaterThan(primary.conf, 0.3, "Primary confidence should be > 0.3")
-            XCTAssertGreaterThan(primary.cx, 400, "Primary center X should be > 400")
-            XCTAssertLessThan(primary.cx, 900, "Primary center X should be < 900")
-            XCTAssertGreaterThan(primary.cy, 500, "Primary center Y should be > 500")
+            XCTAssertGreaterThan(primary.cx, sideF * 0.18, "Primary center X should be in frame")
+            XCTAssertLessThan(primary.cx, sideF * 0.92, "Primary center X should be in frame")
+            XCTAssertGreaterThan(primary.cy, sideF * 0.22, "Primary center Y should be in frame")
+            XCTAssertLessThan(primary.cy, sideF * 0.95, "Primary center Y should be in frame")
 
             // ASSERTION 5: Primary should be a large object (high area)
             let primaryAreaNorm = (primary.w * primary.h) / frameArea

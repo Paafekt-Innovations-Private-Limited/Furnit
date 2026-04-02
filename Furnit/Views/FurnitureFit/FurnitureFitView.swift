@@ -1,5 +1,5 @@
 // FurnitureFitView.swift
-// Single-stage: detect → primary selection → optional multi-candidate (5a–5c) → union mask → clip to primary bbox → cutout
+// Single-stage: detect → optional multi-candidate (5a–5b) → union mask → clip outside primary bbox (15d) → cutout
 // With timing at every stage
 
 import SwiftUI
@@ -7,6 +7,9 @@ import UIKit
 import CoreML
 import Accelerate
 import AVFoundation
+import ARKit
+import CoreMotion
+import SceneKit
 import CoreText
 import MetalKit
 
@@ -18,125 +21,12 @@ fileprivate func blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLA
     BlasScopy(n, x, incx, y, incy)
 }
 
-@inline(__always)
-fileprivate func blas_sgemv_rowmajor(m: BLASInt, n: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, x: UnsafePointer<Float>, incx: BLASInt, beta: Float, y: UnsafeMutablePointer<Float>, incy: BLASInt) {
-    BlasSgemv(true, false, m, n, alpha, A, lda, x, incx, beta, y, incy)
-}
-
-/// SGEMV with transpose: y = A^T * x
-/// A is (m x n), A^T is (n x m), x is (m,), y is (n,)
-@inline(__always)
-fileprivate func blas_sgemv_rowmajor_trans(m: BLASInt, n: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, x: UnsafePointer<Float>, incx: BLASInt, beta: Float, y: UnsafeMutablePointer<Float>, incy: BLASInt) {
-    BlasSgemv(true, true, m, n, alpha, A, lda, x, incx, beta, y, incy)
-}
-
-@inline(__always)
-fileprivate func blas_sgemm_rowmajor(m: BLASInt, n: BLASInt, k: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, B: UnsafePointer<Float>, ldb: BLASInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: BLASInt) {
-    BlasSgemm(true, false, false, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
-}
-
-/// SGEMM with A transposed: C = A^T * B
-/// A is (k x m), A^T is (m x k), B is (k x n), C is (m x n)
-@inline(__always)
-fileprivate func blas_sgemm_rowmajor_transA(m: BLASInt, n: BLASInt, k: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, B: UnsafePointer<Float>, ldb: BLASInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: BLASInt) {
-    BlasSgemm(true, true, false, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
-}
-
-
-// MARK: - Metal Mask Logic (GPU)
-// Computes maskSmall (prototype resolution) on GPU: max over detections of dot(coeffs, prototypes) per pixel.
-// Output is UInt8 mask (0 or 255) using the same thresholding logic as CPU: maxLogit > 0 => 255.
-final class MetalMaskLogic {
-    private let device: MTLDevice
-    private let queue: MTLCommandQueue
-    private let pipelineMaxMask: MTLComputePipelineState
-
-    // MARK: - Cached buffers for reuse (prevents allocation per frame)
-    private var cachedPlanesBuf: MTLBuffer?
-    private var cachedCoeffBuf: MTLBuffer?
-    private var cachedOutBuf: MTLBuffer?
-    private var cachedPlanesCapacity: Int = 0
-    private var cachedCoeffCapacity: Int = 0
-    private var cachedOutCapacity: Int = 0
-
-    init(device: MTLDevice) {
-        self.device = device
-        self.queue = device.makeCommandQueue()!
-        let library = device.makeDefaultLibrary()!
-        self.pipelineMaxMask = try! device.makeComputePipelineState(function: library.makeFunction(name: "sp_maxMaskFromPrototypes")!)
-    }
-
-    /// Get or create a buffer with at least the required capacity
-    private func getOrCreateBuffer(cached: inout MTLBuffer?, capacity: inout Int, required: Int) -> MTLBuffer? {
-        if let buf = cached, capacity >= required {
-            return buf
-        }
-        // Allocate with some headroom to reduce reallocations
-        let newCapacity = max(required, capacity * 2, 1024)
-        guard let newBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared) else {
-            return nil
-        }
-        cached = newBuf
-        capacity = newCapacity
-        return newBuf
-    }
-
-    func buildMaskSmall(planes: [Float], coeffs: [Float], planeSize: Int, detCount: Int) -> [UInt8] {
-        precondition(planes.count == 32 * planeSize, "planes size mismatch")
-        precondition(coeffs.count == detCount * 32, "coeffs size mismatch")
-
-        let planesBytes = planes.count * MemoryLayout<Float>.size
-        let coeffBytes = coeffs.count * MemoryLayout<Float>.size
-        let outBytes = planeSize * MemoryLayout<UInt8>.size
-
-        // Reuse buffers instead of allocating new ones each frame
-        guard let planesBuf = getOrCreateBuffer(cached: &cachedPlanesBuf, capacity: &cachedPlanesCapacity, required: planesBytes),
-              let coeffBuf = getOrCreateBuffer(cached: &cachedCoeffBuf, capacity: &cachedCoeffCapacity, required: coeffBytes),
-              let outBuf = getOrCreateBuffer(cached: &cachedOutBuf, capacity: &cachedOutCapacity, required: outBytes) else {
-            return [UInt8](repeating: 0, count: planeSize)
-        }
-
-        // Copy data into reused buffers
-        memcpy(planesBuf.contents(), planes, planesBytes)
-        memcpy(coeffBuf.contents(), coeffs, coeffBytes)
-
-        // Wrap Metal work in autoreleasepool to ensure command buffers are released
-        return autoreleasepool {
-            guard let cmd = queue.makeCommandBuffer(),
-                  let enc = cmd.makeComputeCommandEncoder() else {
-                return [UInt8](repeating: 0, count: planeSize)
-            }
-
-            enc.setComputePipelineState(pipelineMaxMask)
-            enc.setBuffer(planesBuf, offset: 0, index: 0)
-            enc.setBuffer(coeffBuf, offset: 0, index: 1)
-            enc.setBuffer(outBuf, offset: 0, index: 2)
-
-            var ps = UInt32(planeSize)
-            var dc = UInt32(detCount)
-            enc.setBytes(&ps, length: MemoryLayout<UInt32>.size, index: 3)
-            enc.setBytes(&dc, length: MemoryLayout<UInt32>.size, index: 4)
-
-            let tgW = pipelineMaxMask.threadExecutionWidth
-            let threadsPerTG = MTLSize(width: tgW, height: 1, depth: 1)
-            let threads = MTLSize(width: planeSize, height: 1, depth: 1)
-            enc.dispatchThreads(threads, threadsPerThreadgroup: threadsPerTG)
-            enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()
-
-            let ptr = outBuf.contents().bindMemory(to: UInt8.self, capacity: planeSize)
-            return Array(UnsafeBufferPointer(start: ptr, count: planeSize))
-        }
-    }
-}
-
 // MARK: - SwiftUI Wrapper
 struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
-    var processInterval: TimeInterval = 0.1
+    var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.15
-    var useBilinearUpscaling: Bool = false
+    var useBilinearUpscaling: Bool = true
     var active: Bool = false
     
     @ObservedObject private var appState = AppStateManager.shared
@@ -164,32 +54,62 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     }
 }
 
-// MARK: - Detection Struct
+// MARK: - Detection & Sizing Types
 // Note: Using FurnitureFitDetection from FurnitureFitUtils.swift (single source of truth)
 // typealias kept for minimal code changes
 typealias UnionDet = FurnitureFitDetection
 
+/// High-level furniture size estimate surfaced to SharpRoom / viewers.
+struct FurnitureSizeEstimate {
+    /// Horizontal extent in meters (pinhole + depth at bbox center when available; else legacy bbox×room).
+    let widthMeters: Float
+    /// Vertical extent in meters — same source as ``widthMeters``; use for calibration and UI labels.
+    let heightMeters: Float
+    /// Reserved; always `nil` when emitted from FurnitureFit. AR metric height is used only for in-view overlay scaling (scene depth is wrong on glass / reflective).
+    let arHeightMeters: Float?
+}
+
 // MARK: - Main Container View
-final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
+final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
 
     // MARK: Config
-    var processInterval: TimeInterval = 0.1
+    var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
-    var useBilinearUpscaling: Bool = false
+    /// After bbox clip, optional 3×3 morphological close on prototype mask before upscale; uses mask-texture composite path (not fused) when enabled.
+    private let furnitureFitUseMorphologicalCloseMask: Bool = true
+    var useBilinearUpscaling: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
     // MARK: Room Dimensions (from SHARP output, in meters)
     var roomWidthMeters: Float = 4.0   // Default fallback
     var roomHeightMeters: Float = 3.0  // Default fallback
+    /// Front-to-back span (m) for monocular depth fallback when AR depth is missing.
+    var roomDepthMeters: Float = 4.0
 
-    // Callback for reporting estimated furniture size (width, height in meters)
-    var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
+    /// Optional splat depth-raycast room extents in **scene units** (same as saved `roomScene*` in `.meta`). Enables ratio fitment logs.
+    var roomRaycastSceneDimensions: RoomRaycastDimensions?
+    /// Pinhole focal length in pixels; `0` uses back camera horizontal FOV when available.
+    var cameraFocalLengthPixels: Float = 0
+
+    private var captureBackCamera: AVCaptureDevice?
+    private var lastSceneFitmentLogAt: CFAbsoluteTime = 0
+    private var lastPinholeDepthAuditAt: CFAbsoluteTime = 0
+    private let deviceMotionManager = CMMotionManager()
+    private let deviceMotionQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "FurnitureFitDeviceMotionQueue"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
+    private let devicePitchLock = NSLock()
+    private var latestDevicePitchRadians: Float?
+
+    /// Pinhole (and optional LiDAR snapshot) W×H in meters: first mask via ``finishFirstDetectionIfNeeded``, then each frame — all **after** the mask image is committed to UI.
+    var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
 
     // Sizing calculator (created when room dimensions are set)
     private var sizingCalculator: FurnitureSizingCalculator?
-
-    // Last detected primary class (for sizing)
-    private var lastPrimaryClassIdx: Int = -1
 
     // Debug mode - read from settings
     var debugMode: Bool {
@@ -198,6 +118,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private var clsToIgnore: Set<Int> = []
+    private var blacklistLoaded: Bool = false
 
     private func loadBlacklist() {
         guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
@@ -211,10 +132,68 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes") }
     }
 
+    private func loadBlacklistOnce() {
+        if blacklistLoaded { return }
+        loadBlacklist()
+        blacklistLoaded = true
+    }
+
     // MARK: Camera
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
+    private let captureSessionControlQueue = DispatchQueue(label: "com.furnit.capture.control", qos: .userInitiated)
+
+    // MARK: AR camera path (optional — when AR-assisted sizing enabled and ARKit supported)
+    private let arSession = ARSession()
+    private let arSCNView: ARSCNView = {
+        let v = ARSCNView(frame: .zero)
+        v.automaticallyUpdatesLighting = false
+        if #available(iOS 15.0, *) {
+            v.rendersCameraGrain = false
+        }
+        v.isHidden = true
+        v.alpha = 0
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    /// Used only if `isUsingARCameraPath` (ARKit as camera); hybrid path uses AVCapture BGRA and skips CI YUV→BGRA.
+    private var arBGRAReuse: CVPixelBuffer?
+    private let arCIContext = CIContext(options: [.cacheIntermediates: false])
+    /// View size for AR-assisted camera path (set in `layoutSubviews`).
+    private var cachedARViewportSize: CGSize = .zero
+    /// True only when ARKit supplies segmentation frames (`session(_:didUpdate:)` + `copyCapturedImageToBGRA`). Off for hybrid path.
+    private var isUsingARCameraPath = false
+    /// True when ARSession runs alongside AVCapture for depth / tracking while video frames come from `AVCaptureSession` (recommended).
+    private var isARDepthCompanionSessionRunning = false
+
+    /// True only when ARKit is feeding sizing (AR-as-camera or hybrid companion). Do **not** use plain world-tracking support here — that
+    /// incorrectly made `startIfNeeded()` return before starting `AVCaptureSession`.
+    private var hasARKitAssistedSizingPayload: Bool {
+        isUsingARCameraPath || isARDepthCompanionSessionRunning
+    }
+
+    /// Not started while `AVCaptureSession` runs — a second `ARSession` still grabs the back camera (Fig -17281).
+    private let asyncDepthSampler = FurnitureFitAsyncDepthSampler()
+    /// Bumps on each `startClassicCameraPathIfNeeded` so a stale deferred AR `run` cannot fire after reconfigure.
+    private var arCompanionStartGeneration: UInt64 = 0
+    /// Set when AVCapture reports Fig-style contention so we drop AR for the rest of this container session (until `stop()`).
+    private var suppressARDepthCompanionAfterCaptureFailure = false
+    private var furnitureFitCameraStartupInitiated = false
+    /// Log `[FurnitureFitSize]` policy once so Console filtering explains `wantAR=false` / nil depth snapshot.
+    private static var didLogFurnitureFitSizingPolicy = false
+    private var arAssistedScaleValid = false
+    private var autoScaleFromAR: CGFloat = 1.0
+    private var smoothedArOverlayScale: CGFloat = 1.0
+    /// After primary class changes, apply first valid AR scale immediately instead of long EMA ramp (faster when panning between furniture).
+    private var snapArOverlayScaleAfterPrimaryChange = false
+    /// When depth/estimation drops for a few frames, keep last AR scale instead of snapping to 1× (avoids small/big flicker).
+    private var arAssistedConsecutiveMisses: Int = 0
+    private let maxArAssistedHoldMisses: Int = 18
+    /// Latest AR-estimated furniture height in meters (UI only; does not affect segmentation).
+    private var lastAREstimatedHeightMeters: Float?
+    /// After first segmentation, publish one **refined** W×H (AR intrinsics + min depth in bbox) to parents — fixes huge first-frame numbers when YOLO boxes are loose.
+    private var didPublishARRefinedFurnitureMetersEstimate = false
 
     // MARK: UI
     private let previewLayer = AVCaptureVideoPreviewLayer()
@@ -224,6 +203,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true
+        iv.layer.minificationFilter = .linear
+        iv.layer.magnificationFilter = .linear
         return iv
     }()
     
@@ -249,6 +230,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         l.textColor = .white
         l.font = .systemFont(ofSize: 14, weight: .medium)
         l.textAlignment = .center
+        l.numberOfLines = 2
+        l.adjustsFontSizeToFitWidth = true
+        l.minimumScaleFactor = 0.72
         l.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         l.layer.cornerRadius = 10
         l.clipsToBounds = true
@@ -256,16 +240,58 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }()
     
     private var hasFirstDetection = false
-    private var currentScale: CGFloat = 1.0
+    /// After the first successful segmentation in this container, skip startup progress on later `startIfNeeded()` (same UIView instance).
+    private var segmentationCompletedOnceThisSession = false
+    /// When true (e.g. Sharp Room already completed segmentation this session), hide startup progress even for a new UIView.
+    var suppressStartupProgress = false
+    /// Called once when the first valid segmentation mask is ready (parent can persist “no progress next time”).
+    var onFirstSegmentationComplete: (() -> Void)?
+
+    // MARK: - Overlay scale (room × AR when enabled × user pinch)
+    /// From `FurnitureSizingCalculator` (currently neutral 1×; room meters come from SHARP / calibration).
+    private var autoScaleFromRoom: CGFloat = 1.0
+    /// User pinch multiplier (reset when primary class changes).
+    private var userPinchScale: CGFloat = 1.0
+    /// After user pinches, stop updating AR-assisted auto-scale until primary class changes.
+    private var userLockedAssistedOverlayScale: Bool = false
+    /// Last primary class used for overlay / pinch reset.
+    private var lastOverlayPrimaryClassIdx: Int = -1
+
+    private let minCombinedOverlayScale: CGFloat = 0.3
+    private let maxCombinedOverlayScale: CGFloat = 3.0
+    private enum OverlayPresentationMode {
+        case deferredCentered
+        case measuredPlacement
+    }
+    private var overlayPresentationMode: OverlayPresentationMode = .deferredCentered
+    private var stableOverlayMeasurementFrameCount: Int = 0
+    private var lastStableOverlayHeightMeters: Float?
+    private var lastStableOverlayScale: CGFloat?
+    private let requiredStableOverlayMeasurementFrames: Int = 3
+    private let maxStableOverlayHeightDriftFraction: Float = 0.18
+    private let maxStableOverlayScaleDrift: CGFloat = 0.18
+
+    /// Throttled logging for oscillation diagnosis (when `debugMode` is on).
+    private var overlayDebugLastAssistedLabel: String = ""
+    private var overlayDebugLastCombined: CGFloat = -1
+
+    /// Throttled always-on AR metrics for cross-platform comparison (filter: `FurnitureFitAR`).
+    private var lastFurnitureFitARFrameLogAt: TimeInterval = 0
+    private let furnitureFitARLogInterval: TimeInterval = 0.5
+
+    /// Throttled premultiplied RGBA sample at bbox center (filter: `FurnitureFit` + debugMode).
+    private var lastCompositePremulRGBAlogAt: TimeInterval = 0
+    private let compositePremulRGBAlogInterval: TimeInterval = 0.5
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
+    /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
+    private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
+    private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
+    private let bboxExpandMargin: Float = 0.08     // 8% expansion on each side
 
-    /// STAGE 5a–5c: prune / bbox dedupe / mask-overlap gate for extra furniture. Off = primary detection only in `kept2`.
+    /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
-
-    /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
-    private var clipUnionMaskToPrimaryBbox = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -273,12 +299,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var metalLibrary: MTLLibrary?            // FIXED: was computed property creating new library on every access
     private var compositePipeline: MTLComputePipelineState?
     private var fusedMaskCompositePipeline: MTLComputePipelineState?
+    /// Fused compositing using Swift morphed prototype mask (same geometry as `sp_maxMaskAndComposite`, no logit loop).
+    private var fusedMaskMorphedCompositePipeline: MTLComputePipelineState?
 
     // MARK: - Cached Metal buffers for fused compositing (prevents allocation per frame)
     private var cachedFusedPlanesBuf: MTLBuffer?
     private var cachedFusedCoeffBuf: MTLBuffer?
     private var cachedFusedPlanesCapacity: Int = 0
     private var cachedFusedCoeffCapacity: Int = 0
+    private var cachedFusedProtoMaskBuf: MTLBuffer?
+    private var cachedFusedProtoMaskCapacity: Int = 0
 
     // MARK: - CVMetalTextureCache (FIXED: was created per-frame causing memory leak)
     private var cvTextureCache: CVMetalTextureCache?
@@ -287,31 +317,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var protoRawFloats: [Float] = []
     private var protoPlanes: [Float] = []
 
-    // MARK: - BLAS / mask scratch buffers (reused per frame, O(planeSize) not O(planeSize*N))
-    private var scratchPrimaryLogits: [Float] = []
-    private var scratchCandidateLogits: [Float] = []
-
-    private func ensureFloatCapacity(_ arr: inout [Float], count: Int) {
-        if arr.count < count {
-            arr = [Float](repeating: 0, count: count)
-        } else {
-            _ = arr.withUnsafeMutableBufferPointer { buf in
-                memset(buf.baseAddress!, 0, count * MemoryLayout<Float>.size)
-            }
-        }
-    }
-
     // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
-    private var cachedSquareBuffer: CVPixelBuffer?
-    private var cachedSquareSize: Int = 0
+    /// Stretch path: full frame scaled to the model square (matches Android / ONNX-style preprocessing).
+    private var cachedStretchBuffer: CVPixelBuffer?
+    private var cachedStretchSize: Int = 0
     private var cachedMLArray: MLMultiArray?
     private var cachedMLArraySize: Int = 0
 
-// GPU mask builder (optional)
-private lazy var metalMaskLogic: MetalMaskLogic? = {
-    guard let d = metalDevice else { return nil }
-    return MetalMaskLogic(device: d)
-}()
+    /// Reused scratch for CPU fallback compositing (vDSP + BLAS); grows with frame width, never shrinks.
+    private var compositeCpuScratchFloats: [Float] = []
+    /// Proto mask upscaled to full frame (`origW*origH`) via vImage — one SIMD resize then a cheap composite scan.
+    private var upscaledPlanarMaskScratch: [UInt8] = []
     // MARK: - Memory Logging
     private func logMemory(_ tag: String) {
         var info = mach_task_basic_info()
@@ -328,22 +344,116 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     // MARK: Model & State
-    private var mlModel: MLModel?  // yoloe-11l 1280 model
+    private var mlModel: MLModel?  // yoloe-26l-seg-pf_seg_o2m (640 one-to-many) via YOLOEModelService
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
-    private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
+    /// While inference is running, camera frames are dropped; when set, next completion clears `lastProcessTime` so the following frame is not delayed by `processInterval`.
+    private var preferImmediateNextInference = false
+    private let frameLock = NSLock() // Protects lastProcessTime, isProcessing, preferImmediateNextInference
+
+    /// Serial queue for debounced AR-assisted measurement (depth → height → overlay scale). Keeps work off the main thread until the debounce fires; height can lag ~1s while the mask keeps up.
+    private let measurementQueue = DispatchQueue(label: "com.furnit.furniturefit.measurement", qos: .utility)
+    private let assistedMeasurementDebounceSeconds: TimeInterval = 0.85
+    private struct PendingAssistedMeasurement {
+        let primaryClassIdx: Int
+        let bboxMinX: Int
+        let bboxMinY: Int
+        let bboxMaxX: Int
+        let bboxMaxY: Int
+        let bboxCenterImageX: CGFloat
+        let bboxCenterImageY: CGFloat
+        let bboxHeightImagePx: Float
+        let imageWidth: Int
+        let imageHeight: Int
+        let arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    }
+    private let pendingMeasurementLock = NSLock()
+    private var pendingAssistedMeasurement: PendingAssistedMeasurement?
+    private var assistedMeasurementDebounceWorkItem: DispatchWorkItem?
+    /// Incremented on each new schedule and on invalidate so superseded debounce work is dropped.
+    private var assistedMeasurementScheduleToken: UInt64 = 0
 
     // MARK: Orientation
     private var currentDeviceOrientation: UIDeviceOrientation = .portrait
 
-    /// Thread-safe reset of isProcessing flag
+    /// Thread-safe reset of isProcessing flag.
     private func resetProcessingFlag() {
         frameLock.lock()
         isProcessing = false
+        if preferImmediateNextInference {
+            lastProcessTime = .distantPast
+            preferImmediateNextInference = false
+        }
         frameLock.unlock()
     }
-    
+
+    private func invalidatePendingAssistedMeasurement() {
+        assistedMeasurementDebounceWorkItem?.cancel()
+        assistedMeasurementScheduleToken &+= 1
+        pendingMeasurementLock.lock()
+        pendingAssistedMeasurement = nil
+        pendingMeasurementLock.unlock()
+    }
+
+    private func scheduleDebouncedAssistedMeasurement(
+        primaryClassIdx: Int,
+        bboxMinX: Int,
+        bboxMinY: Int,
+        bboxMaxX: Int,
+        bboxMaxY: Int,
+        bboxCenterImageX: CGFloat,
+        bboxCenterImageY: CGFloat,
+        bboxHeightImagePx: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        pendingMeasurementLock.lock()
+        pendingAssistedMeasurement = PendingAssistedMeasurement(
+            primaryClassIdx: primaryClassIdx,
+            bboxMinX: bboxMinX,
+            bboxMinY: bboxMinY,
+            bboxMaxX: bboxMaxX,
+            bboxMaxY: bboxMaxY,
+            bboxCenterImageX: bboxCenterImageX,
+            bboxCenterImageY: bboxCenterImageY,
+            bboxHeightImagePx: bboxHeightImagePx,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            arDepthSnapshot: arDepthSnapshot
+        )
+        pendingMeasurementLock.unlock()
+        assistedMeasurementScheduleToken &+= 1
+        let workToken = assistedMeasurementScheduleToken
+        assistedMeasurementDebounceWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard workToken == self.assistedMeasurementScheduleToken else { return }
+            self.pendingMeasurementLock.lock()
+            let p = self.pendingAssistedMeasurement
+            self.pendingMeasurementLock.unlock()
+            guard let p else { return }
+            DispatchQueue.main.async {
+                self.updateAssistedOverlayScale(
+                    primaryClassIdx: p.primaryClassIdx,
+                    bboxMinX: p.bboxMinX,
+                    bboxMinY: p.bboxMinY,
+                    bboxMaxX: p.bboxMaxX,
+                    bboxMaxY: p.bboxMaxY,
+                    bboxCenterImageX: p.bboxCenterImageX,
+                    bboxCenterImageY: p.bboxCenterImageY,
+                    bboxHeightImagePx: p.bboxHeightImagePx,
+                    imageWidth: p.imageWidth,
+                    imageHeight: p.imageHeight,
+                    arDepthSnapshot: p.arDepthSnapshot
+                )
+            }
+        }
+        assistedMeasurementDebounceWorkItem = work
+        measurementQueue.asyncAfter(deadline: .now() + assistedMeasurementDebounceSeconds, execute: work)
+    }
+
     // MARK: Class Names (loaded from classes.json)
     internal lazy var classNames: [Int: String] = {
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
@@ -388,9 +498,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
+        addSubview(arSCNView)
         addSubview(maskImageView)
+        arSCNView.session = arSession
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            arSCNView.topAnchor.constraint(equalTo: topAnchor),
+            arSCNView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            arSCNView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            arSCNView.trailingAnchor.constraint(equalTo: trailingAnchor),
             maskImageView.topAnchor.constraint(equalTo: topAnchor),
             maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor),
             maskImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -405,8 +521,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Container centered horizontally, near top
             progressContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
             progressContainer.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 40),
-            progressContainer.widthAnchor.constraint(equalToConstant: 280),
-            progressContainer.heightAnchor.constraint(equalToConstant: 50),
+            progressContainer.widthAnchor.constraint(equalToConstant: 300),
+            progressContainer.heightAnchor.constraint(equalToConstant: 62),
 
             // Progress bar inside container
             progressView.leadingAnchor.constraint(equalTo: progressContainer.leadingAnchor),
@@ -416,8 +532,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Label above progress bar
             progressLabel.centerXAnchor.constraint(equalTo: progressContainer.centerXAnchor),
             progressLabel.bottomAnchor.constraint(equalTo: progressView.topAnchor, constant: -6),
-            progressLabel.heightAnchor.constraint(equalToConstant: 24),
-            progressLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+            progressLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+            progressLabel.widthAnchor.constraint(equalTo: progressContainer.widthAnchor)
         ])
         
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
@@ -432,6 +548,22 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         addGestureRecognizer(pinchGesture)
         maskImageView.addGestureRecognizer(panGesture)
+
+        // Listen for reset notification from SharpRoomView toolbar ("reset size" button).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleResetScaleTapped),
+            name: NSNotification.Name("FurnitureFitResetOverlayScale"),
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCaptureSessionRuntimeError(_:)),
+            name: AVCaptureSession.runtimeErrorNotification,
+            object: captureSession
+        )
+        arSession.delegate = self
         
         setupCamera()
         setupMetal()
@@ -472,6 +604,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             if fusedMaskCompositePipeline == nil, let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
                 fusedMaskCompositePipeline = try device.makeComputePipelineState(function: fn2)
             }
+            if fusedMaskMorphedCompositePipeline == nil, let fn3 = library.makeFunction(name: "sp_maxMaskAndCompositeMorphed") {
+                fusedMaskMorphedCompositePipeline = try device.makeComputePipelineState(function: fn3)
+            }
         } catch {
             if debugMode { logDebug("⚠️ Metal pipeline setup failed: \(error.localizedDescription)") }
             CrashReporter.shared.report(error, context: "Metal Pipeline Setup")
@@ -486,6 +621,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = bounds
+        cachedARViewportSize = bounds.size
         updateSizingCalculator()
     }
 
@@ -500,27 +636,384 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         )
     }
 
-    /// Apply automatic sizing based on detected furniture class and room dimensions
-    private func applyFurnitureSizing(classIdx: Int, detectedWidth: CGFloat, detectedHeight: CGFloat) {
-        guard let calculator = sizingCalculator else {
-            if debugMode { logDebug("📏 [Sizing] No calculator available") }
+    /// Overlay scale from furniture vs room in **raycast scene units** (pinhole meters mapped into su).
+    /// When AR-assisted scale is **valid**, that path dominates and this factor is not multiplied in (see ``applyCurrentOverlayScaleTransform``).
+    private func updateAutoScaleFromRoom(
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        guard let room = roomRaycastSceneDimensions,
+              let metric = primaryBboxMonocularSizeMeters(
+                primaryBx1: primaryBx1,
+                primaryBy1: primaryBy1,
+                primaryBx2: primaryBx2,
+                primaryBy2: primaryBy2,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                arDepthSnapshot: arDepthSnapshot
+              ),
+              let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
+                furnitureMeters: metric.size,
+                roomMetersWidth: roomWidthMeters,
+                roomMetersHeight: roomHeightMeters,
+                roomMetersDepth: roomDepthMeters,
+                roomRaycastScene: room
+              )
+        else {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+        let ov = OverlayScale.ratios(furniture: furnSu, room: room)
+        guard ov.scaleX > 1e-6, ov.scaleY > 1e-6 else {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+        let uniform = CGFloat((ov.scaleX + ov.scaleY) * 0.5)
+        autoScaleFromRoom = min(max(uniform, minCombinedOverlayScale), maxCombinedOverlayScale)
+        applyCurrentOverlayScaleTransform()
+    }
+
+    private func updateOverlayPresentationMode(
+        primaryClassIdx: Int,
+        metric: PrimaryBboxMetersResult?
+    ) {
+        if primaryClassIdx != lastOverlayPrimaryClassIdx {
+            overlayPresentationMode = .deferredCentered
+            stableOverlayMeasurementFrameCount = 0
+            lastStableOverlayHeightMeters = nil
+            lastStableOverlayScale = nil
+        }
+
+        guard let metric,
+              let depthMeters = metric.distanceMeters,
+              depthMeters.isFinite,
+              metric.size.height.isFinite,
+              metric.size.height > 0,
+              autoScaleFromRoom.isFinite,
+              depthMeters > 0.35,
+              depthMeters < 9.7
+        else {
+            overlayPresentationMode = .deferredCentered
+            stableOverlayMeasurementFrameCount = 0
+            lastStableOverlayHeightMeters = nil
+            lastStableOverlayScale = nil
             return
         }
 
-        let scaleFactor = calculator.calculateScaleFactor(
-            classIdx: classIdx,
-            detectedWidthPixels: detectedWidth,
-            detectedHeightPixels: detectedHeight
-        )
-
-        // Apply scale transform to maskImageView
-        if scaleFactor != 1.0 {
-            currentScale = scaleFactor
-            maskImageView.transform = CGAffineTransform(scaleX: scaleFactor, y: scaleFactor)
-            if debugMode {
-                logDebug("📏 [Sizing] Applied scale \(String(format: "%.2f", scaleFactor)) for class \(classIdx)")
-            }
+        let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromRoom - $0) } ?? 0
+        let heightDriftFraction: Float
+        if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
+            heightDriftFraction = abs(metric.size.height - lastHeight) / lastHeight
+        } else {
+            heightDriftFraction = 0
         }
+
+        let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
+            heightDriftFraction <= maxStableOverlayHeightDriftFraction
+
+        stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
+        lastStableOverlayHeightMeters = metric.size.height
+        lastStableOverlayScale = autoScaleFromRoom
+
+        if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
+            overlayPresentationMode = .measuredPlacement
+        } else {
+            overlayPresentationMode = .deferredCentered
+        }
+    }
+
+    /// Combined overlay: **raycast furniture÷room** (when AR not valid) × **AR metric** (when valid) × pinch (clamped).
+    private func applyCurrentOverlayScaleTransform() {
+        let arOn = hasARKitAssistedSizingPayload && arAssistedScaleValid
+        let roomFactor: CGFloat = arOn ? 1.0 : autoScaleFromRoom
+        let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
+        let product = roomFactor * assistedScale * userPinchScale
+        let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
+        let finalTransform: CGAffineTransform
+        switch overlayPresentationMode {
+        case .deferredCentered:
+            let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
+            let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+            let translationX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
+            let translationY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
+            finalTransform = CGAffineTransform(translationX: translationX, y: translationY)
+        case .measuredPlacement:
+            finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
+        }
+        maskImageView.transform = finalTransform
+
+        let wantAR = hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
+        let assistedLabel: String
+        if arOn {
+            assistedLabel = "AR"
+        } else if wantAR {
+            assistedLabel = "1x_AR_unavailable"
+        } else {
+            assistedLabel = "1x"
+        }
+        let jump = overlayDebugLastCombined < 0 || abs(clamped - overlayDebugLastCombined) > 0.02
+        let labelChange = assistedLabel != overlayDebugLastAssistedLabel
+        if jump || labelChange {
+            overlayDebugLastAssistedLabel = assistedLabel
+            overlayDebugLastCombined = clamped
+            let modeLabel = overlayPresentationMode == .deferredCentered ? "centered_pending" : "measured"
+            print("[FurnitureFitOverlay] mode=\(modeLabel) assist=\(assistedLabel) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomFactor)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) → overlay=\(String(format: "%.3f", clamped)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid)")
+        }
+    }
+
+    private func updateAssistedOverlayScale(
+        primaryClassIdx: Int,
+        bboxMinX: Int,
+        bboxMinY: Int,
+        bboxMaxX: Int,
+        bboxMaxY: Int,
+        bboxCenterImageX: CGFloat,
+        bboxCenterImageY: CGFloat,
+        bboxHeightImagePx: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        if primaryClassIdx != lastOverlayPrimaryClassIdx {
+            lastOverlayPrimaryClassIdx = primaryClassIdx
+            userPinchScale = 1.0
+            userLockedAssistedOverlayScale = false
+            smoothedArOverlayScale = 1.0
+            autoScaleFromAR = 1.0
+            arAssistedScaleValid = false
+            arAssistedConsecutiveMisses = 0
+            snapArOverlayScaleAfterPrimaryChange = true
+            overlayDebugLastAssistedLabel = ""
+            overlayDebugLastCombined = -1
+            didPublishARRefinedFurnitureMetersEstimate = false
+            overlayPresentationMode = .deferredCentered
+            stableOverlayMeasurementFrameCount = 0
+            lastStableOverlayHeightMeters = nil
+            lastStableOverlayScale = nil
+        }
+
+        let wantAR = hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
+
+        if wantAR, arDepthSnapshot != nil || arSession.currentFrame != nil {
+            let nx = bboxCenterImageX / CGFloat(max(1, imageWidth))
+            let ny = bboxCenterImageY / CGFloat(max(1, imageHeight))
+            let nxMin = CGFloat(bboxMinX) / CGFloat(max(1, imageWidth))
+            let nxMax = CGFloat(bboxMaxX) / CGFloat(max(1, imageWidth))
+            let nyMinTop = CGFloat(bboxMinY) / CGFloat(max(1, imageHeight))
+            let nyMaxTop = CGFloat(bboxMaxY) / CGFloat(max(1, imageHeight))
+
+            var distM: Float?
+            var fx: Float = 1
+            var fy: Float = 1
+            var distSource = "none"
+            var bgraIsRotatedFromCaptured = false
+            let trackingName: String = {
+                guard let s = arSession.currentFrame?.camera.trackingState else { return "nil" }
+                switch s {
+                case .normal: return "normal"
+                case .limited: return "limited"
+                case .notAvailable: return "notAvailable"
+                @unknown default: return "unknown"
+                }
+            }()
+
+            if let snap = arDepthSnapshot {
+                bgraIsRotatedFromCaptured = snap.bgraIsRotatedFromCaptured
+                fy = snap.focalLengthY
+                fx = snap.focalLengthX
+                if snap.depthMap != nil,
+                   let dMin = FurnitureFitARSupport.depthMetersMinInNormalizedBgraRect(
+                    snapshot: snap,
+                    nxMin: nxMin,
+                    nyMinTop: nyMinTop,
+                    nxMax: nxMax,
+                    nyMaxTop: nyMaxTop
+                   ) {
+                    distM = dMin
+                    distSource = "depth_snapshot_min_rect"
+                }
+                if distM == nil {
+                    distM = FurnitureFitARSupport.depthMeters(snapshot: snap, normalizedBgraNX: nx, normalizedBgraNY: ny)
+                    distSource = distM != nil ? "depth_snapshot_center" : "depth_snapshot_miss"
+                }
+                // Snapshot exists but depth buffer missing/invalid this frame — align overlay with live `sceneDepth` (same as meter sizing fallback).
+                if distM == nil, let frame = arSession.currentFrame {
+                    let norm = CGPoint(x: nx, y: ny)
+                    distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
+                    if distM != nil { distSource = "scene_depth_snapshot_miss_fallback" }
+                }
+                // No plane raycast here: that would use `arSession.currentFrame` and desync from the YOLO frame.
+            } else if let frame = arSession.currentFrame {
+                let norm = CGPoint(x: nx, y: ny)
+                distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
+                if distM != nil {
+                    distSource = "scene_depth"
+                } else if #available(iOS 14.0, *) {
+                    let sp = CGPoint(
+                        x: nx * bounds.width,
+                        y: ny * bounds.height
+                    )
+                    // Try any-plane raycast first (horizontal + vertical), fall back to horizontal only.
+                    if let anyHit = FurnitureFitARSupport.distanceToAnyPlaneMeters(
+                        session: arSession, frame: frame, screenPoint: sp, in: bounds
+                    ) {
+                        distM = anyHit.distance
+                        let alignLabel: String
+                        switch anyHit.alignment {
+                        case .horizontal: alignLabel = "horiz"
+                        case .vertical: alignLabel = "vert"
+                        case .any: alignLabel = "any"
+                        @unknown default: alignLabel = "unknown"
+                        }
+                        distSource = "plane_raycast_\(alignLabel)"
+                    } else {
+                        distSource = "no_metric_distance"
+                    }
+                } else {
+                    distSource = "no_metric_distance"
+                }
+                let cap = frame.capturedImage
+                let cw = CVPixelBufferGetWidth(cap)
+                let ch = CVPixelBufferGetHeight(cap)
+                let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
+                let bgraRotated = needsPortrait && cw > ch
+                bgraIsRotatedFromCaptured = bgraRotated
+                fy = FurnitureFitARSupport.focalLengthYForProcessedBGRA(
+                    camera: frame.camera,
+                    bgraHeight: imageHeight,
+                    bgraIsRotatedFromCaptured: bgraRotated
+                )
+                fx = FurnitureFitARSupport.focalLengthXForProcessedBGRA(
+                    camera: frame.camera,
+                    bgraWidth: imageWidth,
+                    bgraIsRotatedFromCaptured: bgraRotated
+                )
+            } else {
+                distSource = "no_ar_frame"
+            }
+
+            // If we have a valid distance + focal length, update AR-assisted scale for this frame.
+            if let d = distM,
+               let estH = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
+                bboxHeightPixels: bboxHeightImagePx,
+                distanceMeters: d,
+                focalLengthYPixels: fy
+               ) {
+                lastAREstimatedHeightMeters = estH
+                // Use a neutral reference height for AR scaling; do not depend on any
+                // per-class hard-coded \"standard\" dimensions.
+                let stdH: Float = 0.85
+                if let raw = FurnitureFitARSupport.overlayScaleFromMetricHeights(
+                    standardHeightMeters: stdH,
+                    estimatedHeightMeters: estH
+                ) {
+                    if hasFirstDetection,
+                       !didPublishARRefinedFurnitureMetersEstimate,
+                       fx > 1,
+                       let estW = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
+                        bboxWidthPixels: Float(max(1, bboxMaxX - bboxMinX)),
+                        distanceMeters: d,
+                        focalLengthXPixels: fx
+                       ) {
+                        didPublishARRefinedFurnitureMetersEstimate = true
+                        logFurnitureFitSize(
+                            "phase=ar_overlay_refine distSource=\(distSource) dist_m=\(String(format: "%.3f", d)) W×H_m=\(String(format: "%.3f", estW))×\(String(format: "%.3f", estH)) bbox_px=\(max(1, bboxMaxX - bboxMinX))x\(Int(bboxHeightImagePx)) (requires AR companion + valid depth)"
+                        )
+                        onFurnitureSizeEstimated?(
+                            FurnitureSizeEstimate(widthMeters: estW, heightMeters: estH, arHeightMeters: estH)
+                        )
+                    }
+                    let target = CGFloat(raw)
+                    if snapArOverlayScaleAfterPrimaryChange {
+                        // One shot after switching primary detection — avoids sluggish ramp from 1× while panning between pieces.
+                        let clamped = min(max(target, 0.25), 4.0)
+                        smoothedArOverlayScale = clamped
+                        snapArOverlayScaleAfterPrimaryChange = false
+                    } else {
+                        // AR-assisted scale can jitter due to depth noise; clamp per-frame change and EMA smooth.
+                        let base = smoothedArOverlayScale
+                        let maxStep: CGFloat = 0.08
+                        let delta = max(-maxStep, min(maxStep, target - base))
+                        let clampedTarget = base + delta
+                        let alpha: CGFloat = 0.16
+                        smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                    }
+                    autoScaleFromAR = smoothedArOverlayScale
+                    arAssistedScaleValid = true
+                    arAssistedConsecutiveMisses = 0
+                    let bboxWidthPx = Float(max(1, bboxMaxX - bboxMinX))
+                    let estW = (bboxWidthPx / max(fx, 1)) * d
+                    let nowLog = Date().timeIntervalSince1970
+                    if nowLog - lastFurnitureFitARFrameLogAt >= furnitureFitARLogInterval {
+                        lastFurnitureFitARFrameLogAt = nowLog
+                        let arOnLog = hasARKitAssistedSizingPayload && arAssistedScaleValid
+                        let roomUsedLog: CGFloat = arOnLog ? 1.0 : autoScaleFromRoom
+                        let assistedLog: CGFloat = arOnLog ? autoScaleFromAR : 1.0
+                        let combinedOverlay = roomUsedLog * assistedLog * userPinchScale
+                        logFurnitureFitAR(
+                            "distSource=\(distSource) dist=\(String(format: "%.2f", d))m furniture=\(String(format: "%.2f", estW))×\(String(format: "%.2f", estH))m stdH=\(String(format: "%.2f", stdH))m ratio=\(String(format: "%.3f", raw)) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomUsedLog)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) overlay=\(String(format: "%.3f", combinedOverlay)) tracking=\(trackingName) bboxPx=\(Int(bboxWidthPx))×\(Int(bboxHeightImagePx)) fy=\(String(format: "%.1f", fy)) fx=\(String(format: "%.1f", fx))"
+                        )
+                    }
+                    applyCurrentOverlayScaleTransform()
+                    return
+                }
+            }
+            // AR sizing is on but this frame had no depth / invalid estimate.
+            // If we've *ever* had a valid AR scale, keep reusing it instead of
+            // snapping back to 1× (that snap is what causes the big/small oscillation).
+            if arAssistedScaleValid {
+                if debugMode {
+                    logDebug("📐 [AR_HOLD] no depth this frame; keeping last AR scale")
+                }
+                applyCurrentOverlayScaleTransform()
+                return
+            }
+        } else if wantAR, arAssistedScaleValid {
+            // AR is enabled but we didn't even get a frame callback this tick; keep last AR scale.
+            if debugMode {
+                logDebug("📐 [AR_HOLD] no AR frame; keeping last AR scale")
+            }
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
+        // If we get here, either AR is off, or it's on but has NEVER produced a valid scale
+        // in this session (`arAssistedScaleValid == false`). Use 1× assisted scale — no AR ↔ 1× flipping once AR was valid.
+        arAssistedConsecutiveMisses = 0
+        if !arAssistedScaleValid {
+            autoScaleFromAR = 1.0
+        }
+        applyCurrentOverlayScaleTransform()
+    }
+
+    private func resetOverlayScalesForEmptyMask() {
+        invalidatePendingAssistedMeasurement()
+        autoScaleFromRoom = 1.0
+        autoScaleFromAR = 1.0
+        smoothedArOverlayScale = 1.0
+        arAssistedConsecutiveMisses = 0
+        arAssistedScaleValid = false
+        overlayDebugLastAssistedLabel = ""
+        overlayDebugLastCombined = -1
+        lastAREstimatedHeightMeters = nil
+        didPublishARRefinedFurnitureMetersEstimate = false
+        userPinchScale = 1.0
+        userLockedAssistedOverlayScale = false
+        lastOverlayPrimaryClassIdx = -1
+        overlayPresentationMode = .deferredCentered
+        stableOverlayMeasurementFrameCount = 0
+        lastStableOverlayHeightMeters = nil
+        lastStableOverlayScale = nil
+        smoothedTightPrimaryBbox = nil
+        maskImageView.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        maskImageView.transform = .identity
     }
     
     override func didMoveToSuperview() {
@@ -540,24 +1033,43 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Public
     func setModel(_ model: MLModel?) {
-        // Avoid blocking sync call if model hasn't changed
-        if model === mlModel { return }
-        detectionQueue.sync { self.mlModel = model }
-        // Log model outputs for debugging
-        if let model = model {
-            let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
-            let outputNames = model.modelDescription.outputDescriptionsByName.keys
-            logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+        // Must not `sync` onto `detectionQueue` from the main thread: SwiftUI calls this from
+        // `updateUIView` while `processFrameInner` can run for hundreds of ms — main would freeze (“hung” UI).
+        detectionQueue.async { [weak self] in
+            guard let self else { return }
+            if model === self.mlModel { return }
+            self.mlModel = model
+            if let model = model {
+                let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
+                let outputNames = model.modelDescription.outputDescriptionsByName.keys
+                logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+            }
         }
         // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
     }
 
     func startIfNeeded() {
-        hasFirstDetection = false
-        setProgress(0.05, text: "Starting camera…")
+        // SwiftUI calls this on many `updateUIView` passes; only run setup once until `stop()`.
+        if captureSession.isRunning { return }
+        if furnitureFitCameraStartupInitiated { return }
+        furnitureFitCameraStartupInitiated = true
+        logFurnitureFitSize(
+            "phase=session_start suppressStartupProgress=\(suppressStartupProgress) segmentationCompletedOnceThisSession=\(segmentationCompletedOnceThisSession)"
+        )
+
+        if suppressStartupProgress || segmentationCompletedOnceThisSession {
+            hasFirstDetection = false
+            DispatchQueue.main.async {
+                self.progressContainer.isHidden = true
+                self.progressContainer.alpha = 1
+            }
+        } else {
+            hasFirstDetection = false
+            setProgress(0.05, text: "Starting camera…")
+        }
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
-        loadBlacklist()
+        loadBlacklistOnce()
 
         // Setup orientation detection for landscape support
         currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
@@ -570,6 +1082,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             name: UIDevice.orientationDidChangeNotification,
             object: nil
         )
+        startDeviceMotionPitchUpdatesIfNeeded()
 
         requestCameraPermissionAndStart()
 
@@ -616,7 +1129,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
-        guard let conn = videoOutput.connection(with: .video) else { return }
+        guard !isUsingARCameraPath, let conn = videoOutput.connection(with: .video) else { return }
 
         // Keep rotation fixed based on locked orientation to ensure consistent buffer dimensions
         // This prevents segmentation misalignment when device rotates
@@ -630,14 +1143,69 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func stop() {
+        invalidatePendingAssistedMeasurement()
+        frameLock.lock()
+        isProcessing = false
+        preferImmediateNextInference = false
+        frameLock.unlock()
+        // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
+        hasFirstDetection = false
+        segmentationCompletedOnceThisSession = false
+        maskImageView.image = nil
+        resetOverlayScalesForEmptyMask()
+        logFurnitureFitSize(
+            "phase=session_stop cleared isProcessing + segmentation UI flags (fixes stuck frames + stale first-mask after brain off/on)"
+        )
+        asyncDepthSampler.stop()
+        stopDeviceMotionPitchUpdates()
+        furnitureFitCameraStartupInitiated = false
+        arCompanionStartGeneration &+= 1
+        suppressARDepthCompanionAfterCaptureFailure = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.main.async {
+            self.isUsingARCameraPath = false
+            self.isARDepthCompanionSessionRunning = false
+            self.arSession.pause()
+        }
+        captureSessionControlQueue.async {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
             }
         }
+    }
+
+    private func startDeviceMotionPitchUpdatesIfNeeded() {
+        guard deviceMotionManager.isDeviceMotionAvailable else { return }
+        guard !deviceMotionManager.isDeviceMotionActive else { return }
+        deviceMotionManager.deviceMotionUpdateInterval = 1.0 / 30.0
+        deviceMotionManager.startDeviceMotionUpdates(
+            using: .xArbitraryZVertical,
+            to: deviceMotionQueue
+        ) { [weak self] motion, _ in
+            guard let self, let motion else { return }
+            self.devicePitchLock.lock()
+            self.latestDevicePitchRadians = Float(motion.attitude.pitch)
+            self.devicePitchLock.unlock()
+        }
+    }
+
+    private func stopDeviceMotionPitchUpdates() {
+        deviceMotionManager.stopDeviceMotionUpdates()
+        devicePitchLock.lock()
+        latestDevicePitchRadians = nil
+        devicePitchLock.unlock()
+    }
+
+    private func latestDownwardPitchDegrees() -> Float? {
+        devicePitchLock.lock()
+        let cachedPitchRadians = latestDevicePitchRadians
+        devicePitchLock.unlock()
+        let livePitchRadians = deviceMotionManager.deviceMotion.map { Float($0.attitude.pitch) }
+        let pitchRadians = livePitchRadians ?? cachedPitchRadians
+        guard let pitchRadians else { return nil }
+        return abs(pitchRadians) * 180 / .pi
     }
 
     // MARK: - Camera Setup
@@ -655,6 +1223,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
         
         captureSession.addInput(input)
+        captureBackCamera = device
         videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         videoOutput.alwaysDiscardsLateVideoFrames = true
@@ -678,29 +1247,166 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     private func requestCameraPermissionAndStart() {
+        // Camera permission still gates the AR-as-camera path because ARKit uses the same hardware.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            if !captureSession.isRunning {
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self.captureSession.startRunning()
-                }
-            }
+            startPreferredCameraPathIfNeeded()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
-                if granted {
-                    DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() }
-                }
+                guard granted else { return }
+                self.startPreferredCameraPathIfNeeded()
             }
-        default: break
+        default:
+            break
         }
     }
 
+    private func startPreferredCameraPathIfNeeded() {
+        // Pinhole sizing uses AVCapture only; AR-as-camera path stays disabled.
+        // let wantAR = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+        //     && !suppressARDepthCompanionAfterCaptureFailure
+        // if wantAR {
+        //     startARCameraPathIfNeeded()
+        // } else {
+        //     startClassicCameraPathIfNeeded()
+        // }
+        startClassicCameraPathIfNeeded()
+    }
+
+    /// Single camera owner: ARKit supplies both video (`capturedImage`) and depth, so there is no AVCapture + AR contention.
+    private func startARCameraPathIfNeeded() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.arCompanionStartGeneration &+= 1
+            self.isUsingARCameraPath = true
+            self.isARDepthCompanionSessionRunning = false
+
+            self.captureSessionControlQueue.async { [weak self] in
+                guard let self else { return }
+                if self.captureSession.isRunning {
+                    self.captureSession.stopRunning()
+                }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.isUsingARCameraPath else { return }
+                    let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+                    let hasLiDAR = QualitySettings.supportsLiDARSceneDepth
+                    self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
+                    logFurnitureFitAR("AR session started — lidar=\(hasLiDAR) depthSource=\(hasLiDAR ? "sceneDepth" : "planeRaycast") (filter: FurnitureFitAR FurnitureFitOverlay)")
+
+                    if !Self.didLogFurnitureFitSizingPolicy {
+                        Self.didLogFurnitureFitSizingPolicy = true
+                        logFurnitureFitSize(
+                            "policy=ar_camera lidar=\(hasLiDAR) → segmentation from ARFrame.capturedImage; depth via \(hasLiDAR ? "sceneDepth" : "plane raycast"). Filters: FurnitureFitAR | FurnitureFitOverlay | FurnitureFitSize"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fig / AVFoundation codes often logged when `ARSession` + `AVCaptureSession` fight over the back camera.
+    private static let figCameraContentionErrorCodes: Set<Int> = [-17281, -12784, -12710]
+
+    private static func captureErrorIndicatesCameraContention(_ error: NSError) -> Bool {
+        var visited = Set<ObjectIdentifier>()
+        var current: NSError? = error
+        while let e = current {
+            let oid = ObjectIdentifier(e)
+            if visited.contains(oid) { break }
+            visited.insert(oid)
+            if figCameraContentionErrorCodes.contains(e.code) { return true }
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
+    }
+
+    @objc private func handleCaptureSessionRuntimeError(_ notification: Notification) {
+        guard let err = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else { return }
+        guard Self.captureErrorIndicatesCameraContention(err) else { return }
+        logDebug("📷 [FurnitureFit] AVCaptureSession runtime error \(err.domain) code=\(err.code) — AR+camera contention; turning off AR companion for this Furniture Fit session.")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let settingsOn = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+            guard settingsOn || self.isARDepthCompanionSessionRunning else { return }
+            self.suppressARDepthCompanionAfterCaptureFailure = true
+            self.startPreferredCameraPathIfNeeded()
+        }
+    }
+
+    /// AVCapture for video; optional ARSession **companion** (Settings) for metric depth on LiDAR **or** plane raycast on e.g. iPhone 12.
+    private func startClassicCameraPathIfNeeded() {
+        isUsingARCameraPath = false
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.arCompanionStartGeneration &+= 1
+            let companionLaunchToken = self.arCompanionStartGeneration
+            self.isARDepthCompanionSessionRunning = false
+            self.arSession.pause()
+
+            self.captureSessionControlQueue.async { [weak self] in
+                guard let self else { return }
+                self.setupCamera()
+                if !self.captureSession.isRunning {
+                    self.captureSession.startRunning()
+                }
+                // Floor-contact depth estimation stays on the AVCapture path; no AR companion is started here.
+                _ = companionLaunchToken
+            }
+
+            if self.debugMode {
+                logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active, AR path disabled")
+            }
+
+            if !Self.didLogFurnitureFitSizingPolicy {
+                Self.didLogFurnitureFitSizingPolicy = true
+                logFurnitureFitSize(
+                    "policy=floor_contact_only: AVCapture video + floor-contact depth heuristic from bbox/mask bottom. AR path commented out."
+                )
+            }
+        }
+    }
+
+    /*
+    /// World-tracking AR beside `AVCaptureSession` (disabled for pinhole-only builds).
+    private func scheduleARDepthCompanionAfterCaptureIfEligible(launchGeneration: UInt64) {
+        let qs = AppStateManager.shared.qualitySettings
+        guard qs.furnitureFitARDepthCompanionRuntimeActive,
+              !suppressARDepthCompanionAfterCaptureFailure,
+              FurnitureFitARSupport.isWorldTrackingSupported,
+              QualitySettings.supportsLiDARSceneDepth else {
+            if qs.furnitureFitARDepthCompanionEnabled,
+               FurnitureFitARSupport.isWorldTrackingSupported,
+               !QualitySettings.supportsLiDARSceneDepth {
+                logFurnitureFitAR(
+                    "event=ar_depth_companion_skipped reason=no_LiDAR parallel_AR_plus_AVCapture_causes_Fig_-17281 pinhole_uses_room_proxy_vy"
+                )
+            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            guard launchGeneration == self.arCompanionStartGeneration else { return }
+            guard !self.isUsingARCameraPath else { return }
+            guard self.captureSession.isRunning else { return }
+            let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
+            self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
+            self.isARDepthCompanionSessionRunning = true
+            logFurnitureFitAR("event=ar_depth_companion_started parallel_capture lidar=true sceneDepth_for_pinhole=true")
+        }
+    }
+    */
+
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        // Early exit check BEFORE dispatching to avoid queuing frames unnecessarily
+        // Drop every frame while segmentation is in flight (do not queue work on `detectionQueue`).
         let now = Date()
         frameLock.lock()
-        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
+        if isProcessing {
+            preferImmediateNextInference = true
+            frameLock.unlock()
+            return
+        }
+        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval
         if shouldProcess {
             isProcessing = true
             lastProcessTime = now
@@ -712,774 +1418,810 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             resetProcessingFlag()
             return
         }
-        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
+        // Classic camera path feeds the non-AR floor-contact estimate only.
+        let depthSnapshot: FurnitureFitARDepthSnapshot? = nil
+        detectionQueue.async { [weak self] in
+            self?.processFrame(pixelBuffer, arDepthSnapshot: depthSnapshot)
+        }
     }
 
     // MARK: - Main Processing Pipeline
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+    private func processFrame(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
         autoreleasepool {
-            processFrameInner(pixelBuffer)
+            processFrameInner(pixelBuffer, arDepthSnapshot: arDepthSnapshot)
         }
     }
 
-    private func processFrameInner(_ pixelBuffer: CVPixelBuffer) {
-        let frameStart = Date()
-        if debugMode { logMemory("FRAME START") }
+    /// Floor-contact size in **meters** from the primary bbox using a non-AR depth estimate from the object's floor contact.
+    private typealias PrimaryBboxMetersResult = (size: FurnitureSceneSize, pipeline: String, distanceMeters: Float?)
+    private typealias FloorContactSizingResult = (
+        metric: PrimaryBboxMetersResult,
+        contactImageX: Int,
+        contactImageY: Int,
+        widthPixels: Float,
+        heightPixels: Float,
+        focalPixels: Float,
+        measuredPitchDeg: Float?,
+        effectivePitchDeg: Float
+    )
 
-        guard let model = mlModel else {
-            resetProcessingFlag()
-            return
+    private func estimatedPitchDegreesForFloorContact(
+        contactImageY: Float,
+        imageHeight: Int,
+        focalPixels: Float
+    ) -> (measuredPitchDeg: Float?, effectivePitchDeg: Float) {
+        let measuredPitchDeg = latestDownwardPitchDegrees()
+        let cy = Float(imageHeight) * 0.5
+        let yCam = max(0, (contactImageY - cy) / max(focalPixels, 1))
+        let minimumPitchDeg = atan(yCam) * 180 / .pi + 1.0
+        let basePitchDeg = measuredPitchDeg ?? 35.0
+        let effectivePitchDeg = min(80.0, max(max(10.0, basePitchDeg), minimumPitchDeg))
+        return (measuredPitchDeg, effectivePitchDeg)
+    }
+
+    private func floorContactDepthEstimateMeters(
+        contactImageY: Float,
+        imageHeight: Int,
+        focalPixels: Float
+    ) -> (depthMeters: Float, measuredPitchDeg: Float?, effectivePitchDeg: Float) {
+        let (measuredPitchDeg, effectivePitchDeg) = estimatedPitchDegreesForFloorContact(
+            contactImageY: contactImageY,
+            imageHeight: imageHeight,
+            focalPixels: focalPixels
+        )
+        let cameraHeightMeters: Float = 1.2
+        let cy = Float(imageHeight) * 0.5
+        let yCam = (contactImageY - cy) / max(focalPixels, 1)
+        let pitchRadians = effectivePitchDeg * .pi / 180
+        let sinPitch = sin(pitchRadians)
+        let cosPitch = cos(pitchRadians)
+        let numerator = cameraHeightMeters * (yCam * sinPitch + cosPitch)
+        let denominator = sinPitch - yCam * cosPitch
+        guard denominator > 1e-4 else {
+            return (0.3, measuredPitchDeg, effectivePitchDeg)
+        }
+        let depthMeters = max(0.3, min(10.0, numerator / denominator))
+        return (depthMeters, measuredPitchDeg, effectivePitchDeg)
+    }
+
+    private func floorContactSizingResult(
+        contactImageX: Float,
+        contactImageY: Float,
+        widthPixels: Float,
+        heightPixels: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        pipeline: String
+    ) -> FloorContactSizingResult? {
+        guard imageWidth > 1, imageHeight > 1, widthPixels > 0.5, heightPixels > 0.5 else { return nil }
+
+        let clampedImageX = min(max(contactImageX, 0), Float(max(1, imageWidth - 1)))
+        let clampedImageY = min(max(contactImageY, 0), Float(max(1, imageHeight - 1)))
+        var focalLengthX = cameraFocalLengthPixels
+        if focalLengthX < 1, let camera = captureBackCamera {
+            focalLengthX = FurnitureMonocularMeasurer.focalLengthPixels(
+                horizontalFieldOfViewDegrees: camera.activeFormat.videoFieldOfView,
+                imageWidth: Float(imageWidth)
+            )
+        }
+        if focalLengthX < 1 { focalLengthX = Float(imageWidth) * 0.73 }
+        let focalLengthY = focalLengthX
+        let depthEstimate = floorContactDepthEstimateMeters(
+            contactImageY: clampedImageY,
+            imageHeight: imageHeight,
+            focalPixels: focalLengthY
+        )
+        let depthMeters = depthEstimate.depthMeters
+
+        guard let widthMeters = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
+            bboxWidthPixels: widthPixels,
+            distanceMeters: depthMeters,
+            focalLengthXPixels: focalLengthX
+        ),
+        let heightMeters = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
+            bboxHeightPixels: heightPixels,
+            distanceMeters: depthMeters,
+            focalLengthYPixels: focalLengthY
+        ) else { return nil }
+
+        let depthThicknessMeters = max(0.04, min(widthMeters, heightMeters) * 0.12)
+        return (
+            metric: (
+                size: FurnitureSceneSize(width: widthMeters, height: heightMeters, depth: depthThicknessMeters),
+                pipeline: pipeline +
+                    "_pitch\(String(format: "%.1f", depthEstimate.effectivePitchDeg))" +
+                    (depthEstimate.measuredPitchDeg != nil ? "_motion" : "_fallback"),
+                distanceMeters: depthMeters
+            ),
+            contactImageX: Int(round(clampedImageX)),
+            contactImageY: Int(round(clampedImageY)),
+            widthPixels: widthPixels,
+            heightPixels: heightPixels,
+            focalPixels: focalLengthY,
+            measuredPitchDeg: depthEstimate.measuredPitchDeg,
+            effectivePitchDeg: depthEstimate.effectivePitchDeg
+        )
+    }
+
+    private func refinedMaskBoundsAndFloorContact(
+        maskSmall: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        bboxCenterImageX: Int
+    ) -> (contactImageX: Int, contactImageY: Int, widthPixels: Float, heightPixels: Float)? {
+        guard protoW > 1, protoH > 1, imageWidth > 1, imageHeight > 1, !maskSmall.isEmpty else { return nil }
+
+        var minProtoX = protoW
+        var minProtoY = protoH
+        var maxProtoX = -1
+        var maxProtoY = -1
+
+        for protoY in 0..<protoH {
+            let rowOffset = protoY * protoW
+            for protoX in 0..<protoW where maskSmall[rowOffset + protoX] > 0 {
+                minProtoX = min(minProtoX, protoX)
+                minProtoY = min(minProtoY, protoY)
+                maxProtoX = max(maxProtoX, protoX)
+                maxProtoY = max(maxProtoY, protoY)
+            }
         }
 
-        // Camera delivers frames via dynamic videoRotationAngle
-        let processBuffer = pixelBuffer
+        guard maxProtoX >= minProtoX, maxProtoY >= minProtoY else { return nil }
 
-        // CRITICAL: Derive isLandscape from actual buffer dimensions, not device orientation
-        // Device orientation can be unreliable (flat on table, certain angles, etc.)
-        // Buffer dimensions are always correct - what the model actually sees
+        let bboxCenterProtoX = Int(
+            round((Float(bboxCenterImageX) / Float(max(1, imageWidth))) * Float(max(1, protoW - 1)))
+        )
+        var contactProtoX = bboxCenterProtoX
+        var contactProtoY = maxProtoY
+        var foundContact = false
+
+        for protoY in stride(from: maxProtoY, through: minProtoY, by: -1) {
+            let rowOffset = protoY * protoW
+            var bestProtoXOnRow: Int?
+            var bestCenterDelta = Int.max
+            for protoX in minProtoX...maxProtoX where maskSmall[rowOffset + protoX] > 0 {
+                let delta = abs(protoX - bboxCenterProtoX)
+                if delta < bestCenterDelta {
+                    bestCenterDelta = delta
+                    bestProtoXOnRow = protoX
+                }
+            }
+            if let rowX = bestProtoXOnRow {
+                contactProtoX = rowX
+                contactProtoY = protoY
+                foundContact = true
+                break
+            }
+        }
+
+        guard foundContact else { return nil }
+
+        let minImageX = max(0, Int(floor(Float(minProtoX) * Float(imageWidth) / Float(protoW))))
+        let maxImageX = min(imageWidth, Int(ceil(Float(maxProtoX + 1) * Float(imageWidth) / Float(protoW))))
+        let minImageY = max(0, Int(floor(Float(minProtoY) * Float(imageHeight) / Float(protoH))))
+        let maxImageY = min(imageHeight, Int(ceil(Float(maxProtoY + 1) * Float(imageHeight) / Float(protoH))))
+        let contactImageX = min(
+            max(0, Int(round((Float(contactProtoX) + 0.5) * Float(imageWidth) / Float(protoW)))),
+            max(0, imageWidth - 1)
+        )
+        let contactImageY = min(
+            max(0, Int(round((Float(contactProtoY) + 0.5) * Float(imageHeight) / Float(protoH)))),
+            max(0, imageHeight - 1)
+        )
+
+        return (
+            contactImageX: contactImageX,
+            contactImageY: contactImageY,
+            widthPixels: Float(max(1, maxImageX - minImageX)),
+            heightPixels: Float(max(1, maxImageY - minImageY))
+        )
+    }
+
+    private func refinedMaskFloorContactSizeMeters(
+        maskSmall: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        bboxCenterImageX: Int,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> FloorContactSizingResult? {
+        guard let refinedMask = refinedMaskBoundsAndFloorContact(
+            maskSmall: maskSmall,
+            protoW: protoW,
+            protoH: protoH,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            bboxCenterImageX: bboxCenterImageX
+        ) else { return nil }
+
+        return floorContactSizingResult(
+            contactImageX: Float(refinedMask.contactImageX),
+            contactImageY: Float(refinedMask.contactImageY),
+            widthPixels: refinedMask.widthPixels,
+            heightPixels: refinedMask.heightPixels,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            pipeline: "floor_contact_mask_contact"
+        )
+    }
+
+    /// Unlike ``FurnitureSizingCalculator``, this does **not** assume the full frame height equals ``roomHeightMeters``,
+    /// so close-up shots do not blow up to ~room-sized readings.
+    private func primaryBboxMonocularSizeMeters(
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) -> PrimaryBboxMetersResult? {
+        _ = arDepthSnapshot
+        let bboxWpx = Float(max(1, primaryBx2 - primaryBx1))
+        let bboxHpx = Float(max(1, primaryBy2 - primaryBy1))
+        guard let floorMeasurement = floorContactSizingResult(
+            contactImageX: Float(primaryBx1 + primaryBx2) * 0.5,
+            contactImageY: Float(max(primaryBy1, primaryBy2 - 1)),
+            widthPixels: bboxWpx,
+            heightPixels: bboxHpx,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            pipeline: "floor_contact_bbox_bottom_center"
+        ) else { return nil }
+        return floorMeasurement.metric
+    }
+
+    /// Throttled logs: furniture vs room **ratio** space when ``roomRaycastSceneDimensions`` is set (Sharp / saved `.meta`).
+    private func maybeLogSceneFitmentFromPrimaryBbox(
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    ) {
+        guard let room = roomRaycastSceneDimensions,
+              room.width > 1e-5, room.height > 1e-5, room.depth > 1e-5 else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastSceneFitmentLogAt > 2.0 else { return }
+        lastSceneFitmentLogAt = now
+
+        guard let metric = primaryBboxMonocularSizeMeters(
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            arDepthSnapshot: arDepthSnapshot
+        ) else { return }
+        let furnMeters = metric.size
+
+        // Pinhole path is in meters; room raycast is in splat scene units — align before ratio checks.
+        guard let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
+            furnitureMeters: furnMeters,
+            roomMetersWidth: roomWidthMeters,
+            roomMetersHeight: roomHeightMeters,
+            roomMetersDepth: roomDepthMeters,
+            roomRaycastScene: room
+        ) else { return }
+
+        logFurnitureFitSize(
+            "phase=fitment_abs furniture_su=\(String(format: "%.3f", furnSu.width))×\(String(format: "%.3f", furnSu.height))×\(String(format: "%.3f", furnSu.depth)) " +
+            "room_su=\(String(format: "%.3f", room.width))×\(String(format: "%.3f", room.height))×\(String(format: "%.3f", room.depth)) " +
+            "pinhole_m=\(String(format: "%.3f", furnMeters.width))×\(String(format: "%.3f", furnMeters.height))×\(String(format: "%.3f", furnMeters.depth)) " +
+            "pipeline=\(metric.pipeline)"
+        )
+
+        _ = FitmentCheck.check(furniture: furnSu, room: room)
+        _ = OverlayScale.compute(furniture: furnSu, room: room)
+    }
+
+    /// ONNX-style pipeline (stretch, NMS, primary, mask) using Core ML ``mlModel`` (parity with Android preprocessing).
+    private func processFrameOnnxStyleCoreML(
+        processBuffer: CVPixelBuffer,
+        model: MLModel,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        frameStart: Date
+    ) {
         let bufW = CVPixelBufferGetWidth(processBuffer)
         let bufH = CVPixelBufferGetHeight(processBuffer)
         let isLandscape = bufW > bufH
 
-        // Keep device orientation for final display rotation (portrait UI)
-        let deviceOrientation = currentDeviceOrientation
+        let modelInputSize = YoloEImageInference.modelInputSize(for: model)
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
-            logDebug("⏱️ FRAME START @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
-            logDebug("⏱️ Buffer: \(bufW)x\(bufH), isLandscape: \(isLandscape), device: \(deviceOrientation.rawValue)")
+            logDebug("⏱️ ONNX-STYLE + CORE ML @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
+            logDebug("⏱️ Buffer: \(bufW)x\(bufH) → stretch \(modelInputSize)x\(modelInputSize), isLandscape: \(isLandscape)")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
-        // Determine model's expected input size from input description
-        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
-        let modelInputSize: Int
-        if let imageConstraint = imageInputDesc?.imageConstraint {
-            modelInputSize = imageConstraint.pixelsWide
-            if debugMode {
-                logDebug("📐 Model expects input size: \(modelInputSize)x\(imageConstraint.pixelsHigh)")
-            }
-        } else {
-            modelInputSize = 1280  // Fallback to default
-            if debugMode {
-                logDebug("📐 Using default input size: \(modelInputSize)")
-            }
-        }
-
-        // STAGE 1: Preprocess (resize + input prep)
-        let t1 = Date()
         setProgress(0.15, text: "Preprocessing…")
-
-        guard let sq = resizeToSquare(processBuffer, size: modelInputSize) else {
-            if debugMode { logDebug("❌ STAGE 1 FAILED: Resize to square") }
+        let t1 = Date()
+        guard let stretched = resizeStretchToSquare(processBuffer, size: modelInputSize) else {
+            if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: stretch resize") }
             resetProcessingFlag()
             return
         }
-        let resizeGain = sq.gain
-        let padX = sq.padX        // Integer - exact pixel offset
-        let padY = sq.padY        // Integer - exact pixel offset
-        let contentW = sq.newW    // Integer - exact content width in model space
-        let contentH = sq.newH    // Integer - exact content height in model space
-
-        // Debug landscape letterbox parameters
-        if debugMode && isLandscape {
-            logDebug("🔶 LANDSCAPE: buf=\(bufW)x\(bufH), gain=\(resizeGain), pad=(\(padX),\(padY)), content=\(contentW)x\(contentH)")
+        if debugMode {
+            logDebug("⏱️ ONNX-STYLE STAGE 1 - Preprocess (stretch): \(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms")
         }
 
-        // Check if model expects Image or MultiArray input
         let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
         let expectsImage = inputDesc?.type == .image
 
         let inputProvider: MLFeatureProvider
         if expectsImage {
-            guard let imageValue = MLFeatureValue(pixelBuffer: sq.buffer) as MLFeatureValue?,
+            guard let imageValue = MLFeatureValue(pixelBuffer: stretched) as MLFeatureValue?,
                   let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
-                if debugMode { logDebug("❌ STAGE 1 FAILED: Input prep") }
+                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep") }
                 resetProcessingFlag()
                 return
             }
             inputProvider = provider
         } else {
-            guard let inputArray = pixelBufferToMLMultiArray(sq.buffer),
+            guard let inputArray = pixelBufferToMLMultiArray(stretched),
                   let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
-                if debugMode { logDebug("❌ STAGE 1 FAILED: Input prep") }
+                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep (MultiArray)") }
                 resetProcessingFlag()
                 return
             }
             inputProvider = provider
         }
 
-        let t1End = Date()
-        if debugMode {
-            logDebug("⏱️ STAGE 1 - Preprocess: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
-        }
-
-        // STAGE 2: Model inference
-        let t2 = Date()
         setProgress(0.40, text: "Running model…")
-
+        let t2 = Date()
         guard let output = try? model.prediction(from: inputProvider) else {
-            if debugMode { logDebug("❌ STAGE 2 FAILED: Model inference") }
+            if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 2 FAILED: Model inference") }
             resetProcessingFlag()
             return
         }
-
-        let t2End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 2 - Inference: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
-            logMemory("AFTER INFERENCE")
+            logDebug("⏱️ ONNX-STYLE STAGE 2 - Inference (Core ML): \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
+            logMemory("AFTER ONNX-STYLE Core ML INFERENCE")
         }
 
-        // STAGE 3: Parse outputs (tensors + detections + prototypes)
-        let t3 = Date()
-
-        // Try model output names for yoloe-11l
-        let detArray: MLMultiArray
-        let protoArray: MLMultiArray
-
-        if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
-           let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
-            // yoloe-11l model outputs (export with proper cv3/cv4 heads)
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2374/var_2412)") }
-        } else if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
-                  let proto = output.featureValue(for: "p")?.multiArrayValue {
-            // yoloe-11l model outputs (old export format)
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2497/p)") }
-        } else if let det = output.featureValue(for: "detections")?.multiArrayValue,
-           let proto = output.featureValue(for: "protos")?.multiArrayValue {
-            // Generic named outputs fallback
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using generic output tensors (detections/protos)") }
-        } else {
+        guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
             if debugMode {
-                logDebug("❌ STAGE 4 FAILED: Missing output tensors")
-                // Log available outputs for debugging
+                logDebug("❌ ONNX-STYLE Core ML: Missing output tensors")
                 let availableOutputs = output.featureNames.joined(separator: ", ")
                 logDebug("   Available outputs: \(availableOutputs)")
             }
             resetProcessingFlag()
             return
         }
-        
-        // Debug: print actual tensor shapes
-        let dim1 = detArray.shape[1].intValue
-        let dim2 = detArray.shape[2].intValue
-        if debugMode {
-            logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
-            logDebug("   protoArray shape: \(protoArray.shape.map { $0.intValue })")
-        }
 
-        // Detect tensor format:
-        // - Old format: [1, 144, 8400] where 144 = features (4+numClasses+32), 8400 = anchors
-        // - New format: [1, 300, 38] where 300 = detections, 38 = features per detection
-        // Heuristic: if dim2 is small (< 100), it's the new format with features per detection
-        let isNewFormat = dim2 < 100
+        processFrameOnnxStyleCommon(
+            processBuffer: processBuffer,
+            arDepthSnapshot: arDepthSnapshot,
+            frameStart: frameStart,
+            detArray: pair.det,
+            protoArray: pair.proto,
+            modelSide: modelInputSize,
+            stage2DebugLabel: "Core ML"
+        )
+    }
 
-        if debugMode {
-            logDebug("   Format detected: \(isNewFormat ? "NEW (detections×features)" : "OLD (features×anchors)")")
-        }
-
-        let totalCount = detArray.count
-
-        // Model must be float32 - no allocation needed, just alias CoreML's buffer
-        guard detArray.dataType == .float32 else {
-            logDebug("❌ STAGE 3 FAILED: Model must output float32, got \(detArray.dataType)")
-            resetProcessingFlag()
-            return
-        }
-
-        let detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
-
-        setProgress(0.55, text: "Parsing detections…")
-
-        var allDets: [UnionDet] = []
-        allDets.reserveCapacity(512)
-
-        if isNewFormat {
-            // NEW FORMAT: [1, numDetections, featuresPerDetection]
-            // featuresPerDetection = 38 = 4 (bbox) + 1 (conf) + 1 (class) + 32 (mask coeffs)
-            // IMPORTANT: YOLO-E outputs bbox in XYXY format (x1,y1,x2,y2), NOT XYWH!
-            let numDetections = dim1
-            let featuresPerDet = dim2
-
-            // IMPORTANT: Use actual strides from MLMultiArray, not shape dimensions!
-            // Shape [1, 300, 38] might have strides [14400, 48, 1] due to memory alignment
-            let strides = detArray.strides.map { $0.intValue }
-            let detStride = strides.count >= 2 ? strides[1] : featuresPerDet  // stride between detections
-            let featStride = strides.count >= 3 ? strides[2] : 1              // stride between features
-
-            if debugMode {
-                logDebug("   NEW FORMAT: numDetections=\(numDetections), featuresPerDet=\(featuresPerDet)")
-                logDebug("   Strides: \(strides), detStride=\(detStride), featStride=\(featStride)")
-                // Print first detection's raw values using correct strides
-                if numDetections > 0 {
-                    var rawVals: [Float] = []
-                    for f in 0..<min(10, featuresPerDet) {
-                        let idx = 0 * detStride + f * featStride
-                        rawVals.append(detBuf[idx])
-                    }
-                    logDebug("   First det raw[0..9] (xyxy,conf,cls,...): \(rawVals.map { String(format: "%.2f", $0) })")
-                }
-            }
-
-            // Layout: [x1, y1, x2, y2, conf, class_id, coeff0..coeff31]
-            // YOLO-E post-NMS export: bbox in xyxy corner format
-
-            for detIdx in 0..<numDetections {
-                // Use actual strides for memory access
-                let base = detIdx * detStride
-
-                // Read xyxy corner coordinates
-                let x1 = detBuf[base + 0 * featStride]
-                let y1 = detBuf[base + 1 * featStride]
-                let x2 = detBuf[base + 2 * featStride]
-                let y2 = detBuf[base + 3 * featStride]
-                let confidence = detBuf[base + 4 * featStride]
-                let classIdxFloat = detBuf[base + 5 * featStride]
-
-                // Skip if any value is NaN or Inf
-                guard x1.isFinite, y1.isFinite, x2.isFinite, y2.isFinite, confidence.isFinite, classIdxFloat.isFinite else { continue }
-
-                // Convert xyxy to xywh (center format)
-                let w = x2 - x1
-                let h = y2 - y1
-                let x = (x1 + x2) / 2.0  // center x
-                let y = (y1 + y2) / 2.0  // center y
-
-                // Validate ranges - confidence should be 0-1, bbox should be reasonable
-                guard confidence > confidenceThreshold, confidence <= 1.0 else { continue }
-                guard w > 0, h > 0, w < 2000, h < 2000 else { continue }  // Max reasonable size for 1280 input
-
-                let classIdx = Int(classIdxFloat)
-
-                // Bounds checking for mask coefficients
-                var coeffs = [Float](repeating: 0, count: 32)
-                var validCoeffs = true
-                for k in 0..<32 {
-                    let coeffIndex = base + (6 + k) * featStride
-                    if coeffIndex < totalCount {
-                        let val = detBuf[coeffIndex]
-                        if val.isFinite {
-                            coeffs[k] = val
-                        } else {
-                            if debugMode { logDebug("⚠️ Coefficient NaN/Inf for k=\(k), detIdx=\(detIdx)") }
-                            validCoeffs = false
-                            break
-                        }
-                    } else {
-                        if debugMode { logDebug("⚠️ Coefficient bounds check failed for k=\(k), detIdx=\(detIdx)") }
-                        validCoeffs = false
-                        break
-                    }
-                }
-
-                guard validCoeffs else { continue }
-                guard classIdx >= 0, !clsToIgnore.contains(classIdx) else { continue }
-
-                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: confidence, classIdx: classIdx, coeffs: coeffs))
-            }
-        } else {
-            // OLD FORMAT: [1, numFeatures, numAnchors]
-            let numFeatures = dim1
-            let numAnchors = dim2
-            let numClasses = numFeatures - 4 - 32
-
-            if debugMode {
-                logDebug("   OLD FORMAT: numFeatures=\(numFeatures), numAnchors=\(numAnchors), numClasses=\(numClasses)")
-            }
-
-            guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
-                if debugMode { logDebug("❌ STAGE 6 FAILED: Invalid tensor dims for old format") }
-                resetProcessingFlag()
-                return
-            }
-
-            let stride = numAnchors
-            let coeffOffset = 4 + numClasses
-            var tempScores = [Float](repeating: 0, count: numClasses)
-
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-
-                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
-
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                blas_scopy(BLASInt(numClasses), basePtr, BLASInt(stride), &tempScores, 1)
-
-                var maxVal: Float = 0
-                var maxIdx: vDSP_Length = 0
-                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-
-                let classIdx = Int(maxIdx)
-
-                guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
-
-                var coeffs = [Float](repeating: 0, count: 32)
-                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
-
-                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
-            }
-        }
-        
-        if debugMode {
-            logDebug("   raw detections: \(allDets.count)")
-            for (i, d) in allDets.enumerated() {
-                logDebug("   [\(i)] \(className(d.classIdx)) (id:\(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) box=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h))")
-            }
-        }
-
-        if allDets.isEmpty {
-            if debugMode { logDebug("⚠️ No detections found") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
-            resetProcessingFlag()
-            return
-        }
-
-        // STAGE 3b: No NMS — use all raw detections for primary / multi-candidate stages.
-        let candidates = allDets
-        if debugMode {
-            logDebug("⏱️ STAGE 3b - candidates: \(candidates.count) (no NMS)")
-        }
-
-        setProgress(0.60, text: "Parsing prototypes…")
-
-        guard let protoInfo = parsePrototypes(protoArray) else {
-            if debugMode { logDebug("❌ STAGE 3 FAILED: Parse prototypes") }
-            resetProcessingFlag()
-            return
-        }
-        let planes = protoInfo.planes
-        let pH = protoInfo.height
-        let pW = protoInfo.width
-        let planeSize = pH * pW
-
-        let t3End = Date()
-        if debugMode {
-            logDebug("⏱️ STAGE 3 - Parse outputs: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms (\(allDets.count) dets, \(pW)x\(pH) protos)")
-        }
-
-        // STAGE 4: Select primary
-        // In two-stage mode: find 1280 detection matching 640's primary (same class, overlapping bbox)
-        // In single-stage mode: score = conf^1.5 * area_norm^1.2 * center_term
-        let t4 = Date()
-        setProgress(0.65, text: "Selecting primary…")
-
-        // Frame dimensions for normalization
-        let frameW = Float(modelInputSize)
-        let frameH = Float(modelInputSize)
-        let frameArea = frameW * frameH
-        let frameCx = frameW / 2
-        let frameCy = frameH / 2
-
-        var primaryIdx = -1
+    /// Primary index: conf^1.5 × areaNorm^0.8 × center^0.5 with min conf/area gates.
+    private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide: Int) -> Int? {
+        var bestIdx: Int?
         var maxScore: Float = -1
         let minConf: Float = 0.15
         let minAreaNorm: Float = 0.02
+        let frameArea = Float(modelSide * modelSide)
+        let frameW = Float(modelSide)
+        let frameH = Float(modelSide)
+        let frameCx = frameW / 2
+        let frameCy = frameH / 2
 
-        // Select primary using composite scoring: conf * area * center
         for (i, d) in candidates.enumerated() {
-            // Light filters
             let areaNorm = (d.w * d.h) / frameArea
-            if d.confidence < minConf || areaNorm < minAreaNorm { continue }
+            guard d.confidence >= minConf, areaNorm >= minAreaNorm else { continue }
 
-            // Center score: 1 at center, ~0 at corners (reduced weight so conf/area matter more)
             let dx = (d.x - frameCx) / frameCx
             let dy = (d.y - frameCy) / frameCy
             let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
             let centerScore = 1.0 - centerDist
 
-            // Composite: conf and area dominate; center has reduced influence (exponent 0.5)
             let confTerm = pow(d.confidence, 1.5)
             let areaTerm = pow(areaNorm, 0.8)
             let centerTerm = pow(max(0, centerScore), 0.5)
 
             let score = confTerm * areaTerm * centerTerm
-
-            if debugMode && score > 0.001 {
-                logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
-            }
-
             if score > maxScore {
                 maxScore = score
-                primaryIdx = i
+                bestIdx = i
             }
         }
+        return bestIdx
+    }
 
-        if primaryIdx < 0 {
-            if debugMode { logDebug("   ⚠️ No valid primary candidate") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
+    /// Shared postprocess after stretch + inference: detection list, NMS, primary selection, and Android-style bbox-limited proto mask (``FurnitureFitOnnxStylePipeline``).
+    private func processFrameOnnxStyleCommon(
+        processBuffer: CVPixelBuffer,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        frameStart: Date,
+        detArray: MLMultiArray,
+        protoArray: MLMultiArray,
+        modelSide: Int,
+        stage2DebugLabel: String
+    ) {
+        let bufW = CVPixelBufferGetWidth(processBuffer)
+        let bufH = CVPixelBufferGetHeight(processBuffer)
+        let isLandscape = bufW > bufH
+        let onnxSide = modelSide
+
+        let t3 = Date()
+        guard let protoInfo = parsePrototypes(protoArray) else {
+            if debugMode { logDebug("❌ ONNX-STYLE (\(stage2DebugLabel)): parse prototypes failed") }
+            resetProcessingFlag()
+            return
+        }
+        let planes = protoInfo.planes
+        let pW = protoInfo.width
+        let pH = protoInfo.height
+
+        // Detection list + NMS + primary: `confidenceThreshold`, `blacklist.json` → `clsToIgnore`, IoU 0.5, primary scoring.
+        let rawDetections = YoloEDetectionParser.parseDetections(
+            detArray: detArray,
+            confidenceThreshold: confidenceThreshold,
+            classBlacklist: clsToIgnore
+        )
+        YoloEDetectionParser.releaseF16Scratch()
+
+        if rawDetections.isEmpty {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse (Core ML thresholds + blacklist.json)") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
             resetProcessingFlag()
             return
         }
 
+        var candidates: [FurnitureFitDetection]
+        if rawDetections.count > 1 {
+            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
+            let capped = Array(sorted.prefix(100))
+            candidates = FurnitureFitNMS.apply(detections: capped, iouThreshold: 0.5)
+        } else {
+            candidates = rawDetections
+        }
+
+        candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
+        if candidates.isEmpty {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
+            resetProcessingFlag()
+            return
+        }
+
+        if debugMode {
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS IoU≤0.5, blacklist.json \(clsToIgnore.count) ids)")
+            for (i, d) in candidates.prefix(20).enumerated() {
+                logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
+            }
+        }
+
+        guard let primaryIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate (Core ML STAGE 4 gates)") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.resetOverlayScalesForEmptyMask()
+            }
+            resetProcessingFlag()
+            return
+        }
         let primary = candidates[primaryIdx]
-        let t4End = Date()
+        let maskDetections = FurnitureFitOnnxStylePipeline.collectMaskDetections(primaryIndex: primaryIdx, detections: candidates)
+
+        // Proto mask logits are only evaluated inside each detection bbox; expand **primary** only (explicit `primary`,
+        // not positional `[0]`) so legs/wheels get logits. Drop the unexpanded primary from the fusion list via IoU.
+        let expandedPrimaryForMask = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
+        let maskDetectionsForBuild = [expandedPrimaryForMask] + maskDetections.filter {
+            FurnitureFitIoU.calculate($0, primary) < 0.999 && !clsToIgnore.contains($0.classIdx)
+        }
+
+        var maskSmall = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMask(
+            planes: planes,
+            protoW: pW,
+            protoH: pH,
+            modelSide: Float(onnxSide),
+            detections: maskDetectionsForBuild
+        )
+        if furnitureFitUseMorphologicalCloseMask {
+            maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
+        }
+
+        // Core ML parity: clear proto mask outside **tight** primary rect (model space). Stops secondary-instance
+        // fusion from painting into the expanded compositing band beyond the primary box.
+        let protoScaleX = Float(pW) / Float(onnxSide)
+        let protoScaleY = Float(pH) / Float(onnxSide)
+        let protoPx1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScaleX)))
+        let protoPy1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScaleY)))
+        let protoPx2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScaleX)))
+        let protoPy2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScaleY)))
+        clipProtoPlanarMaskOutsideRect(
+            mask: &maskSmall,
+            protoW: pW,
+            protoH: pH,
+            clipPx1: protoPx1,
+            clipPy1: protoPy1,
+            clipPx2: protoPx2,
+            clipPy2: protoPy2
+        )
+
+        let scaleX = Float(bufW) / Float(onnxSide)
+        let scaleY = Float(bufH) / Float(onnxSide)
+        let tightFx1 = (primary.x - primary.w * 0.5) * scaleX
+        let tightFy1 = (primary.y - primary.h * 0.5) * scaleY
+        let tightFx2 = (primary.x + primary.w * 0.5) * scaleX
+        let tightFy2 = (primary.y + primary.h * 0.5) * scaleY
+        let primaryBx1 = max(0, Int(tightFx1))
+        let primaryBy1 = max(0, Int(tightFy1))
+        let primaryBx2 = min(bufW, Int(tightFx2))
+        let primaryBy2 = min(bufH, Int(tightFy2))
+
+        maybeLogSceneFitmentFromPrimaryBbox(
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2,
+            imageWidth: bufW,
+            imageHeight: bufH,
+            arDepthSnapshot: arDepthSnapshot
+        )
+
+        // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
+        // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
+        let bw = max(1, tightFx2 - tightFx1)
+        let bh = max(1, tightFy2 - tightFy1)
+        let compMarginW = bw * bboxExpandMargin
+        let compMarginH = bh * bboxExpandMargin
+        let compBx1 = max(0, Int(floor(tightFx1 - compMarginW)))
+        let compBy1 = max(0, Int(floor(tightFy1 - compMarginH)))
+        let compBx2 = min(bufW, Int(ceil(tightFx2 + compMarginW)))
+        let compBy2 = min(bufH, Int(ceil(tightFy2 + compMarginH)))
+
         if debugMode {
-            logDebug("⏱️ STAGE 4 - Select primary: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
-            logDebug("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
+            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
+            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] mask dets=\(maskDetections.count)")
+            logDebug("   🖼️ composite band (expanded): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
+            logDebug("   ✂️ proto mask clip (tight primary): [\(protoPx1),\(protoPy1)]→[\(protoPx2),\(protoPy2)] (proto \(pW)×\(pH))")
         }
 
-        // Estimate real-world furniture size: same scale on both axes to avoid aspect-ratio distortion.
-        // Camera buffer aspect (bufW/bufH) often differs from room aspect (roomW/roomH); using
-        // different metersPerPixelX/Y would stretch the bbox and make calibration wrong.
-        let imgWidthPx = primary.w / resizeGain
-        let imgHeightPx = primary.h / resizeGain
+        let normX1 = CGFloat(primaryBx1) / CGFloat(bufW)
+        let normY1 = CGFloat(primaryBy1) / CGFloat(bufH)
+        let normX2 = CGFloat(primaryBx2) / CGFloat(bufW)
+        let normY2 = CGFloat(primaryBy2) / CGFloat(bufH)
+        let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
+        let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
+        let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
+        let bboxWidthImagePx = Float(max(1, primaryBx2 - primaryBx1))
 
-        let metersPerPixelX = roomWidthMeters / Float(bufW)
-        let metersPerPixelY = roomHeightMeters / Float(bufH)
-        let metersPerPixel = min(metersPerPixelX, metersPerPixelY)
+        // Pixel-proportion measurement: furniture_px / buffer_px × room_meters.
+        let propWidthM = bboxWidthImagePx / Float(max(1, bufW)) * roomWidthMeters
+        let propHeightM = bboxHeightImagePx / Float(max(1, bufH)) * roomHeightMeters
 
-        var estimatedWidth = imgWidthPx * metersPerPixel
-        var estimatedHeight = imgHeightPx * metersPerPixel
-
-        // Ensure height > width for display (most furniture: height is the larger dimension)
-        if estimatedWidth > estimatedHeight {
-            swap(&estimatedWidth, &estimatedHeight)
+        // Pinhole/monocular measurement (same logic as phase=first, but every frame).
+        let provisionalFloorResult = floorContactSizingResult(
+            contactImageX: Float(primaryBx1 + primaryBx2) * 0.5,
+            contactImageY: Float(max(primaryBy1, primaryBy2 - 1)),
+            widthPixels: bboxWidthImagePx,
+            heightPixels: bboxHeightImagePx,
+            imageWidth: bufW,
+            imageHeight: bufH,
+            pipeline: "floor_contact_bbox_bottom_center"
+        )
+        let refinedFloorResult = refinedMaskFloorContactSizeMeters(
+            maskSmall: maskSmall,
+            protoW: pW,
+            protoH: pH,
+            bboxCenterImageX: Int(bboxCenterImageX),
+            imageWidth: bufW,
+            imageHeight: bufH
+        )
+        let finalMetricResult = refinedFloorResult?.metric ?? provisionalFloorResult?.metric
+        let provisionalContactY = max(primaryBy1, primaryBy2 - 1)
+        if let provisional = provisionalFloorResult {
+            let provisionalDist = provisional.metric.distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
+            let provisionalSizeLog =
+                "height_m=\(String(format: "%.3f", provisional.metric.size.height)) width_m=\(String(format: "%.3f", provisional.metric.size.width))"
+            let provisionalContactLog =
+                "contact_px=(\(Int(bboxCenterImageX)),\(provisionalContactY)) bbox_px=\(Int(bboxWidthImagePx))x\(Int(bboxHeightImagePx))"
+            let provisionalPitchLog =
+                "focal_px=\(String(format: "%.1f", provisional.focalPixels)) pitch_deg=\(String(format: "%.1f", provisional.effectivePitchDeg)) motion_pitch_deg=\(provisional.measuredPitchDeg.map { String(format: "%.1f", $0) } ?? "nil")"
+            logFurnitureFitSize(
+                "phase=floor_contact_provisional pipeline=\(provisional.metric.pipeline) depth_m=\(provisionalDist) " +
+                provisionalSizeLog + " " +
+                provisionalContactLog + " " +
+                provisionalPitchLog
+            )
+        } else {
+            logFurnitureFitSize(
+                "phase=floor_contact_provisional pipeline=floor_contact_bbox_bottom_center hit=false contact_px=(\(Int(bboxCenterImageX)),\(provisionalContactY))"
+            )
+        }
+        if let refined = refinedFloorResult {
+            let refinedDist = refined.metric.distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
+            let refinedSizeLog =
+                "height_m=\(String(format: "%.3f", refined.metric.size.height)) width_m=\(String(format: "%.3f", refined.metric.size.width))"
+            let refinedContactLog =
+                "contact_px=(\(refined.contactImageX),\(refined.contactImageY)) mask_px=\(Int(refined.widthPixels))x\(Int(refined.heightPixels))"
+            let refinedPitchLog =
+                "focal_px=\(String(format: "%.1f", refined.focalPixels)) pitch_deg=\(String(format: "%.1f", refined.effectivePitchDeg)) motion_pitch_deg=\(refined.measuredPitchDeg.map { String(format: "%.1f", $0) } ?? "nil")"
+            logFurnitureFitSize(
+                "phase=floor_contact_refined pipeline=\(refined.metric.pipeline) depth_m=\(refinedDist) " +
+                refinedSizeLog + " " +
+                refinedContactLog + " " +
+                refinedPitchLog
+            )
+        }
+        let pinholeTag: String
+        let pinholeWidthM: Float
+        let pinholeHeightM: Float
+        let pinholeDist: Float?
+        if let p = finalMetricResult {
+            pinholeTag = p.pipeline
+            pinholeWidthM = p.size.width
+            pinholeHeightM = p.size.height
+            pinholeDist = p.distanceMeters
+        } else {
+            pinholeTag = "unavail"
+            pinholeWidthM = 0
+            pinholeHeightM = 0
+            pinholeDist = nil
+        }
+        let distStr = pinholeDist.map { String(format: "%.2f", $0) } ?? "—"
+        let pinholeDepthNote: String
+        if pinholeTag.hasPrefix("floor_contact") {
+            pinholeDepthNote = "depth_m=\(distStr) (non-AR floor-contact depth estimate from object bottom)"
+        } else {
+            pinholeDepthNote = "depth_m=\(distStr)"
         }
 
-        if debugMode {
-            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px, m/px: \(String(format: "%.6f", metersPerPixel))")
-            logDebug("📏 [Sizing] Furniture: \(Int(imgWidthPx))×\(Int(imgHeightPx))px → \(String(format: "%.2f", estimatedWidth))×\(String(format: "%.2f", estimatedHeight))m")
+        let arLabel: String
+        let arTrackingLabel: String
+        let planeAnchorCount: Int
+        if let frame = arSession.currentFrame {
+            switch frame.camera.trackingState {
+            case .normal: arTrackingLabel = "normal"
+            case .limited(let reason):
+                switch reason {
+                case .initializing: arTrackingLabel = "limited(init)"
+                case .relocalizing: arTrackingLabel = "limited(reloc)"
+                case .excessiveMotion: arTrackingLabel = "limited(motion)"
+                case .insufficientFeatures: arTrackingLabel = "limited(features)"
+                @unknown default: arTrackingLabel = "limited(unknown)"
+                }
+            case .notAvailable: arTrackingLabel = "notAvailable"
+            @unknown default: arTrackingLabel = "unknown"
+            }
+            planeAnchorCount = frame.anchors.compactMap({ $0 as? ARPlaneAnchor }).count
+        } else {
+            arTrackingLabel = "noFrame"
+            planeAnchorCount = 0
         }
 
-        DispatchQueue.main.async {
-            self.onFurnitureSizeEstimated?(estimatedWidth, estimatedHeight)
+        if hasARKitAssistedSizingPayload && arAssistedScaleValid {
+            arLabel = "valid(\(String(format: "%.3f", autoScaleFromAR)))"
+        } else if hasARKitAssistedSizingPayload {
+            arLabel = "pending"
+        } else {
+            arLabel = "off"
         }
 
-        // STAGE 5: Filter candidates by mask overlap with primary (5a prune, 5b bbox dedupe, 5c mask overlap).
-        // When disabled, composite uses primary detection only (same as early single-object behavior).
-        var kept2: [UnionDet]
-        if !useMultiCandidateStage5 {
-            kept2 = [primary]
-            if debugMode {
-                logDebug("⏱️ STAGE 5 SKIPPED (useMultiCandidateStage5=false), kept2=primary only")
+        let raycastSuStr: String
+        if let r = roomRaycastSceneDimensions {
+            raycastSuStr =
+                "\(String(format: "%.3f", r.width))×\(String(format: "%.3f", r.height))×\(String(format: "%.3f", r.depth))"
+        } else {
+            raycastSuStr = "—"
+        }
+
+        logFurnitureFitSize(
+            "phase=all " +
+            "proportion=\(String(format: "%.3f", propWidthM))×\(String(format: "%.3f", propHeightM))m " +
+            "floor_height=\(String(format: "%.3f", pinholeWidthM))×\(String(format: "%.3f", pinholeHeightM))m(\(pinholeTag) \(pinholeDepthNote); H/W from bbox_or_mask × focal / floor_contact_depth) " +
+            "ar=\(arLabel) tracking=\(arTrackingLabel) planes=\(planeAnchorCount) " +
+            "room_display_m=\(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))×\(String(format: "%.2f", roomDepthMeters)) " +
+            "raycast_su=\(raycastSuStr) " +
+            "bbox=\(Int(bboxWidthImagePx))×\(Int(bboxHeightImagePx))px buf=\(bufW)×\(bufH) " +
+            "ratioW=\(String(format: "%.3f", bboxWidthImagePx / Float(max(1, bufW)))) ratioH=\(String(format: "%.3f", bboxHeightImagePx / Float(max(1, bufH))))"
+        )
+
+        let auditNow = CFAbsoluteTimeGetCurrent()
+        if auditNow - lastPinholeDepthAuditAt >= 1.75 {
+            lastPinholeDepthAuditAt = auditNow
+            let deviceLidar = QualitySettings.supportsLiDARSceneDepth
+            let snapHasMap = arDepthSnapshot?.depthMap != nil
+            let hasArFrame = arSession.currentFrame != nil
+            let auditTracking: String = {
+                guard let frame = arSession.currentFrame else { return "no_frame" }
+                switch frame.camera.trackingState {
+                case .normal: return "normal"
+                case .limited: return "limited"
+                case .notAvailable: return "notAvailable"
+                @unknown default: return "unknown"
+                }
+            }()
+            let meaning: String
+            if pinholeTag.hasPrefix("floor_contact_bbox_bottom_center") {
+                meaning = "FLOOR_DEPTH_ESTIMATE: provisional non-AR floor-contact depth from bbox bottom-center."
+            } else if pinholeTag.hasPrefix("floor_contact_mask_contact") {
+                meaning = "FLOOR_DEPTH_ESTIMATE: refined non-AR floor-contact depth from lowest segmented contact point."
+            } else {
+                meaning = "no floor-contact estimate available"
+            }
+            logFurnitureFitSize(
+                "phase=floor_contact_audit device_has_LiDAR=\(deviceLidar) ar_depth_companion_running=\(isARDepthCompanionSessionRunning) " +
+                "snapshot_depthMap_present=\(snapHasMap) ar_currentFrame=\(hasArFrame) tracking=\(auditTracking) " +
+                "pipeline=\(pinholeTag) dist_used_m=\(distStr) → \(meaning)"
+            )
+        }
+
+        let maskHasForeground = maskSmall.contains(where: { $0 > 0 })
+        let firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)?
+        if maskHasForeground {
+            let bboxW = CGFloat(max(1, primaryBx2 - primaryBx1))
+            let bboxH = CGFloat(max(1, primaryBy2 - primaryBy1))
+            if let p = finalMetricResult {
+                firstFrameMeters = (p.size.width, p.size.height, p.pipeline, p.distanceMeters)
+            } else {
+                let sizingForFirstFrame = FurnitureSizingCalculator(
+                    roomWidth: roomWidthMeters,
+                    roomHeight: roomHeightMeters,
+                    viewWidth: CGFloat(bufW),
+                    viewHeight: CGFloat(bufH)
+                )
+                let legacy = sizingForFirstFrame.estimateRealWorldSize(
+                    detectedWidthPixels: bboxW,
+                    detectedHeightPixels: bboxH
+                )
+                firstFrameMeters = (legacy.widthMeters, legacy.heightMeters, "legacy_bbox_times_room", nil)
             }
         } else {
-
-        let t5 = Date()
-
-        // Primary bbox edges for encompasses check
-        let origPX1 = primary.x - primary.w * 0.5
-        let origPY1 = primary.y - primary.h * 0.5
-        let origPX2 = primary.x + primary.w * 0.5
-        let origPY2 = primary.y + primary.h * 0.5
-
-        // 10% margin commented out: use primary bbox only for intersect check
-        // let primaryMarginW = primary.w * 0.10
-        // let primaryMarginH = primary.h * 0.10
-        // let expandedPX1 = origPX1 - primaryMarginW
-        // let expandedPY1 = origPY1 - primaryMarginH
-        // let expandedPX2 = origPX2 + primaryMarginW
-        // let expandedPY2 = origPY2 + primaryMarginH
-
-        // Helper: check if candidate bbox fully encompasses primary bbox
-        // (indicates background/room detection that wraps the primary object)
-        let encompassTolerance: Float = 2.0  // pixels tolerance for floating-point noise
-        func bboxEncompassesPrimary(candX1: Float, candY1: Float, candX2: Float, candY2: Float) -> Bool {
-            return candX1 <= origPX1 + encompassTolerance &&
-                   candY1 <= origPY1 + encompassTolerance &&
-                   candX2 >= origPX2 - encompassTolerance &&
-                   candY2 >= origPY2 - encompassTolerance
+            firstFrameMeters = nil
         }
 
-        var prunedCandidates: [(idx: Int, det: UnionDet)] = []
-        let minCandConf: Float = 0.1
-
-        for (i, d) in candidates.enumerated() {
-            if i == primaryIdx { continue }
-
-            // Confidence filter
-            if d.confidence < minCandConf { continue }
-
-            // Candidate bbox corners
-            let dx1 = d.x - d.w * 0.5
-            let dy1 = d.y - d.h * 0.5
-            let dx2 = d.x + d.w * 0.5
-            let dy2 = d.y + d.h * 0.5
-
-            // Skip if candidate bbox fully encompasses primary (background/room detection)
-            if bboxEncompassesPrimary(candX1: dx1, candY1: dy1, candX2: dx2, candY2: dy2) {
-                if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox encompasses primary")
-                }
-                continue
-            }
-
-            // Intersect check: primary bbox only (10% margin commented out)
-            let px1 = origPX1
-            let py1 = origPY1
-            let px2 = origPX2
-            let py2 = origPY2
-            let intersects = !(dx2 < px1 || dx1 > px2 || dy2 < py1 || dy1 > py2)
-            if !intersects {
-                if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary")
-                }
-                continue
-            }
-
-            prunedCandidates.append((i, d))
-        }
-
-        let t5a = Date()
-        if debugMode {
-            let pruneMs = String(format: "%.2f", t5a.timeIntervalSince(t5) * 1000)
-            logDebug("⏱️ STAGE 5a - Prune: \(pruneMs) ms, \(candidates.count - 1) → \(prunedCandidates.count) candidates")
-        }
-
-        // STAGE 5b: Bbox-only dedupe to get a small set of non-duplicate candidates
-
-        // Bbox IoU helper for cheap deduplication gate
-        func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
-            let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
-            let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
-            let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
-            let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
-            let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
-            let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
-            let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
-            let inter = iw * ih
-            let aArea = a.w * a.h, bArea = b.w * b.h
-            let uni = aArea + bArea - inter
-            return uni > 0 ? inter / uni : 0
-        }
-
-        let bboxDupeThreshold: Float = 0.7
-        var bboxKept: [(idx: Int, det: UnionDet)] = []
-
-        if prunedCandidates.isEmpty {
-            if debugMode { logDebug("   No candidates to check after pruning") }
+        if isUsingARCameraPath {
+            scheduleDebouncedAssistedMeasurement(
+                primaryClassIdx: primary.classIdx,
+                bboxMinX: primaryBx1,
+                bboxMinY: primaryBy1,
+                bboxMaxX: primaryBx2,
+                bboxMaxY: primaryBy2,
+                bboxCenterImageX: bboxCenterImageX,
+                bboxCenterImageY: bboxCenterImageY,
+                bboxHeightImagePx: bboxHeightImagePx,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                arDepthSnapshot: arDepthSnapshot
+            )
         } else {
-            for candPair in prunedCandidates {
-                let origIdx = candPair.idx
-                let d = candPair.det
-
-                // Reject if candidate is too large compared to primary (likely background/room)
-                let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
-                if tooLarge {
-                    if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE (bbox)") }
-                    continue
-                }
-
-                var shouldSkip = false
-                var replaceIndex: Int? = nil
-
-                // Compare against primary first (never replace primary)
-                let iouWithPrimary = bboxIoU(d, primary)
-                if iouWithPrimary > bboxDupeThreshold {
-                    if debugMode {
-                        let iouPct = String(format: "%.1f", iouWithPrimary * 100)
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE OF PRIMARY (bbox IoU=\(iouPct)%)")
-                    }
-                    shouldSkip = true
-                } else {
-                    // Compare with already kept non-primary candidates
-                    for (idx, keptPair) in bboxKept.enumerated() {
-                        let iou = bboxIoU(d, keptPair.det)
-                        if iou > bboxDupeThreshold {
-                            // Keep the higher-confidence box within this IoU cluster
-                            if d.confidence > keptPair.det.confidence {
-                                replaceIndex = idx
-                            } else {
-                                shouldSkip = true
-                            }
-                            if debugMode {
-                                let iouPct = String(format: "%.1f", iou * 100)
-                                logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(iouPct)%)")
-                            }
-                            break
-                        }
-                    }
-                }
-
-                if shouldSkip { continue }
-                if let idx = replaceIndex {
-                    bboxKept[idx] = candPair
-                } else {
-                    bboxKept.append(candPair)
-                }
+            DispatchQueue.main.async { [weak self] in
+                self?.updateAssistedOverlayScale(
+                    primaryClassIdx: primary.classIdx,
+                    bboxMinX: primaryBx1,
+                    bboxMinY: primaryBy1,
+                    bboxMaxX: primaryBx2,
+                    bboxMaxY: primaryBy2,
+                    bboxCenterImageX: bboxCenterImageX,
+                    bboxCenterImageY: bboxCenterImageY,
+                    bboxHeightImagePx: bboxHeightImagePx,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    arDepthSnapshot: arDepthSnapshot
+                )
             }
         }
-
-        // STAGE 5c: Apply mask-overlap gate only on the small bboxKept set (final remaining detections)
-
-        // Build primary logits into scratch buffer (reused every frame)
-        ensureFloatCapacity(&scratchPrimaryLogits, count: planeSize)
-
-        planes.withUnsafeBufferPointer { planesPtr in
-            primary.coeffs.withUnsafeBufferPointer { xPtr in
-                scratchPrimaryLogits.withUnsafeMutableBufferPointer { yPtr in
-                    blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
-                                              A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
-                                              x: xPtr.baseAddress!, incx: 1,
-                                              beta: 0.0, y: yPtr.baseAddress!, incy: 1)
-                }
-            }
-        }
-
-        // Count primary mask area
-        var primaryMaskArea = 0
-        for i in 0..<planeSize {
-            if scratchPrimaryLogits[i] > 0 { primaryMaskArea += 1 }
-        }
-
-        if debugMode {
-            logDebug("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
-            logDebug("      mask pixels: \(primaryMaskArea)")
-        }
-
-        // Final result container: always include primary; add candidates that pass mask-overlap gate
-        kept2 = [primary]
-
-        if !bboxKept.isEmpty {
-            // Scratch buffer for candidate logits (reused per candidate)
-            ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
-
-            // Keep detection if at least 5% of candidate mask lies on primary mask
-            let minMaskOverlap: Float = 0.05
-
-            planes.withUnsafeBufferPointer { planesPtr in
-                scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
-
-                    for candPair in bboxKept {
-                        let origIdx = candPair.idx
-                        let d = candPair.det
-
-                        // 1. Compute candidate logits: tmp = planes^T * coeffs
-                        scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
-                            d.coeffs.withUnsafeBufferPointer { xPtr in
-                                blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
-                                                          A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
-                                                          x: xPtr.baseAddress!, incx: 1,
-                                                          beta: 0.0, y: yPtr.baseAddress!, incy: 1)
-                            }
-                        }
-
-                        // 2. Compute area & intersection with primary in a single pass
-                        var area = 0
-                        var inter = 0
-
-                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
-                            for px in 0..<planeSize {
-                                if cPtr[px] > 0 {
-                                    area &+= 1
-                                    if pPtr[px] > 0 { inter &+= 1 }
-                                }
-                            }
-                        }
-
-                        if area == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) area=0") }
-                            continue
-                        }
-
-                        if inter == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap") }
-                            continue
-                        }
-
-                        // Require mask-of-object to lie mostly on primary (e.g. ≥ 80% of candidate mask pixels on primary mask)
-                        let overlapFrac = Float(inter) / Float(area)
-                        if overlapFrac < minMaskOverlap {
-                            if debugMode {
-                                let pct = String(format: "%.1f", overlapFrac * 100)
-                                let minPct = Int(minMaskOverlap * 100)
-                                logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) mask overlap=\(pct)% (<\(minPct)%)")
-                            }
-                            continue
-                        }
-
-                        kept2.append(d)
-                        if debugMode {
-                            let pct = String(format: "%.1f", overlapFrac * 100)
-                            logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(pct)% bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
-                        }
-                    }
-                }
-            }
-        } else {
-            if debugMode { logDebug("   No non-primary candidates after bbox dedupe") }
-        }
-
-        let t5End = Date()
-        if debugMode {
-            let filterMs = String(format: "%.2f", t5End.timeIntervalSince(t5a) * 1000)
-            logDebug("⏱️ STAGE 5b/5c - Filter (bbox+mask): \(filterMs) ms, kept=\(kept2.count)")
-            logMemory("AFTER STAGE 5b/5c")
-        }
-
-        } // end useMultiCandidateStage5
-
-        if kept2.isEmpty {
-            if debugMode { logDebug("⚠️ No kept detections") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
-            resetProcessingFlag()
-            return
-        }
-
-        // STAGE 6: Build mask (union bbox + composite)
-        let t6 = Date()
-
-        var ux1: Float = .greatestFiniteMagnitude
-        var uy1: Float = .greatestFiniteMagnitude
-        var ux2: Float = -.greatestFiniteMagnitude
-        var uy2: Float = -.greatestFiniteMagnitude
-
-        for d in kept2 {
-            ux1 = min(ux1, d.x - d.w * 0.5)
-            uy1 = min(uy1, d.y - d.h * 0.5)
-            ux2 = max(ux2, d.x + d.w * 0.5)
-            uy2 = max(uy2, d.y + d.h * 0.5)
-        }
-
-        let origW = CVPixelBufferGetWidth(processBuffer)
-        let origH = CVPixelBufferGetHeight(processBuffer)
-
-        // Convert Int pad values to Float for bbox calculations
-        let padXf = Float(padX)
-        let padYf = Float(padY)
-
-        var bx1 = Int(round((ux1 - padXf) / resizeGain))
-        var by1 = Int(round((uy1 - padYf) / resizeGain))
-        var bx2 = Int(round((ux2 - padXf) / resizeGain))
-        var by2 = Int(round((uy2 - padYf) / resizeGain))
-
-        bx1 = max(0, min(origW - 1, bx1))
-        by1 = max(0, min(origH - 1, by1))
-        bx2 = max(0, min(origW, bx2))
-        by2 = max(0, min(origH, by2))
-
-        let t6a = Date()
-        if debugMode {
-            let unionMs = String(format: "%.2f", t6a.timeIntervalSince(t6) * 1000)
-            logDebug("⏱️ STAGE 6a - Union bbox: \(unionMs) ms")
-            logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
-        }
-
-        // Compute PRIMARY bbox in image coordinates (for clipping mask later)
-        // Always use 1280 model's primary bbox (yoloe-11l-seg-pf gave stable results)
-        let primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain)))
-        let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain)))
-        let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain)))
-        let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain)))
-        if debugMode {
-            logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
-        }
-
-        // Store primary bbox in normalized coordinates (0-1) for gesture hit testing
-        let normX1 = CGFloat(primaryBx1) / CGFloat(origW)
-        let normY1 = CGFloat(primaryBy1) / CGFloat(origH)
-        let normX2 = CGFloat(primaryBx2) / CGFloat(origW)
-        let normY2 = CGFloat(primaryBy2) / CGFloat(origH)
         DispatchQueue.main.async {
             let viewW = self.maskImageView.bounds.width
             let viewH = self.maskImageView.bounds.height
@@ -1489,555 +2231,644 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 width: (normX2 - normX1) * viewW,
                 height: (normY2 - normY1) * viewH
             )
-            logDebug("👆 [setBbox] viewSize=\(viewW)x\(viewH) bbox=\(self.primaryBboxInView)")
-        }
-
-        // Helper: Build full-resolution mask from current kept detections
-        func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            // Compute per-pixel max logits across detections
-            var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
-
-            let M = BLASInt(planeSize)
-            let K = BLASInt(32)
-            let alpha: Float = 1
-            let beta: Float = 0
-
-            // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
-            let smallN = detections.count <= 8
-
-            if smallN {
-                var tmp = [Float](repeating: 0, count: planeSize)
-
-                for d in detections {
-                    // tmp = planes^T * coeffs using transposed SGEMV (no matrix copy needed)
-                    planes.withUnsafeBufferPointer { planesPtr in
-                        d.coeffs.withUnsafeBufferPointer { xPtr in
-                            tmp.withUnsafeMutableBufferPointer { yPtr in
-                                blas_sgemv_rowmajor_trans(m: K, n: M, alpha: alpha, A: planesPtr.baseAddress!, lda: M, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
-                            }
-                        }
-                    }
-
-                    // maxLogits = max(maxLogits, tmp) (vectorized)
-                    maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                        tmp.withUnsafeBufferPointer { tPtr in
-                            vDSP_vmax(mPtr.baseAddress!, 1, tPtr.baseAddress!, 1,
-                                      mPtr.baseAddress!, 1, vDSP_Length(planeSize))
-                        }
-                    }
-                }
-            } else {
-                // Larger N: keep SGEMM batching (your current approach), but avoid tiny per-pixel vDSP_maxv calls.
-                let batchSize = 64
-                var bStart = 0
-
-                while bStart < detections.count {
-                    let bEnd = min(detections.count, bStart + batchSize)
-                    let Bn = bEnd - bStart
-                    let N = BLASInt(Bn)
-
-                    // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
-                    var B = [Float](repeating: 0, count: 32 * Bn)
-                    for j in 0..<Bn {
-                        let coeffs = detections[bStart + j].coeffs
-                        for k in 0..<32 { B[k * Bn + j] = coeffs[k] }
-                    }
-
-                    // C is M x N (row-major), each row is contiguous length N
-                    var C = [Float](repeating: 0, count: planeSize * Bn)
-
-                    // C = planes^T * B using transposed SGEMM (no matrix copy needed)
-                    planes.withUnsafeBufferPointer { planesPtr in
-                        B.withUnsafeBufferPointer { bPtr in
-                            C.withUnsafeMutableBufferPointer { cPtr in
-                                let lda = M  // leading dim of planes (32 x planeSize)
-                                let ldb = N
-                                let ldc = N
-                                blas_sgemm_rowmajor_transA(m: M, n: N, k: K, alpha: alpha, A: planesPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: beta, C: cPtr.baseAddress!, ldc: ldc)
-                            }
-                        }
-                    }
-
-                    // Reduce C row-wise into maxLogits (tight loop; N is small-ish, so a simple loop is fine)
-                    C.withUnsafeBufferPointer { cPtr in
-                        maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                            for px in 0..<planeSize {
-                                let row = cPtr.baseAddress!.advanced(by: px * Bn)
-                                var localMax = row[0]
-                                if Bn > 1 {
-                                    for j in 1..<Bn { if row[j] > localMax { localMax = row[j] } }
-                                }
-                                if localMax > mPtr[px] { mPtr[px] = localMax }
-                            }
-                        }
-                    }
-
-                    bStart = bEnd
-                }
-            }
-
-            // Stage 14: Threshold -> build maskSmall and positive count
-            var maskSmall = [UInt8](repeating: 0, count: planeSize)
-            var positiveCount = 0
-            for i in 0..<planeSize {
-                if maxLogits[i] > 0.0 {
-                    maskSmall[i] = 255
-                    positiveCount += 1
-                }
-            }
-
-            // Stage 15: Upscale + crop back (morphology disabled)
-            let maskFull = upscaleMask(maskSmall: maskSmall,
-                                       pW: pW, pH: pH,
-                                       modelInput: modelInputSize,
-                                       origW: origW, origH: origH,
-                                       padX: padX, padY: padY,
-                                       contentW: contentW, contentH: contentH)
-
-            return (maskFull, positiveCount)
-        }
-
-        // Helper: Build full-resolution mask using Metal for the heavy logits->maskSmall step
-        // Logic preserved: maskSmall[i] = 255 iff maxLogit > 0.0, then reuse the same upscaleMask() path.
-        func buildFullMaskMetal(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            guard let mm = metalMaskLogic else {
-                return buildFullMask(from: detections)
-            }
-            let detCount = detections.count
-            if detCount == 0 {
-                return ([UInt8](repeating: 0, count: origW * origH), 0)
-            }
-            // Flatten coeffs (detCount x 32) row-major
-            var coeffFlat = [Float](repeating: 0, count: detCount * 32)
-            for j in 0..<detCount {
-                let c = detections[j].coeffs
-                // Safety: handle models that output !=32 coeffs (keep your original guard behavior)
-                if c.count >= 32 {
-                    for k in 0..<32 { coeffFlat[j*32 + k] = c[k] }
-                } else {
-                    for k in 0..<c.count { coeffFlat[j*32 + k] = c[k] }
-                }
-            }
-            // planes is [Float] length 32*planeSize in the current scope (same as CPU path)
-            let maskSmall = mm.buildMaskSmall(planes: planes, coeffs: coeffFlat, planeSize: planeSize, detCount: detCount)
-            var positiveCount = 0
-            // Count positives (same as CPU)
-            for v in maskSmall { if v > 0 { positiveCount += 1 } }
-
-            // Reuse upscale/crop pipeline with exact integer values from resizeToSquare
-            let maskFull = upscaleMask(maskSmall: maskSmall,
-                                      pW: pW, pH: pH,
-                                      modelInput: modelInputSize,
-                                      origW: origW, origH: origH,
-                                      padX: padX, padY: padY,
-                                      contentW: contentW, contentH: contentH)
-            return (maskFull, positiveCount)
-        }
-
-        // STAGE 13–15b: Build initial mask from kept2
-        let t13to15b = Date()
-        let build1 = buildFullMaskMetal(from: kept2)
-        var maskFull = build1.maskFull
-        if debugMode {
-            let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
-            logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
-            logMemory("AFTER BUILD MASK")
-        }
-
-        // Outside the red primary rectangle: clear the mask so those pixels are transparent.
-        if clipUnionMaskToPrimaryBbox {
-            let clipPx1 = primaryBx1
-            let clipPy1 = primaryBy1
-            let clipPx2 = primaryBx2
-            let clipPy2 = primaryBy2
-            if clipPy1 > 0 {
-                let topBytes = clipPy1 * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!, 0, topBytes)
-                }
-            }
-            if clipPy2 < origH {
-                let bottomStart = clipPy2 * origW
-                let bottomBytes = (origH - clipPy2) * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
-                }
-            }
-            if clipPx1 > 0 || clipPx2 < origW {
-                maskFull.withUnsafeMutableBufferPointer { ptr in
-                    for y in clipPy1..<clipPy2 {
-                        let rowStart = y * origW
-                        if clipPx1 > 0 {
-                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipPx1)
-                        }
-                        if clipPx2 < origW {
-                            memset(ptr.baseAddress!.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
-                        }
-                    }
-                }
-            }
-            if debugMode {
-                logDebug("⏱️ STAGE 15d - Mask cleared outside primary (red) rect [\(clipPx1),\(clipPy1)]→[\(clipPx2),\(clipPy2)]")
+            self.updateAutoScaleFromRoom(
+                primaryBx1: primaryBx1,
+                primaryBy1: primaryBy1,
+                primaryBx2: primaryBx2,
+                primaryBy2: primaryBy2,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                arDepthSnapshot: arDepthSnapshot
+            )
+            self.updateOverlayPresentationMode(
+                primaryClassIdx: primary.classIdx,
+                metric: finalMetricResult
+            )
+            UIView.animate(withDuration: 0.18) {
+                self.applyCurrentOverlayScaleTransform()
             }
         }
 
-        // Prepare flattened coeffs for fused GPU path
-        let detCountFused = kept2.count
-        var coeffFlatFused = [Float](repeating: 0, count: detCountFused * 32)
-        for j in 0..<detCountFused {
-            let c = kept2[j].coeffs
-            let n = min(32, c.count)
-            for k in 0..<n { coeffFlatFused[j*32 + k] = c[k] }
-        }
-
-        // STAGE 6b: Composite
         setProgress(0.92, text: "Compositing…")
-
-        // --- 4. COMPOSITING (Fused when available) ---
         let compStart = Date()
-        var composedImage: CGImage?
+        // Proto mask → full frame: avoid `kvImageHighQualityResampling` (extra-soft mask → mushy cutout vs camera preview).
+        let composedImage = compositeCpuBilinearProtoMaskCutout(
+            processBuffer: processBuffer,
+            maskProto: maskSmall,
+            protoW: pW,
+            protoH: pH,
+            origW: bufW,
+            origH: bufH,
+            x0: compBx1,
+            x1: compBx2,
+            y0: compBy1,
+            y1: compBy2,
+            debugTag: "ONNX-style CPU composite"
+        )
 
-        if let device = metalDevice,
-           let queue = metalCommandQueue,
-           let textureCache = cvTextureCache {  // Use cached texture cache (created once in setupMetal)
+        let withDebugOverlay: CGImage? = {
+            guard debugMode,
+                  let base = composedImage else { return composedImage }
+            return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
+                composed: base,
+                candidates: candidates,
+                primaryIndex: primaryIdx,
+                origW: bufW,
+                origH: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            ) ?? base
+        }()
 
-            func makeTexture(from pixelBuffer: CVPixelBuffer, pixelFormat: MTLPixelFormat) -> MTLTexture? {
-                let cache = textureCache
-                var cvTexture: CVMetalTexture?
-                let w = CVPixelBufferGetWidth(pixelBuffer)
-                let h = CVPixelBufferGetHeight(pixelBuffer)
-                let status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pixelBuffer, nil, pixelFormat, w, h, 0, &cvTexture)
-                guard status == kCVReturnSuccess, let cvTex = cvTexture, let tex = CVMetalTextureGetTexture(cvTex) else { return nil }
-                return tex
-            }
+        let bboxWidthPxForFinish = Int(max(1, primaryBx2 - primaryBx1))
+        let bboxHeightPxForFinish = Int(max(1, primaryBy2 - primaryBy1))
+        let arSnapAttached = arDepthSnapshot != nil
 
-            // Source BGRA texture from camera buffer (use processBuffer for landscape support)
-            CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-            let srcTexture = makeTexture(from: processBuffer, pixelFormat: .bgra8Unorm)
-            CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
-
-            if let src = srcTexture, let cmdBuf = queue.makeCommandBuffer() {
-                if let fused = fusedMaskCompositePipeline {
-                    // Fused path: compute max logits and composite in one pass.
-                    // Prepare buffers: planes (32*planeSize floats) and coeffs (detCount*32 floats)
-                    let planesBytes = planes.count * MemoryLayout<Float>.size
-                    let coeffBytes = coeffFlatFused.count * MemoryLayout<Float>.size
-
-                    // Reuse cached buffers instead of allocating new ones each frame
-                    let planesBuf: MTLBuffer?
-                    if let cached = cachedFusedPlanesBuf, cachedFusedPlanesCapacity >= planesBytes {
-                        planesBuf = cached
-                    } else {
-                        let newCapacity = max(planesBytes, cachedFusedPlanesCapacity * 2, 1024)
-                        cachedFusedPlanesBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
-                        cachedFusedPlanesCapacity = newCapacity
-                        planesBuf = cachedFusedPlanesBuf
-                    }
-                    let coeffBuf: MTLBuffer?
-                    if let cached = cachedFusedCoeffBuf, cachedFusedCoeffCapacity >= coeffBytes {
-                        coeffBuf = cached
-                    } else {
-                        let newCapacity = max(coeffBytes, cachedFusedCoeffCapacity * 2, 1024)
-                        cachedFusedCoeffBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
-                        cachedFusedCoeffCapacity = newCapacity
-                        coeffBuf = cachedFusedCoeffBuf
-                    }
-
-                    // Copy data into reused buffers
-                    if let pb = planesBuf {
-                        memcpy(pb.contents(), planes, planesBytes)
-                    }
-                    if let cb = coeffBuf {
-                        memcpy(cb.contents(), coeffFlatFused, coeffBytes)
-                    }
-
-                    // Output texture
-                    let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
-                    outDesc.usage = [.shaderWrite, .shaderRead]
-                    let outTexture = device.makeTexture(descriptor: outDesc)
-
-                    if let enc = cmdBuf.makeComputeCommandEncoder(), let out = outTexture, let planesBuf, let coeffBuf {
-                        enc.setComputePipelineState(fused)
-                        enc.setTexture(src, index: 0)
-                        enc.setTexture(out, index: 1)
-                        enc.setBuffer(planesBuf, offset: 0, index: 0)
-                        enc.setBuffer(coeffBuf, offset: 0, index: 1)
-                        var pW_u = UInt32(pW)
-                        var pH_u = UInt32(pH)
-                        var det_u = UInt32(detCountFused)
-                        var origW_u = UInt32(origW)
-                        var origH_u = UInt32(origH)
-                        var modelInput_u = UInt32(modelInputSize)
-                        var resizeGain_f = resizeGain
-                        var padX_f = Float(padX)  // Convert Int to Float for shader
-                        var padY_f = Float(padY)  // Convert Int to Float for shader
-                        enc.setBytes(&pW_u, length: MemoryLayout<UInt32>.size, index: 2)
-                        enc.setBytes(&pH_u, length: MemoryLayout<UInt32>.size, index: 3)
-                        enc.setBytes(&det_u, length: MemoryLayout<UInt32>.size, index: 4)
-                        enc.setBytes(&origW_u, length: MemoryLayout<UInt32>.size, index: 5)
-                        enc.setBytes(&origH_u, length: MemoryLayout<UInt32>.size, index: 6)
-                        enc.setBytes(&modelInput_u, length: MemoryLayout<UInt32>.size, index: 7)
-                        enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
-                        enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
-                        enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
-                        // Same rule as mask: outside red primary rect → GPU outputs transparent (inside can still be union of detections).
-                        // `var` required: `setBytes(_:length:)` takes inout pointers.
-                        var bx1_u: UInt32 = 0
-                        var by1_u: UInt32 = 0
-                        var bx2_u: UInt32 = UInt32(origW)
-                        var by2_u: UInt32 = UInt32(origH)
-                        if clipUnionMaskToPrimaryBbox {
-                            bx1_u = UInt32(primaryBx1)
-                            by1_u = UInt32(primaryBy1)
-                            bx2_u = UInt32(primaryBx2)
-                            by2_u = UInt32(primaryBy2)
-                        }
-                        enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
-                        enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
-                        enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
-                        enc.setBytes(&by2_u, length: MemoryLayout<UInt32>.size, index: 14)
-
-                        let w = fused.threadExecutionWidth
-                        let h = max(1, fused.maxTotalThreadsPerThreadgroup / w)
-                        let tg = MTLSize(width: w, height: h, depth: 1)
-                        let grid = MTLSize(width: origW, height: origH, depth: 1)
-                        enc.dispatchThreads(grid, threadsPerThreadgroup: tg)
-                        enc.endEncoding()
-
-                        cmdBuf.commit()
-                        cmdBuf.waitUntilCompleted()
-
-                        // Read back as CGImage — use context-owned buffer to avoid CGBitmapContextCreateImage crash on iPhone 12 (alignment)
-                        let bytesPerRow = origW * 4
-                        var rgba = [UInt8](repeating: 0, count: origH * bytesPerRow)
-                        out.getBytes(&rgba, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, origW, origH), mipmapLevel: 0)
-                        if let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                            let dst = ctx.data!.assumingMemoryBound(to: UInt8.self)
-                            rgba.withUnsafeBytes { srcBuf in
-                                guard let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                                for y in 0..<origH {
-                                    dst.advanced(by: y * bytesPerRow).update(from: src.advanced(by: y * bytesPerRow), count: bytesPerRow)
-                                }
-                            }
-                            if let img = ctx.makeImage() {
-                                composedImage = img
-                            }
-                        }
-                    }
-                } else if let pipeline = compositePipeline {
-                    // Non-fused GPU path: upload mask and composite (existing path)
-                    let maskDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: origW, height: origH, mipmapped: false)
-                    maskDesc.usage = [.shaderRead]
-                    let maskTexture = device.makeTexture(descriptor: maskDesc)
-                    if let mt = maskTexture {
-                        let region = MTLRegionMake2D(0, 0, origW, origH)
-                        mt.replace(region: region, mipmapLevel: 0, withBytes: maskFull, bytesPerRow: origW)
-                    }
-                    let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
-                    outDesc.usage = [.shaderWrite, .shaderRead]
-                    let outTexture = device.makeTexture(descriptor: outDesc)
-                    if let enc = cmdBuf.makeComputeCommandEncoder(), let out = outTexture, let maskTex = maskTexture {
-                        enc.setComputePipelineState(pipeline)
-                        enc.setTexture(src, index: 0)
-                        enc.setTexture(maskTex, index: 1)
-                        enc.setTexture(out, index: 2)
-                        let w = pipeline.threadExecutionWidth
-                        let h = max(1, pipeline.maxTotalThreadsPerThreadgroup / w)
-                        let tg = MTLSize(width: w, height: h, depth: 1)
-                        let grid = MTLSize(width: origW, height: origH, depth: 1)
-                        enc.dispatchThreads(grid, threadsPerThreadgroup: tg)
-                        enc.endEncoding()
-                        cmdBuf.commit(); cmdBuf.waitUntilCompleted()
-                        let bytesPerRow = origW * 4
-                        var rgba = [UInt8](repeating: 0, count: origH * bytesPerRow)
-                        out.getBytes(&rgba, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, origW, origH), mipmapLevel: 0)
-                        if let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                            let dst = ctx.data!.assumingMemoryBound(to: UInt8.self)
-                            rgba.withUnsafeBytes { srcBuf in
-                                guard let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                                for y in 0..<origH {
-                                    dst.advanced(by: y * bytesPerRow).update(from: src.advanced(by: y * bytesPerRow), count: bytesPerRow)
-                                }
-                            }
-                            if let img = ctx.makeImage() {
-                                composedImage = img
-                            }
-                        }
-                    }
+        if let finalImage = withDebugOverlay {
+            let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                var out = finalImage
+                if needsRotate {
+                    if let r = self.rotateCGImage90(out, clockwise: true) { out = r }
                 }
-            }
-        }
-
-        if composedImage == nil {
-            // Fallback CPU compositing (use processBuffer for landscape support)
-            let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: origW * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-            CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-            let outBase = ctx.data!.assumingMemoryBound(to: UInt8.self)
-            let origBase = CVPixelBufferGetBaseAddress(processBuffer)!.assumingMemoryBound(to: UInt8.self)
-            for y in 0..<origH {
-                let outRow = y * origW * 4
-                let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
-                for x in 0..<origW {
-                    let outIdx = outRow + x * 4
-                    // Same rule: outside the red primary rectangle, output is transparent.
-                    if clipUnionMaskToPrimaryBbox {
-                        if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
-                            outBase[outIdx+3] = 0
-                            continue
-                        }
-                    }
-                    let m = maskFull[y * origW + x]
-                    if m > 0 {
-                        let origIdx = origRow + x * 4
-                        // Source is BGRA, destination is RGBA - swap R and B
-                        outBase[outIdx+0] = origBase[origIdx+2]  // R
-                        outBase[outIdx+1] = origBase[origIdx+1]  // G
-                        outBase[outIdx+2] = origBase[origIdx+0]  // B
-                        outBase[outIdx+3] = 255                   // A
-                    } else {
-                        outBase[outIdx+3] = 0
-                    }
-                }
-            }
-            CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
-            composedImage = ctx.makeImage()
-        }
-
-        let t_comp = Date().timeIntervalSince(compStart) * 1000
-        if debugMode {
-            logDebug("🖼️ [STEP 4] Compositing: \(String(format: "%.2f", t_comp))ms")
-        }
-
-        // STAGE 7: Finalize (debug overlays drawn onto composedImage if available)
-        let t7 = Date()
-
-        // Prepare a drawing context starting from composedImage (or an empty one if nil)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bytesPerRow = origW * 4
-        var overlayBuffer = [UInt8](repeating: 0, count: origH * bytesPerRow)
-        let ctx: CGContext? = CGContext(data: &overlayBuffer, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-
-        if let base = composedImage {
-            // Draw the composed image as the background
-            ctx?.draw(base, in: CGRect(x: 0, y: 0, width: origW, height: origH))
-        }
-
-        if let ctx = ctx, debugMode {
-            // Always draw class name labels
-            let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
-            for (_, d) in kept2.enumerated() {
-                let dx1 = Int(round((d.x - d.w * 0.5 - padXf) / resizeGain))
-                let dy1 = Int(round((d.y - d.h * 0.5 - padYf) / resizeGain))
-                let dx2 = Int(round((d.x + d.w * 0.5 - padXf) / resizeGain))
-                let dy2 = Int(round((d.y + d.h * 0.5 - padYf) / resizeGain))
-
-                let clampedX1 = max(0, dx1)
-                let clampedY1 = max(0, dy1)
-                let clampedW = min(origW - clampedX1, dx2 - dx1)
-                let clampedH = min(origH - clampedY1, dy2 - dy1)
-
-                let detectionColor = UIColor.white
-                let className = classNames[d.classIdx] ?? "unknown"
-                let confidence = String(format: "%.2f", d.confidence)
-                let labelText = "\(className) (\(confidence))"
-
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: font,
-                    .foregroundColor: detectionColor
-                ]
-                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-                let line = CTLineCreateWithAttributedString(attributedString)
-                let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-
-                let labelX = CGFloat(clampedX1)
-                let labelY = CGFloat(origH - clampedY1 + 4)
-
-                let textBackgroundRect = CGRect(
-                    x: labelX - 2,
-                    y: labelY - textBounds.height - 2,
-                    width: textBounds.width + 4,
-                    height: textBounds.height + 4
+                let scale = UIScreen.main.scale
+                self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
+                self.commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
+                    maskHasForeground: maskHasForeground,
+                    pinholeResult: finalMetricResult,
+                    firstFrameMeters: firstFrameMeters,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    bboxWidthPx: bboxWidthPxForFinish,
+                    bboxHeightPx: bboxHeightPxForFinish,
+                    arDepthSnapshotAttached: arSnapAttached
                 )
-                ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
-                ctx.fill(textBackgroundRect)
-
-                ctx.saveGState()
-                ctx.textMatrix = .identity
-                ctx.translateBy(x: labelX, y: labelY - textBounds.height)
-                ctx.setFillColor(detectionColor.cgColor)
-                CTLineDraw(line, ctx)
-                ctx.restoreGState()
-
-                // Draw bounding box
-                ctx.setLineWidth(2.0)
-                ctx.setStrokeColor(UIColor.cyan.cgColor)
-                ctx.stroke(CGRect(x: clampedX1, y: origH - clampedY1 - clampedH, width: clampedW, height: clampedH))
             }
-
-            // Draw PRIMARY bounding box in red (thick) - use same coords as cyan box
-            let pDx1 = Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain))
-            let pDy1 = Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain))
-            let pDx2 = Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain))
-            let pDy2 = Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain))
-            let pClampedX1 = max(0, pDx1)
-            let pClampedY1 = max(0, pDy1)
-            let pClampedW = min(origW - pClampedX1, pDx2 - pDx1)
-            let pClampedH = min(origH - pClampedY1, pDy2 - pDy1)
-            ctx.setStrokeColor(UIColor.red.cgColor)
-            ctx.setLineWidth(4.0)
-            ctx.stroke(CGRect(x: pClampedX1, y: origH - pClampedY1 - pClampedH, width: pClampedW, height: pClampedH))
-
-            // Draw union bounding box in green
-            ctx.setStrokeColor(UIColor.green.cgColor)
-            ctx.setLineWidth(6.0)
-            ctx.stroke(CGRect(x: bx1, y: origH - by2, width: bx2 - bx1, height: by2 - by1))
-        }
-
-        if let finalCtx = ctx, let img = finalCtx.makeImage() {
-            composedImage = img
-        }
-
-        // Present result - handle rotation for display
-        // For landscape rooms: no rotation needed since UI is also landscape
-        // For portrait rooms with landscape buffer: rotate back to portrait
-        DispatchQueue.main.async {
-            if var cgImg = composedImage {
-                if self.lockedOrientation == .landscape {
-                    // Landscape room on landscape UI: no rotation needed
-                    // The mask is already in landscape orientation matching the screen
-                } else if isLandscape {
-                    // Portrait room but landscape buffer: rotate back for portrait display
-                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
-                    cgImg = rotatedImg ?? cgImg
-                }
-                self.maskImageView.image = UIImage(cgImage: cgImg)
-
-                // Note: Furniture sizing disabled - the mask already matches room proportions
-                // Scaling to "standard" dimensions was making the cutouts wrong-sized
-                // The detected furniture should display at its natural size in the room
+        } else if maskHasForeground {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
+                    maskHasForeground: maskHasForeground,
+                    pinholeResult: finalMetricResult,
+                    firstFrameMeters: firstFrameMeters,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    bboxWidthPx: bboxWidthPxForFinish,
+                    bboxHeightPx: bboxHeightPxForFinish,
+                    arDepthSnapshotAttached: arSnapAttached
+                )
             }
         }
+
         resetProcessingFlag()
-
-        // Trigger first-detection UI dismissal based on mask having any positive pixels
-        let hasMask = maskFull.contains(where: { $0 > 0 })
-        if hasMask { finishFirstDetectionIfNeeded() }
-        
-        let t7End = Date()
-        let frameEnd = Date()
-
         if debugMode {
-            let finalizeMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
-            let frameTotalMs = String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)
-            logDebug("⏱️ STAGE 7 - Finalize: \(finalizeMs) ms")
+            let compMs = Date().timeIntervalSince(compStart) * 1000
+            let frameTotalMs = Date().timeIntervalSince(frameStart) * 1000
+            logDebug("🖼️ ONNX-STYLE (\(stage2DebugLabel)) compositing: \(String(format: "%.2f", compMs)) ms")
             logMemory("FRAME END")
-            logDebug("⏱️ FRAME TOTAL: \(frameTotalMs) ms")
+            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) FRAME TOTAL: \(String(format: "%.2f", frameTotalMs)) ms")
             logDebug("⏱️ ═══════════════════════════════════════════\n")
         }
     }
 
-    // MARK: - Parse Prototypes
-    // FIXED: Reuses instance-level buffers to prevent ~26MB allocation per frame
+    /// Expands primary width/height for ONNX-style proto mask synthesis (legs/wheels), clamped to model square.
+    private func onnxStyleExpandedPrimaryForMaskBuild(_ primary: FurnitureFitDetection, onnxSide: Int) -> FurnitureFitDetection {
+        let side = Float(onnxSide)
+        let maxHalfW = min(primary.x, side - primary.x)
+        let maxHalfH = min(primary.y, side - primary.y)
+        let capW = 2 * max(maxHalfW, 1)
+        let capH = 2 * max(maxHalfH, 1)
+        let ew = min(primary.w * (1 + 2 * bboxExpandMargin), capW)
+        let eh = min(primary.h * (1 + 2 * bboxExpandMargin), capH)
+        return FurnitureFitDetection(
+            x: primary.x,
+            y: primary.y,
+            w: ew,
+            h: eh,
+            confidence: primary.confidence,
+            classIdx: primary.classIdx,
+            coeffs: primary.coeffs
+        )
+    }
+
+    /// Zeros planar proto mask outside [clipPx1, clipPx2) × [clipPy1, clipPy2) (same idea as Core ML stage 15d clip in full-res).
+    private func clipProtoPlanarMaskOutsideRect(
+        mask: inout [UInt8],
+        protoW: Int,
+        protoH: Int,
+        clipPx1: Int,
+        clipPy1: Int,
+        clipPx2: Int,
+        clipPy2: Int
+    ) {
+        let clipX1 = max(0, clipPx1)
+        let clipY1 = max(0, clipPy1)
+        let clipX2 = min(protoW, clipPx2)
+        let clipY2 = min(protoH, clipPy2)
+        guard mask.count >= protoW * protoH else { return }
+        guard clipX1 < clipX2, clipY1 < clipY2 else {
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, protoW * protoH) }
+            }
+            return
+        }
+        if clipY1 > 0 {
+            let topBytes = clipY1 * protoW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, topBytes) }
+            }
+        }
+        if clipY2 < protoH {
+            let bottomStart = clipY2 * protoW
+            let bottomBytes = (protoH - clipY2) * protoW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    memset(base.advanced(by: bottomStart), 0, bottomBytes)
+                }
+            }
+        }
+        if clipX1 > 0 || clipX2 < protoW {
+            mask.withUnsafeMutableBytes { raw in
+                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                for y in clipY1..<clipY2 {
+                    let rowStart = y * protoW
+                    if clipX1 > 0 {
+                        memset(base.advanced(by: rowStart), 0, clipX1)
+                    }
+                    if clipX2 < protoW {
+                        memset(base.advanced(by: rowStart + clipX2), 0, protoW - clipX2)
+                    }
+                }
+            }
+        }
+    }
+
+    private func clipFullMaskToPrimaryBbox(
+        mask: inout [UInt8],
+        origW: Int,
+        origH: Int,
+        px1: Int,
+        py1: Int,
+        px2: Int,
+        py2: Int
+    ) {
+        let clipPx1 = max(0, px1)
+        let clipPy1 = max(0, py1)
+        let clipPx2 = min(origW, px2)
+        let clipPy2 = min(origH, py2)
+        if clipPy1 > 0 {
+            let topBytes = clipPy1 * origW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, topBytes) }
+            }
+        }
+        if clipPy2 < origH {
+            let bottomStart = clipPy2 * origW
+            let bottomBytes = (origH - clipPy2) * origW
+            mask.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    memset(base.advanced(by: bottomStart), 0, bottomBytes)
+                }
+            }
+        }
+        if clipPx1 > 0 || clipPx2 < origW {
+            mask.withUnsafeMutableBytes { raw in
+                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                for y in clipPy1..<clipPy2 {
+                    let rowStart = y * origW
+                    if clipPx1 > 0 {
+                        memset(base.advanced(by: rowStart), 0, clipPx1)
+                    }
+                    if clipPx2 < origW {
+                        memset(base.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
+                    }
+                }
+            }
+        }
+    }
+
+    /// BGRA camera × (mask/255) → premultiplied RGBA inside the primary band using vDSP (`vfltu8`, `vsmul`, `vmul`, `vclip`, `vadd`, `vfixu8`).
+    private func compositeCpuCameraBandAccelerated(
+        outBase: UnsafeMutablePointer<UInt8>,
+        origBase: UnsafePointer<UInt8>,
+        maskBase: UnsafePointer<UInt8>,
+        origW: Int,
+        camRowBytes: Int,
+        bytesPerRowOut: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int
+    ) {
+        let w = x1 - x0
+        guard w > 0, y1 > y0 else { return }
+        let need = 5 * w
+        if compositeCpuScratchFloats.count < need {
+            compositeCpuScratchFloats = [Float](repeating: 0, count: need)
+        }
+        compositeCpuScratchFloats.withUnsafeMutableBufferPointer { scratchBuf in
+            guard let scratch = scratchBuf.baseAddress else { return }
+            let alphaPtr = scratch
+            let bPtr = scratch.advanced(by: w)
+            let gPtr = scratch.advanced(by: 2 * w)
+            let rPtr = scratch.advanced(by: 3 * w)
+            let halfPtr = scratch.advanced(by: 4 * w)
+            for hi in 0..<w {
+                halfPtr[hi] = 0.5
+            }
+            var low: Float = 0
+            var high: Float = 255
+            var inv255: Float = 1.0 / 255.0
+            let wl = vDSP_Length(w)
+            for y in y0..<y1 {
+                let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
+                let origRowPtr = origBase.advanced(by: y * camRowBytes)
+                let maskRowPtr = maskBase.advanced(by: y * origW + x0)
+                vDSP_vfltu8(maskRowPtr, 1, alphaPtr, 1, wl)
+                vDSP_vsmul(alphaPtr, 1, &inv255, alphaPtr, 1, wl)
+                vDSP_vfltu8(origRowPtr.advanced(by: x0 * 4 + 0), 4, bPtr, 1, wl)
+                vDSP_vfltu8(origRowPtr.advanced(by: x0 * 4 + 1), 4, gPtr, 1, wl)
+                vDSP_vfltu8(origRowPtr.advanced(by: x0 * 4 + 2), 4, rPtr, 1, wl)
+                vDSP_vmul(bPtr, 1, alphaPtr, 1, bPtr, 1, wl)
+                vDSP_vmul(gPtr, 1, alphaPtr, 1, gPtr, 1, wl)
+                vDSP_vmul(rPtr, 1, alphaPtr, 1, rPtr, 1, wl)
+                vDSP_vclip(bPtr, 1, &low, &high, bPtr, 1, wl)
+                vDSP_vclip(gPtr, 1, &low, &high, gPtr, 1, wl)
+                vDSP_vclip(rPtr, 1, &low, &high, rPtr, 1, wl)
+                vDSP_vadd(bPtr, 1, halfPtr, 1, bPtr, 1, wl)
+                vDSP_vadd(gPtr, 1, halfPtr, 1, gPtr, 1, wl)
+                vDSP_vadd(rPtr, 1, halfPtr, 1, rPtr, 1, wl)
+                vDSP_vfixu8(rPtr, 1, outRowPtr.advanced(by: x0 * 4 + 0), 4, wl)
+                vDSP_vfixu8(gPtr, 1, outRowPtr.advanced(by: x0 * 4 + 1), 4, wl)
+                vDSP_vfixu8(bPtr, 1, outRowPtr.advanced(by: x0 * 4 + 2), 4, wl)
+                var mx = 0
+                while mx < w {
+                    outRowPtr.advanced(by: (x0 + mx) * 4 + 3).pointee = maskRowPtr[mx]
+                    mx += 1
+                }
+            }
+        }
+    }
+
+    /// Logs premultiplied-last R, G, B, A at the center of the primary band (throttled when `debugMode` is on).
+    private func logPremultipliedRGBASampleIfDebug(
+        outBase: UnsafeMutablePointer<UInt8>,
+        bytesPerRowOut: Int,
+        width: Int,
+        height: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        tag: String
+    ) {
+        guard debugMode else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastCompositePremulRGBAlogAt < compositePremulRGBAlogInterval { return }
+        lastCompositePremulRGBAlogAt = now
+        guard width > 0, height > 0, x1 > x0, y1 > y0 else {
+            logDebug("🎨 [RGBA \(tag)] invalid bbox; skip sample")
+            return
+        }
+        let cx = (x0 + x1) / 2
+        let cy = (y0 + y1) / 2
+        guard cx >= 0, cx < width, cy >= 0, cy < height else { return }
+        let offset = cy * bytesPerRowOut + cx * 4
+        let red = outBase[offset]
+        let green = outBase[offset + 1]
+        let blue = outBase[offset + 2]
+        let alpha = outBase[offset + 3]
+        logDebug("🎨 [RGBA \(tag)] center (\(cx),\(cy)) premul R=\(red) G=\(green) B=\(blue) A=\(alpha)")
+    }
+
+    /// ONNX-style cutout: vImage **Planar8 scale** proto→full frame (one fast resize), then scan composite band only.
+    /// Smoothstep on mask reduces bilinear “mush” and frame-to-frame edge flicker vs per-pixel bilinear in a huge band.
+    private func compositeCpuBilinearProtoMaskCutout(
+        processBuffer: CVPixelBuffer,
+        maskProto: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        origW: Int,
+        origH: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        debugTag: String
+    ) -> CGImage? {
+        let pw = protoW
+        let ph = protoH
+        guard pw > 0, ph > 0, maskProto.count >= pw * ph, origW > 0, origH > 0 else { return nil }
+        let xStart = max(0, min(origW, x0))
+        let xEnd = max(0, min(origW, x1))
+        let yStart = max(0, min(origH, y0))
+        let yEnd = max(0, min(origH, y1))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+
+        let fullPixels = origW * origH
+        if upscaledPlanarMaskScratch.count < fullPixels {
+            upscaledPlanarMaskScratch = [UInt8](repeating: 0, count: fullPixels)
+        }
+
+        let scaleErr: vImage_Error = maskProto.withUnsafeBufferPointer { srcPtr in
+            guard let srcBase = srcPtr.baseAddress else { return kvImageNullPointerArgument }
+            var srcBuf = vImage_Buffer(
+                data: UnsafeMutableRawPointer(mutating: srcBase),
+                height: vImagePixelCount(ph),
+                width: vImagePixelCount(pw),
+                rowBytes: pw
+            )
+            return upscaledPlanarMaskScratch.withUnsafeMutableBufferPointer { dstPtr in
+                guard let dstBase = dstPtr.baseAddress else { return kvImageNullPointerArgument }
+                var dstBuf = vImage_Buffer(
+                    data: dstBase,
+                    height: vImagePixelCount(origH),
+                    width: vImagePixelCount(origW),
+                    rowBytes: origW
+                )
+                return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(0))
+            }
+        }
+        if scaleErr != kvImageNoError {
+            if debugMode {
+                logDebug("⚠️ ONNX-style vImageScale_Planar8 failed (\(scaleErr)); compositing skipped")
+            }
+            return nil
+        }
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        guard let outData = ctx.data else { return nil }
+        let outBase = outData.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRowOut = origW * 4
+
+        for y in 0..<origH {
+            memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
+        }
+
+        let rgbDim: Float = 1.0
+        let inv255: Float = 1.0 / 255.0
+        // Tighter band than before: full opacity sooner inside the mask, thinner feather at the edge.
+        let edgeLo: Float = 0.42
+        let invEdgeWidth: Float = 1.0 / max(0.12, 0.58 - edgeLo)
+
+        let maskFull = upscaledPlanarMaskScratch
+        for y in yStart..<yEnd {
+            let rowOff = y * origW
+            let outRow = outBase.advanced(by: y * bytesPerRowOut)
+            let camRow = origBase.advanced(by: y * camRowBytes)
+            for x in xStart..<xEnd {
+                let raw = Float(maskFull[rowOff + x]) * inv255
+                let t = (raw - edgeLo) * invEdgeWidth
+                let s = min(1, max(0, t))
+                let sm = s * s * (3 - 2 * s)
+                guard sm > 0.008 else { continue }
+                let cx = x * 4
+                let rf = Float(camRow[cx + 2]) * sm * rgbDim
+                let gf = Float(camRow[cx + 1]) * sm * rgbDim
+                let bf = Float(camRow[cx]) * sm * rgbDim
+                outRow[cx] = UInt8(min(255, max(0, rf + 0.5)))
+                outRow[cx + 1] = UInt8(min(255, max(0, gf + 0.5)))
+                outRow[cx + 2] = UInt8(min(255, max(0, bf + 0.5)))
+                outRow[cx + 3] = UInt8(min(255, max(0, sm * 255 + 0.5)))
+            }
+        }
+
+        logPremultipliedRGBASampleIfDebug(
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            width: origW,
+            height: origH,
+            x0: xStart,
+            x1: xEnd,
+            y0: yStart,
+            y1: yEnd,
+            tag: debugTag
+        )
+        return ctx.makeImage()
+    }
+
+    /// ONNX-style stretch coords → buffer pixels; CGContext stroke uses bottom-left origin, so flip Y like STAGE 7 letterbox debug.
+    private func drawOnnxStyleDebugDetectionBboxesOnComposedImage(
+        composed: CGImage,
+        candidates: [FurnitureFitDetection],
+        primaryIndex: Int,
+        origW: Int,
+        origH: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGImage? {
+        let bytesPerRow = origW * 4
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+
+        func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
+            let tightFx1 = (d.x - d.w * 0.5) * scaleX
+            let tightFy1 = (d.y - d.h * 0.5) * scaleY
+            let tightFx2 = (d.x + d.w * 0.5) * scaleX
+            let tightFy2 = (d.y + d.h * 0.5) * scaleY
+            let bx1 = max(0, Int(tightFx1))
+            let by1 = max(0, Int(tightFy1))
+            let bx2 = min(origW, Int(tightFx2))
+            let by2 = min(origH, Int(tightFy2))
+            let bw = max(1, bx2 - bx1)
+            let bh = max(1, by2 - by1)
+            return (bx1, by1, bw, bh)
+        }
+
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
+
+        for (_, d) in candidates.enumerated() {
+            let r = bufferRect(for: d)
+            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
+            ctx.setLineWidth(2.0)
+            ctx.setStrokeColor(UIColor.cyan.cgColor)
+            ctx.stroke(cgRect)
+
+            let plainName = classNames[d.classIdx] ?? "unknown"
+            let confidence = String(format: "%.2f", d.confidence)
+            let labelText = "\(plainName) (\(confidence))"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.white
+            ]
+            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+            let line = CTLineCreateWithAttributedString(attributedString)
+            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            let labelX = CGFloat(r.bx1)
+            let labelY = CGFloat(origH - r.by1 + 4)
+            let textBackgroundRect = CGRect(
+                x: labelX - 2,
+                y: labelY - textBounds.height - 2,
+                width: textBounds.width + 4,
+                height: textBounds.height + 4
+            )
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            ctx.fill(textBackgroundRect)
+            ctx.saveGState()
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
+            ctx.setFillColor(UIColor.white.cgColor)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
+        }
+
+        if primaryIndex >= 0, primaryIndex < candidates.count {
+            let d = candidates[primaryIndex]
+            let r = bufferRect(for: d)
+            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
+            ctx.setStrokeColor(UIColor.red.cgColor)
+            ctx.setLineWidth(4.0)
+            ctx.stroke(cgRect)
+        }
+
+        return ctx.makeImage()
+    }
+
+    private func compositeCpuMaskOnly(
+        processBuffer: CVPixelBuffer,
+        maskFull: [UInt8],
+        origW: Int,
+        origH: Int,
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int
+    ) -> CGImage? {
+        let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let bytesPerRowCam = CVPixelBufferGetBytesPerRow(processBuffer)
+        let outBase = ctx.data!.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRowOut = origW * 4
+        let x0 = max(0, primaryBx1)
+        let x1 = min(origW, primaryBx2)
+        let y0 = max(0, primaryBy1)
+        let y1 = min(origH, primaryBy2)
+        for y in 0..<origH {
+            memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
+        }
+        maskFull.withUnsafeBufferPointer { maskBuf in
+            guard let maskBase = maskBuf.baseAddress else { return }
+            compositeCpuCameraBandAccelerated(
+                outBase: outBase,
+                origBase: origBase,
+                maskBase: maskBase,
+                origW: origW,
+                camRowBytes: bytesPerRowCam,
+                bytesPerRowOut: bytesPerRowOut,
+                x0: x0,
+                x1: x1,
+                y0: y0,
+                y1: y1
+            )
+        }
+        logPremultipliedRGBASampleIfDebug(
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            width: origW,
+            height: origH,
+            x0: x0,
+            x1: x1,
+            y0: y0,
+            y1: y1,
+            tag: "ONNX-style CPU composite"
+        )
+        return ctx.makeImage()
+    }
+
+    /// Stretch to fill `size`×`size` (matches Android ONNX `createScaledBitmap` preprocessing).
+    private func resizeStretchToSquare(_ src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
+
+        let srcW = CVPixelBufferGetWidth(src)
+        let srcH = CVPixelBufferGetHeight(src)
+
+        if cachedStretchSize != size || cachedStretchBuffer == nil {
+            var newBuffer: CVPixelBuffer?
+            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+                  let buf = newBuffer else { return nil }
+            cachedStretchBuffer = buf
+            cachedStretchSize = size
+        }
+
+        guard let dst = cachedStretchBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(dst, [])
+        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
+
+        guard let srcBase = CVPixelBufferGetBaseAddress(src),
+              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+
+        var srcBuffer = vImage_Buffer(
+            data: srcBase,
+            height: vImagePixelCount(srcH),
+            width: vImagePixelCount(srcW),
+            rowBytes: CVPixelBufferGetBytesPerRow(src)
+        )
+        var dstBuffer = vImage_Buffer(
+            data: dstBase,
+            height: vImagePixelCount(size),
+            width: vImagePixelCount(size),
+            rowBytes: CVPixelBufferGetBytesPerRow(dst)
+        )
+        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+            return nil
+        }
+        return dst
+    }
+
+    private func processFrameInner(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
+        let frameStart = Date()
+        if debugMode { logMemory("FRAME START") }
+        loadBlacklistOnce()
+
+        guard let model = mlModel else {
+            resetProcessingFlag()
+            return
+        }
+        processFrameOnnxStyleCoreML(
+            processBuffer: pixelBuffer,
+            model: model,
+            arDepthSnapshot: arDepthSnapshot,
+            frameStart: frameStart
+        )
+    }
+
+
+    // MARK: - Parse Prototypes (FIXED: Accelerate for Float16)
+    // Reuses instance-level buffers and uses Accelerate for FP16 → FP32 conversion.
     private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
         var shape = proto.shape.map { $0.intValue }
         if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
@@ -2057,10 +2888,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let planeSize = h * w
         let total = shape[0] * shape[1] * shape[2]
 
-        // Model must be float32
-        guard proto.dataType == .float32 else { return nil }
+        guard proto.dataType == .float32 || proto.dataType == .float16 else { return nil }
 
-        // FIXED: Reuse instance-level buffers instead of allocating per frame
         if protoRawFloats.count != total {
             protoRawFloats = [Float](repeating: 0, count: total)
         }
@@ -2068,17 +2897,202 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
         }
 
-        memcpy(&protoRawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
+        if proto.dataType == .float32 {
+            protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress else { return }
+                memcpy(dstBase, proto.dataPointer, total * MemoryLayout<Float>.size)
+            }
+        } else {
+            // Float16 path: use Accelerate vImage for bulk conversion wherever strides are friendly.
+            let strides = proto.strides.map { $0.intValue }
+            let dims = proto.shape.map { $0.intValue }
+            guard dims.count == strides.count else { return nil }
+
+            let src16 = proto.dataPointer.bindMemory(to: UInt16.self, capacity: proto.count)
+            let innerStride = strides.last ?? 1
+
+            if innerStride == 1 {
+                // Fast path: fully contiguous layout
+                let isFullyContiguous: Bool = {
+                    if dims.count == 3 {
+                        return strides[2] == 1 &&
+                               strides[1] == dims[2] &&
+                               strides[0] == dims[1] * dims[2]
+                    } else if dims.count == 4 {
+                        return strides[3] == 1 &&
+                               strides[2] == dims[3] &&
+                               strides[1] == dims[2] * dims[3] &&
+                               strides[0] == dims[1] * dims[2] * dims[3]
+                    }
+                    return false
+                }()
+
+                if isFullyContiguous {
+                    // Single bulk FP16 → FP32 conversion.
+                    protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                        guard let dstBase = dst.baseAddress else { return }
+                        var srcBuf = vImage_Buffer(
+                            data: UnsafeMutableRawPointer(mutating: src16),
+                            height: 1,
+                            width: vImagePixelCount(total),
+                            rowBytes: total * MemoryLayout<UInt16>.size
+                        )
+                        var dstBuf = vImage_Buffer(
+                            data: dstBase,
+                            height: 1,
+                            width: vImagePixelCount(total),
+                            rowBytes: total * MemoryLayout<Float>.size
+                        )
+                        vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                    }
+                } else {
+                    // Per-plane contiguous: each plane is packed even if outer dims are strided.
+                    if dims.count == 4, dims[0] == 1 {
+                        let cMax = dims[1], yMax = dims[2], xMax = dims[3]
+                        let planePixels = yMax * xMax
+                        for c in 0..<cMax {
+                            let srcOffset = c * strides[1]
+                            protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                                guard let dstBase = dst.baseAddress else { return }
+                                let dstStart = dstBase.advanced(by: c * planePixels)
+                                var srcBuf = vImage_Buffer(
+                                    data: UnsafeMutableRawPointer(mutating: src16.advanced(by: srcOffset)),
+                                    height: 1,
+                                    width: vImagePixelCount(planePixels),
+                                    rowBytes: planePixels * MemoryLayout<UInt16>.size
+                                )
+                                var dstBuf = vImage_Buffer(
+                                    data: dstStart,
+                                    height: 1,
+                                    width: vImagePixelCount(planePixels),
+                                    rowBytes: planePixels * MemoryLayout<Float>.size
+                                )
+                                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                            }
+                        }
+                    } else if dims.count == 3 {
+                        let cMax = dims[0]
+                        let planePixels = dims[1] * dims[2]
+                        for c in 0..<cMax {
+                            let srcOffset = c * strides[0]
+                            protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                                guard let dstBase = dst.baseAddress else { return }
+                                let dstStart = dstBase.advanced(by: c * planePixels)
+                                var srcBuf = vImage_Buffer(
+                                    data: UnsafeMutableRawPointer(mutating: src16.advanced(by: srcOffset)),
+                                    height: 1,
+                                    width: vImagePixelCount(planePixels),
+                                    rowBytes: planePixels * MemoryLayout<UInt16>.size
+                                )
+                                var dstBuf = vImage_Buffer(
+                                    data: dstStart,
+                                    height: 1,
+                                    width: vImagePixelCount(planePixels),
+                                    rowBytes: planePixels * MemoryLayout<Float>.size
+                                )
+                                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                            }
+                        }
+                    } else {
+                        return nil
+                    }
+                }
+            } else {
+                // Non-contiguous fallback: convert row-by-row when inner dim is contiguous,
+                // fall back to scalar only when truly necessary (rare).
+                if dims.count == 4, dims[0] == 1 {
+                    let cMax = dims[1], yMax = dims[2], xMax = dims[3]
+                    for c in 0..<cMax {
+                        for y in 0..<yMax {
+                            let srcOffset = c * strides[1] + y * strides[2]
+                            let dstOffset = c * (yMax * xMax) + y * xMax
+                            if strides.count > 3 && strides[3] == 1 {
+                                protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                                    guard let dstBase = dst.baseAddress else { return }
+                                    var srcBuf = vImage_Buffer(
+                                        data: UnsafeMutableRawPointer(mutating: src16.advanced(by: srcOffset)),
+                                        height: 1,
+                                        width: vImagePixelCount(xMax),
+                                        rowBytes: xMax * MemoryLayout<UInt16>.size
+                                    )
+                                    var dstBuf = vImage_Buffer(
+                                        data: dstBase.advanced(by: dstOffset),
+                                        height: 1,
+                                        width: vImagePixelCount(xMax),
+                                        rowBytes: xMax * MemoryLayout<Float>.size
+                                    )
+                                    vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                                }
+                            } else {
+                                for x in 0..<xMax {
+                                    let srcOff = srcOffset + x * strides[3]
+                                    protoRawFloats[dstOffset + x] = Float(Float16(bitPattern: src16[srcOff]))
+                                }
+                            }
+                        }
+                    }
+                } else if dims.count == 3 {
+                    let d0 = dims[0], d1 = dims[1], d2 = dims[2]
+                    for i in 0..<d0 {
+                        for j in 0..<d1 {
+                            let srcOffset = i * strides[0] + j * strides[1]
+                            let dstOffset = i * (d1 * d2) + j * d2
+                            if strides[2] == 1 {
+                                protoRawFloats.withUnsafeMutableBufferPointer { dst in
+                                    guard let dstBase = dst.baseAddress else { return }
+                                    var srcBuf = vImage_Buffer(
+                                        data: UnsafeMutableRawPointer(mutating: src16.advanced(by: srcOffset)),
+                                        height: 1,
+                                        width: vImagePixelCount(d2),
+                                        rowBytes: d2 * MemoryLayout<UInt16>.size
+                                    )
+                                    var dstBuf = vImage_Buffer(
+                                        data: dstBase.advanced(by: dstOffset),
+                                        height: 1,
+                                        width: vImagePixelCount(d2),
+                                        rowBytes: d2 * MemoryLayout<Float>.size
+                                    )
+                                    vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                                }
+                            } else {
+                                for k in 0..<d2 {
+                                    let srcOff = srcOffset + k * strides[2]
+                                    protoRawFloats[dstOffset + k] = Float(Float16(bitPattern: src16[srcOff]))
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    return nil
+                }
+            }
+        }
 
         if cIdx == 0 {
-            memcpy(&protoPlanes, protoRawFloats, count * planeSize * MemoryLayout<Float>.size)
+            protoPlanes.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress else { return }
+                protoRawFloats.withUnsafeBufferPointer { src in
+                    guard let srcBase = src.baseAddress else { return }
+                    memcpy(dstBase, srcBase, count * planeSize * MemoryLayout<Float>.size)
+                }
+            }
         } else if cIdx == 2 {
-            for y in 0..<h {
-                for x in 0..<w {
-                    let baseHW = (y * w + x) * count
-                    let dstBase = y * w + x
+            // Channel-last → channel-first transpose using BLAS (stride copy).
+            // Input: [H, W, 32] packed in protoRawFloats
+            // Output: [32, H, W] packed in protoPlanes
+            protoRawFloats.withUnsafeBufferPointer { src in
+                protoPlanes.withUnsafeMutableBufferPointer { dst in
+                    guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
                     for k in 0..<count {
-                        protoPlanes[k * planeSize + dstBase] = protoRawFloats[baseHW + k]
+                        // src: every 32nd element starting at k (stride=count)
+                        // dst: contiguous plane of size planeSize
+                        blas_scopy(
+                            BLASInt(planeSize),
+                            srcBase.advanced(by: k),
+                            BLASInt(count),
+                            dstBase.advanced(by: k * planeSize),
+                            1
+                        )
                     }
                 }
             }
@@ -2086,88 +3100,88 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         return (protoPlanes, count, h, w)
     }
 
-    // MARK: - Upscale Mask
-    // Uses exact integer values from resizeToSquare to ensure pixel-perfect reverse mapping
-    private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, padX: Int, padY: Int, contentW: Int, contentH: Int) -> [UInt8] {
-        var maskModel = [UInt8](repeating: 0, count: modelInput * modelInput)
-        maskModel.withUnsafeMutableBufferPointer { dstPtr in
-            maskSmall.withUnsafeBufferPointer { srcPtr in
-                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(pH), width: vImagePixelCount(pW), rowBytes: pW)
-                var d = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(modelInput), width: vImagePixelCount(modelInput), rowBytes: modelInput)
-                let flags: vImage_Flags = useBilinearUpscaling ? vImage_Flags(kvImageHighQualityResampling) : vImage_Flags(kvImageNoFlags)
-                vImageScale_Planar8(&s, &d, nil, flags)
+    /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
+    private func morphologicalBinaryClose3x3Planar8(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        let count = width * height
+        guard count == mask.count, width >= 1, height >= 1 else { return mask }
+        var dilated = [UInt8](repeating: 0, count: count)
+        var closed = [UInt8](repeating: 0, count: count)
+        let errMax: vImage_Error = mask.withUnsafeBufferPointer { srcPtr in
+            dilated.withUnsafeMutableBufferPointer { dPtr in
+                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                return vImageMax_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
             }
         }
-
-        // Use exact integer values from resizeToSquare (no recomputation = no drift)
-        let x0 = max(0, min(modelInput - 1, padX))
-        let y0 = max(0, min(modelInput - 1, padY))
-        let cW = max(1, min(modelInput - x0, contentW))
-        let cH = max(1, min(modelInput - y0, contentH))
-
-        var cropped = [UInt8](repeating: 0, count: cW * cH)
-        for y in 0..<cH {
-            let srcRow = (y0 + y) * modelInput + x0
-            let dstRow = y * cW
-            for x in 0..<cW { cropped[dstRow + x] = maskModel[srcRow + x] }
+        guard errMax == kvImageNoError else {
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
         }
-
-        var maskFull = [UInt8](repeating: 0, count: origW * origH)
-        maskFull.withUnsafeMutableBufferPointer { dstPtr in
-            cropped.withUnsafeBufferPointer { srcPtr in
-                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(cH), width: vImagePixelCount(cW), rowBytes: cW)
-                var d = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-                let flags: vImage_Flags = useBilinearUpscaling ? vImage_Flags(kvImageHighQualityResampling) : vImage_Flags(kvImageNoFlags)
-                vImageScale_Planar8(&s, &d, nil, flags)
+        let errMin: vImage_Error = dilated.withUnsafeBufferPointer { srcPtr in
+            closed.withUnsafeMutableBufferPointer { dPtr in
+                var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                return vImageMin_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
             }
         }
-        return maskFull
+        guard errMin == kvImageNoError else {
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+        }
+        return closed
     }
 
-    // MARK: - Resize to Square
-    // Returns integer pad values to ensure exact matching in reverse mapping (upscaleMask)
-    private func resizeToSquare(_ src: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Int, padY: Int, newW: Int, newH: Int)? {
-        CVPixelBufferLockBaseAddress(src, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
-
-        let srcW = CVPixelBufferGetWidth(src)
-        let srcH = CVPixelBufferGetHeight(src)
-
-        let gain = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
-        let newW = Int(Float(srcW) * gain)
-        let newH = Int(Float(srcH) * gain)
-        // Use integer division to get exact pixel offset (same as forward placement)
-        let padX = (size - newW) / 2
-        let padY = (size - newH) / 2
-
-        // Reuse cached buffer if size matches, otherwise create new one
-        if cachedSquareSize != size || cachedSquareBuffer == nil {
-            var newBuffer: CVPixelBuffer?
-            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
-                  let buf = newBuffer else { return nil }
-            cachedSquareBuffer = buf
-            cachedSquareSize = size
+    /// 3×3 binary dilate (foreground = any > 0 in neighborhood).
+    private func morphologicalBinaryDilate3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                var hit = false
+                outer: for dy in -1...1 {
+                    for dx in -1...1 {
+                        let nx = x + dx
+                        let ny = y + dy
+                        if nx < 0 || nx >= width || ny < 0 || ny >= height { continue }
+                        if mask[ny * width + nx] > 0 {
+                            hit = true
+                            break outer
+                        }
+                    }
+                }
+                out[y * width + x] = hit ? 255 : 0
+            }
         }
+        return out
+    }
 
-        guard let dst = cachedSquareBuffer else { return nil }
+    /// 3×3 binary erode (foreground only if all neighbors > 0).
+    private func morphologicalBinaryErode3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                var all = true
+                outer: for dy in -1...1 {
+                    for dx in -1...1 {
+                        let nx = x + dx
+                        let ny = y + dy
+                        if nx < 0 || nx >= width || ny < 0 || ny >= height {
+                            all = false
+                            break outer
+                        }
+                        if mask[ny * width + nx] == 0 {
+                            all = false
+                            break outer
+                        }
+                    }
+                }
+                out[y * width + x] = all ? 255 : 0
+            }
+        }
+        return out
+    }
 
-        CVPixelBufferLockBaseAddress(dst, [])
-        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
-
-        guard let srcBase = CVPixelBufferGetBaseAddress(src),
-              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
-
-        memset(dstBase, 128, size * size * 4)
-
-        var srcBuffer = vImage_Buffer(data: srcBase, height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: CVPixelBufferGetBytesPerRow(src))
-        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
-        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        let offsetPtr = dstPtr.advanced(by: padY * dstRowBytes + padX * 4)
-        var dstBuffer = vImage_Buffer(data: offsetPtr, height: vImagePixelCount(newH), width: vImagePixelCount(newW), rowBytes: dstRowBytes)
-
-        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0)) == kvImageNoError else { return nil }
-
-        return (buffer: dst, gain: gain, padX: padX, padY: padY, newW: newW, newH: newH)
+    /// Closing = dilate ∘ erode: fills small holes / smooths thin gaps without raising the logit threshold.
+    private func morphologicalBinaryClose3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        let dilated = morphologicalBinaryDilate3x3(mask: mask, width: width, height: height)
+        return morphologicalBinaryErode3x3(mask: dilated, width: width, height: height)
     }
 
     // MARK: - MLMultiArray
@@ -2325,7 +3339,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Progress UI
     private func setProgress(_ value: Float, text: String) {
-        guard !hasFirstDetection else { return }
+        guard !hasFirstDetection, !suppressStartupProgress else { return }
         DispatchQueue.main.async {
             self.progressContainer.isHidden = false
             self.progressView.progress = value
@@ -2333,11 +3347,81 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
     }
 
-    private func finishFirstDetectionIfNeeded() {
+    /// Call on main **after** the composited segmentation mask is applied to `maskImageView` (or when compose failed but mask had foreground).
+    /// Reads ``hasFirstDetection`` on main before ``finishFirstDetectionIfNeeded`` so per-frame pinhole is not skipped due to detection-queue races.
+    private func commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
+        maskHasForeground: Bool,
+        pinholeResult: PrimaryBboxMetersResult?,
+        firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)?,
+        imageWidth: Int,
+        imageHeight: Int,
+        bboxWidthPx: Int,
+        bboxHeightPx: Int,
+        arDepthSnapshotAttached: Bool
+    ) {
+        guard maskHasForeground, let fm = firstFrameMeters else { return }
+        let hadSegmentationBeforeThisCommit = hasFirstDetection
+        if !hadSegmentationBeforeThisCommit {
+            logFurnitureFitSize(
+                "phase=first_mask_commit W×H_m=\(String(format: "%.3f", fm.width))×\(String(format: "%.3f", fm.height)) pipeline=\(fm.pipeline) dist_m=\(fm.dist.map { String(format: "%.3f", $0) } ?? "—") → finishFirst + parent callback"
+            )
+        }
+        finishFirstDetectionIfNeeded(
+            furnitureWidthMeters: fm.width,
+            furnitureHeightMeters: fm.height,
+            pipelineTag: fm.pipeline,
+            distanceMeters: fm.dist,
+            arDepthSnapshotAttached: arDepthSnapshotAttached,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            bboxWidthPx: bboxWidthPx,
+            bboxHeightPx: bboxHeightPx
+        )
+        if hadSegmentationBeforeThisCommit, let p = pinholeResult {
+            let est = FurnitureSizeEstimate(widthMeters: p.size.width, heightMeters: p.size.height, arHeightMeters: nil)
+            onFurnitureSizeEstimated?(est)
+        }
+    }
+
+    /// First successful mask: optional bbox×room-scale size in **meters** on the progress chip, and callback for parents (Sharp room UI).
+    private func finishFirstDetectionIfNeeded(
+        furnitureWidthMeters: Float?,
+        furnitureHeightMeters: Float?,
+        pipelineTag: String = "unknown",
+        distanceMeters: Float? = nil,
+        arDepthSnapshotAttached: Bool = false,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0,
+        bboxWidthPx: Int = 0,
+        bboxHeightPx: Int = 0
+    ) {
         guard !hasFirstDetection else { return }
         hasFirstDetection = true
+        segmentationCompletedOnceThisSession = true
+        onFirstSegmentationComplete?()
+
+        if let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
+            let distStr = distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
+            logFurnitureFitSize(
+                "phase=first pipeline=\(pipelineTag) dist_m=\(distStr) W×H_m=\(String(format: "%.3f", fw))×\(String(format: "%.3f", fh)) buffer=\(imageWidth)x\(imageHeight) bbox_px=\(bboxWidthPx)x\(bboxHeightPx) arDepthSnapshot=\(arDepthSnapshotAttached)"
+            )
+            let est = FurnitureSizeEstimate(widthMeters: fw, heightMeters: fh, arHeightMeters: nil)
+            DispatchQueue.main.async {
+                self.onFurnitureSizeEstimated?(est)
+            }
+        }
+
+        let showMeterBanner = furnitureWidthMeters != nil && furnitureHeightMeters != nil && !suppressStartupProgress
+        let dismissDelay: TimeInterval = showMeterBanner ? 0.95 : 0
+
         DispatchQueue.main.async {
-            UIView.animate(withDuration: 0.25) {
+            if showMeterBanner, let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
+                self.progressContainer.isHidden = false
+                self.progressContainer.alpha = 1
+                self.progressView.progress = 1.0
+                self.progressLabel.text = String(format: "  ~%.2f m × %.2f m  \n  (depth + camera)  ", fw, fh)
+            }
+            UIView.animate(withDuration: 0.25, delay: dismissDelay, options: []) {
                 self.progressContainer.alpha = 0
             } completion: { _ in
                 self.progressContainer.isHidden = true
@@ -2349,20 +3433,41 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         guard maskImageView.image != nil else { return }
+        guard overlayPresentationMode == .measuredPlacement else { return }
 
         switch gesture.state {
+        case .began:
+            userLockedAssistedOverlayScale = true
         case .changed:
-            let newScale = currentScale * gesture.scale
-            let clampedScale = min(max(newScale, 0.3), 3.0)
-            maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
-            currentScale = clampedScale
+            userLockedAssistedOverlayScale = true
+            let newPinch = userPinchScale * gesture.scale
+            userPinchScale = min(max(newPinch, 0.25), 4.0)
+            applyCurrentOverlayScaleTransform()
             gesture.scale = 1.0
         case .ended, .cancelled:
-            if currentScale > 0.9 && currentScale < 1.1 {
-                currentScale = 1.0
-                UIView.animate(withDuration: 0.2) { self.maskImageView.transform = .identity }
+            // Snap pinch back to neutral if user barely scaled (same spirit as old 0.9–1.1 total scale).
+            if userPinchScale > 0.92 && userPinchScale < 1.08 {
+                userPinchScale = 1.0
+                userLockedAssistedOverlayScale = false
+                UIView.animate(withDuration: 0.2) {
+                    self.applyCurrentOverlayScaleTransform()
+                }
             }
         default: break
+        }
+    }
+
+    /// Reset overlay scale back to its default for the current detection: keep room and AR-assisted
+    /// scaling, but remove user pinch so the furniture returns to its \"real\" size.
+    @objc private func handleResetScaleTapped() {
+        guard maskImageView.image != nil else { return }
+        userPinchScale = 1.0
+        userLockedAssistedOverlayScale = false
+        if debugMode {
+            logDebug("📐 [RESET] overlay scale reset to default (pinch=1.0)")
+        }
+        UIView.animate(withDuration: 0.2) {
+            self.applyCurrentOverlayScaleTransform()
         }
     }
 
@@ -2397,6 +3502,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
+        guard overlayPresentationMode == .measuredPlacement else { return }
 
         let translation = gesture.translation(in: self)
         switch gesture.state {
@@ -2468,6 +3574,54 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Pass through touches outside bbox to underlying room view
         logDebug("👆 [hitTest] OUTSIDE bbox - passing through")
         return nil
+    }
+}
+
+// MARK: - ARSessionDelegate (ARKit-as-camera path only; hybrid uses AVCapture + `makeDepthSnapshot` on capture thread)
+extension FurnitureFitContainerView {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard isUsingARCameraPath else { return }
+        frameLock.lock()
+        if isProcessing {
+            preferImmediateNextInference = true
+            frameLock.unlock()
+            return
+        }
+        let now = Date()
+        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval
+        if shouldProcess {
+            isProcessing = true
+            lastProcessTime = now
+        }
+        frameLock.unlock()
+        guard shouldProcess else { return }
+        guard let bgra = FurnitureFitARSupport.copyCapturedImageToBGRA(
+            frame: frame,
+            reuse: &arBGRAReuse,
+            ciContext: arCIContext,
+            lockedOrientation: lockedOrientation
+        ) else {
+            resetProcessingFlag()
+            return
+        }
+        // AR camera path still does not feed a separate depth snapshot into the floor-contact estimate.
+        let depthSnapshot: FurnitureFitARDepthSnapshot? = nil
+        detectionQueue.async { [weak self] in
+            self?.processFrame(bgra, arDepthSnapshot: depthSnapshot)
+        }
+    }
+
+    func session(_ session: ARSession, didFailWithError error: Error) {
+        let nsError = error as NSError
+        logDebug("⚠️ [FurnitureFit] ARSession failed: \(nsError.domain) code=\(nsError.code) — falling back to AVCapture (AR companion off for this session)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            suppressARDepthCompanionAfterCaptureFailure = true
+            isUsingARCameraPath = false
+            isARDepthCompanionSessionRunning = false
+            arSession.pause()
+            startClassicCameraPathIfNeeded()
+        }
     }
 }
 

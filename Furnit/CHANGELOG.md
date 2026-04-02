@@ -60,11 +60,11 @@ func savePLY(from sourceURL: URL, name: String,
 
 ```swift
 init(plyURL: URL,
-     roomMeasurements: RoomMeasurements? = nil,
      allowSave: Bool = true,
      photoOrientation: PhotoOrientation = .portrait,
      savedRoomWidth: Float? = nil,
-     savedRoomHeight: Float? = nil)
+     savedRoomHeight: Float? = nil,
+     savedRoomModel: USDZModel? = nil)
 ```
 
 #### ContentView.swift

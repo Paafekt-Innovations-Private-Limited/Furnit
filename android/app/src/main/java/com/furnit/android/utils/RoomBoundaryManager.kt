@@ -114,6 +114,7 @@ class RoomBoundaryManager {
      * @param isPortrait true if device is in portrait orientation
      * @param horizontalFovDegrees horizontal field of view in degrees (unused, kept for API compat)
      */
+    @Suppress("UNUSED_PARAMETER")
     fun getOptimalCameraPosition(isPortrait: Boolean = true, horizontalFovDegrees: Float = 60f): CameraSetup {
         val bounds = roomBounds ?: run {
             // Use defaults if not initialized

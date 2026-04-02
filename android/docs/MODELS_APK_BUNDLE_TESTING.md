@@ -35,7 +35,7 @@ After bundling **fp32 Vulkan Part1–3** plus Part4a/4b, the debug APK is often 
 **Mitigations**
 
 - Install with **`adb install -r`** from a PC/Mac.
-- Prefer **`assemble_friend_apk_shell_only.sh`** + **`push_sharp_vulkan_only.sh`** so the installable APK stays small.
+- Prefer **`assemble_friend_apk_without_models.sh`** (alias: `assemble_friend_apk_shell_only.sh`) + **`push_sharp_cpuvulkan_hybrid_androidstudio.sh`** so the installable APK stays small.
 - If you must stay under ~2 GiB in one APK, you need **smaller exports** (e.g. **FP16** Part1–3 if your device supports them) and/or fewer bundled modules — there is no Gradle flag to bypass the platform installer limit.
 
 ## Gradle properties

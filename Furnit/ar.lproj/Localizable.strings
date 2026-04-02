@@ -21,6 +21,7 @@
 "common.error" = "خطأ";
 "common.save" = "حفظ";
 "common.close" = "إغلاق";
+"common.apply" = "تطبيق";
 
 // MARK: - Login View
 "login.yourName" = "اسمك";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "يستخدم هذا التطبيق نماذجاً قائمة على YOLO (مثل Ultralytics YOLO). YOLO مرخّص بموجب AGPL-3.0. إصدار المرحلة 1 غير تجاري. للاستخدام التجاري، راجع https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "إعادة بناء الغرفة ثلاثية الأبعاد (SHARP)";
 "licenses.sharp" = "حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "تصيير splat غاوسي على الجهاز. حقوق النشر (c) Sean Cier. مرخّص بموجب رخصة MIT.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "حقوق النشر (c) Google LLC. مرخّص بموجب رخصة Apache 2.0.";
 
@@ -178,20 +181,22 @@
 "faq.howToCreateAnswer" = "اضغط على أيقونة الصورة في الزاوية العلوية اليسرى من الشاشة الرئيسية، ثم التقط أو اختر صورة لغرفتك. سترى خيارين للاختيار من بينهما لإنشاء غرفتك ثلاثية الأبعاد.";
 "faq.howToTakePhoto" = "كيف ألتقط صورة لإنشاء غرفة؟";
 "faq.howToTakePhotoAnswer" = "اضغط على أيقونة الكاميرا في الشاشة الرئيسية لالتقاط صورة مباشرة. يمكنك الاختيار بين العدسة القياسية (1x) أو الزاوية الواسعة (0.5x فائقة الاتساع). أمسك جهازك بثبات واضغط على زر الالتقاط. ستُستخدم الصورة بعد ذلك لإنشاء غرفتك ثلاثية الأبعاد.";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "هل يساعد التقاط الصورة داخل التطبيق على جودة الغرفة؟";
+"faq.depthAwareRoomPhotoAnswer" = "نعم. على الأجهزة المدعومة، خيار «التقاط صورة» بدلاً من المعرض يستخدم كاميرا التطبيق مع العمق عند توفره، مما قد يحسن بناء الغرفة ثلاثية الأبعاد وحجمها.";
+"faq.twoMethods" = "ما خيارا إنشاء الغرفة المتاحان؟";
+"faq.twoMethodsAnswer" = "عند اختيار صورة يمكنك الاختيار بين: 1) غرفة 3D بالذكاء الاصطناعي – تنشئ تلقائياً غرفة 3D واقعية، أو 2) الإعداد اليدوي – ترسم حدود الغرفة بنفسك لمزيد من التحكم.";
+"faq.whatIsAIRoom" = "ما هي الغرفة ثلاثية الأبعاد بالذكاء الاصطناعي؟";
+"faq.whatIsAIRoomAnswer" = "تستخدم هذه الخيار تقنية ذكية لتحويل صورتك تلقائياً إلى غرفة ثلاثية الأبعاد يمكنك التجول فيها. فقط اختر صورة وتقوم التطبيق بالباقي - لا حاجة للرسم أو الضبط. يعمل كالسحر!";
+"faq.whatIsManualRoom" = "ما هو الإعداد اليدوي؟";
+"faq.whatIsManualRoomAnswer" = "في الإعداد اليدوي ترسم حدود جدران غرفتك على الصورة. يعطيك تحكماً أدق في مظهر الغرفة 3D. مثالي عندما تريد ضبط شكل الغرفة بنفسك.";
+"faq.whichMethodBetter" = "أي طريقة يجب أن أختار؟";
+"faq.whichMethodBetterAnswer" = "جرب أولاً بالذكاء الاصطناعي – أسرع ويناسب معظم الغرف. إن لم يعجبك الناتج، استخدم الإعداد اليدوي لرسم الجدران حيث تريد. يمكنك تجربة الاثنتين!";
 "faq.bestPhotos" = "ما نوع الصور التي تعمل بشكل أفضل؟";
 "faq.bestPhotosAnswer" = "للحصول على أفضل النتائج، التقط الصور في إضاءة جيدة مع إمساك الجهاز بثبات. حاول التقاط الغرفة بالكامل بما في ذلك الأرضيات والجدران وحواف السقف. تجنب الصور الضبابية أو المظلمة.";
 "faq.generationFailing" = "لماذا يفشل إنشاء غرفتي؟";
 "faq.generationFailingAnswer" = "قد يفشل إنشاء الغرفة إذا كانت الصورة مظلمة جداً أو ضبابية أو لا تُظهر ميزات كافية للغرفة. جرب التقاط صورة جديدة بإضاءة أفضل وزاوية أوسع.";
 "faq.howManyRooms" = "كم عدد الغرف التي يمكنني إنشاؤها؟";
-"faq.howManyRoomsAnswer" = "يمكنك إنشاء حتى 10 غرف. احذف الغرف القديمة لإفساح المجال. يُعرض عدد الغرف في أعلى شاشتك الرئيسية.";
+"faq.howManyRoomsAnswer" = "يمكنك إنشاء ما يصل إلى 1000 غرفة. احذف الغرف القديمة لإفساح المجال للجديدة. يُعرض عدد الغرف والتخزين المستخدم في أعلى الشاشة الرئيسية.";
 
 // FAQ - AI Features
 "faq.aiFeatures" = "ميزات الذكاء الاصطناعي";
@@ -223,7 +228,6 @@
 "faq.whatIsMemoryDisplayAnswer" = "يشير MB (ميجابايت) المعروض في الغرف إلى حجم الملف. يساعدك هذا على إدارة التخزين. يُعرض إجمالي التخزين المستخدم في أعلى الشاشة الرئيسية.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "الغرفة ثلاثية الأبعاد والتركيب";
 "faq.howToView" = "كيف أعرض غرفتي ثلاثية الأبعاد؟";
 "faq.howToViewAnswer" = "اضغط على أي غرفة في الشاشة الرئيسية لفتح العارض ثلاثي الأبعاد. يمكنك تدوير الغرفة وتكبيرها وتحريكها باستخدام إيماءات اللمس.";
 "faq.howToPlace" = "كيف أضع الأثاث في غرفتي؟";
@@ -234,6 +238,15 @@
 "faq.accuracyAnswer" = "يوفر النموذج ثلاثي الأبعاد تقريباً جيداً لتخطيط غرفتك. للحصول على أفضل دقة، تأكد من أن صورتك الأصلية تلتقط أبعاد الغرفة بوضوح مع زوايا وحواف مرئية.";
 "faq.adjustDimensions" = "هل يمكنني ضبط أبعاد الغرفة؟";
 "faq.adjustDimensionsAnswer" = "نعم، انتقل إلى الإعدادات وابحث عن خيارات أبعاد الغرفة حيث يمكنك ضبط حجم ونسب الغرفة المنشأة بدقة.";
+"faq.furnitureMeasurements" = "الأثاث والقياسات";
+"faq.arAssistedSizing" = "ما هو تحديد حجم الأثاث بمساعدة الواقع المعزز؟";
+"faq.arAssistedSizingAnswer" = "عند تفعيله في الإعدادات، يجمع التطبيق بين عمق الكاميرا واكتشاف الأجسام ليضبط حجم طبقة الأثاث بشكل أوضح عند اقترابك أو ابتعادك. يعمل أفضل مع إضاءة جيدة ورؤية واضحة للقطعة.";
+"faq.measurementPill" = "ما هي القراءة الصغيرة للقياسات؟";
+"faq.measurementPillAnswer" = "عندما يكون SmartyPants نشطاً، قد تظهر تقديرات لارتفاع الأثاث والغرفة. اضغط لإدخال قياسات فعلية لدقة أفضل. إذا كانت صورة الغرفة بالزاوية الواسعة (0.5×)، حدد ذلك.";
+"faq.resetOverlayScale" = "تبدو القناع مكبراً بشكل خاطئ—ماذا أفعل؟";
+"faq.resetOverlayScaleAnswer" = "في الغرفة ثلاثية الأبعاد افتح القائمة (⋮) واختر إعادة ضبط مقياس الطبقة. يزيل التكبير التلقائي المطبق على قناع الكشف.";
+"faq.roomFitment" = "كيف أتحقق من ملاءمة الأثاث؟";
+"faq.roomFitmentAnswer" = "بعد إضافة الأثاث، يمكنك تغيير حجمه وموضعه في الغرفة ثلاثية الأبعاد لمعرفة مدى ملاءمته لمساحتك وللأثاث الآخر.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "حدود الغرفة";
@@ -277,6 +290,29 @@
 "roomViewer.saveSuccess" = "تم حفظ الغرفة '%@' بنجاح!";
 "roomViewer.saveFailed" = "فشل حفظ الغرفة: %@";
 "roomViewer.roomSaveTitle" = "حفظ الغرفة";
+"roomPreview.unsavedTitle" = "المغادرة دون حفظ؟";
+"roomPreview.unsavedMessage" = "لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.";
+"roomPreview.stay" = "البقاء";
+"roomPreview.leave" = "مغادرة";
+"roomViewer.share" = "مشاركة";
+"roomViewer.calibrateWall" = "معايرة الجدار";
+"roomViewer.recenterView" = "إعادة تمركز العرض";
+"roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
+"roomViewer.checkMeasurement" = "تحقق من القياس";
+"roomViewer.goingBack" = "جارٍ الرجوع...";
+"roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";
+"roomViewer.calibrateRoomTitle" = "معايرة الغرفة";
+"roomViewer.enterFurnitureHeightMeters" = "أدخل ارتفاع الأثاث الفعلي (بالأمتار)";
+"roomViewer.furnitureFullHeightHint" = "الارتفاع الكامل: من الأرض إلى الأعلى (مثلاً 0.9 م لكرسي)";
+"roomViewer.calibrateByWallTitle" = "معايرة بالجدار";
+"roomViewer.enterWallDimensionsHint" = "أدخل قياس الجدار الأمامي بالشريط (بالأمتار)، مثلاً 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "اضغط للمعايرة";
+"roomViewer.detectedMeters" = "تم اكتشاف: %.2f م";
+"roomViewer.roomMetersShort" = "الغرفة: %.2f م";
+"roomViewer.furnitureMetersShort" = "أثاث: %.2f م";
+"roomViewer.wallWidthPlaceholder" = "العرض";
+"roomViewer.wallHeightPlaceholder" = "الارتفاع";
+"roomViewer.saveErrorUnknown" = "خطأ غير معروف";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "إرسال التقرير";
@@ -290,24 +326,74 @@
 "accessibility.createRoom" = "إنشاء غرفة من صورة";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "كيف تريد إنشاء غرفتك ثلاثية الأبعاد؟";
+"photoRoom.tapOption" = "اضغط على خيار أدناه للمتابعة";
+"photoRoom.aiPowered" = "بناء ثلاثي الأبعاد بالذكاء الاصطناعي";
+"photoRoom.manualSetup" = "إعداد يدوي";
+"photoRoom.manualSetupDesc" = "اسحب لضبط جدران الغرفة";
+"photoRoom.selectPhoto" = "اختر صورة";
+"photoRoom.fromLibrary" = "من مكتبة الصور";
+"photoRoom.loading" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
+"photoRoom.downloadSuccess" = "تم تنزيل %@ بنجاح. يمكنك عرضه في قائمة النماذج.";
+"photoRoom.saveSuccess" = "تم حفظ النموذج ثلاثي الأبعاد بنجاح.";
 "photoRoom.error" = "حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.";
 "photoRoom.buildingRoom" = "جاري بناء غرفتك ثلاثية الأبعاد...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "عمودي";
+"orientation.landscape" = "أفقي";
+"orientation.heldVertically" = "ممسوك عمودياً";
+"orientation.heldHorizontally" = "ممسوك أفقياً";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "لا تختر لقطات شاشة — قد تسبب بقعاً سوداء";
+
+// MARK: - i18n sync (Arabic)
+"common.or" = "أو";
+"common.retry" = "إعادة المحاولة";
+"settings.furnitureSegmentationSection" = "تجزئة الأثاث";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: السماح بـ GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "إيقاف (افتراضي): المعالج فقط — أبطأ لكن يقلل الأعطال في بعض إصدارات YOLO-E 26L Core ML. تشغيل: معالج+GPU للسرعة؛ قد يحدث SIGABRT أثناء التجزئة إذا لم يعمل التصدير على Metal.";
+"settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";
+"settings.showRoomFurnitureCalibrateDescription" = "يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).";
+"settings.furnitureFitARCompanion" = "قياس الأثاث بمساعدة AR";
+"settings.furnitureFitARCompanionDescription" = "يشغّل عمق المشهد من ARKit بجانب الكاميرا في Furniture Fit (LiDAR). قد يتعارض مع التقاط الفيديو. أعد فتح الغرفة بعد التغيير.";
+"settings.furnitureFitARCompanionUnavailable" = "عمق المشهد غير متاح على هذا الجهاز.";
+"settings.roomMeasurementSection" = "قياس الغرفة";
+"settings.yoloWallDimensionsOnSave" = "أبعاد الجدار YOLO عند الحفظ";
+"settings.yoloWallDimensionsOnSaveDescription" = "عند تسمية وحفظ غرفة SHARP، يُقدَّر عرض وارتفاع الجدار الأمامي باستخدام YOLO (فئة جدار أو صندوق شبيه)، وعمق SHARP أحادي المحفوظ مع الغرفة، وبيانات EXIF للكاميرا. يتطلب thumbnail.png ويفضّل sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "المسافة المفترضة إلى الجدار (م)";
+"settings.wallAssumedCeilingM" = "الارتفاع المفترض للجدار/السقف (م)";
+"settings.roomMeasurementFooter" = "بدون عمق أحادي على SHARP iOS، يستخدم الحفظ عمقاً مفترضاً وأحياناً هذا ارتفاع السقف. إذا كان العرض أقل من شريط القياس، زد المسافة المفترضة (العرض يتناسب تقريباً خطياً). اضبط ارتفاع الجدار قرب قياسك (مثلاً 2.86 م). أو استخدم ⋮ → معايرة بالجدار قبل الحفظ.";
+"camera.takePhoto" = "التقاط صورة";
+"camera.chooseOrientationShort" = "عمودي أو أفقي";
+"sharp.downloadingEngine" = "جاري تنزيل محرك ثلاثي الأبعاد...";
+"sharp.downloadingEnginePercent" = "جاري تنزيل محرك ثلاثي الأبعاد... %d%%";
+"sharp.downloadComplete" = "اكتمل التنزيل";
+"sharp.downloadFailed" = "فشل التنزيل";
+"sharp.gettingReady" = "جاري التجهيز...";
+"sharp.notEnoughSpace" = "لا توجد مساحة كافية على الجهاز";
+"sharp.settingThingsUp" = "جاري الإعداد...";
+"sharp.ready" = "جاهز!";
+"sharp.couldNotGetReady" = "تعذر إكمال التجهيز";
+"sharp.somethingWentWrong" = "حدث خطأ ما";
+"sharp.preparingPhoto" = "جاري تجهيز صورتك...";
+"sharp.creatingRoom" = "جاري إنشاء غرفتك ثلاثية الأبعاد...";
+"sharp.almostDone" = "أوشكنا على الانتهاء...";
+"sharp.done" = "تم!";
+"sharp.couldNotCreateRoom" = "تعذر إنشاء الغرفة";
+"sharp.cancelled" = "أُلغي";
+"photoRoom.odrOneTimeDownload" = "تنزيل لمرة واحدة (~1.2 غيغابايت)";
+"photoRoom.modelGeneratedTitle" = "تم إنشاء النموذج ثلاثي الأبعاد";
+"photoRoom.generationFailedTitle" = "فشل الإنشاء";
+"photoRoom.loading3DRoom" = "جاري تحميل الغرفة ثلاثية الأبعاد...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "جاري رفع الصورة";
+"generationProgress.generating3DModel" = "جاري إنشاء النموذج ثلاثي الأبعاد";
+"generationProgress.downloadingModel" = "جاري تنزيل النموذج";
+"generationProgress.complete" = "اكتمل!";
+"generationProgress.preparing" = "جاري التحضير...";
+"generationProgress.mayTakeFewMinutes" = "قد يستغرق هذا بضع دقائق";

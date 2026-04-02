@@ -7,7 +7,7 @@ The app uses Apple's **On-Demand Resources (ODR)** to deliver large CoreML model
 | Model | File | Size | ODR Tag | Used For |
 |-------|------|------|---------|----------|
 | SHARP | `SHARP_fp32_1536.mlpackage` | ~1.2 GB | `SHARPModel` | AI room generation (3D Gaussian splats) |
-| YOLOE | `yoloe-11l-seg-pf.mlpackage` | ~60 MB | `YOLOEModel` | Furniture detection (FurnitureFit) |
+| YOLOE | `yoloe-26l-seg-pf.mlpackage` (or `yoloe-26l-seg-pf_seg_o2m`) | ~60 MB | `YOLOEModel` | Furniture detection (FurnitureFit) |
 
 ## How It Works
 
@@ -35,7 +35,7 @@ ENABLE_ON_DEMAND_RESOURCES = YES;
 
 // Tag each model file
 SHARP_fp32_1536.mlpackage: settings = {ASSET_TAGS = (SHARPModel, ); };
-yoloe-11l-seg-pf.mlpackage: settings = {ASSET_TAGS = (YOLOEModel, ); };
+yoloe-26l-seg-pf.mlpackage: settings = {ASSET_TAGS = (YOLOEModel, ); };
 ```
 
 ### 2. SHARPService.swift (SHARP model)

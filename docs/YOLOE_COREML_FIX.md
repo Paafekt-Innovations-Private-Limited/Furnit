@@ -1,5 +1,13 @@
 # YOLOE CoreML Model Detection Fix
 
+## Current iOS shipping model
+
+The **Furnit** iOS app loads **YOLOE 26L PF** only: `yoloe-26l-seg-pf_seg_o2m` (preferred) or `yoloe-26l-seg-pf`, via `YOLOEModelService` (see `Furnit/Services/OnDevice/YOLOEModelService.swift`). Export path: `scripts/export_yoloe26_onemany_user.py` / `export_yoloe26_fixed.py` and `scripts/README_YOLOE_COREML.md`.
+
+The remainder of this document is **historical context** from when a broken 26L Core ML export was worked around by preferring an 11L package.
+
+---
+
 ## Problem Summary
 
 The iOS app was detecting wrong object classes when using the `yoloe-26l-seg-pf` CoreML model. Instead of detecting "chair" (class 821) or "office chair" (class 2834), the model was outputting random incorrect classes like:
@@ -46,9 +54,9 @@ for name in dir(head):
 
 **This allowed the model to export, but the exported CoreML model was corrupted** - the unfused batch normalization layers weren't properly converted, causing the classification head to output garbage class IDs.
 
-## Solution
+## Solution (historical)
 
-### Use yoloe-11l Instead of yoloe-26l
+### Use yoloe-11l instead of a broken yoloe-26l Core ML export
 
 The `yoloe-11l-seg-pf.pt` model uses `YOLOESegment` head class (not `YOLOESegment26`) which has proper `cv3` and `cv4` heads:
 

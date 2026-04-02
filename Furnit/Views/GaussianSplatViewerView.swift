@@ -23,6 +23,9 @@ struct GaussianSplatViewerView: View {
     /// Zoom level for the 3D scene (1.0 = default, higher = zoomed in)
     @State private var zoomLevel: Float = 1.0
 
+    /// Infinite Zoom preference (shared with Settings / SharpRoomView).
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
+
     /// Environment dismiss action
     @Environment(\.dismiss) private var dismiss
 
@@ -39,7 +42,9 @@ struct GaussianSplatViewerView: View {
                     plyURL: url,
                     isLoading: $isLoading,
                     loadError: $loadError,
-                    zoomLevel: $zoomLevel
+                    zoomLevel: $zoomLevel,
+                    infiniteZoom: infiniteZoomEnabled,
+                    onBoundsAvailable: nil
                 )
                 .ignoresSafeArea()
                 .onTapGesture {

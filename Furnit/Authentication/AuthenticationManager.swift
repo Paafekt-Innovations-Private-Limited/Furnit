@@ -387,13 +387,11 @@ class AuthenticationManager: ObservableObject {
 
     // MARK: - Feature Access Control
 
-    /// Check if current user has access to share functionality
-    /// Only specific phone numbers are allowed to share
+    /// Check if current user has access to share functionality.
+    /// Only specific phone numbers are allowed to share.
+    /// Note: SwiftUI reads this from toolbar/body on **every** layout pass — do not `print` here except rare deny cases.
     var canShare: Bool {
         guard let phone = currentUser?.phoneNumber else {
-            if AppStateManager.shared.qualitySettings.debugMode {
-                print("🔐 [Share] canShare: false - no currentUser or phoneNumber")
-            }
             return false
         }
 
@@ -408,12 +406,9 @@ class AuthenticationManager: ObservableObject {
 
         let allowed = allowedPhones.contains(normalizedPhone)
 
-        if AppStateManager.shared.qualitySettings.debugMode {
-            print("🔐 [Share] canShare check:")
-            print("🔐 [Share]   Raw phone: \(phone)")
-            print("🔐 [Share]   Normalized: \(normalizedPhone)")
-            print("🔐 [Share]   Allowed phones: \(allowedPhones)")
-            print("🔐 [Share]   Result: \(allowed ? "✅ ALLOWED" : "❌ DENIED")")
+        // Avoid log spam: only print denials in debug (allowed path is hit constantly from SwiftUI).
+        if AppStateManager.shared.qualitySettings.debugMode, !allowed {
+            print("🔐 [Share] canShare DENIED raw=\(phone) normalized=\(normalizedPhone) allowed=\(allowedPhones)")
         }
 
         return allowed

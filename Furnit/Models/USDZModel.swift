@@ -14,8 +14,25 @@ struct USDZModel: Identifiable, Hashable {
     let roomHeight: Float?  // Room height in meters
     let roomDepth: Float?  // Room depth in meters (for meshroom)
 
+    /// Optional splat depth-raycast dimensions in **scene units** (PLY space) for ratio fitment vs furniture.
+    let roomSceneWidth: Float?
+    let roomSceneHeight: Float?
+    let roomSceneDepth: Float?
+
+    // MARK: - YOLO ratio calibration (optional; from *.meta JSON)
+    /// Wall bbox height / reference image height, or 1.0 when using full-frame proxy.
+    let yoloWallHeightFrac: Float?
+    /// Canonical furniture label → height / reference image height.
+    let yoloFurnitureHeightFracByClass: [String: Float]?
+    /// Reference image height in pixels at calibration time.
+    let yoloRefImageHeightPx: Int?
+    /// SHARP / metadata room height (m) when ratios were captured.
+    let sharpRoomHeightAtYoloCapture: Float?
+    /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
+    let customDisplayName: String?
+
     // Standard initializer for USDZ models (backward compatible)
-    init(name: String, fileName: String, isSavedRoom: Bool = false) {
+    init(name: String, fileName: String, isSavedRoom: Bool = false, customDisplayName: String? = nil) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
@@ -25,12 +42,38 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = nil
         self.roomHeight = nil
         self.roomDepth = nil
+        self.roomSceneWidth = nil
+        self.roomSceneHeight = nil
+        self.roomSceneDepth = nil
+        self.yoloWallHeightFrac = nil
+        self.yoloFurnitureHeightFracByClass = nil
+        self.yoloRefImageHeightPx = nil
+        self.sharpRoomHeightAtYoloCapture = nil
+        self.customDisplayName = customDisplayName
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
 
     // Full initializer with file type and size
-    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, roomDepth: Float? = nil) {
+    init(
+        name: String,
+        fileName: String,
+        isSavedRoom: Bool,
+        fileType: ModelFileType,
+        fileSize: UInt64?,
+        photoOrientation: PhotoOrientation = .portrait,
+        roomWidth: Float? = nil,
+        roomHeight: Float? = nil,
+        roomDepth: Float? = nil,
+        roomSceneWidth: Float? = nil,
+        roomSceneHeight: Float? = nil,
+        roomSceneDepth: Float? = nil,
+        yoloWallHeightFrac: Float? = nil,
+        yoloFurnitureHeightFracByClass: [String: Float]? = nil,
+        yoloRefImageHeightPx: Int? = nil,
+        sharpRoomHeightAtYoloCapture: Float? = nil,
+        customDisplayName: String? = nil
+    ) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
@@ -40,11 +83,22 @@ struct USDZModel: Identifiable, Hashable {
         self.roomWidth = roomWidth
         self.roomHeight = roomHeight
         self.roomDepth = roomDepth
+        self.roomSceneWidth = roomSceneWidth
+        self.roomSceneHeight = roomSceneHeight
+        self.roomSceneDepth = roomSceneDepth
+        self.yoloWallHeightFrac = yoloWallHeightFrac
+        self.yoloFurnitureHeightFracByClass = yoloFurnitureHeightFracByClass
+        self.yoloRefImageHeightPx = yoloRefImageHeightPx
+        self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
+        self.customDisplayName = customDisplayName
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }
     
     var displayName: String {
+        if let custom = customDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
         var cleanName = name
         // Remove timestamp suffix for PLY files (format: "RoomName_1767917336")
         if fileType == .ply {

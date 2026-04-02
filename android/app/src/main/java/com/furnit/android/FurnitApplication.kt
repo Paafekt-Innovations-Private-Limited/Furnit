@@ -11,6 +11,7 @@ import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.ExecutorchNativeLoader
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.Part1OnlyTest
+import com.furnit.android.utils.UnsavedSharpRoomCleanup
 import com.google.firebase.FirebaseApp
 
 /**
@@ -52,6 +53,8 @@ class FurnitApplication : Application() {
         DebugLogger.init(this)
         LogUtil.init(this)
 
+        UnsavedSharpRoomCleanup.deletePreviewOnlyFolders(this)
+
         scheduleHydrateSharpModelsFromApkAssetsIfNeeded()
 
         // ExecuTorch: register Vulkan/backend early. Background Part1 warmup is opt-in and disabled by default.
@@ -76,6 +79,7 @@ class FurnitApplication : Application() {
 
     private val componentCallbacks2 = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
+            // releaseNativeCaches no-ops while ExecutorchInt8Sharp room pipeline is in native code (avoids SIGSEGV).
             when (level) {
                 ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
                 ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,

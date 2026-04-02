@@ -21,6 +21,7 @@
 "common.error" = "Erreur";
 "common.save" = "Enregistrer";
 "common.close" = "Fermer";
+"common.apply" = "Appliquer";
 
 // MARK: - Login View
 "login.yourName" = "Votre nom";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "Cette app utilise des modèles basés sur YOLO (ex. Ultralytics YOLO). YOLO est sous licence AGPL-3.0. Cette version Phase 1 est non commerciale. Pour un usage commercial, voir https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "Reconstruction 3D de pièce (SHARP)";
 "licenses.sharp" = "Copyright (c) contributeurs SharpML. Sous licence MIT.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "Rendu de splats gaussiens sur l’appareil. Copyright (c) Sean Cier. Sous licence MIT.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Sous licence Apache 2.0.";
 
@@ -178,20 +181,22 @@
 "faq.howToCreateAnswer" = "Appuyez sur l'icône photo dans le coin supérieur gauche de l'écran d'accueil, puis prenez ou sélectionnez une photo de votre pièce. Vous verrez deux options pour créer votre pièce 3D.";
 "faq.howToTakePhoto" = "Comment prendre une photo pour créer une pièce ?";
 "faq.howToTakePhotoAnswer" = "Appuyez sur l'icône appareil photo sur l'écran d'accueil pour prendre une photo directement. Vous pouvez choisir entre l'objectif Standard (1x) ou Grand Angle (0.5x ultra-large). Tenez votre appareil stable et appuyez sur le bouton de capture. La photo sera ensuite utilisée pour créer votre pièce 3D.";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "Prendre une photo dans l'app améliore-t-il la qualité ?";
+"faq.depthAwareRoomPhotoAnswer" = "Oui. Sur les appareils compatibles, « Prendre une photo » (plutôt que la galerie) utilise la caméra intégrée avec profondeur si disponible, ce qui peut améliorer la reconstruction et l'échelle de la pièce 3D.";
+"faq.twoMethods" = "Quelles sont les deux options de création de pièce ?";
+"faq.twoMethodsAnswer" = "Après avoir choisi une photo : 1) Pièce 3D par IA – crée automatiquement une pièce réaliste, ou 2) Configuration manuelle – vous tracez les limites vous-même pour plus de contrôle.";
+"faq.whatIsAIRoom" = "Qu'est-ce que la pièce 3D par IA ?";
+"faq.whatIsAIRoomAnswer" = "Cette option transforme automatiquement votre photo en pièce 3D à parcourir. Choisissez une photo, l'application fait le reste.";
+"faq.whatIsManualRoom" = "Qu'est-ce que la configuration manuelle ?";
+"faq.whatIsManualRoomAnswer" = "Vous tracez le contour des murs sur la photo pour contrôler précisément la forme de la pièce 3D.";
+"faq.whichMethodBetter" = "Quelle méthode choisir ?";
+"faq.whichMethodBetterAnswer" = "Essayez d'abord l'option IA – plus rapide et adaptée à la plupart des pièces. Si le résultat ne convient pas, utilisez la configuration manuelle. Vous pouvez tester les deux !";
 "faq.bestPhotos" = "Quel type de photos fonctionne le mieux ?";
 "faq.bestPhotosAnswer" = "Pour de meilleurs résultats, prenez des photos dans un bon éclairage avec l'appareil tenu à l'horizontale. Essayez de capturer toute la pièce, y compris les sols, les murs et les bords du plafond. Évitez les photos floues ou sombres.";
 "faq.generationFailing" = "Pourquoi ma génération de pièce échoue-t-elle ?";
 "faq.generationFailingAnswer" = "La génération de pièce peut échouer si la photo est trop sombre, floue ou ne montre pas assez de caractéristiques de la pièce. Essayez de prendre une nouvelle photo avec un meilleur éclairage et un angle plus large.";
 "faq.howManyRooms" = "Combien de pièces puis-je créer ?";
-"faq.howManyRoomsAnswer" = "Vous pouvez créer jusqu'à 10 pièces. Supprimez les anciennes pièces pour faire de la place. Le nombre de pièces s'affiche en haut de votre écran d'accueil.";
+"faq.howManyRoomsAnswer" = "Vous pouvez créer jusqu'à 1000 pièces. Supprimez les anciennes pièces pour libérer de l'espace. Le nombre de pièces et le stockage utilisé s'affichent en haut de l'écran d'accueil.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentation de meubles";
@@ -205,7 +210,8 @@
 "faq.multiplePiecesAnswer" = "Oui ! L'IA peut détecter plusieurs meubles dans une seule photo. Chaque élément détecté sera affiché séparément pour que vous puissiez choisir lesquels utiliser.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "Pièce 3D et aménagement";
+"faq.roomFitment" = "Comment vérifier si les meubles conviennent ?";
+"faq.roomFitmentAnswer" = "Après avoir ajouté un meuble, redimensionnez-le et déplacez-le dans la pièce 3D pour voir comment il s'intègre à l'espace et aux autres meubles.";
 "faq.howToView" = "Comment visualiser ma pièce 3D ?";
 "faq.howToViewAnswer" = "Appuyez sur n'importe quelle pièce de votre écran d'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.";
 "faq.howToPlace" = "Comment placer des meubles dans ma pièce ?";
@@ -216,6 +222,13 @@
 "faq.accuracyAnswer" = "Le modèle 3D fournit une bonne approximation de l'agencement de votre pièce. Pour une meilleure précision, assurez-vous que votre photo originale capture clairement les dimensions de la pièce avec des coins et des bords visibles.";
 "faq.adjustDimensions" = "Puis-je ajuster les dimensions de la pièce ?";
 "faq.adjustDimensionsAnswer" = "Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.";
+"faq.furnitureMeasurements" = "Meubles & mesures";
+"faq.arAssistedSizing" = "Qu'est-ce que le dimensionnement des meubles assisté par RA ?";
+"faq.arAssistedSizingAnswer" = "Lorsque cette option est activée dans Réglages, l'app combine la profondeur caméra et la détection d'objets pour ajuster la taille du calque meuble de façon plus réaliste quand vous vous rapprochez ou vous éloignez. Fonctionne mieux avec un bon éclairage et un objet bien visible.";
+"faq.measurementPill" = "À quoi sert le petit bandeau de mesure ?";
+"faq.measurementPillAnswer" = "Quand SmartyPants est actif, un bandeau peut afficher la hauteur estimée du meuble et de la pièce. Touchez-le pour saisir des mesures réelles. Si la photo de la pièce est en grand-angle (0,5×), indiquez-le pour un cadrage cohérent.";
+"faq.resetOverlayScale" = "Le masque semble mal zoomé — que faire ?";
+"faq.resetOverlayScaleAnswer" = "Dans la pièce 3D, ouvrez le menu (⋮) et choisissez Réinitialiser l'échelle du calque. Cela efface le zoom automatique appliqué au masque de détection.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Limites de la pièce";
@@ -259,6 +272,29 @@
 "roomViewer.saveSuccess" = "Pièce '%@' enregistrée avec succès !";
 "roomViewer.saveFailed" = "Échec de l'enregistrement de la pièce : %@";
 "roomViewer.roomSaveTitle" = "Enregistrer la pièce";
+"roomPreview.unsavedTitle" = "Partir sans enregistrer ?";
+"roomPreview.unsavedMessage" = "La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.";
+"roomPreview.stay" = "Rester";
+"roomPreview.leave" = "Quitter";
+"roomViewer.share" = "Partager";
+"roomViewer.calibrateWall" = "Calibrer le mur";
+"roomViewer.recenterView" = "Recentrer la vue";
+"roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
+"roomViewer.checkMeasurement" = "Vérifier la mesure";
+"roomViewer.goingBack" = "Retour…";
+"roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";
+"roomViewer.calibrateRoomTitle" = "Calibrer la pièce";
+"roomViewer.enterFurnitureHeightMeters" = "Saisir la hauteur réelle du meuble (mètres)";
+"roomViewer.furnitureFullHeightHint" = "Hauteur totale : du sol au sommet (ex. 0,9 m pour une chaise)";
+"roomViewer.calibrateByWallTitle" = "Calibrer par le mur";
+"roomViewer.enterWallDimensionsHint" = "Saisir le mur avant mesuré au ruban (mètres), ex. 3,15 × 2,86";
+"roomViewer.tapToCalibrate" = "Appuyer pour calibrer";
+"roomViewer.detectedMeters" = "Détecté : %.2f m";
+"roomViewer.roomMetersShort" = "Pièce : %.2f m";
+"roomViewer.furnitureMetersShort" = "Meuble : %.2f m";
+"roomViewer.wallWidthPlaceholder" = "Largeur";
+"roomViewer.wallHeightPlaceholder" = "Hauteur";
+"roomViewer.saveErrorUnknown" = "Erreur inconnue";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Soumettre le rapport";
@@ -290,24 +326,74 @@
 "faq.whatIsMemoryDisplayAnswer" = "Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l'écran d'accueil.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "Comment souhaitez-vous créer votre pièce 3D ?";
+"photoRoom.tapOption" = "Touchez une option ci-dessous pour continuer";
+"photoRoom.aiPowered" = "Construction 3D assistée par IA";
+"photoRoom.manualSetup" = "Réglage manuel";
+"photoRoom.manualSetupDesc" = "Faites glisser pour ajuster les murs";
+"photoRoom.selectPhoto" = "Choisir une photo";
+"photoRoom.fromLibrary" = "Depuis votre photothèque";
+"photoRoom.loading" = "Chargement de la pièce 3D...";
+"photoRoom.downloadSuccess" = "%@ a été téléchargé avec succès. Consultez-le dans la liste de vos modèles.";
+"photoRoom.saveSuccess" = "Votre modèle 3D a été enregistré avec succès.";
 "photoRoom.error" = "Une erreur s'est produite lors de la génération de votre modèle 3D.";
 "photoRoom.buildingRoom" = "Construction de votre pièce 3D...";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.landscape" = "Paysage";
+"orientation.heldVertically" = "Tenu à la verticale";
+"orientation.heldHorizontally" = "Tenu à l'horizontale";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "N'utilisez pas de captures d'écran — elles peuvent créer des zones noires";
+
+// MARK: - i18n sync (French)
+"common.or" = "ou";
+"common.retry" = "Réessayer";
+"settings.furnitureSegmentationSection" = "Segmentation des meubles";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML : autoriser le GPU";
+"settings.yoloeCoreMLAllowGPUDescription" = "Désactivé (défaut) : CPU uniquement — plus lent mais évite des plantages sur certaines versions YOLO-E 26L Core ML. Activé : CPU+GPU pour la vitesse ; risque de SIGABRT si l'export ne tourne pas sur Metal.";
+"settings.showRoomFurnitureCalibrate" = "Afficher calibrage pièce et meubles";
+"settings.showRoomFurnitureCalibrateDescription" = "Affiche « Calibrer le mur » dans le menu de la pièce et la pastille « Toucher pour calibrer » lorsque SmartyPants (cerveau) est actif.";
+"settings.furnitureFitARCompanion" = "Dimensionnement meubles assisté par RA";
+"settings.furnitureFitARCompanionDescription" = "Lance la profondeur de scène ARKit en parallèle de la caméra dans Furniture Fit (LiDAR). Peut entrer en conflit avec la capture vidéo. Rouvrez la pièce après modification.";
+"settings.furnitureFitARCompanionUnavailable" = "La profondeur de scène n’est pas disponible sur cet appareil.";
+"settings.roomMeasurementSection" = "Mesures de la pièce";
+"settings.yoloWallDimensionsOnSave" = "Dimensions du mur YOLO à l'enregistrement";
+"settings.yoloWallDimensionsOnSaveDescription" = "Lorsque vous nommez et enregistrez une pièce SHARP, estime la largeur et la hauteur du mur avant avec YOLO (classe mur ou boîte proche), la monoprofondeur SHARP enregistrée avec la pièce et les EXIF. Nécessite thumbnail.png et de préférence sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "Distance supposée au mur (m)";
+"settings.wallAssumedCeilingM" = "Hauteur de plafond supposée (m)";
+"settings.roomMeasurementFooter" = "Sans monoprofondeur SHARP sur iOS, l'enregistrement utilise la distance supposée et parfois cette hauteur de plafond. Si la largeur est trop faible par rapport au mètre ruban, augmentez la distance supposée (la largeur évolue à peu près linéairement). Réglez la hauteur près de votre mesure (ex. 2,86 m). Ou utilisez ⋮ → Calibrer par mur avant d'enregistrer.";
+"camera.takePhoto" = "Prendre une photo";
+"camera.chooseOrientationShort" = "Portrait ou paysage";
+"sharp.downloadingEngine" = "Téléchargement du moteur 3D...";
+"sharp.downloadingEnginePercent" = "Téléchargement du moteur 3D... %d%%";
+"sharp.downloadComplete" = "Téléchargement terminé";
+"sharp.downloadFailed" = "Échec du téléchargement";
+"sharp.gettingReady" = "Préparation...";
+"sharp.notEnoughSpace" = "Espace insuffisant sur l'appareil";
+"sharp.settingThingsUp" = "Configuration...";
+"sharp.ready" = "Prêt !";
+"sharp.couldNotGetReady" = "Impossible de finaliser la préparation";
+"sharp.somethingWentWrong" = "Un problème est survenu";
+"sharp.preparingPhoto" = "Préparation de votre photo...";
+"sharp.creatingRoom" = "Création de votre pièce 3D...";
+"sharp.almostDone" = "Presque terminé...";
+"sharp.done" = "Terminé !";
+"sharp.couldNotCreateRoom" = "Impossible de créer la pièce";
+"sharp.cancelled" = "Annulé";
+"photoRoom.odrOneTimeDownload" = "Téléchargement unique (~1,2 Go)";
+"photoRoom.modelGeneratedTitle" = "Modèle 3D généré";
+"photoRoom.generationFailedTitle" = "Échec de la génération";
+"photoRoom.loading3DRoom" = "Chargement de la pièce 3D...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "Téléversement de l'image";
+"generationProgress.generating3DModel" = "Génération du modèle 3D";
+"generationProgress.downloadingModel" = "Téléchargement du modèle";
+"generationProgress.complete" = "Terminé !";
+"generationProgress.preparing" = "Préparation...";
+"generationProgress.mayTakeFewMinutes" = "Cela peut prendre quelques minutes";

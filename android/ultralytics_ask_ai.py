@@ -3,7 +3,7 @@
 Open Ultralytics deployment docs, click Ask AI, and submit a SHARP/Executorch-focused question.
 Use --gradle for the Gradle build failure (wildcard IP / sysconf on macOS).
 
-Uses Playwright (same pattern as abap-ai-toolkit browser_export.py).
+Uses Playwright (same pattern as ABAP AI Toolkit's browser_export.py — see https://github.com/kshivanna82/abap-ai-toolkit).
 - Prompt kept under 200 lines (chat limit); no attachments.
 - Question text steers the assistant toward ViT/TinyViT/Executorch deployment, not YOLO.
 

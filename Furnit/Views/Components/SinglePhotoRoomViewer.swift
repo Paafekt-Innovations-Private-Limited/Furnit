@@ -2,6 +2,7 @@ import SwiftUI
 import SceneKit
 import Accelerate
 import CoreML
+import Photos
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -320,7 +321,7 @@ struct RoomBoundaryDetectionView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.orange)
 
-                Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                Text(L10n.PhotoRoom.buildingRoom)
                     .font(.caption)
                     .foregroundColor(.gray)
             }
@@ -366,6 +367,11 @@ struct RoomBoundaryDetectionView: View {
             await MainActor.run {
                 savedBoundaries = boundaries
                 isProcessingInView = false
+            }
+            // Let the parent’s `adjustedBoundaries` commit before pushing MeshRoomView; otherwise
+            // `navigationDestination(isPresented: $navigateToViewer)` can build with nil boundaries and log the default-boundaries fallback.
+            await Task.yield()
+            await MainActor.run {
                 onProcessingComplete?()
                 dismiss()
             }
@@ -812,6 +818,43 @@ struct DraggableHandle: View {
     }
 }
 
+/// Pushes `SharpRoomView` with PLY in **one** state update (avoids `isPresented` building stale destinations).
+private struct SplatViewerDestination: Identifiable, Hashable {
+    let id: UUID
+    let plyURL: URL
+    /// Scene-unit AABB from SHARP at write time (for `[PLY_BOUNDS] SHARP_ROOM_COMPARE`).
+    let sharpPlyW: Float?
+    let sharpPlyH: Float?
+    let sharpPlyD: Float?
+    let sourcePhotoPxW: Int?
+    let sourcePhotoPxH: Int?
+
+    init(
+        plyURL: URL,
+        sharpPlyAabb: (Float, Float, Float)? = nil,
+        sourcePhotoPixels: (Int, Int)? = nil
+    ) {
+        self.id = UUID()
+        self.plyURL = plyURL
+        if let a = sharpPlyAabb {
+            self.sharpPlyW = a.0
+            self.sharpPlyH = a.1
+            self.sharpPlyD = a.2
+        } else {
+            self.sharpPlyW = nil
+            self.sharpPlyH = nil
+            self.sharpPlyD = nil
+        }
+        if let p = sourcePhotoPixels {
+            self.sourcePhotoPxW = p.0
+            self.sourcePhotoPxH = p.1
+        } else {
+            self.sourcePhotoPxW = nil
+            self.sourcePhotoPxH = nil
+        }
+    }
+}
+
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @ObservedObject private var sharpService = SHARPService.shared
@@ -821,8 +864,6 @@ struct SinglePhotoRoomView: View {
     @State private var captureOrientation: CaptureOrientation = .standard  // Camera mode selection
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
-    @State private var fixedImage: UIImage? // ✅ Store fixed image separately
-
     // Identifiable wrapper for reliable sheet(item:) presentation
     @State private var fixedImageItem: IdentifiedImage?
 
@@ -836,13 +877,18 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     @State private var showGenerationSuccess = false
-    @State private var generatedPLYURL: URL?
-    @State private var generatedRoomMeasurements: RoomMeasurements?
-    @State private var navigateToSplatViewer = false
+    @State private var splatViewerDestination: SplatViewerDestination?
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
+    @State private var showBackMethodAlert = false
     @Environment(\.dismiss) private var dismiss
+    /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
+    @State private var sharpSourceImageURL: URL?
+    /// In-app camera metadata (`mediaMetadata`) — EXIF including SubjectDistance when available.
+    @State private var sharpCaptureMediaMetadata: [AnyHashable: Any]?
+    /// Library asset id for EXIF via `PHImageManager.requestImageDataAndOrientation` when `imageURL` is nil.
+    @State private var sharpPhotoLibraryAssetLocalId: String?
 
     var body: some View {
         ZStack {
@@ -972,9 +1018,9 @@ struct SinglePhotoRoomView: View {
                                     .foregroundColor(.blue)
 
                                 VStack(spacing: 4) {
-                                    Text(NSLocalizedString("camera.takePhoto", comment: ""))
+                                    Text(L10n.Camera.takePhoto)
                                         .font(.headline)
-                                    Text(NSLocalizedString("camera.chooseOrientationShort", comment: ""))
+                                    Text(L10n.Camera.chooseOrientationShort)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -995,7 +1041,7 @@ struct SinglePhotoRoomView: View {
                             Rectangle()
                                 .fill(Color.secondary.opacity(0.3))
                                 .frame(height: 1)
-                            Text(NSLocalizedString("common.or", comment: ""))
+                            Text(L10n.Common.or)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 8)
@@ -1016,9 +1062,9 @@ struct SinglePhotoRoomView: View {
                                     .foregroundColor(.green)
 
                                 VStack(spacing: 4) {
-                                    Text(NSLocalizedString("photoRoom.selectPhoto", comment: ""))
+                                    Text(L10n.PhotoRoom.selectPhoto)
                                         .font(.headline)
-                                    Text(NSLocalizedString("photoRoom.fromLibrary", comment: ""))
+                                    Text(L10n.PhotoRoom.fromLibrary)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -1038,7 +1084,7 @@ struct SinglePhotoRoomView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.subheadline)
-                            Text(NSLocalizedString("photoRoom.screenshotWarning", comment: ""))
+                            Text(L10n.PhotoRoom.screenshotWarning)
                                 .font(.subheadline)
                         }
                         .foregroundColor(.red)
@@ -1075,7 +1121,7 @@ struct SinglePhotoRoomView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.purple)
 
-                    Text("One-time download (~1.2 GB)")
+                    Text(L10n.PhotoRoom.odrOneTimeDownload)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1144,7 +1190,7 @@ struct SinglePhotoRoomView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.orange)
 
-                    Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                    Text(L10n.PhotoRoom.buildingRoom)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1154,10 +1200,41 @@ struct SinglePhotoRoomView: View {
                 .shadow(radius: 10)
             }
         }
-        .navigationTitle("Photo to 3D Room")
+        .navigationTitle(L10n.PhotoRoom.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(L10n.Common.back) {
+                    handlePhotoRoomBackTap()
+                }
+            }
+        }
+        .alert(L10n.PhotoRoom.backAlertTitle, isPresented: $showBackMethodAlert) {
+            Button(L10n.PhotoRoom.backAlertAI) {
+                guard let image = selectedImage else { return }
+                logDebug("🤖 [View] Back alert: AI SHARP selected")
+                showMethodPicker = false
+                startSHARPGeneration(image: image)
+            }
+            Button(L10n.PhotoRoom.backAlertManual) {
+                guard let image = selectedImage else { return }
+                logDebug("🏠 [View] Back alert: Manual boundaries selected")
+                showMethodPicker = false
+                fixedImageItem = IdentifiedImage(image: image)
+            }
+            Button(L10n.Common.ok, role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.PhotoRoom.backAlertMessage)
+        }
         .sheet(isPresented: $showImagePicker) {
-            PhotoPickerView(selectedImage: $selectedImage)
+            PhotoPickerView(
+                selectedImage: $selectedImage,
+                sourceImageURL: $sharpSourceImageURL,
+                captureMediaMetadata: $sharpCaptureMediaMetadata,
+                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+            )
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
                     if selectedImage != nil {
@@ -1169,7 +1246,13 @@ struct SinglePhotoRoomView: View {
                 }
         }
         .sheet(isPresented: $showCameraCapture) {
-            CameraCaptureView(selectedImage: $selectedImage, selectedOrientation: $captureOrientation)
+            CameraCaptureView(
+                selectedImage: $selectedImage,
+                selectedOrientation: $captureOrientation,
+                sourceImageURL: $sharpSourceImageURL,
+                captureMediaMetadata: $sharpCaptureMediaMetadata,
+                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+            )
                 .onDisappear {
                     logDebug("📷 [View] Camera capture dismissed")
                     if selectedImage != nil {
@@ -1180,11 +1263,19 @@ struct SinglePhotoRoomView: View {
                     }
                 }
         }
-        .onChange(of: selectedImage) { oldValue, newValue in
+        .onChange(of: selectedImage) { _, newValue in
+            if newValue == nil {
+                sharpSourceImageURL = nil
+                sharpCaptureMediaMetadata = nil
+                sharpPhotoLibraryAssetLocalId = nil
+            }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
-            // Store the fixed image for later use
-            fixedImage = image
+            // Preload SHARP only on 6GB+ devices — on 4GB class, model + decoded photo peaks RAM (Jetsam).
+            let sixGiB: UInt64 = 6 * 1024 * 1024 * 1024
+            if ProcessInfo.processInfo.physicalMemory >= sixGiB {
+                SHARPService.shared.ensureModelLoaded()
+            }
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
             selectedOrientation = detectedOrientation
@@ -1224,17 +1315,14 @@ struct SinglePhotoRoomView: View {
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
-            // Reset navigation state on appear to clear any stale state
-            if navigateToSplatViewer && generatedPLYURL == nil {
-                logDebug("   Resetting stale navigateToSplatViewer state")
-                navigateToSplatViewer = false
-            }
-            // Dimensions are now managed by @AppStorage
-
-            // Pre-load SHARP model so "Setting things up..." progress bar shows.
-            // Needed after releaseResources() clears the model on previous use.
-            sharpService.ensureModelLoaded()
+            // Do not preload SHARP here — holding FP32 Core ML + a 4K `selectedImage` after returning from
+            // SharpRoomView/WebKit was peaking RAM on the 2nd room. `generateGaussians` loads on demand.
+            // Also release YOLOE ODR/model so SHARP has maximum headroom on 4 GB devices.
+            YOLOEModelService.shared.releaseResources()
         }
+        // Do **not** use `.onDisappear` here for SHARP/YOLOE/splatViewerDestination: SwiftUI can call it when
+        // *pushing* `SharpRoomView` on the stack (parent briefly disappears), which released SHARP mid-splat load.
+        // Sheet-dismiss cleanup lives in `ContentView` `onChange(of: showingPhotoRoomCreator)`.
         // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             logDebug("📋 [View] adjustedBoundaries onChange triggered")
@@ -1271,10 +1359,7 @@ struct SinglePhotoRoomView: View {
                     floorY: boundaries.floorY
                 )
             } else if let image = selectedImage {
-                // Fallback: use full image with default boundaries
-                let _ = {
-                    logDebug("⚠️ [Navigation] Using default boundaries (adjustedBoundaries is nil)")
-                }()
+                // Fallback: full-frame wall lines when `adjustedBoundaries` is nil (common for SHARP / no boundary sheet).
                 MeshRoomView(
                     roomWidth: Float(roomWidth),
                     roomHeight: Float(roomHeight),
@@ -1285,62 +1370,54 @@ struct SinglePhotoRoomView: View {
                 )
             }
         }
-        // Navigate to SharpRoomView when PLY is generated (used for both orientations)
-        .navigationDestination(isPresented: $navigateToSplatViewer) {
-            // Only navigate if we have a valid PLY URL - otherwise show empty view
-            // (navigation should be prevented by the onChange guard below)
-            if let plyURL = generatedPLYURL {
-                SharpRoomView(
-                    plyURL: plyURL,
-                    roomMeasurements: generatedRoomMeasurements,
-                    photoOrientation: selectedOrientation
-                )
-                .onAppear {
-                    logDebug("🚀 [Navigation] SharpRoomView appeared")
-                    logDebug("   orientation = \(selectedOrientation.rawValue)")
-                    logDebug("   plyURL = \(plyURL.lastPathComponent)")
-                }
-            } else {
-                // Fallback - should not happen if navigation is properly guarded
-                Color.clear.onAppear {
-                    logDebug("⚠️ [Navigation] navigateToSplatViewer=true but generatedPLYURL is nil - resetting")
-                    navigateToSplatViewer = false
-                }
+        .navigationDestination(item: $splatViewerDestination) { dest in
+            SharpRoomView(
+                plyURL: dest.plyURL,
+                photoOrientation: selectedOrientation,
+                savedRoomWidth: nil,
+                savedRoomHeight: nil,
+                sharpPlyAabbWidth: dest.sharpPlyW,
+                sharpPlyAabbHeight: dest.sharpPlyH,
+                sharpPlyAabbDepth: dest.sharpPlyD,
+                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
+                sourcePhotoPixelHeight: dest.sourcePhotoPxH
+            )
+            .onAppear {
+                logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
+                logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
             }
-        }
-        // Guard: only allow navigation when URL is set
-        .onChange(of: navigateToSplatViewer) { oldValue, newValue in
-            if newValue && generatedPLYURL == nil {
-                logDebug("⚠️ [Navigation] Blocking navigation - generatedPLYURL is nil")
-                navigateToSplatViewer = false
+            // Clear `item` when popping so NavigationStack releases SharpRoomView + Metal splat promptly.
+            // Leaving this non-nil caused retained destinations and peak RAM on a 2nd SHARP flow (see onAppear note above).
+            .onDisappear {
+                splatViewerDestination = nil
             }
         }
         // Success alert for API-generated PLY file
-        .alert("3D Model Generated", isPresented: $showGenerationSuccess) {
-            Button("Done") {
+        .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
+            Button(L10n.Common.done) {
                 // Dismiss the sheet and notify home to refresh
                 NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
             }
         } message: {
-            if let url = generatedPLYURL {
+            if let url = splatViewerDestination?.plyURL {
                 let fileName = url.lastPathComponent
-                Text("Successfully downloaded \(fileName). View it in your models list.")
+                Text(L10n.PhotoRoom.downloadSuccess(fileName: fileName))
             } else {
-                Text("Your 3D model has been saved successfully.")
+                Text(L10n.PhotoRoom.saveSuccessMessage)
             }
         }
         // Handle generation errors
-        .alert("Generation Failed", isPresented: Binding(
+        .alert(L10n.PhotoRoom.generationFailedTitle, isPresented: Binding(
             get: {
                 if case .failed = sharpService.status { return true }
                 return false
             },
             set: { _ in }
         )) {
-            Button("OK", role: .cancel) {
+            Button(L10n.Common.ok, role: .cancel) {
                 selectedImage = nil
             }
-            Button("Retry") {
+            Button(L10n.Common.retry) {
                 if let image = selectedImage {
                     startSHARPGeneration(image: image)
                 }
@@ -1349,8 +1426,17 @@ struct SinglePhotoRoomView: View {
             if case .failed(let errorMessage) = sharpService.status {
                 Text(errorMessage)
             } else {
-                Text("An error occurred while generating your 3D model.")
+                Text(L10n.PhotoRoom.errorMessage)
             }
+        }
+    }
+
+    /// Leading Back: if user still owes AI vs Manual choice, prompt; otherwise dismiss sheet.
+    private func handlePhotoRoomBackTap() {
+        if selectedImage != nil && showMethodPicker {
+            showBackMethodAlert = true
+        } else {
+            dismiss()
         }
     }
     
@@ -1413,25 +1499,38 @@ struct SinglePhotoRoomView: View {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
 
-        // Clear previous generation state to prevent using stale data on failure
-        generatedPLYURL = nil
-        generatedRoomMeasurements = nil
-        navigateToSplatViewer = false  // Reset navigation state
+        splatViewerDestination = nil
+        let generationImage = image
+        let generationSourceImageURL = sharpSourceImageURL
+        let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
+        let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
+        selectedImage = nil
+        fixedImageItem = nil
+
+        URLCache.shared.removeAllCachedResponses()
+        // Drop YOLOE while SHARP runs (same as sheet onAppear) so two large Core ML stacks are not resident.
+        YOLOEModelService.shared.releaseResources()
 
         Task {
             do {
-                let fileURL: URL
-                let measurements: RoomMeasurements?
+                // Let any previous SharpRoomView / MTKView teardown complete before SHARP allocates 1536² buffers + PLY.
+                try await Task.sleep(nanoseconds: 120_000_000)
+                let gen = try await sharpService.generateGaussians(
+                    from: generationImage,
+                    sourceImageURL: generationSourceImageURL,
+                    captureMediaMetadata: generationCaptureMediaMetadata,
+                    photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
+                )
 
-                // Use SHARPService for both orientations
-                fileURL = try await sharpService.generateGaussians(from: image)
-                measurements = sharpService.roomMeasurements
-
-                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
+                logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
+                let pxW = max(1, Int(ceil(Double(generationImage.size.width * generationImage.scale))))
+                let pxH = max(1, Int(ceil(Double(generationImage.size.height * generationImage.scale))))
                 await MainActor.run {
-                    generatedPLYURL = fileURL
-                    generatedRoomMeasurements = measurements
-                    navigateToSplatViewer = true
+                    splatViewerDestination = SplatViewerDestination(
+                        plyURL: gen.plyURL,
+                        sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
+                        sourcePhotoPixels: (pxW, pxH)
+                    )
                 }
             } catch {
                 logDebug("❌ [View] Generation failed: \(error)")
@@ -1443,8 +1542,11 @@ struct SinglePhotoRoomView: View {
 // MARK: - Photo Picker View
 struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
-    
+
     func makeUIViewController(context: Context) -> UIImagePickerController {
         logDebug("📱 [PhotoPicker] Creating UIImagePickerController")
         let picker = UIImagePickerController()
@@ -1467,6 +1569,13 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📱 [PhotoPicker] Image picked from library")
+            parent.captureMediaMetadata = nil
+            parent.sourceImageURL = info[.imageURL] as? URL
+            if #available(iOS 11, *) {
+                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
+            } else {
+                parent.photoLibraryAssetLocalId = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
                 // Pass original image - EXIF needed for orientation detection
@@ -1515,6 +1624,9 @@ enum CaptureOrientation: String, CaseIterable {
 struct CameraCaptureView: View {
     @Binding var selectedImage: UIImage?
     @Binding var selectedOrientation: CaptureOrientation
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     @State private var showCamera = false
@@ -1623,7 +1735,7 @@ struct CameraCaptureView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "camera.fill")
                                 .font(.title2)
-                            Text(NSLocalizedString("camera.takePhoto", comment: "Take Photo"))
+                            Text(L10n.Camera.takePhoto)
                                 .font(.headline)
                         }
                         .foregroundColor(.white)
@@ -1648,16 +1760,27 @@ struct CameraCaptureView: View {
             .fullScreenCover(isPresented: $showCamera) {
                 CameraViewRepresentable(
                     capturedImage: $capturedImage,
-                    orientation: selectedOrientation
+                    sourceImageURL: $sourceImageURL,
+                    captureMediaMetadata: $captureMediaMetadata,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    orientation: selectedOrientation,
                 )
                 .ignoresSafeArea()
             }
             .fullScreenCover(isPresented: $showWideAngleCamera) {
-                WideAngleCameraView(capturedImage: $capturedImage)
-                    .ignoresSafeArea()
+                WideAngleCameraView(
+                    capturedImage: $capturedImage,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                )
+                .ignoresSafeArea()
             }
             .sheet(isPresented: $showPhotoPicker) {
-                PhotoLibraryPicker(selectedImage: $capturedImage)
+                PhotoLibraryPicker(
+                    selectedImage: $capturedImage,
+                    sourceImageURL: $sourceImageURL,
+                    captureMediaMetadata: $captureMediaMetadata,
+                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                )
             }
             .onChange(of: capturedImage) { _, newImage in
                 if let image = newImage {
@@ -1673,6 +1796,9 @@ struct CameraCaptureView: View {
 // MARK: - Photo Library Picker
 struct PhotoLibraryPicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -1695,6 +1821,13 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            parent.captureMediaMetadata = nil
+            parent.sourceImageURL = info[.imageURL] as? URL
+            if #available(iOS 11, *) {
+                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
+            } else {
+                parent.photoLibraryAssetLocalId = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
                 parent.selectedImage = image
@@ -1713,6 +1846,7 @@ import AVFoundation
 
 struct WideAngleCameraView: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
+    @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> WideAngleCameraViewController {
@@ -1734,6 +1868,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCapture(_ image: UIImage) {
             logDebug("📷 [WideAngle] Captured image: \(image.size)")
+            parent.photoLibraryAssetLocalId = nil
             parent.capturedImage = image.fixedOrientation()
             parent.dismiss()
         }
@@ -2046,6 +2181,9 @@ struct OrientationOptionButton: View {
 // MARK: - Standard Camera View (UIImagePickerController - works in any orientation)
 struct CameraViewRepresentable: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
+    @Binding var sourceImageURL: URL?
+    @Binding var captureMediaMetadata: [AnyHashable: Any]?
+    @Binding var photoLibraryAssetLocalId: String?
     let orientation: CaptureOrientation
     @Environment(\.dismiss) var dismiss
 
@@ -2073,6 +2211,13 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📷 [Camera] Photo captured")
+            parent.sourceImageURL = nil
+            parent.photoLibraryAssetLocalId = nil
+            if let md = info[.mediaMetadata] {
+                parent.captureMediaMetadata = md as? [AnyHashable: Any]
+            } else {
+                parent.captureMediaMetadata = nil
+            }
             if let image = info[.originalImage] as? UIImage {
                 logDebug("✅ [Camera] Got UIImage: \(image.size)")
                 parent.capturedImage = image.fixedOrientation()
@@ -2147,7 +2292,7 @@ struct SceneKitViewer: View {
                             .scaleEffect(1.5)
                             .tint(.orange)
 
-                        Text("Loading 3D Room...")
+                        Text(L10n.PhotoRoom.loading3DRoom)
                             .font(.headline)
                             .foregroundColor(.white)
                     }
@@ -2218,7 +2363,7 @@ struct SceneKitViewer: View {
             }
             .zIndex(99995)
         }
-        .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
+        .navigationTitle(String(format: "%.1f m × %.1f m", roomWidth, roomHeight))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
 

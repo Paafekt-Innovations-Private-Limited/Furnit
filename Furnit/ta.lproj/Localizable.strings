@@ -21,6 +21,7 @@
 "common.error" = "பிழை";
 "common.save" = "சேமி";
 "common.close" = "மூடு";
+"common.apply" = "பயன்படுத்து";
 
 // MARK: - Login View
 "login.yourName" = "உங்கள் பெயர்";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "இந்த ஆப் YOLO (எ.கா. Ultralytics YOLO) அடிப்படையிலான மாதிரிகளைப் பயன்படுத்துகிறது. YOLO AGPL-3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு https://www.ultralytics.com/license பார்க்கவும்.";
 "licenses.sharpTitle" = "3D அறை மறுகட்டமைப்பு (SHARP)";
 "licenses.sharp" = "பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.";
 
@@ -178,20 +181,22 @@
 "faq.howToCreateAnswer" = "முகப்பு திரையின் மேல்-இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். உங்கள் 3D அறையை உருவாக்க இரண்டு விருப்பங்களைக் காண்பீர்கள்.";
 "faq.howToTakePhoto" = "அறை உருவாக்க புகைப்படம் எப்படி எடுப்பது?";
 "faq.howToTakePhotoAnswer" = "நேரடியாக புகைப்படம் எடுக்க முகப்பு திரையில் கேமரா ஐகானைத் தட்டவும். நிலையான (1x) அல்லது அகலக்கோண (0.5x அல்ட்ரா-வைட்) லென்ஸைத் தேர்வு செய்யலாம். உங்கள் சாதனத்தை நிலையாகப் பிடித்து, படப்பிடிப்பு பொத்தானைத் தட்டவும். புகைப்படம் உங்கள் 3D அறையை உருவாக்க பயன்படுத்தப்படும்.";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.depthAwareRoomPhoto" = "பயன்பாட்டில் புகைப்படம் எடுப்பது உதவுமா?";
+"faq.depthAwareRoomPhotoAnswer" = "ஆம். ஆதரவுள்ள சாதனங்களில், கேலரிக்கு பதிலாக Take a photo ஆழம்-விழிப்புணர்வு கேமராவைப் பயன்படுத்துகிறது (கிடைத்தால்), இது 3D அறையை மேம்படுத்த உதவும்.";
+"faq.twoMethods" = "அறை உருவாக்கத்திற்கான இரண்டு விருப்பங்கள் என்ன?";
+"faq.twoMethodsAnswer" = "புகைப்படம் தேர்ந்தெடுக்கும்போது நீங்கள் தேர்வு செய்யலாம்: 1) AI இயக்கப்பட்ட 3D அறை - செயற்கை நுண்ணறிவைப் பயன்படுத்தி யதார்த்த 3D அறையை தானாக உருவாக்குகிறது, அல்லது 2) கைமுறை அமைப்பு - அதிக கட்டுப்பாட்டிற்காக அறை எல்லைகளை நீங்களே வரையலாம்.";
+"faq.whatIsAIRoom" = "AI இயக்கப்பட்ட 3D அறை என்றால் என்ன?";
+"faq.whatIsAIRoomAnswer" = "இந்த விருப்பம் உங்கள் படத்தை நீங்கள் நடக்கக்கூடிய 3D அறையாக தானாக மாற்ற ஸ்மார்ட் தொழில்நுட்பத்தைப் பயன்படுத்துகிறது. ஒரு படத்தைத் தேர்ந்தெடுத்தால் பயன்பாடு மீதியைச் செய்யும் - வரைதல் அல்லது சரிசெய்தல் தேவையில்லை. மந்திரம் போல வேலை செய்கிறது!";
+"faq.whatIsManualRoom" = "கைமுறை அமைப்பு என்றால் என்ன?";
+"faq.whatIsManualRoomAnswer" = "கைமுறை அமைப்பில், புகைப்படத்தில் உங்கள் அறை சுவர்களின் கோடுகளை வரையவும். 3D அறை சரியாக எப்படி இருக்கும் என்பதில் அதிக கட்டுப்பாடு தரும். அறை வடிவத்தை நீங்களே சரிசெய்ய விரும்பும்போது சிறந்தது.";
+"faq.whichMethodBetter" = "நான் எந்த முறையை தேர்வு செய்ய வேண்டும்?";
+"faq.whichMethodBetterAnswer" = "முதலில் AI இயக்கப்பட்டதை முயற்சிக்கவும் - வேகமானது, பெரும்பாலான அறைகளுக்கு நன்றாக வேலை செய்கிறது. முடிவு சரியாக இல்லை என்றால், சுவர்களை நீங்கள் விரும்பும் இடத்தில் வரைய கைமுறை அமைப்பைப் பயன்படுத்தவும். இரண்டையும் முயற்சித்து ஏது பிடிக்கும் என்று பாருங்கள்!";
 "faq.bestPhotos" = "எந்த வகையான புகைப்படங்கள் சிறப்பாக செயல்படும்?";
 "faq.bestPhotosAnswer" = "சிறந்த முடிவுகளுக்கு, நல்ல வெளிச்சத்தில் சாதனத்தை நிலையாக வைத்து புகைப்படங்கள் எடுக்கவும். தரைகள், சுவர்கள் மற்றும் கூரை விளிம்புகள் உட்பட முழு அறையையும் படம்பிடிக்க முயற்சிக்கவும். மங்கலான அல்லது இருண்ட புகைப்படங்களைத் தவிர்க்கவும்.";
 "faq.generationFailing" = "என் அறை உருவாக்கம் ஏன் தோல்வியடைகிறது?";
 "faq.generationFailingAnswer" = "புகைப்படம் மிகவும் இருட்டாகவோ, மங்கலாகவோ, அல்லது போதுமான அறை அம்சங்களைக் காட்டவில்லை என்றால் அறை உருவாக்கம் தோல்வியடையலாம். சிறந்த வெளிச்சம் மற்றும் அகலமான கோணத்துடன் புதிய புகைப்படம் எடுக்க முயற்சிக்கவும்.";
 "faq.howManyRooms" = "எத்தனை அறைகளை உருவாக்க முடியும்?";
-"faq.howManyRoomsAnswer" = "நீங்கள் 10 அறைகள் வரை உருவாக்கலாம். இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை உங்கள் முகப்பு திரையின் மேலே காட்டப்படும்.";
+"faq.howManyRoomsAnswer" = "நீங்கள் 1000 அறைகள் வரை உருவாக்கலாம். புதியவற்றுக்கு இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை மற்றும் பயன்படுத்திய சேமிப்பு முகப்புத் திரையின் மேலே காட்டப்படும்.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "தளபாட பிரிப்பு";
@@ -205,7 +210,6 @@
 "faq.multiplePiecesAnswer" = "ஆம்! AI ஒரு புகைப்படத்தில் பல தளபாடங்களைக் கண்டறிய முடியும். கண்டறியப்பட்ட ஒவ்வொரு பொருளும் தனித்தனியாகக் காட்டப்படும், எதைப் பயன்படுத்த வேண்டும் என்பதை நீங்கள் தேர்வு செய்யலாம்.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D அறை & பொருத்தம்";
 "faq.howToView" = "என் 3D அறையை எப்படி பார்ப்பது?";
 "faq.howToViewAnswer" = "3D பார்வையாளரைத் திறக்க முகப்பு திரையில் எந்த அறையையும் தட்டவும். தொடு சைகைகளைப் பயன்படுத்தி அறையை சுழற்றலாம், பெரிதாக்கலாம் மற்றும் நகர்த்தலாம்.";
 "faq.howToPlace" = "என் அறையில் தளபாடங்களை எப்படி வைப்பது?";
@@ -216,6 +220,15 @@
 "faq.accuracyAnswer" = "3D மாதிரி உங்கள் அறை அமைப்பின் நல்ல தோராயத்தை வழங்குகிறது. சிறந்த துல்லியத்திற்கு, உங்கள் அசல் புகைப்படம் தெரியும் மூலைகள் மற்றும் விளிம்புகளுடன் அறை பரிமாணங்களை தெளிவாகப் படம்பிடிக்கிறது என்பதை உறுதிப்படுத்தவும்.";
 "faq.adjustDimensions" = "அறை பரிமாணங்களை சரிசெய்ய முடியுமா?";
 "faq.adjustDimensionsAnswer" = "ஆம், அமைப்புகளுக்குச் சென்று அறை பரிமாண விருப்பங்களைக் கண்டறியவும், அங்கு உருவாக்கப்பட்ட அறையின் அளவு மற்றும் விகிதாச்சாரங்களை நுணுக்கமாக சரிசெய்யலாம்.";
+"faq.furnitureMeasurements" = "தளபாடம் & அளவீடுகள்";
+"faq.arAssistedSizing" = "AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?";
+"faq.arAssistedSizingAnswer" = "அமைப்புகளில் இயக்கப்பட்டால், பயன்பாடு கேமரா ஆழம் மற்றும் பொருள் கண்டறிதலை இணைத்து நீங்கள் அருகில் அல்லது தொலைவில் நகரும்போது மேலடுக்கு அளவை யதார்த்தமாக மாற்றும். நல்ல வெளிச்சம் மற்றும் தெளிவான பார்வையில் சிறப்பாக வேலை செய்கிறது.";
+"faq.measurementPill" = "சிறிய அளவீட்டுக் குறிப்பு என்ன?";
+"faq.measurementPillAnswer" = "SmartyPants செயலில் இருக்கும்போது, மதிப்பிடப்பட்ட தளபாடம் மற்றும் அறை உயரம் காட்டப்படலாம். துல்லியத்திற்கு உண்மையான அளவுகளை உள்ளிட தட்டவும். அறைப் படம் வைட்-ஆங்கிள் (0.5×) என்றால் அதைக் குறிக்கவும்.";
+"faq.resetOverlayScale" = "முகமூடி தவறாக பெரிதாக்கப்பட்டது போல் தெரிகிறது — என்ன செய்வது?";
+"faq.resetOverlayScaleAnswer" = "3D அறையில் மேலதிக மெனுவை (⋮) திறந்து Reset overlay scale ஐத் தேர்ந்தெடுக்கவும். கண்டறிதல் முகமூடிக்கு பயன்பட்ட தானியங்கு பெரிதாக்கம் அழிக்கப்படும்.";
+"faq.roomFitment" = "தளபாடம் பொருந்துகிறதா எப்படி சரிபார்ப்பது?";
+"faq.roomFitmentAnswer" = "தளபாடத்தைச் சேர்த்த பிறகு, உங்கள் 3D அறையில் அதை மறுஅளவிட்டு நகர்த்தி, உங்கள் இடம் மற்றும் மற்ற தளபாடங்களுடன் எப்படி பொருந்துகிறது என்பதைப் பார்க்கலாம்.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "அறை எல்லைகள்";
@@ -259,6 +272,29 @@
 "roomViewer.saveSuccess" = "அறை '%@' வெற்றிகரமாக சேமிக்கப்பட்டது!";
 "roomViewer.saveFailed" = "அறை சேமிப்பு தோல்வி: %@";
 "roomViewer.roomSaveTitle" = "அறையைச் சேமி";
+"roomPreview.unsavedTitle" = "சேமிக்காமல் பின்செல்லவா?";
+"roomPreview.unsavedMessage" = "உங்கள் அறை இன்னும் சேமிக்கப்படவில்லை. இப்போது பின்சென்றால் இந்த முன்னோட்டம் இழக்கப்படலாம்.";
+"roomPreview.stay" = "இருங்கள்";
+"roomPreview.leave" = "பின்செல்";
+"roomViewer.share" = "பகிர்";
+"roomViewer.calibrateWall" = "சுவரை கேலிப்ரேட் செய்";
+"roomViewer.recenterView" = "காட்சியை மையப்படுத்து";
+"roomViewer.resetOverlayScale" = "ஓவர்லே அளவை மீட்டமை";
+"roomViewer.checkMeasurement" = "அளவைச் சரிபார்";
+"roomViewer.goingBack" = "பின்செல்கிறது...";
+"roomViewer.savingRoomEllipsis" = "அறை சேமிக்கப்படுகிறது...";
+"roomViewer.calibrateRoomTitle" = "அறையை கேலிப்ரேட் செய்";
+"roomViewer.enterFurnitureHeightMeters" = "உண்மையான தளபாட உயரத்தை உள்ளிடவும் (மீட்டர்)";
+"roomViewer.furnitureFullHeightHint" = "முழு உயரம்: தரையிலிருந்து மேல் (எ.கா. நாற்காலி 0.9 மீ)";
+"roomViewer.calibrateByWallTitle" = "சுவரால் கேலிப்ரேட்";
+"roomViewer.enterWallDimensionsHint" = "டேப்பால் அளந்த முன் சுவர் (மீட்டர்), எ.கா. 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "கேலிப்ரேட் செய்ய தட்டவும்";
+"roomViewer.detectedMeters" = "கண்டறியப்பட்டது: %.2f மீ";
+"roomViewer.roomMetersShort" = "அறை: %.2f மீ";
+"roomViewer.furnitureMetersShort" = "தளபாடம்: %.2f மீ";
+"roomViewer.wallWidthPlaceholder" = "அகலம்";
+"roomViewer.wallHeightPlaceholder" = "உயரம்";
+"roomViewer.saveErrorUnknown" = "தெரியாத பிழை";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "அறிக்கை சமர்ப்பி";
@@ -290,24 +326,74 @@
 "faq.whatIsMemoryDisplayAnswer" = "அறைகளில் காட்டப்படும் MB (மெகாபைட்கள்) கோப்பு அளவைக் குறிக்கிறது. இது சேமிப்பகத்தை நிர்வகிக்க உதவுகிறது. அனைத்து அறைகளும் பயன்படுத்தும் மொத்த சேமிப்பகம் முகப்புத் திரையின் மேலே காட்டப்படும்.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "உங்கள் 3D அறையை எப்படி உருவாக்க விரும்புகிறீர்கள்?";
+"photoRoom.tapOption" = "தொடர கீழே ஒரு விருப்பத்தைத் தட்டவும்";
+"photoRoom.aiPowered" = "AI-இயக்க 3D கட்டமைப்பு";
+"photoRoom.manualSetup" = "கைமுறை அமைப்பு";
+"photoRoom.manualSetupDesc" = "சுவர்களை சரிசெய்ய இழுக்கவும்";
+"photoRoom.selectPhoto" = "புகைப்படத்தைத் தேர்ந்தெடுக்கவும்";
+"photoRoom.fromLibrary" = "உங்கள் புகைப்பட நூலகத்திலிருந்து";
+"photoRoom.loading" = "3D அறை ஏற்றப்படுகிறது...";
+"photoRoom.downloadSuccess" = "%@ வெற்றிகரமாக பதிவிறக்கப்பட்டது. மாதிரி பட்டியலில் காண்க.";
+"photoRoom.saveSuccess" = "உங்கள் 3D மாதிரி வெற்றிகரமாக சேமிக்கப்பட்டது.";
 "photoRoom.error" = "உங்கள் 3D மாதிரியை உருவாக்கும்போது பிழை ஏற்பட்டது.";
 "photoRoom.buildingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "செங்குத்து";
+"orientation.landscape" = "கிடைமட்டம்";
+"orientation.heldVertically" = "செங்குத்தாகப் பிடிக்கப்பட்டது";
+"orientation.heldHorizontally" = "கிடைமட்டமாகப் பிடிக்கப்பட்டது";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "திரைப்பிடிப்புகளைத் தேர்ந்தெடுக்காதீர் — கருப்புப் புள்ளிகள் வரலாம்";
+
+// MARK: - i18n sync (Tamil)
+"common.or" = "அல்லது";
+"common.retry" = "மீண்டும் முயல்க";
+"settings.furnitureSegmentationSection" = "தளபாட பிரிப்பு";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU அனுமதி";
+"settings.yoloeCoreMLAllowGPUDescription" = "ஆஃப் (இயல்பு): CPU மட்டும் — மெதுவானது ஆனால் சில YOLO-E 26L Core ML கட்டமைப்புகளில் செயலிழப்பைத் தவிர்க்கும். ஆன்: வேகத்திற்கு CPU+GPU; Metal இல் ஏற்றுமதி ஓடாவிட்டால் பிரிப்பில் SIGABRT.";
+"settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";
+"settings.showRoomFurnitureCalibrateDescription" = "அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.";
+"settings.furnitureFitARCompanion" = "AR உதவி தளபாட அளவு";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit இல் கேமராவுடன் ARKit காட்சி ஆழத்தை இயக்குகிறது (LiDAR). வீடியோ பிடிப்புடன் மோதல் இருக்கலாம். மாற்றிய பின் அறையை மீண்டும் திறக்கவும்.";
+"settings.furnitureFitARCompanionUnavailable" = "இந்த சாதனத்தில் காட்சி ஆழம் இல்லை.";
+"settings.roomMeasurementSection" = "அறை அளவீடுகள்";
+"settings.yoloWallDimensionsOnSave" = "சேமிக்கும்போது YOLO சுவர் அளவுகள்";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP அறைக்கு பெயரிட்டு சேமிக்கும்போது, YOLO (சுவர் வகுப்பு அல்லது சுவர்போன்ற பெட்டி), அறையுடன் சேமிக்கப்பட்ட SHARP ஒற்றை ஆழம், கேமரா EXIF ஆகியவற்றால் முன் சுவரின் அகலம் மற்றும் உயரம் மதிப்பிடப்படுகிறது. thumbnail.png தேவை; சிறந்த முடிவுக்கு sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "சுவருக்கான கருதப்பட்ட தூரம் (மீ)";
+"settings.wallAssumedCeilingM" = "கருதப்பட்ட சுவர்/மேற்கூரை உயரம் (மீ)";
+"settings.roomMeasurementFooter" = "SHARP iOS இல் ஒற்றை ஆழம் இல்லாமல் சேமிப்பு கருதப்பட்ட ஆழத்தையும் சிலநேரம் இந்த மேற்கூரை உயரத்தையும் பயன்படுத்துகிறது. அகலம் அளவிடும் நாடாவுடன் ஒப்பிட்டு குறைவாக இருந்தால் கருதப்பட்ட தூரத்தை அதிகரிக்கவும் (அகலம் கிட்டத்தட்ட நேரியல்). சுவர் உயரத்தை அளவீட்டுக்கு அருகில் அமைக்கவும் (எ.கா. 2.86 மீ). அல்லது சேமிப்பதற்கு முன் ⋮ → சுவரால் அளவிடு.";
+"camera.takePhoto" = "புகைப்படம் எடு";
+"camera.chooseOrientationShort" = "செங்குத்து அல்லது கிடைமட்டம்";
+"sharp.downloadingEngine" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது...";
+"sharp.downloadingEnginePercent" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது... %d%%";
+"sharp.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
+"sharp.downloadFailed" = "பதிவிறக்கம் தோல்வி";
+"sharp.gettingReady" = "தயாராகிறது...";
+"sharp.notEnoughSpace" = "சாதனத்தில் போதுமான இடமில்லை";
+"sharp.settingThingsUp" = "அமைக்கப்படுகிறது...";
+"sharp.ready" = "தயார்!";
+"sharp.couldNotGetReady" = "தயாரிப்பை முடிக்க முடியவில்லை";
+"sharp.somethingWentWrong" = "ஏதோ தவறு நடந்தது";
+"sharp.preparingPhoto" = "உங்கள் புகைப்படம் தயாராகிறது...";
+"sharp.creatingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
+"sharp.almostDone" = "கிட்டத்தட்ட முடிந்தது...";
+"sharp.done" = "முடிந்தது!";
+"sharp.couldNotCreateRoom" = "அறையை உருவாக்க முடியவில்லை";
+"sharp.cancelled" = "ரத்துசெய்யப்பட்டது";
+"photoRoom.odrOneTimeDownload" = "ஒருமுறை பதிவிறக்கம் (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D மாதிரி உருவாக்கப்பட்டது";
+"photoRoom.generationFailedTitle" = "உருவாக்கம் தோல்வி";
+"photoRoom.loading3DRoom" = "3D அறை ஏற்றப்படுகிறது...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "படம் பதிவேற்றப்படுகிறது";
+"generationProgress.generating3DModel" = "3D மாதிரி உருவாக்கப்படுகிறது";
+"generationProgress.downloadingModel" = "மாதிரி பதிவிறக்கப்படுகிறது";
+"generationProgress.complete" = "முடிந்தது!";
+"generationProgress.preparing" = "தயாராகி வருகிறது...";
+"generationProgress.mayTakeFewMinutes" = "இதற்கு சில நிமிடங்கள் ஆகலாம்";

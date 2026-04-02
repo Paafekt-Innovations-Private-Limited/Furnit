@@ -1,5 +1,11 @@
 # Furnit Android - Recent Changes
 
+## SHARP hybrid pipeline (experimental, opt-in)
+
+- **Native (`sharp_executorch_full_vulkan.cpp`)**: optional Part3 overlap with Part1+2, early encoder scratch release after Part1+2, async Part4b `tile_00` mmap preload during Part4a, optional Vulkan 25-only interleaved Part1→Part2 (memory-gated).
+- **Kotlin**: prefs `sharp_hybrid_overlap_part3`, `sharp_hybrid_preload_part4b_tile00`, `sharp_hybrid_interleave_part12` (defaults **false**); `[C++ FULL] [HYBRID]` logs.
+- **Docs**: `docs/SHARP_HYBRID_OPTIMIZATION.md` — log tags and benchmark procedure.
+
 ## Room Viewer Enhancements
 
 ### Auto-Orbit Feature
@@ -46,7 +52,7 @@ lines.firstOrNull { it.startsWith("roomWidth=") }
 - Saves dimensions to metadata when room is saved
 - Reports dimensions from WebGL to Android via JavaScript interface
 - Multiple dimension reports (500ms, 1500ms, 3000ms) to ensure delivery
-- Prioritizes saved dimensions over JS-measured ones using `hasSavedDimensions` flag
+- WebGL reports dims via `onDimensionsMeasured`; JS merges streaming `fallback*` when Box3 is thin-Z or tiny footprint (rotation unchanged); Kotlin can still substitute open-path snapshot if JS values stay implausibly small. Tape calibration locks until recenter.
 
 #### ContentActivity.kt
 - Passes saved dimensions when opening rooms from home screen

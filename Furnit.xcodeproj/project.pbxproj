@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
 		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
-		61A6214C2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (YOLOEModel, ); }; };
+		61A6214C2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */; settings = {ASSET_TAGS = (YOLOEModel, ); }; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
@@ -30,7 +30,7 @@
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp32_1536.mlpackage; sourceTree = "<group>"; };
-		61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
+		61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-26l-seg-pf_seg_o2m.mlpackage"; sourceTree = "<group>"; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -90,9 +90,8 @@
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
 				045F5BDA2E6D302900C5585D /* Products */,
-				61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */,
+				61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */,
 				613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */,
-				613061F72EF8AFF1001EB3AF /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -103,13 +102,6 @@
 				61A62FAD2F24C31500FE755A /* FurnitTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		613061F72EF8AFF1001EB3AF /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -160,8 +152,6 @@
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
 			);
 			name = FurnitTests;
-			packageProductDependencies = (
-			);
 			productName = FurnitTests;
 			productReference = 61A62FAD2F24C31500FE755A /* FurnitTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -250,7 +240,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */,
-				61A6214C2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage in Sources */,
+				61A6214C2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,6 +284,7 @@
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
@@ -363,6 +354,7 @@
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
@@ -382,6 +374,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited)";
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -409,6 +402,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -445,7 +439,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Furnit/Native/Native-Bridging.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -459,6 +453,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CLANG_WARN_MISSING_SEARCH_PATHS = NO;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = Swift;
@@ -467,6 +462,7 @@
 				ENABLE_ON_DEMAND_RESOURCES = YES;
 				ENABLE_PREVIEWS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
 					DACCELERATE_NEW_LAPACK,
 					DACCELERATE_LAPACK_ILP64,
 				);
@@ -491,7 +487,7 @@
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.paafektinnovations.Paafekt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Furnit/Native/Native-Bridging.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -585,10 +581,10 @@
 		};
 		61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/psramaswamy/MetalSplatter.git";
+			repositoryURL = "https://github.com/scier/MetalSplatter.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = exactVersion;
+				version = 1.0.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

@@ -12,6 +12,7 @@ import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.MotionEvent
@@ -204,7 +205,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 background = bg
                 val size = dpToPx(40)
                 layoutParams = LinearLayout.LayoutParams(size, size)
-                setOnClickListener { finish() }
+                setOnClickListener { handleBackNavigation() }
             }
             barContainer.addView(backBtn)
 
@@ -642,7 +643,7 @@ class GLBRoomActivity : AppCompatActivity() {
             .setMessage("Enter a name for your room")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { "My Room" }
+                val name = input.text.toString().ifEmpty { RoomDisplayName.myRoomWithTimestamp() }
                 saveRoom(name)
             }
             .setNegativeButton("Cancel", null)
@@ -673,7 +674,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 metadata.append("roomHeight=$roomHeight\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
-                RoomFolderMetadata.writeToFolder(
+                val glbSnapshot = RoomFolderMetadata.snapshotPreservingYoloFields(
                     savedRoomFolder,
                     RoomFolderMetadata.Snapshot(
                         name = name,
@@ -683,8 +684,9 @@ class GLBRoomActivity : AppCompatActivity() {
                         photoWideAngle = false,
                         roomWidth = roomWidth,
                         roomHeight = roomHeight,
-                    )
+                    ),
                 )
+                RoomFolderMetadata.writeToFolder(savedRoomFolder, glbSnapshot)
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 
@@ -766,12 +768,33 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
+    private fun handleBackNavigation() {
+        if (isPreviewMode) {
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                showUnsavedPreviewLeaveDialog()
+            }
         } else {
-            super.onBackPressed()
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                finish()
+            }
         }
+    }
+
+    private fun showUnsavedPreviewLeaveDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.room_preview_leave_title)
+            .setMessage(R.string.room_preview_leave_message)
+            .setNegativeButton(R.string.room_preview_leave_stay, null)
+            .setPositiveButton(R.string.room_preview_leave_confirm) { _, _ -> finish() }
+            .show()
+    }
+
+    override fun onBackPressed() {
+        handleBackNavigation()
     }
 
     override fun onDestroy() {

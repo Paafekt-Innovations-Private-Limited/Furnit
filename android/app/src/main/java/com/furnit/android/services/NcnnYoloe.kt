@@ -27,6 +27,13 @@ class NcnnYoloe {
     companion object {
         private const val TAG = "NcnnYoloe"
 
+        /**
+         * Letterbox side for `yoloe-11l-seg` NCNN graph (native input). Same value used when mapping
+         * detections back to bitmap space in [parseDetections]. Furniture Fit / wall measurement must
+         * use this for any "model square" scaling — not 640.
+         */
+        const val MODEL_INPUT_SIDE: Int = 1280
+
         // Try to load the native library
         private var libraryLoaded = false
         private var libraryLoadError: String? = null
@@ -50,8 +57,8 @@ class NcnnYoloe {
 
     private var nativeHandle: Long = 0
     private var isInitialized = false
-    private var inputWidth = 1280
-    private var inputHeight = 1280
+    private var inputWidth: Int = MODEL_INPUT_SIDE
+    private var inputHeight: Int = MODEL_INPUT_SIDE
 
     /**
      * Initialize the NCNN model from assets.

@@ -14,7 +14,7 @@ class U2NetSegmentationManager(private val context: Context) {
         // Load tflite interpreter, models, and warm up if necessary
     }
 
-    fun segmentImage(byteArray: ByteArray): ByteArray {
+    fun segmentImage(@Suppress("UNUSED_PARAMETER") byteArray: ByteArray): ByteArray {
         // Run inference on input image bytes and return a mask as bytes (PNG/gray)
         // TODO: implement actual TF Lite invocation
         return ByteArray(0)

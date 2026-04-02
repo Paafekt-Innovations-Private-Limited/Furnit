@@ -20,6 +20,43 @@ func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n
     print(output, terminator: terminator)
 }
 
+// MARK: - Always-on diagnostics (not gated by Settings debug mode)
+
+/// Always-on diagnostics use **only** Unified Logging (`Logger`). Using both `print` and `Logger` made Xcode show **every line twice**. `print`/stdout also often **stalls** on device during long Core ML; `Logger` keeps streaming. Filter debug console or Console.app by subsystem or `SHARP` / `WALL_MEAS`.
+private enum AlwaysOnOSLog {
+    static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
+    static let sharp = Logger(subsystem: subsystem, category: "SHARP")
+    static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
+}
+
+/// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
+func logWallMeasurement(_ message: String) {
+    let line = "[WALL_MEAS] \(message)"
+    AlwaysOnOSLog.wallMeas.notice("\(line, privacy: .public)")
+}
+
+/// SHARP Core ML / pipeline milestones — not gated by Settings debug mode.
+/// Filter: category `SHARP` or search `[SHARP]`.
+func logSharpMilestone(_ message: String) {
+    let line = "[SHARP] \(message)"
+    AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
+}
+
+/// PLY bounds / navigation — always printed. Filter: `PLY_BOUNDS`.
+func logPlyBoundsDiagnostic(_ message: String) {
+    print("[PLY_BOUNDS] \(message)")
+}
+
+/// AR-assisted FurnitureFit metrics for cross-platform comparison. Filter in Xcode Console: `FurnitureFitAR`.
+func logFurnitureFitAR(_ message: String) {
+    print("[FurnitureFitAR] \(message)")
+}
+
+/// Furniture W×H estimate and pipeline tag (always printed). Filter Xcode / Console.app: `FurnitureFitSize`.
+func logFurnitureFitSize(_ message: String) {
+    print("[FurnitureFitSize] \(message)")
+}
+
 /// Centralized logging utility using os_log framework
 /// - Debug/Info logs only appear when debug mode is enabled in Settings
 /// - Error/Critical logs always appear for crash reporting

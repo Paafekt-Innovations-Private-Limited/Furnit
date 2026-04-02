@@ -1,11 +1,14 @@
 import Foundation
 import UIKit
 import CoreML
-import Metal
-import MetalKit
-import MetalPerformanceShaders
-import Accelerate
-import simd
+
+/// PLY URL plus axis-aligned bounds in **scene units** for **`_classic.ply`** (same vertex frame as in-app Metal viewer).
+struct SHARPGenerationResult: Sendable {
+    let plyURL: URL
+    let plyAabbWidth: Float
+    let plyAabbHeight: Float
+    let plyAabbDepth: Float
+}
 
 /// On-device 3D Gaussian generation using Apple's SHARP model
 /// Replaces remote Jarvis-based Room3DGenerationService with local CoreML inference
@@ -23,6 +26,8 @@ class SHARPService: ObservableObject {
 
     /// Resource request for ODR
     private var resourceRequest: NSBundleResourceRequest?
+    /// Background model load started from UI flows like old room-generation screens.
+    private var modelLoadTask: Task<Void, Never>?
 
     /// Whether the ODR resources are currently being downloaded
     @Published var isDownloadingResources: Bool = false
@@ -39,13 +44,10 @@ class SHARPService: ObservableObject {
     @Published var status: GenerationStatus = .idle
 
     /// Human-readable status message
-    @Published var statusMessage: String = "Ready"
+    @Published var statusMessage: String = L10n.Sharp.ready
 
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
-
-    /// Room measurements from plane detection (available after generation)
-    @Published var roomMeasurements: RoomMeasurements?
 
     // MARK: - Model Configuration
 
@@ -55,19 +57,99 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
+    /// Extra **linear** scale applied only in `_3dgs.ply` (SuperSplat / external viewers). In-app Metal uses `_classic.ply`, not this file.
+    /// Stored scales are log(σ); we add `log(factor)` per axis. Tune down if export looks mushy; up if banding in external viewers.
+    private static let threeDGSMetalViewerLinearScaleFactor: Float = 1.65
+
+    /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
+    /// Aggressive caps on ≤6GB phones shrink the `UIImage` before the 1536² stretch (model input size unchanged).
+    private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
+        let b = ProcessInfo.processInfo.physicalMemory
+        if b < 4 * 1024 * 1024 * 1024 { return 1024 }
+        if b < 6 * 1024 * 1024 * 1024 { return 1280 }
+        if b < 8 * 1024 * 1024 * 1024 { return 1920 }
+        return 3072
+    }
+
+    /// Downscale in **oriented** pixel space (`UIImage.draw` applies orientation) before 1536 preprocess.
+    private static func downscaledImageForSharpMemoryIfNeeded(_ image: UIImage) -> UIImage {
+        let w = image.size.width * image.scale
+        let h = image.size.height * image.scale
+        guard w > 1, h > 1 else { return image }
+        let maxEdge = max(w, h)
+        let limit = maxSourcePixelDimensionBeforeSharp()
+        guard maxEdge > limit else { return image }
+
+        let scaleDown = limit / maxEdge
+        let newW = max(1, Int((w * scaleDown).rounded(.down)))
+        let newH = max(1, Int((h * scaleDown).rounded(.down)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH), format: format)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
+        }
+        logDebug("SHARP: Downscaled photo for memory \(Int(w))×\(Int(h)) → \(newW)×\(newH) (max edge ≤\(Int(limit))px)")
+        return rendered
+    }
+
+    /// Pixel size after applying UIImage orientation semantics.
+    private static func orientedPixelSize(for image: UIImage) -> CGSize {
+        let baseWidth: CGFloat
+        let baseHeight: CGFloat
+        if let cgImage = image.cgImage {
+            baseWidth = CGFloat(cgImage.width)
+            baseHeight = CGFloat(cgImage.height)
+        } else {
+            baseWidth = image.size.width * image.scale
+            baseHeight = image.size.height * image.scale
+        }
+
+        switch image.imageOrientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            return CGSize(width: baseHeight, height: baseWidth)
+        default:
+            return CGSize(width: baseWidth, height: baseHeight)
+        }
+    }
+
+    /// Match Android's post-inference correction when a non-square photo was stretched into SHARP's square input.
+    static func sharpAspectCorrectionFactors(for imageSize: CGSize) -> (x: Float, y: Float) {
+        let width = max(Float(imageSize.width), 1)
+        let height = max(Float(imageSize.height), 1)
+        guard abs(width - height) > 0.5 else { return (1, 1) }
+
+        let rawCorrX = Float(inputSize) / width
+        let rawCorrY = Float(inputSize) / height
+        let geomMean = sqrt(rawCorrX * rawCorrY)
+        guard geomMean.isFinite, geomMean > 0 else { return (1, 1) }
+        return (rawCorrX / geomMean, rawCorrY / geomMean)
+    }
+
+    /// Wall-measurement thumbnail: avoid full-res `pngData()` (second memory spike after inference).
+    private static func imageForWallMeasurementThumbnail(_ image: UIImage, maxPixel: CGFloat = 1024) -> UIImage {
+        let w = image.size.width * image.scale
+        let h = image.size.height * image.scale
+        guard w > 1, h > 1 else { return image }
+        let maxEdge = max(w, h)
+        guard maxEdge > maxPixel else { return image }
+        let scaleDown = maxPixel / maxEdge
+        let newW = max(1, Int((w * scaleDown).rounded(.down)))
+        let newH = max(1, Int((h * scaleDown).rounded(.down)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH), format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
+        }
+    }
+
     // MARK: - CoreML Model
 
     /// The compiled SHARP CoreML model
     private var model: MLModel?
-
-    /// Metal device for GPU acceleration
-    private let metalDevice: MTLDevice?
-
-    /// Command queue for Metal operations
-    private let commandQueue: MTLCommandQueue?
-
-    /// Metal Performance Shaders image scaler
-    private let imageScaler: MPSImageBilinearScale?
 
     /// Progress observation for ODR download
     private var progressObservation: NSKeyValueObservation?
@@ -83,22 +165,7 @@ class SHARPService: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        // Initialize Metal
-        self.metalDevice = MTLCreateSystemDefaultDevice()
-        self.commandQueue = metalDevice?.makeCommandQueue()
-
-        if let device = metalDevice {
-            self.imageScaler = MPSImageBilinearScale(device: device)
-            logDebug("SHARP: Metal initialized with device: \(device.name)")
-        } else {
-            self.imageScaler = nil
-            logDebug("SHARP: Metal not available, using CPU fallback")
-        }
-
-        // Always preload model — loadModel() handles ODR download internally
-        Task {
-            await loadModel()
-        }
+        logDebug("SHARP: Service initialized (CPU-only inference, Metal deferred)")
     }
 
     // MARK: - On-Demand Resources
@@ -171,7 +238,7 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Starting ODR download...")
         isDownloadingResources = true
         downloadProgress = 0.0
-        statusMessage = "Downloading 3D engine..."
+        statusMessage = L10n.Sharp.downloadingEngine
 
         let tags: Set<String> = [Self.sharpModelTag]
         let request = NSBundleResourceRequest(tags: tags)
@@ -182,7 +249,7 @@ class SHARPService: ObservableObject {
             Task { @MainActor in
                 self?.downloadProgress = progress.fractionCompleted
                 let percent = Int(progress.fractionCompleted * 100)
-                self?.statusMessage = "Downloading 3D engine... \(percent)%"
+                self?.statusMessage = L10n.Sharp.downloadingEnginePercent(percent)
             }
         }
 
@@ -193,7 +260,7 @@ class SHARPService: ObservableObject {
             resourcesAvailable = true
             isDownloadingResources = false
             downloadProgress = 1.0
-            statusMessage = "Download complete"
+            statusMessage = L10n.Sharp.downloadComplete
 
             // Keep the request alive
             self.resourceRequest = request
@@ -205,7 +272,7 @@ class SHARPService: ObservableObject {
 
             isDownloadingResources = false
             downloadProgress = 0.0
-            statusMessage = "Download failed"
+            statusMessage = L10n.Sharp.downloadFailed
             progressObservation = nil
 
             throw error
@@ -214,11 +281,24 @@ class SHARPService: ObservableObject {
 
     /// Release ODR resources (call when no longer needed to free disk space)
     func releaseResources() {
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
         resourceRequest?.endAccessingResources()
         resourceRequest = nil
         resourcesAvailable = false
         model = nil
+        isLoadingModel = false
         logDebug("SHARP: Released ODR resources")
+    }
+
+    /// Drop the in-memory CoreML model after PLY is written so `WKWebView` / WebKit can allocate.
+    /// Without this, peak RAM (SHARP + YOLOE + WebKit) can fail heap allocation at `WKWebViewConfiguration()`.
+    func releaseInferenceMemoryAfterGeneration() {
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
+        model = nil
+        isLoadingModel = false
+        logDebug("SHARP: Inference model released after generation (free RAM for splat viewer)")
     }
 
     // MARK: - Model Loading
@@ -230,7 +310,9 @@ class SHARPService: ObservableObject {
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
         guard model == nil && !isLoadingModel else { return }
-        Task {
+        modelLoadTask?.cancel()
+        modelLoadTask = Task { [weak self] in
+            guard let self else { return }
             await loadModel()
         }
     }
@@ -239,23 +321,23 @@ class SHARPService: ObservableObject {
     private func loadModel() async {
         // Prevent double-loading if another Task already started
         guard !isLoadingModel && model == nil else { return }
+        defer { modelLoadTask = nil }
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
-        statusMessage = "Getting ready..."
+        statusMessage = L10n.Sharp.gettingReady
         progress = 0.1
 
-        // Check physical memory - INT8 model (~663MB) needs ~2GB available
+        // Check physical memory. FP32 SHARP at 1536² is heavy on low-memory devices; below 2 GB we bail out.
         let physicalMemory = ProcessInfo.processInfo.physicalMemory
-        let memoryLimit: UInt64 = 2 * 1024 * 1024 * 1024  // 2GB minimum
+        let twoGB: UInt64 = 2 * 1024 * 1024 * 1024
 
         logDebug("SHARP: Device RAM: \(physicalMemory / 1024 / 1024)MB")
 
-        if physicalMemory < memoryLimit {
-            logDebug("SHARP: Device has insufficient RAM, need 2GB+")
-            logDebug("SHARP: Model will not be loaded - use fallback or remote API")
+        if physicalMemory < twoGB {
+            logDebug("SHARP: Device has <2GB RAM — skipping on-device SHARP")
             isLoadingModel = false
-            statusMessage = "Not enough space on device"
+            statusMessage = L10n.Sharp.notEnoughSpace
             return
         }
 
@@ -263,6 +345,10 @@ class SHARPService: ObservableObject {
         if !resourcesAvailable && !isRunningFromXcode {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
+                if Task.isCancelled {
+                    isLoadingModel = false
+                    return
+                }
                 if downloaded {
                     logDebug("SHARP: ODR download succeeded")
                 } else {
@@ -274,25 +360,27 @@ class SHARPService: ObservableObject {
         }
 
         progress = 0.3
-        statusMessage = "Setting things up..."
+        statusMessage = L10n.Sharp.settingThingsUp
 
         do {
-            // Configuration matching mlsharpondevice2 style
+            // CPU-only: avoids GPU IOSurface / Neural Engine allocation failures on constrained devices.
             let config = MLModelConfiguration()
             config.computeUnits = .cpuOnly
 
-            // Use FP32 model
-            logDebug("SHARP: Loading via auto-generated model class (async) - FP32...")
+            logDebug("SHARP: Loading via auto-generated model class (async) - FP32, computeUnits=cpuOnly")
             let sharpModel = try await SHARP_fp32_1536.load(configuration: config)
+            if Task.isCancelled {
+                isLoadingModel = false
+                return
+            }
             model = sharpModel.model
-            logDebug("SHARP: Model loaded successfully")
+            logDebug("SHARP: Model loaded successfully with computeUnits=cpuOnly")
 
             progress = 1.0
-            statusMessage = "Ready!"
-
+            statusMessage = L10n.Sharp.ready
         } catch {
             logDebug("SHARP: Failed to load model: \(error)")
-            statusMessage = "Couldn't get ready"
+            statusMessage = L10n.Sharp.couldNotGetReady
         }
 
         isLoadingModel = false
@@ -301,9 +389,18 @@ class SHARPService: ObservableObject {
     // MARK: - Main Generation API
 
     /// Generate 3D Gaussian splat from an image
-    /// - Parameter image: The source image
-    /// - Returns: URL to the saved PLY file
-    func generateGaussians(from image: UIImage) async throws -> URL {
+    /// - Parameters:
+    ///   - image: The source image (possibly downscaled for SHARP memory).
+    ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
+    ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
+    ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
+    /// - Returns: URL of the primary PLY written by `writePLY`.
+    func generateGaussians(
+        from image: UIImage,
+        sourceImageURL: URL? = nil,
+        captureMediaMetadata: [AnyHashable: Any]? = nil,
+        photoLibraryAssetLocalId: String? = nil,
+    ) async throws -> SHARPGenerationResult {
         logDebug("SHARP: Starting Gaussian generation")
 
         // Load model on-demand if not already loaded
@@ -314,55 +411,83 @@ class SHARPService: ObservableObject {
 
         guard model != nil else {
             status = .failed("SHARP model failed to load. Check device memory.")
-            statusMessage = "Something went wrong"
+            statusMessage = L10n.Sharp.somethingWentWrong
             throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
         }
 
         // Reset state
         status = .processing
-        statusMessage = "Preparing your photo..."
+        statusMessage = L10n.Sharp.preparingPhoto
         progress = 0.0
 
         do {
-            // Step 1: Preprocess image
-            progress = 0.1
-            let inputBuffer = try await preprocessImage(image)
-            logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+            // Compute the small working image in a tight scope so the full-res originals
+            // are released before Core ML prediction (saves ~100 MB on 4 GB devices).
+            let (workingImage, orientedSize): (UIImage, CGSize) = autoreleasepool {
+                let orientedImage = image.imageOrientation == .up ? image : image.fixedOrientation()
+                let oriented = Self.downscaledImageForSharpMemoryIfNeeded(orientedImage)
+                return (oriented, Self.orientedPixelSize(for: orientedImage))
+            }
 
-            // Step 2: Run inference
-            statusMessage = "Creating your 3D room..."
+            progress = 0.1
+            statusMessage = L10n.Sharp.creatingRoom
             progress = 0.2
-            let gaussianParams = try await runInference(inputBuffer)
+            let gaussianParams = try await preprocessAndRunInference(workingImage: workingImage)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
-            // Step 3: Write PLY files (original + classic for antimatter15)
-            statusMessage = "Almost done..."
+            statusMessage = L10n.Sharp.almostDone
             progress = 0.8
-            let plyURLs = try await writePLY(gaussianParams)
+            let plyURLs = try await writePLY(
+                gaussianParams,
+                sourceImageSize: orientedSize,
+                applyAspectCorrection: true
+            )
+            logSharpMilestone(
+                "PLY files written on Swift/Core ML path (not C++): classic=\(plyURLs.classic.lastPathComponent) — WebView loads these next",
+            )
             logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
             logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
+            let thumbSource = Self.imageForWallMeasurementThumbnail(workingImage, maxPixel: 1024)
+            saveThumbnailForWallMeasurement(image: thumbSource, classicPlyURL: plyURLs.classic)
+            let roomFolder = plyURLs.classic.deletingLastPathComponent()
+            await CameraExifSidecar.writeMerged(
+                roomFolder: roomFolder,
+                imageURL: sourceImageURL,
+                mediaMetadata: captureMediaMetadata,
+                photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+            )
             let plyURL = plyURLs.original
 
             // Complete
             progress = 1.0
             status = .completed(fileURL: plyURL)
-            statusMessage = "Done!"
+            statusMessage = L10n.Sharp.done
 
-            return plyURL
+            releaseInferenceMemoryAfterGeneration()
+
+            return SHARPGenerationResult(
+                plyURL: plyURL,
+                plyAabbWidth: plyURLs.aabbWidth,
+                plyAabbHeight: plyURLs.aabbHeight,
+                plyAabbDepth: plyURLs.aabbDepth
+            )
         } catch {
             // Update status on failure so UI can show error
             status = .failed(error.localizedDescription)
-            statusMessage = "Couldn't create room"
+            statusMessage = L10n.Sharp.couldNotCreateRoom
+            logSharpMilestone("generation failed: \(error.localizedDescription)")
             logDebug("SHARP: Generation failed: \(error)")
+            releaseInferenceMemoryAfterGeneration()
             throw error
         }
     }
 
     /// Cancel current generation (if any)
     func cancelGeneration() {
-        status = .failed("Cancelled")
-        statusMessage = "Cancelled"
+        status = .failed(L10n.Sharp.cancelled)
+        statusMessage = L10n.Sharp.cancelled
+        releaseInferenceMemoryAfterGeneration()
     }
 
     // MARK: - Image Preprocessing
@@ -379,10 +504,10 @@ class SHARPService: ObservableObject {
 
         // Create CVPixelBuffer for CoreML Image input
         var pixelBuffer: CVPixelBuffer?
+        // CPU-only SHARP: omit Metal compatibility to avoid extra IOSurface / GPU allocator pressure.
         let attrs = [
             kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue!
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!
         ] as CFDictionary
 
         let status = CVPixelBufferCreate(
@@ -413,14 +538,23 @@ class SHARPService: ObservableObject {
             throw GenerationError.serverError("Failed to create graphics context")
         }
 
-        // Draw resized image into pixel buffer
-        context.interpolationQuality = .high
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+        // Draw resized image into pixel buffer (pool releases transient decode pressure from Core Graphics)
+        autoreleasepool {
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+        }
 
         return buffer
     }
 
     // MARK: - Model Inference
+
+    /// Preprocess then infer in one scope so the 1536² `CVPixelBuffer` can be released before PLY allocation.
+    private func preprocessAndRunInference(workingImage: UIImage) async throws -> [Float] {
+        let inputBuffer = try await preprocessImage(workingImage)
+        logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+        return try await runInference(inputBuffer)
+    }
 
     /// Run SHARP model inference
     /// SHARP_fp16 outputs 5 separate arrays that we combine into interleaved format
@@ -471,15 +605,35 @@ class SHARPService: ObservableObject {
         // Unlock before passing to CoreML - CoreML needs to manage its own buffer access
         CVPixelBufferUnlockBaseAddress(input, .readOnly)
 
+        URLCache.shared.removeAllCachedResponses()
+
         // Create feature provider with CVPixelBuffer as Image type
         let imageFeature = MLFeatureValue(pixelBuffer: input)
         let inputFeatures = try MLDictionaryFeatureProvider(dictionary: ["image": imageFeature])
 
+        logSharpMilestone(
+            "Core ML prediction starting (cpuOnly — can take several minutes; heartbeat every 15s until this step completes)",
+        )
+        let t0 = CFAbsoluteTimeGetCurrent()
+        // Core ML gives no callbacks mid-flight; detached heartbeat proves the app is alive in Console.
+        let heartbeat = Task.detached(priority: .utility) {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard !Task.isCancelled else { break }
+                let elapsed = CFAbsoluteTimeGetCurrent() - t0
+                logSharpMilestone(String(format: "Core ML prediction still running… %.0fs elapsed", elapsed))
+            }
+        }
+        defer { heartbeat.cancel() }
         // Run prediction (mlprogram requires async in iOS 16+)
         let output = try await model.prediction(from: inputFeatures)
+        let elapsed = CFAbsoluteTimeGetCurrent() - t0
+        logSharpMilestone(String(format: "Core ML prediction finished in %.1fs — extracting outputs", elapsed))
 
         logDebug("SHARP: Inference complete, extracting outputs...")
 
+        // Drain Core ML Obj-C temporaries while copying into Swift `[Float]` (reduces peak RAM on 4GB devices).
+        return try autoreleasepool { () throws -> [Float] in
         // SHARP_f32 outputs separate arrays:
         // - var_5420: positions (1 × N × 3)
         // - var_5424: scales (1 × N × 3)
@@ -598,6 +752,7 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: Extracted \(result.count) values (\(gaussianCount) gaussians × 14 params)")
         return result
+        }
     }
 
     // MARK: - Splat Filtering
@@ -634,12 +789,22 @@ class SHARPService: ObservableObject {
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
-    /// Returns tuple: (originalURL, classicURL, threeDGSURL) for different viewer compatibility
-    private func writePLY(_ params: [Float]) async throws -> (original: URL, classic: URL, threeDGS: URL) {
+    private func writePLY(
+        _ params: [Float],
+        sourceImageSize: CGSize,
+        applyAspectCorrection: Bool,
+    ) async throws -> (original: URL, classic: URL, threeDGS: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
         let gaussianCount = filteredParams.count / Self.paramsPerGaussian
+        let aspectCorrection = applyAspectCorrection
+            ? Self.sharpAspectCorrectionFactors(for: sourceImageSize)
+            : (x: Float(1), y: Float(1))
+        logDebug(
+            "SHARP: PLY aspect correction image=\(Int(sourceImageSize.width))x\(Int(sourceImageSize.height)) " +
+            "corr=(\(String(format: "%.4f", aspectCorrection.x)), \(String(format: "%.4f", aspectCorrection.y)))"
+        )
 
         // Ensure output directory exists
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
@@ -705,175 +870,176 @@ class SHARPService: ObservableObject {
 
         // SH coefficient constant: C0 = 0.5 * sqrt(1/pi)
         let SH_C0: Float = 0.28209479177387814
+        let threeDGSExtraLogScale = log(Self.threeDGSMetalViewerLinearScaleFactor)
 
-        // Write headers for all files
-        var data = Data(plyContent.utf8)
-        var classicData = Data(plyContent.utf8)
-        var threeDGSData = Data(threeDGSHeader.utf8)
+        // Per-vertex byte sizes for capacity reservation
+        // original/classic: 11 floats (44 B) + 3 UInt8 (3 B) = 47 B
+        // threeDGS:         17 floats (68 B)
+        let standardVertexBytes = 47
+        let threeDGSVertexBytes = 68
 
-        // Track bounding box and positions for measurements
-        var minX: Float = .greatestFiniteMagnitude
-        var maxX: Float = -.greatestFiniteMagnitude
-        var minY: Float = .greatestFiniteMagnitude
-        var maxY: Float = -.greatestFiniteMagnitude
-        var minZ: Float = .greatestFiniteMagnitude
-        var maxZ: Float = -.greatestFiniteMagnitude
-        var positions: [(Float, Float, Float)] = []
-        positions.reserveCapacity(gaussianCount)
-
-        // Debug: Log final PLY values for first few gaussians
-        var debugCount = 0
-        let debugMax = 3
-
-        // Write binary vertex data
-        // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
-        for i in 0..<gaussianCount {
-            let offset = i * Self.paramsPerGaussian
-
-            // Position - Python transform (x, -y, -z) - DO NOT modify further, breaks quality
-            let origX = filteredParams[offset + 0]
-            let origY = filteredParams[offset + 1]
-            let origZ = filteredParams[offset + 2]
-            var x = origX
-            var y = -origY
-            var z = -origZ
-
-            // Track bounding box and collect positions
-            minX = min(minX, x); maxX = max(maxX, x)
-            minY = min(minY, y); maxY = max(maxY, y)
-            minZ = min(minZ, z); maxZ = max(maxZ, z)
-            positions.append((x, y, z))
-
-            // Original PLY
-            data.append(Data(bytes: &x, count: 4))
-            data.append(Data(bytes: &y, count: 4))
-            data.append(Data(bytes: &z, count: 4))
-
-            // Classic PLY: front (180° Y) + upright (180° Z): (x, y, z) → (x, -y, -z)
-            var classicX = x
-            var classicY = -y
-            var classicZ = -z
-            classicData.append(Data(bytes: &classicX, count: 4))
-            classicData.append(Data(bytes: &classicY, count: 4))
-            classicData.append(Data(bytes: &classicZ, count: 4))
-
-            // 3DGS format: position
-            threeDGSData.append(Data(bytes: &x, count: 4))
-            threeDGSData.append(Data(bytes: &y, count: 4))
-            threeDGSData.append(Data(bytes: &z, count: 4))
-
-            // 3DGS format: normals (zeros)
-            var nx: Float = 0.0
-            var ny: Float = 0.0
-            var nz: Float = 0.0
-            threeDGSData.append(Data(bytes: &nx, count: 4))
-            threeDGSData.append(Data(bytes: &ny, count: 4))
-            threeDGSData.append(Data(bytes: &nz, count: 4))
-
-            // Scale - convert to log for renderer (match Python's scale_boost=1.3)
-            let minScale: Float = 0.001
-            let scaleBoost: Float = 1.3  // Match Python test_sharp_coreml.py
-            let rawS0 = filteredParams[offset + 3] * scaleBoost
-            let rawS1 = filteredParams[offset + 4] * scaleBoost
-            let rawS2 = filteredParams[offset + 5] * scaleBoost
-            var s0 = log(max(rawS0, minScale))
-            var s1 = log(max(rawS1, minScale))
-            var s2 = log(max(rawS2, minScale))
-            data.append(Data(bytes: &s0, count: 4))
-            data.append(Data(bytes: &s1, count: 4))
-            data.append(Data(bytes: &s2, count: 4))
-            classicData.append(Data(bytes: &s0, count: 4))
-            classicData.append(Data(bytes: &s1, count: 4))
-            classicData.append(Data(bytes: &s2, count: 4))
-
-            // Rotation quaternion - normalize only (don't transform, preserves quality)
-            let rawR0 = filteredParams[offset + 6]
-            let rawR1 = filteredParams[offset + 7]
-            let rawR2 = filteredParams[offset + 8]
-            let rawR3 = filteredParams[offset + 9]
-            let mag = sqrt(rawR0*rawR0 + rawR1*rawR1 + rawR2*rawR2 + rawR3*rawR3)
-            let invMag = mag > 1e-8 ? 1.0 / mag : 1.0
-            var r0 = rawR0 * invMag
-            var r1 = rawR1 * invMag
-            var r2 = rawR2 * invMag
-            var r3 = rawR3 * invMag
-            data.append(Data(bytes: &r0, count: 4))
-            data.append(Data(bytes: &r1, count: 4))
-            data.append(Data(bytes: &r2, count: 4))
-            data.append(Data(bytes: &r3, count: 4))
-            classicData.append(Data(bytes: &r0, count: 4))
-            classicData.append(Data(bytes: &r1, count: 4))
-            classicData.append(Data(bytes: &r2, count: 4))
-            classicData.append(Data(bytes: &r3, count: 4))
-
-            // Opacity - convert to logit (inverse sigmoid) for renderer
-            let rawOpacity = filteredParams[offset + 10]
-            let clampedOpacity = min(max(rawOpacity, 1e-4), 1.0 - 1e-4)
-            var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
-            data.append(Data(bytes: &opacity, count: 4))
-            classicData.append(Data(bytes: &opacity, count: 4))
-
-            // Color - get raw values from SHARP
-            let rawR = filteredParams[offset + 11]
-            let rawG = filteredParams[offset + 12]
-            let rawB = filteredParams[offset + 13]
-
-            // 3DGS format: f_dc colors as SH coefficients
-            // Formula: f_dc = (color - 0.5) / SH_C0
-            // SparkJS shows correct colors with RGB order, so use RGB (not BGR)
-            var f_dc_0 = (rawR - 0.5) / SH_C0  // R
-            var f_dc_1 = (rawG - 0.5) / SH_C0  // G
-            var f_dc_2 = (rawB - 0.5) / SH_C0  // B
-            threeDGSData.append(Data(bytes: &f_dc_0, count: 4))
-            threeDGSData.append(Data(bytes: &f_dc_1, count: 4))
-            threeDGSData.append(Data(bytes: &f_dc_2, count: 4))
-
-            // 3DGS format: opacity, scale, rotation
-            threeDGSData.append(Data(bytes: &opacity, count: 4))
-            threeDGSData.append(Data(bytes: &s0, count: 4))
-            threeDGSData.append(Data(bytes: &s1, count: 4))
-            threeDGSData.append(Data(bytes: &s2, count: 4))
-            threeDGSData.append(Data(bytes: &r0, count: 4))
-            threeDGSData.append(Data(bytes: &r1, count: 4))
-            threeDGSData.append(Data(bytes: &r2, count: 4))
-            threeDGSData.append(Data(bytes: &r3, count: 4))
-
-            // Apply gamma correction (linear to sRGB) and slight brightness boost for SparkJS format
-            let gamma: Float = 1.0 / 2.2
-            let brightness: Float = 1.1
-            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
-            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
-            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
-
-            // Convert to 0-255 uchar for original/classic PLY
-            var red = UInt8(min(max(Int(finalR * 255), 0), 255))
-            var green = UInt8(min(max(Int(finalG * 255), 0), 255))
-            var blue = UInt8(min(max(Int(finalB * 255), 0), 255))
-            data.append(Data(bytes: &red, count: 1))
-            data.append(Data(bytes: &green, count: 1))
-            data.append(Data(bytes: &blue, count: 1))
-            classicData.append(Data(bytes: &red, count: 1))
-            classicData.append(Data(bytes: &green, count: 1))
-            classicData.append(Data(bytes: &blue, count: 1))
-
-            // Debug logging for first few gaussians
-            if debugCount < debugMax {
-                let quatLen = sqrt(r0*r0 + r1*r1 + r2*r2 + r3*r3)
-                logDebug("SHARP PLY GAUSSIAN \(i) (final values):")
-                logDebug("  pos: (\(x), \(y), \(z))")
-                logDebug("  scale (log): (\(s0), \(s1), \(s2))")
-                logDebug("  rot: (\(r0), \(r1), \(r2), \(r3)) len=\(quatLen)")
-                logDebug("  opacity (logit): \(opacity)")
-                logDebug("  f_dc (SH): (\(f_dc_0), \(f_dc_1), \(f_dc_2))")
-                logDebug("  color (uchar): (\(red), \(green), \(blue))")
-                debugCount += 1
-            }
+        // Pre-compute per-gaussian values shared across all three PLY variants.
+        // Stored in a flat struct-of-arrays to avoid triple-pass over `filteredParams`.
+        struct GaussianRow {
+            var x, y, z: Float             // transformed position
+            var s0, s1, s2: Float          // log-scale
+            var r0, r1, r2, r3: Float      // normalised quaternion
+            var opacity: Float             // logit
+            var rawR, rawG, rawB: Float    // linear colour [0,1]
         }
 
-        // Write all files
-        try data.write(to: fileURL)
-        try classicData.write(to: classicFileURL)
-        try threeDGSData.write(to: threeDGSFileURL)
+        var rows = [GaussianRow]()
+        rows.reserveCapacity(gaussianCount)
+
+        let minScale: Float = 0.001
+        let scaleBoost: Float = 1.3
+
+        for i in 0..<gaussianCount {
+            let o = i * Self.paramsPerGaussian
+            let x = filteredParams[o + 0] * aspectCorrection.x
+            let y = -(filteredParams[o + 1] * aspectCorrection.y)
+            let z = -filteredParams[o + 2]
+
+            let rr0 = filteredParams[o + 6]
+            let rr1 = filteredParams[o + 7]
+            let rr2 = filteredParams[o + 8]
+            let rr3 = filteredParams[o + 9]
+            let mag = sqrt(rr0*rr0 + rr1*rr1 + rr2*rr2 + rr3*rr3)
+            let inv = mag > 1e-8 ? 1.0 / mag : 1.0
+
+            let rawOp = filteredParams[o + 10]
+            let clOp = min(max(rawOp, 1e-4), 1.0 - 1e-4)
+
+            rows.append(GaussianRow(
+                x: x, y: y, z: z,
+                s0: log(max(filteredParams[o + 3] * scaleBoost, minScale)),
+                s1: log(max(filteredParams[o + 4] * scaleBoost, minScale)),
+                s2: log(max(filteredParams[o + 5] * scaleBoost, minScale)),
+                r0: rr0 * inv, r1: rr1 * inv, r2: rr2 * inv, r3: rr3 * inv,
+                opacity: log(clOp / (1.0 - clOp)),
+                rawR: filteredParams[o + 11],
+                rawG: filteredParams[o + 12],
+                rawB: filteredParams[o + 13]
+            ))
+        }
+
+        // AABB in **`_classic.ply` file space** (x, -y, -z) — matches MetalSplatter load path for SHARP classic.
+        var clMinX: Float = .greatestFiniteMagnitude
+        var clMaxX: Float = -.greatestFiniteMagnitude
+        var clMinY: Float = .greatestFiniteMagnitude
+        var clMaxY: Float = -.greatestFiniteMagnitude
+        var clMinZ: Float = .greatestFiniteMagnitude
+        var clMaxZ: Float = -.greatestFiniteMagnitude
+        for g in rows {
+            let cx = g.x
+            let cy = -g.y
+            let cz = -g.z
+            clMinX = min(clMinX, cx); clMaxX = max(clMaxX, cx)
+            clMinY = min(clMinY, cy); clMaxY = max(clMaxY, cy)
+            clMinZ = min(clMinZ, cz); clMaxZ = max(clMaxZ, cz)
+        }
+        let width = clMaxX - clMinX
+        let height = clMaxY - clMinY
+        let depth = clMaxZ - clMinZ
+
+        // Debug first few gaussians
+        for i in 0..<min(3, rows.count) {
+            let g = rows[i]
+            let quatLen = sqrt(g.r0*g.r0 + g.r1*g.r1 + g.r2*g.r2 + g.r3*g.r3)
+            let f0 = (g.rawR - 0.5) / SH_C0
+            let f1 = (g.rawG - 0.5) / SH_C0
+            let f2 = (g.rawB - 0.5) / SH_C0
+            let gamma: Float = 1.0 / 2.2; let bright: Float = 1.1
+            let red = UInt8(min(max(Int(pow(min(max(g.rawR * bright, 0), 1), gamma) * 255), 0), 255))
+            let green = UInt8(min(max(Int(pow(min(max(g.rawG * bright, 0), 1), gamma) * 255), 0), 255))
+            let blue = UInt8(min(max(Int(pow(min(max(g.rawB * bright, 0), 1), gamma) * 255), 0), 255))
+            logDebug("SHARP PLY GAUSSIAN \(i) (final values):")
+            logDebug("  pos: (\(g.x), \(g.y), \(g.z))")
+            logDebug("  scale (log): (\(g.s0), \(g.s1), \(g.s2))")
+            logDebug("  rot: (\(g.r0), \(g.r1), \(g.r2), \(g.r3)) len=\(quatLen)")
+            logDebug("  opacity (logit): \(g.opacity)")
+            logDebug("  f_dc (SH): (\(f0), \(f1), \(f2))")
+            logDebug("  color (uchar): (\(red), \(green), \(blue))")
+        }
+
+        // Helper: write standard (original/classic) PLY with pre-reserved Data.
+        func writeStandardPLY(toURL url: URL, flipYZ: Bool) throws {
+            let headerData = Data(plyContent.utf8)
+            var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes)
+            buf.append(headerData)
+            let gamma: Float = 1.0 / 2.2
+            let brightness: Float = 1.1
+            for g in rows {
+                var px = g.x; var py = flipYZ ? -g.y : g.y; var pz = flipYZ ? -g.z : g.z
+                buf.append(Data(bytes: &px, count: 4))
+                buf.append(Data(bytes: &py, count: 4))
+                buf.append(Data(bytes: &pz, count: 4))
+                var s0 = g.s0; var s1 = g.s1; var s2 = g.s2
+                buf.append(Data(bytes: &s0, count: 4))
+                buf.append(Data(bytes: &s1, count: 4))
+                buf.append(Data(bytes: &s2, count: 4))
+                var r0 = g.r0; var r1 = g.r1; var r2 = g.r2; var r3 = g.r3
+                buf.append(Data(bytes: &r0, count: 4))
+                buf.append(Data(bytes: &r1, count: 4))
+                buf.append(Data(bytes: &r2, count: 4))
+                buf.append(Data(bytes: &r3, count: 4))
+                var op = g.opacity
+                buf.append(Data(bytes: &op, count: 4))
+                let fR = pow(min(max(g.rawR * brightness, 0), 1), gamma)
+                let fG = pow(min(max(g.rawG * brightness, 0), 1), gamma)
+                let fB = pow(min(max(g.rawB * brightness, 0), 1), gamma)
+                var red = UInt8(min(max(Int(fR * 255), 0), 255))
+                var green = UInt8(min(max(Int(fG * 255), 0), 255))
+                var blue = UInt8(min(max(Int(fB * 255), 0), 255))
+                buf.append(Data(bytes: &red, count: 1))
+                buf.append(Data(bytes: &green, count: 1))
+                buf.append(Data(bytes: &blue, count: 1))
+            }
+            try buf.write(to: url)
+        }
+
+        // Write original PLY, then release its buffer before building the next.
+        try writeStandardPLY(toURL: fileURL, flipYZ: false)
+
+        // Classic PLY: (x, -y, -z) applied via flipYZ.
+        try writeStandardPLY(toURL: classicFileURL, flipYZ: true)
+
+        // 3DGS / SuperSplat PLY — built and written last.
+        do {
+            let headerData = Data(threeDGSHeader.utf8)
+            var buf = Data(capacity: headerData.count + gaussianCount * threeDGSVertexBytes)
+            buf.append(headerData)
+            for g in rows {
+                var px = g.x; var py = g.y; var pz = g.z
+                buf.append(Data(bytes: &px, count: 4))
+                buf.append(Data(bytes: &py, count: 4))
+                buf.append(Data(bytes: &pz, count: 4))
+                var nx: Float = 0; var ny: Float = 0; var nz: Float = 0
+                buf.append(Data(bytes: &nx, count: 4))
+                buf.append(Data(bytes: &ny, count: 4))
+                buf.append(Data(bytes: &nz, count: 4))
+                var f0 = (g.rawR - 0.5) / SH_C0
+                var f1 = (g.rawG - 0.5) / SH_C0
+                var f2 = (g.rawB - 0.5) / SH_C0
+                buf.append(Data(bytes: &f0, count: 4))
+                buf.append(Data(bytes: &f1, count: 4))
+                buf.append(Data(bytes: &f2, count: 4))
+                var op = g.opacity
+                buf.append(Data(bytes: &op, count: 4))
+                var sg0 = g.s0 + threeDGSExtraLogScale
+                var sg1 = g.s1 + threeDGSExtraLogScale
+                var sg2 = g.s2 + threeDGSExtraLogScale
+                buf.append(Data(bytes: &sg0, count: 4))
+                buf.append(Data(bytes: &sg1, count: 4))
+                buf.append(Data(bytes: &sg2, count: 4))
+                var r0 = g.r0; var r1 = g.r1; var r2 = g.r2; var r3 = g.r3
+                buf.append(Data(bytes: &r0, count: 4))
+                buf.append(Data(bytes: &r1, count: 4))
+                buf.append(Data(bytes: &r2, count: 4))
+                buf.append(Data(bytes: &r3, count: 4))
+            }
+            try buf.write(to: threeDGSFileURL)
+        }
 
         // Verify
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
@@ -882,31 +1048,39 @@ class SHARPService: ObservableObject {
         let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
         logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
-        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat compatible")
+        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). In-app Metal uses `_classic.ply`.")
 
-        // Log room measurements (SHARP units are roughly meters)
-        let width = maxX - minX
-        let height = maxY - minY
-        let depth = maxZ - minZ
-        logDebug("SHARP: Room bounding box:")
-        logDebug("  Width (X):  \(String(format: "%.2f", width)) units (\(minX) to \(maxX))")
-        logDebug("  Height (Y): \(String(format: "%.2f", height)) units (\(minY) to \(maxY))")
-        logDebug("  Depth (Z):  \(String(format: "%.2f", depth)) units (\(minZ) to \(maxZ))")
-        logDebug("  Splats: \(gaussianCount)")
+        logPlyBoundsDiagnostic(
+            "SHARP classic_ply room bounds (vertex frame written to *_classic.ply; in-app Metal uses this file): " +
+            "W=\(String(format: "%.3f", width)) H=\(String(format: "%.3f", height)) D=\(String(format: "%.3f", depth)) " +
+            "X[\(String(format: "%.3f", clMinX)),\(String(format: "%.3f", clMaxX))] " +
+            "Y[\(String(format: "%.3f", clMinY)),\(String(format: "%.3f", clMaxY))] " +
+            "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
+        )
 
-        // Detect front wall and compute measurements
-        if let measurements = RoomMeasurement.measureRoom(positions: positions) {
-            await MainActor.run {
-                self.roomMeasurements = measurements
-            }
-            logDebug("SHARP: Front wall detected:")
-            logDebug("  Width:  \(String(format: "%.2f", measurements.frontWallWidth)) units")
-            logDebug("  Height: \(String(format: "%.2f", measurements.frontWallHeight)) units")
-            logDebug("  Confidence: \(String(format: "%.0f", measurements.confidence * 100))%")
+        return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL, aabbWidth: width, aabbHeight: height, aabbDepth: depth)
+    }
+
+    /// Writes `Room_<stamp>_thumbnail.jpg` next to the classic PLY so [WallMeasurementEstimator] can load it on save.
+    /// JPEG uses ~1/3 the encoding memory of PNG for photo-type images.
+    private func saveThumbnailForWallMeasurement(image: UIImage, classicPlyURL: URL) {
+        let stem = classicPlyURL.deletingPathExtension().lastPathComponent
+        let base: String
+        if stem.hasSuffix("_classic") {
+            base = String(stem.dropLast("_classic".count))
         } else {
-            logDebug("SHARP: Could not detect front wall")
+            base = stem
         }
-
-        return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL)
+        let out = classicPlyURL.deletingLastPathComponent().appendingPathComponent("\(base)_thumbnail.jpg")
+        guard let data = image.jpegData(compressionQuality: 0.85) else {
+            logWallMeasurement("persist_thumbnail fail encode path=\(out.path)")
+            return
+        }
+        do {
+            try data.write(to: out)
+            logWallMeasurement("persist_thumbnail ok path=\(out.path) bytes=\(data.count)")
+        } catch {
+            logWallMeasurement("persist_thumbnail fail write \(error.localizedDescription) path=\(out.path)")
+        }
     }
 }

@@ -21,6 +21,7 @@
 "common.error" = "ದೋಷ";
 "common.save" = "ಉಳಿಸು";
 "common.close" = "ಮುಚ್ಚು";
+"common.apply" = "ಅನ್ವಯಿಸು";
 
 // MARK: - Login View
 "login.yourName" = "ನಿಮ್ಮ ಹೆಸರು";
@@ -140,6 +141,8 @@
 "licenses.yoloe" = "ಈ ಅಪ್ಲಿಕೇಶನ್ YOLO (ಉದಾ. Ultralytics YOLO) ಆಧಾರಿತ ಮಾದರಿಗಳನ್ನು ಬಳಸುತ್ತದೆ. YOLO AGPL-3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ https://www.ultralytics.com/license ನೋಡಿ.";
 "licenses.sharpTitle" = "3D ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣ (SHARP)";
 "licenses.sharp" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
+"licenses.metalSplatterTitle" = "MetalSplatter";
+"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 
@@ -178,6 +181,8 @@
 "faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
+"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
+"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
 "faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
@@ -191,7 +196,7 @@
 "faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";
 "faq.generationFailingAnswer" = "ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.";
 "faq.howManyRooms" = "ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?";
-"faq.howManyRoomsAnswer" = "ನೀವು 10 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
+"faq.howManyRoomsAnswer" = "ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
@@ -205,7 +210,6 @@
 "faq.multiplePiecesAnswer" = "ಹೌದು! AI ಒಂದೇ ಫೋಟೋದಲ್ಲಿ ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ಪತ್ತೆಹಚ್ಚಬಹುದು. ಪ್ರತಿ ಪತ್ತೆಯಾದ ವಸ್ತುವನ್ನು ಪ್ರತ್ಯೇಕವಾಗಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ ನೀವು ಯಾವುದನ್ನು ಬಳಸಬೇಕೆಂದು ಆಯ್ಕೆ ಮಾಡಲು.";
 
 // FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D ಕೊಠಡಿ & ಅಳವಡಿಕೆ";
 "faq.howToView" = "ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?";
 "faq.howToViewAnswer" = "3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.";
 "faq.howToPlace" = "ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?";
@@ -216,6 +220,15 @@
 "faq.accuracyAnswer" = "3D ಮಾದರಿ ನಿಮ್ಮ ಕೊಠಡಿ ವಿನ್ಯಾಸದ ಉತ್ತಮ ಅಂದಾಜನ್ನು ಒದಗಿಸುತ್ತದೆ. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ, ನಿಮ್ಮ ಮೂಲ ಫೋಟೋ ಗೋಚರ ಮೂಲೆಗಳು ಮತ್ತು ಅಂಚುಗಳೊಂದಿಗೆ ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ಸೆರೆಹಿಡಿಯುತ್ತದೆ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
 "faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
 "faq.adjustDimensionsAnswer" = "ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.";
+"faq.furnitureMeasurements" = "ಪೀಠೋಪಕರಣ ಮತ್ತು ಅಳತೆಗಳು";
+"faq.arAssistedSizing" = "ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?";
+"faq.arAssistedSizingAnswer" = "ARKit ವಿಶ್ವ ಟ್ರ್ಯಾಕಿಂಗ್ ಬೆಂಬಲವಿರುವ ಸಾಧನಗಳಲ್ಲಿ, ಅಪ್ಲಿಕೇಶನ್ ಕ್ಯಾಮೆರಾ ಆಳ ಮತ್ತು ಇಂಟ್ರಿನ್ಸಿಕ್ಸ್ ಬಳಸಿ ನೀವು ಚಲಿಸಿದಂತೆ ಓವರ್ಲೇಯನ್ನು ನೈಜ ಮೀಟರ್‌ಗಳಲ್ಲಿ ಸ್ಕೇಲ್ ಮಾಡುತ್ತದೆ. AR ಬೆಂಬಲವಿಲ್ಲದಿದ್ದರೆ, ನಿಮ್ಮ 3D ಕೊಠಡಿ ಅಳತೆಗಳನ್ನು ಬಳಸಲಾಗುತ್ತದೆ; ನೀವು ಇನ್ನೂ ಪಿಂಚ್ ಮಾಡಿ ಓವರ್ಲೇ ಹೊಂದಿಸಬಹುದು.";
+"faq.measurementPill" = "ಚಿಕ್ಕ ಅಳತೆ ಓದುವಿಕೆ (ಪಿಲ್) ಏನು?";
+"faq.measurementPillAnswer" = "SmartyPants ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ, ಪೀಠೋಪಕರಣದ ಮತ್ತು ಕೊಠಡಿಯ ಅಂದಾಜು ಎತ್ತರಗಳನ್ನು ತೋರಿಸುವ ಪಿಲ್ ಕಾಣಬಹುದು. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ ನಿಜವಾದ ಅಳತೆಗಳನ್ನು ನಮೂದಿಸಲು ಅದನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಿಮ್ಮ ಕೊಠಡಿ ಫೋಟೋ ವೈಡ್-ಆಂಗಲ್ (0.5×) ಲೆನ್ಸ್‌ನಲ್ಲಿ ತೆಗೆದಿದ್ದರೆ, ಆಯ್ಕೆಯನ್ನು ಗುರುತಿಸಿ — ಚೌಕಟ್ಟು ಸ್ಥಿರವಾಗಿ ಉಳಿಯುತ್ತದೆ.";
+"faq.resetOverlayScale" = "ಪೀಠೋಪಕರಣ ಮಾಸ್ಕ್ ತಪ್ಪಾಗಿ ಜೂಮ್ ಆಗಿದೆ ಎನಿಸುತ್ತದೆ — ಏನು ಮಾಡಲಿ?";
+"faq.resetOverlayScaleAnswer" = "3D ಕೊಠಡಿಯಲ್ಲಿ ಓವರ್‌ಫ್ಲೋ ಮೆನು (⋮) ತೆರೆದು «ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ» ಆಯ್ಕೆಮಾಡಿ. ಪತ್ತೆ ಓವರ್ಲೇಗೆ ಅನ್ವಯಿಸಿದ ಸ್ವಯಂಚಾಲಿತ ಜೂಮ್ ಅನ್ನು ಅದು ತೆರವುಗೊಳಿಸುತ್ತದೆ; ನೀವು ಚಲಿಸಿದಂತೆ ಮತ್ತೆ ಸರಿಯಾಗಿ ಹೊಂದಿಕೊಳ್ಳುತ್ತದೆ.";
+"faq.roomFitment" = "ಪೀಠೋಪಕರಣ ಸರಿಯಾಗಿ ಹೊಂದುತ್ತದೆಯೇ ಎಂದು ಹೇಗೆ ಪರಿಶೀಲಿಸುವುದು?";
+"faq.roomFitmentAnswer" = "ಪೀಠೋಪಕರಣ ಸೇರಿಸಿದ ನಂತರ, ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಅದರ ಗಾತ್ರ ಬದಲಾಯಿಸಿ ಮತ್ತು ಸ್ಥಾನ ಸರಿಸಿ — ನಿಮ್ಮ ಖಾಲಿ ಜಾಗ ಮತ್ತು ಇತರ ಪೀಠೋಪಕರಣಗಳೊಂದಿಗೆ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂದು ನೋಡಬಹುದು.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "ಕೊಠಡಿ ಗಡಿಗಳು";
@@ -259,6 +272,29 @@
 "roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
 "roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
 "roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomPreview.unsavedTitle" = "ಉಳಿಸದೆಯೇ ಹಿಂದೆ ಹೋಗುವುದೇ?";
+"roomPreview.unsavedMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.";
+"roomPreview.stay" = "ಇಲ್ಲೇ ಇರಿ";
+"roomPreview.leave" = "ಹಿಂದೆ ಹೋಗು";
+"roomViewer.share" = "ಹಂಚಿಕೊಳ್ಳಿ";
+"roomViewer.calibrateWall" = "ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.recenterView" = "ನೋಟ ಮಧ್ಯಕ್ಕೆ";
+"roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
+"roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
+"roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
+"roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";
+"roomViewer.calibrateRoomTitle" = "ಕೊಠಡಿ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.enterFurnitureHeightMeters" = "ನಿಜವಾದ ಪೀಠೋಪಕರಣ ಎತ್ತರ ನಮೂದಿಸಿ (ಮೀಟರ್)";
+"roomViewer.furnitureFullHeightHint" = "ಪೂರ್ಣ ಎತ್ತರ: ನೆಲದಿಂದ ಮೇಲ್ಭಾಗ (ಉದಾ. ಕುರ್ಚಿಗೆ 0.9 ಮೀ)";
+"roomViewer.calibrateByWallTitle" = "ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್";
+"roomViewer.enterWallDimensionsHint" = "ಟೇಪ್‌ನಿಂದ ಅಳೆದ ಮುಂಭಾಗದ ಗೋಡೆ (ಮೀಟರ್) ನಮೂದಿಸಿ, ಉದಾ. 3.15 × 2.86";
+"roomViewer.tapToCalibrate" = "ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
+"roomViewer.detectedMeters" = "ಪತ್ತೆ: %.2f ಮೀ";
+"roomViewer.roomMetersShort" = "ಕೊಠಡಿ: %.2f ಮೀ";
+"roomViewer.furnitureMetersShort" = "ಪೀಠೋ: %.2f ಮೀ";
+"roomViewer.wallWidthPlaceholder" = "ಅಗಲ";
+"roomViewer.wallHeightPlaceholder" = "ಎತ್ತರ";
+"roomViewer.saveErrorUnknown" = "ಅಜ್ಞಾತ ದೋಷ";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "ವರದಿ ಸಲ್ಲಿಸು";
@@ -290,24 +326,74 @@
 "faq.whatIsMemoryDisplayAnswer" = "ಕೊಠಡಿಗಳಲ್ಲಿ ತೋರಿಸಲಾದ MB (ಮೆಗಾಬೈಟ್‌ಗಳು) ಫೈಲ್ ಗಾತ್ರವನ್ನು ಸೂಚಿಸುತ್ತದೆ. ಇದು ಸಂಗ್ರಹಣೆಯನ್ನು ನಿರ್ವಹಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. ಎಲ್ಲಾ ಕೊಠಡಿಗಳು ಬಳಸಿದ ಒಟ್ಟು ಸಂಗ್ರಹಣೆ ಮುಖಪುಟ ಪರದೆಯ ಮೇಲ್ಭಾಗದಲ್ಲಿ ತೋರಿಸಲಾಗುತ್ತದೆ.";
 
 // MARK: - Single Photo Room (added)
-"photoRoom.howToCreate" = "How do you want to create your 3D room?";
-"photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
-"photoRoom.manualSetup" = "Manual Setup";
-"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
-"photoRoom.selectPhoto" = "Select Photo";
-"photoRoom.fromLibrary" = "From your photo library";
-"photoRoom.loading" = "Loading 3D room...";
-"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
-"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.howToCreate" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸಲು ಬಯಸುತ್ತೀರಿ?";
+"photoRoom.tapOption" = "ಮುಂದುವರಿಸಲು ಕೆಳಗಿನ ಆಯ್ಕೆಯನ್ನು ತಟ್ಟಿ";
+"photoRoom.aiPowered" = "AI-ಚಾಲಿತ 3D ನಿರ್ಮಾಣ";
+"photoRoom.manualSetup" = "ಹಸ್ತಚಾಲಿತ ಹೊಂದಾಣಿಕೆ";
+"photoRoom.manualSetupDesc" = "ಕೊಠಡಿ ಗೋಡೆಗಳನ್ನು ಹೊಂದಿಸಲು ಎಳೆಯಿರಿ";
+"photoRoom.selectPhoto" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ";
+"photoRoom.fromLibrary" = "ನಿಮ್ಮ ಫೋಟೋ ಗ್ರಂಥಾಲಯದಿಂದ";
+"photoRoom.loading" = "3D ಕೊಠಡಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+"photoRoom.downloadSuccess" = "%@ ಯಶಸ್ವಿಯಾಗಿ ಡೌನ್‌ಲೋಡ್ ಆಗಿದೆ. ನಿಮ್ಮ ಮಾದರಿಗಳ ಪಟ್ಟಿಯಲ್ಲಿ ವೀಕ್ಷಿಸಿ.";
+"photoRoom.saveSuccess" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ.";
 "photoRoom.error" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುವಾಗ ದೋಷ ಸಂಭವಿಸಿದೆ.";
 "photoRoom.buildingRoom" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ...";
 
 // MARK: - Orientation Labels
-"orientation.portrait" = "Portrait";
-"orientation.landscape" = "Landscape";
-"orientation.heldVertically" = "held vertically";
-"orientation.heldHorizontally" = "held horizontally";
+"orientation.portrait" = "ಪೋರ್ಟ್ರೇಟ್";
+"orientation.landscape" = "ಲ್ಯಾಂಡ್‌ಸ್ಕೇಪ್";
+"orientation.heldVertically" = "ಲಂಬವಾಗಿ ಹಿಡಿದಿದೆ";
+"orientation.heldHorizontally" = "ಅಡ್ಡವಾಗಿ ಹಿಡಿದಿದೆ";
 
 // MARK: - Photo Selection Warning
-"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";
+"photoRoom.screenshotWarning" = "ಸ್ಕ್ರೀನ್‌ಶಾಟ್‌ಗಳನ್ನು ಆಯ್ಕೆಮಾಡಬೇಡಿ — ಅವು ಕಪ್ಪು ಪ್ಯಾಚ್‌ಗಳಿಗೆ ಕಾರಣವಾಗಬಹುದು";
+
+// MARK: - i18n sync (Kannada)
+"common.or" = "ಅಥವಾ";
+"common.retry" = "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ";
+"settings.furnitureSegmentationSection" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
+"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
+"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
+"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU ಅನುಮತಿಸಿ";
+"settings.yoloeCoreMLAllowGPUDescription" = "ಆಫ್ (ಡೀಫಾಲ್ಟ್): CPU ಮಾತ್ರ — ನಿಧಾನ, ಆದರೆ ಕೆಲವು YOLO-E 26L Core ML ಬಿಲ್ಡ್‌ಗಳಲ್ಲಿ ಕ್ರ್ಯಾಶ್ ತಪ್ಪಿಸುತ್ತದೆ. ಆನ್: ವೇಗಕ್ಕಾಗಿ CPU+GPU; ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿ Metal ರನ್ ಆಗದ ಫಲಿತಾಂಶದಲ್ಲಿ ಸೆಗ್ಮೆಂಟೇಶನ್ ಸಮಯದಲ್ಲಿ SIGABRT ಆಗಬಹುದು.";
+"settings.showRoomFurnitureCalibrate" = "ಕೊಠಡಿ ಮತ್ತು ಪೀಠೋಪಕರಣ ಕ್ಯಾಲಿಬ್ರೇಷನ್ UI ತೋರಿಸಿ";
+"settings.showRoomFurnitureCalibrateDescription" = "ಕೊಠಡಿ ಮೆನುವಿನಲ್ಲಿ ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮತ್ತು SmartyPants (ಮೆದುಳು) ಆನ್ ಇದ್ದಾಗ ‘ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ತಟ್ಟಿ’ ಪಿಲ್ ತೋರಿಸುತ್ತದೆ.";
+"settings.furnitureFitARCompanion" = "AR-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರ";
+"settings.furnitureFitARCompanionDescription" = "Furniture Fit ನಲ್ಲಿ ಕ್ಯಾಮರಾವೊಂದಿಗೆ ARKit ದೃಶ್ಯಾಂತರ ಚಲಾಯಿಸುತ್ತದೆ (LiDAR). ವೀಡಿಯೊ ಕ್ಯಾಪ್ಚರ್‌ನೊಂದಿಗೆ ಸಂಘರ್ಷವಾಗಬಹುದು. ಬದಲಾಯಿಸಿದ ನಂತರ ಕೊಠಡಿಯನ್ನು ಮತ್ತೆ ತೆರೆಯಿರಿ.";
+"settings.furnitureFitARCompanionUnavailable" = "ಈ ಸಾಧನದಲ್ಲಿ ದೃಶ್ಯಾಂತರ ಲಭ್ಯವಿಲ್ಲ.";
+"settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
+"settings.yoloWallDimensionsOnSave" = "ಉಳಿಸುವಾಗ YOLO ಗೋಡೆ ಆಯಾಮಗಳು";
+"settings.yoloWallDimensionsOnSaveDescription" = "SHARP ಕೊಠಡಿಗೆ ಹೆಸರು ನೀಡಿ ಉಳಿಸುವಾಗ, YOLO (ಗೋಡೆ ವರ್ಗ ಅಥವಾ ಗೋಡೆಯಂತಹ ಬಾಕ್ಸ್), ಉಳಿಸಿದ SHARP ಮೊನೊಡೆಪ್ತ್ ಮತ್ತು ಕ್ಯಾಮೆರಾ EXIF ಬಳಸಿ ಮುಂಭಾಗದ ಗೋಡೆಯ ಅಗಲ ಮತ್ತು ಎತ್ತರ ಅಂದಾಜು ಮಾಡುತ್ತದೆ. thumbnail.png ಅಗತ್ಯ; ಉತ್ತಮ ಫಲಿತಾಂಶಕ್ಕೆ sharp_monodepth.bin.";
+"settings.wallAssumedDepthM" = "ಗೋಡೆಗೆ ಅಂದಾಜು ದೂರ (ಮೀ)";
+"settings.wallAssumedCeilingM" = "ಅಂದಾಜು ಗೋಡೆ ಎತ್ತರ/ಸೀಲಿಂಗ್ (ಮೀ)";
+"settings.roomMeasurementFooter" = "SHARP iOS ನಲ್ಲಿ ಮೊನೊಡೆಪ್ತ್ ಇಲ್ಲದಿದ್ದರೆ, ಉಳಿಸುವಿಕೆ ಅಂದಾಜು ದೂರ ಮತ್ತು ಕೆಲವೊಮ್ಮೆ ಈ ಸೀಲಿಂಗ್ ಎತ್ತರವನ್ನು ಬಳಸುತ್ತದೆ. ಟೇಪ್ ಅಳತೆಗೆ ಹೋಲಿಸಿದರೆ ಅಗಲ ಕಡಿಮೆ ಇದ್ದರೆ ‘ಅಂದಾಜು ದೂರ’ ಹೆಚ್ಚಿಸಿ (ಅಗಲ ಸುಮಾರು ರೇಖೀಯವಾಗಿ ಬದಲಾಗುತ್ತದೆ). ಟೇಪ್ ಅಳತೆಗೆ ಹತ್ತಿರ ‘ಅಂದಾಜು ಗೋಡೆ ಎತ್ತರ’ ಹೊಂದಿಸಿ (ಉದಾ. 2.86 ಮೀ). ಅಥವಾ ಉಳಿಸುವ ಮೊದಲು ⋮ → ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಬಳಸಿ.";
+"camera.takePhoto" = "ಫೋಟೋ ತೆಗೆಯಿರಿ";
+"camera.chooseOrientationShort" = "ಲಂಬ ಅಥವಾ ಅಡ್ಡ ಹಿಡಿಯಿರಿ";
+"sharp.downloadingEngine" = "3D ಎಂಜಿನ್ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+"sharp.downloadingEnginePercent" = "3D ಎಂಜಿನ್ ಡೌನ್‌ಲೋಡ್... %d%%";
+"sharp.downloadComplete" = "ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣ";
+"sharp.downloadFailed" = "ಡೌನ್‌ಲೋಡ್ ವಿಫಲ";
+"sharp.gettingReady" = "ಸಿದ್ಧವಾಗುತ್ತಿದೆ...";
+"sharp.notEnoughSpace" = "ಸಾಧನದಲ್ಲಿ ಸಾಕಷ್ಟು ಸ್ಥಳವಿಲ್ಲ";
+"sharp.settingThingsUp" = "ಹೊಂದಿಸಲಾಗುತ್ತಿದೆ...";
+"sharp.ready" = "ಸಿದ್ಧ!";
+"sharp.couldNotGetReady" = "ಸಿದ್ಧಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ";
+"sharp.somethingWentWrong" = "ಏನೋ ತಪ್ಪಾಗಿದೆ";
+"sharp.preparingPhoto" = "ನಿಮ್ಮ ಫೋಟೋ ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ...";
+"sharp.creatingRoom" = "ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲಾಗುತ್ತಿದೆ...";
+"sharp.almostDone" = "ಬಹುತೇಕ ಮುಗಿಯಿತು...";
+"sharp.done" = "ಮುಗಿದಿದೆ!";
+"sharp.couldNotCreateRoom" = "ಕೊಠಡಿ ರಚಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ";
+"sharp.cancelled" = "ರದ್ದುಮಾಡಲಾಗಿದೆ";
+"photoRoom.odrOneTimeDownload" = "ಒಂದು ಬಾರಿ ಡೌನ್‌ಲೋಡ್ (~1.2 GB)";
+"photoRoom.modelGeneratedTitle" = "3D ಮಾದರಿ ರಚಿಸಲಾಗಿದೆ";
+"photoRoom.generationFailedTitle" = "ರಚನೆ ವಿಫಲವಾಗಿದೆ";
+"photoRoom.loading3DRoom" = "3D ಕೊಠಡಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+
+// MARK: - Generation progress overlay
+"generationProgress.uploadingImage" = "ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ";
+"generationProgress.generating3DModel" = "3D ಮಾದರಿ ರಚಿಸಲಾಗುತ್ತಿದೆ";
+"generationProgress.downloadingModel" = "ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ";
+"generationProgress.complete" = "ಪೂರ್ಣ!";
+"generationProgress.preparing" = "ಸಿದ್ಧಗೊಳಿಸಲಾಗುತ್ತಿದೆ...";
+"generationProgress.mayTakeFewMinutes" = "ಇದಕ್ಕೆ ಕೆಲವು ನಿಮಿಷಗಳು ಬೇಕಾಗಬಹುದು";

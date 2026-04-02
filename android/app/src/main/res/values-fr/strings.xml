@@ -153,7 +153,7 @@
     <string name="faq_generation_failing">Pourquoi ma génération de pièce échoue-t-elle ?</string>
     <string name="faq_generation_failing_answer">La génération de pièce peut échouer si la photo est trop sombre, floue ou ne montre pas assez de caractéristiques de la pièce. Essayez de prendre une nouvelle photo avec un meilleur éclairage et un angle plus large.</string>
     <string name="faq_how_many_rooms">Combien de pièces puis-je créer ?</string>
-    <string name="faq_how_many_rooms_answer">Vous pouvez créer jusqu\'à 10 pièces. Supprimez les anciennes pièces pour faire de la place. Le nombre de pièces s\'affiche en haut de votre écran d\'accueil.</string>
+    <string name="faq_how_many_rooms_answer">Vous pouvez créer jusqu\'à 1000 pièces. Supprimez les anciennes pièces pour libérer de l\'espace. Le nombre de pièces et le stockage utilisé s\'affichent en haut de l\'écran d\'accueil.</string>
     <string name="faq_furniture_segmentation">Segmentation de meubles</string>
     <string name="faq_what_is_segmentation">Qu\'est-ce que la segmentation de meubles ?</string>
     <string name="faq_what_is_segmentation_answer">La segmentation de meubles utilise l\'IA pour identifier et séparer les meubles dans vos photos, vous permettant de voir comment chaque pièce s\'intégrerait dans votre pièce 3D.</string>
@@ -174,6 +174,15 @@
     <string name="faq_accuracy_answer">Le modèle 3D fournit une bonne approximation de l\'agencement de votre pièce. Pour une meilleure précision, assurez-vous que votre photo originale capture clairement les dimensions de la pièce avec des coins et des bords visibles.</string>
     <string name="faq_adjust_dimensions">Puis-je ajuster les dimensions de la pièce ?</string>
     <string name="faq_adjust_dimensions_answer">Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.</string>
+    <string name="faq_furniture_measurements">Meubles &amp; mesures</string>
+    <string name="faq_ar_assisted_sizing">Qu\'est-ce que le dimensionnement des meubles assisté par RA ?</string>
+    <string name="faq_ar_assisted_sizing_answer">Lorsque cette option est activée dans Réglages, l\'app combine la profondeur caméra et la détection d\'objets pour ajuster la taille du calque meuble de façon plus réaliste quand vous vous rapprochez ou vous éloignez. Fonctionne mieux avec un bon éclairage et un objet bien visible.</string>
+    <string name="faq_measurement_pill">À quoi sert le petit bandeau de mesure ?</string>
+    <string name="faq_measurement_pill_answer">Quand SmartyPants est actif, un bandeau peut afficher la hauteur estimée du meuble et de la pièce. Touchez-le pour saisir des mesures réelles. Si la photo de la pièce est en grand-angle (0,5×), indiquez-le pour un cadrage cohérent.</string>
+    <string name="faq_reset_overlay_scale">Le masque semble mal zoomé — que faire ?</string>
+    <string name="faq_reset_overlay_scale_answer">Dans la pièce 3D, ouvrez le menu (⋮) et choisissez Réinitialiser l\'échelle du calque. Cela efface le zoom automatique appliqué au masque de détection pour qu\'il se stabilise à nouveau.</string>
+    <string name="faq_depth_aware_room_photo">Prendre une photo dans l\'app améliore-t-il la qualité ?</string>
+    <string name="faq_depth_aware_room_photo_answer">Oui. Sur les appareils compatibles, « Prendre une photo » (plutôt que la galerie) utilise la caméra intégrée avec profondeur si disponible, ce qui peut améliorer la reconstruction et l\'échelle de la pièce 3D.</string>
     <string name="boundary_title">Limites de la pièce</string>
     <string name="boundary_instructions">Faites glisser les cercles pour ajuster les limites</string>
     <string name="boundary_floor">Sol</string>

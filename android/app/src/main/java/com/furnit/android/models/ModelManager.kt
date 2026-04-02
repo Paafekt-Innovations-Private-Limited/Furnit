@@ -80,15 +80,20 @@ class ModelManager(private val context: Context) {
                 var photoWideAngle = false
 
                 val disk = RoomFolderMetadata.readFromFolder(folder)
+                if (disk != null && disk.previewOnly == true) {
+                    LogUtil.d(TAG, "Skipping preview-only room (not saved to library): ${folder.name}")
+                    continue
+                }
                 if (disk != null) {
                     disk.name?.takeIf { it.isNotBlank() }?.let { roomName = it }
                     disk.createdAt?.let { createdAt = it }
-                    roomWidth = disk.roomWidth
-                    roomHeight = disk.roomHeight
-                    roomDepth = disk.roomDepth
-                    roomCenterX = disk.roomCenterX
-                    roomCenterY = disk.roomCenterY
-                    roomCenterZ = disk.roomCenterZ
+                    val arSc = disk.arDisplayScale?.takeIf { it > 0f } ?: 1f
+                    roomWidth = disk.roomWidth?.let { it * arSc }
+                    roomHeight = disk.roomHeight?.let { it * arSc }
+                    roomDepth = disk.roomDepth?.let { it * arSc }
+                    roomCenterX = disk.roomCenterX?.let { it * arSc }
+                    roomCenterY = disk.roomCenterY?.let { it * arSc }
+                    roomCenterZ = disk.roomCenterZ?.let { it * arSc }
                     photoOrientation = disk.normalizedOrientation()
                     photoWideAngle = disk.photoWideAngle
                 }
@@ -150,6 +155,31 @@ class ModelManager(private val context: Context) {
             true
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to delete room: $id", e)
+            false
+        }
+    }
+
+    /**
+     * Updates the display name in [RoomFolderMetadata] for a user room folder.
+     */
+    fun renameUserRoom(roomId: String, newName: String): Boolean {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return false
+        val model = models.find { it.id == roomId && it.isUserCreated } ?: return false
+        val folder = File(model.assetPath).let { if (it.isFile) it.parentFile else it } ?: return false
+        return try {
+            val base = RoomFolderMetadata.readFromFolder(folder)
+                ?: RoomFolderMetadata.Snapshot(
+                    name = trimmed,
+                    createdAt = folder.lastModified(),
+                )
+            val next = RoomFolderMetadata.snapshotPreservingYoloFields(folder, base.copy(name = trimmed))
+            RoomFolderMetadata.writeToFolder(folder, next)
+            loadModels()
+            LogUtil.d(TAG, "Renamed room $roomId to \"$trimmed\"")
+            true
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "Failed to rename room: $roomId", e)
             false
         }
     }

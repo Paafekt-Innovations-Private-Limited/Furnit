@@ -15,8 +15,15 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
-    // Furniture segmentation: OFF = one primary + 10% margin; ON = multiple furniture
-    @AppStorage("multiFurniView") private var multiFurniView: Bool = false
+    /// Match Android `FurnitureFitManager.KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI` — default off.
+    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
+
+    /// Match Android `WallMeasurementEstimator.PREF_ENABLED` — YOLO + monodepth + EXIF when saving a SHARP room.
+    @AppStorage("wall_measurement_yolo_on_save") private var wallMeasurementYoloOnSave = true
+    /// Assumed camera–wall distance (m) when `sharp_monodepth.bin` is absent: both width and height use (bbox_px/focal)×Z, then clamps.
+    @AppStorage("wall_measurement_assumed_depth_m") private var wallAssumedDepthM: Double = 2.5
+    /// With monodepth: ceiling height prior for scale (door mode or ceiling mode). Tape-measured room height is a good value.
+    @AppStorage("wall_measurement_assumed_ceiling_m") private var wallAssumedCeilingM: Double = 2.5
 
     var body: some View {
         NavigationView {
@@ -161,25 +168,120 @@ struct SettingsView: View {
                     Text(L10n.Settings.roomViewerSection)
                 }
 
-                // Furniture segmentation (FurnitureFit)
+                // Furniture segmentation (FurnitureFit) — YOLO-E Core ML
                 Section {
-                    Toggle(isOn: $multiFurniView) {
+                    Toggle(isOn: $appState.qualitySettings.yoloeCoreMLAllowGPU) {
                         HStack {
-                            Image(systemName: "square.stack.3d.up")
-                                .foregroundColor(.green)
+                            Image(systemName: "cpu")
+                                .foregroundColor(.indigo)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.multiFurniView)
+                                Text(L10n.Settings.yoloeCoreMLAllowGPU)
                                     .font(.headline)
-                                Text(L10n.Settings.multiFurniViewDescription)
+                                Text(L10n.Settings.yoloeCoreMLAllowGPUDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }
                     }
-                    .tint(.green)
+                    .tint(.indigo)
+                    .onChange(of: appState.qualitySettings.yoloeCoreMLAllowGPU) { _, _ in
+                        Task { await YOLOEModelService.shared.reloadForComputeUnitsChange() }
+                    }
+
+                    Toggle(isOn: $appState.qualitySettings.furnitureFitARDepthCompanionEnabled) {
+                        HStack {
+                            Image(systemName: "arkit")
+                                .foregroundColor(.cyan)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.furnitureFitARCompanion)
+                                    .font(.headline)
+                                Text(L10n.Settings.furnitureFitARCompanionDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                if !QualitySettings.supportsFurnitureFitARAssisted {
+                                    Text(L10n.Settings.furnitureFitARCompanionUnavailable)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .tint(.cyan)
+                    .disabled(!QualitySettings.supportsFurnitureFitARAssisted)
+
+                    Toggle(isOn: $showRoomFurnitureCalibrate) {
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundColor(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.showRoomFurnitureCalibrate)
+                                    .font(.headline)
+                                Text(L10n.Settings.showRoomFurnitureCalibrateDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.purple)
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }
+
+                /*
+                Section {
+                    Toggle(isOn: $wallMeasurementYoloOnSave) {
+                        HStack {
+                            Image(systemName: "ruler")
+                                .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.yoloWallDimensionsOnSave)
+                                    .font(.headline)
+                                Text(L10n.Settings.yoloWallDimensionsOnSaveDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.indigo)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "camera.metering.center.weighted")
+                                .foregroundColor(.indigo)
+                                .frame(width: 24)
+                            Text(L10n.Settings.wallAssumedDepthM)
+                                .font(.headline)
+                        }
+                        Slider(value: $wallAssumedDepthM, in: 1.5...6.0, step: 0.05)
+                            .tint(.indigo)
+                        Text(String(format: "%.2f m", wallAssumedDepthM))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "arrow.up.to.line.compact")
+                                .foregroundColor(.indigo)
+                                .frame(width: 24)
+                            Text(L10n.Settings.wallAssumedCeilingM)
+                                .font(.headline)
+                        }
+                        Slider(value: $wallAssumedCeilingM, in: 2.2...4.0, step: 0.01)
+                            .tint(.indigo)
+                        Text(String(format: "%.2f m", wallAssumedCeilingM))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text(L10n.Settings.roomMeasurementSection)
+                } footer: {
+                    Text(L10n.Settings.roomMeasurementFooter)
+                        .font(.footnote)
+                }
+                */
 
                 // Developer Settings Section
                 Section {

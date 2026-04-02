@@ -120,6 +120,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// Best-effort unload of heavy Core ML + ODR before Jetsam; restart also clears RAM, but this helps mid-session peaks.
+    func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+        Task { @MainActor in
+            logDebug("⚠️ [AppDelegate] Memory warning — releasing SHARP + YOLOE")
+            SHARPService.shared.releaseResources()
+            YOLOEModelService.shared.releaseResources()
+        }
+    }
+
     // URL handling for phone auth (reCAPTCHA) is done in SceneDelegate.scene(_:openURLContexts:)
     // to avoid OpenURLOptionsKey deprecation in iOS 26.
 

@@ -155,13 +155,14 @@ object Part1OnlyTest {
         return list
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun extraProbeDirs(context: Context): List<File> {
         return listOf(File("/data/local/tmp/furnit"))
     }
 
     private fun modelsDirs(context: Context): List<File> {
         val list = mutableListOf<File>()
-        // etVulkan: hybrid dir first (push Vulkan + portable Part1+2 there via push_sharp_vulkan_only.sh)
+        // etVulkan: hybrid dir first (push Vulkan + portable Part1+2 there via push_sharp_cpuvulkan_hybrid_androidstudio.sh)
         if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
             list.add(File(context.filesDir, ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID).also { it.mkdirs() })
             context.getExternalFilesDir(ExecutorchInt8Sharp.MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { list.add(it) }

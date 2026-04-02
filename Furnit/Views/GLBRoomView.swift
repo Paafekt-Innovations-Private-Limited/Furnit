@@ -151,6 +151,15 @@ extension View {
     func disableBackSwipe() -> some View {
         self.modifier(DisableBackSwipeModifier())
     }
+
+    @ViewBuilder
+    func disableBackSwipeIf(_ condition: Bool) -> some View {
+        if condition {
+            self.disableBackSwipe()
+        } else {
+            self
+        }
+    }
 }
 
 // MARK: - UIView Extension to Find Navigation Controller
@@ -176,6 +185,8 @@ struct GLBRoomView: View {
     let photoOrientation: PhotoOrientation
     let roomWidth: Float?
     let roomHeight: Float?
+    /// When opening a saved GLB from Home (YOLO ratio calibration + FurnitureFit).
+    var savedRoomModel: USDZModel? = nil
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
@@ -183,7 +194,10 @@ struct GLBRoomView: View {
     @State private var isLoading = true
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitInitialSegmentationDone = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @StateObject private var savedRoomsModelManager = USDZModelManager()
+    @State private var showDiscardUnsavedAlert = false
 
     var body: some View {
         ZStack {
@@ -244,7 +258,9 @@ struct GLBRoomView: View {
                     lockedOrientation: photoOrientation,
                     roomWidthMeters: roomWidth ?? 4.0,
                     roomHeightMeters: roomHeight ?? 3.0,
-                    onFurnitureSizeEstimated: { _, _ in }
+                    onFurnitureSizeEstimated: { _ in },
+                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -260,15 +276,17 @@ struct GLBRoomView: View {
         .background(Color.gray)
         .navigationTitle(formatDimensions())
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
+            if savedRoomModel == nil {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showDiscardUnsavedAlert = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text(L10n.Common.back)
+                        }
                     }
                 }
             }
@@ -291,16 +309,31 @@ struct GLBRoomView: View {
                 OrientationLockManager.shared.lockToPortrait()
             }
         }
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            if isOn {
+                yoloeService.ensureModelLoaded()
+            } else {
+                yoloeService.releaseResources()
+            }
+        }
         .onDisappear {
             OrientationLockManager.shared.unlock()
         }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
+        }
         .defersSystemGestures(on: .all)
-        .disableBackSwipe()
+        .disableBackSwipeIf(savedRoomModel == nil)
     }
 
     private func formatDimensions() -> String {
         if let w = roomWidth, let h = roomHeight {
-            return String(format: "%.1f × %.1f m", w, h)
+            return String(format: "%.1f m × %.1f m", w, h)
         }
         return "3D Room"
     }
@@ -335,7 +368,12 @@ struct GLBRoomView: View {
             HStack {
                 // Brain button (bottom-left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))
@@ -374,7 +412,12 @@ struct GLBRoomView: View {
             HStack(spacing: 20) {
                 // Brain button (left)
                 Button(action: {
-                    showingFurnitureFit.toggle()
+                    if showingFurnitureFit {
+                        showingFurnitureFit = false
+                    } else {
+                        furnitureFitInitialSegmentationDone = false
+                        showingFurnitureFit = true
+                    }
                 }) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))
