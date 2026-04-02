@@ -133,10 +133,15 @@ class QualitySettings: ObservableObject {
     static let furnitureFitARDepthCompanionEnabledKey = "furniture_fit_ar_depth_companion_enabled"
 
     /// `true` when this device can supply scene/smoothed scene depth for Furniture Fit’s AR companion.
-    static var supportsFurnitureFitARSceneDepth: Bool {
+    static var supportsLiDARSceneDepth: Bool {
+        ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+            || ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth)
+    }
+
+    /// `true` when this device can run ARKit world tracking for AR-assisted furniture sizing.
+    /// LiDAR devices get scene depth; non-LiDAR devices fall back to plane-raycast distance.
+    static var supportsFurnitureFitARAssisted: Bool {
         ARWorldTrackingConfiguration.isSupported
-            && (ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
-                || ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth))
     }
     // Current selected quality (published for UI updates)
     @Published var selectedQuality: AssetQuality {
@@ -184,9 +189,10 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// Effective companion: user preference plus hardware capability.
+    /// Effective companion: user preference plus ARKit world tracking hardware.
+    /// LiDAR devices get scene depth; non-LiDAR get plane-raycast distance (companion-only, no camera ownership).
     var furnitureFitARDepthCompanionRuntimeActive: Bool {
-        furnitureFitARDepthCompanionEnabled && Self.supportsFurnitureFitARSceneDepth
+        furnitureFitARDepthCompanionEnabled && Self.supportsFurnitureFitARAssisted
     }
 
     // UserDefaults keys for persistence
@@ -230,7 +236,7 @@ class QualitySettings: ObservableObject {
         if UserDefaults.standard.object(forKey: Self.furnitureFitARDepthCompanionEnabledKey) != nil {
             self.furnitureFitARDepthCompanionEnabled = UserDefaults.standard.bool(forKey: Self.furnitureFitARDepthCompanionEnabledKey)
         } else {
-            self.furnitureFitARDepthCompanionEnabled = false
+            self.furnitureFitARDepthCompanionEnabled = true
         }
     }
     
@@ -307,7 +313,7 @@ class QualitySettings: ObservableObject {
         debugMode = false
         bboxInMaskThreshold = 0.30
         yoloeCoreMLAllowGPU = false
-        furnitureFitARDepthCompanionEnabled = false
+        furnitureFitARDepthCompanionEnabled = true
     }
 }
 

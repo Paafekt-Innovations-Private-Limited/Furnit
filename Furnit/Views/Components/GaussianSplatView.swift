@@ -19,7 +19,7 @@ private enum GaussianSplatLoadError: LocalizedError {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. Camera uses trimmed P3–P97 bounds in the same space as rendered geometry: for `_classic`, Y/Z are flipped to match view scale `(1,-1,-1)` before ``RoomBounds/defaultSplatCameraEyeAndTarget``.
+/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. **Room bounds and depth raycast** use whatever file is loaded (usually classic). For `_classic`, Y/Z are flipped to match view scale `(1,-1,-1)` before ``RoomBounds/defaultSplatCameraEyeAndTarget``.
 struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: Public interface
@@ -651,9 +651,12 @@ struct GaussianSplatView: UIViewRepresentable {
             let depthAlong = simd_length(center - camPos)
 
             let dims = RoomRaycastDimensions(width: widthWorld, height: heightWorld, depth: depthAlong)
-            logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            logDebug("📏 [Measure] Raycast room W=\(String(format: "%.3f", dims.width)) H=\(String(format: "%.3f", dims.height)) D=\(String(format: "%.3f", dims.depth)) su")
-            logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            let fname = currentURL?.lastPathComponent ?? "unknown"
+            let plyKind = isSharpClassicPly ? "classic_ply" : "base_ply"
+            logPlyBoundsDiagnostic(
+                "Metal depth raycast room (\(plyKind) file=\(fname)) su: " +
+                "W=\(String(format: "%.3f", dims.width)) H=\(String(format: "%.3f", dims.height)) D=\(String(format: "%.3f", dims.depth))"
+            )
             return dims
         }
 

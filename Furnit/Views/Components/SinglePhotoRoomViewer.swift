@@ -822,10 +822,36 @@ struct DraggableHandle: View {
 private struct SplatViewerDestination: Identifiable, Hashable {
     let id: UUID
     let plyURL: URL
+    /// Scene-unit AABB from SHARP at write time (for `[PLY_BOUNDS] SHARP_ROOM_COMPARE`).
+    let sharpPlyW: Float?
+    let sharpPlyH: Float?
+    let sharpPlyD: Float?
+    let sourcePhotoPxW: Int?
+    let sourcePhotoPxH: Int?
 
-    init(plyURL: URL) {
+    init(
+        plyURL: URL,
+        sharpPlyAabb: (Float, Float, Float)? = nil,
+        sourcePhotoPixels: (Int, Int)? = nil
+    ) {
         self.id = UUID()
         self.plyURL = plyURL
+        if let a = sharpPlyAabb {
+            self.sharpPlyW = a.0
+            self.sharpPlyH = a.1
+            self.sharpPlyD = a.2
+        } else {
+            self.sharpPlyW = nil
+            self.sharpPlyH = nil
+            self.sharpPlyD = nil
+        }
+        if let p = sourcePhotoPixels {
+            self.sourcePhotoPxW = p.0
+            self.sourcePhotoPxH = p.1
+        } else {
+            self.sourcePhotoPxW = nil
+            self.sourcePhotoPxH = nil
+        }
     }
 }
 
@@ -838,8 +864,6 @@ struct SinglePhotoRoomView: View {
     @State private var captureOrientation: CaptureOrientation = .standard  // Camera mode selection
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
-    @State private var fixedImage: UIImage? // ✅ Store fixed image separately
-
     // Identifiable wrapper for reliable sheet(item:) presentation
     @State private var fixedImageItem: IdentifiedImage?
 
@@ -1247,8 +1271,11 @@ struct SinglePhotoRoomView: View {
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
-            // Store the fixed image for later use
-            fixedImage = image
+            // Preload SHARP only on 6GB+ devices — on 4GB class, model + decoded photo peaks RAM (Jetsam).
+            let sixGiB: UInt64 = 6 * 1024 * 1024 * 1024
+            if ProcessInfo.processInfo.physicalMemory >= sixGiB {
+                SHARPService.shared.ensureModelLoaded()
+            }
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
             selectedOrientation = detectedOrientation
@@ -1290,6 +1317,8 @@ struct SinglePhotoRoomView: View {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
             // Do not preload SHARP here — holding FP32 Core ML + a 4K `selectedImage` after returning from
             // SharpRoomView/WebKit was peaking RAM on the 2nd room. `generateGaussians` loads on demand.
+            // Also release YOLOE ODR/model so SHARP has maximum headroom on 4 GB devices.
+            YOLOEModelService.shared.releaseResources()
         }
         // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
@@ -1343,7 +1372,12 @@ struct SinglePhotoRoomView: View {
                 plyURL: dest.plyURL,
                 photoOrientation: selectedOrientation,
                 savedRoomWidth: nil,
-                savedRoomHeight: nil
+                savedRoomHeight: nil,
+                sharpPlyAabbWidth: dest.sharpPlyW,
+                sharpPlyAabbHeight: dest.sharpPlyH,
+                sharpPlyAabbDepth: dest.sharpPlyD,
+                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
+                sourcePhotoPixelHeight: dest.sourcePhotoPxH
             )
             .onAppear {
                 logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
@@ -1458,19 +1492,33 @@ struct SinglePhotoRoomView: View {
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
 
         splatViewerDestination = nil
+        let generationImage = image
+        let generationSourceImageURL = sharpSourceImageURL
+        let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
+        let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
+        selectedImage = nil
+        fixedImageItem = nil
+
+        URLCache.shared.removeAllCachedResponses()
 
         Task {
             do {
-                let plyURL = try await sharpService.generateGaussians(
-                    from: image,
-                    sourceImageURL: sharpSourceImageURL,
-                    captureMediaMetadata: sharpCaptureMediaMetadata,
-                    photoLibraryAssetLocalId: sharpPhotoLibraryAssetLocalId,
+                let gen = try await sharpService.generateGaussians(
+                    from: generationImage,
+                    sourceImageURL: generationSourceImageURL,
+                    captureMediaMetadata: generationCaptureMediaMetadata,
+                    photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
                 )
 
-                logDebug("✅ [View] PLY file generated: \(plyURL.path)")
+                logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
+                let pxW = max(1, Int(ceil(Double(generationImage.size.width * generationImage.scale))))
+                let pxH = max(1, Int(ceil(Double(generationImage.size.height * generationImage.scale))))
                 await MainActor.run {
-                    splatViewerDestination = SplatViewerDestination(plyURL: plyURL)
+                    splatViewerDestination = SplatViewerDestination(
+                        plyURL: gen.plyURL,
+                        sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
+                        sourcePhotoPixels: (pxW, pxH)
+                    )
                 }
             } catch {
                 logDebug("❌ [View] Generation failed: \(error)")

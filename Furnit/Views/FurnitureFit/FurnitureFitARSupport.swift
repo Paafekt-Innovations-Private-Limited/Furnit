@@ -125,6 +125,31 @@ enum FurnitureFitARSupport {
         return simd_distance(camPos, hitPos)
     }
 
+    /// Raycast against any detected/estimated plane (horizontal + vertical).
+    /// Returns `(distance, alignment)` for the closest hit, or nil.
+    @available(iOS 14.0, *)
+    static func distanceToAnyPlaneMeters(
+        session: ARSession,
+        frame: ARFrame,
+        screenPoint: CGPoint,
+        in viewBounds: CGRect
+    ) -> (distance: Float, alignment: ARRaycastQuery.TargetAlignment)? {
+        guard viewBounds.width > 1, viewBounds.height > 1 else { return nil }
+        let query = frame.raycastQuery(
+            from: screenPoint,
+            allowing: .estimatedPlane,
+            alignment: .any
+        )
+        let results = session.raycast(query)
+        guard let first = results.first else { return nil }
+        let camT = frame.camera.transform
+        let camPos = SIMD3<Float>(camT.columns.3.x, camT.columns.3.y, camT.columns.3.z)
+        let hitT = first.worldTransform
+        let hitPos = SIMD3<Float>(hitT.columns.3.x, hitT.columns.3.y, hitT.columns.3.z)
+        let dist = simd_distance(camPos, hitPos)
+        return (dist, first.targetAlignment)
+    }
+
     /// Sample scene depth (meters) at normalized coords (0…1, top-left) in **depth map** space.
     static func depthMetersFromDepthMap(
         _ depthMap: CVPixelBuffer,

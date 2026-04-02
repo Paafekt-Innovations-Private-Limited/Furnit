@@ -77,13 +77,26 @@ struct SharpRoomView: View {
     /// Classic PLY (front-rotated) when available; falls back to base.
     private let classicPlyURL: URL
 
+    /// SHARP **`_classic.ply`** write-time AABB (scene units); set when pushing from ``SinglePhotoRoomViewer`` after generation.
+    private let sharpPlyAabbW: Float?
+    private let sharpPlyAabbH: Float?
+    private let sharpPlyAabbD: Float?
+    /// Oriented source photo pixel size (for proportion-style compare); nil when not from fresh generation.
+    private let sourcePhotoPixelWidth: Int?
+    private let sourcePhotoPixelHeight: Int?
+
     init(
         plyURL: URL,
         allowSave: Bool = true,
         photoOrientation: PhotoOrientation = .portrait,
         savedRoomWidth: Float? = nil,
         savedRoomHeight: Float? = nil,
-        savedRoomModel: USDZModel? = nil
+        savedRoomModel: USDZModel? = nil,
+        sharpPlyAabbWidth: Float? = nil,
+        sharpPlyAabbHeight: Float? = nil,
+        sharpPlyAabbDepth: Float? = nil,
+        sourcePhotoPixelWidth: Int? = nil,
+        sourcePhotoPixelHeight: Int? = nil
     ) {
         self.plyURL = plyURL
         self.allowSave = allowSave
@@ -91,6 +104,11 @@ struct SharpRoomView: View {
         self.savedRoomWidth = savedRoomWidth
         self.savedRoomHeight = savedRoomHeight
         self.savedRoomModel = savedRoomModel
+        self.sharpPlyAabbW = sharpPlyAabbWidth
+        self.sharpPlyAabbH = sharpPlyAabbHeight
+        self.sharpPlyAabbD = sharpPlyAabbDepth
+        self.sourcePhotoPixelWidth = sourcePhotoPixelWidth
+        self.sourcePhotoPixelHeight = sourcePhotoPixelHeight
 
         let basePath = plyURL.path
         let classic = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_classic.ply"))
@@ -201,16 +219,9 @@ struct SharpRoomView: View {
                 VStack(spacing: 2) {
                     Text(navigationRoomMetersLine)
                         .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.55)
                         .multilineTextAlignment(.center)
-                    if let r = raycastRoomDimensions {
-                        Text(String(format: "Raycast %.2f × %.2f × %.2f su", r.width, r.height, r.depth))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -342,11 +353,18 @@ struct SharpRoomView: View {
             zoomLevel: $metalSplatterZoom,
             infiniteZoom: infiniteZoomEnabled,
             onBoundsAvailable: { bounds in
-                // Defer state mutations to the next runloop tick to avoid
-                // "Modifying state during view update" warnings from SwiftUI.
                 DispatchQueue.main.async {
                     metalBounds = bounds
                     seedFrontWallDimensionsFromPlyBoundsIfNeeded()
+                    let plyKind = viewerPlyURL.lastPathComponent.contains("_classic") ? "classic_ply" : "base_ply"
+                    logPlyBoundsDiagnostic(
+                        "Metal splat AABB (\(plyKind) file=\(viewerPlyURL.lastPathComponent)) su: " +
+                        "W=\(String(format: "%.3f", bounds.width)) H=\(String(format: "%.3f", bounds.height)) D=\(String(format: "%.3f", bounds.depth)) " +
+                        "X[\(String(format: "%.3f", bounds.minX)),\(String(format: "%.3f", bounds.maxX))] " +
+                        "Y[\(String(format: "%.3f", bounds.minY)),\(String(format: "%.3f", bounds.maxY))] " +
+                        "Z[\(String(format: "%.3f", bounds.minZ)),\(String(format: "%.3f", bounds.maxZ))]"
+                    )
+                    logSharpRoomDimensionApproaches(metalBounds: bounds, raycast: raycastRoomDimensions)
                 }
             },
             measurementHost: splatMeasurementHost
@@ -357,7 +375,9 @@ struct SharpRoomView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
                 if let m = splatMeasurementHost.measureRoom() {
                     raycastRoomDimensions = m
-                    logDebug("📏 [SharpRoomView] Live depth raycast W×H×D=\(m.width)×\(m.height)×\(m.depth) su")
+                    if let b = metalBounds {
+                        logSharpRoomDimensionApproaches(metalBounds: b, raycast: m)
+                    }
                 }
             }
         }
@@ -370,21 +390,88 @@ struct SharpRoomView: View {
         }
     }
 
-    /// WebGL reported Box3 front wall; Metal path uses the loaded splat AABB from `GaussianSplatView` with fog trim + caps until save/YOLO updates.
-    private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {
-        guard jsFrontWallWidth == nil, jsFrontWallHeight == nil, let b = effectiveBounds else { return }
-
-        // 1) Trim foggy outer edges: mirror WebGL's 15% shrink based on Box3 size.
+    /// Fog trim + portrait/landscape caps for nav title / Furniture Fit (matches prior WebGL path).
+    private func sharpRoomCompareDerivedDisplay(from b: RoomBounds) -> (trimW: Float, trimH: Float, capW: Float, capH: Float) {
         let fogTrim: Float = 0.15
         let trimmedWidth = max(0, b.width * (1 - fogTrim))
         let trimmedHeight = max(0, b.height * (1 - fogTrim))
-
-        // 2) Cap to realistic room dimensions (matches WebGL SparkJS path).
         let maxRealisticWidth: Float = (photoOrientation == .portrait) ? 5.0 : 8.0
         let maxRealisticHeight: Float = (photoOrientation == .portrait) ? 3.5 : 3.2
+        return (
+            trimmedWidth,
+            trimmedHeight,
+            min(trimmedWidth, maxRealisticWidth),
+            min(trimmedHeight, maxRealisticHeight)
+        )
+    }
 
-        jsFrontWallWidth = min(trimmedWidth, maxRealisticWidth)
-        jsFrontWallHeight = min(trimmedHeight, maxRealisticHeight)
+    /// `[PLY_BOUNDS]` — depth raycast (Metal scene = loaded `viewerPlyURL`, usually **`classic_ply`**). Filter: `SHARP_ROOM_COMPARE`.
+    private func logSharpRoomDimensionApproaches(metalBounds _: RoomBounds, raycast: RoomRaycastDimensions?) {
+        let plyKind = viewerPlyURL.lastPathComponent.contains("_classic") ? "classic_ply" : "base_ply"
+        let depthLine: String
+        if let r = raycast {
+            depthLine =
+                "W=\(String(format: "%.3f", r.width)) H=\(String(format: "%.3f", r.height)) D=\(String(format: "%.3f", r.depth)) su"
+        } else {
+            depthLine = "pending"
+        }
+        logPlyBoundsDiagnostic(
+            "SHARP_ROOM_COMPARE (5) depth_raycast (\(plyKind) render \(viewerPlyURL.lastPathComponent)) su: \(depthLine)"
+        )
+
+        // Other compare lines (sharp PLY write, meta, metal AABB, fog trim, caps, display depth, proportion) — disabled; re-enable for A/B logging.
+        /*
+        let dd = sharpRoomCompareDerivedDisplay(from: b)
+        if let sw = sharpPlyAabbW, let sh = sharpPlyAabbH, let sd = sharpPlyAabbD {
+            logPlyBoundsDiagnostic(
+                "SHARP_ROOM_COMPARE (1) sharp_classic_ply_write su: W=\(String(format: "%.3f", sw)) H=\(String(format: "%.3f", sh)) D=\(String(format: "%.3f", sd))"
+            )
+        } else {
+            logPlyBoundsDiagnostic("SHARP_ROOM_COMPARE (1) sharp_classic_ply_write su: n/a (opened from Home / preview / no generation bundle)")
+        }
+        if let metaW = savedRoomWidth, let metaH = savedRoomHeight {
+            logPlyBoundsDiagnostic(
+                "SHARP_ROOM_COMPARE (1b) saved_meta m: W=\(String(format: "%.3f", metaW)) H=\(String(format: "%.3f", metaH))"
+            )
+        }
+        logPlyBoundsDiagnostic(
+            "SHARP_ROOM_COMPARE (2) metal_splat_AABB classic_ply=from_loaded_file su: W=\(String(format: "%.3f", b.width)) H=\(String(format: "%.3f", b.height)) D=\(String(format: "%.3f", b.depth)) " +
+            "X[\(String(format: "%.3f", b.minX)),\(String(format: "%.3f", b.maxX))] " +
+            "Y[\(String(format: "%.3f", b.minY)),\(String(format: "%.3f", b.maxY))] " +
+            "Z[\(String(format: "%.3f", b.minZ)),\(String(format: "%.3f", b.maxZ))]"
+        )
+        logPlyBoundsDiagnostic(
+            "SHARP_ROOM_COMPARE (3) fog15pct_trim su: W=\(String(format: "%.3f", dd.trimW)) H=\(String(format: "%.3f", dd.trimH))"
+        )
+        let capLabel = (photoOrientation == .portrait) ? "portrait cap 5×3.5 m" : "landscape cap 8×3.2 m"
+        logPlyBoundsDiagnostic(
+            "SHARP_ROOM_COMPARE (4) capped_display_m: W=\(String(format: "%.3f", dd.capW)) H=\(String(format: "%.3f", dd.capH)) (\(capLabel))"
+        )
+        let depthM = displayRoomDepth
+        logPlyBoundsDiagnostic(
+            "SHARP_ROOM_COMPARE (4b) display_depth_m: \(String(format: "%.3f", depthM)) (saved .meta or splat Z span)"
+        )
+        if let pw = sourcePhotoPixelWidth, let ph = sourcePhotoPixelHeight, pw > 0, ph > 0 {
+            let impliedH = dd.capW * Float(ph) / Float(pw)
+            logPlyBoundsDiagnostic(
+                "SHARP_ROOM_COMPARE (6) proportion_style: photo=\(pw)×\(ph)px " +
+                "display_from_splat_cap W×H_m=\(String(format: "%.3f", dd.capW))×\(String(format: "%.3f", dd.capH)) " +
+                "| if_full_photo_width_maps_to_display_W then_H_from_aspect_only_m=\(String(format: "%.3f", impliedH)) (vs capped H)"
+            )
+        } else {
+            logPlyBoundsDiagnostic(
+                "SHARP_ROOM_COMPARE (6) proportion_style: n/a (no source photo px — not from SinglePhoto SHARP flow)"
+            )
+        }
+        */
+    }
+
+    /// WebGL reported Box3 front wall; Metal path uses the loaded splat AABB from `GaussianSplatView` with fog trim + caps until save/YOLO updates.
+    private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {
+        guard jsFrontWallWidth == nil, jsFrontWallHeight == nil, let b = effectiveBounds else { return }
+        let dd = sharpRoomCompareDerivedDisplay(from: b)
+        jsFrontWallWidth = dd.capW
+        jsFrontWallHeight = dd.capH
     }
 
     /// On-screen pan pad (not in the ⋮ menu).
@@ -466,57 +553,73 @@ struct SharpRoomView: View {
     }
 
     /// Width/height for nav title, FurnitureFit, and save.
-    /// - **Live session** (`allowSave == true`): WebGL Box3 (`jsFrontWall*`) until YOLO wall measure on save overwrites `jsFrontWall*` so **Furniture Fit** `room*Meters` / m-per-pixel match measured W×H.
-    /// - **Opened from Home** (`allowSave == false`): **saved .meta** (`savedRoom*`) wins over WebGL (5×3.5 cap must not override measured dims).
+    /// When Metal depth raycast has run, **W×H×D from `raycastRoomDimensions`** (scene units) drive the UI — user-validated vs splat caps.
+    /// Otherwise: live `jsFrontWall*` from splat / saved `.meta` / defaults. User calibration still wins when set.
     private var displayRoomWidth: Float {
+        let rayW = raycastRoomDimensions?.width
         if allowSave {
             return calibratedRoomWidth
+                ?? rayW
                 ?? jsFrontWallWidth
                 ?? savedRoomWidth
                 ?? 4.0
         }
         return calibratedRoomWidth
+            ?? rayW
             ?? savedRoomWidth
             ?? jsFrontWallWidth
             ?? 4.0
     }
 
     private var displayRoomHeight: Float {
+        let rayH = raycastRoomDimensions?.height
         if allowSave {
             return calibratedRoomHeight
+                ?? rayH
                 ?? jsFrontWallHeight
                 ?? savedRoomHeight
                 ?? 3.0
         }
         return calibratedRoomHeight
+            ?? rayH
             ?? savedRoomHeight
             ?? jsFrontWallHeight
             ?? 3.0
     }
 
-    /// Depth (m) for save metadata: saved `.meta` when reopening from Home, else PLY bounds span Z.
+    /// Depth: prefer live depth raycast span when available; else saved `.meta` or splat Z span.
     private var displayRoomDepth: Float {
-        savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
+        if let d = raycastRoomDimensions?.depth { return d }
+        return savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
     }
 
-    /// Nav bar: explicit **m** on each number; depth included (room scale used for Furniture Fit / save).
+    /// Nav bar: **only** Metal depth-raycast W×H×D (su) for new SHARP sessions once measured; no splat caps here.
     private var navigationRoomMetersLine: String {
-        String(format: "%.1f m × %.1f m × %.1f m", displayRoomWidth, displayRoomHeight, displayRoomDepth)
+        if allowSave {
+            if let r = raycastRoomDimensions {
+                return String(
+                    format: "%.3f × %.3f × %.3f su (classic_ply depth raycast)",
+                    r.width, r.height, r.depth
+                )
+            }
+            return "Measuring room…"
+        }
+        return String(format: "%.1f m × %.1f m × %.1f m", displayRoomWidth, displayRoomHeight, displayRoomDepth)
     }
 
-    /// Baseline W/H before calibration — mirrors display priority minus `calibrated*`.
+    /// Baseline W/H before calibration — mirrors display priority minus `calibrated*` (raycast when present).
     private var sourceRoomWidth: Float {
         if allowSave {
-            return jsFrontWallWidth ?? savedRoomWidth ?? 4.0
+            return raycastRoomDimensions?.width ?? jsFrontWallWidth ?? savedRoomWidth ?? 4.0
         }
-        return savedRoomWidth ?? jsFrontWallWidth ?? 4.0
+        return raycastRoomDimensions?.width ?? savedRoomWidth ?? jsFrontWallWidth ?? 4.0
     }
 
     private var sourceRoomHeight: Float {
         if allowSave {
-            return jsFrontWallHeight ?? savedRoomHeight ?? 3.0
+            return raycastRoomDimensions?.height ?? jsFrontWallHeight ?? savedRoomHeight ?? 3.0
         }
-        return savedRoomHeight ?? jsFrontWallHeight ?? 3.0
+        return raycastRoomDimensions?.height ?? savedRoomHeight ?? jsFrontWallHeight ?? 3.0
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -1003,7 +1106,7 @@ struct SharpRoomView: View {
 
     // MARK: - Save Room Functions
 
-    /// Resolves `Room_<stamp>_thumbnail.png` next to the classic PLY, or legacy `thumbnail.png` (Android-style).
+    /// Resolves the room thumbnail next to the classic PLY (jpg preferred, falls back to png / legacy).
     private func resolvedThumbnailURL(forClassicPly classicPly: URL) -> URL {
         let folder = classicPly.deletingLastPathComponent()
         let stem = classicPly.deletingPathExtension().lastPathComponent
@@ -1013,11 +1116,14 @@ struct SharpRoomView: View {
         } else {
             base = stem
         }
-        let named = folder.appendingPathComponent("\(base)_thumbnail.png")
+        let fm = FileManager.default
+        let jpg = folder.appendingPathComponent("\(base)_thumbnail.jpg")
+        if fm.fileExists(atPath: jpg.path) { return jpg }
+        let png = folder.appendingPathComponent("\(base)_thumbnail.png")
+        if fm.fileExists(atPath: png.path) { return png }
         let legacy = folder.appendingPathComponent("thumbnail.png")
-        if FileManager.default.fileExists(atPath: named.path) { return named }
-        if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
-        return named
+        if fm.fileExists(atPath: legacy.path) { return legacy }
+        return jpg
     }
 
     private func startSavingRoom() {

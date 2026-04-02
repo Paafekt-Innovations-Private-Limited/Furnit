@@ -198,7 +198,7 @@ struct SettingsView: View {
                                 Text(L10n.Settings.furnitureFitARCompanionDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                if !QualitySettings.supportsFurnitureFitARSceneDepth {
+                                if !QualitySettings.supportsFurnitureFitARAssisted {
                                     Text(L10n.Settings.furnitureFitARCompanionUnavailable)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
@@ -207,7 +207,7 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.cyan)
-                    .disabled(!QualitySettings.supportsFurnitureFitARSceneDepth)
+                    .disabled(!QualitySettings.supportsFurnitureFitARAssisted)
 
                     Toggle(isOn: $showRoomFurnitureCalibrate) {
                         HStack {

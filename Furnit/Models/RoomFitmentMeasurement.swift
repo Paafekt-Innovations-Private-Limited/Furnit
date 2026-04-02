@@ -142,13 +142,20 @@ struct OverlayScale: Equatable {
         CGSize(width: CGFloat(scaleX * roomViewWidth), height: CGFloat(scaleY * roomViewHeight))
     }
 
-    static func compute(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> OverlayScale {
+    /// Furniture ÷ room in **scene-unit** space (no log).
+    static func ratios(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> OverlayScale {
         guard room.width > 1e-6, room.height > 1e-6 else {
             return OverlayScale(scaleX: 0, scaleY: 0)
         }
-        let sx = furniture.width / room.width
-        let sy = furniture.height / room.height
-        logDebug("📐 [Overlay] scale \(String(format: "%.3f", sx)) × \(String(format: "%.3f", sy))")
-        return OverlayScale(scaleX: sx, scaleY: sy)
+        return OverlayScale(
+            scaleX: furniture.width / room.width,
+            scaleY: furniture.height / room.height
+        )
+    }
+
+    static func compute(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> OverlayScale {
+        let r = ratios(furniture: furniture, room: room)
+        logDebug("📐 [Overlay] scale \(String(format: "%.3f", r.scaleX)) × \(String(format: "%.3f", r.scaleY))")
+        return r
     }
 }
