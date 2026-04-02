@@ -1320,6 +1320,9 @@ struct SinglePhotoRoomView: View {
             // Also release YOLOE ODR/model so SHARP has maximum headroom on 4 GB devices.
             YOLOEModelService.shared.releaseResources()
         }
+        // Do **not** use `.onDisappear` here for SHARP/YOLOE/splatViewerDestination: SwiftUI can call it when
+        // *pushing* `SharpRoomView` on the stack (parent briefly disappears), which released SHARP mid-splat load.
+        // Sheet-dismiss cleanup lives in `ContentView` `onChange(of: showingPhotoRoomCreator)`.
         // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             logDebug("📋 [View] adjustedBoundaries onChange triggered")
@@ -1382,6 +1385,11 @@ struct SinglePhotoRoomView: View {
             .onAppear {
                 logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
                 logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
+            }
+            // Clear `item` when popping so NavigationStack releases SharpRoomView + Metal splat promptly.
+            // Leaving this non-nil caused retained destinations and peak RAM on a 2nd SHARP flow (see onAppear note above).
+            .onDisappear {
+                splatViewerDestination = nil
             }
         }
         // Success alert for API-generated PLY file
@@ -1500,9 +1508,13 @@ struct SinglePhotoRoomView: View {
         fixedImageItem = nil
 
         URLCache.shared.removeAllCachedResponses()
+        // Drop YOLOE while SHARP runs (same as sheet onAppear) so two large Core ML stacks are not resident.
+        YOLOEModelService.shared.releaseResources()
 
         Task {
             do {
+                // Let any previous SharpRoomView / MTKView teardown complete before SHARP allocates 1536² buffers + PLY.
+                try await Task.sleep(nanoseconds: 120_000_000)
                 let gen = try await sharpService.generateGaussians(
                     from: generationImage,
                     sourceImageURL: generationSourceImageURL,

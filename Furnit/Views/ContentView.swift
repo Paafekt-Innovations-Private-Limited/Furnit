@@ -19,6 +19,50 @@ struct LazyView<Content: View>: View {
     }
 }
 
+@ViewBuilder
+private func destinationView(for model: USDZModel) -> some View {
+    if let modelURL = model.temporaryURL {
+        if model.fileType == .ply {
+            SharpRoomView(
+                plyURL: modelURL,
+                allowSave: false,
+                photoOrientation: model.photoOrientation,
+                savedRoomWidth: model.roomWidth,
+                savedRoomHeight: model.roomHeight,
+                savedRoomModel: model
+            )
+        } else if model.fileType == .meshroom {
+            if let imageData = try? Data(contentsOf: modelURL),
+               let image = UIImage(data: imageData) {
+                MeshRoomView(
+                    roomWidth: model.roomWidth ?? 4.0,
+                    roomHeight: model.roomHeight ?? 3.0,
+                    roomDepth: model.roomDepth ?? 4.0,
+                    frontWallImage: image,
+                    photoOrientation: model.photoOrientation,
+                    savedRoomModel: model
+                )
+            } else {
+                Text("Failed to load room image")
+                    .foregroundColor(.red)
+            }
+        } else if model.fileType == .glb {
+            GLBRoomView(
+                glbURL: modelURL,
+                photoOrientation: model.photoOrientation,
+                roomWidth: model.roomWidth,
+                roomHeight: model.roomHeight,
+                savedRoomModel: model
+            )
+        } else {
+            ModelViewerView(model: model)
+        }
+    } else {
+        Text("❌ Model data unavailable: \(model.displayName)")
+            .foregroundColor(.red)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -222,6 +266,11 @@ struct HomeTab: View {
             // Refresh models when sheet closes
             .onChange(of: showingPhotoRoomCreator) { _, isShowing in
                 if !isShowing {
+                    // Photo room sheet fully closed — safe to drop heavy singletons (not during in-sheet navigation).
+                    Task { @MainActor in
+                        SHARPService.shared.releaseResources()
+                        YOLOEModelService.shared.releaseResources()
+                    }
                     modelManager.refreshModels()
                     limitManager.updateRoomCount()
                 }
@@ -529,7 +578,11 @@ struct ExploreTab: View {
                             GridItem(.flexible(), spacing: 16)
                         ], spacing: 16) {
                             ForEach(filteredModels) { model in
-                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                NavigationLink {
+                                    LazyView {
+                                        destinationView(for: model)
+                                    }
+                                } label: {
                                     ExploreModelCard(model: model)
                                 }
                                 .onAppear {
@@ -572,7 +625,11 @@ struct FavoritesTab: View {
             } else {
                 List {
                     ForEach(favoriteModels) { model in
-                        NavigationLink(destination: ModelViewerView(model: model)) {
+                        NavigationLink {
+                            LazyView {
+                                destinationView(for: model)
+                            }
+                        } label: {
                             HomeViewModelRow(model: model)
                         }
                     }

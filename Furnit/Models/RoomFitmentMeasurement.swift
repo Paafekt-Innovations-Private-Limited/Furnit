@@ -36,6 +36,18 @@ enum FurnitureMonocularMeasurer {
         return imageWidth / (2 * tanf(fov * 0.5))
     }
 
+    /// Stand-in distance (meters) when there is no LiDAR / AR frame depth: scales ``roomDepthMeters`` by bbox vertical position.
+    /// `midYTop` is bbox center Y ÷ image height with origin at the **top** (~0…1). Lower on screen (larger value) usually
+    /// means floor furniture farther along the floor than a tabletop object high in frame — a single `roomDepth × 0.45` for
+    /// everything cannot tell near vs far, which skews tall far chairs vs close glass.
+    static func roomDepthProxyMeters(roomDepthMeters: Float, bboxCenterYNormalizedFromTop midYTop: Float) -> Float {
+        guard roomDepthMeters > 0.01 else { return 0.5 }
+        let y = min(max(midYTop, 0.08), 0.94)
+        // Legacy flat factor was ~0.45 × room; match that when the bbox sits near mid-frame (y ≈ 0.5).
+        let frac = 0.23 + 0.44 * y
+        return roomDepthMeters * frac
+    }
+
     /// `bbox` in **Vision** normalized space: origin bottom-left, Y up (same as `VNBoundingBox`).
     static func estimateSize(
         bbox: CGRect,

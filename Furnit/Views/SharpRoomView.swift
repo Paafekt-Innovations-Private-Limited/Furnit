@@ -154,6 +154,8 @@ struct SharpRoomView: View {
     @State private var showFurnitureDimensionsInput = false
     @State private var inputFurnitureHeight: String = ""
     @State private var realFurnitureHeight: Float?  // Confirmed real height in meters
+    /// Frozen when the calibrate sheet opens so `applyCalibration` does not use a different per-frame pinhole height than the user saw.
+    @State private var calibrationBaselineDetectedHeight: Float?
 
     // Calibrated room dimensions (computed from real furniture size)
     @State private var calibratedRoomHeight: Float?
@@ -289,6 +291,9 @@ struct SharpRoomView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                detectedFurnitureWidth = nil
+                detectedFurnitureHeight = nil
+                detectedFurnitureHeightAR = nil
                 yoloeService.releaseResources()
             }
         }
@@ -466,12 +471,15 @@ struct SharpRoomView: View {
         */
     }
 
-    /// WebGL reported Box3 front wall; Metal path uses the loaded splat AABB from `GaussianSplatView` with fog trim + caps until save/YOLO updates.
+    /// The old splat-AABB fallback produced undersized saved dimensions (for example `0.697` instead of the
+    /// live `2.7` depth-raycast height). Keep it commented out so save/reopen stays aligned with the preview raycast.
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {
+        /*
         guard jsFrontWallWidth == nil, jsFrontWallHeight == nil, let b = effectiveBounds else { return }
         let dd = sharpRoomCompareDerivedDisplay(from: b)
         jsFrontWallWidth = dd.capW
         jsFrontWallHeight = dd.capH
+        */
     }
 
     /// On-screen pan pad (not in the ⋮ menu).
@@ -557,6 +565,7 @@ struct SharpRoomView: View {
     /// **Saved room from Home:** persisted `.meta` **meters** first so the toolbar matches what was shown at save time; live raycast is su and must not override meter fields (avoids wrong `m` labels and flicker).
     private var displayRoomWidth: Float {
         let rayW = raycastRoomDimensions?.width
+        let savedSceneW = savedRoomModel?.roomSceneWidth
         if allowSave {
             return calibratedRoomWidth
                 ?? rayW
@@ -565,6 +574,7 @@ struct SharpRoomView: View {
                 ?? 4.0
         }
         return calibratedRoomWidth
+            ?? savedSceneW
             ?? savedRoomWidth
             ?? savedRoomModel?.roomWidth
             ?? rayW
@@ -574,6 +584,7 @@ struct SharpRoomView: View {
 
     private var displayRoomHeight: Float {
         let rayH = raycastRoomDimensions?.height
+        let savedSceneH = savedRoomModel?.roomSceneHeight
         if allowSave {
             return calibratedRoomHeight
                 ?? rayH
@@ -582,6 +593,7 @@ struct SharpRoomView: View {
                 ?? 3.0
         }
         return calibratedRoomHeight
+            ?? savedSceneH
             ?? savedRoomHeight
             ?? savedRoomModel?.roomHeight
             ?? rayH
@@ -591,10 +603,12 @@ struct SharpRoomView: View {
 
     /// Depth: new session prefers live raycast; reopening a saved room prefers `.meta` depth in meters.
     private var displayRoomDepth: Float {
+        let savedSceneD = savedRoomModel?.roomSceneDepth
         if allowSave {
             if let d = raycastRoomDimensions?.depth { return d }
             return savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
         }
+        if let d = savedSceneD { return d }
         if let d = savedRoomModel?.roomDepth { return d }
         if let d = raycastRoomDimensions?.depth { return d }
         return effectiveBounds?.depth ?? 4.0
@@ -691,7 +705,7 @@ struct SharpRoomView: View {
                 Text(L10n.RoomViewer.calibrateRoomTitle).font(.headline).foregroundColor(.white)
                 Text(L10n.RoomViewer.enterFurnitureHeightMeters).font(.caption).foregroundColor(.gray)
                 Text(L10n.RoomViewer.furnitureFullHeightHint).font(.caption2).foregroundColor(.gray.opacity(0.9))
-                if let h = detectedFurnitureHeight {
+                if let h = calibrationBaselineDetectedHeight ?? detectedFurnitureHeight {
                     Text(L10n.RoomViewer.detectedMeters(h)).font(.caption2).foregroundColor(.orange)
                 }
                 Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
@@ -759,7 +773,7 @@ struct SharpRoomView: View {
 
     private func applyCalibration() {
         guard let realHeight = Float(inputFurnitureHeight),
-              let detectedHeight = detectedFurnitureHeight,
+              let detectedHeight = calibrationBaselineDetectedHeight ?? detectedFurnitureHeight,
               detectedHeight > 0 else {
             inputFurnitureHeight = ""
             showFurnitureDimensionsInput = false
@@ -1019,7 +1033,11 @@ struct SharpRoomView: View {
             errorOverlayView
             if showingFurnitureFit { furnitureFitOverlayView }
             if isSavingRoom { saveRoomProgressOverlay }
-            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate { calibrationOverlayView }
+            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate {
+                calibrationOverlayView
+                    .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeight }
+                    .onDisappear { calibrationBaselineDetectedHeight = nil }
+            }
             if showWallCalibration, showRoomFurnitureCalibrate { wallCalibrationOverlay }
             bottomBarsOverlayView
         }
@@ -1151,8 +1169,19 @@ struct SharpRoomView: View {
         logDebug("💾 [SharpRoomView] Starting room save: \(savedName)")
 
         Task {
-            // Depth raycast uses the Metal scratch buffer. Run it *before* the full-screen save overlay:
-            // occluding the MTKView can stop drawable updates and yields empty / invalid depth ("rays missed").
+            // Turn off Furniture Fit before depth measure + YOLO wall pass so camera/GPU aren’t contending with segmentation.
+            await MainActor.run {
+                if showingFurnitureFit {
+                    logDebug("💾 [SharpRoomView] Save: stopping Furniture Fit before depth raycast")
+                    showingFurnitureFit = false
+                }
+            }
+            try? await Task.sleep(nanoseconds: 180_000_000)
+
+            // Do not re-measure during save. The extra redraw/raycast here was producing unstable values like
+            // `0.697` even when the preview had already measured the correct room height around `2.7`.
+            // Use the cached preview raycast instead so save matches what the user saw before tapping Save.
+            /*
             await MainActor.run {
                 splatMeasurementHost.requestRedrawForDepthMeasure()
             }
@@ -1166,6 +1195,11 @@ struct SharpRoomView: View {
                 if sceneRaycast != nil {
                     logWallMeasurement("saveRoom depth-raycast: using cached scene units from an earlier frame")
                 }
+            }
+            */
+            let sceneRaycast: RoomRaycastDimensions? = await MainActor.run { raycastRoomDimensions }
+            if sceneRaycast != nil {
+                logWallMeasurement("saveRoom using cached preview scene units")
             }
             if let r = sceneRaycast {
                 await MainActor.run { raycastRoomDimensions = r }
@@ -1183,6 +1217,21 @@ struct SharpRoomView: View {
             }
 
             await MainActor.run { saveProgress = 0.12 }
+            var roomW = await MainActor.run { displayRoomWidth }
+            var roomH = await MainActor.run { displayRoomHeight }
+            var roomD = await MainActor.run { displayRoomDepth }
+            logWallMeasurement("saveRoom baseline display W×H×D=\(roomW)×\(roomH)×\(roomD)")
+
+            // Use the live depth-raycast dimensions for the saved room too, so reopening the room shows the same
+            // `2.7`-style values the user saw in preview instead of the old splat-AABB fallback like `0.697`.
+            if let sceneRaycast {
+                roomW = sceneRaycast.width
+                roomH = sceneRaycast.height
+                roomD = sceneRaycast.depth
+                logWallMeasurement("saveRoom using scene-raycast for saved W×H×D=\(roomW)×\(roomH)×\(roomD)")
+            }
+
+            /*
             let folder = classicPlyURL.deletingLastPathComponent()
             let thumbURL = resolvedThumbnailURL(forClassicPly: classicPlyURL)
             let thumbExists = FileManager.default.fileExists(atPath: thumbURL.path)
@@ -1202,13 +1251,6 @@ struct SharpRoomView: View {
             if yoloModel == nil {
                 logWallMeasurement("saveRoom YOLO CoreML model still nil after wait — wall measure skipped")
             }
-            var roomW = await MainActor.run { displayRoomWidth }
-            var roomH = await MainActor.run { displayRoomHeight }
-            var roomD = await MainActor.run { displayRoomDepth }
-            logWallMeasurement("saveRoom baseline display W×H×D=\(roomW)×\(roomH)×\(roomD)")
-
-            // Saved width/height/depth in `.meta` stay in **meters** (YOLO wall path when enabled). Scene-raycast `su`
-            // values go only to `roomScene*` for fitment ratios — do not overwrite meter fields with scene units.
             if thumbImage == nil || yoloModel == nil {
                 logWallMeasurement("saveRoom YOLO wall skipped (need thumbnail + YOLO model)")
             } else if let m = yoloModel, let img = thumbImage {
@@ -1227,6 +1269,7 @@ struct SharpRoomView: View {
                     logWallMeasurement("saveRoom YOLO measure nil — keeping display W×H×D=\(roomW)×\(roomH)×\(roomD)")
                 }
             }
+            */
 
             await MainActor.run { saveProgress = 0.55 }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

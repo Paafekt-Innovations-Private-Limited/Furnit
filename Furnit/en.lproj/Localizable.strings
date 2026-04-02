@@ -143,7 +143,7 @@
 "settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
 "settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
 "settings.furnitureFitARCompanion" = "AR-assisted furniture sizing";
-"settings.furnitureFitARCompanionDescription" = "Runs ARKit scene depth alongside the camera in Furniture Fit (LiDAR). May conflict with video capture on some devices. Reopen the room after changing this.";
+"settings.furnitureFitARCompanionDescription" = "LiDAR iPhones only: runs ARKit scene depth parallel to the camera for true pinhole range. Without LiDAR we do not start this session (parallel AR + capture causes Fig -17281 errors). Reopen the room after changing this.";
 "settings.furnitureFitARCompanionUnavailable" = "Scene depth is not available on this device.";
 "settings.roomMeasurementSection" = "Room measurement";
 "settings.yoloWallDimensionsOnSave" = "YOLO wall dimensions when saving";

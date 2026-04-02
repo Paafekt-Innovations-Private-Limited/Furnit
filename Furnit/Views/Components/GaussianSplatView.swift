@@ -114,6 +114,10 @@ struct GaussianSplatView: UIViewRepresentable {
         mtkView.setNeedsDisplay()
     }
 
+    static func dismantleUIView(_ mtkView: MTKView, coordinator: Coordinator) {
+        coordinator.teardown(view: mtkView)
+    }
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, MTKViewDelegate {
@@ -206,10 +210,7 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         deinit {
-            let nc = NotificationCenter.default
-            for token in notificationTokens {
-                nc.removeObserver(token)
-            }
+            teardown(view: view)
         }
 
         // MARK: Setup
@@ -220,6 +221,41 @@ struct GaussianSplatView: UIViewRepresentable {
                 await Task.yield()
                 updates()
             }
+        }
+
+        func teardown(view targetView: MTKView?) {
+            setupGeneration += 1
+
+            let nc = NotificationCenter.default
+            for token in notificationTokens {
+                nc.removeObserver(token)
+            }
+            notificationTokens.removeAll()
+            didRegisterSharpRoomNotifications = false
+
+            if Thread.isMainThread {
+                targetView?.delegate = nil
+                targetView?.isPaused = true
+                targetView?.enableSetNeedsDisplay = true
+            }
+            if self.view === targetView || targetView == nil {
+                view = nil
+            }
+
+            rendererLock.lock()
+            _splatRenderer = nil
+            rendererLock.unlock()
+
+            splatScratchTexture = nil
+            depthScratchTexture = nil
+            compositePipeline = nil
+            commandQueue = nil
+            device = nil
+            currentURL = nil
+            sceneBoundsMin = nil
+            sceneBoundsMax = nil
+            sceneCentroid = nil
+            warmupEndTime = nil
         }
 
         func setup(view mtkView: MTKView, plyURL: URL) {

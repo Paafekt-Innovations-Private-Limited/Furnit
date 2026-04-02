@@ -162,7 +162,20 @@ class USDZModelManager: ObservableObject {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
-            let modelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            let allModelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            let plyStems = Set(
+                allModelFiles.compactMap { fileURL -> String? in
+                    guard fileURL.pathExtension.lowercased() == "ply" else { return nil }
+                    return fileURL.deletingPathExtension().lastPathComponent
+                }
+            )
+            let modelFiles = allModelFiles.filter { fileURL in
+                guard fileURL.pathExtension.lowercased() == "ply" else { return true }
+                let stem = fileURL.deletingPathExtension().lastPathComponent
+                guard stem.hasSuffix("_classic") else { return true }
+                let baseName = String(stem.dropLast("_classic".count))
+                return !plyStems.contains(baseName)
+            }
 
             if debugMode {
                 logDebug("📦 [USDZModelManager] Found \(modelFiles.count) model files in SavedRooms")

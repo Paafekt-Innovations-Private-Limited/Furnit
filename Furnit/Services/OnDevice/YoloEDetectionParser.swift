@@ -21,13 +21,17 @@ enum YoloEDetectionParser {
     ]
 
     // ── Reusable scratch buffer (avoids allocation per frame) ──
-    // Thread-safety note: parseDetections is always called from a single
-    // serial queue (detectionQueue), so unsynchronized mutation is fine.
+    // Furniture Fit runs on `detectionQueue`, but wall measurement / save-room calls
+    // `parseDetections` from a concurrent `Task` — must serialize FP16 conversion + parse
+    // or `releaseF16Scratch()` can clear memory while another thread is in vImageConvert.
+    private static let f16ScratchLock = NSLock()
     private static var f16ScratchBuffer: [Float] = []
 
     /// Release the Float16 → Float32 scratch buffer to reduce peak memory usage.
     /// Called after detections are parsed and no further reuse is needed.
     static func releaseF16Scratch() {
+        f16ScratchLock.lock()
+        defer { f16ScratchLock.unlock() }
         f16ScratchBuffer = []
     }
 
@@ -38,6 +42,7 @@ enum YoloEDetectionParser {
         dst: UnsafeMutablePointer<Float>,
         count: Int
     ) {
+        guard count > 0 else { return }
         var srcBuf = vImage_Buffer(
             data: UnsafeMutableRawPointer(mutating: src),
             height: 1,
@@ -292,6 +297,7 @@ enum YoloEDetectionParser {
         classBlacklist: Set<Int>
     ) -> [FurnitureFitDetection] {
         let totalCount = detArray.count
+        guard totalCount > 0 else { return [] }
 
         switch detArray.dataType {
         case .float32:
@@ -305,6 +311,9 @@ enum YoloEDetectionParser {
             )
 
         case .float16:
+            f16ScratchLock.lock()
+            defer { f16ScratchLock.unlock() }
+
             // Grow scratch buffer if needed (never shrinks — avoids repeated alloc)
             if f16ScratchBuffer.count < totalCount {
                 f16ScratchBuffer = [Float](repeating: 0, count: totalCount)

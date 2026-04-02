@@ -227,6 +227,7 @@ struct SettingsView: View {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }
 
+                /*
                 Section {
                     Toggle(isOn: $wallMeasurementYoloOnSave) {
                         HStack {
@@ -280,6 +281,7 @@ struct SettingsView: View {
                     Text(L10n.Settings.roomMeasurementFooter)
                         .font(.footnote)
                 }
+                */
 
                 // Developer Settings Section
                 Section {
