@@ -717,33 +717,40 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayScale = nil
         }
 
-        guard hasARKitAssistedSizingPayload,
-              arAssistedScaleValid,
-              let arHeight = normalizedARFurnitureHeightMeters(),
-              autoScaleFromAR.isFinite,
-              autoScaleFromAR > 0 else {
-            overlayPresentationMode = .deferredCentered
-            stableOverlayMeasurementFrameCount = 0
-            lastStableOverlayHeightMeters = nil
-            lastStableOverlayScale = nil
+        let arSizingReady =
+            hasARKitAssistedSizingPayload &&
+            arAssistedScaleValid &&
+            normalizedARFurnitureHeightMeters() != nil &&
+            autoScaleFromAR.isFinite &&
+            autoScaleFromAR > 0
+
+        if arSizingReady, let arHeight = normalizedARFurnitureHeightMeters() {
+            let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromAR - $0) } ?? 0
+            let heightDriftFraction: Float
+            if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
+                heightDriftFraction = abs(arHeight - lastHeight) / lastHeight
+            } else {
+                heightDriftFraction = 0
+            }
+
+            let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
+                heightDriftFraction <= maxStableOverlayHeightDriftFraction
+
+            stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
+            lastStableOverlayHeightMeters = arHeight
+            lastStableOverlayScale = autoScaleFromAR
+
+            if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
+                overlayPresentationMode = .measuredPlacement
+            } else {
+                overlayPresentationMode = .deferredCentered
+            }
             return
         }
 
-        let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromAR - $0) } ?? 0
-        let heightDriftFraction: Float
-        if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
-            heightDriftFraction = abs(arHeight - lastHeight) / lastHeight
-        } else {
-            heightDriftFraction = 0
-        }
-
-        let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
-            heightDriftFraction <= maxStableOverlayHeightDriftFraction
-
-        stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
-        lastStableOverlayHeightMeters = arHeight
-        lastStableOverlayScale = autoScaleFromAR
-
+        // No usable AR metric (AVCapture-only, non-LiDAR, or depth/planes never validate): overlay stays 1× AR factor
+        // but pinch/pan must still work. `handlePinch` / `handlePan` are gated on `.measuredPlacement` only.
+        stableOverlayMeasurementFrameCount += 1
         if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
             overlayPresentationMode = .measuredPlacement
         } else {
