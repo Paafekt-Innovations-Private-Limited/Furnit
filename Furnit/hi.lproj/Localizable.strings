@@ -292,6 +292,7 @@
 "roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
 "roomViewer.checkMeasurement" = "माप जाँचें";
+"roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";
 "roomViewer.calibrateRoomTitle" = "कमरा कैलिब्रेट करें";

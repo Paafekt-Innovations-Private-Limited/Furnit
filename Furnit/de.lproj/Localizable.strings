@@ -322,6 +322,7 @@
 "roomViewer.recenterView" = "Ansicht zentrieren";
 "roomViewer.resetOverlayScale" = "Overlay-Maßstab zurücksetzen";
 "roomViewer.checkMeasurement" = "Messung prüfen";
+"roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
 "roomViewer.savingRoomEllipsis" = "Raum wird gespeichert…";
 "roomViewer.calibrateRoomTitle" = "Raum kalibrieren";

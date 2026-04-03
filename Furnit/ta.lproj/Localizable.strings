@@ -292,6 +292,7 @@
 "roomViewer.recenterView" = "காட்சியை மையப்படுத்து";
 "roomViewer.resetOverlayScale" = "ஓவர்லே அளவை மீட்டமை";
 "roomViewer.checkMeasurement" = "அளவைச் சரிபார்";
+"roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";
 "roomViewer.savingRoomEllipsis" = "அறை சேமிக்கப்படுகிறது...";
 "roomViewer.calibrateRoomTitle" = "அறையை கேலிப்ரேட் செய்";

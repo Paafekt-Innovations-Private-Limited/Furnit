@@ -292,6 +292,7 @@
 "roomViewer.recenterView" = "കാഴ്ച മധ്യത്തിലാക്കുക";
 "roomViewer.resetOverlayScale" = "ഓവർലേ സ്കേൽ റീസെറ്റ്";
 "roomViewer.checkMeasurement" = "അളവ് പരിശോധിക്കുക";
+"roomViewer.measuringRoom" = "മുറി അളക്കുന്നു...";
 "roomViewer.goingBack" = "പിൻവാങ്ങുന്നു...";
 "roomViewer.savingRoomEllipsis" = "മുറി സേവ് ചെയ്യുന്നു...";
 "roomViewer.calibrateRoomTitle" = "മുറി കാലിബ്രേറ്റ് ചെയ്യുക";

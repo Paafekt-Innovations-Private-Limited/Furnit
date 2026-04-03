@@ -713,7 +713,7 @@ struct SharpRoomView: View {
                     r.width, r.height, r.depth, source
                 )
             }
-            return "Measuring room…"
+            return L10n.RoomViewer.measuringRoom
         }
         if let scene = roomModelSceneDimensions {
             return String(

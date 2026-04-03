@@ -293,6 +293,7 @@
 "roomViewer.recenterView" = "视图居中";
 "roomViewer.resetOverlayScale" = "重置叠加比例";
 "roomViewer.checkMeasurement" = "检查测量";
+"roomViewer.measuringRoom" = "正在测量房间…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在保存房间…";
 "roomViewer.calibrateRoomTitle" = "校准房间";

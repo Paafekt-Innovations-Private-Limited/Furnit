@@ -310,6 +310,7 @@
 "roomViewer.recenterView" = "ভিউ কেন্দ্রে আনুন";
 "roomViewer.resetOverlayScale" = "ওভারলে স্কেল রিসেট";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
+"roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";
 "roomViewer.calibrateRoomTitle" = "রুম ক্যালিব্রেট";

@@ -293,6 +293,7 @@
 "roomViewer.recenterView" = "Recentrer la vue";
 "roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
 "roomViewer.checkMeasurement" = "Vérifier la mesure";
+"roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";
 "roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";
 "roomViewer.calibrateRoomTitle" = "Calibrer la pièce";

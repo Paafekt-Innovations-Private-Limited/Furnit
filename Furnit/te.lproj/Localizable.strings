@@ -292,6 +292,7 @@
 "roomViewer.recenterView" = "వ్యూ మధ్యకు";
 "roomViewer.resetOverlayScale" = "ఓవర్లే స్కేల్ రీసెట్";
 "roomViewer.checkMeasurement" = "కొలత తనిఖీ";
+"roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
 "roomViewer.savingRoomEllipsis" = "గది సేవ్ అవుతోంది...";
 "roomViewer.calibrateRoomTitle" = "గది క్యాలిబ్రేట్";

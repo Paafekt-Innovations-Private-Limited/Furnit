@@ -368,6 +368,7 @@
 "roomViewer.recenterView" = "Recenter View";
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
 "roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.measuringRoom" = "Measuring room…";
 "roomViewer.goingBack" = "Going back...";
 "roomViewer.savingRoomEllipsis" = "Saving Room...";
 "roomViewer.calibrateRoomTitle" = "Calibrate Room";

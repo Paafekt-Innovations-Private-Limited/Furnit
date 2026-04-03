@@ -308,6 +308,7 @@ enum L10n {
         static let recenterView = "roomViewer.recenterView".localized
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
         static let checkMeasurement = "roomViewer.checkMeasurement".localized
+        static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
         static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized
         static let calibrateRoomTitle = "roomViewer.calibrateRoomTitle".localized

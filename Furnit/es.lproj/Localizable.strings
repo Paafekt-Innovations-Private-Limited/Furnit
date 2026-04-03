@@ -293,6 +293,7 @@
 "roomViewer.recenterView" = "Recentrar vista";
 "roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
 "roomViewer.checkMeasurement" = "Comprobar medida";
+"roomViewer.measuringRoom" = "Midiendo la habitación…";
 "roomViewer.goingBack" = "Volviendo…";
 "roomViewer.savingRoomEllipsis" = "Guardando habitación…";
 "roomViewer.calibrateRoomTitle" = "Calibrar habitación";
