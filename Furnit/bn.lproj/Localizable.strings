@@ -309,6 +309,10 @@
 "roomViewer.calibrateWall" = "দেয়াল ক্যালিব্রেট";
 "roomViewer.recenterView" = "ভিউ কেন্দ্রে আনুন";
 "roomViewer.resetOverlayScale" = "ওভারলে স্কেল রিসেট";
+"roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
+"roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
+"roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
+"roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
 "roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";

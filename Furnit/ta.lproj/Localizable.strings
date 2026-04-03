@@ -291,6 +291,10 @@
 "roomViewer.calibrateWall" = "சுவரை கேலிப்ரேட் செய்";
 "roomViewer.recenterView" = "காட்சியை மையப்படுத்து";
 "roomViewer.resetOverlayScale" = "ஓவர்லே அளவை மீட்டமை";
+"roomViewer.pinchGestureHintAccessibility" = "அறையை பெரிதாக்க இரண்டு விரல்களால் சிமிட்டவும். தளபாடப் பிரிப்பு இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் மேலடுக்கின் அளவையும் மாற்றும்.";
+"roomViewer.pinchGestureHintExplanation" = "இரண்டு விரல்களால் சிமிட்டி அறையை பெரிதாக்கவும். தளபாடப் பொருத்தம் இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் பிரிப்பு மேலடுக்கையும் மாற்றும்.";
+"roomViewer.brainGestureHintExplanation" = "தளபாடக் கண்டறிதலை இயக்க அல்லது நிறுத்த மூளை ஐகானைத் தட்டவும். இயக்கத்தில் இருக்கும்போது மேலடுக்கைச் சிமிட்டி அளவை மாற்றவும்.";
+"roomViewer.gestureHintToggleAccessibility" = "இந்தக் குறிப்பைக் காட்ட அல்லது மறைக்க இந்த ஐகானைத் தட்டவும்.";
 "roomViewer.checkMeasurement" = "அளவைச் சரிபார்";
 "roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";

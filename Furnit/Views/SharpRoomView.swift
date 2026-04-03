@@ -213,6 +213,15 @@ struct SharpRoomView: View {
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
     /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
     @State private var isPlacementIntelligenceExpanded = false
+    /// Pinch hint (top-trailing): explanation auto-hides after 3s; tap icon toggles; whole chip hides after 10s if never tapped.
+    @State private var pinchHintChromeVisible = true
+    @State private var pinchHintExplanationVisible = false
+    @State private var pinchHintIconTapped = false
+    @State private var pinchHintHideTextTask: Task<Void, Never>?
+    @State private var pinchHintDismissChromeTask: Task<Void, Never>?
+    /// Brain hint (above brain button): text auto-hides after 10s; tap icon always stays; tap toggles text.
+    @State private var brainHintExplanationVisible = false
+    @State private var brainHintHideTextTask: Task<Void, Never>?
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -333,6 +342,8 @@ struct SharpRoomView: View {
             }
         }
         .onDisappear {
+            cancelPinchHintTasks()
+            cancelBrainHintTasks()
             OrientationLockManager.shared.unlock()
             SHARPService.shared.releaseResources()
             yoloeService.releaseResources()
@@ -372,6 +383,14 @@ struct SharpRoomView: View {
                         Text(L10n.RoomViewer.goingBack).foregroundColor(.white).font(.headline)
                     }
                 }
+            }
+        }
+        .onChange(of: isLoading) { _, loading in
+            if loading {
+                cancelPinchHintTasks()
+                cancelBrainHintTasks()
+            } else {
+                restartBrainGestureHint()
             }
         }
         .defersSystemGestures(on: .all)
@@ -512,6 +531,87 @@ struct SharpRoomView: View {
         */
     }
 
+    // MARK: - Gesture hint chips (pinch + brain)
+
+    private func toggleFurnitureFit() {
+        if showingFurnitureFit {
+            showingFurnitureFit = false
+        } else {
+            furnitureFitInitialSegmentationDone = false
+            SHARPService.shared.releaseResources()
+            showingFurnitureFit = true
+        }
+    }
+
+    private func cancelPinchHintTasks() {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = nil
+        pinchHintDismissChromeTask?.cancel()
+        pinchHintDismissChromeTask = nil
+    }
+
+    private func restartPinchGestureHint() {
+        cancelPinchHintTasks()
+        pinchHintIconTapped = false
+        pinchHintChromeVisible = true
+        pinchHintExplanationVisible = true
+        pinchHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            pinchHintExplanationVisible = false
+        }
+        pinchHintDismissChromeTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            if !pinchHintIconTapped {
+                pinchHintChromeVisible = false
+            }
+        }
+    }
+
+    private func onPinchHintIconTapped() {
+        pinchHintIconTapped = true
+        pinchHintDismissChromeTask?.cancel()
+        pinchHintDismissChromeTask = nil
+        pinchHintExplanationVisible.toggle()
+    }
+
+    private func cancelBrainHintTasks() {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = nil
+    }
+
+    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 10) {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            brainHintExplanationVisible = false
+        }
+    }
+
+    private func restartBrainGestureHint() {
+        cancelBrainHintTasks()
+        brainHintExplanationVisible = true
+        scheduleBrainHintTextAutoHide(seconds: 10)
+    }
+
+    private func onBrainHintIconTapped() {
+        cancelBrainHintTasks()
+        brainHintExplanationVisible.toggle()
+        if brainHintExplanationVisible {
+            scheduleBrainHintTextAutoHide(seconds: 10)
+        }
+    }
+
+    private var pinchHintAccessibilityLabel: String {
+        L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var brainHintAccessibilityLabel: String {
+        L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
     /// On-screen pan pad (not in the ⋮ menu).
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
@@ -558,6 +658,89 @@ struct SharpRoomView: View {
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(12)
+    }
+
+    /// Top-trailing hint: pinch zooms the splat room; explanation shows 3s then hides; tap icon toggles; chip hides at 10s if never tapped.
+    private var pinchGestureHintOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if pinchHintChromeVisible {
+                VStack(alignment: .trailing, spacing: 6) {
+                    if pinchHintExplanationVisible {
+                        Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.trailing)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 220)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                            .transition(.opacity)
+                    }
+                    Button(action: onPinchHintIconTapped) {
+                        Image(systemName: "hand.pinch.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(pinchHintAccessibilityLabel)
+                }
+                .padding(12)
+                .onAppear { restartPinchGestureHint() }
+                .onDisappear { cancelPinchHintTasks() }
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(12)
+    }
+
+    /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
+    private var brainGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if brainHintExplanationVisible {
+                Text(L10n.RoomViewer.brainGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+            Button(action: onBrainHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(brainHintAccessibilityLabel)
+        }
+        .onAppear { restartBrainGestureHint() }
+        .onDisappear { cancelBrainHintTasks() }
+    }
+
+    @ViewBuilder
+    private var brainButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            brainGestureHintColumn
+            Button(action: toggleFurnitureFit) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+            }
+            .disabled(isLoading)
+        }
     }
 
     private var loadingOverlayView: some View {
@@ -701,7 +884,7 @@ struct SharpRoomView: View {
         if let meters = roomModelMetersDimensions {
             let display = resolvedRoomMetersDimensions ?? meters
             return String(
-                format: "%.1f m × %.1f m × %.1f m (room model)",
+                format: "%.1f m × %.1f m × %.1f m",
                 display.width, display.height, display.depth
             )
         }
@@ -1153,22 +1336,7 @@ struct SharpRoomView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
                 HStack(spacing: 20) {
-                    Button(action: {
-                        if showingFurnitureFit {
-                            showingFurnitureFit = false
-                        } else {
-                            furnitureFitInitialSegmentationDone = false
-                            SHARPService.shared.releaseResources()
-                            showingFurnitureFit = true
-                        }
-                    }) {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                    }
-                    .disabled(isLoading)
+                    brainButtonWithHintAbove
                     HStack(spacing: 6) {
                         Image(systemName: "iphone.landscape").font(.caption)
                         Text(NSLocalizedString("orientation.heldHorizontally", comment: "")).font(.caption2)
@@ -1217,22 +1385,8 @@ struct SharpRoomView: View {
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
                 HStack {
-                    Button(action: {
-                        if showingFurnitureFit {
-                            showingFurnitureFit = false
-                        } else {
-                            furnitureFitInitialSegmentationDone = false
-                            SHARPService.shared.releaseResources()
-                            showingFurnitureFit = true
-                        }
-                    }) {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 28)).foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                    }
-                    .disabled(isLoading)
-                    .padding(.leading, 16)
+                    brainButtonWithHintAbove
+                        .padding(.leading, 16)
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
                         if showingFurnitureFit {
@@ -1264,7 +1418,10 @@ struct SharpRoomView: View {
 
     @ViewBuilder private var allOverlaysLayer: some View {
         ZStack {
-            if !isLoading { cameraButtonsOverlay }
+            if !isLoading {
+                cameraButtonsOverlay
+                pinchGestureHintOverlay
+            }
             if isLoading { loadingOverlayView }
             errorOverlayView
             if showingFurnitureFit { furnitureFitOverlayView }

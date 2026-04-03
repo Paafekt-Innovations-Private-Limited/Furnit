@@ -321,6 +321,10 @@
 "roomViewer.calibrateWall" = "Wand kalibrieren";
 "roomViewer.recenterView" = "Ansicht zentrieren";
 "roomViewer.resetOverlayScale" = "Overlay-Maßstab zurücksetzen";
+"roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
+"roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
+"roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Möbel-Erkennung ein- oder auszuschalten. Wenn sie an ist, kneife die Einblendung, um ihre Größe zu ändern.";
+"roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";
 "roomViewer.checkMeasurement" = "Messung prüfen";
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";

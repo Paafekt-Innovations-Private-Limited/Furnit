@@ -181,8 +181,8 @@
 "faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
-"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
-"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
+"faq.depthAwareRoomPhoto" = "ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳುವುದು ಕೊಠಡಿಯ ಗುಣಮಟ್ಟವನ್ನು ಉತ್ತಮಗೊಳಿಸುತ್ತದೆಯೇ?";
+"faq.depthAwareRoomPhotoAnswer" = "ಹೌದು. ಬೆಂಬಲಿತ ಸಾಧನಗಳಲ್ಲಿ, ಗ್ಯಾಲರಿಯಿಂದ ಆಯ್ಕೆಮಾಡುವ ಬದಲು «ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ» ಆಯ್ಕೆಮಾಡುವುದು ಲಭ್ಯವಿರುವಲ್ಲಿ ಆಳ-ಮಾಹಿತಿಯೊಂದಿಗೆ ಇನ್-ಅಪ್ ಕ್ಯಾಮರಾವನ್ನು ಬಳಸುತ್ತದೆ; ಇದು ನಿಮ್ಮ 3D ಕೊಠಡಿಯ ನಿರ್ಮಾಣ ಮತ್ತು ಪ್ರಮಾಣಕ್ಕೆ ಸುಧಾರಣೆ ತರುಬಹುದು.";
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
 "faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
@@ -291,6 +291,10 @@
 "roomViewer.calibrateWall" = "ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.recenterView" = "ನೋಟ ಮಧ್ಯಕ್ಕೆ";
 "roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
+"roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
+"roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
+"roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯನ್ನು ಆನ್ ಅಥವಾ ಆಫ್ ಮಾಡಲು ಮೆದುಳು ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಆನ್‌ನಲ್ಲಿ ಓವರ್‌ಲೇಯನ್ನು ಚಿಮುಡಿಸಿ ಗಾತ್ರ ಬದಲಿಸಿ.";
+"roomViewer.gestureHintToggleAccessibility" = "ಈ ಸಲಹೆಯನ್ನು ತೋರಿಸಲು ಅಥವಾ ಮರೆಮಾಡಲು ಈ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";

@@ -292,6 +292,10 @@
 "roomViewer.calibrateWall" = "校準牆面";
 "roomViewer.recenterView" = "檢視畫面置中";
 "roomViewer.resetOverlayScale" = "重設疊加比例";
+"roomViewer.pinchGestureHintAccessibility" = "雙指捏合可縮放房間。開啟家具分割時，捏合亦可放大或縮小疊加層。";
+"roomViewer.pinchGestureHintExplanation" = "雙指捏合縮放房間。開啟家具偵測後，捏合亦可縮放分割疊加層。";
+"roomViewer.brainGestureHintExplanation" = "點大腦圖示可開關家具偵測。開啟時，捏合疊加層可調整大小。";
+"roomViewer.gestureHintToggleAccessibility" = "點此圖示可顯示或隱藏此提示。";
 "roomViewer.checkMeasurement" = "檢查測量";
 "roomViewer.measuringRoom" = "正在測量房間…";
 "roomViewer.goingBack" = "正在返回…";

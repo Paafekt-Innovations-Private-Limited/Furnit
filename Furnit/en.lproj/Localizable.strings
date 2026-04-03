@@ -367,6 +367,10 @@
 "roomViewer.calibrateWall" = "Calibrate Wall";
 "roomViewer.recenterView" = "Recenter View";
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
+"roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
+"roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
+"roomViewer.brainGestureHintExplanation" = "Tap the brain to turn furniture detection on or off. When it is on, pinch the overlay to resize it.";
+"roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";
 "roomViewer.checkMeasurement" = "Check measurement";
 "roomViewer.measuringRoom" = "Measuring room…";
 "roomViewer.goingBack" = "Going back...";

@@ -291,6 +291,10 @@
 "roomViewer.calibrateWall" = "ചുവര്‍ കാലിബ്രേറ്റ് ചെയ്യുക";
 "roomViewer.recenterView" = "കാഴ്ച മധ്യത്തിലാക്കുക";
 "roomViewer.resetOverlayScale" = "ഓവർലേ സ്കേൽ റീസെറ്റ്";
+"roomViewer.pinchGestureHintAccessibility" = "മുറി സൂം ചെയ്യാൻ രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടുക. ഫർണിച്ചർ സെഗ്മെന്റേഷൻ ഓണായാൽ ചിമുട്ടൽ ഓവർലേയുടെ വലുപ്പവും മാറ്റും.";
+"roomViewer.pinchGestureHintExplanation" = "രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടി മുറി സൂം ചെയ്യുക. ഫർണിച്ചർ ഫിറ്റ് ഓണായാൽ ചിമുട്ടൽ സെഗ്മെന്റേഷൻ ഓവർലേയും മാറ്റും.";
+"roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ കണ്ടെത്തൽ ഓൺ അല്ലെങ്കിൽ ഓഫ് ചെയ്യാൻ മസ്തിഷ്ക ഐക്കൺ തട്ടുക. ഓണായാൽ ഓവർലേ ചിമുട്ടി വലുപ്പം മാറ്റുക.";
+"roomViewer.gestureHintToggleAccessibility" = "ഈ നുറുങ്ങ് കാണിക്കാനോ മറയ്ക്കാനോ ഈ ഐക്കൺ തട്ടുക.";
 "roomViewer.checkMeasurement" = "അളവ് പരിശോധിക്കുക";
 "roomViewer.measuringRoom" = "മുറി അളക്കുന്നു...";
 "roomViewer.goingBack" = "പിൻവാങ്ങുന്നു...";

@@ -292,6 +292,10 @@
 "roomViewer.calibrateWall" = "Calibrar pared";
 "roomViewer.recenterView" = "Recentrar vista";
 "roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
+"roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en el cuarto. Con los muebles segmentados, el pellizco también escala la superposición.";
+"roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en el cuarto. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
+"roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
+"roomViewer.gestureHintToggleAccessibility" = "Toca este ícono para mostrar u ocultar este consejo.";
 "roomViewer.checkMeasurement" = "Revisar medida";
 "roomViewer.measuringRoom" = "Midiendo el cuarto…";
 "roomViewer.goingBack" = "Regresando…";

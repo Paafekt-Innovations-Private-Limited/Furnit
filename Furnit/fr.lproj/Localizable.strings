@@ -292,6 +292,10 @@
 "roomViewer.calibrateWall" = "Calibrer le mur";
 "roomViewer.recenterView" = "Recentrer la vue";
 "roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
+"roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
+"roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
+"roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour activer ou désactiver la détection de meubles. Quand elle est active, pincez le calque pour le redimensionner.";
+"roomViewer.gestureHintToggleAccessibility" = "Touchez cette icône pour afficher ou masquer ce conseil.";
 "roomViewer.checkMeasurement" = "Vérifier la mesure";
 "roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";

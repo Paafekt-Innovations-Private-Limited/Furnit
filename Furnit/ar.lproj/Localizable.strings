@@ -309,6 +309,10 @@
 "roomViewer.calibrateWall" = "معايرة الجدار";
 "roomViewer.recenterView" = "إعادة تمركز العرض";
 "roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
+"roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
+"roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
+"roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
+"roomViewer.gestureHintToggleAccessibility" = "اضغط هذا الرمز لإظهار هذه النصيحة أو إخفائها.";
 "roomViewer.checkMeasurement" = "تحقق من القياس";
 "roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";

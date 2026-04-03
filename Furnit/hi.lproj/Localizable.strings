@@ -291,6 +291,10 @@
 "roomViewer.calibrateWall" = "दीवार कैलिब्रेट करें";
 "roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
+"roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
+"roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
+"roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
+"roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";
 "roomViewer.checkMeasurement" = "माप जाँचें";
 "roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
