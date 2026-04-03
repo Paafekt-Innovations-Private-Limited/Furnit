@@ -213,12 +213,9 @@ struct SharpRoomView: View {
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
     /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
     @State private var isPlacementIntelligenceExpanded = false
-    /// Pinch hint (top-trailing): explanation auto-hides after 3s; tap icon toggles; whole chip hides after 10s if never tapped.
-    @State private var pinchHintChromeVisible = true
+    /// Pinch hint (top-trailing): icon always visible; text shows on load and when tapped, auto-hides after 10s.
     @State private var pinchHintExplanationVisible = false
-    @State private var pinchHintIconTapped = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
-    @State private var pinchHintDismissChromeTask: Task<Void, Never>?
     /// Brain hint (above brain button): text auto-hides after 10s; tap icon always stays; tap toggles text.
     @State private var brainHintExplanationVisible = false
     @State private var brainHintHideTextTask: Task<Void, Never>?
@@ -546,34 +543,29 @@ struct SharpRoomView: View {
     private func cancelPinchHintTasks() {
         pinchHintHideTextTask?.cancel()
         pinchHintHideTextTask = nil
-        pinchHintDismissChromeTask?.cancel()
-        pinchHintDismissChromeTask = nil
+    }
+
+    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 10) {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            pinchHintExplanationVisible = false
+        }
     }
 
     private func restartPinchGestureHint() {
         cancelPinchHintTasks()
-        pinchHintIconTapped = false
-        pinchHintChromeVisible = true
         pinchHintExplanationVisible = true
-        pinchHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            pinchHintExplanationVisible = false
-        }
-        pinchHintDismissChromeTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            if !pinchHintIconTapped {
-                pinchHintChromeVisible = false
-            }
-        }
+        schedulePinchHintTextAutoHide(seconds: 10)
     }
 
     private func onPinchHintIconTapped() {
-        pinchHintIconTapped = true
-        pinchHintDismissChromeTask?.cancel()
-        pinchHintDismissChromeTask = nil
+        cancelPinchHintTasks()
         pinchHintExplanationVisible.toggle()
+        if pinchHintExplanationVisible {
+            schedulePinchHintTextAutoHide(seconds: 10)
+        }
     }
 
     private func cancelBrainHintTasks() {
@@ -660,40 +652,38 @@ struct SharpRoomView: View {
         .zIndex(12)
     }
 
-    /// Top-trailing hint: pinch zooms the splat room; explanation shows 3s then hides; tap icon toggles; chip hides at 10s if never tapped.
+    /// Top-trailing hint: pinch icon stays; helper text shows on load and when tapped, hides after 10s.
     private var pinchGestureHintOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if pinchHintChromeVisible {
-                VStack(alignment: .trailing, spacing: 6) {
-                    if pinchHintExplanationVisible {
-                        Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                            .font(.caption2)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.trailing)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 220)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                            .transition(.opacity)
-                    }
-                    Button(action: onPinchHintIconTapped) {
-                        Image(systemName: "hand.pinch.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(pinchHintAccessibilityLabel)
+            VStack(alignment: .trailing, spacing: 6) {
+                if pinchHintExplanationVisible {
+                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
                 }
-                .padding(12)
-                .onAppear { restartPinchGestureHint() }
-                .onDisappear { cancelPinchHintTasks() }
+                Button(action: onPinchHintIconTapped) {
+                    Image(systemName: "hand.pinch.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(pinchHintAccessibilityLabel)
             }
+            .padding(12)
+            .onAppear { restartPinchGestureHint() }
+            .onDisappear { cancelPinchHintTasks() }
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(12)
