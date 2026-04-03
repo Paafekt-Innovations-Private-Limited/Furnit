@@ -116,7 +116,7 @@
 "settings.developer" = "Développeur";
 "settings.developerFooter" = "Activez le mode débogage pour voir les informations de détection détaillées et les métriques de performance. Ajustez les seuils pour contrôler la sensibilité de détection et le comportement de filtrage.";
 "settings.debugMode" = "Mode débogage";
-"settings.debugModeDescription" = "Afficher les boîtes de détection et les informations de chronométrage";
+"settings.debugModeDescription" = "Afficher les cadres de détection, le chronométrage et les journaux console détaillés (Furniture Fit, limites PLY, overlay).";
 "settings.currentValue" = "Valeur actuelle :";
 "settings.account" = "Compte";
 "settings.loggedInAs" = "Connecté en tant que";
@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "Comment vérifier si les meubles conviennent ?";
 "faq.roomFitmentAnswer" = "Après avoir ajouté un meuble, redimensionnez-le et déplacez-le dans la pièce 3D pour voir comment il s'intègre à l'espace et aux autres meubles.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Placement et esthétique";
+"faq.whatIsPlacementIntelligence" = "Qu'est-ce que le « Placement Intelligence » ?";
+"faq.whatIsPlacementIntelligenceAnswer" = "Lorsque SmartyPants est actif dans certains visionneurs 3D, une fiche Placement Intelligence résume si la taille de l'objet détecté respecte les limites de la pièce, propose des indications d'emplacement au sol et des suggestions de coins quand c'est possible, et signale lorsque la profondeur est estimée. Touchez l'en-tête pour tout développer ou laissez la fiche repliée pour gagner de la place.";
+"faq.furnitureColorAesthetic" = "Comment l'app choisit-elle une couleur pour le score esthétique ?";
+"faq.furnitureColorAestheticAnswer" = "L'app calcule la moyenne RVB des pixels visibles dans la découpe IA du meuble (le même masque segmenté à l'écran). Cette couleur moyenne est comparée aux couleurs échantillonnées sur le sol, les murs et le plafond. Si la découpe n'est pas prête, une couleur de repli est tirée de la palette de la pièce jusqu'à ce que la segmentation fournisse un vrai échantillon.";
+"faq.whatDoHarmonyContrastMean" = "Que signifient harmonie, contraste et adéquation de style ?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "Ce sont des heuristiques de design simples, pas un jugement de goût. L'harmonie décrit comment la couleur du meuble se rapporte à la palette de la pièce (teintes analogues ou complémentaires, par exemple). Le contraste mesure l'écart de luminosité par rapport aux sols ou murs typiques. L'adéquation de style compare des étiquettes de style larges déduites pour la pièce à un profil moderne par défaut, donc c'est approximatif.";
+"faq.whenDoesAestheticScoreLow" = "Quand les scores esthétiques peuvent-ils être bas ou afficher un « clash » ?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Les objets vifs et saturés obtiennent souvent un score plus faible si leur teinte ne s'aligne pas sur les schémas harmonieux de l'app par rapport à votre pièce — par exemple vert acide, magenta, violet ou orange sécurité dans des pièces beiges ou chaudes, ou couleurs primaires criardes quand l'échantillonnage du mur/sol est surtout monochrome. Une luminosité très proche du sol ou du mur (brun sur brun, gris sur gris) peut réduire le contraste même si vous aimez le rendu. Les pièces déduites « rustiques » ou « traditionnelles » peuvent avoir une adéquation de style plus basse car le profil meuble utilise des étiquettes moderne/minimal par défaut. Un gris terne ou boueux issu d'arrière-plans chargés peut tomber en zone « neutre » plutôt qu'en clash. Les scores sont indicatifs seulement : pour la déco réelle, faites confiance à votre œil.";
+
 "faq.howToView" = "Comment visualiser ma pièce 3D ?";
 "faq.howToViewAnswer" = "Appuyez sur n'importe quelle pièce de votre écran d'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.";
 "faq.howToPlace" = "Comment placer des meubles dans ma pièce ?";
@@ -280,7 +292,12 @@
 "roomViewer.calibrateWall" = "Calibrer le mur";
 "roomViewer.recenterView" = "Recentrer la vue";
 "roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
+"roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
+"roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
+"roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour activer ou désactiver la détection de meubles. Quand elle est active, pincez le calque pour le redimensionner.";
+"roomViewer.gestureHintToggleAccessibility" = "Touchez cette icône pour afficher ou masquer ce conseil.";
 "roomViewer.checkMeasurement" = "Vérifier la mesure";
+"roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";
 "roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";
 "roomViewer.calibrateRoomTitle" = "Calibrer la pièce";
@@ -295,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "Largeur";
 "roomViewer.wallHeightPlaceholder" = "Hauteur";
 "roomViewer.saveErrorUnknown" = "Erreur inconnue";
+"roomViewer.placementIntelligenceTitle" = "Intelligence de placement";
+"roomViewer.placementBadgeStyleOnly" = "Style";
+"roomViewer.placementNoFit" = "Ne rentre pas";
+"roomViewer.placementFitCount" = "%d compatible";
+"roomViewer.placementDetectedSize" = "Détecté %.2f × %.2f × %.2f m";
+"roomViewer.placementMetricUnavailableNote" = "Le dimensionnement complet fonctionne mieux avec la profondeur. L’harmonie des couleurs ci-dessous reste utile.";
+"roomViewer.placementHarmonySummary" = "Harmonie %.2f (%@) · contraste %.2f · accord de style %.2f";
+"roomViewer.harmonyTypeAnalogous" = "Analogue";
+"roomViewer.harmonyTypeComplementary" = "Complémentaire";
+"roomViewer.harmonyTypeTriadic" = "Triadique";
+"roomViewer.harmonyTypeSplitComplementary" = "Complémentaire divisé";
+"roomViewer.harmonyTypeNeutral" = "Neutre";
+"roomViewer.harmonyTypeClash" = "Conflit";
+"roomViewer.aestheticRecoNeutralClash" = "Une couleur plus neutre peut réduire les accrochages de palette.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "La relation des couleurs est harmonieuse et proche de la palette de la pièce.";
+"roomViewer.aestheticRecoComplementaryFocal" = "Le contraste complémentaire peut créer un fort point focal.";
+"roomViewer.aestheticRecoContrastLow" = "Augmentez le contraste avec le sol pour mieux séparer visuellement.";
+"roomViewer.aestheticRecoContrastHigh" = "Le contraste est fort : le meuble ressort immédiatement.";
+"roomViewer.aestheticRecoStyleMismatch" = "Un style plus proche de %@ paraîtra plus cohérent dans cette pièce.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "Le profil mobilier actuel est globalement compatible avec la palette de la pièce.";
+"roomViewer.styleTag.modern" = "moderne";
+"roomViewer.styleTag.minimalist" = "minimaliste";
+"roomViewer.styleTag.contemporary" = "contemporain";
+"roomViewer.styleTag.industrial" = "industriel";
+"roomViewer.styleTag.rustic" = "rustique";
+"roomViewer.styleTag.farmhouse" = "ferme";
+"roomViewer.styleTag.traditional" = "traditionnel";
+"roomViewer.styleTag.eclectic" = "éclectique";
+"roomViewer.styleTag.scandinavian" = "scandinave";
+"roomViewer.styleTag.nordic" = "nordique";
+"roomViewer.styleTag.classic" = "classique";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Soumettre le rapport";

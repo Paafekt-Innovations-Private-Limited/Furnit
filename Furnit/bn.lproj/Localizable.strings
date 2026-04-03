@@ -116,7 +116,7 @@
 "settings.developer" = "ডেভেলপার";
 "settings.developerFooter" = "বিস্তারিত শনাক্তকরণ তথ্য এবং পারফরম্যান্স মেট্রিক্স দেখতে ডিবাগ মোড সক্রিয় করুন। শনাক্তকরণ সংবেদনশীলতা এবং ফিল্টারিং আচরণ নিয়ন্ত্রণ করতে থ্রেশহোল্ড সামঞ্জস্য করুন।";
 "settings.debugMode" = "ডিবাগ মোড";
-"settings.debugModeDescription" = "শনাক্তকরণ বক্স এবং সময় তথ্য দেখান";
+"settings.debugModeDescription" = "শনাক্তকরণ বক্স, সময় এবং বিস্তারিত কনসোল লগ দেখান (ফার্নিচার ফিট, PLY সীমানা, ওভারলে স্কেল)।";
 "settings.currentValue" = "বর্তমান মান:";
 "settings.account" = "অ্যাকাউন্ট";
 "settings.loggedInAs" = "লগইন করা হয়েছে";
@@ -248,6 +248,17 @@
 "faq.roomFitment" = "ফার্নিচার মানানসই কিনা কীভাবে যাচাই করব?";
 "faq.roomFitmentAnswer" = "ফার্নিচার যোগ করার পর 3D রুমে আকার বদলিয়ে ও সরিয়ে দেখুন এটি আপনার স্থান ও অন্য ফার্নিচারের সাথে কেমন মানায়।";
 
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "প্লেসমেন্ট বুদ্ধিমত্তা ও নান্দনিকতা";
+"faq.whatIsPlacementIntelligence" = "প্লেসমেন্ট ইন্টেলিজেন্স কী?";
+"faq.whatIsPlacementIntelligenceAnswer" = "সমর্থিত 3D রুম ভিউয়ারে SmartyPants চালু থাকলে, প্লেসমেন্ট ইন্টেলিজেন্স কার্ড দেখায় সনাক্ত বস্তুর আকার রুমের সীমার মধ্যে আছে কি না, মাটিতে ফাঁকা জায়গার ইঙ্গিত ও কোণার পরামর্শ (যখন উপলব্ধ), এবং গভীরতা আনুমানিক হলে তা উল্লেখ করে। শিরোনামে ট্যাপ করে বিস্তারিত দেখুন বা জায়গা বাঁচাতে ভাঁজ করে রাখুন।";
+"faq.furnitureColorAesthetic" = "নান্দনিক স্কোরের জন্য রং কীভাবে বেছে নেয় অ্যাপ?";
+"faq.furnitureColorAestheticAnswer" = "অ্যাপ আপনার দেখা AI ফার্নিচার কাটআউটের (যে সেগমেন্টেড ওভারলে) ভেতরের দৃশ্যমান পিক্সেলের RGB গড় বের করে এবং তা মেঝে, দেয়াল ও ছাদ থেকে নেওয়া রঙের সঙ্গে তুলনা করে। কাটআউট তৈরি না হলে সেগমেন্টেশন আসল নমুনা না দেওয়া পর্যন্ত রুম প্যালেট থেকে বিকল্প রং ব্যবহার হয়।";
+"faq.whatDoHarmonyContrastMean" = "সুরেলাপন, কনট্রাস্ট ও স্টাইল মিল মানে কী?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "এগুলো সহজ ডিজাইন নিয়ম, রুচির বিচার নয়। সুরেলাপন বলতে ফার্নিচারের রং রুমের প্যালেটের সঙ্গে কেমন সম্পর্কে (যেমন কাছাকাছি বা পরিপূরক)। কনট্রাস্ট হলো সাধারণ মেঝে বা দেয়ালের উজ্জ্বলতার সঙ্গে পার্থক্য। স্টাইল মিল রুম থেকে অনুমিত চওড়া স্টাইল ট্যাগ ডিফল্ট আধুনিক প্রোফাইলের সঙ্গে মেলায়—তাই আনুমানিক।";
+"faq.whenDoesAestheticScoreLow" = "কখন নান্দনিক স্কোর কম দেখাতে পারে বা \"clash\" দেখা যেতে পারে?";
+"faq.whenDoesAestheticScoreLowAnswer" = "উজ্জ্বল, স্যাচুরেটেড জিনিস প্রায়ই কম স্কোর পায় যখন তাদের রঙের টোন আপনার রুমের নমুনার সঙ্গে অ্যাপের সুরেলা নিয়ম মেলে না—যেমন অ্যাসিড গ্রিন, ম্যাজেন্টা, বেগুনি বা সেফটি-অরেঞ্জ উষ্ণ বেজ বা বাদামি রুমে, বা প্রায় এক রঙের রুমে চিৎকার করা প্রাইমারি। মেঝে বা দেয়ালের উজ্জ্বলতার খুব কাছাকাছি (বাদামি-উপর-বাদামি, ধূসর-উপর-ধূসর) কনট্রাস্ট কমাতে পারে যদিও আপনার ভালো লাগে। রুস্টিক বা ঐতিহ্যবাহী রুমে স্টাইল মিল কম হতে পারে কারণ ফার্নিচার প্রোফাইলে ডিফল্ট আধুনিক/মিনিমাল ট্যাগ থাকে। ব্যস্ত ব্যাকগ্রাউন্ডের ধূসর-কাদা গড় কখনও \"নিউট্রাল\" হয়ে clash না-ও হতে পারে। স্কোর শুধু গাইড; সাজসজ্জায় নিজের চোখকে বিশ্বাস করুন।";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "রুম সীমানা";
 "boundary.instructions" = "সীমানা সামঞ্জস্য করতে বৃত্ত টানুন";
@@ -298,7 +309,12 @@
 "roomViewer.calibrateWall" = "দেয়াল ক্যালিব্রেট";
 "roomViewer.recenterView" = "ভিউ কেন্দ্রে আনুন";
 "roomViewer.resetOverlayScale" = "ওভারলে স্কেল রিসেট";
+"roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
+"roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
+"roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
+"roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
+"roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";
 "roomViewer.calibrateRoomTitle" = "রুম ক্যালিব্রেট";
@@ -313,6 +329,37 @@
 "roomViewer.wallWidthPlaceholder" = "প্রস্থ";
 "roomViewer.wallHeightPlaceholder" = "উচ্চতা";
 "roomViewer.saveErrorUnknown" = "অজানা ত্রুটি";
+"roomViewer.placementIntelligenceTitle" = "স্থাপনা বুদ্ধিমত্তা";
+"roomViewer.placementBadgeStyleOnly" = "স্টাইল";
+"roomViewer.placementNoFit" = "মানাচ্ছে না";
+"roomViewer.placementFitCount" = "%d মানানো";
+"roomViewer.placementDetectedSize" = "সনাক্ত %.2f × %.2f × %.2f মি";
+"roomViewer.placementMetricUnavailableNote" = "সম্পূর্ণ আকার মিলিয়ে নেওয়া গভীরতা-সেন্সিং সহ iPhone-এ ভালো কাজ করে। নিচের রঙের সামঞ্জস্য এখনও কাজে লাগে।";
+"roomViewer.placementHarmonySummary" = "সুর %.2f (%@) · বৈপরীত্য %.2f · স্টাইল মিল %.2f";
+"roomViewer.harmonyTypeAnalogous" = "সদৃশ";
+"roomViewer.harmonyTypeComplementary" = "পরিপূরক";
+"roomViewer.harmonyTypeTriadic" = "ত্রয়ী";
+"roomViewer.harmonyTypeSplitComplementary" = "বিভক্ত পরিপূরক";
+"roomViewer.harmonyTypeNeutral" = "নিরপেক্ষ";
+"roomViewer.harmonyTypeClash" = "সংঘাত";
+"roomViewer.aestheticRecoNeutralClash" = "প্যালেট সংঘাত কমাতে আরও নিরপেক্ষ রঙ বিবেচনা করুন।";
+"roomViewer.aestheticRecoAnalogousHarmony" = "রঙের সম্পর্ক সুরেলা এবং ঘরের প্যালেটের কাছাকাছি।";
+"roomViewer.aestheticRecoComplementaryFocal" = "পরিপূরক বৈপরীত্য শক্তিশালী ফোকাল পয়েন্ট তৈরি করতে পারে।";
+"roomViewer.aestheticRecoContrastLow" = "ভাল দৃশ্যমান পৃথকীকরণের জন্য মেঝের সাথে বৈপরীত্য বাড়ান।";
+"roomViewer.aestheticRecoContrastHigh" = "বৈপরীত্য শক্তিশালী—আসবাবটি সাথে সাথে চোখে পড়বে।";
+"roomViewer.aestheticRecoStyleMismatch" = "%@-এর কাছাকাছি স্টাইল এই ঘরে আরও সুসংগত মনে হবে।";
+"roomViewer.aestheticRecoBroadlyCompatible" = "বর্তমান আসবাবের প্রোফাইল ঘরের প্যালেটের সাথে ব্যাপকভাবে সামঞ্জস্যপূর্ণ।";
+"roomViewer.styleTag.modern" = "আধুনিক";
+"roomViewer.styleTag.minimalist" = "মিনিমাল";
+"roomViewer.styleTag.contemporary" = "সমসাময়িক";
+"roomViewer.styleTag.industrial" = "শিল্প";
+"roomViewer.styleTag.rustic" = "গ্রামীণ";
+"roomViewer.styleTag.farmhouse" = "খামারঘর";
+"roomViewer.styleTag.traditional" = "ঐতিহ্যবাহী";
+"roomViewer.styleTag.eclectic" = "মিশ্র";
+"roomViewer.styleTag.scandinavian" = "স্ক্যান্ডিনেভিয়ান";
+"roomViewer.styleTag.nordic" = "নর্ডিক";
+"roomViewer.styleTag.classic" = "ক্লাসিক";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "রিপোর্ট জমা দিন";

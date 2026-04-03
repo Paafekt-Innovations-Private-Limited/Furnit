@@ -307,7 +307,11 @@ enum L10n {
         static let calibrateWall = "roomViewer.calibrateWall".localized
         static let recenterView = "roomViewer.recenterView".localized
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
+        static let pinchGestureHintExplanation = "roomViewer.pinchGestureHintExplanation".localized
+        static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
+        static let gestureHintToggleAccessibility = "roomViewer.gestureHintToggleAccessibility".localized
         static let checkMeasurement = "roomViewer.checkMeasurement".localized
+        static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
         static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized
         static let calibrateRoomTitle = "roomViewer.calibrateRoomTitle".localized
@@ -328,6 +332,37 @@ enum L10n {
         static let wallWidthPlaceholder = "roomViewer.wallWidthPlaceholder".localized
         static let wallHeightPlaceholder = "roomViewer.wallHeightPlaceholder".localized
         static let saveErrorUnknown = "roomViewer.saveErrorUnknown".localized
+        static let placementIntelligenceTitle = "roomViewer.placementIntelligenceTitle".localized
+        static let placementBadgeStyleOnly = "roomViewer.placementBadgeStyleOnly".localized
+        static let placementNoFit = "roomViewer.placementNoFit".localized
+        static func placementFitCount(_ count: Int) -> String {
+            String(format: "roomViewer.placementFitCount".localized, locale: .current, count)
+        }
+        static func placementDetectedSizeMeters(width: Double, height: Double, depth: Double) -> String {
+            String(
+                format: "roomViewer.placementDetectedSize".localized,
+                locale: .current,
+                width,
+                height,
+                depth
+            )
+        }
+        static let placementMetricUnavailableNote = "roomViewer.placementMetricUnavailableNote".localized
+        static func placementHarmonySummary(
+            harmonyScore: Float,
+            harmonyTypeName: String,
+            contrastScore: Float,
+            styleFit: Float
+        ) -> String {
+            String(
+                format: "roomViewer.placementHarmonySummary".localized,
+                locale: .current,
+                harmonyScore,
+                harmonyTypeName,
+                contrastScore,
+                styleFit
+            )
+        }
     }
 
     /// Unsaved room preview (back without saving)
@@ -363,5 +398,19 @@ enum L10n {
         static let normalDescription = "speed.normal.description".localized
         static let fast = "speed.fast".localized
         static let fastDescription = "speed.fast.description".localized
+    }
+}
+
+// MARK: - Placement intelligence / aesthetic (HarmonyType lives in AestheticAdvisor)
+extension HarmonyType {
+    var localizedDisplayName: String {
+        switch self {
+        case .analogous: return "roomViewer.harmonyTypeAnalogous".localized
+        case .complementary: return "roomViewer.harmonyTypeComplementary".localized
+        case .triadic: return "roomViewer.harmonyTypeTriadic".localized
+        case .splitComplementary: return "roomViewer.harmonyTypeSplitComplementary".localized
+        case .neutral: return "roomViewer.harmonyTypeNeutral".localized
+        case .clash: return "roomViewer.harmonyTypeClash".localized
+        }
     }
 }

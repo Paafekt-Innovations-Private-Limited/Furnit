@@ -116,7 +116,7 @@
 "settings.developer" = "डेवलपर";
 "settings.developerFooter" = "विस्तृत पहचान जानकारी और प्रदर्शन मेट्रिक्स देखने के लिए डीबग मोड सक्षम करें। पहचान संवेदनशीलता और फ़िल्टरिंग व्यवहार को नियंत्रित करने के लिए थ्रेशोल्ड समायोजित करें।";
 "settings.debugMode" = "डीबग मोड";
-"settings.debugModeDescription" = "पहचान बॉक्स और समय जानकारी दिखाएं";
+"settings.debugModeDescription" = "पहचान बॉक्स, समय और विस्तृत कंसोल लॉग दिखाएँ (फर्नीचर फिट, PLY सीमाएँ, ओवरले स्केल)।";
 "settings.currentValue" = "वर्तमान मान:";
 "settings.account" = "खाता";
 "settings.loggedInAs" = "इस रूप में लॉग इन";
@@ -230,6 +230,17 @@
 "faq.roomFitment" = "फर्नीचर फिट है या नहीं कैसे जांचें?";
 "faq.roomFitmentAnswer" = "फर्नीचर जोड़ने के बाद अपने 3D कमरे में इसका आकार बदलकर और स्थान बदलकर देखें कि यह आपकी जगह और अन्य फर्नीचर के साथ कैसा बैठता है।";
 
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "प्लेसमेंट इंटेलिजेंस और सौंदर्य";
+"faq.whatIsPlacementIntelligence" = "प्लेसमेंट इंटेलिजेंस क्या है?";
+"faq.whatIsPlacementIntelligenceAnswer" = "समर्थित 3D रूम व्यूअर में SmartyPants चालू होने पर, प्लेसमेंट इंटेलिजेंस कार्ड बताता है कि पहचाना गया आकार कमरे की सीमा में फिट है या नहीं, जब उपलब्ध हो तो फर्श पर जगह और कोने के सुझाव देता है, और बताता है जब गहराई अनुमानित हो। शीर्षक पर टैप कर पूरी जानकारी देखें या जगह बचाने के लिए संक्षिप्त रखें।";
+"faq.furnitureColorAesthetic" = "ऐस्थेटिक स्कोर के लिए रंग कैसे चुना जाता है?";
+"faq.furnitureColorAestheticAnswer" = "ऐप AI फर्नीचर कटआउट (वही सेगमेंटेड ओवरले) के अंदर दिखाई देने वाले पिक्सेल का RGB औसत निकालता है और उसे फर्श, दीवारों और छत से सैंपल किए रंगों से तुलता है। कटआउट तैयार न होने पर सेगमेंटेशन के वास्तविक नमूने आने तक कमरे की पैलेट से फॉलबैक रंग लिया जाता है।";
+"faq.whatDoHarmonyContrastMean" = "हार्मनी, कंट्रास्ट और स्टाइल फिट का क्या मतलब है?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "ये सरल डिज़ाइन नियम हैं, स्वाद का फैसला नहीं। हार्मनी बताता है कि फर्नीचर का रंग कमरे की पैलेट से कैसे जुड़ता है (जैसे समान या पूरक रंग)। कंट्रास्ट सामान्य फर्श या दीवार की चमक से अंतर मापता है। स्टाइल फिट कमरे के चौड़े स्टाइल टैग को डिफ़ॉल्ट आधुनिक प्रोफ़ाइल से मिलाता है—इसलिए अनुमानित है।";
+"faq.whenDoesAestheticScoreLow" = "ऐस्थेटिक स्कोर कब कम दिख सकता है या \"clash\" दिख सकता है?";
+"faq.whenDoesAestheticScoreLowAnswer" = "चमकीले, संतृप्त वस्तुएँ अक्सर कम स्कोर पाती हैं जब उनका रंग टोन आपके कमरे के सैंपल के मुकाबले ऐप के सामंजस्य नियमों से न मिले—जैसे एसिड ग्रीन, मैजेंटा, बैंगनी या सेफ्टी-ऑरेंज गर्म बेज या भूरे कमरे में, या लगभग एक ही रंग के कमरे में ज़ोरदार प्राइमरी। फर्श या दीवार से बहुत मिलती चमक (भूरे पर भूरा, ग्रे पर ग्रे) कंट्रास्ट घटा सकती है भले ही आपको पसंद हो। रस्टिक या पारंपरिक कमरों में स्टाइल फिट कम हो सकता है क्योंकि फर्नीचर प्रोफ़ाइल में डिफ़ॉल्ट आधुनिक/मिनिमल टैग होते हैं। व्यस्त पृष्ठभूमि से धूसर औसत कभी-कभी \"न्यूट्रल\" बैंड में आता है, clash नहीं। स्कोर केवल मार्गदर्शन हैं; असली सजावट में अपनी आँख पर भरोसा करें।";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "कमरे की सीमाएं";
 "boundary.instructions" = "सीमाओं को समायोजित करने के लिए सर्कल खींचें";
@@ -280,7 +291,12 @@
 "roomViewer.calibrateWall" = "दीवार कैलिब्रेट करें";
 "roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
+"roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
+"roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
+"roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
+"roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";
 "roomViewer.checkMeasurement" = "माप जाँचें";
+"roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";
 "roomViewer.calibrateRoomTitle" = "कमरा कैलिब्रेट करें";
@@ -295,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "चौड़ाई";
 "roomViewer.wallHeightPlaceholder" = "ऊँचाई";
 "roomViewer.saveErrorUnknown" = "अज्ञात त्रुटि";
+"roomViewer.placementIntelligenceTitle" = "प्लेसमेंट इंटेलिजेंस";
+"roomViewer.placementBadgeStyleOnly" = "स्टाइल";
+"roomViewer.placementNoFit" = "फिट नहीं";
+"roomViewer.placementFitCount" = "%d फिट";
+"roomViewer.placementDetectedSize" = "पता चला %.2f × %.2f × %.2f मी";
+"roomViewer.placementMetricUnavailableNote" = "पूर्ण आकार जाँच गहराई वाले iPhone पर सबसे अच्छी है। नीचे रंग सामंजस्य अभी भी मदद करता है।";
+"roomViewer.placementHarmonySummary" = "सामंजस्य %.2f (%@) · कंट्रास्ट %.2f · स्टाइल मिलान %.2f";
+"roomViewer.harmonyTypeAnalogous" = "समान";
+"roomViewer.harmonyTypeComplementary" = "पूरक";
+"roomViewer.harmonyTypeTriadic" = "त्रिक";
+"roomViewer.harmonyTypeSplitComplementary" = "विभाजित पूरक";
+"roomViewer.harmonyTypeNeutral" = "तटस्थ";
+"roomViewer.harmonyTypeClash" = "टकराव";
+"roomViewer.aestheticRecoNeutralClash" = "पैलेट टकराव कम करने के लिए अधिक तटस्थ रंग आज़माएँ।";
+"roomViewer.aestheticRecoAnalogousHarmony" = "रंग संबंध सामंजस्यपूर्ण है और कमरे की पैलेट के करीब है।";
+"roomViewer.aestheticRecoComplementaryFocal" = "पूरक कंट्रास्ट मजबूत फोकल पॉइंट बना सकता है।";
+"roomViewer.aestheticRecoContrastLow" = "फर्श के साथ बेहतर विज़ुअल अलगाव के लिए कंट्रास्ट बढ़ाएँ।";
+"roomViewer.aestheticRecoContrastHigh" = "कंट्रास्ट मजबूत है—फर्नीचर तुरंत नज़र आएगा।";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ के करीब स्टाइल इस कमरे में अधिक सुसंगत लगेगा।";
+"roomViewer.aestheticRecoBroadlyCompatible" = "वर्तमान फर्नीचर प्रोफ़ाइल कमरे की पैलेट के साथ व्यापक रूप से मेल खाती है।";
+"roomViewer.styleTag.modern" = "आधुनिक";
+"roomViewer.styleTag.minimalist" = "मिनिमल";
+"roomViewer.styleTag.contemporary" = "समकालीन";
+"roomViewer.styleTag.industrial" = "औद्योगिक";
+"roomViewer.styleTag.rustic" = "देहाती";
+"roomViewer.styleTag.farmhouse" = "फार्महाउस";
+"roomViewer.styleTag.traditional" = "पारंपरिक";
+"roomViewer.styleTag.eclectic" = "मिश्रित";
+"roomViewer.styleTag.scandinavian" = "स्कैंडिनेवियाई";
+"roomViewer.styleTag.nordic" = "नॉर्डिक";
+"roomViewer.styleTag.classic" = "क्लासिक";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "रिपोर्ट सबमिट करें";

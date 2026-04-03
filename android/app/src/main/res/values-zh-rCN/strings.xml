@@ -184,6 +184,15 @@
     <string name="faq_reset_overlay_scale_answer">在 3D 房间打开右上角菜单（⋮），选择「重置叠加缩放」，可清除套在检测遮罩上的自动缩放，便于移动后重新稳定。</string>
     <string name="faq_depth_aware_room_photo">用应用内相机拍照会更好吗？</string>
     <string name="faq_depth_aware_room_photo_answer">会。在支持的设备上，创建房间时选择「拍照」而非从相册选取，可使用内置相机与深度信息（若设备提供），有助于构建与比例。</string>
+    <string name="faq_placement_intelligence">摆放智能与美学</string>
+    <string name="faq_what_is_placement_intelligence">什么是「摆放智能」（Placement Intelligence）？</string>
+    <string name="faq_what_is_placement_intelligence_answer">在支持的 3D 房间查看器中开启 SmartyPants 时，「摆放智能」卡片会汇总：检测到的物体尺寸是否在房间边界内、在可用时给出地面可放区域与角落建议，并标明深度是否为估算值。点击标题可展开全部说明，保持折叠可节省屏幕空间。</string>
+    <string name="faq_furniture_color_aesthetic">美学评分用的颜色是怎么来的？</string>
+    <string name="faq_furniture_color_aesthetic_answer">应用会对你看到的 AI 家具抠图（与实时分割叠加层相同）里、不透明像素的颜色做 RGB 平均，再与从地面、墙面、天花板采样的颜色比较。若抠图尚未就绪，会暂用房间调色板的推断色，直到分割给出真实采样。</string>
+    <string name="faq_what_do_harmony_contrast_mean">和谐度、对比度、风格匹配是什么意思？</string>
+    <string name="faq_what_do_harmony_contrast_mean_answer">它们只是简单的设计启发规则，不是品味评判。和谐度描述家具颜色与房间主色之间的关系（例如类似色或互补色）。对比度衡量与典型地面、墙面亮度的差异。风格匹配把从房间推断的宽泛风格标签与默认的「现代/简约」档案对比，因此仅供参考。</string>
+    <string name="faq_when_does_aesthetic_score_low">什么情况下美学分数会偏低或显示「冲突（clash）」？</string>
+    <string name="faq_when_does_aesthetic_score_low_answer">高饱和物体若色相与应用内的和谐配色规则、以及你房间采样色不协调，分数往往更低——例如酸绿、品红、紫色、安全橙放在偏米色、暖棕调房间里，或空间采样几乎单色时仍用刺眼原色。与地板或墙面亮度非常接近（棕上棕、灰上灰）也可能拉低对比度，即便你主观上喜欢。若房间被推断为乡村风、传统风，风格匹配可能偏低，因为家具档案默认带现代/简约标签。杂乱背景下得到的灰蒙蒙平均色有时会落在「中性」区间而非冲突。分数仅供提示，实际搭配请以肉眼为准。</string>
     <string name="boundary_title">房间边界</string>
     <string name="boundary_instructions">拖拽圆圈调整边界</string>
     <string name="boundary_floor">地板</string>

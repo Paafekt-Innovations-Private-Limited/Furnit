@@ -116,7 +116,7 @@
 "settings.developer" = "డెవలపర్";
 "settings.developerFooter" = "వివరమైన డిటెక్షన్ సమాచారం మరియు పనితీరు మెట్రిక్స్ చూడటానికి డీబగ్ మోడ్ ఎనేబుల్ చేయండి. డిటెక్షన్ సున్నితత్వం మరియు ఫిల్టరింగ్ ప్రవర్తనను నియంత్రించడానికి థ్రెషోల్డ్స్ సర్దుబాటు చేయండి.";
 "settings.debugMode" = "డీబగ్ మోడ్";
-"settings.debugModeDescription" = "డిటెక్షన్ బాక్సులు మరియు టైమింగ్ సమాచారం చూపించు";
+"settings.debugModeDescription" = "డిటెక్షన్ బాక్సులు, టైమింగ్ మరియు వివరణాత్మక కన్సోల్ లాగ్‌లు చూపించు (ఫర్నిచర్ ఫిట్, PLY బౌండ్స్, ఓవర్‌లే స్కేల్).";
 "settings.currentValue" = "ప్రస్తుత విలువ:";
 "settings.account" = "ఖాతా";
 "settings.loggedInAs" = "లాగిన్ అయి ఉన్నది";
@@ -230,6 +230,17 @@
 "faq.roomFitment" = "ఫర్నిచర్ సరిగా ఉందో ఎలా తనిఖీ చేయాలి?";
 "faq.roomFitmentAnswer" = "ఫర్నిచర్ జోడించిన తర్వాత, మీ 3D గదిలో దాన్ని పునఃపరిమాణం చేసి తరలించి మీ స్థలం మరియు ఇతర ఫర్నిచర్‌తో ఎలా సరిపోతుందో చూడండి.";
 
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ & సౌందర్యం";
+"faq.whatIsPlacementIntelligence" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ అంటే ఏమిటి?";
+"faq.whatIsPlacementIntelligenceAnswer" = "మద్దతు ఉన్న 3D రూమ్ వ్యూయర్లలో SmartyPants ఆన్‌లో ఉన్నప్పుడు, ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ కార్డ్ గుర్తించిన వస్తువు పరిమాణం గది హద్దులలో సరిపోతుందో లేదో సారాంశం చేస్తుంది, అందుబాటులో ఉన్నప్పుడు నేలపై ఖాళీ సూచనలు మరియు మూల సూచనలు చూపిస్తుంది, లోతు అంచనా అయితే దాన్ని పేర్కొంటుంది. శీర్షికను ట్యాప్ చేసి వివరాలు చూడండి లేదా స్థలం ఆదా చేయడానికి కుదించండి.";
+"faq.furnitureColorAesthetic" = "సౌందర్య స్కోర్ కోసం రంగును యాప్ ఎలా ఎంచుకుంటుంది?";
+"faq.furnitureColorAestheticAnswer" = "యాప్ మీరు చూసే AI ఫర్నిచర్ కట్‌అవుట్ (అదే సెగ్మెంటెడ్ ఓవర్‌లే) లోపల కనిపించే పిక్సెల్‌ల RGB సగటును లెక్కించి నేల, గోడలు, పైకప్పు నుండి సాంపిల్ చేసిన రంగులతో పోల్చుతుంది. కట్‌అవుట్ సిద్ధంగా లేకపోతే సెగ్మెంటేషన్ నిజమైన సాంపిల్ ఇచ్చే వరకు గది పాలెట్ నుండి ఫాల్‌బ్యాక్ రంగు వాడుతుంది.";
+"faq.whatDoHarmonyContrastMean" = "హార్మోనీ, కాంట్రాస్ట్, స్టైల్ ఫిట్ అంటే ఏమిటి?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "ఇవి సరళమైన డిజైన్ హ్యూరిస్టిక్స్, రుచి తీర్పు కాదు. హార్మోనీ ఫర్నిచర్ రంగు గది పాలెట్‌తో ఎలా సంబంధం కలిగి ఉందో వివరిస్తుంది (ఉదా. సమీప లేదా పూరక రంగులు). కాంట్రాస్ట్ సాధారణ నేల లేదా గోడ ప్రకాశానికి తేడాను కొలుస్తుంది. స్టైల్ ఫిట్ గదికి అంచనా వేసిన విశాలమైన స్టైల్ ట్యాగ్‌లను డిఫాల్ట్ మోడర్న్ ప్రొఫైల్‌తో పోల్చుతుంది—కాబట్టి అంచనా మాత్రమే.";
+"faq.whenDoesAestheticScoreLow" = "ఎప్పుడు సౌందర్య స్కోర్ తక్కువగా కనిపించవచ్చు లేదా \"clash\" కనిపించవచ్చు?";
+"faq.whenDoesAestheticScoreLowAnswer" = "ప్రకాశవంతమైన, సంతృప్త వస్తువులు తరచూ తక్కువ స్కోర్ పొందుతాయి వాటి రంగు టోన్ మీ గది సాంపిల్‌తో యాప్ హార్మోనీ నియమాలతో సరిపోకపోతే—ఉదా. యాసిడ్ గ్రీన్, మెజెంటా, పర్పుల్ లేదా సేఫ్టీ-ఆరెంజ్ వెచ్చని బేజ్ లేదా గోధుమ గదులలో, లేదా దాదాపు ఏకరంగ గదిలో చీకటి ప్రైమరీలు. నేల లేదా గోడకు ప్రకాశం చాలా దగ్గరగా (గోధుమపై గోధుమ, బూడిదపై బూడిద) కాంట్రాస్ట్ తగ్గించవచ్చు మీకు నచ్చినా. రస్టిక్ లేదా సాంప్రదాయ గదులలో స్టైల్ ఫిట్ తక్కువగా ఉండవచ్చు ఎందుకంటే ఫర్నిచర్ ప్రొఫైల్ డిఫాల్ట్ మోడర్న్/మినిమల్ ట్యాగ్‌లు వాడుతుంది. రద్దీ నేపథ్యం నుండి మసక బూడిద సగటు కొన్నిసార్లు \"న్యూట్రల్\" బ్యాండ్‌లో పడుతుంది clash కాకుండా. స్కోర్‌లు మార్గదర్శకాలు మాత్రమే; నిజమైన అలంకారంలో మీ కంటిని నమ్మండి.";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "గది సరిహద్దులు";
 "boundary.instructions" = "సరిహద్దులను సర్దుబాటు చేయడానికి సర్కిల్‌లను డ్రాగ్ చేయండి";
@@ -280,7 +291,12 @@
 "roomViewer.calibrateWall" = "గోడ క్యాలిబ్రేట్";
 "roomViewer.recenterView" = "వ్యూ మధ్యకు";
 "roomViewer.resetOverlayScale" = "ఓవర్లే స్కేల్ రీసెట్";
+"roomViewer.pinchGestureHintAccessibility" = "గదిని జూమ్ చేయడానికి రెండు వేళ్లతో పించ్ చేయండి. ఫర్నిచర్ సెగ్మెంటేషన్ ఆన్‌లో ఉన్నప్పుడు పించ్ ఓవర్లే పరిమాణాన్నీ మారుస్తుంది.";
+"roomViewer.pinchGestureHintExplanation" = "రెండు వేళ్లతో పించ్ చేసి గదిని జూమ్ చేయండి. ఫర్నిచర్ ఫిట్ ఆన్‌లో ఉన్నప్పుడు పించ్ సెగ్మెంటేషన్ ఓవర్లేను కూడా మారుస్తుంది.";
+"roomViewer.brainGestureHintExplanation" = "ఫర్నిచర్ గుర్తింపును ఆన్ లేదా ఆఫ్ చేయడానికి మెదడు ఐకాన్‌ను టాప్ చేయండి. ఆన్‌లో ఉన్నప్పుడు ఓవర్లేను పించ్ చేసి పరిమాణం మార్చండి.";
+"roomViewer.gestureHintToggleAccessibility" = "ఈ చిట్కాను చూపించడానికి లేదా దాచడానికి ఈ ఐకాన్‌ను టాప్ చేయండి.";
 "roomViewer.checkMeasurement" = "కొలత తనిఖీ";
+"roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
 "roomViewer.savingRoomEllipsis" = "గది సేవ్ అవుతోంది...";
 "roomViewer.calibrateRoomTitle" = "గది క్యాలిబ్రేట్";
@@ -295,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "వెడల్పు";
 "roomViewer.wallHeightPlaceholder" = "ఎత్తు";
 "roomViewer.saveErrorUnknown" = "తెలియని దోషం";
+"roomViewer.placementIntelligenceTitle" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్";
+"roomViewer.placementBadgeStyleOnly" = "శైలి";
+"roomViewer.placementNoFit" = "సరిపోదు";
+"roomViewer.placementFitCount" = "%d సరిపోలు";
+"roomViewer.placementDetectedSize" = "కనుగొనబడింది %.2f × %.2f × %.2f మీ";
+"roomViewer.placementMetricUnavailableNote" = "పూర్తి పరిమాణ తనిఖీ లోతు-సెన్సింగ్ ఉన్న iPhoneలలో మంచిది. క్రింది రంగు సామరస్యం ఇంకా ఉపయోగపడుతుంది.";
+"roomViewer.placementHarmonySummary" = "సామరస్యం %.2f (%@) · కాంట్రాస్ట్ %.2f · శైలి సరిపోలిక %.2f";
+"roomViewer.harmonyTypeAnalogous" = "సమాన";
+"roomViewer.harmonyTypeComplementary" = "పూరక";
+"roomViewer.harmonyTypeTriadic" = "త్రయ";
+"roomViewer.harmonyTypeSplitComplementary" = "విభజిత పూరక";
+"roomViewer.harmonyTypeNeutral" = "తటస్థ";
+"roomViewer.harmonyTypeClash" = "ఘర్షణ";
+"roomViewer.aestheticRecoNeutralClash" = "ప్యాలెట్ ఘర్షణ తగ్గించడానికి మరింత తటస్థ రంగు పరిగణించండి.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "రంగు సంబంధం సామరస్యపూర్వకం మరియు గది ప్యాలెట్‌కు దగ్గరగా ఉంది.";
+"roomViewer.aestheticRecoComplementaryFocal" = "పూరక కాంట్రాస్ట్ బలమైన ఫోకల్ పాయింట్ సృష్టించగలదు.";
+"roomViewer.aestheticRecoContrastLow" = "నేలతో మెరుగైన దృశ్య వేరుపాటు కోసం కాంట్రాస్ట్ పెంచండి.";
+"roomViewer.aestheticRecoContrastHigh" = "కాంట్రాస్ట్ బలంగా ఉంది—ఫర్నిచర్ వెంటనే కనిపిస్తుంది.";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ దగ్గర శైలి ఈ గదిలో మరింత సమన్వయంగా అనిపిస్తుంది.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ప్రస్తుత ఫర్నిచర్ ప్రొఫైల్ గది ప్యాలెట్‌తో విస్తృతంగా అనుకూలంగా ఉంది.";
+"roomViewer.styleTag.modern" = "ఆధునిక";
+"roomViewer.styleTag.minimalist" = "మినిమల్";
+"roomViewer.styleTag.contemporary" = "సమకాలీన";
+"roomViewer.styleTag.industrial" = "పారిశ్రామిక";
+"roomViewer.styleTag.rustic" = "గ్రామీణ";
+"roomViewer.styleTag.farmhouse" = "ఫార్మ్‌హౌస్";
+"roomViewer.styleTag.traditional" = "సాంప్రదాయ";
+"roomViewer.styleTag.eclectic" = "మిశ్రమ";
+"roomViewer.styleTag.scandinavian" = "స్కాండినేవియన్";
+"roomViewer.styleTag.nordic" = "నార్డిక్";
+"roomViewer.styleTag.classic" = "క్లాసిక్";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "రిపోర్ట్ సబ్మిట్ చేయి";

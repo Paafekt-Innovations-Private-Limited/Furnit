@@ -223,24 +223,33 @@ public struct AestheticAdvisor {
     ) -> [String] {
         var result: [String] = []
         if harmony.type == .clash {
-            result.append("Consider a more neutral color to reduce palette clash.")
+            result.append("roomViewer.aestheticRecoNeutralClash".localized)
         } else if harmony.type == .analogous {
-            result.append("Color relationship is harmonious and close to the room palette.")
+            result.append("roomViewer.aestheticRecoAnalogousHarmony".localized)
         } else if harmony.type == .complementary {
-            result.append("Complementary color contrast should create a strong focal point.")
+            result.append("roomViewer.aestheticRecoComplementaryFocal".localized)
         }
         if contrast < 0.15 {
-            result.append("Increase contrast against the floor for better visual separation.")
+            result.append("roomViewer.aestheticRecoContrastLow".localized)
         } else if contrast > 0.80 {
-            result.append("Contrast is strong and will make the piece stand out immediately.")
+            result.append("roomViewer.aestheticRecoContrastHigh".localized)
         }
         if style < 0.30, let first = roomStyleTags.first {
-            result.append("A style closer to \(first) will read as more coherent in this room.")
+            let tagLabel = Self.localizedRoomStyleTag(first)
+            result.append("roomViewer.aestheticRecoStyleMismatch".localized(tagLabel))
         }
         if result.isEmpty {
-            result.append("Current furniture profile is broadly compatible with the room palette.")
+            result.append("roomViewer.aestheticRecoBroadlyCompatible".localized)
         }
         return result
+    }
+
+    private static func localizedRoomStyleTag(_ raw: String) -> String {
+        let slug = String(raw.lowercased().filter { $0.isLetter || $0.isNumber })
+        guard !slug.isEmpty else { return raw.capitalized }
+        let key = "roomViewer.styleTag." + slug
+        let translated = key.localized
+        return translated == key ? raw.capitalized : translated
     }
 
     private func weightedRoomColors() -> [WeightedRoomColor] {

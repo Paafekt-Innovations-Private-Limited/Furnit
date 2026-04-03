@@ -116,7 +116,7 @@
 "settings.developer" = "Desarrollador";
 "settings.developerFooter" = "Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento. Ajusta los umbrales para controlar la sensibilidad de detección y el comportamiento de filtrado.";
 "settings.debugMode" = "Modo de depuración";
-"settings.debugModeDescription" = "Mostrar cajas de detección e información de tiempo";
+"settings.debugModeDescription" = "Mostrar cajas de detección, tiempos y registros detallados en consola (Furniture Fit, límites PLY, overlay).";
 "settings.currentValue" = "Valor actual:";
 "settings.account" = "Cuenta";
 "settings.loggedInAs" = "Conectado como";
@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "¿Cómo compruebo si el mueble encaja?";
 "faq.roomFitmentAnswer" = "Tras añadir un mueble, redimensiónalo y muévelo en la habitación 3D para ver cómo encaja con el espacio y otros muebles.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Inteligencia de colocación y estética";
+"faq.whatIsPlacementIntelligence" = "¿Qué es Placement Intelligence?";
+"faq.whatIsPlacementIntelligenceAnswer" = "Con SmartyPants activo en visores 3D compatibles, una tarjeta de Placement Intelligence resume si el tamaño del objeto detectado cabe en los límites de la habitación, muestra pistas de hueco en el suelo y sugerencias de esquinas cuando hay datos, e indica si la profundidad es estimada. Toca la cabecera para ver todos los detalles o déjala plegada para ahorrar espacio.";
+"faq.furnitureColorAesthetic" = "¿Cómo elige la app un color para la puntuación estética?";
+"faq.furnitureColorAestheticAnswer" = "La app promedia el RGB de los píxeles visibles dentro del recorte IA del mueble (la misma superposición segmentada). Ese color medio se compara con colores muestreados del suelo, paredes y techo. Si el recorte aún no está listo, se usa un color de reserva de la paleta de la habitación hasta que la segmentación aporte una muestra real.";
+"faq.whatDoHarmonyContrastMean" = "¿Qué significan armonía, contraste y ajuste de estilo?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "Son heurísticas de diseño sencillas, no un juicio de gusto. La armonía describe cómo se relaciona el color del mueble con la paleta de la habitación (por ejemplo tonos análogos o complementarios). El contraste mide cuánto difiere el brillo respecto a suelos o paredes típicos. El ajuste de estilo compara etiquetas de estilo amplias inferidas para la habitación con un perfil moderno por defecto, así que es aproximado.";
+"faq.whenDoesAestheticScoreLow" = "¿Cuándo pueden verse bajas las puntuaciones estéticas o aparecer \"clash\"?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Los objetos muy saturados suelen puntuar peor si su matiz no encaja con los esquemas armónicos de la app frente a tu habitación: por ejemplo verde ácido, magenta, morado o naranja de seguridad en salones cálidos beige o tostados, o primarios chillones cuando la muestra del espacio es casi monocromática. Un brillo muy parecido al suelo o la pared (marrón sobre marrón, gris sobre gris) puede bajar el contraste aunque te guste el resultado. Las habitaciones inferidas como rústicas o tradicionales pueden mostrar menos ajuste de estilo porque el perfil del mueble usa etiquetas modernas/minimal por defecto. Promedios grises o sucios con fondos cargados pueden caer en una banda \"neutral\" en lugar de clash. Las puntuaciones son solo orientativas: para decorar de verdad, confía también en tu ojo.";
+
 "faq.howToView" = "¿Cómo veo mi habitación 3D?";
 "faq.howToViewAnswer" = "Toca cualquier habitación en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por la habitación usando gestos táctiles.";
 "faq.howToPlace" = "¿Cómo coloco muebles en mi habitación?";
@@ -280,7 +292,12 @@
 "roomViewer.calibrateWall" = "Calibrar pared";
 "roomViewer.recenterView" = "Recentrar vista";
 "roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
+"roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en la habitación. Con los muebles segmentados, el pellizco también escala la superposición.";
+"roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en la habitación. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
+"roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
+"roomViewer.gestureHintToggleAccessibility" = "Toca este icono para mostrar u ocultar este consejo.";
 "roomViewer.checkMeasurement" = "Comprobar medida";
+"roomViewer.measuringRoom" = "Midiendo la habitación…";
 "roomViewer.goingBack" = "Volviendo…";
 "roomViewer.savingRoomEllipsis" = "Guardando habitación…";
 "roomViewer.calibrateRoomTitle" = "Calibrar habitación";
@@ -295,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "Ancho";
 "roomViewer.wallHeightPlaceholder" = "Alto";
 "roomViewer.saveErrorUnknown" = "Error desconocido";
+"roomViewer.placementIntelligenceTitle" = "Inteligencia de colocación";
+"roomViewer.placementBadgeStyleOnly" = "Estilo";
+"roomViewer.placementNoFit" = "No cabe";
+"roomViewer.placementFitCount" = "%d encaja";
+"roomViewer.placementDetectedSize" = "Detectado %.2f × %.2f × %.2f m";
+"roomViewer.placementMetricUnavailableNote" = "El ajuste de tamaño completo funciona mejor con profundidad. La armonía de color de abajo sigue aplicando.";
+"roomViewer.placementHarmonySummary" = "Armonía %.2f (%@) · contraste %.2f · encaje de estilo %.2f";
+"roomViewer.harmonyTypeAnalogous" = "Análoga";
+"roomViewer.harmonyTypeComplementary" = "Complementaria";
+"roomViewer.harmonyTypeTriadic" = "Triádica";
+"roomViewer.harmonyTypeSplitComplementary" = "Complementaria dividida";
+"roomViewer.harmonyTypeNeutral" = "Neutra";
+"roomViewer.harmonyTypeClash" = "Conflicto";
+"roomViewer.aestheticRecoNeutralClash" = "Prueba un color más neutro para reducir el choque de paleta.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "La relación de color es armoniosa y cercana a la paleta del espacio.";
+"roomViewer.aestheticRecoComplementaryFocal" = "El contraste complementario puede crear un punto focal fuerte.";
+"roomViewer.aestheticRecoContrastLow" = "Aumenta el contraste con el suelo para separar mejor visualmente.";
+"roomViewer.aestheticRecoContrastHigh" = "El contraste es fuerte: la pieza destacará de inmediato.";
+"roomViewer.aestheticRecoStyleMismatch" = "Un estilo más cercano a %@ se verá más coherente en esta habitación.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "El perfil actual del mueble encaja en general con la paleta del espacio.";
+"roomViewer.styleTag.modern" = "moderno";
+"roomViewer.styleTag.minimalist" = "minimalista";
+"roomViewer.styleTag.contemporary" = "contemporáneo";
+"roomViewer.styleTag.industrial" = "industrial";
+"roomViewer.styleTag.rustic" = "rústico";
+"roomViewer.styleTag.farmhouse" = "casa de campo";
+"roomViewer.styleTag.traditional" = "tradicional";
+"roomViewer.styleTag.eclectic" = "ecléctico";
+"roomViewer.styleTag.scandinavian" = "escandinavo";
+"roomViewer.styleTag.nordic" = "nórdico";
+"roomViewer.styleTag.classic" = "clásico";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Enviar informe";

@@ -116,7 +116,7 @@
 "settings.developer" = "ಡೆವಲಪರ್";
 "settings.developerFooter" = "ವಿವರವಾದ ಪತ್ತೆ ಮಾಹಿತಿ ಮತ್ತು ಕಾರ್ಯಕ್ಷಮತೆ ಮೆಟ್ರಿಕ್ಸ್ ನೋಡಲು ಡೀಬಗ್ ಮೋಡ್ ಸಕ್ರಿಯಗೊಳಿಸಿ. ಪತ್ತೆ ಸೂಕ್ಷ್ಮತೆ ಮತ್ತು ಫಿಲ್ಟರಿಂಗ್ ನಡವಳಿಕೆಯನ್ನು ನಿಯಂತ್ರಿಸಲು ಮಿತಿಗಳನ್ನು ಹೊಂದಿಸಿ.";
 "settings.debugMode" = "ಡೀಬಗ್ ಮೋಡ್";
-"settings.debugModeDescription" = "ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಸಮಯ ಮಾಹಿತಿ ತೋರಿಸು";
+"settings.debugModeDescription" = "ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು, ಸಮಯ ಮತ್ತು ವಿವರವಾದ ಕನ್ಸೋಲ್ ಲಾಗ್‌ಗಳನ್ನು ತೋರಿಸಿ (ಫರ್ನಿಚರ್ ಫಿಟ್, PLY ಎಲೆಗಳು, ಓವರ್‌ಲೇ ಸ್ಕೇಲ್).";
 "settings.currentValue" = "ಪ್ರಸ್ತುತ ಮೌಲ್ಯ:";
 "settings.account" = "ಖಾತೆ";
 "settings.loggedInAs" = "ಲಾಗಿನ್ ಆಗಿದೆ";
@@ -181,8 +181,8 @@
 "faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
-"faq.depthAwareRoomPhoto" = "Does taking a photo in the app help room quality?";
-"faq.depthAwareRoomPhotoAnswer" = "Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.";
+"faq.depthAwareRoomPhoto" = "ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳುವುದು ಕೊಠಡಿಯ ಗುಣಮಟ್ಟವನ್ನು ಉತ್ತಮಗೊಳಿಸುತ್ತದೆಯೇ?";
+"faq.depthAwareRoomPhotoAnswer" = "ಹೌದು. ಬೆಂಬಲಿತ ಸಾಧನಗಳಲ್ಲಿ, ಗ್ಯಾಲರಿಯಿಂದ ಆಯ್ಕೆಮಾಡುವ ಬದಲು «ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ» ಆಯ್ಕೆಮಾಡುವುದು ಲಭ್ಯವಿರುವಲ್ಲಿ ಆಳ-ಮಾಹಿತಿಯೊಂದಿಗೆ ಇನ್-ಅಪ್ ಕ್ಯಾಮರಾವನ್ನು ಬಳಸುತ್ತದೆ; ಇದು ನಿಮ್ಮ 3D ಕೊಠಡಿಯ ನಿರ್ಮಾಣ ಮತ್ತು ಪ್ರಮಾಣಕ್ಕೆ ಸುಧಾರಣೆ ತರುಬಹುದು.";
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
 "faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
@@ -229,6 +229,17 @@
 "faq.resetOverlayScaleAnswer" = "3D ಕೊಠಡಿಯಲ್ಲಿ ಓವರ್‌ಫ್ಲೋ ಮೆನು (⋮) ತೆರೆದು «ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ» ಆಯ್ಕೆಮಾಡಿ. ಪತ್ತೆ ಓವರ್ಲೇಗೆ ಅನ್ವಯಿಸಿದ ಸ್ವಯಂಚಾಲಿತ ಜೂಮ್ ಅನ್ನು ಅದು ತೆರವುಗೊಳಿಸುತ್ತದೆ; ನೀವು ಚಲಿಸಿದಂತೆ ಮತ್ತೆ ಸರಿಯಾಗಿ ಹೊಂದಿಕೊಳ್ಳುತ್ತದೆ.";
 "faq.roomFitment" = "ಪೀಠೋಪಕರಣ ಸರಿಯಾಗಿ ಹೊಂದುತ್ತದೆಯೇ ಎಂದು ಹೇಗೆ ಪರಿಶೀಲಿಸುವುದು?";
 "faq.roomFitmentAnswer" = "ಪೀಠೋಪಕರಣ ಸೇರಿಸಿದ ನಂತರ, ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಅದರ ಗಾತ್ರ ಬದಲಾಯಿಸಿ ಮತ್ತು ಸ್ಥಾನ ಸರಿಸಿ — ನಿಮ್ಮ ಖಾಲಿ ಜಾಗ ಮತ್ತು ಇತರ ಪೀಠೋಪಕರಣಗಳೊಂದಿಗೆ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂದು ನೋಡಬಹುದು.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಬುದ್ಧಿಮತ್ತೆ ಮತ್ತು ಸೌಂದರ್ಯ";
+"faq.whatIsPlacementIntelligence" = "ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಇಂಟೆಲಿಜೆನ್ಸ್ ಎಂದರೇನು?";
+"faq.whatIsPlacementIntelligenceAnswer" = "ಬೆಂಬಲಿತ 3D ರೂಮ್ ವ್ಯೂವರ್‌ಗಳಲ್ಲಿ SmartyPants ಆನ್ ಆಗಿದ್ದಾಗ, ಪ್ಲೇಸ್‌ಮೆಂಟ್ ಇಂಟೆಲಿಜೆನ್ಸ್ ಕಾರ್ಡ್ ಪತ್ತೆಯಾದ ವಸ್ತುವಿನ ಗಾತ್ರ ಕೊಠಡಿಯ ಮಿತಿಗಳೊಳಗೆ ಸರಿಹೊಂದುತ್ತದೆಯೇ ಎಂದು ಸಾರಾಂಶಿಸುತ್ತದೆ, ಲಭ್ಯವಿದ್ದಾಗ ನೆಲದ ಖಾಲಿ ಜಾಗದ ಸೂಚನೆಗಳು ಮತ್ತು ಮೂಲೆ ಸಲಹೆಗಳನ್ನು ತೋರಿಸುತ್ತದೆ, ಮತ್ತು ಆಳ ಅಂದಾಜು ಎಂದಾಗ ಅದನ್ನು ಹೇಳುತ್ತದೆ. ಶೀರ್ಷಿಕೆಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ವಿವರಗಳನ್ನು ವಿಸ್ತೃತವಾಗಿ ನೋಡಿ ಅಥವಾ ಸ್ಥಳ ಉಳಿಸಲು ಕುಗ್ಗಿಸಿ.";
+"faq.furnitureColorAesthetic" = "ಸೌಂದರ್ಯ ಅಂಕಕ್ಕೆ ಬಣ್ಣವನ್ನು ಅಪ್ಲಿಕೇಶನ್ ಹೇಗೆ ಆಯ್ಕೆ ಮಾಡುತ್ತದೆ?";
+"faq.furnitureColorAestheticAnswer" = "ಅಪ್ಲಿಕೇಶನ್ ನೀವು ನೋಡುವ AI ಪೀಠೋಪಕರಣ ಕಟ್‌ಔಟ್ (ಅದೇ ವಿಭಜಿತ ಓವರ್‌ಲೇ) ಒಳಗಿನ ಗೋಚರ ಪಿಕ್ಸೆಲ್‌ಗಳ RGB ಸರಾಸರಿ ಲೆಕ್ಕಿಸುತ್ತದೆ ಮತ್ತು ಅದನ್ನು ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಛತದಿಂದ ಮಾದರಿ ಮಾಡಿದ ಬಣ್ಣಗಳೊಂದಿಗೆ ಹೋಲಿಸುತ್ತದೆ. ಕಟ್‌ಔಟ್ ಸಿದ್ಧವಾಗದಿದ್ದರೆ ವಿಭಜನೆ ನಿಜವಾದ ಮಾದರಿ ನೀಡುವವರೆಗೆ ಕೊಠಡಿ ಪ್ಯಾಲೆಟ್‌ನಿಂದ ಬದಲಿ ಬಣ್ಣ ಬಳಸಲಾಗುತ್ತದೆ.";
+"faq.whatDoHarmonyContrastMean" = "ಸಾಮರಸ್ಯ, ಕಾಂಟ್ರಾಸ್ಟ್ ಮತ್ತು ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಎಂದರೇನು?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "ಇವು ಸರಳ ವಿನ್ಯಾಸ ಮಾರ್ಗದರ್ಶನಗಳು, ರುಚಿಯ ತೀರ್ಮಾನವಲ್ಲ. ಸಾಮರಸ್ಯವು ಪೀಠೋಪಕರಣದ ಬಣ್ಣ ಕೊಠಡಿಯ ಪ್ಯಾಲೆಟ್‌ಗೆ ಹೇಗೆ ಸಂಬಂಧಿಸುತ್ತದೆ ಎಂದು ವಿವರಿಸುತ್ತದೆ (ಉದಾ. ಹತ್ತಿರದ ಅಥವಾ ಪೂರಕ ವರ್ಣಗಳು). ಕಾಂಟ್ರಾಸ್ಟ್ ಸಾಮಾನ್ಯ ನೆಲ ಅಥವಾ ಗೋಡೆಯ ಪ್ರಕಾಶಕ್ಕೆ ವ್ಯತ್ಯಾಸವನ್ನು ಅಳಕೆ ಹಾಕುತ್ತದೆ. ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಕೊಠಡಿಗೆ ಅನುಮಾನಿಸಲಾದ ವಿಶಾಲ ಶೈಲಿ ಟ್ಯಾಗ್‌ಗಳನ್ನು ಡೀಫಾಲ್ಟ್ ಆಧುನಿಕ ಪ್ರೊಫೈಲ್‌ನೊಂದಿಗೆ ಹೋಲಿಸುತ್ತದೆ—ಆದ್ದರಿಂದ ಅಂದಾಜು.";
+"faq.whenDoesAestheticScoreLow" = "ಯಾವಾಗ ಸೌಂದರ್ಯ ಅಂಕ ಕಡಿಮೆ ಕಾಣಬಹುದು ಅಥವಾ \"clash\" ಕಾಣಿಸಬಹುದು?";
+"faq.whenDoesAestheticScoreLowAnswer" = "ಹೊಳೆಯುವ, ಸಂಪೃಕ್ತ ವಸ್ತುಗಳು ಅನೇಕ ಬಾರಿ ಕಡಿಮೆ ಅಂಕ ಪಡೆಯುತ್ತವೆ ಯಾವಾಗ ಅವುಗಳ ವರ್ಣ ಟೋನ್ ನಿಮ್ಮ ಕೊಠಡಿಯ ಮಾದರಿಗೆ ಅಪ್ಲಿಕೇಶನ್‌ನ ಸಾಮರಸ್ಯ ನಿಯಮಗಳೊಂದಿಗೆ ಹೊಂದಿಕೆಯಾಗದಿದ್ದಾಗ—ಉದಾ. ಆಸಿಡ್ ಗ್ರೀನ್, ಮ್ಯಾಜೆಂಟಾ, ನೇರಳೆ ಅಥವಾ ಸೇಫ್ಟಿ-ಆರೆಂಜ್ ಬೆಚ್ಚಗಿನ ಬೇಜ್ ಅಥವಾ ಕಂದು ಕೊಠಡಿಗಳಲ್ಲಿ, ಅಥವಾ ಬಹುತೇಕ ಏಕವರ್ಣದ ಕೊಠಡಿಯಲ್ಲಿ ಜೋರಾದ ಪ್ರೈಮರಿ ಬಣ್ಣಗಳು. ನೆಲ ಅಥವಾ ಗೋಡೆಯ ಪ್ರಕಾಶಕ್ಕೆ ಬಹಳ ಹತ್ತಿರ (ಕಂದು ಮೇಲೆ ಕಂದು, ಬೂದು ಮೇಲೆ ಬೂದು) ಕಾಂಟ್ರಾಸ್ಟ್ ಕಡಿಮೆ ಮಾಡಬಹುದು ನಿಮಗೆ ಇಷ್ಟವಿದ್ದರೂ. ರಸ್ಟಿಕ್ ಅಥವಾ ಸಾಂಪ್ರದಾಯಿಕ ಕೊಠಡಿಗಳಲ್ಲಿ ಶೈಲಿ ಹೊಂದಾಣಿಕೆ ಕಡಿಮೆ ಇರಬಹುದು ಏಕೆಂದರೆ ಪೀಠೋಪಕರಣ ಪ್ರೊಫೈಲ್ ಡೀಫಾಲ್ಟ್ ಆಧುನಿಕ/ಮಿನಿಮಲ್ ಟ್ಯಾಗ್‌ಗಳನ್ನು ಬಳಸುತ್ತದೆ. ದುಡುಕಿನ ಹಿನ್ನೆಲೆಯಿಂದ ಮಸುಕು ಬೂದು ಸರಾಸರಿ ಕೆಲವೊಮ್ಮೆ \"ನ್ಯೂಟ್ರಲ್\" ವಲಯದಲ್ಲಿ ಬೀಳಬಹುದು clash ಬದಲು. ಅಂಕಗಳನ್ನು ಮಾರ್ಗದರ್ಶನವಾಗಿ ಮಾತ್ರ ನೋಡಿ; ನಿಜವಾದ ಅಲಂಕಾರಕ್ಕೆ ನಿಮ್ಮ ಕಣ್ಣನ್ನು ನಂಬಿ.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "ಕೊಠಡಿ ಗಡಿಗಳು";
@@ -280,7 +291,12 @@
 "roomViewer.calibrateWall" = "ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.recenterView" = "ನೋಟ ಮಧ್ಯಕ್ಕೆ";
 "roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
+"roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
+"roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
+"roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯನ್ನು ಆನ್ ಅಥವಾ ಆಫ್ ಮಾಡಲು ಮೆದುಳು ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಆನ್‌ನಲ್ಲಿ ಓವರ್‌ಲೇಯನ್ನು ಚಿಮುಡಿಸಿ ಗಾತ್ರ ಬದಲಿಸಿ.";
+"roomViewer.gestureHintToggleAccessibility" = "ಈ ಸಲಹೆಯನ್ನು ತೋರಿಸಲು ಅಥವಾ ಮರೆಮಾಡಲು ಈ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
+"roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
 "roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";
 "roomViewer.calibrateRoomTitle" = "ಕೊಠಡಿ ಕ್ಯಾಲಿಬ್ರೇಟ್";
@@ -295,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "ಅಗಲ";
 "roomViewer.wallHeightPlaceholder" = "ಎತ್ತರ";
 "roomViewer.saveErrorUnknown" = "ಅಜ್ಞಾತ ದೋಷ";
+"roomViewer.placementIntelligenceTitle" = "ಸ್ಥಾಪನೆ ಬುದ್ಧಿಮತ್ತೆ";
+"roomViewer.placementBadgeStyleOnly" = "ಶೈಲಿ";
+"roomViewer.placementNoFit" = "ಹೊಂದುವುದಿಲ್ಲ";
+"roomViewer.placementFitCount" = "%d ಹೊಂದಿಕೆ";
+"roomViewer.placementDetectedSize" = "ಗುರುತಿಸಲಾಗಿದೆ %.2f × %.2f × %.2f ಮೀ";
+"roomViewer.placementMetricUnavailableNote" = "ಪೂರ್ಣ ಗಾತ್ರ ಪರಿಶೀಲನೆ ಆಳ-ಸಂವೇದನೆಯ iPhone ನಲ್ಲಿ ಉತ್ತಮ. ಕೆಳಗಿನ ಬಣ್ಣ ಸಾಮರಸ್ಯ ಇನ್ನೂ ಸಹಾಯಕವಾಗಿದೆ.";
+"roomViewer.placementHarmonySummary" = "ಸಾಮರಸ್ಯ %.2f (%@) · ವ್ಯತ್ಯಾಸ %.2f · ಶೈಲಿ ಹೊಂದಾಣಿಕೆ %.2f";
+"roomViewer.harmonyTypeAnalogous" = "ಸಮಾನ";
+"roomViewer.harmonyTypeComplementary" = "ಪೂರಕ";
+"roomViewer.harmonyTypeTriadic" = "ತ್ರಯ";
+"roomViewer.harmonyTypeSplitComplementary" = "ವಿಭಜಿತ ಪೂರಕ";
+"roomViewer.harmonyTypeNeutral" = "ತಟಸ್ಥ";
+"roomViewer.harmonyTypeClash" = "ಘರ್ಷಣೆ";
+"roomViewer.aestheticRecoNeutralClash" = "ಪ್ಯಾಲೆಟ್ ಘರ್ಷಣೆ ಕಡಿಮೆ ಮಾಡಲು ಹೆಚ್ಚು ತಟಸ್ಥ ಬಣ್ಣ ಪರಿಗಣಿಸಿ.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "ಬಣ್ಣ ಸಂಬಂಧ ಸಾಮರಸ್ಯಪೂರ್ಣವಾಗಿದೆ ಮತ್ತು ಕೋಣೆಯ ಪ್ಯಾಲೆಟ್‌ಗೆ ಹತ್ತಿರ.";
+"roomViewer.aestheticRecoComplementaryFocal" = "ಪೂರಕ ವ್ಯತ್ಯಾಶ ಬಲವಾದ ಕೇಂದ್ರ ಬಿಂದು ರಚಿಸಬಹುದು.";
+"roomViewer.aestheticRecoContrastLow" = "ನೆಲಕ್ಕೆ ವಿಭಿನ್ನ ದೃಶ್ಯ ವಿಭಜನೆಗೆ ವ್ಯತ್ಯಾಸ ಹೆಚ್ಚಿಸಿ.";
+"roomViewer.aestheticRecoContrastHigh" = "ವ್ಯತ್ಯಾಶ ಬಲವಾಗಿದೆ—ಪೀಸ್ ತಕ್ಷಣ ಕಾಣಿಸುತ್ತದೆ.";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ ಹತ್ತಿರದ ಶೈಲಿ ಈ ಕೋಣೆಯಲ್ಲಿ ಹೆಚ್ಚು ಸುಸಂಗತವಾಗಿ ಕಾಣುತ್ತದೆ.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ಪ್ರಸ್ತುತ ಫರ್ನಿಚರ್ ಪ್ರೊಫೈಲ್ ಕೋಣೆಯ ಪ್ಯಾಲೆಟ್‌ನೊಂದಿಗೆ ವ್ಯಾಪಕವಾಗಿ ಹೊಂದಾಣಿಕೆಯಾಗಿದೆ.";
+"roomViewer.styleTag.modern" = "ಆಧುನಿಕ";
+"roomViewer.styleTag.minimalist" = "ಮಿನಿಮಲ್";
+"roomViewer.styleTag.contemporary" = "ಸಮಕಾಲೀನ";
+"roomViewer.styleTag.industrial" = "ಕೈಗಾರಿಕಾ";
+"roomViewer.styleTag.rustic" = "ಗ್ರಾಮೀಣ";
+"roomViewer.styleTag.farmhouse" = "ಫಾರ್ಮ್‌ಹೌಸ್";
+"roomViewer.styleTag.traditional" = "ಸಾಂಪ್ರದಾಯಿಕ";
+"roomViewer.styleTag.eclectic" = "ಮಿಶ್ರ";
+"roomViewer.styleTag.scandinavian" = "ಸ್ಕ್ಯಾಂಡಿನೇವಿಯನ್";
+"roomViewer.styleTag.nordic" = "ನಾರ್ಡಿಕ್";
+"roomViewer.styleTag.classic" = "ಕ್ಲಾಸಿಕ್";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "ವರದಿ ಸಲ್ಲಿಸು";

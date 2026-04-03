@@ -116,7 +116,7 @@
 "settings.developer" = "المطور";
 "settings.developerFooter" = "فعّل وضع التصحيح لرؤية معلومات الكشف التفصيلية ومقاييس الأداء. اضبط العتبات للتحكم في حساسية الكشف وسلوك التصفية.";
 "settings.debugMode" = "وضع التصحيح";
-"settings.debugModeDescription" = "عرض مربعات الكشف ومعلومات التوقيت";
+"settings.debugModeDescription" = "عرض مربعات الكشف والتوقيت وسجلات تفصيلية في الطرفية (Furniture Fit وحدود PLY ومقياس الطبقة).";
 "settings.currentValue" = "القيمة الحالية:";
 "settings.account" = "الحساب";
 "settings.loggedInAs" = "مسجل الدخول كـ";
@@ -248,6 +248,17 @@
 "faq.roomFitment" = "كيف أتحقق من ملاءمة الأثاث؟";
 "faq.roomFitmentAnswer" = "بعد إضافة الأثاث، يمكنك تغيير حجمه وموضعه في الغرفة ثلاثية الأبعاد لمعرفة مدى ملاءمته لمساحتك وللأثاث الآخر.";
 
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "ذكاء الموضع والجمالية";
+"faq.whatIsPlacementIntelligence" = "ما هو «ذكاء الموضع» (Placement Intelligence)؟";
+"faq.whatIsPlacementIntelligenceAnswer" = "عند تشغيل SmartyPants في عارضات الغرف ثلاثية الأبعاد المدعومة، تعرض بطاقة ذكاء الموضع ما إذا كان حجم الجسم المكتشف يناسب حدود الغرفة، وتلميحات لفراغ الأرضية واقتراحات للزوايا عند توفرها، وتبيّن عندما يكون العمق تقديريًا. اضغط العنوان لعرض التفاصيل أو اترك البطاقة مطوية لتوفير المساحة.";
+"faq.furnitureColorAesthetic" = "كيف تختار التطبيق لونًا لدرجة الجمالية";
+"faq.furnitureColorAestheticAnswer" = "يحسب التطبيق متوسط RGB للبكسلات المرئية داخل قص الذكاء الاصطناعي للأثاث (نفس طبقة التجزئة التي تراها). يُقارَن هذا اللون المتوسط بألوان مأخوذة عينة من الأرضية والجدران والسقف. إذا لم يكن القص جاهزًا بعد، يُستخدم لون احتياطي من لوحة الغرفة حتى توفر التجزئة عينة حقيقية.";
+"faq.whatDoHarmonyContrastMean" = "ماذا تعني الانسجام والتباين وملاءمة الأسلوب؟";
+"faq.whatDoHarmonyContrastMeanAnswer" = "هذه قواعد تصميم بسيطة وليست حكمًا ذوقيًا. يصف الانسجام علاقة لون الأثاث بلوحة الغرفة (مثل ألوان قريبة أو مكمّلة). يقيس التباين اختلاف السطوع عن ألوان أرضية أو جدران نموذجية. تقارن ملاءمة الأسلوب وسوم أسلوب واسعة مُستنتجة للغرفة مع ملف حديث افتراضي، لذا هي تقريبية.";
+"faq.whenDoesAestheticScoreLow" = "متى قد تبدو درجات الجمالية منخفضة أو تظهر «clash»؟";
+"faq.whenDoesAestheticScoreLowAnswer" = "الأشياء الزاهية والشديدة التشبغ غالبًا تحصل على درجة أقل إذا لم يتوافق لونها مع أنماط الانسجام في التطبيق مقارنة بغرفتك—مثل أخضر حامضي أو أرجواني أو بنفسجي أو برتقالي سلامة في غرف دافئة بيج أو بنية، أو ألوان أولية صارخة عندما تكون عينات الغرفة أحادية تقريبًا. تشابه كبير في السطوع مع الأرضية أو الجدار (بني على بني، رمادي على رمادي) قد يخفض التباين حتى لو أعجبك المظهر. الغرف المُستنتَج أسلوبها ريفي أو تقليدي قد تظهر ملاءمة أسلوب أقل لأن ملف الأثاث يستخدم وسومًا حديثة/بسيطة افتراضيًا. متوسطات رمادية باهتة من خلفيات مزدحمة قد تُصنَّف «محايدة» بدل التضارب. تعامل الدرجات كإرشاد فقط وثق بعينك في الديكور الفعلي.";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "حدود الغرفة";
 "boundary.instructions" = "اسحب الدوائر لضبط الحدود";
@@ -298,7 +309,12 @@
 "roomViewer.calibrateWall" = "معايرة الجدار";
 "roomViewer.recenterView" = "إعادة تمركز العرض";
 "roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
+"roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
+"roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
+"roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
+"roomViewer.gestureHintToggleAccessibility" = "اضغط هذا الرمز لإظهار هذه النصيحة أو إخفائها.";
 "roomViewer.checkMeasurement" = "تحقق من القياس";
+"roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";
 "roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";
 "roomViewer.calibrateRoomTitle" = "معايرة الغرفة";
@@ -313,6 +329,37 @@
 "roomViewer.wallWidthPlaceholder" = "العرض";
 "roomViewer.wallHeightPlaceholder" = "الارتفاع";
 "roomViewer.saveErrorUnknown" = "خطأ غير معروف";
+"roomViewer.placementIntelligenceTitle" = "ذكاء التنسيق";
+"roomViewer.placementBadgeStyleOnly" = "الأسلوب";
+"roomViewer.placementNoFit" = "لا يتناسب";
+"roomViewer.placementFitCount" = "%d مناسب";
+"roomViewer.placementDetectedSize" = "مُكتشف %.2f × %.2f × %.2f م";
+"roomViewer.placementMetricUnavailableNote" = "قياس المقاس الكامل يعمل أفضل مع أجهزة iPhone ذات عمق. تناسق الألوان أدناه ما يزال مفيدًا.";
+"roomViewer.placementHarmonySummary" = "انسجام %.2f (%@) · تباين %.2f · تناسق الأسلوب %.2f";
+"roomViewer.harmonyTypeAnalogous" = "مماثل";
+"roomViewer.harmonyTypeComplementary" = "تكميلي";
+"roomViewer.harmonyTypeTriadic" = "ثلاثي";
+"roomViewer.harmonyTypeSplitComplementary" = "تكميلي مُجزّأ";
+"roomViewer.harmonyTypeNeutral" = "محايد";
+"roomViewer.harmonyTypeClash" = "تضارب";
+"roomViewer.aestheticRecoNeutralClash" = "جرّب لونًا أكثر حيادية لتقليل تعارض الألوان.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "علاقة الألوان متناغمة وقريبة من لوحة الغرفة.";
+"roomViewer.aestheticRecoComplementaryFocal" = "التباين التكميلي يمكن أن يخلق بؤرة بصرية قوية.";
+"roomViewer.aestheticRecoContrastLow" = "زِد التباين مع الأرضية لفصل أوضح بصريًا.";
+"roomViewer.aestheticRecoContrastHigh" = "التباين قوي وسيبرز القطعة فورًا.";
+"roomViewer.aestheticRecoStyleMismatch" = "أسلوب أقرب إلى %@ سيبدو أكثر تماسكًا في هذه الغرفة.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ملف الأثاث الحالي متوافق عمومًا مع لوحة ألوان الغرفة.";
+"roomViewer.styleTag.modern" = "عصري";
+"roomViewer.styleTag.minimalist" = "بسيط";
+"roomViewer.styleTag.contemporary" = "معاصر";
+"roomViewer.styleTag.industrial" = "صناعي";
+"roomViewer.styleTag.rustic" = "ريفي";
+"roomViewer.styleTag.farmhouse" = "ريفي أنيق";
+"roomViewer.styleTag.traditional" = "تقليدي";
+"roomViewer.styleTag.eclectic" = "انتقائي";
+"roomViewer.styleTag.scandinavian" = "إسكندنافي";
+"roomViewer.styleTag.nordic" = "شمالي";
+"roomViewer.styleTag.classic" = "كلاسيكي";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "إرسال التقرير";

@@ -116,7 +116,7 @@
 "settings.developer" = "开发者";
 "settings.developerFooter" = "启用除错模式以查看详细的侦测资讯和效能指标。调整閾值以控制侦测灵敏度和筛选行为。";
 "settings.debugMode" = "除错模式";
-"settings.debugModeDescription" = "显示侦测框和计时资讯";
+"settings.debugModeDescription" = "显示侦测框、计时与详细控制台日志（家具适配、PLY 边界、叠加缩放）。";
 "settings.currentValue" = "目前值：";
 "settings.account" = "账户";
 "settings.loggedInAs" = "已登入为";
@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何查看家具是否合适？";
 "faq.roomFitmentAnswer" = "添加家具后，你可以在 3D 房间中缩放和移动它，对照现有空间和其他家具查看是否合适。";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "摆放智能与美学";
+"faq.whatIsPlacementIntelligence" = "什么是「摆放智能」（Placement Intelligence）？";
+"faq.whatIsPlacementIntelligenceAnswer" = "在支持的 3D 房间查看器中开启 SmartyPants 时，「摆放智能」卡片会汇总：检测到的物体尺寸是否在房间边界内、在可用时给出地面可放区域与角落建议，并标明深度是否为估算值。点击标题可展开全部说明，保持折叠可节省屏幕空间。";
+"faq.furnitureColorAesthetic" = "美学评分用的颜色是怎么来的？";
+"faq.furnitureColorAestheticAnswer" = "应用会对你看到的 AI 家具抠图（与实时分割叠加层相同）里、不透明像素的颜色做 RGB 平均，再与从地面、墙面、天花板采样的颜色比较。若抠图尚未就绪，会暂用房间调色板的推断色，直到分割给出真实采样。";
+"faq.whatDoHarmonyContrastMean" = "和谐度、对比度、风格匹配是什么意思？";
+"faq.whatDoHarmonyContrastMeanAnswer" = "它们只是简单的设计启发规则，不是品味评判。和谐度描述家具颜色与房间主色之间的关系（例如类似色或互补色）。对比度衡量与典型地面、墙面亮度的差异。风格匹配把从房间推断的宽泛风格标签与默认的「现代/简约」档案对比，因此仅供参考。";
+"faq.whenDoesAestheticScoreLow" = "什么情况下美学分数会偏低或显示「冲突（clash）」？";
+"faq.whenDoesAestheticScoreLowAnswer" = "高饱和物体若色相与应用内的和谐配色规则、以及你房间采样色不协调，分数往往更低——例如酸绿、品红、紫色、安全橙放在偏米色、暖棕调房间里，或空间采样几乎单色时仍用刺眼原色。与地板或墙面亮度非常接近（棕上棕、灰上灰）也可能拉低对比度，即便你主观上喜欢。若房间被推断为乡村风、传统风，风格匹配可能偏低，因为家具档案默认带现代/简约标签。杂乱背景下得到的灰蒙蒙平均色有时会落在「中性」区间而非冲突。分数仅供提示，实际搭配请以肉眼为准。";
+
 "faq.howToView" = "如何检视我的3D房间？";
 "faq.howToViewAnswer" = "点擊主画面上的任何房间以开启3D检视器。你可以使用触控手势旋转、缩放和平移房间。";
 "faq.howToPlace" = "如何在房间中放置家具？";
@@ -280,7 +292,12 @@
 "roomViewer.calibrateWall" = "校准墙面";
 "roomViewer.recenterView" = "视图居中";
 "roomViewer.resetOverlayScale" = "重置叠加比例";
+"roomViewer.pinchGestureHintAccessibility" = "双指捏合可缩放房间。开启家具分割时，捏合还可放大或缩小叠加层。";
+"roomViewer.pinchGestureHintExplanation" = "双指捏合缩放房间。开启家具适配后，捏合还可缩放分割叠加层。";
+"roomViewer.brainGestureHintExplanation" = "点按大脑图标可开关家具检测。开启后，捏合叠加层可调整大小。";
+"roomViewer.gestureHintToggleAccessibility" = "点按此图标可显示或隐藏此提示。";
 "roomViewer.checkMeasurement" = "检查测量";
+"roomViewer.measuringRoom" = "正在测量房间…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在保存房间…";
 "roomViewer.calibrateRoomTitle" = "校准房间";
@@ -295,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "宽度";
 "roomViewer.wallHeightPlaceholder" = "高度";
 "roomViewer.saveErrorUnknown" = "未知错误";
+"roomViewer.placementIntelligenceTitle" = "摆放智能";
+"roomViewer.placementBadgeStyleOnly" = "风格";
+"roomViewer.placementNoFit" = "放不下";
+"roomViewer.placementFitCount" = "%d 处可放";
+"roomViewer.placementDetectedSize" = "测得 %.2f × %.2f × %.2f 米";
+"roomViewer.placementMetricUnavailableNote" = "完整尺寸适配在具备深度传感的 iPhone 上更准确。下方的色彩和谐度仍有参考价值。";
+"roomViewer.placementHarmonySummary" = "协调度 %.2f（%@）· 对比度 %.2f · 风格匹配 %.2f";
+"roomViewer.harmonyTypeAnalogous" = "类似色";
+"roomViewer.harmonyTypeComplementary" = "互补色";
+"roomViewer.harmonyTypeTriadic" = "三色";
+"roomViewer.harmonyTypeSplitComplementary" = "分裂互补";
+"roomViewer.harmonyTypeNeutral" = "中性";
+"roomViewer.harmonyTypeClash" = "冲突";
+"roomViewer.aestheticRecoNeutralClash" = "试试更中性的颜色，以减轻配色冲突。";
+"roomViewer.aestheticRecoAnalogousHarmony" = "色彩关系和谐，且接近房间主色调。";
+"roomViewer.aestheticRecoComplementaryFocal" = "互补对比能形成强烈的视觉焦点。";
+"roomViewer.aestheticRecoContrastLow" = "提高与地面的对比度，层次会更清晰。";
+"roomViewer.aestheticRecoContrastHigh" = "对比很强，家具会非常醒目。";
+"roomViewer.aestheticRecoStyleMismatch" = "风格更接近「%@」时，在这个房间里会更协调。";
+"roomViewer.aestheticRecoBroadlyCompatible" = "当前家具概况与房间整体配色大体相容。";
+"roomViewer.styleTag.modern" = "现代";
+"roomViewer.styleTag.minimalist" = "极简";
+"roomViewer.styleTag.contemporary" = "当代";
+"roomViewer.styleTag.industrial" = "工业风";
+"roomViewer.styleTag.rustic" = "乡村";
+"roomViewer.styleTag.farmhouse" = "农舍";
+"roomViewer.styleTag.traditional" = "传统";
+"roomViewer.styleTag.eclectic" = "混搭";
+"roomViewer.styleTag.scandinavian" = "斯堪的纳维亚";
+"roomViewer.styleTag.nordic" = "北欧";
+"roomViewer.styleTag.classic" = "经典";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交报告";

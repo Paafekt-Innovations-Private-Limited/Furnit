@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Bridges ``GaussianSplatView.Coordinator`` so SwiftUI parents (e.g. ``SharpRoomView``) can call ``measureRoom()`` after a frame has been rendered.
 final class GaussianSplatMeasurementHost: ObservableObject {
@@ -24,5 +25,16 @@ final class GaussianSplatMeasurementHost: ObservableObject {
 
     func sampleDepthGrid(rows: Int, cols: Int) -> [[Float?]] {
         coordinator?.sampleDepthGrid(rows: rows, cols: cols) ?? []
+    }
+
+    /// Captures the next rendered splat frame via Metal readback (reliable for `MTKView` / `CAMetalLayer`).
+    func captureScreenshot(completion: @escaping (UIImage?) -> Void) {
+        guard let coordinator else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+        coordinator.scheduleScreenshotCapture(completion: completion)
     }
 }

@@ -116,7 +116,7 @@
 "settings.developer" = "開發者";
 "settings.developerFooter" = "啟用除錯模式以查看詳細的偵測資訊和效能指標。調整閾值以控制偵測靈敏度和篩選行為。";
 "settings.debugMode" = "除錯模式";
-"settings.debugModeDescription" = "顯示偵測框和計時資訊";
+"settings.debugModeDescription" = "顯示偵測框、計時與詳細主控台日誌（家具適配、PLY 邊界、疊加縮放）。";
 "settings.currentValue" = "目前值：";
 "settings.account" = "帳戶";
 "settings.loggedInAs" = "已登入為";
@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何確認傢俱是否合適？";
 "faq.roomFitmentAnswer" = "加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "擺放智慧與美學";
+"faq.whatIsPlacementIntelligence" = "什麼是「擺放智慧」（Placement Intelligence）？";
+"faq.whatIsPlacementIntelligenceAnswer" = "在支援的 3D 房間檢視器中開啟 SmartyPants 時，「擺放智慧」卡片會摘要：偵測到的物件尺寸是否在房間邊界內、在可用時顯示地面可放提示與角落建議，並註明深度是否為估算。點標題可展開完整說明，維持摺疊可節省畫面空間。";
+"faq.furnitureColorAesthetic" = "美學評分用的顏色怎麼來的？";
+"faq.furnitureColorAestheticAnswer" = "App 會對 AI 家具去背（與即時分割疊加層相同）中可見像素做 RGB 平均，再與從地板、牆面、天花板取樣的顏色比較。若去背尚未就緒，會暫用房間調色板的推斷色，直到分割提供真實取樣。";
+"faq.whatDoHarmonyContrastMean" = "和諧度、對比、風格契合是什麼意思？";
+"faq.whatDoHarmonyContrastMeanAnswer" = "它們只是簡單的設計啟發規則，不是品味評判。和諧度描述家具顏色與房間主色的關係（例如類似色或互補色）。對比衡量與典型地面、牆面亮度的差異。風格契合把從房間推斷的寬泛風格標籤與預設的「現代／極簡」設定相比，故僅供參考。";
+"faq.whenDoesAestheticScoreLow" = "什麼情況下美學分數會偏低或顯示「衝突（clash）」？";
+"faq.whenDoesAestheticScoreLowAnswer" = "高飽和物件若色相與 App 內的和諧配色規則、以及你房間取樣色不搭，分數往往較低——例如酸綠、洋紅、紫色、安全橘放在偏米色、暖棕調房間，或空間取樣幾乎單色卻仍用刺眼原色。與地板或牆面亮度非常接近（棕上棕、灰上灰）也可能拉低對比，即便你主觀喜歡。若房間被推斷為鄉村風、傳統風，風格契合可能偏低，因為家具設定預設帶現代／極簡標籤。雜亂背景下得到的灰濛濛平均色有時會落在「中性」區間而非衝突。分數僅供提示，實際布置請以肉眼為準。";
+
 "faq.howToView" = "如何檢視我的3D房間？";
 "faq.howToViewAnswer" = "點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。";
 "faq.howToPlace" = "如何在房間中放置傢俱？";
@@ -280,7 +292,12 @@
 "roomViewer.calibrateWall" = "校準牆面";
 "roomViewer.recenterView" = "檢視畫面置中";
 "roomViewer.resetOverlayScale" = "重設疊加比例";
+"roomViewer.pinchGestureHintAccessibility" = "雙指捏合可縮放房間。開啟家具分割時，捏合亦可放大或縮小疊加層。";
+"roomViewer.pinchGestureHintExplanation" = "雙指捏合縮放房間。開啟家具偵測後，捏合亦可縮放分割疊加層。";
+"roomViewer.brainGestureHintExplanation" = "點大腦圖示可開關家具偵測。開啟時，捏合疊加層可調整大小。";
+"roomViewer.gestureHintToggleAccessibility" = "點此圖示可顯示或隱藏此提示。";
 "roomViewer.checkMeasurement" = "檢查測量";
+"roomViewer.measuringRoom" = "正在測量房間…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在儲存房間…";
 "roomViewer.calibrateRoomTitle" = "校準房間";
@@ -295,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "寬度";
 "roomViewer.wallHeightPlaceholder" = "高度";
 "roomViewer.saveErrorUnknown" = "未知錯誤";
+"roomViewer.placementIntelligenceTitle" = "擺放智慧";
+"roomViewer.placementBadgeStyleOnly" = "風格";
+"roomViewer.placementNoFit" = "放不下";
+"roomViewer.placementFitCount" = "%d 處可放";
+"roomViewer.placementDetectedSize" = "測得 %.2f × %.2f × %.2f 公尺";
+"roomViewer.placementMetricUnavailableNote" = "完整尺寸適配在具備深度感測的 iPhone 上更準確。下方的色彩和諧度仍有參考價值。";
+"roomViewer.placementHarmonySummary" = "協調度 %.2f（%@）· 對比度 %.2f · 風格契合 %.2f";
+"roomViewer.harmonyTypeAnalogous" = "類似色";
+"roomViewer.harmonyTypeComplementary" = "互補色";
+"roomViewer.harmonyTypeTriadic" = "三色";
+"roomViewer.harmonyTypeSplitComplementary" = "分裂互補";
+"roomViewer.harmonyTypeNeutral" = "中性";
+"roomViewer.harmonyTypeClash" = "衝突";
+"roomViewer.aestheticRecoNeutralClash" = "試試更中性的顏色，以減輕配色衝突。";
+"roomViewer.aestheticRecoAnalogousHarmony" = "色彩和諧，且接近房間主色調。";
+"roomViewer.aestheticRecoComplementaryFocal" = "互補對比能形成強烈的視覺焦點。";
+"roomViewer.aestheticRecoContrastLow" = "提高與地面的對比度，層次會更清晰。";
+"roomViewer.aestheticRecoContrastHigh" = "對比很強，家具會非常醒目。";
+"roomViewer.aestheticRecoStyleMismatch" = "風格更接近「%@」時，在這個房間裡會更協調。";
+"roomViewer.aestheticRecoBroadlyCompatible" = "目前家具概況與房間整體配色大致相容。";
+"roomViewer.styleTag.modern" = "現代";
+"roomViewer.styleTag.minimalist" = "極簡";
+"roomViewer.styleTag.contemporary" = "當代";
+"roomViewer.styleTag.industrial" = "工業風";
+"roomViewer.styleTag.rustic" = "鄉村";
+"roomViewer.styleTag.farmhouse" = "農舍";
+"roomViewer.styleTag.traditional" = "傳統";
+"roomViewer.styleTag.eclectic" = "混搭";
+"roomViewer.styleTag.scandinavian" = "斯堪地那維亞";
+"roomViewer.styleTag.nordic" = "北歐";
+"roomViewer.styleTag.classic" = "經典";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交報告";
