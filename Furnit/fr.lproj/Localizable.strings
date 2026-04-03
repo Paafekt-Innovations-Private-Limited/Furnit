@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "Comment vérifier si les meubles conviennent ?";
 "faq.roomFitmentAnswer" = "Après avoir ajouté un meuble, redimensionnez-le et déplacez-le dans la pièce 3D pour voir comment il s'intègre à l'espace et aux autres meubles.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Placement et esthétique";
+"faq.whatIsPlacementIntelligence" = "Qu'est-ce que le « Placement Intelligence » ?";
+"faq.whatIsPlacementIntelligenceAnswer" = "Lorsque SmartyPants est actif dans certains visionneurs 3D, une fiche Placement Intelligence résume si la taille de l'objet détecté respecte les limites de la pièce, propose des indications d'emplacement au sol et des suggestions de coins quand c'est possible, et signale lorsque la profondeur est estimée. Touchez l'en-tête pour tout développer ou laissez la fiche repliée pour gagner de la place.";
+"faq.furnitureColorAesthetic" = "Comment l'app choisit-elle une couleur pour le score esthétique ?";
+"faq.furnitureColorAestheticAnswer" = "L'app calcule la moyenne RVB des pixels visibles dans la découpe IA du meuble (le même masque segmenté à l'écran). Cette couleur moyenne est comparée aux couleurs échantillonnées sur le sol, les murs et le plafond. Si la découpe n'est pas prête, une couleur de repli est tirée de la palette de la pièce jusqu'à ce que la segmentation fournisse un vrai échantillon.";
+"faq.whatDoHarmonyContrastMean" = "Que signifient harmonie, contraste et adéquation de style ?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "Ce sont des heuristiques de design simples, pas un jugement de goût. L'harmonie décrit comment la couleur du meuble se rapporte à la palette de la pièce (teintes analogues ou complémentaires, par exemple). Le contraste mesure l'écart de luminosité par rapport aux sols ou murs typiques. L'adéquation de style compare des étiquettes de style larges déduites pour la pièce à un profil moderne par défaut, donc c'est approximatif.";
+"faq.whenDoesAestheticScoreLow" = "Quand les scores esthétiques peuvent-ils être bas ou afficher un « clash » ?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Les objets vifs et saturés obtiennent souvent un score plus faible si leur teinte ne s'aligne pas sur les schémas harmonieux de l'app par rapport à votre pièce — par exemple vert acide, magenta, violet ou orange sécurité dans des pièces beiges ou chaudes, ou couleurs primaires criardes quand l'échantillonnage du mur/sol est surtout monochrome. Une luminosité très proche du sol ou du mur (brun sur brun, gris sur gris) peut réduire le contraste même si vous aimez le rendu. Les pièces déduites « rustiques » ou « traditionnelles » peuvent avoir une adéquation de style plus basse car le profil meuble utilise des étiquettes moderne/minimal par défaut. Un gris terne ou boueux issu d'arrière-plans chargés peut tomber en zone « neutre » plutôt qu'en clash. Les scores sont indicatifs seulement : pour la déco réelle, faites confiance à votre œil.";
+
 "faq.howToView" = "Comment visualiser ma pièce 3D ?";
 "faq.howToViewAnswer" = "Appuyez sur n'importe quelle pièce de votre écran d'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.";
 "faq.howToPlace" = "Comment placer des meubles dans ma pièce ?";

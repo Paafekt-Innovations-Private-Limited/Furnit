@@ -1161,6 +1161,16 @@ struct SupportView: View {
                 ]
             ),
             FAQSection(
+                title: "faq.placementIntelligence".localized,
+                icon: "paintpalette.fill",
+                items: [
+                    FAQItem(question: "faq.whatIsPlacementIntelligence".localized, answer: "faq.whatIsPlacementIntelligenceAnswer".localized),
+                    FAQItem(question: "faq.furnitureColorAesthetic".localized, answer: "faq.furnitureColorAestheticAnswer".localized),
+                    FAQItem(question: "faq.whatDoHarmonyContrastMean".localized, answer: "faq.whatDoHarmonyContrastMeanAnswer".localized),
+                    FAQItem(question: "faq.whenDoesAestheticScoreLow".localized, answer: "faq.whenDoesAestheticScoreLowAnswer".localized)
+                ]
+            ),
+            FAQSection(
                 title: "faq.roomControls".localized,
                 icon: "cube.fill",
                 items: [

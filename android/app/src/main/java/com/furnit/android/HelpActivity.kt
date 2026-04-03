@@ -83,6 +83,16 @@ class HelpActivity : AppCompatActivity() {
                 )
             ),
             FAQSection(
+                titleResId = R.string.faq_placement_intelligence,
+                icon = "palette",
+                items = listOf(
+                    FAQItem(R.string.faq_what_is_placement_intelligence, R.string.faq_what_is_placement_intelligence_answer),
+                    FAQItem(R.string.faq_furniture_color_aesthetic, R.string.faq_furniture_color_aesthetic_answer),
+                    FAQItem(R.string.faq_what_do_harmony_contrast_mean, R.string.faq_what_do_harmony_contrast_mean_answer),
+                    FAQItem(R.string.faq_when_does_aesthetic_score_low, R.string.faq_when_does_aesthetic_score_low_answer)
+                )
+            ),
+            FAQSection(
                 titleResId = R.string.faq_room_controls,
                 icon = "cube",
                 items = listOf(
@@ -177,6 +187,7 @@ class HelpActivity : AppCompatActivity() {
                 "camera" -> "\uD83D\uDCF7"  // Camera emoji
                 "brain" -> "\uD83E\uDDE0"   // Brain emoji
                 "ruler" -> "\uD83D\uDCCF"   // Straight ruler emoji
+                "palette" -> "\uD83C\uDFA8" // Artist palette emoji
                 "cube" -> "\uD83D\uDDBC"    // Cube emoji
                 else -> "\u2753"            // Question mark
             }

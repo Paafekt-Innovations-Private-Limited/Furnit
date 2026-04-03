@@ -212,6 +212,17 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "Wie prüfe ich, ob Möbel passen?";
 "faq.roomFitmentAnswer" = "Nach dem Hinzufügen können Sie Möbel im 3D-Raum skalieren und verschieben und so sehen, wie sie zu Raum und anderen Möbeln passen.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Platzierung & Ästhetik";
+"faq.whatIsPlacementIntelligence" = "Was ist „Placement Intelligence“?";
+"faq.whatIsPlacementIntelligenceAnswer" = "Wenn SmartyPants in unterstützten 3D-Raumansichten aktiv ist, fasst eine Karte „Placement Intelligence“ zusammen, ob die erkannte Objektgröße in Ihre Raumgrenzen passt, zeigt bei Bedarf Boden- und Eckvorschläge und weist darauf hin, wenn die Tiefe geschätzt ist. Tippen Sie auf die Kopfzeile für alle Details oder lassen Sie die Karte eingeklappt, um Platz zu sparen.";
+"faq.furnitureColorAesthetic" = "Wie wählt die App eine Farbe für die Ästhetikbewertung?";
+"faq.furnitureColorAestheticAnswer" = "Die App mittelt die RGB-Farbe der sichtbaren Pixel in der KI-Möbelauswahl (demselben segmentierten Overlay). Diese mittlere Farbe wird mit Farben verglichen, die aus Boden, Wänden und Decke Ihres Raums gesampelt wurden. Ist die Auswahl noch nicht bereit, nutzt die App vorerst eine Farbe aus der Raumpalette, bis die Segmentierung echte Pixel liefert.";
+"faq.whatDoHarmonyContrastMean" = "Was bedeuten Harmonie, Kontrast und Stil-Treffer?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "Das sind einfache Design-Heuristiken, kein Geschmacksurteil. Harmonie beschreibt, wie sich die Möbelfarbe zur Raumpalette verhält (z. B. analogue oder komplementäre Töne). Kontrast ist, wie unterschiedlich die Helligkeit zu typischen Boden- oder Wandfarben ist. Stil-Treffer vergleicht grobe Stil-Labels des Raums mit einem standardmäßig modernen Profil und ist daher nur annähernd.";
+"faq.whenDoesAestheticScoreLow" = "Wann können ästhetische Werte niedrig sein oder „clash“ zeigen?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Leuchtend gesättigte Objekte fallen oft schlechter aus, wenn ihr Farbton nicht zu den harmonischen Mustern der App gegenüber Ihrem Raum passt – z. B. giftgrün, Magenta, Violett oder signalorange in warmen Beige- oder Braunräumen, oder grell Primär in einem Raum mit überwiegender Farbfamilie. Sehr ähnliche Helligkeit zu Boden oder Wand (Braun auf Braun, Grau auf Grau) kann den Kontrast senken. Als rustikal oder traditionell erkannte Räume können einen niedrigeren Stil-Treffer zeigen, weil das Möbelprofil standardmäßig moderne/minimalistische Stichwörter nutzt. Matter Grau- oder Schmutzmittel aus unruhigem Hintergrund kann neutral statt clash wirken. Die Werte sind nur Orientierung – beim echten Einrichten zählt Ihr Urteil.";
 "faq.howToView" = "Wie betrachte ich meinen 3D-Raum?";
 "faq.howToViewAnswer" = "Tippen Sie auf einen beliebigen Raum auf Ihrem Startbildschirm, um den 3D-Viewer zu öffnen. Sie können mit Touch-Gesten drehen, zoomen und schwenken.";
 "faq.howToPlace" = "Wie platziere ich Möbel in meinem Raum?";

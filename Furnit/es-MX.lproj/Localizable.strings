@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "¿Cómo compruebo si el mueble encaja?";
 "faq.roomFitmentAnswer" = "Tras añadir un mueble, redimensiónalo y muévelo en el cuarto 3D para ver cómo encaja con el espacio y otros muebles.";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Inteligencia de colocación y estética";
+"faq.whatIsPlacementIntelligence" = "¿Qué es Placement Intelligence?";
+"faq.whatIsPlacementIntelligenceAnswer" = "Con SmartyPants activo en visores 3D compatibles, una tarjeta de Placement Intelligence resume si el tamaño del objeto detectado cabe en los límites del cuarto, muestra pistas de espacio en el piso y sugerencias de esquinas cuando hay datos, e indica si la profundidad es estimada. Toca el encabezado para ver todos los detalles o déjala plegada para ahorrar espacio.";
+"faq.furnitureColorAesthetic" = "¿Cómo elige la app un color para la puntuación estética?";
+"faq.furnitureColorAestheticAnswer" = "La app promedia el RGB de los píxeles visibles dentro del recorte IA del mueble (la misma superposición segmentada). Ese color medio se compara con colores muestreados del piso, paredes y techo. Si el recorte aún no está listo, se usa un color de respaldo de la paleta del cuarto hasta que la segmentación aporte una muestra real.";
+"faq.whatDoHarmonyContrastMean" = "¿Qué significan armonía, contraste y ajuste de estilo?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "Son heurísticas de diseño sencillas, no un juicio de gusto. La armonía describe cómo se relaciona el color del mueble con la paleta del cuarto (por ejemplo tonos análogos o complementarios). El contraste mide cuánto difiere el brillo respecto a pisos o paredes típicos. El ajuste de estilo compara etiquetas de estilo amplias inferidas para el cuarto con un perfil moderno por defecto, así que es aproximado.";
+"faq.whenDoesAestheticScoreLow" = "¿Cuándo pueden verse bajas las puntuaciones estéticas o aparecer \"clash\"?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Los objetos muy saturados suelen puntuar peor si su matiz no encaja con los esquemas armónicos de la app frente a tu cuarto: por ejemplo verde ácido, magenta, morado o naranja de seguridad en espacios cálidos beige o tostados, o primarios chillones cuando la muestra del espacio es casi monocromática. Un brillo muy parecido al piso o la pared (café sobre café, gris sobre gris) puede bajar el contraste aunque te guste el resultado. Los cuartos inferidos como rústicos o tradicionales pueden mostrar menos ajuste de estilo porque el perfil del mueble usa etiquetas modernas/minimal por defecto. Promedios grises o sucios con fondos cargados pueden caer en una banda \"neutral\" en lugar de clash. Las puntuaciones son solo orientativas: para decorar de verdad, confía también en tu ojo.";
+
 "faq.howToView" = "¿Cómo veo mi cuarto 3D?";
 "faq.howToViewAnswer" = "Toca cualquier cuarto en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por el cuarto usando gestos táctiles.";
 "faq.howToPlace" = "¿Cómo coloco muebles en mi cuarto?";

@@ -264,6 +264,17 @@
 "faq.roomFitment" = "How do I check if furniture fits?";
 "faq.roomFitmentAnswer" = "After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.";
 
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "Placement intelligence & aesthetic";
+"faq.whatIsPlacementIntelligence" = "What is Placement Intelligence?";
+"faq.whatIsPlacementIntelligenceAnswer" = "While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card summarizes whether the detected object's size fits your room bounds, shows floor-fit hints and corner suggestions when available, and notes when depth is estimated. Tap the header to expand full details, or leave it collapsed to save space.";
+"faq.furnitureColorAesthetic" = "How does the app pick a color for aesthetic scoring?";
+"faq.furnitureColorAestheticAnswer" = "The app averages the RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared to colors sampled from your room's floor, walls, and ceiling. If the cutout is not ready yet, a fallback color is taken from the room palette until segmentation supplies a real sample.";
+"faq.whatDoHarmonyContrastMean" = "What do harmony, contrast, and style fit mean?";
+"faq.whatDoHarmonyContrastMeanAnswer" = "These are simple design heuristics, not a judgment of taste. Harmony describes how the furniture color relates to the room palette (for example analogous or complementary hues). Contrast is how different the brightness is from typical floor or wall colors. Style fit compares broad style labels inferred for the room with a default modern profile, so it is approximate.";
+"faq.whenDoesAestheticScoreLow" = "When might aesthetic scores look low or show \"clash\"?";
+"faq.whenDoesAestheticScoreLowAnswer" = "Bright, saturated objects often score worse when their hue does not line up with the app's harmonious color schemes against your room—for example acid green, magenta, purple, or safety-orange props against warm beige or tan rooms, or loud primaries in a room sampled as mostly one hue family. Very similar brightness to the floor or wall (brown-on-brown, gray-on-gray) can lower contrast even if you like the look. Rooms inferred as rustic or traditional can show lower style fit because the furniture profile uses default modern/minimal tags. Dull gray or muddy averages from busy backgrounds may land in a neutral band instead of clash. Treat scores as guides only and trust your eye for real decor.";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "Room Boundaries";
 "boundary.instructions" = "Drag the circles to adjust boundaries";

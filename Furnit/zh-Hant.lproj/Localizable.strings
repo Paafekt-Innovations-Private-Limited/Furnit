@@ -212,6 +212,18 @@
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何確認傢俱是否合適？";
 "faq.roomFitmentAnswer" = "加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。";
+
+// FAQ - Placement intelligence & aesthetic
+"faq.placementIntelligence" = "擺放智慧與美學";
+"faq.whatIsPlacementIntelligence" = "什麼是「擺放智慧」（Placement Intelligence）？";
+"faq.whatIsPlacementIntelligenceAnswer" = "在支援的 3D 房間檢視器中開啟 SmartyPants 時，「擺放智慧」卡片會摘要：偵測到的物件尺寸是否在房間邊界內、在可用時顯示地面可放提示與角落建議，並註明深度是否為估算。點標題可展開完整說明，維持摺疊可節省畫面空間。";
+"faq.furnitureColorAesthetic" = "美學評分用的顏色怎麼來的？";
+"faq.furnitureColorAestheticAnswer" = "App 會對 AI 家具去背（與即時分割疊加層相同）中可見像素做 RGB 平均，再與從地板、牆面、天花板取樣的顏色比較。若去背尚未就緒，會暫用房間調色板的推斷色，直到分割提供真實取樣。";
+"faq.whatDoHarmonyContrastMean" = "和諧度、對比、風格契合是什麼意思？";
+"faq.whatDoHarmonyContrastMeanAnswer" = "它們只是簡單的設計啟發規則，不是品味評判。和諧度描述家具顏色與房間主色的關係（例如類似色或互補色）。對比衡量與典型地面、牆面亮度的差異。風格契合把從房間推斷的寬泛風格標籤與預設的「現代／極簡」設定相比，故僅供參考。";
+"faq.whenDoesAestheticScoreLow" = "什麼情況下美學分數會偏低或顯示「衝突（clash）」？";
+"faq.whenDoesAestheticScoreLowAnswer" = "高飽和物件若色相與 App 內的和諧配色規則、以及你房間取樣色不搭，分數往往較低——例如酸綠、洋紅、紫色、安全橘放在偏米色、暖棕調房間，或空間取樣幾乎單色卻仍用刺眼原色。與地板或牆面亮度非常接近（棕上棕、灰上灰）也可能拉低對比，即便你主觀喜歡。若房間被推斷為鄉村風、傳統風，風格契合可能偏低，因為家具設定預設帶現代／極簡標籤。雜亂背景下得到的灰濛濛平均色有時會落在「中性」區間而非衝突。分數僅供提示，實際布置請以肉眼為準。";
+
 "faq.howToView" = "如何檢視我的3D房間？";
 "faq.howToViewAnswer" = "點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。";
 "faq.howToPlace" = "如何在房間中放置傢俱？";
