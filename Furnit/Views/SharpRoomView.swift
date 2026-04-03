@@ -207,7 +207,11 @@ struct SharpRoomView: View {
     @State private var latestFitCheckResult: FitCheckResult?
     @State private var latestCornerPlacementSuggestions: [CornerPlacementSuggestion] = []
     @State private var latestEstimatedFurnitureDepthMeters: Float?
-    @State private var isPlacementIntelligenceExpanded = true
+    @State private var latestAestheticScore: AestheticScore?
+    /// Mean sRGB (0…1) from composited YOLOE cutout pixels; drives ``FurnitureProfile.primaryColor`` when set.
+    @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
+    /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
+    @State private var isPlacementIntelligenceExpanded = false
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -311,9 +315,12 @@ struct SharpRoomView: View {
                 latestFitCheckResult = nil
                 latestCornerPlacementSuggestions = []
                 latestEstimatedFurnitureDepthMeters = nil
+                latestAestheticScore = nil
+                segmentedFurnitureMeanSRGB = nil
                 yoloeService.releaseResources()
             }
         }
+        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: detectedFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
@@ -795,6 +802,9 @@ struct SharpRoomView: View {
             onFirstSegmentationComplete: {
                 furnitureFitInitialSegmentationDone = true
                 logFurnitureFitSize("phase=first_segmentation_complete viewer_session=true")
+            },
+            onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                segmentedFurnitureMeanSRGB = meanSRGB
             }
         )
         .ignoresSafeArea()
@@ -1093,29 +1103,23 @@ struct SharpRoomView: View {
                             .font(.caption2)
                             .foregroundColor(.gray)
                     }
-                } else {
-                    Text(
-                        fit.fitsInRoom
-                            ? (fit.fitLocations.isEmpty
-                                ? "Fits room bounds."
-                                : "Fits room with \(fit.fitLocations.count) candidate region(s).")
-                            : "Current footprint exceeds room extents."
-                    )
-                    .font(.caption2)
-                    .foregroundColor(fit.fitsInRoom ? .green : .red)
-                    if let bestCorner = latestCornerPlacementSuggestions.first {
+                    if let aesthetic = latestAestheticScore {
                         Text(
                             String(
-                                format: "Best corner %.2f",
-                                bestCorner.score
+                                format: "Harmony %.2f (%@) · contrast %.2f · style fit %.2f",
+                                aesthetic.harmonyScore,
+                                aesthetic.harmonyType.rawValue,
+                                aesthetic.contrastScore,
+                                aesthetic.styleCompatibilityScore
                             )
                         )
                         .font(.caption2)
-                        .foregroundColor(.orange)
-                    } else if latestEstimatedFurnitureDepthMeters != nil {
-                        Text("Depth estimated")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
+                        .foregroundColor(.white.opacity(0.88))
+                        ForEach(Array(aesthetic.recommendations.prefix(4).enumerated()), id: \.offset) { _, line in
+                            Text("• \(line)")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.86))
+                        }
                     }
                 }
             }
@@ -1131,12 +1135,12 @@ struct SharpRoomView: View {
         roomIntelligencePlacementCard
             .onChange(of: showingFurnitureFit) { _, isShowing in
                 if !isShowing {
-                    isPlacementIntelligenceExpanded = true
+                    isPlacementIntelligenceExpanded = false
                 }
             }
             .onChange(of: latestFitCheckResult?.fitsInRoom) { _, _ in
                 if latestFitCheckResult == nil {
-                    isPlacementIntelligenceExpanded = true
+                    isPlacementIntelligenceExpanded = false
                 }
             }
     }
@@ -1754,6 +1758,7 @@ struct SharpRoomView: View {
             latestFitCheckResult = nil
             latestCornerPlacementSuggestions = []
             latestEstimatedFurnitureDepthMeters = nil
+            latestAestheticScore = nil
             return
         }
 
@@ -1766,10 +1771,71 @@ struct SharpRoomView: View {
         latestFitCheckResult = fitResult
         latestCornerPlacementSuggestions = suggestions
 
+        let palette = roomModel.surfacePalette
+        let roomStyleTags = inferredRoomStyleTags(from: palette)
+        let furnitureProfile = heuristicFurnitureProfileForAesthetic(
+            roomModel: roomModel,
+            segmentedMeanSRGB: segmentedFurnitureMeanSRGB
+        )
+        let aestheticAdvisor = AestheticAdvisor(palette: palette, roomStyleTags: roomStyleTags)
+        latestAestheticScore = aestheticAdvisor.evaluate(furniture: furnitureProfile)
+
         logDebug(
             "📐 [SharpRoomView] Placement intelligence updated " +
             "furniture=\(String(format: "%.2f", furniture.widthM))×\(String(format: "%.2f", furniture.heightM))×\(String(format: "%.2f", furniture.depthM))m " +
-            "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count)"
+            "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count) " +
+            "aesthetic_h=\(String(format: "%.2f", latestAestheticScore?.harmonyScore ?? 0))"
+        )
+    }
+
+    /// Maps splat-sampled ``SurfacePalette`` material hints to advisor style tags.
+    private func inferredRoomStyleTags(from palette: SurfacePalette) -> [String] {
+        var tags = Set<String>()
+        let layers = [palette.floor, palette.walls, palette.ceiling]
+        for layer in layers {
+            guard let layer else { continue }
+            for hint in layer.materialHints {
+                switch hint {
+                case .wood: tags.formUnion(["rustic", "traditional"])
+                case .tile: tags.insert("modern")
+                case .concrete: tags.formUnion(["industrial", "modern"])
+                case .fabric, .carpet: tags.formUnion(["traditional", "eclectic"])
+                case .plaster: tags.formUnion(["modern", "scandinavian"])
+                case .glass, .metal: tags.formUnion(["modern", "industrial"])
+                case .unknown: break
+                }
+            }
+        }
+        if tags.isEmpty { return ["modern", "minimalist"] }
+        return Array(tags).sorted().prefix(6).map { $0 }
+    }
+
+    /// Furniture color from segmented cutout mean when available; otherwise a palette-biased heuristic for coherent scores.
+    private func heuristicFurnitureProfileForAesthetic(
+        roomModel: RoomModel,
+        segmentedMeanSRGB: SIMD3<Float>?
+    ) -> FurnitureProfile {
+        let palette = roomModel.surfacePalette
+        let primary: SIMD3<Float>
+        if let cutoutMean = segmentedMeanSRGB {
+            primary = cutoutMean
+        } else if let wall = palette.walls?.dominantColors.first {
+            primary = SIMD3(
+                min(wall.x * 0.82 + 0.06, 1),
+                min(wall.y * 0.78 + 0.05, 1),
+                min(wall.z * 0.74 + 0.04, 1)
+            )
+        } else if let floor = palette.floor?.dominantColors.first {
+            primary = SIMD3(repeating: 0.38) * 0.55 + floor * 0.45
+        } else if let ceiling = palette.ceiling?.dominantColors.first {
+            primary = ceiling * SIMD3(0.55, 0.52, 0.48)
+        } else {
+            primary = SIMD3(0.44, 0.40, 0.36)
+        }
+        return FurnitureProfile(
+            primaryColor: primary,
+            accentColor: nil,
+            styleTags: ["modern", "minimalist", "contemporary"]
         )
     }
 

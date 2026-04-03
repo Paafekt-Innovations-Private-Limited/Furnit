@@ -12,6 +12,7 @@ import CoreMotion
 import SceneKit
 import CoreText
 import MetalKit
+import simd
 
 // BLAS helpers using C wrapper (BLASWrapper.m) to avoid Swift deprecation warnings
 fileprivate typealias BLASInt = Int32
@@ -110,6 +111,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Pinhole (and optional LiDAR snapshot) W×H in meters: first mask via ``finishFirstDetectionIfNeeded``, then each frame — all **after** the mask image is committed to UI.
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
+    /// Mean straight sRGB (0…1) over opaque-enough pixels of the composited segmentation cutout; throttled (~4 Hz).
+    var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
+
+    private var lastSegmentationMeanColorPublishAt: CFAbsoluteTime = 0
+    private let segmentationMeanColorMinPublishInterval: CFTimeInterval = 0.25
 
     // Sizing calculator (created when room dimensions are set)
     private var sizingCalculator: FurnitureSizingCalculator?
@@ -1210,6 +1216,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
         segmentationCompletedOnceThisSession = false
+        lastSegmentationMeanColorPublishAt = 0
         maskImageView.image = nil
         resetOverlayScalesForEmptyMask()
         logFurnitureFitSize(
@@ -2473,6 +2480,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
                 let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
                 self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
+                self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: out)
                 self.commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
                     maskHasForeground: maskHasForeground,
                     pinholeResult: finalMetricResult,
@@ -3524,6 +3532,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             self.progressContainer.isHidden = false
             self.progressView.progress = value
             self.progressLabel.text = "  \(text)  "
+        }
+    }
+
+    /// Throttled mean sRGB of the composited cutout for room aesthetic / furniture profile (runs off the main thread).
+    private func scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: CGImage) {
+        guard onSegmentationMaskMeanColorSRGB != nil else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastSegmentationMeanColorPublishAt >= segmentationMeanColorMinPublishInterval else { return }
+        lastSegmentationMeanColorPublishAt = now
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let mean = FurnitureSegmentationMeanColor.meanStraightSRGB(cgImage: compositedCgImage) else { return }
+            DispatchQueue.main.async {
+                guard let self, let callback = self.onSegmentationMaskMeanColorSRGB else { return }
+                callback(mean)
+            }
         }
     }
 

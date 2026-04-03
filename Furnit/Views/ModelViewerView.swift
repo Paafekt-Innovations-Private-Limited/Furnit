@@ -5,6 +5,7 @@ import Photos
 import CoreML
 import AVFoundation
 import UIKit
+import simd
 
 struct ModelViewerView: View {
     @ObservedObject private var yoloeService = YOLOEModelService.shared
@@ -654,6 +655,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
     /// Sharp Room: skip “Starting camera…” progress after the first segmentation this session.
     var suppressStartupProgress: Bool = false
     var onFirstSegmentationComplete: (() -> Void)?
+    /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
+    var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -669,6 +672,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
+        view.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         return view
     }
 
@@ -686,6 +690,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         uiView.suppressStartupProgress = suppressStartupProgress
         uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
+        uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
