@@ -65,22 +65,33 @@ class SHARPService: ObservableObject {
     /// Aggressive caps on ≤6GB phones shrink the `UIImage` before the 1536² stretch (model input size unchanged).
     private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
         let b = ProcessInfo.processInfo.physicalMemory
-        if b < 4 * 1024 * 1024 * 1024 { return 1024 }
-        if b < 6 * 1024 * 1024 * 1024 { return 1280 }
-        if b < 8 * 1024 * 1024 * 1024 { return 1920 }
-        return 3072
+        let conservativeCap: CGFloat
+        if b < 4 * 1024 * 1024 * 1024 {
+            conservativeCap = 1024
+        } else if b < 6 * 1024 * 1024 * 1024 {
+            conservativeCap = 1280
+        } else {
+            conservativeCap = CGFloat(inputSize)
+        }
+        // The SHARP model always consumes 1536². Keeping a larger source image only increases decode pressure.
+        return min(conservativeCap, CGFloat(inputSize))
     }
 
-    /// Downscale in **oriented** pixel space (`UIImage.draw` applies orientation) before 1536 preprocess.
-    private static func downscaledImageForSharpMemoryIfNeeded(_ image: UIImage) -> UIImage {
-        let w = image.size.width * image.scale
-        let h = image.size.height * image.scale
+    /// Creates an oriented working image for SHARP in a single render pass.
+    /// This avoids allocating a full-resolution `.fixedOrientation()` intermediate before downsizing.
+    static func prepareImageForSharp(_ image: UIImage) -> UIImage {
+        let orientedSize = orientedPixelSize(for: image)
+        let w = orientedSize.width
+        let h = orientedSize.height
         guard w > 1, h > 1 else { return image }
+
         let maxEdge = max(w, h)
         let limit = maxSourcePixelDimensionBeforeSharp()
-        guard maxEdge > limit else { return image }
+        let needsOrientationFix = image.imageOrientation != .up
+        let needsResize = maxEdge > limit + 0.5
+        guard needsOrientationFix || needsResize else { return image }
 
-        let scaleDown = limit / maxEdge
+        let scaleDown = min(1, limit / maxEdge)
         let newW = max(1, Int((w * scaleDown).rounded(.down)))
         let newH = max(1, Int((h * scaleDown).rounded(.down)))
         let format = UIGraphicsImageRendererFormat()
@@ -90,7 +101,10 @@ class SHARPService: ObservableObject {
         let rendered = renderer.image { _ in
             image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
         }
-        logDebug("SHARP: Downscaled photo for memory \(Int(w))×\(Int(h)) → \(newW)×\(newH) (max edge ≤\(Int(limit))px)")
+        logDebug(
+            "SHARP: Prepared photo for memory/orientation \(Int(w))×\(Int(h)) orient=\(image.imageOrientation.rawValue) " +
+            "→ \(newW)×\(newH) (max edge ≤\(Int(limit))px)"
+        )
         return rendered
     }
 
@@ -424,9 +438,9 @@ class SHARPService: ObservableObject {
             // Compute the small working image in a tight scope so the full-res originals
             // are released before Core ML prediction (saves ~100 MB on 4 GB devices).
             let (workingImage, orientedSize): (UIImage, CGSize) = autoreleasepool {
-                let orientedImage = image.imageOrientation == .up ? image : image.fixedOrientation()
-                let oriented = Self.downscaledImageForSharpMemoryIfNeeded(orientedImage)
-                return (oriented, Self.orientedPixelSize(for: orientedImage))
+                let orientedSize = Self.orientedPixelSize(for: image)
+                let prepared = Self.prepareImageForSharp(image)
+                return (prepared, orientedSize)
             }
 
             progress = 0.1

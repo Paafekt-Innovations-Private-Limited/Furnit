@@ -646,6 +646,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var roomDepthMeters: Float = 4.0
     /// Splat raycast / saved `.meta` scene units for ratio fitment logs.
     var roomRaycastSceneDimensions: RoomRaycastDimensions? = nil
+    var roomModel: RoomModel? = nil
     var cameraFocalLengthPixels: Float = 0
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
@@ -662,6 +663,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomHeightMeters = roomHeightMeters
         view.roomDepthMeters = roomDepthMeters
         view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        view.roomModel = roomModel
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
@@ -678,6 +680,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.roomHeightMeters = roomHeightMeters
         uiView.roomDepthMeters = roomDepthMeters
         uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        uiView.roomModel = roomModel
         uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
@@ -691,4 +694,3 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.stop()
     }
 }
-
