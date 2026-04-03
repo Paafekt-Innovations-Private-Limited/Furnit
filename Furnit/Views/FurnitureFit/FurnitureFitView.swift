@@ -12,6 +12,7 @@ import CoreMotion
 import SceneKit
 import CoreText
 import MetalKit
+import simd
 
 // BLAS helpers using C wrapper (BLASWrapper.m) to avoid Swift deprecation warnings
 fileprivate typealias BLASInt = Int32
@@ -63,9 +64,10 @@ typealias UnionDet = FurnitureFitDetection
 struct FurnitureSizeEstimate {
     /// Horizontal extent in meters (pinhole + depth at bbox center when available; else legacy bbox×room).
     let widthMeters: Float
-    /// Vertical extent in meters — same source as ``widthMeters``; use for calibration and UI labels.
+    /// Vertical extent in meters. Height-sensitive consumers should prefer ``arHeightMeters``
+    /// and treat non-AR height as a non-canonical fallback only.
     let heightMeters: Float
-    /// Reserved; always `nil` when emitted from FurnitureFit. AR metric height is used only for in-view overlay scaling (scene depth is wrong on glass / reflective).
+    /// Canonical AR-based furniture height when available.
     let arHeightMeters: Float?
 }
 
@@ -88,6 +90,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Optional splat depth-raycast room extents in **scene units** (same as saved `roomScene*` in `.meta`). Enables ratio fitment logs.
     var roomRaycastSceneDimensions: RoomRaycastDimensions?
+    /// Canonical room intelligence model when available. Used to prefer persisted calibration and camera hints over heuristic sizing.
+    var roomModel: RoomModel?
     /// Pinhole focal length in pixels; `0` uses back camera horizontal FOV when available.
     var cameraFocalLengthPixels: Float = 0
 
@@ -107,6 +111,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Pinhole (and optional LiDAR snapshot) W×H in meters: first mask via ``finishFirstDetectionIfNeeded``, then each frame — all **after** the mask image is committed to UI.
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
+    /// Mean straight sRGB (0…1) over opaque-enough pixels of the composited segmentation cutout; throttled (~4 Hz).
+    var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
+
+    private var lastSegmentationMeanColorPublishAt: CFAbsoluteTime = 0
+    private let segmentationMeanColorMinPublishInterval: CFTimeInterval = 0.25
 
     // Sizing calculator (created when room dimensions are set)
     private var sizingCalculator: FurnitureSizingCalculator?
@@ -257,7 +266,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Last primary class used for overlay / pinch reset.
     private var lastOverlayPrimaryClassIdx: Int = -1
 
-    private let minCombinedOverlayScale: CGFloat = 0.3
+    private let minCombinedOverlayScale: CGFloat = 0.08
     private let maxCombinedOverlayScale: CGFloat = 3.0
     private enum OverlayPresentationMode {
         case deferredCentered
@@ -270,6 +279,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let requiredStableOverlayMeasurementFrames: Int = 3
     private let maxStableOverlayHeightDriftFraction: Float = 0.18
     private let maxStableOverlayScaleDrift: CGFloat = 0.18
+    private let arOverlayResyncJumpFraction: CGFloat = 0.22
+    private let arOverlayResyncHeightDriftFraction: Float = 0.22
+    /// Primary scoring: penalize YOLO boxes that fill most of the model frame (desk / table / wrapping paper).
+    /// Those steal `selectPrimary` from cup/glass and make AR overlay scale swing wildly when the camera moves.
+    private let primarySelectionSoftAreaNormPivot: Float = 0.30
+    private let primarySelectionLargeBoxPenaltyK: Float = 5.2
 
     /// Throttled logging for oscillation diagnosis (when `debugMode` is on).
     private var overlayDebugLastAssistedLabel: String = ""
@@ -326,7 +341,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Reused scratch for CPU fallback compositing (vDSP + BLAS); grows with frame width, never shrinks.
     private var compositeCpuScratchFloats: [Float] = []
-    /// Proto mask upscaled to full frame (`origW*origH`) via vImage — one SIMD resize then a cheap composite scan.
+    /// Proto mask upscaled to the active composite band via vImage; grows to the largest band seen and never shrinks.
     private var upscaledPlanarMaskScratch: [UInt8] = []
     // MARK: - Memory Logging
     private func logMemory(_ tag: String) {
@@ -352,9 +367,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var preferImmediateNextInference = false
     private let frameLock = NSLock() // Protects lastProcessTime, isProcessing, preferImmediateNextInference
 
-    /// Serial queue for debounced AR-assisted measurement (depth → height → overlay scale). Keeps work off the main thread until the debounce fires; height can lag ~1s while the mask keeps up.
+    /// Serial queue for AR-assisted measurement (depth → height → overlay scale). This is
+    /// coalesced rather than fully debounced so continuous segmentation frames do not starve
+    /// AR sizing forever.
     private let measurementQueue = DispatchQueue(label: "com.furnit.furniturefit.measurement", qos: .utility)
-    private let assistedMeasurementDebounceSeconds: TimeInterval = 0.85
+    private let assistedMeasurementDebounceSeconds: TimeInterval = 0.22
     private struct PendingAssistedMeasurement {
         let primaryClassIdx: Int
         let bboxMinX: Int
@@ -390,6 +407,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func invalidatePendingAssistedMeasurement() {
         assistedMeasurementDebounceWorkItem?.cancel()
+        assistedMeasurementDebounceWorkItem = nil
         assistedMeasurementScheduleToken &+= 1
         pendingMeasurementLock.lock()
         pendingAssistedMeasurement = nil
@@ -475,6 +493,40 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func className(_ id: Int) -> String {
         let name = classNames[id] ?? "unknown"
         return "\u{001B}[1m::\(name) (id:\(id))\u{001B}[0m"
+    }
+
+    private func supportSurfaceHint(
+        from candidates: [FurnitureFitDetection],
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> String? {
+        guard imageWidth > 0, imageHeight > 0 else { return nil }
+
+        let keywords = [
+            "floor", "flooring", "ground", "carpet", "rug", "mat",
+            "tile", "tiles", "pavement", "sidewalk", "concrete"
+        ]
+        let frameArea = Float(max(1, imageWidth * imageHeight))
+        let lowerBandStart = Float(imageHeight) * 0.58
+
+        for detection in candidates {
+            let rawName = (classNames[detection.classIdx] ?? "unknown").lowercased()
+            guard keywords.contains(where: { rawName.contains($0) }) else { continue }
+
+            let areaNorm = (detection.w * detection.h) / frameArea
+            let bottomY = detection.y + detection.h * 0.5
+            let spansLowerBand = bottomY >= lowerBandStart
+            let isLargeEnough = areaNorm >= 0.05
+            guard spansLowerBand || isLargeEnough else { continue }
+
+            logFurnitureFitSize(
+                "phase=support_surface_hint matched=\(rawName) conf=\(String(format: "%.2f", detection.confidence)) " +
+                "areaNorm=\(String(format: "%.3f", areaNorm)) bottomFrac=\(String(format: "%.3f", bottomY / Float(imageHeight)))"
+            )
+            return rawName
+        }
+
+        return nil
     }
 
     // MARK: - Init
@@ -636,8 +688,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
-    /// Overlay scale from furniture vs room in **raycast scene units** (pinhole meters mapped into su).
-    /// When AR-assisted scale is **valid**, that path dominates and this factor is not multiplied in (see ``applyCurrentOverlayScaleTransform``).
+    /// Non-AR room scaling is disabled. Furniture measurement and overlay scale are AR-only.
     private func updateAutoScaleFromRoom(
         primaryBx1: Int,
         primaryBy1: Int,
@@ -645,38 +696,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy2: Int,
         imageWidth: Int,
         imageHeight: Int,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        preferRoomRaycastSizing: Bool
     ) {
-        guard let room = roomRaycastSceneDimensions,
-              let metric = primaryBboxMonocularSizeMeters(
-                primaryBx1: primaryBx1,
-                primaryBy1: primaryBy1,
-                primaryBx2: primaryBx2,
-                primaryBy2: primaryBy2,
-                imageWidth: imageWidth,
-                imageHeight: imageHeight,
-                arDepthSnapshot: arDepthSnapshot
-              ),
-              let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
-                furnitureMeters: metric.size,
-                roomMetersWidth: roomWidthMeters,
-                roomMetersHeight: roomHeightMeters,
-                roomMetersDepth: roomDepthMeters,
-                roomRaycastScene: room
-              )
-        else {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-        let ov = OverlayScale.ratios(furniture: furnSu, room: room)
-        guard ov.scaleX > 1e-6, ov.scaleY > 1e-6 else {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-        let uniform = CGFloat((ov.scaleX + ov.scaleY) * 0.5)
-        autoScaleFromRoom = min(max(uniform, minCombinedOverlayScale), maxCombinedOverlayScale)
+        _ = primaryBx1
+        _ = primaryBy1
+        _ = primaryBx2
+        _ = primaryBy2
+        _ = imageWidth
+        _ = imageHeight
+        _ = arDepthSnapshot
+        _ = preferRoomRaycastSizing
+        autoScaleFromRoom = 1.0
         applyCurrentOverlayScaleTransform()
     }
 
@@ -684,6 +715,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryClassIdx: Int,
         metric: PrimaryBboxMetersResult?
     ) {
+        _ = metric
         if primaryClassIdx != lastOverlayPrimaryClassIdx {
             overlayPresentationMode = .deferredCentered
             stableOverlayMeasurementFrameCount = 0
@@ -691,37 +723,40 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayScale = nil
         }
 
-        guard let metric,
-              let depthMeters = metric.distanceMeters,
-              depthMeters.isFinite,
-              metric.size.height.isFinite,
-              metric.size.height > 0,
-              autoScaleFromRoom.isFinite,
-              depthMeters > 0.35,
-              depthMeters < 9.7
-        else {
-            overlayPresentationMode = .deferredCentered
-            stableOverlayMeasurementFrameCount = 0
-            lastStableOverlayHeightMeters = nil
-            lastStableOverlayScale = nil
+        let arSizingReady =
+            hasARKitAssistedSizingPayload &&
+            arAssistedScaleValid &&
+            normalizedARFurnitureHeightMeters() != nil &&
+            autoScaleFromAR.isFinite &&
+            autoScaleFromAR > 0
+
+        if arSizingReady, let arHeight = normalizedARFurnitureHeightMeters() {
+            let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromAR - $0) } ?? 0
+            let heightDriftFraction: Float
+            if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
+                heightDriftFraction = abs(arHeight - lastHeight) / lastHeight
+            } else {
+                heightDriftFraction = 0
+            }
+
+            let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
+                heightDriftFraction <= maxStableOverlayHeightDriftFraction
+
+            stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
+            lastStableOverlayHeightMeters = arHeight
+            lastStableOverlayScale = autoScaleFromAR
+
+            if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
+                overlayPresentationMode = .measuredPlacement
+            } else {
+                overlayPresentationMode = .deferredCentered
+            }
             return
         }
 
-        let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromRoom - $0) } ?? 0
-        let heightDriftFraction: Float
-        if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
-            heightDriftFraction = abs(metric.size.height - lastHeight) / lastHeight
-        } else {
-            heightDriftFraction = 0
-        }
-
-        let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
-            heightDriftFraction <= maxStableOverlayHeightDriftFraction
-
-        stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
-        lastStableOverlayHeightMeters = metric.size.height
-        lastStableOverlayScale = autoScaleFromRoom
-
+        // No usable AR metric (AVCapture-only, non-LiDAR, or depth/planes never validate): overlay stays 1× AR factor
+        // but pinch/pan must still work. `handlePinch` / `handlePan` are gated on `.measuredPlacement` only.
+        stableOverlayMeasurementFrameCount += 1
         if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
             overlayPresentationMode = .measuredPlacement
         } else {
@@ -729,10 +764,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Combined overlay: **raycast furniture÷room** (when AR not valid) × **AR metric** (when valid) × pinch (clamped).
+    /// Combined overlay: AR metric scale × pinch. Non-AR room scaling is disabled.
     private func applyCurrentOverlayScaleTransform() {
         let arOn = hasARKitAssistedSizingPayload && arAssistedScaleValid
-        let roomFactor: CGFloat = arOn ? 1.0 : autoScaleFromRoom
+        let roomFactor: CGFloat = 1.0
         let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
         let product = roomFactor * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
@@ -799,6 +834,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayScale = nil
         }
 
+        let bboxWidthImagePx = Float(max(1, bboxMaxX - bboxMinX))
+
         let wantAR = hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
 
         if wantAR, arDepthSnapshot != nil || arSession.currentFrame != nil {
@@ -813,7 +850,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             var fx: Float = 1
             var fy: Float = 1
             var distSource = "none"
-            var bgraIsRotatedFromCaptured = false
             let trackingName: String = {
                 guard let s = arSession.currentFrame?.camera.trackingState else { return "nil" }
                 switch s {
@@ -825,19 +861,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }()
 
             if let snap = arDepthSnapshot {
-                bgraIsRotatedFromCaptured = snap.bgraIsRotatedFromCaptured
                 fy = snap.focalLengthY
                 fx = snap.focalLengthX
                 if snap.depthMap != nil,
-                   let dMin = FurnitureFitARSupport.depthMetersMinInNormalizedBgraRect(
+                   let dRobust = FurnitureFitARSupport.depthMetersPercentileInNormalizedBgraRect(
                     snapshot: snap,
                     nxMin: nxMin,
                     nyMinTop: nyMinTop,
                     nxMax: nxMax,
                     nyMaxTop: nyMaxTop
                    ) {
-                    distM = dMin
-                    distSource = "depth_snapshot_min_rect"
+                    distM = dRobust
+                    distSource = "depth_snapshot_p20_rect"
                 }
                 if distM == nil {
                     distM = FurnitureFitARSupport.depthMeters(snapshot: snap, normalizedBgraNX: nx, normalizedBgraNY: ny)
@@ -884,7 +919,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let ch = CVPixelBufferGetHeight(cap)
                 let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
                 let bgraRotated = needsPortrait && cw > ch
-                bgraIsRotatedFromCaptured = bgraRotated
                 fy = FurnitureFitARSupport.focalLengthYForProcessedBGRA(
                     camera: frame.camera,
                     bgraHeight: imageHeight,
@@ -906,50 +940,81 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 distanceMeters: d,
                 focalLengthYPixels: fy
                ) {
+                let previousEstimatedHeightMeters = lastAREstimatedHeightMeters
                 lastAREstimatedHeightMeters = estH
-                // Use a neutral reference height for AR scaling; do not depend on any
-                // per-class hard-coded \"standard\" dimensions.
-                let stdH: Float = 0.85
-                if let raw = FurnitureFitARSupport.overlayScaleFromMetricHeights(
-                    standardHeightMeters: stdH,
-                    estimatedHeightMeters: estH
-                ) {
+                let roomHeight = max(roomHeightMeters, 0.01)
+                let currentImageHeightFraction = max(
+                    CGFloat(bboxHeightImagePx) / CGFloat(max(1, imageHeight)),
+                    0.01
+                )
+                let targetImageHeightFraction = CGFloat(
+                    min(max(estH / roomHeight, 0.01), 0.98)
+                )
+                let raw = targetImageHeightFraction / currentImageHeightFraction
+                if raw.isFinite, raw > 0 {
                     if hasFirstDetection,
                        !didPublishARRefinedFurnitureMetersEstimate,
                        fx > 1,
                        let estW = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
-                        bboxWidthPixels: Float(max(1, bboxMaxX - bboxMinX)),
+                        bboxWidthPixels: bboxWidthImagePx,
                         distanceMeters: d,
                         focalLengthXPixels: fx
                        ) {
                         didPublishARRefinedFurnitureMetersEstimate = true
                         logFurnitureFitSize(
-                            "phase=ar_overlay_refine distSource=\(distSource) dist_m=\(String(format: "%.3f", d)) W×H_m=\(String(format: "%.3f", estW))×\(String(format: "%.3f", estH)) bbox_px=\(max(1, bboxMaxX - bboxMinX))x\(Int(bboxHeightImagePx)) (requires AR companion + valid depth)"
+                            "phase=ar_overlay_refine distSource=\(distSource) dist_m=\(String(format: "%.3f", d)) W×H_m=\(String(format: "%.3f", estW))×\(String(format: "%.3f", estH)) metric_px=\(Int(bboxWidthImagePx))x\(Int(bboxHeightImagePx)) (requires AR companion + valid depth)"
                         )
                         onFurnitureSizeEstimated?(
                             FurnitureSizeEstimate(widthMeters: estW, heightMeters: estH, arHeightMeters: estH)
                         )
                     }
-                    let target = CGFloat(raw)
+                    let target = min(max(raw, minCombinedOverlayScale), maxCombinedOverlayScale)
                     if snapArOverlayScaleAfterPrimaryChange {
                         // One shot after switching primary detection — avoids sluggish ramp from 1× while panning between pieces.
-                        let clamped = min(max(target, 0.25), 4.0)
+                        let clamped = min(max(target, minCombinedOverlayScale), maxCombinedOverlayScale)
                         smoothedArOverlayScale = clamped
                         snapArOverlayScaleAfterPrimaryChange = false
                     } else {
                         // AR-assisted scale can jitter due to depth noise; clamp per-frame change and EMA smooth.
+                        // But when the measured object size materially changes, snap to the new ratio immediately
+                        // instead of dragging the previous object's scale forward for several frames.
                         let base = smoothedArOverlayScale
-                        let maxStep: CGFloat = 0.08
-                        let delta = max(-maxStep, min(maxStep, target - base))
-                        let clampedTarget = base + delta
-                        let alpha: CGFloat = 0.16
-                        smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                        let relativeJump: CGFloat = {
+                            let denom = max(abs(base), abs(target), 0.001)
+                            return abs(target - base) / denom
+                        }()
+                        let heightDriftFraction: Float = {
+                            guard let previousEstimatedHeightMeters,
+                                  previousEstimatedHeightMeters > 0 else { return 0 }
+                            return abs(estH - previousEstimatedHeightMeters) / previousEstimatedHeightMeters
+                        }()
+                        if relativeJump >= arOverlayResyncJumpFraction ||
+                            heightDriftFraction >= arOverlayResyncHeightDriftFraction {
+                            smoothedArOverlayScale = target
+                            if debugMode {
+                                logDebug(
+                                    "📐 [AR_RESYNC] target=\(String(format: "%.3f", target)) " +
+                                    "base=\(String(format: "%.3f", base)) relJump=\(String(format: "%.3f", relativeJump)) " +
+                                    "heightDrift=\(String(format: "%.3f", heightDriftFraction))"
+                                )
+                            }
+                        } else {
+                            // Slightly slower EMA when depth is noisy on small objects (glass / cup) to cut visible pulsing.
+                            let maxStep: CGFloat = 0.06
+                            let delta = max(-maxStep, min(maxStep, target - base))
+                            let clampedTarget = base + delta
+                            let alpha: CGFloat = 0.12
+                            smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
+                        }
                     }
                     autoScaleFromAR = smoothedArOverlayScale
                     arAssistedScaleValid = true
                     arAssistedConsecutiveMisses = 0
-                    let bboxWidthPx = Float(max(1, bboxMaxX - bboxMinX))
-                    let estW = (bboxWidthPx / max(fx, 1)) * d
+                    overlayPresentationMode = .measuredPlacement
+                    stableOverlayMeasurementFrameCount = max(stableOverlayMeasurementFrameCount, requiredStableOverlayMeasurementFrames)
+                    lastStableOverlayHeightMeters = estH
+                    lastStableOverlayScale = autoScaleFromAR
+                    let estW = (bboxWidthImagePx / max(fx, 1)) * d
                     let nowLog = Date().timeIntervalSince1970
                     if nowLog - lastFurnitureFitARFrameLogAt >= furnitureFitARLogInterval {
                         lastFurnitureFitARFrameLogAt = nowLog
@@ -958,7 +1023,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         let assistedLog: CGFloat = arOnLog ? autoScaleFromAR : 1.0
                         let combinedOverlay = roomUsedLog * assistedLog * userPinchScale
                         logFurnitureFitAR(
-                            "distSource=\(distSource) dist=\(String(format: "%.2f", d))m furniture=\(String(format: "%.2f", estW))×\(String(format: "%.2f", estH))m stdH=\(String(format: "%.2f", stdH))m ratio=\(String(format: "%.3f", raw)) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomUsedLog)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) overlay=\(String(format: "%.3f", combinedOverlay)) tracking=\(trackingName) bboxPx=\(Int(bboxWidthPx))×\(Int(bboxHeightImagePx)) fy=\(String(format: "%.1f", fy)) fx=\(String(format: "%.1f", fx))"
+                            "distSource=\(distSource) dist=\(String(format: "%.2f", d))m furniture=\(String(format: "%.2f", estW))×\(String(format: "%.2f", estH))m roomH=\(String(format: "%.2f", roomHeight))m targetFrac=\(String(format: "%.3f", targetImageHeightFraction)) currentFrac=\(String(format: "%.3f", currentImageHeightFraction)) ratio=\(String(format: "%.3f", raw)) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomUsedLog)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) overlay=\(String(format: "%.3f", combinedOverlay)) tracking=\(trackingName) metricPx=\(Int(bboxWidthImagePx))×\(Int(bboxHeightImagePx)) fy=\(String(format: "%.1f", fy)) fx=\(String(format: "%.1f", fx))"
                         )
                     }
                     applyCurrentOverlayScaleTransform()
@@ -1151,6 +1216,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
         segmentationCompletedOnceThisSession = false
+        lastSegmentationMeanColorPublishAt = 0
         maskImageView.image = nil
         resetOverlayScalesForEmptyMask()
         logFurnitureFitSize(
@@ -1262,15 +1328,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func startPreferredCameraPathIfNeeded() {
-        // Pinhole sizing uses AVCapture only; AR-as-camera path stays disabled.
-        // let wantAR = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
-        //     && !suppressARDepthCompanionAfterCaptureFailure
-        // if wantAR {
-        //     startARCameraPathIfNeeded()
-        // } else {
-        //     startClassicCameraPathIfNeeded()
-        // }
-        startClassicCameraPathIfNeeded()
+        let wantAR = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+            && !suppressARDepthCompanionAfterCaptureFailure
+        if wantAR {
+            startARCameraPathIfNeeded()
+        } else {
+            startClassicCameraPathIfNeeded()
+        }
     }
 
     /// Single camera owner: ARKit supplies both video (`capturedImage`) and depth, so there is no AVCapture + AR contention.
@@ -1279,7 +1343,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             guard let self else { return }
             self.arCompanionStartGeneration &+= 1
             self.isUsingARCameraPath = true
-            self.isARDepthCompanionSessionRunning = false
+            self.isARDepthCompanionSessionRunning = true
 
             self.captureSessionControlQueue.async { [weak self] in
                 guard let self else { return }
@@ -1354,13 +1418,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             if self.debugMode {
-                logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active, AR path disabled")
+                logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active, AR path not selected")
             }
 
             if !Self.didLogFurnitureFitSizingPolicy {
                 Self.didLogFurnitureFitSizingPolicy = true
                 logFurnitureFitSize(
-                    "policy=floor_contact_only: AVCapture video + floor-contact depth heuristic from bbox/mask bottom. AR path commented out."
+                    "policy=floor_contact_only: AVCapture video + floor-contact depth heuristic from bbox/mask bottom. AR path not selected."
                 )
             }
         }
@@ -1491,7 +1555,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         heightPixels: Float,
         imageWidth: Int,
         imageHeight: Int,
-        pipeline: String
+        pipeline: String,
+        preferRoomRaycastSizing: Bool
     ) -> FloorContactSizingResult? {
         guard imageWidth > 1, imageHeight > 1, widthPixels > 0.5, heightPixels > 0.5 else { return nil }
 
@@ -1512,23 +1577,100 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             focalPixels: focalLengthY
         )
         let depthMeters = depthEstimate.depthMeters
+        let preferredRoomMetricSize = preferredRoomModelMetricSize(
+            contactImageX: clampedImageX,
+            contactImageY: clampedImageY,
+            widthPixels: widthPixels,
+            heightPixels: heightPixels,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            depthMeters: depthMeters
+        )
 
-        guard let widthMeters = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
-            bboxWidthPixels: widthPixels,
-            distanceMeters: depthMeters,
-            focalLengthXPixels: focalLengthX
-        ),
-        let heightMeters = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
-            bboxHeightPixels: heightPixels,
-            distanceMeters: depthMeters,
-            focalLengthYPixels: focalLengthY
-        ) else { return nil }
+        let fallbackMetricSize: (widthMeters: Float, heightMeters: Float, pipeline: String)? = {
+            guard let fallbackWidthMeters = FurnitureFitARSupport.estimatedPhysicalWidthMeters(
+                bboxWidthPixels: widthPixels,
+                distanceMeters: depthMeters,
+                focalLengthXPixels: focalLengthX
+            ),
+            let fallbackHeightMeters = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
+                bboxHeightPixels: heightPixels,
+                distanceMeters: depthMeters,
+                focalLengthYPixels: focalLengthY
+            ) else { return nil }
+            return (fallbackWidthMeters, fallbackHeightMeters, pipeline)
+        }()
+
+        let selectedMetricSize: (widthMeters: Float, heightMeters: Float, pipeline: String)?
+        if !preferRoomRaycastSizing {
+            logFurnitureFitSize(
+                "phase=metric_policy policy=prefer_pinhole reason=no_support_surface_hint depth_m=\(String(format: "%.3f", depthMeters))"
+            )
+            if let fallbackMetricSize,
+               isReasonableFurnitureMetricEstimate(
+                widthMeters: fallbackMetricSize.widthMeters,
+                heightMeters: fallbackMetricSize.heightMeters,
+                distanceMeters: depthMeters,
+                pipeline: fallbackMetricSize.pipeline
+               ) {
+                selectedMetricSize = fallbackMetricSize
+            } else {
+                selectedMetricSize = nil
+            }
+        } else if let preferredRoomMetricSize,
+                  isReasonableFurnitureMetricEstimate(
+                    widthMeters: preferredRoomMetricSize.widthMeters,
+                    heightMeters: preferredRoomMetricSize.heightMeters,
+                    distanceMeters: depthMeters,
+                    pipeline: preferredRoomMetricSize.pipeline
+                  ) {
+            logFurnitureFitSize(
+                "phase=metric_policy policy=prefer_room_raycast reason=support_surface_hint depth_m=\(String(format: "%.3f", depthMeters)) " +
+                "selected=\(preferredRoomMetricSize.pipeline)"
+            )
+            selectedMetricSize = preferredRoomMetricSize
+        } else if let preferredRoomMetricSize {
+            logFurnitureFitSize(
+                "phase=metric_fallback rejected_pipeline=\(preferredRoomMetricSize.pipeline) " +
+                "fallback_pipeline=\(fallbackMetricSize?.pipeline ?? "none") " +
+                "depth_m=\(String(format: "%.3f", depthMeters))"
+            )
+            if let fallbackMetricSize,
+               isReasonableFurnitureMetricEstimate(
+                widthMeters: fallbackMetricSize.widthMeters,
+                heightMeters: fallbackMetricSize.heightMeters,
+                distanceMeters: depthMeters,
+                pipeline: fallbackMetricSize.pipeline
+               ) {
+                selectedMetricSize = fallbackMetricSize
+            } else {
+                selectedMetricSize = nil
+            }
+        } else if let fallbackMetricSize,
+                  isReasonableFurnitureMetricEstimate(
+                    widthMeters: fallbackMetricSize.widthMeters,
+                    heightMeters: fallbackMetricSize.heightMeters,
+                    distanceMeters: depthMeters,
+                    pipeline: fallbackMetricSize.pipeline
+                  ) {
+            logFurnitureFitSize(
+                "phase=metric_policy policy=room_raycast_unavailable_using_pinhole depth_m=\(String(format: "%.3f", depthMeters))"
+            )
+            selectedMetricSize = fallbackMetricSize
+        } else {
+            selectedMetricSize = nil
+        }
+
+        guard let selectedMetricSize else { return nil }
+        let widthMeters = selectedMetricSize.widthMeters
+        let heightMeters = selectedMetricSize.heightMeters
+        let sizingPipelinePrefix = selectedMetricSize.pipeline
 
         let depthThicknessMeters = max(0.04, min(widthMeters, heightMeters) * 0.12)
         return (
             metric: (
                 size: FurnitureSceneSize(width: widthMeters, height: heightMeters, depth: depthThicknessMeters),
-                pipeline: pipeline +
+                pipeline: sizingPipelinePrefix +
                     "_pitch\(String(format: "%.1f", depthEstimate.effectivePitchDeg))" +
                     (depthEstimate.measuredPitchDeg != nil ? "_motion" : "_fallback"),
                 distanceMeters: depthMeters
@@ -1541,6 +1683,154 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             measuredPitchDeg: depthEstimate.measuredPitchDeg,
             effectivePitchDeg: depthEstimate.effectivePitchDeg
         )
+    }
+
+    private func isReasonableFurnitureMetricEstimate(
+        widthMeters: Float,
+        heightMeters: Float,
+        distanceMeters: Float,
+        pipeline: String
+    ) -> Bool {
+        guard widthMeters.isFinite,
+              heightMeters.isFinite,
+              distanceMeters.isFinite,
+              widthMeters > 0.015,
+              heightMeters > 0.015,
+              distanceMeters > 0.2 else {
+            logFurnitureFitSize(
+                "phase=metric_reject pipeline=\(pipeline) reason=non_finite_or_too_small " +
+                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
+                "dist_m=\(String(format: "%.3f", distanceMeters))"
+            )
+            return false
+        }
+
+        let maxRoomSpan = max(roomWidthMeters, roomDepthMeters, 0.5)
+        let widthLimit = max(6.0, maxRoomSpan * 1.35)
+        let heightLimit = max(4.0, max(roomHeightMeters, 0.5) * 1.25)
+        let distanceLimit = max(12.0, max(roomDepthMeters, 0.5) * 2.0)
+
+        guard widthMeters <= widthLimit,
+              heightMeters <= heightLimit,
+              distanceMeters <= distanceLimit else {
+            logFurnitureFitSize(
+                "phase=metric_reject pipeline=\(pipeline) reason=exceeds_limits " +
+                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
+                "dist_m=\(String(format: "%.3f", distanceMeters)) " +
+                "limits_w_h_d=\(String(format: "%.3f", widthLimit))×\(String(format: "%.3f", heightLimit))×\(String(format: "%.3f", distanceLimit)) " +
+                "room_w_h_d=\(String(format: "%.3f", roomWidthMeters))×\(String(format: "%.3f", roomHeightMeters))×\(String(format: "%.3f", roomDepthMeters))"
+            )
+            return false
+        }
+
+        return true
+    }
+
+    private func preferredRoomModelMetricSize(
+        contactImageX: Float,
+        contactImageY: Float,
+        widthPixels: Float,
+        heightPixels: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        depthMeters: Float
+    ) -> (widthMeters: Float, heightMeters: Float, pipeline: String)? {
+        guard imageWidth > 1, imageHeight > 1 else { return nil }
+
+        let proportionalFallback: () -> (widthMeters: Float, heightMeters: Float, pipeline: String)? = {
+            guard self.roomWidthMeters.isFinite, self.roomHeightMeters.isFinite,
+                  self.roomWidthMeters > 0.05, self.roomHeightMeters > 0.05 else {
+                return nil
+            }
+            let widthMeters = (widthPixels / Float(imageWidth)) * self.roomWidthMeters
+            let heightMeters = (heightPixels / Float(imageHeight)) * self.roomHeightMeters
+            guard widthMeters.isFinite, heightMeters.isFinite,
+                  widthMeters > 0.01, heightMeters > 0.01 else {
+                return nil
+            }
+            logFurnitureFitSize(
+                "phase=room_model_sizing_fallback pipeline=room_bbox_proportion " +
+                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
+                "room_m=\(String(format: "%.3f", self.roomWidthMeters))×\(String(format: "%.3f", self.roomHeightMeters)) " +
+                "bbox_px=\(String(format: "%.1f", widthPixels))×\(String(format: "%.1f", heightPixels))"
+            )
+            return (widthMeters, heightMeters, "room_bbox_proportion")
+        }
+
+        guard let roomModel,
+              roomModel.sceneToMeters.isFinite,
+              roomModel.sceneToMeters > 0.0001 else {
+            logFurnitureFitSize(
+                "phase=room_model_sizing_unavailable reason=missing_room_model_or_scale " +
+                "roomModel=\(roomModel != nil) sceneToMeters=\(String(format: "%.4f", roomModel?.sceneToMeters ?? 0))"
+            )
+            return proportionalFallback()
+        }
+
+        guard let focalLengthMM = roomModel.cameraInfo.focalLengthMM,
+              focalLengthMM > 0,
+              let sensorWidthMM = roomModel.cameraInfo.sensorWidthMM,
+              sensorWidthMM > 0 else {
+            logFurnitureFitSize(
+                "phase=room_model_sizing_unavailable reason=missing_intrinsics " +
+                "sceneToMeters=\(String(format: "%.4f", roomModel.sceneToMeters)) " +
+                "focal_mm=\(String(format: "%.2f", roomModel.cameraInfo.focalLengthMM ?? 0)) " +
+                "sensor_w_mm=\(String(format: "%.2f", roomModel.cameraInfo.sensorWidthMM ?? 0))"
+            )
+            return proportionalFallback()
+        }
+
+        let intrinsics = DepthSizingService.CameraIntrinsics(
+            focalLengthMM: focalLengthMM,
+            sensorWidthMM: sensorWidthMM,
+            imageWidthPx: Float(roomModel.cameraInfo.imageWidthPx ?? imageWidth),
+            imageHeightPx: Float(roomModel.cameraInfo.imageHeightPx ?? imageHeight)
+        )
+        let sizingService = DepthSizingService(
+            intrinsics: intrinsics,
+            sceneToMeters: roomModel.sceneToMeters
+        )
+
+        let sceneDepth = roomModel.toScene(depthMeters)
+        guard sceneDepth.isFinite, sceneDepth > 0 else {
+            logFurnitureFitSize(
+                "phase=room_model_sizing_unavailable reason=invalid_scene_depth " +
+                "metric_depth=\(String(format: "%.3f", depthMeters)) scene_depth=\(String(format: "%.3f", sceneDepth))"
+            )
+            return proportionalFallback()
+        }
+
+        let halfWidth = widthPixels * 0.5
+        let widthMeters = sizingService.estimateMetricWidth(
+            leftScreenX: CGFloat(contactImageX - halfWidth),
+            rightScreenX: CGFloat(contactImageX + halfWidth),
+            depth: sceneDepth,
+            viewportWidth: CGFloat(imageWidth)
+        )
+        let heightMeters = sizingService.estimateMetricHeight(
+            topScreenY: CGFloat(contactImageY - heightPixels),
+            bottomScreenY: CGFloat(contactImageY),
+            depth: sceneDepth,
+            viewportWidth: CGFloat(imageWidth)
+        )
+
+        guard widthMeters.isFinite, heightMeters.isFinite,
+              widthMeters > 0.01, heightMeters > 0.01 else {
+            logFurnitureFitSize(
+                "phase=room_model_sizing_unavailable reason=invalid_intrinsics_output " +
+                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters))"
+            )
+            return proportionalFallback()
+        }
+
+        logFurnitureFitSize(
+            "phase=room_model_sizing sceneToMeters=\(String(format: "%.4f", roomModel.sceneToMeters)) " +
+            "scene_depth=\(String(format: "%.3f", sceneDepth)) metric_depth=\(String(format: "%.3f", depthMeters)) " +
+            "focal_mm=\(String(format: "%.2f", focalLengthMM)) sensor_w_mm=\(String(format: "%.2f", sensorWidthMM)) " +
+            "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters))"
+        )
+
+        return (widthMeters, heightMeters, "room_model_depth_intrinsics")
     }
 
     private func refinedMaskBoundsAndFloorContact(
@@ -1625,7 +1915,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         protoH: Int,
         bboxCenterImageX: Int,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        preferRoomRaycastSizing: Bool
     ) -> FloorContactSizingResult? {
         guard let refinedMask = refinedMaskBoundsAndFloorContact(
             maskSmall: maskSmall,
@@ -1643,7 +1934,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             heightPixels: refinedMask.heightPixels,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            pipeline: "floor_contact_mask_contact"
+            pipeline: "floor_contact_mask_contact",
+            preferRoomRaycastSizing: preferRoomRaycastSizing
         )
     }
 
@@ -1656,7 +1948,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy2: Int,
         imageWidth: Int,
         imageHeight: Int,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        preferRoomRaycastSizing: Bool
     ) -> PrimaryBboxMetersResult? {
         _ = arDepthSnapshot
         let bboxWpx = Float(max(1, primaryBx2 - primaryBx1))
@@ -1668,7 +1961,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             heightPixels: bboxHpx,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            pipeline: "floor_contact_bbox_bottom_center"
+            pipeline: "floor_contact_bbox_bottom_center",
+            preferRoomRaycastSizing: preferRoomRaycastSizing
         ) else { return nil }
         return floorMeasurement.metric
     }
@@ -1681,7 +1975,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy2: Int,
         imageWidth: Int,
         imageHeight: Int,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        preferRoomRaycastSizing: Bool
     ) {
         guard let room = roomRaycastSceneDimensions,
               room.width > 1e-5, room.height > 1e-5, room.depth > 1e-5 else { return }
@@ -1696,7 +1991,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             primaryBy2: primaryBy2,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            arDepthSnapshot: arDepthSnapshot
+            arDepthSnapshot: arDepthSnapshot,
+            preferRoomRaycastSizing: preferRoomRaycastSizing
         ) else { return }
         let furnMeters = metric.size
 
@@ -1830,8 +2126,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let confTerm = pow(d.confidence, 1.5)
             let areaTerm = pow(areaNorm, 0.8)
             let centerTerm = pow(max(0, centerScore), 0.5)
+            let oversized = max(0, areaNorm - primarySelectionSoftAreaNormPivot)
+            let largeBoxPenalty = exp(-primarySelectionLargeBoxPenaltyK * oversized)
 
-            let score = confTerm * areaTerm * centerTerm
+            let score = confTerm * areaTerm * centerTerm * largeBoxPenalty
             if score > maxScore {
                 maxScore = score
                 bestIdx = i
@@ -1865,16 +2163,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let pW = protoInfo.width
         let pH = protoInfo.height
 
-        // Detection list + NMS + primary: `confidenceThreshold`, `blacklist.json` → `clsToIgnore`, IoU 0.5, primary scoring.
+        // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
+        // Support-surface hints (floor, carpet, tile, etc.) must inspect the unblacklisted detections.
         let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
-            classBlacklist: clsToIgnore
+            classBlacklist: []
         )
         YoloEDetectionParser.releaseF16Scratch()
 
         if rawDetections.isEmpty {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse (Core ML thresholds + blacklist.json)") }
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.resetOverlayScalesForEmptyMask()
@@ -1891,6 +2190,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         } else {
             candidates = rawDetections
         }
+
+        let supportSurfaceHintName = supportSurfaceHint(
+            from: candidates,
+            imageWidth: onnxSide,
+            imageHeight: onnxSide
+        )
+        let preferRoomRaycastSizing = supportSurfaceHintName != nil
 
         candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
         if candidates.isEmpty {
@@ -1969,16 +2275,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBx2 = min(bufW, Int(tightFx2))
         let primaryBy2 = min(bufH, Int(tightFy2))
 
-        maybeLogSceneFitmentFromPrimaryBbox(
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2,
-            imageWidth: bufW,
-            imageHeight: bufH,
-            arDepthSnapshot: arDepthSnapshot
-        )
-
         // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
         // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
         let bw = max(1, tightFx2 - tightFx1)
@@ -2005,87 +2301,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
         let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
         let bboxWidthImagePx = Float(max(1, primaryBx2 - primaryBx1))
-
-        // Pixel-proportion measurement: furniture_px / buffer_px × room_meters.
-        let propWidthM = bboxWidthImagePx / Float(max(1, bufW)) * roomWidthMeters
-        let propHeightM = bboxHeightImagePx / Float(max(1, bufH)) * roomHeightMeters
-
-        // Pinhole/monocular measurement (same logic as phase=first, but every frame).
-        let provisionalFloorResult = floorContactSizingResult(
-            contactImageX: Float(primaryBx1 + primaryBx2) * 0.5,
-            contactImageY: Float(max(primaryBy1, primaryBy2 - 1)),
-            widthPixels: bboxWidthImagePx,
-            heightPixels: bboxHeightImagePx,
-            imageWidth: bufW,
-            imageHeight: bufH,
-            pipeline: "floor_contact_bbox_bottom_center"
-        )
-        let refinedFloorResult = refinedMaskFloorContactSizeMeters(
-            maskSmall: maskSmall,
-            protoW: pW,
-            protoH: pH,
-            bboxCenterImageX: Int(bboxCenterImageX),
-            imageWidth: bufW,
-            imageHeight: bufH
-        )
-        let finalMetricResult = refinedFloorResult?.metric ?? provisionalFloorResult?.metric
-        let provisionalContactY = max(primaryBy1, primaryBy2 - 1)
-        if let provisional = provisionalFloorResult {
-            let provisionalDist = provisional.metric.distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
-            let provisionalSizeLog =
-                "height_m=\(String(format: "%.3f", provisional.metric.size.height)) width_m=\(String(format: "%.3f", provisional.metric.size.width))"
-            let provisionalContactLog =
-                "contact_px=(\(Int(bboxCenterImageX)),\(provisionalContactY)) bbox_px=\(Int(bboxWidthImagePx))x\(Int(bboxHeightImagePx))"
-            let provisionalPitchLog =
-                "focal_px=\(String(format: "%.1f", provisional.focalPixels)) pitch_deg=\(String(format: "%.1f", provisional.effectivePitchDeg)) motion_pitch_deg=\(provisional.measuredPitchDeg.map { String(format: "%.1f", $0) } ?? "nil")"
-            logFurnitureFitSize(
-                "phase=floor_contact_provisional pipeline=\(provisional.metric.pipeline) depth_m=\(provisionalDist) " +
-                provisionalSizeLog + " " +
-                provisionalContactLog + " " +
-                provisionalPitchLog
-            )
-        } else {
-            logFurnitureFitSize(
-                "phase=floor_contact_provisional pipeline=floor_contact_bbox_bottom_center hit=false contact_px=(\(Int(bboxCenterImageX)),\(provisionalContactY))"
-            )
-        }
-        if let refined = refinedFloorResult {
-            let refinedDist = refined.metric.distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
-            let refinedSizeLog =
-                "height_m=\(String(format: "%.3f", refined.metric.size.height)) width_m=\(String(format: "%.3f", refined.metric.size.width))"
-            let refinedContactLog =
-                "contact_px=(\(refined.contactImageX),\(refined.contactImageY)) mask_px=\(Int(refined.widthPixels))x\(Int(refined.heightPixels))"
-            let refinedPitchLog =
-                "focal_px=\(String(format: "%.1f", refined.focalPixels)) pitch_deg=\(String(format: "%.1f", refined.effectivePitchDeg)) motion_pitch_deg=\(refined.measuredPitchDeg.map { String(format: "%.1f", $0) } ?? "nil")"
-            logFurnitureFitSize(
-                "phase=floor_contact_refined pipeline=\(refined.metric.pipeline) depth_m=\(refinedDist) " +
-                refinedSizeLog + " " +
-                refinedContactLog + " " +
-                refinedPitchLog
-            )
-        }
-        let pinholeTag: String
-        let pinholeWidthM: Float
-        let pinholeHeightM: Float
-        let pinholeDist: Float?
-        if let p = finalMetricResult {
-            pinholeTag = p.pipeline
-            pinholeWidthM = p.size.width
-            pinholeHeightM = p.size.height
-            pinholeDist = p.distanceMeters
-        } else {
-            pinholeTag = "unavail"
-            pinholeWidthM = 0
-            pinholeHeightM = 0
-            pinholeDist = nil
-        }
-        let distStr = pinholeDist.map { String(format: "%.2f", $0) } ?? "—"
-        let pinholeDepthNote: String
-        if pinholeTag.hasPrefix("floor_contact") {
-            pinholeDepthNote = "depth_m=\(distStr) (non-AR floor-contact depth estimate from object bottom)"
-        } else {
-            pinholeDepthNote = "depth_m=\(distStr)"
-        }
+        let finalMetricResult: PrimaryBboxMetersResult? = nil
 
         let arLabel: String
         let arTrackingLabel: String
@@ -2128,8 +2344,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         logFurnitureFitSize(
             "phase=all " +
-            "proportion=\(String(format: "%.3f", propWidthM))×\(String(format: "%.3f", propHeightM))m " +
-            "floor_height=\(String(format: "%.3f", pinholeWidthM))×\(String(format: "%.3f", pinholeHeightM))m(\(pinholeTag) \(pinholeDepthNote); H/W from bbox_or_mask × focal / floor_contact_depth) " +
             "ar=\(arLabel) tracking=\(arTrackingLabel) planes=\(planeAnchorCount) " +
             "room_display_m=\(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))×\(String(format: "%.2f", roomDepthMeters)) " +
             "raycast_su=\(raycastSuStr) " +
@@ -2152,44 +2366,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 @unknown default: return "unknown"
                 }
             }()
-            let meaning: String
-            if pinholeTag.hasPrefix("floor_contact_bbox_bottom_center") {
-                meaning = "FLOOR_DEPTH_ESTIMATE: provisional non-AR floor-contact depth from bbox bottom-center."
-            } else if pinholeTag.hasPrefix("floor_contact_mask_contact") {
-                meaning = "FLOOR_DEPTH_ESTIMATE: refined non-AR floor-contact depth from lowest segmented contact point."
-            } else {
-                meaning = "no floor-contact estimate available"
-            }
             logFurnitureFitSize(
                 "phase=floor_contact_audit device_has_LiDAR=\(deviceLidar) ar_depth_companion_running=\(isARDepthCompanionSessionRunning) " +
                 "snapshot_depthMap_present=\(snapHasMap) ar_currentFrame=\(hasArFrame) tracking=\(auditTracking) " +
-                "pipeline=\(pinholeTag) dist_used_m=\(distStr) → \(meaning)"
+                "pipeline=disabled dist_used_m=— → non_AR_measurement_disabled"
             )
         }
 
         let maskHasForeground = maskSmall.contains(where: { $0 > 0 })
-        let firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)?
-        if maskHasForeground {
-            let bboxW = CGFloat(max(1, primaryBx2 - primaryBx1))
-            let bboxH = CGFloat(max(1, primaryBy2 - primaryBy1))
-            if let p = finalMetricResult {
-                firstFrameMeters = (p.size.width, p.size.height, p.pipeline, p.distanceMeters)
-            } else {
-                let sizingForFirstFrame = FurnitureSizingCalculator(
-                    roomWidth: roomWidthMeters,
-                    roomHeight: roomHeightMeters,
-                    viewWidth: CGFloat(bufW),
-                    viewHeight: CGFloat(bufH)
-                )
-                let legacy = sizingForFirstFrame.estimateRealWorldSize(
-                    detectedWidthPixels: bboxW,
-                    detectedHeightPixels: bboxH
-                )
-                firstFrameMeters = (legacy.widthMeters, legacy.heightMeters, "legacy_bbox_times_room", nil)
-            }
-        } else {
-            firstFrameMeters = nil
-        }
+        let firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)? = nil
 
         if isUsingARCameraPath {
             scheduleDebouncedAssistedMeasurement(
@@ -2238,7 +2423,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy2: primaryBy2,
                 imageWidth: bufW,
                 imageHeight: bufH,
-                arDepthSnapshot: arDepthSnapshot
+                arDepthSnapshot: arDepthSnapshot,
+                preferRoomRaycastSizing: preferRoomRaycastSizing
             )
             self.updateOverlayPresentationMode(
                 primaryClassIdx: primary.classIdx,
@@ -2292,8 +2478,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 if needsRotate {
                     if let r = self.rotateCGImage90(out, clockwise: true) { out = r }
                 }
-                let scale = UIScreen.main.scale
+                let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
                 self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
+                self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: out)
                 self.commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
                     maskHasForeground: maskHasForeground,
                     pinholeResult: finalMetricResult,
@@ -2700,13 +2887,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
 
-        for (_, d) in candidates.enumerated() {
+        for (index, d) in candidates.enumerated() {
             let r = bufferRect(for: d)
             let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
             ctx.setLineWidth(2.0)
             ctx.setStrokeColor(UIColor.cyan.cgColor)
             ctx.stroke(cgRect)
 
+            guard index == primaryIndex else { continue }
             let plainName = classNames[d.classIdx] ?? "unknown"
             let confidence = String(format: "%.2f", d.confidence)
             let labelText = "\(plainName) (\(confidence))"
@@ -3347,6 +3535,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    /// Throttled mean sRGB of the composited cutout for room aesthetic / furniture profile (runs off the main thread).
+    private func scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: CGImage) {
+        guard onSegmentationMaskMeanColorSRGB != nil else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastSegmentationMeanColorPublishAt >= segmentationMeanColorMinPublishInterval else { return }
+        lastSegmentationMeanColorPublishAt = now
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let mean = FurnitureSegmentationMeanColor.meanStraightSRGB(cgImage: compositedCgImage) else { return }
+            DispatchQueue.main.async {
+                guard let self, let callback = self.onSegmentationMaskMeanColorSRGB else { return }
+                callback(mean)
+            }
+        }
+    }
+
     /// Call on main **after** the composited segmentation mask is applied to `maskImageView` (or when compose failed but mask had foreground).
     /// Reads ``hasFirstDetection`` on main before ``finishFirstDetectionIfNeeded`` so per-frame pinhole is not skipped due to detection-queue races.
     private func commitPinholeFurnitureSizeAfterSegmentationMaskApplied(
@@ -3359,18 +3563,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         bboxHeightPx: Int,
         arDepthSnapshotAttached: Bool
     ) {
-        guard maskHasForeground, let fm = firstFrameMeters else { return }
+        guard maskHasForeground else { return }
         let hadSegmentationBeforeThisCommit = hasFirstDetection
-        if !hadSegmentationBeforeThisCommit {
+        if !hadSegmentationBeforeThisCommit, let fm = firstFrameMeters {
             logFurnitureFitSize(
                 "phase=first_mask_commit W×H_m=\(String(format: "%.3f", fm.width))×\(String(format: "%.3f", fm.height)) pipeline=\(fm.pipeline) dist_m=\(fm.dist.map { String(format: "%.3f", $0) } ?? "—") → finishFirst + parent callback"
             )
+        } else if !hadSegmentationBeforeThisCommit {
+            logFurnitureFitSize(
+                "phase=first_mask_commit_no_metrics maskHasForeground=true bbox_px=\(bboxWidthPx)x\(bboxHeightPx) " +
+                "buffer=\(imageWidth)x\(imageHeight) arDepthSnapshot=\(arDepthSnapshotAttached)"
+            )
         }
         finishFirstDetectionIfNeeded(
-            furnitureWidthMeters: fm.width,
-            furnitureHeightMeters: fm.height,
-            pipelineTag: fm.pipeline,
-            distanceMeters: fm.dist,
+            furnitureWidthMeters: firstFrameMeters?.width,
+            furnitureHeightMeters: firstFrameMeters?.height,
+            pipelineTag: firstFrameMeters?.pipeline ?? "mask_only_no_metric",
+            distanceMeters: firstFrameMeters?.dist,
             arDepthSnapshotAttached: arDepthSnapshotAttached,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
@@ -3378,7 +3587,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bboxHeightPx: bboxHeightPx
         )
         if hadSegmentationBeforeThisCommit, let p = pinholeResult {
-            let est = FurnitureSizeEstimate(widthMeters: p.size.width, heightMeters: p.size.height, arHeightMeters: nil)
+            let arHeight = normalizedARFurnitureHeightMeters()
+            if arHeight == nil {
+                logFurnitureFitSize(
+                    "phase=height_publish_skip source=\(p.pipeline) reason=ar_only_height width_m=\(String(format: "%.3f", p.size.width)) non_ar_height_m=\(String(format: "%.3f", p.size.height))"
+                )
+            }
+            let est = FurnitureSizeEstimate(
+                widthMeters: p.size.width,
+                heightMeters: arHeight ?? p.size.height,
+                arHeightMeters: arHeight
+            )
             onFurnitureSizeEstimated?(est)
         }
     }
@@ -3405,21 +3624,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logFurnitureFitSize(
                 "phase=first pipeline=\(pipelineTag) dist_m=\(distStr) W×H_m=\(String(format: "%.3f", fw))×\(String(format: "%.3f", fh)) buffer=\(imageWidth)x\(imageHeight) bbox_px=\(bboxWidthPx)x\(bboxHeightPx) arDepthSnapshot=\(arDepthSnapshotAttached)"
             )
-            let est = FurnitureSizeEstimate(widthMeters: fw, heightMeters: fh, arHeightMeters: nil)
+            let arHeight = normalizedARFurnitureHeightMeters()
+            if arHeight == nil {
+                logFurnitureFitSize(
+                    "phase=first_height_publish_skip source=\(pipelineTag) reason=ar_only_height width_m=\(String(format: "%.3f", fw)) non_ar_height_m=\(String(format: "%.3f", fh))"
+                )
+            }
+            let est = FurnitureSizeEstimate(
+                widthMeters: fw,
+                heightMeters: arHeight ?? fh,
+                arHeightMeters: arHeight
+            )
             DispatchQueue.main.async {
                 self.onFurnitureSizeEstimated?(est)
             }
         }
 
-        let showMeterBanner = furnitureWidthMeters != nil && furnitureHeightMeters != nil && !suppressStartupProgress
+        let showMeterBanner = furnitureWidthMeters != nil &&
+            normalizedARFurnitureHeightMeters() != nil &&
+            !suppressStartupProgress
         let dismissDelay: TimeInterval = showMeterBanner ? 0.95 : 0
 
         DispatchQueue.main.async {
-            if showMeterBanner, let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
+            if showMeterBanner,
+               let fw = furnitureWidthMeters,
+               let fh = self.normalizedARFurnitureHeightMeters() {
                 self.progressContainer.isHidden = false
                 self.progressContainer.alpha = 1
                 self.progressView.progress = 1.0
-                self.progressLabel.text = String(format: "  ~%.2f m × %.2f m  \n  (depth + camera)  ", fw, fh)
+                self.progressLabel.text = String(format: "  ~%.2f m × %.2f m  \n  (AR height)  ", fw, fh)
             }
             UIView.animate(withDuration: 0.25, delay: dismissDelay, options: []) {
                 self.progressContainer.alpha = 0
@@ -3428,6 +3661,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 self.progressContainer.alpha = 1
             }
         }
+    }
+
+    private func normalizedARFurnitureHeightMeters() -> Float? {
+        guard let value = lastAREstimatedHeightMeters,
+              value.isFinite,
+              value > 0.05 else { return nil }
+        return value
     }
 
     // MARK: - Gestures
@@ -3581,6 +3821,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 extension FurnitureFitContainerView {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isUsingARCameraPath else { return }
+        isARDepthCompanionSessionRunning = true
         frameLock.lock()
         if isProcessing {
             preferImmediateNextInference = true
@@ -3604,8 +3845,12 @@ extension FurnitureFitContainerView {
             resetProcessingFlag()
             return
         }
-        // AR camera path still does not feed a separate depth snapshot into the floor-contact estimate.
-        let depthSnapshot: FurnitureFitARDepthSnapshot? = nil
+        let depthSnapshot = FurnitureFitARSupport.makeDepthSnapshot(
+            frame: frame,
+            bgraWidth: CVPixelBufferGetWidth(bgra),
+            bgraHeight: CVPixelBufferGetHeight(bgra),
+            lockedOrientation: lockedOrientation
+        )
         detectionQueue.async { [weak self] in
             self?.processFrame(bgra, arDepthSnapshot: depthSnapshot)
         }
@@ -3639,4 +3884,3 @@ extension UIView {
 extension CGRect {
     var area: CGFloat { width * height }
 }
-

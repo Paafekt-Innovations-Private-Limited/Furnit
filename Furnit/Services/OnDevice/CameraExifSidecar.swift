@@ -221,4 +221,36 @@ enum CameraExifSidecar {
         }
         return out
     }
+
+    static func sidecarURL(forRoomFolder roomFolder: URL) -> URL {
+        roomFolder.appendingPathComponent(fileName)
+    }
+
+    static func load(roomFolder: URL) -> [String: Double] {
+        loadExistingDoubles(at: sidecarURL(forRoomFolder: roomFolder))
+    }
+
+    static func loadSourceCameraInfo(roomFolder: URL, photoOrientation: Int? = nil) -> SourceCameraInfo {
+        let values = load(roomFolder: roomFolder)
+        let focalLengthMM = values["focalLengthMm"].map(Float.init)
+        let focalLength35 = values["focalLength35mmEquivMm"].map(Float.init)
+        let subjectDistance = values["subjectDistanceMeters"].map(Float.init)
+
+        let sensorWidthMM: Float?
+        if let focalLengthMM, let focalLength35, focalLengthMM > 0, focalLength35 > 0 {
+            sensorWidthMM = 36 * focalLengthMM / focalLength35
+        } else {
+            sensorWidthMM = nil
+        }
+
+        return SourceCameraInfo(
+            focalLengthMM: focalLengthMM,
+            sensorWidthMM: sensorWidthMM,
+            focalLength35mmEquivalentMM: focalLength35,
+            subjectDistanceMeters: subjectDistance,
+            imageWidthPx: nil,
+            imageHeightPx: nil,
+            photoOrientation: photoOrientation
+        )
+    }
 }

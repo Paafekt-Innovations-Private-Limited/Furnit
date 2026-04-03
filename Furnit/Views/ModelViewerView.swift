@@ -5,6 +5,7 @@ import Photos
 import CoreML
 import AVFoundation
 import UIKit
+import simd
 
 struct ModelViewerView: View {
     @ObservedObject private var yoloeService = YOLOEModelService.shared
@@ -646,6 +647,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var roomDepthMeters: Float = 4.0
     /// Splat raycast / saved `.meta` scene units for ratio fitment logs.
     var roomRaycastSceneDimensions: RoomRaycastDimensions? = nil
+    var roomModel: RoomModel? = nil
     var cameraFocalLengthPixels: Float = 0
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
@@ -653,6 +655,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
     /// Sharp Room: skip “Starting camera…” progress after the first segmentation this session.
     var suppressStartupProgress: Bool = false
     var onFirstSegmentationComplete: (() -> Void)?
+    /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
+    var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -662,11 +666,13 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomHeightMeters = roomHeightMeters
         view.roomDepthMeters = roomDepthMeters
         view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        view.roomModel = roomModel
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
+        view.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         return view
     }
 
@@ -678,11 +684,13 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.roomHeightMeters = roomHeightMeters
         uiView.roomDepthMeters = roomDepthMeters
         uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+        uiView.roomModel = roomModel
         uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         uiView.suppressStartupProgress = suppressStartupProgress
         uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
+        uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
@@ -691,4 +699,3 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.stop()
     }
 }
-

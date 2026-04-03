@@ -361,6 +361,46 @@ enum FurnitureFitARSupport {
         return best
     }
 
+    /// Robust scene depth over a BGRA-normalized rect. Uses a low percentile instead of the strict minimum
+    /// so a single spurious near pixel does not inflate measured object size.
+    static func depthMetersPercentileInNormalizedBgraRect(
+        snapshot: FurnitureFitARDepthSnapshot,
+        nxMin: CGFloat,
+        nyMinTop: CGFloat,
+        nxMax: CGFloat,
+        nyMaxTop: CGFloat,
+        samplesPerAxis: Int = 7,
+        percentile: Float = 0.20
+    ) -> Float? {
+        guard snapshot.depthMap != nil else { return nil }
+        guard samplesPerAxis >= 1 else { return nil }
+        let x0 = min(max(min(nxMin, nxMax), 0), 1)
+        let x1 = min(max(max(nxMin, nxMax), 0), 1)
+        let y0 = min(max(min(nyMinTop, nyMaxTop), 0), 1)
+        let y1 = min(max(max(nyMinTop, nyMaxTop), 0), 1)
+
+        var samples: [Float] = []
+        samples.reserveCapacity(samplesPerAxis * samplesPerAxis)
+        for iy in 0..<samplesPerAxis {
+            for ix in 0..<samplesPerAxis {
+                let tx = (CGFloat(ix) + 0.5) / CGFloat(samplesPerAxis)
+                let ty = (CGFloat(iy) + 0.5) / CGFloat(samplesPerAxis)
+                let nx = x0 + (x1 - x0) * tx
+                let ny = y0 + (y1 - y0) * ty
+                if let d = depthMeters(snapshot: snapshot, normalizedBgraNX: nx, normalizedBgraNY: ny),
+                   d > 0.1, d < 50, d.isFinite {
+                    samples.append(d)
+                }
+            }
+        }
+
+        guard !samples.isEmpty else { return nil }
+        samples.sort()
+        let p = min(max(percentile, 0), 1)
+        let idx = min(samples.count - 1, max(0, Int(roundf(Float(samples.count - 1) * p))))
+        return samples[idx]
+    }
+
     /// Pinhole: physical height (m) from bbox height in **full image pixels** and distance in meters.
     static func estimatedPhysicalHeightMeters(
         bboxHeightPixels: Float,
@@ -385,7 +425,7 @@ enum FurnitureFitARSupport {
     static func overlayScaleFromMetricHeights(
         standardHeightMeters: Float,
         estimatedHeightMeters: Float,
-        minScale: Float = 0.4,
+        minScale: Float = 0.08,
         maxScale: Float = 2.5
     ) -> Float? {
         guard standardHeightMeters > 0.1, estimatedHeightMeters > 0.1 else { return nil }

@@ -200,6 +200,18 @@ struct SharpRoomView: View {
     @StateObject private var splatMeasurementHost = GaussianSplatMeasurementHost()
     /// Last successful depth-raycast room extents (scene units); refreshed after load and before save.
     @State private var raycastRoomDimensions: RoomRaycastDimensions?
+    @State private var roomModel: RoomModel?
+    @State private var enhancedRoomMetadata: EnhancedRoomMetadata?
+    @State private var isExtractingRoomGeometry = false
+    @State private var didLoadPersistedRoomMetadata = false
+    @State private var latestFitCheckResult: FitCheckResult?
+    @State private var latestCornerPlacementSuggestions: [CornerPlacementSuggestion] = []
+    @State private var latestEstimatedFurnitureDepthMeters: Float?
+    @State private var latestAestheticScore: AestheticScore?
+    /// Mean sRGB (0…1) from composited YOLOE cutout pixels; drives ``FurnitureProfile.primaryColor`` when set.
+    @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
+    /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
+    @State private var isPlacementIntelligenceExpanded = false
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -286,17 +298,33 @@ struct SharpRoomView: View {
             // Load when the user turns on Furniture Fit (brain) instead.
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
+            loadPersistedRoomMetadataIfNeeded()
         }
         .onChange(of: showingFurnitureFit) { _, isOn in
+            logFurnitureFitSize(
+                "phase=toggle active=\(isOn) suppressStartupProgress=\(furnitureFitInitialSegmentationDone) " +
+                "room_m=\(String(format: "%.2f", furnitureFitRoomWidth))×\(String(format: "%.2f", furnitureFitRoomHeight))×\(String(format: "%.2f", displayRoomDepth))"
+            )
             if isOn {
                 yoloeService.ensureModelLoaded()
+                updateRoomPlacementIntelligence()
             } else {
                 detectedFurnitureWidth = nil
                 detectedFurnitureHeight = nil
                 detectedFurnitureHeightAR = nil
+                latestFitCheckResult = nil
+                latestCornerPlacementSuggestions = []
+                latestEstimatedFurnitureDepthMeters = nil
+                latestAestheticScore = nil
+                segmentedFurnitureMeanSRGB = nil
                 yoloeService.releaseResources()
             }
         }
+        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: detectedFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
             if !enabled {
                 showFurnitureDimensionsInput = false
@@ -384,6 +412,7 @@ struct SharpRoomView: View {
                         logSharpRoomDimensionApproaches(metalBounds: b, raycast: m)
                     }
                 }
+                scheduleRoomGeometryExtractionIfNeeded()
             }
         }
         .onAppear {
@@ -560,70 +589,136 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Width/height for nav title, FurnitureFit, and save.
-    /// **New session (`allowSave`):** live depth raycast (su) first, then splat / saved / defaults.
-    /// **Saved room from Home:** persisted `.meta` **meters** first so the toolbar matches what was shown at save time; live raycast is su and must not override meter fields (avoids wrong `m` labels and flicker).
-    private var displayRoomWidth: Float {
-        let rayW = raycastRoomDimensions?.width
-        let savedSceneW = savedRoomModel?.roomSceneWidth
-        if allowSave {
-            return calibratedRoomWidth
-                ?? rayW
-                ?? jsFrontWallWidth
-                ?? savedRoomWidth
-                ?? 4.0
+    private var roomModelMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        guard let roomModel else { return nil }
+        let width = roomModel.widthMeters
+        let height = roomModel.heightMeters
+        let depth = roomModel.depthMeters
+        guard width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
         }
-        return calibratedRoomWidth
-            ?? savedSceneW
+        return (width, height, depth)
+    }
+
+    private var savedSceneDimensions: RoomRaycastDimensions? {
+        guard let savedRoomModel,
+              let width = savedRoomModel.roomSceneWidth,
+              let height = savedRoomModel.roomSceneHeight,
+              let depth = savedRoomModel.roomSceneDepth,
+              width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
+        }
+        return RoomRaycastDimensions(width: width, height: height, depth: depth)
+    }
+
+    private var roomModelSceneDimensions: RoomRaycastDimensions? {
+        guard let roomModel else { return nil }
+        let size = roomModel.roomBounds.size
+        guard size.x.isFinite, size.y.isFinite, size.z.isFinite,
+              size.x > 0.05, size.y > 0.05, size.z > 0.05 else {
+            return nil
+        }
+        return RoomRaycastDimensions(width: size.x, height: size.y, depth: size.z)
+    }
+
+    private var raycastHeightCalibratedMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        let scene = roomModelSceneDimensions ?? raycastRoomDimensions ?? savedSceneDimensions
+        let referenceHeight = roomModelMetersDimensions?.height
+            ?? savedRoomHeight
+            ?? savedRoomModel?.roomHeight
+            ?? 2.4
+        guard let scene,
+              scene.height.isFinite,
+              scene.height > 0.05,
+              referenceHeight.isFinite,
+              referenceHeight > 1.5,
+              referenceHeight < 4.5 else {
+            return nil
+        }
+
+        let scale = referenceHeight / scene.height
+        guard scale.isFinite, scale > 0.0001 else { return nil }
+        return (
+            width: scene.width * scale,
+            height: referenceHeight,
+            depth: scene.depth * scale
+        )
+    }
+
+    private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        let modelMeters = roomModelMetersDimensions
+        let raycastScaled = raycastHeightCalibratedMetersDimensions
+
+        if let modelMeters, let raycastScaled {
+            let widthRatio = modelMeters.width / max(raycastScaled.width, 0.0001)
+            let depthRatio = modelMeters.depth / max(raycastScaled.depth, 0.0001)
+            let widthMismatch = widthRatio > 2.0 || widthRatio < 0.5
+            let depthMismatch = depthRatio > 2.0 || depthRatio < 0.5
+
+            if widthMismatch || depthMismatch {
+                return (
+                    width: raycastScaled.width,
+                    height: modelMeters.height,
+                    depth: raycastScaled.depth
+                )
+            }
+        }
+
+        return modelMeters
+            ?? raycastScaled
+    }
+
+    /// Width/height/depth in meters for nav title, FurnitureFit, and save.
+    /// The canonical live source is `roomModel`; scene-unit raycasts are diagnostic / fallback-only and must not bleed into meter fields.
+    private var displayRoomWidth: Float {
+        calibratedRoomWidth
+            ?? resolvedRoomMetersDimensions?.width
             ?? savedRoomWidth
             ?? savedRoomModel?.roomWidth
-            ?? rayW
-            ?? jsFrontWallWidth
             ?? 4.0
     }
 
     private var displayRoomHeight: Float {
-        let rayH = raycastRoomDimensions?.height
-        let savedSceneH = savedRoomModel?.roomSceneHeight
-        if allowSave {
-            return calibratedRoomHeight
-                ?? rayH
-                ?? jsFrontWallHeight
-                ?? savedRoomHeight
-                ?? 3.0
-        }
-        return calibratedRoomHeight
-            ?? savedSceneH
+        calibratedRoomHeight
+            ?? resolvedRoomMetersDimensions?.height
             ?? savedRoomHeight
             ?? savedRoomModel?.roomHeight
-            ?? rayH
-            ?? jsFrontWallHeight
             ?? 3.0
     }
 
-    /// Depth: new session prefers live raycast; reopening a saved room prefers `.meta` depth in meters.
+    /// Depth in meters; never sourced from raw scene-unit raycasts.
     private var displayRoomDepth: Float {
-        let savedSceneD = savedRoomModel?.roomSceneDepth
-        if allowSave {
-            if let d = raycastRoomDimensions?.depth { return d }
-            return savedRoomModel?.roomDepth ?? effectiveBounds?.depth ?? 4.0
-        }
-        if let d = savedSceneD { return d }
-        if let d = savedRoomModel?.roomDepth { return d }
-        if let d = raycastRoomDimensions?.depth { return d }
-        return effectiveBounds?.depth ?? 4.0
+        resolvedRoomMetersDimensions?.depth
+            ?? savedRoomModel?.roomDepth
+            ?? 4.0
     }
 
-    /// Nav bar: live depth-raycast **su** for new SHARP sessions; saved rooms use the same **su** line as preview when `roomScene*` exists, else **m** from meta.
+    /// Nav bar: show canonical room-model meters when available; otherwise fall back to scene-unit diagnostics while live extraction settles.
     private var navigationRoomMetersLine: String {
+        if let meters = roomModelMetersDimensions {
+            let display = resolvedRoomMetersDimensions ?? meters
+            return String(
+                format: "%.1f m × %.1f m × %.1f m (room model)",
+                display.width, display.height, display.depth
+            )
+        }
         if allowSave {
-            if let r = raycastRoomDimensions {
+            if let r = roomModelSceneDimensions ?? raycastRoomDimensions {
+                let source = roomModelSceneDimensions != nil ? "room bounds" : "classic_ply depth raycast"
                 return String(
-                    format: "%.3f × %.3f × %.3f su (classic_ply depth raycast)",
-                    r.width, r.height, r.depth
+                    format: "%.3f × %.3f × %.3f su (%@)",
+                    r.width, r.height, r.depth, source
                 )
             }
             return "Measuring room…"
+        }
+        if let scene = roomModelSceneDimensions {
+            return String(
+                format: "%.3f × %.3f × %.3f su (saved room bounds)",
+                scene.width, scene.height, scene.depth
+            )
         }
         if let m = savedRoomModel,
            let sw = m.roomSceneWidth, let sh = m.roomSceneHeight, let sd = m.roomSceneDepth {
@@ -635,19 +730,23 @@ struct SharpRoomView: View {
         return String(format: "%.1f m × %.1f m × %.1f m", displayRoomWidth, displayRoomHeight, displayRoomDepth)
     }
 
-    /// Baseline W/H before calibration — mirrors display priority minus `calibrated*` (raycast when present).
+    /// Baseline W/H before calibration in meter space when available.
     private var sourceRoomWidth: Float {
-        if allowSave {
-            return raycastRoomDimensions?.width ?? jsFrontWallWidth ?? savedRoomWidth ?? 4.0
-        }
-        return savedRoomWidth ?? savedRoomModel?.roomWidth ?? raycastRoomDimensions?.width ?? jsFrontWallWidth ?? 4.0
+        resolvedRoomMetersDimensions?.width
+            ?? savedRoomWidth
+            ?? savedRoomModel?.roomWidth
+            ?? jsFrontWallWidth
+            ?? raycastRoomDimensions?.width
+            ?? 4.0
     }
 
     private var sourceRoomHeight: Float {
-        if allowSave {
-            return raycastRoomDimensions?.height ?? jsFrontWallHeight ?? savedRoomHeight ?? 3.0
-        }
-        return savedRoomHeight ?? savedRoomModel?.roomHeight ?? raycastRoomDimensions?.height ?? jsFrontWallHeight ?? 3.0
+        resolvedRoomMetersDimensions?.height
+            ?? savedRoomHeight
+            ?? savedRoomModel?.roomHeight
+            ?? jsFrontWallHeight
+            ?? raycastRoomDimensions?.height
+            ?? 3.0
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -655,8 +754,9 @@ struct SharpRoomView: View {
 
     private var furnitureFitRoomHeight: Float { displayRoomHeight }
 
-    /// Scene-unit room for Furniture Fit ratios: saved `.meta` when opened from Home (matches preview-at-save); live raycast when creating a new room.
+    /// Scene-unit room for Furniture Fit ratios: prefer extracted room bounds, then persisted scene bounds, then live raycast.
     private var furnitureFitSceneDimensions: RoomRaycastDimensions? {
+        if let scene = roomModelSceneDimensions { return scene }
         if !allowSave, let m = savedRoomModel,
            let w = m.roomSceneWidth, let h = m.roomSceneHeight, let d = m.roomSceneDepth {
             return RoomRaycastDimensions(width: w, height: h, depth: d)
@@ -681,16 +781,31 @@ struct SharpRoomView: View {
             roomHeightMeters: furnitureFitRoomHeight,
             roomDepthMeters: displayRoomDepth,
             roomRaycastSceneDimensions: furnitureFitSceneDimensions,
+            roomModel: roomModel,
             cameraFocalLengthPixels: 0,
             onFurnitureSizeEstimated: { estimate in
-                // Keep numeric room + furniture measurements stable; AR height is used only
-                // for visual overlay sizing inside FurnitureFit, not for recalibrating the room.
+                // Width may still come from the non-AR sizing path, but furniture height is
+                // AR-only so pinhole/raycast cannot contaminate room calibration or placement.
                 detectedFurnitureWidth = estimate.widthMeters
-                detectedFurnitureHeight = estimate.heightMeters
-                detectedFurnitureHeightAR = estimate.arHeightMeters
+                if let arHeight = estimate.arHeightMeters,
+                   arHeight.isFinite,
+                   arHeight > 0.05 {
+                    detectedFurnitureHeight = arHeight
+                    detectedFurnitureHeightAR = arHeight
+                } else {
+                    logFurnitureFitSize(
+                        "phase=viewer_height_skip reason=ar_only_height width_m=\(String(format: "%.3f", estimate.widthMeters))"
+                    )
+                }
             },
             suppressStartupProgress: furnitureFitInitialSegmentationDone,
-            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
+            onFirstSegmentationComplete: {
+                furnitureFitInitialSegmentationDone = true
+                logFurnitureFitSize("phase=first_segmentation_complete viewer_session=true")
+            },
+            onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                segmentedFurnitureMeanSRGB = meanSRGB
+            }
         )
         .ignoresSafeArea()
         .zIndex(100)
@@ -914,6 +1029,122 @@ struct SharpRoomView: View {
         .background(Color.black.opacity(0.6)).cornerRadius(6)
     }
 
+    @ViewBuilder
+    private var roomIntelligencePlacementCard: some View {
+        if showingFurnitureFit,
+           let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence(),
+           let fit = latestFitCheckResult {
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isPlacementIntelligenceExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Placement Intelligence")
+                            .font(.caption.bold())
+                            .foregroundColor(.white)
+                        Spacer(minLength: 8)
+                        Text(
+                            fit.fitsInRoom
+                                ? "\(max(fit.fitLocations.count, 1)) fit"
+                                : "No fit"
+                        )
+                        .font(.caption2.bold())
+                        .foregroundColor(fit.fitsInRoom ? .green : .red)
+                        Image(systemName: isPlacementIntelligenceExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.bold())
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if isPlacementIntelligenceExpanded {
+                    Text(
+                        String(
+                            format: "Detected %.2f × %.2f × %.2f m",
+                            dimensions.widthM,
+                            dimensions.heightM,
+                            dimensions.depthM
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.92))
+                    if fit.fitsInRoom {
+                        Text(
+                            fit.fitLocations.isEmpty
+                                ? "Fits room bounds. No clear free-floor region yet."
+                                : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                    } else {
+                        Text("Current furniture footprint exceeds the detected room extents.")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    if let bestCorner = latestCornerPlacementSuggestions.first {
+                        Text(
+                            String(
+                                format: "Best corner score %.2f, rot %.0f°",
+                                bestCorner.score,
+                                bestCorner.yRotationRad * 180 / .pi
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                    }
+                    if let firstWarning = fit.warnings.first {
+                        Text(firstWarning)
+                            .font(.caption2)
+                            .foregroundColor(.yellow)
+                    } else if latestEstimatedFurnitureDepthMeters != nil {
+                        Text("Depth is estimated until catalog or semantic data is available.")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                    if let aesthetic = latestAestheticScore {
+                        Text(
+                            String(
+                                format: "Harmony %.2f (%@) · contrast %.2f · style fit %.2f",
+                                aesthetic.harmonyScore,
+                                aesthetic.harmonyType.rawValue,
+                                aesthetic.contrastScore,
+                                aesthetic.styleCompatibilityScore
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.88))
+                        ForEach(Array(aesthetic.recommendations.prefix(4).enumerated()), id: \.offset) { _, line in
+                            Text("• \(line)")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.86))
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.72))
+            .cornerRadius(8)
+        }
+    }
+
+    @ViewBuilder
+    private var roomIntelligencePlacementCardResetOnExit: some View {
+        roomIntelligencePlacementCard
+            .onChange(of: showingFurnitureFit) { _, isShowing in
+                if !isShowing {
+                    isPlacementIntelligenceExpanded = false
+                }
+            }
+            .onChange(of: latestFitCheckResult?.fitsInRoom) { _, _ in
+                if latestFitCheckResult == nil {
+                    isPlacementIntelligenceExpanded = false
+                }
+            }
+    }
+
     @ViewBuilder private var bottomBarsOverlayView: some View {
         if photoOrientation == .landscape {
             ZStack(alignment: .bottom) {
@@ -948,12 +1179,15 @@ struct SharpRoomView: View {
                     .background(Color.black.opacity(0.5)).cornerRadius(8)
                     .allowsHitTesting(false)
                     if showingFurnitureFit {
-                        if showRoomFurnitureCalibrate {
-                            Button(action: { showFurnitureDimensionsInput = true }) {
-                                furnitureMeasurementPillContent(showTapHint: true)
+                        VStack(alignment: .trailing, spacing: 8) {
+                            roomIntelligencePlacementCardResetOnExit
+                            if showRoomFurnitureCalibrate {
+                                Button(action: { showFurnitureDimensionsInput = true }) {
+                                    furnitureMeasurementPillContent(showTapHint: true)
+                                }
+                            } else {
+                                furnitureMeasurementPillContent(showTapHint: false)
                             }
-                        } else {
-                            furnitureMeasurementPillContent(showTapHint: false)
                         }
                     }
                     Spacer().allowsHitTesting(false)
@@ -1001,6 +1235,7 @@ struct SharpRoomView: View {
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
                         if showingFurnitureFit {
+                            roomIntelligencePlacementCardResetOnExit
                             if showRoomFurnitureCalibrate {
                                 Button(action: { showFurnitureDimensionsInput = true }) {
                                     furnitureMeasurementPillContent(showTapHint: true)
@@ -1162,6 +1397,68 @@ struct SharpRoomView: View {
         return jpg
     }
 
+    @MainActor
+    private func currentValidatedEnhancedMetadata() -> EnhancedRoomMetadata? {
+        if let metadata = enhancedRoomMetadata,
+           metadata.roomModel() != nil {
+            return metadata
+        }
+
+        if let roomModel {
+            let metadata = EnhancedRoomMetadata.from(roomModel: roomModel, preserving: enhancedRoomMetadata)
+            enhancedRoomMetadata = metadata
+            return metadata
+        }
+
+        return nil
+    }
+
+    @MainActor
+    private func prepareEnhancedMetadataForSaveIfNeeded() async -> EnhancedRoomMetadata? {
+        if let existing = currentValidatedEnhancedMetadata() {
+            logDebug("📐 [SharpRoomView] Save: reusing existing room intelligence metadata")
+            return existing
+        }
+
+        guard let depthQuery = splatMeasurementHost.depthQuery else {
+            logDebug("📐 [SharpRoomView] Save: room intelligence unavailable — depth query missing")
+            return nil
+        }
+
+        logDebug("📐 [SharpRoomView] Save: attempting room geometry extraction from live splat depth")
+        splatMeasurementHost.requestRedrawForDepthMeasure()
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        let cameraInfo = loadSourceCameraInfo()
+        let usableColorReader: (any SplatColorReadable)? = {
+            guard let colorReader = splatMeasurementHost.colorReader,
+                  colorReader.supportsColorReadback else { return nil }
+            return colorReader
+        }()
+
+        let engine = RoomGeometryEngine(
+            depthQuery: depthQuery,
+            colorReader: usableColorReader,
+            cameraInfo: cameraInfo
+        )
+
+        do {
+            let model = try engine.extractRoomModel()
+            roomModel = model
+            let metadata = EnhancedRoomMetadata.from(roomModel: model, preserving: enhancedRoomMetadata)
+            enhancedRoomMetadata = metadata
+            persistEnhancedRoomMetadataIfPossible(metadata)
+            logDebug(
+                "📐 [SharpRoomView] Save: extracted room intelligence W×H×D=\(String(format: "%.2f", model.widthMeters))×" +
+                "\(String(format: "%.2f", model.heightMeters))×\(String(format: "%.2f", model.depthMeters))m"
+            )
+            return metadata
+        } catch {
+            logDebug("❌ [SharpRoomView] Save: room geometry extraction failed, continuing without enhanced metadata: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     private func startSavingRoom() {
         guard !roomName.isEmpty else { return }
 
@@ -1222,15 +1519,6 @@ struct SharpRoomView: View {
             var roomD = await MainActor.run { displayRoomDepth }
             logWallMeasurement("saveRoom baseline display W×H×D=\(roomW)×\(roomH)×\(roomD)")
 
-            // Use the live depth-raycast dimensions for the saved room too, so reopening the room shows the same
-            // `2.7`-style values the user saw in preview instead of the old splat-AABB fallback like `0.697`.
-            if let sceneRaycast {
-                roomW = sceneRaycast.width
-                roomH = sceneRaycast.height
-                roomD = sceneRaycast.depth
-                logWallMeasurement("saveRoom using scene-raycast for saved W×H×D=\(roomW)×\(roomH)×\(roomD)")
-            }
-
             /*
             let folder = classicPlyURL.deletingLastPathComponent()
             let thumbURL = resolvedThumbnailURL(forClassicPly: classicPlyURL)
@@ -1271,6 +1559,28 @@ struct SharpRoomView: View {
             }
             */
 
+            await MainActor.run { saveProgress = 0.32 }
+            let metadataForSave = await prepareEnhancedMetadataForSaveIfNeeded()
+            let modelMetersForSave = await MainActor.run { roomModelMetersDimensions }
+            let modelSceneForSave = await MainActor.run { roomModelSceneDimensions }
+
+            if let modelMetersForSave {
+                roomW = modelMetersForSave.width
+                roomH = modelMetersForSave.height
+                roomD = modelMetersForSave.depth
+                logWallMeasurement(
+                    "saveRoom using room-model meters W×H×D=\(roomW)×\(roomH)×\(roomD)"
+                )
+                logDebug(
+                    "📐 [SharpRoomView] Save: using room-model meters W×H×D=\(String(format: "%.2f", roomW))×" +
+                    "\(String(format: "%.2f", roomH))×\(String(format: "%.2f", roomD))m"
+                )
+            } else if sceneRaycast != nil {
+                logDebug(
+                    "⚠️ [SharpRoomView] Save: room-model meters unavailable; keeping display-meter fallback while scene-raycast remains scene-only"
+                )
+            }
+
             await MainActor.run { saveProgress = 0.55 }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 modelManager.savePLY(
@@ -1280,12 +1590,20 @@ struct SharpRoomView: View {
                     roomWidth: roomW,
                     roomHeight: roomH,
                     roomDepth: roomD,
-                    roomSceneWidth: sceneRaycast?.width,
-                    roomSceneHeight: sceneRaycast?.height,
-                    roomSceneDepth: sceneRaycast?.depth
+                    roomSceneWidth: modelSceneForSave?.width ?? sceneRaycast?.width,
+                    roomSceneHeight: modelSceneForSave?.height ?? sceneRaycast?.height,
+                    roomSceneDepth: modelSceneForSave?.depth ?? sceneRaycast?.depth
                 ) { success, error in
                     logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
                     Task { @MainActor in
+                        if success, let metadata = metadataForSave {
+                            do {
+                                try modelManager.saveEnhancedMetadata(metadata, forSavedRoomNamed: savedName, fileType: .ply)
+                                logDebug("✅ [SharpRoomView] Save: enhanced metadata persisted for saved room")
+                            } catch {
+                                logDebug("❌ [SharpRoomView] Failed to save enhanced metadata for saved room: \(error.localizedDescription)")
+                            }
+                        }
                         saveProgress = 1.0
                         withAnimation(.easeOut(duration: 0.3)) {
                             isSavingRoom = false
@@ -1319,6 +1637,221 @@ struct SharpRoomView: View {
 
         roomName = ""
         logDebug("❌ [SharpRoomView] Room save cancelled")
+    }
+
+    private func loadPersistedRoomMetadataIfNeeded() {
+        guard !didLoadPersistedRoomMetadata else { return }
+        didLoadPersistedRoomMetadata = true
+
+        if let savedRoomModel {
+            if let metadata = modelManager.loadEnhancedMetadata(
+                forSavedRoomNamed: savedRoomModel.fileName,
+                fileType: savedRoomModel.fileType
+            ) {
+                enhancedRoomMetadata = metadata
+                if let persistedRoomModel = metadata.roomModel() {
+                    roomModel = persistedRoomModel
+                    logDebug(
+                        "📐 [SharpRoomView] Loaded enhanced metadata for saved room: " +
+                        "sceneToMeters=\(String(format: "%.4f", metadata.sceneToMeters ?? 0))"
+                    )
+                    return
+                }
+                logDebug("📐 [SharpRoomView] Ignoring invalid saved-room enhanced metadata")
+            }
+        }
+
+        if let metadata = modelManager.loadEnhancedMetadata(forRoomURL: viewerPlyURL) {
+            enhancedRoomMetadata = metadata
+            if let persistedRoomModel = metadata.roomModel() {
+                roomModel = persistedRoomModel
+                logDebug("📐 [SharpRoomView] Loaded enhanced metadata from live room sidecar")
+            } else {
+                logDebug("📐 [SharpRoomView] Ignoring invalid live-room enhanced metadata")
+            }
+        }
+    }
+
+    private func scheduleRoomGeometryExtractionIfNeeded() {
+        guard savedRoomModel == nil else {
+            logDebug("📐 [SharpRoomView] Skipping room geometry extraction on saved-room open")
+            return
+        }
+        guard roomModel == nil,
+              !isExtractingRoomGeometry,
+              !isLoading else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            triggerRoomGeometryExtractionIfNeeded()
+        }
+    }
+
+    private func triggerRoomGeometryExtractionIfNeeded(force: Bool = false) {
+        guard savedRoomModel == nil else {
+            logDebug("📐 [SharpRoomView] Ignoring room geometry extraction trigger for saved-room open")
+            return
+        }
+        guard force || roomModel == nil else { return }
+        guard !isExtractingRoomGeometry else { return }
+        guard let depthQuery = splatMeasurementHost.depthQuery else {
+            logDebug("❌ [SharpRoomView] Cannot extract room geometry — depth query unavailable")
+            return
+        }
+
+        isExtractingRoomGeometry = true
+        splatMeasurementHost.requestRedrawForDepthMeasure()
+
+        Task { @MainActor in
+            await Task.yield()
+
+            let cameraInfo = loadSourceCameraInfo()
+            let engine = RoomGeometryEngine(
+                depthQuery: depthQuery,
+                colorReader: splatMeasurementHost.colorReader,
+                cameraInfo: cameraInfo
+            )
+
+            do {
+                let model = try engine.extractRoomModel()
+                roomModel = model
+                let metadata = EnhancedRoomMetadata.from(roomModel: model, preserving: enhancedRoomMetadata)
+                enhancedRoomMetadata = metadata
+                persistEnhancedRoomMetadataIfPossible(metadata)
+                logDebug(
+                    "📐 [SharpRoomView] Room model extracted W×H×D=\(String(format: "%.2f", model.widthMeters))×" +
+                    "\(String(format: "%.2f", model.heightMeters))×\(String(format: "%.2f", model.depthMeters))m"
+                )
+            } catch {
+                logDebug("❌ [SharpRoomView] Room geometry extraction failed: \(error.localizedDescription)")
+            }
+
+            isExtractingRoomGeometry = false
+        }
+    }
+
+    private func persistEnhancedRoomMetadataIfPossible(_ metadata: EnhancedRoomMetadata) {
+        do {
+            try modelManager.saveEnhancedMetadata(metadata, nextTo: viewerPlyURL)
+        } catch {
+            logDebug("❌ [SharpRoomView] Failed to persist enhanced room metadata: \(error.localizedDescription)")
+        }
+    }
+
+    private func derivedDetectedFurnitureDimensionsForRoomIntelligence() -> RoomFurnitureDimensions? {
+        guard let width = detectedFurnitureWidth,
+              width.isFinite,
+              width > 0.05 else { return nil }
+
+        let heightSource = detectedFurnitureHeightAR ?? detectedFurnitureHeight
+        guard let height = heightSource,
+              height.isFinite,
+              height > 0.05 else { return nil }
+
+        let estimatedDepth = max(0.25, min(width * 0.72, 1.4))
+        return RoomFurnitureDimensions(widthM: width, heightM: height, depthM: estimatedDepth)
+    }
+
+    private func updateRoomPlacementIntelligence() {
+        guard showingFurnitureFit,
+              let roomModel,
+              let furniture = derivedDetectedFurnitureDimensionsForRoomIntelligence() else {
+            latestFitCheckResult = nil
+            latestCornerPlacementSuggestions = []
+            latestEstimatedFurnitureDepthMeters = nil
+            latestAestheticScore = nil
+            return
+        }
+
+        latestEstimatedFurnitureDepthMeters = furniture.depthM
+        let fitEngine = FitCheckEngine(roomModel: roomModel)
+        let fitResult = fitEngine.checkFit(furniture: furniture)
+        let cornerPlacement = CornerPlacement(roomModel: roomModel)
+        let suggestions = Array(cornerPlacement.suggestions(for: furniture).prefix(3))
+
+        latestFitCheckResult = fitResult
+        latestCornerPlacementSuggestions = suggestions
+
+        let palette = roomModel.surfacePalette
+        let roomStyleTags = inferredRoomStyleTags(from: palette)
+        let furnitureProfile = heuristicFurnitureProfileForAesthetic(
+            roomModel: roomModel,
+            segmentedMeanSRGB: segmentedFurnitureMeanSRGB
+        )
+        let aestheticAdvisor = AestheticAdvisor(palette: palette, roomStyleTags: roomStyleTags)
+        latestAestheticScore = aestheticAdvisor.evaluate(furniture: furnitureProfile)
+
+        logDebug(
+            "📐 [SharpRoomView] Placement intelligence updated " +
+            "furniture=\(String(format: "%.2f", furniture.widthM))×\(String(format: "%.2f", furniture.heightM))×\(String(format: "%.2f", furniture.depthM))m " +
+            "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count) " +
+            "aesthetic_h=\(String(format: "%.2f", latestAestheticScore?.harmonyScore ?? 0))"
+        )
+    }
+
+    /// Maps splat-sampled ``SurfacePalette`` material hints to advisor style tags.
+    private func inferredRoomStyleTags(from palette: SurfacePalette) -> [String] {
+        var tags = Set<String>()
+        let layers = [palette.floor, palette.walls, palette.ceiling]
+        for layer in layers {
+            guard let layer else { continue }
+            for hint in layer.materialHints {
+                switch hint {
+                case .wood: tags.formUnion(["rustic", "traditional"])
+                case .tile: tags.insert("modern")
+                case .concrete: tags.formUnion(["industrial", "modern"])
+                case .fabric, .carpet: tags.formUnion(["traditional", "eclectic"])
+                case .plaster: tags.formUnion(["modern", "scandinavian"])
+                case .glass, .metal: tags.formUnion(["modern", "industrial"])
+                case .unknown: break
+                }
+            }
+        }
+        if tags.isEmpty { return ["modern", "minimalist"] }
+        return Array(tags).sorted().prefix(6).map { $0 }
+    }
+
+    /// Furniture color from segmented cutout mean when available; otherwise a palette-biased heuristic for coherent scores.
+    private func heuristicFurnitureProfileForAesthetic(
+        roomModel: RoomModel,
+        segmentedMeanSRGB: SIMD3<Float>?
+    ) -> FurnitureProfile {
+        let palette = roomModel.surfacePalette
+        let primary: SIMD3<Float>
+        if let cutoutMean = segmentedMeanSRGB {
+            primary = cutoutMean
+        } else if let wall = palette.walls?.dominantColors.first {
+            primary = SIMD3(
+                min(wall.x * 0.82 + 0.06, 1),
+                min(wall.y * 0.78 + 0.05, 1),
+                min(wall.z * 0.74 + 0.04, 1)
+            )
+        } else if let floor = palette.floor?.dominantColors.first {
+            primary = SIMD3(repeating: 0.38) * 0.55 + floor * 0.45
+        } else if let ceiling = palette.ceiling?.dominantColors.first {
+            primary = ceiling * SIMD3(0.55, 0.52, 0.48)
+        } else {
+            primary = SIMD3(0.44, 0.40, 0.36)
+        }
+        return FurnitureProfile(
+            primaryColor: primary,
+            accentColor: nil,
+            styleTags: ["modern", "minimalist", "contemporary"]
+        )
+    }
+
+    private func loadSourceCameraInfo() -> SourceCameraInfo {
+        let folder = viewerPlyURL.deletingLastPathComponent()
+        return CameraExifSidecar.loadSourceCameraInfo(
+            roomFolder: folder,
+            photoOrientation: exifOrientationHint
+        )
+    }
+
+    private var exifOrientationHint: Int {
+        switch photoOrientation {
+        case .portrait: return 6
+        case .landscape, .square: return 1
+        }
     }
 
 }
@@ -2586,4 +3119,3 @@ struct ShareSheet: UIViewControllerRepresentable {
         SharpRoomView(plyURL: URL(fileURLWithPath: "/sample.ply"))
     }
 }
-

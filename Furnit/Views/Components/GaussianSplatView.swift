@@ -120,7 +120,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MTKViewDelegate {
+    final class Coordinator: NSObject, MTKViewDelegate, SplatDepthQueryable, SplatColorReadable {
 
         // ── Bindings ──────────────────────────────────────────────────────────
         @Binding var isLoading: Bool
@@ -129,6 +129,7 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Zoom used for projection (updated from parent in `updateUIView` without writing the binding).
         var appliedZoomLevel: Float = 1.0
         var onBoundsAvailable: ((RoomBounds) -> Void)?
+        var supportsColorReadback: Bool { false }
 
         /// Last camera matrices used for splat rendering (for depth raycast).
         private var lastProjectionMatrix: simd_float4x4 = matrix_identity_float4x4
@@ -162,6 +163,7 @@ struct GaussianSplatView: UIViewRepresentable {
         private var warmupEndTime: CFAbsoluteTime?
         private var depthScratchTexture: MTLTexture?
         private var setupGeneration: Int = 0
+        private var hasRenderedDepthFrame = false
 
         /// Axis-aligned bounds from loaded `SplatPoint` positions (MetalSplatter 1.x `SplatRenderer` does not expose `boundingBox` / `centroid`).
         private var sceneBoundsMin: SIMD3<Float>?
@@ -192,6 +194,15 @@ struct GaussianSplatView: UIViewRepresentable {
         var splatCompositeExposure: Float = 1.0
         /// Additive lift on dark tonemapped samples (smoothstep mask).
         var splatCompositeShadowLift: Float = 0.0
+
+        private struct DepthReadbackSnapshot {
+            let width: Int
+            let height: Int
+            let depths: [Float]
+            let invProjectionMatrix: simd_float4x4
+            let invViewMatrix: simd_float4x4
+            let viewportSize: CGSize
+        }
 
         // ── Init ──────────────────────────────────────────────────────────────
         init(
@@ -248,6 +259,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
             splatScratchTexture = nil
             depthScratchTexture = nil
+            hasRenderedDepthFrame = false
             compositePipeline = nil
             commandQueue = nil
             device = nil
@@ -337,26 +349,48 @@ struct GaussianSplatView: UIViewRepresentable {
                     let points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
 
-                    // Trimmed P3–P97 per axis: camera framing. Full AABB: `onBoundsAvailable` (wall measurement).
+                    // Full AABB is exact; trimmed P3–P97 camera framing uses a sample on large scenes to avoid
+                    // sorting 3 arrays of 1M+ splats every time a saved room is opened.
                     let splatCount = points.count
-                    let sortedX = points.map(\.position.x).sorted()
-                    let sortedY = points.map(\.position.y).sorted()
-                    let sortedZ = points.map(\.position.z).sorted()
-                    let lo = min(splatCount - 1, max(0, Int(Float(splatCount) * 0.03)))
-                    let hi = min(splatCount - 1, max(lo, Int(Float(splatCount) * 0.97)))
-                    let trimmedMin = SIMD3<Float>(sortedX[lo], sortedY[lo], sortedZ[lo])
-                    let trimmedMax = SIMD3<Float>(sortedX[hi], sortedY[hi], sortedZ[hi])
+                    let maxTrimmedSampleCount = 60_000
+                    let trimSampleStride = max(1, splatCount / maxTrimmedSampleCount)
+                    var sampledX: [Float] = []
+                    var sampledY: [Float] = []
+                    var sampledZ: [Float] = []
+                    sampledX.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+                    sampledY.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+                    sampledZ.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
 
                     var fullMin = points[0].position
                     var fullMax = points[0].position
                     var positionSum = SIMD3<Float>.zero
-                    for point in points {
+                    for (index, point) in points.enumerated() {
                         let position = point.position
                         fullMin = simd_min(fullMin, position)
                         fullMax = simd_max(fullMax, position)
                         positionSum += position
+                        if index % trimSampleStride == 0 {
+                            sampledX.append(position.x)
+                            sampledY.append(position.y)
+                            sampledZ.append(position.z)
+                        }
                     }
                     let centroid = positionSum / Float(points.count)
+
+                    if sampledX.isEmpty {
+                        sampledX.append(points[0].position.x)
+                        sampledY.append(points[0].position.y)
+                        sampledZ.append(points[0].position.z)
+                    }
+
+                    sampledX.sort()
+                    sampledY.sort()
+                    sampledZ.sort()
+                    let trimmedSampleCount = sampledX.count
+                    let lo = min(trimmedSampleCount - 1, max(0, Int(Float(trimmedSampleCount) * 0.03)))
+                    let hi = min(trimmedSampleCount - 1, max(lo, Int(Float(trimmedSampleCount) * 0.97)))
+                    let trimmedMin = SIMD3<Float>(sampledX[lo], sampledY[lo], sampledZ[lo])
+                    let trimmedMax = SIMD3<Float>(sampledX[hi], sampledY[hi], sampledZ[hi])
 
                     let cameraBoundsMin = trimmedMin
                     let cameraBoundsMax = trimmedMax
@@ -392,7 +426,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
                         guard let self, self.setupGeneration == thisGeneration else { return }
                         logDebug("📐 [GaussianSplatView] Full bounds: X[\(fullMin.x),\(fullMax.x)] Y[\(fullMin.y),\(fullMax.y)] Z[\(fullMin.z),\(fullMax.z)]")
-                        logDebug("📐 [GaussianSplatView] Trimmed P3–P97: X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
+                        logDebug("📐 [GaussianSplatView] Trimmed P3–P97 sample=\(trimmedSampleCount)/\(splatCount): X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
                         logDebug("📐 [GaussianSplatView] Camera framing AABB: X[\(cameraBoundsMin.x),\(cameraBoundsMax.x)] Y[\(cameraBoundsMin.y),\(cameraBoundsMax.y)] Z[\(cameraBoundsMin.z),\(cameraBoundsMax.z)]")
                         logDebug("✅ [GaussianSplatView] Loaded \(loadedSplatCount) splats centroid=\(centroid) cameraCentroid=\(cameraCentroid) (framing uses camera bounds)")
                         self.onBoundsAvailable?(bounds)
@@ -502,6 +536,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
             }
 
+            hasRenderedDepthFrame = true
             commandBuffer.present(drawable)
             commandBuffer.commit()
             // During warm-up, keep requesting new frames so the room sharpens quickly even when idle.
@@ -623,101 +658,302 @@ struct GaussianSplatView: UIViewRepresentable {
             view?.setNeedsDisplay()
         }
 
-        /// Copies the last rendered splat depth texture to CPU and raycasts five screen samples into world space.
-        /// Requires the composite path (scratch color + depth); call after at least one successful ``draw(in:)``.
-        func measureRoomFromDepthBuffer() -> RoomRaycastDimensions? {
-            guard let metalDevice = device,
-                  let commandQueue = commandQueue,
-                  let depthTex = depthScratchTexture,
-                  splatRenderer != nil else {
-                logDebug("❌ [Measure] Missing device, queue, depth texture, or renderer")
+        var viewportSize: CGSize {
+            if let view {
+                return view.bounds.size
+            }
+            return drawableSize
+        }
+
+        func depthAt(screenPoint: CGPoint) -> Float? {
+            guard let snapshot = makeDepthSnapshot(),
+                  let worldPoint = worldPointAt(screenPoint: screenPoint, snapshot: snapshot) else {
                 return nil
             }
 
-            let w = depthTex.width
-            let h = depthTex.height
-            guard w > 2, h > 2 else { return nil }
+            let cameraPosition = cameraWorldPosition(invView: snapshot.invViewMatrix)
+            return simd_distance(worldPoint, cameraPosition)
+        }
 
-            let bytesPerRow = w * MemoryLayout<Float>.stride
-            let totalBytes = bytesPerRow * h
-            guard let buffer = metalDevice.makeBuffer(length: totalBytes, options: .storageModeShared) else {
-                logDebug("❌ [Measure] Shared depth staging buffer allocation failed")
+        func unproject(screenPoint: CGPoint, depth: Float) -> SIMD3<Float>? {
+            guard depth.isFinite, depth > 0,
+                  let snapshot = makeDepthSnapshot() else {
                 return nil
             }
 
-            guard let cmdBuf = commandQueue.makeCommandBuffer(),
-                  let blit = cmdBuf.makeBlitCommandEncoder() else {
-                logDebug("❌ [Measure] Blit encoder failed")
+            let cameraPosition = cameraWorldPosition(invView: snapshot.invViewMatrix)
+            guard let rayDirection = worldRayDirection(screenPoint: screenPoint, snapshot: snapshot) else {
                 return nil
             }
+            return cameraPosition + rayDirection * depth
+        }
 
-            blit.copy(
-                from: depthTex,
-                sourceSlice: 0,
-                sourceLevel: 0,
-                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-                sourceSize: MTLSize(width: w, height: h, depth: 1),
-                to: buffer,
-                destinationOffset: 0,
-                destinationBytesPerRow: bytesPerRow,
-                destinationBytesPerImage: totalBytes
+        func sampleDepthGrid(rows: Int, cols: Int) -> [[Float?]] {
+            guard rows > 0, cols > 0,
+                  let snapshot = makeDepthSnapshot() else { return [] }
+
+            var grid = [[Float?]](repeating: [Float?](repeating: nil, count: cols), count: rows)
+            let viewport = snapshot.viewportSize
+            guard viewport.width > 0, viewport.height > 0 else { return [] }
+
+            for row in 0..<rows {
+                for col in 0..<cols {
+                    let point = CGPoint(
+                        x: (CGFloat(col) + 0.5) / CGFloat(cols) * viewport.width,
+                        y: (CGFloat(row) + 0.5) / CGFloat(rows) * viewport.height
+                    )
+                    grid[row][col] = depthAt(screenPoint: point, snapshot: snapshot)
+                }
+            }
+
+            DepthDiagnostics.logGridSummary(label: "GaussianSplatView.sampleDepthGrid", grid: grid)
+            return grid
+        }
+
+        func buildPointCloud(rows: Int, cols: Int, maxDistance: Float) -> [SIMD3<Float>] {
+            guard rows > 0, cols > 0,
+                  let snapshot = makeDepthSnapshot() else { return [] }
+
+            let viewport = snapshot.viewportSize
+            guard viewport.width > 0, viewport.height > 0 else { return [] }
+
+            var points: [SIMD3<Float>] = []
+            points.reserveCapacity(rows * cols)
+
+            for row in 0..<rows {
+                for col in 0..<cols {
+                    let point = CGPoint(
+                        x: (CGFloat(col) + 0.5) / CGFloat(cols) * viewport.width,
+                        y: (CGFloat(row) + 0.5) / CGFloat(rows) * viewport.height
+                    )
+                    guard let depth = depthAt(screenPoint: point, snapshot: snapshot),
+                          depth.isFinite,
+                          depth > 0,
+                          depth < maxDistance,
+                          let worldPoint = worldPointAt(screenPoint: point, snapshot: snapshot) else {
+                        continue
+                    }
+                    points.append(worldPoint)
+                }
+            }
+
+            logDebug(
+                "🩺 [GaussianSplatView] buildPointCloud rows=\(rows) cols=\(cols) " +
+                "points=\(points.count) snapshot=\(snapshot.width)x\(snapshot.height)"
             )
-            blit.endEncoding()
-            cmdBuf.commit()
-            cmdBuf.waitUntilCompleted()
+            return points
+        }
 
-            let invProj = simd_inverse(lastProjectionMatrix)
-            let invView = simd_inverse(lastViewMatrix)
-            let depths = buffer.contents().bindMemory(to: Float.self, capacity: w * h)
+        func colorAt(screenPoint _: CGPoint) -> SIMD3<Float>? {
+            nil
+        }
 
-            let margin: Float = 0.10
-            guard let center = unprojectDepthSample(nx: 0.5, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
-                  let left = unprojectDepthSample(nx: margin, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
-                  let right = unprojectDepthSample(nx: 1 - margin, ny: 0.5, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
-                  let top = unprojectDepthSample(nx: 0.5, ny: margin, w: w, h: h, depths: depths, invProj: invProj, invView: invView),
-                  let bottom = unprojectDepthSample(nx: 0.5, ny: 1 - margin, w: w, h: h, depths: depths, invProj: invProj, invView: invView) else {
-                logDebug("❌ [Measure] Rays missed — depth invalid or room not visible in margin samples")
+        /// Copies the last rendered splat depth texture to CPU and derives a robust scene-unit room extent from
+        /// a trimmed point cloud. This is still a view-dependent fallback, but it is materially better than a
+        /// five-ray slice and avoids treating center-ray camera distance as room depth.
+        func measureRoomFromDepthBuffer() -> RoomRaycastDimensions? {
+            guard let snapshot = makeDepthSnapshot() else { return nil }
+            let sampledPoints = buildPointCloud(
+                snapshot: snapshot,
+                rows: 36,
+                cols: 36,
+                maxDistance: 12.0
+            )
+            guard sampledPoints.count >= 80 else {
+                logDebug("❌ [Measure] Point-cloud room measure unavailable — only \(sampledPoints.count) valid samples")
                 return nil
             }
 
-            let widthWorld = simd_length(right - left)
-            let heightWorld = simd_length(top - bottom)
-            let camWorld = (invView * SIMD4<Float>(0, 0, 0, 1))
-            let camPos = SIMD3<Float>(camWorld.x, camWorld.y, camWorld.z)
-            let depthAlong = simd_length(center - camPos)
-
-            let dims = RoomRaycastDimensions(width: widthWorld, height: heightWorld, depth: depthAlong)
+            let dims = trimmedSceneDimensions(points: sampledPoints, trimFraction: 0.06)
             let fname = currentURL?.lastPathComponent ?? "unknown"
             let plyKind = isSharpClassicPly ? "classic_ply" : "base_ply"
             logPlyBoundsDiagnostic(
                 "Metal depth raycast room (\(plyKind) file=\(fname)) su: " +
                 "W=\(String(format: "%.3f", dims.width)) H=\(String(format: "%.3f", dims.height)) D=\(String(format: "%.3f", dims.depth))"
             )
+            logDebug(
+                "🩺 [GaussianSplatView] measureRoomFromDepthBuffer samples=\(sampledPoints.count) " +
+                "trimmed_su=\(String(format: "%.3f", dims.width))×\(String(format: "%.3f", dims.height))×\(String(format: "%.3f", dims.depth))"
+            )
             return dims
         }
 
-        private func unprojectDepthSample(
-            nx: Float,
-            ny: Float,
-            w: Int,
-            h: Int,
-            depths: UnsafeMutablePointer<Float>,
-            invProj: simd_float4x4,
-            invView: simd_float4x4
-        ) -> SIMD3<Float>? {
-            let px = min(max(Int(nx * Float(w - 1)), 0), w - 1)
-            let py = min(max(Int(ny * Float(h - 1)), 0), h - 1)
-            let d = depths[py * w + px]
-            guard d.isFinite, d > 0.001, d < 0.9999 else { return nil }
+        private func buildPointCloud(
+            snapshot: DepthReadbackSnapshot,
+            rows: Int,
+            cols: Int,
+            maxDistance: Float
+        ) -> [SIMD3<Float>] {
+            let viewport = snapshot.viewportSize
+            guard rows > 0, cols > 0,
+                  viewport.width > 0, viewport.height > 0 else { return [] }
 
+            var points: [SIMD3<Float>] = []
+            points.reserveCapacity(rows * cols)
+
+            for row in 0..<rows {
+                for col in 0..<cols {
+                    let point = CGPoint(
+                        x: (CGFloat(col) + 0.5) / CGFloat(cols) * viewport.width,
+                        y: (CGFloat(row) + 0.5) / CGFloat(rows) * viewport.height
+                    )
+                    guard let depth = depthAt(screenPoint: point, snapshot: snapshot),
+                          depth.isFinite,
+                          depth > 0,
+                          depth < maxDistance,
+                          let worldPoint = worldPointAt(screenPoint: point, snapshot: snapshot) else {
+                        continue
+                    }
+                    points.append(worldPoint)
+                }
+            }
+
+            return points
+        }
+
+        private func trimmedSceneDimensions(
+            points: [SIMD3<Float>],
+            trimFraction: Float
+        ) -> RoomRaycastDimensions {
+            let trimmedX = trimmedRange(values: points.map(\.x), trimFraction: trimFraction)
+            let trimmedY = trimmedRange(values: points.map(\.y), trimFraction: trimFraction)
+            let trimmedZ = trimmedRange(values: points.map(\.z), trimFraction: trimFraction)
+
+            return RoomRaycastDimensions(
+                width: max(0.001, trimmedX.upper - trimmedX.lower),
+                height: max(0.001, trimmedY.upper - trimmedY.lower),
+                depth: max(0.001, trimmedZ.upper - trimmedZ.lower)
+            )
+        }
+
+        private func trimmedRange(values: [Float], trimFraction: Float) -> (lower: Float, upper: Float) {
+            guard !values.isEmpty else { return (0, 0.001) }
+            let sorted = values.sorted()
+            let maxTrimIndex = max(0, (sorted.count - 1) / 2)
+            let trimCount = min(Int(Float(sorted.count) * trimFraction), maxTrimIndex)
+            let lowerIndex = min(trimCount, sorted.count - 1)
+            let upperIndex = max(lowerIndex, sorted.count - 1 - trimCount)
+            return (sorted[lowerIndex], sorted[upperIndex])
+        }
+
+        private func makeDepthSnapshot() -> DepthReadbackSnapshot? {
+            guard hasRenderedDepthFrame,
+                  let metalDevice = device,
+                  let commandQueue = commandQueue,
+                  let depthTexture = depthScratchTexture,
+                  splatRenderer != nil else {
+                logDebug("❌ [SplatDepth] Snapshot unavailable — frame/device/depth missing")
+                return nil
+            }
+
+            let width = depthTexture.width
+            let height = depthTexture.height
+            guard width > 0, height > 0 else { return nil }
+
+            let bytesPerRow = width * MemoryLayout<Float>.stride
+            let totalBytes = bytesPerRow * height
+            guard let buffer = metalDevice.makeBuffer(length: totalBytes, options: .storageModeShared),
+                  let commandBuffer = commandQueue.makeCommandBuffer(),
+                  let blit = commandBuffer.makeBlitCommandEncoder() else {
+                logDebug("❌ [SplatDepth] Failed to allocate depth readback resources")
+                return nil
+            }
+
+            blit.copy(
+                from: depthTexture,
+                sourceSlice: 0,
+                sourceLevel: 0,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: width, height: height, depth: 1),
+                to: buffer,
+                destinationOffset: 0,
+                destinationBytesPerRow: bytesPerRow,
+                destinationBytesPerImage: totalBytes
+            )
+            blit.endEncoding()
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+
+            let pointer = buffer.contents().bindMemory(to: Float.self, capacity: width * height)
+            let depths = Array(UnsafeBufferPointer(start: pointer, count: width * height))
+            return DepthReadbackSnapshot(
+                width: width,
+                height: height,
+                depths: depths,
+                invProjectionMatrix: simd_inverse(lastProjectionMatrix),
+                invViewMatrix: simd_inverse(lastViewMatrix),
+                viewportSize: viewportSize
+            )
+        }
+
+        private func depthAt(screenPoint: CGPoint, snapshot: DepthReadbackSnapshot) -> Float? {
+            guard let worldPoint = worldPointAt(screenPoint: screenPoint, snapshot: snapshot) else { return nil }
+            let cameraPosition = cameraWorldPosition(invView: snapshot.invViewMatrix)
+            return simd_distance(worldPoint, cameraPosition)
+        }
+
+        private func worldPointAt(screenPoint: CGPoint, snapshot: DepthReadbackSnapshot) -> SIMD3<Float>? {
+            guard let rawDepth = rawDepthAt(screenPoint: screenPoint, snapshot: snapshot) else { return nil }
+            return unprojectDepthSample(
+                screenPoint: screenPoint,
+                rawDepth: rawDepth,
+                snapshot: snapshot
+            )
+        }
+
+        private func rawDepthAt(screenPoint: CGPoint, snapshot: DepthReadbackSnapshot) -> Float? {
+            let normalized = normalizedCoordinates(for: screenPoint, viewport: snapshot.viewportSize)
+            let pixelX = min(max(Int(normalized.x * Float(snapshot.width - 1)), 0), snapshot.width - 1)
+            let pixelY = min(max(Int(normalized.y * Float(snapshot.height - 1)), 0), snapshot.height - 1)
+            let depth = snapshot.depths[pixelY * snapshot.width + pixelX]
+            guard depth.isFinite, depth > 0.001, depth < 0.9999 else { return nil }
+            return depth
+        }
+
+        private func worldRayDirection(screenPoint: CGPoint, snapshot: DepthReadbackSnapshot) -> SIMD3<Float>? {
+            let normalized = normalizedCoordinates(for: screenPoint, viewport: snapshot.viewportSize)
+            let xNdc = normalized.x * 2 - 1
+            let yNdc = -(normalized.y * 2 - 1)
+            let clipFar = SIMD4<Float>(xNdc, yNdc, 1, 1)
+            var eyeFar = snapshot.invProjectionMatrix * clipFar
+            guard abs(eyeFar.w) > 1e-6 else { return nil }
+            eyeFar /= eyeFar.w
+            let worldFar = snapshot.invViewMatrix * eyeFar
+            let camera = cameraWorldPosition(invView: snapshot.invViewMatrix)
+            let direction = SIMD3<Float>(worldFar.x, worldFar.y, worldFar.z) - camera
+            let lengthSquared = simd_length_squared(direction)
+            guard lengthSquared > 1e-8 else { return nil }
+            return direction / sqrt(lengthSquared)
+        }
+
+        private func normalizedCoordinates(for screenPoint: CGPoint, viewport: CGSize) -> SIMD2<Float> {
+            guard viewport.width > 0, viewport.height > 0 else {
+                return SIMD2<Float>(0.5, 0.5)
+            }
+            let x = Float(min(max(screenPoint.x / viewport.width, 0), 1))
+            let y = Float(min(max(screenPoint.y / viewport.height, 0), 1))
+            return SIMD2<Float>(x, y)
+        }
+
+        private func cameraWorldPosition(invView: simd_float4x4) -> SIMD3<Float> {
+            let camera = invView * SIMD4<Float>(0, 0, 0, 1)
+            return SIMD3<Float>(camera.x, camera.y, camera.z)
+        }
+
+        private func unprojectDepthSample(
+            screenPoint: CGPoint,
+            rawDepth d: Float,
+            snapshot: DepthReadbackSnapshot
+        ) -> SIMD3<Float>? {
+            let normalized = normalizedCoordinates(for: screenPoint, viewport: snapshot.viewportSize)
             let zNdc = d * 2 - 1
-            let xNdc = nx * 2 - 1
-            let yNdc = -(ny * 2 - 1)
+            let xNdc = normalized.x * 2 - 1
+            let yNdc = -(normalized.y * 2 - 1)
             let clip = SIMD4<Float>(xNdc, yNdc, zNdc, 1)
-            var eye = invProj * clip
+            var eye = snapshot.invProjectionMatrix * clip
             guard abs(eye.w) > 1e-6 else { return nil }
             eye /= eye.w
-            let world = invView * eye
+            let world = snapshot.invViewMatrix * eye
             return SIMD3<Float>(world.x, world.y, world.z)
         }
 

@@ -529,6 +529,79 @@ class USDZModelManager: ObservableObject {
         return sanitized.replacingOccurrences(of: " ", with: "_")
     }
 
+    private func canonicalRoomStem(for fileURL: URL) -> String {
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        if stem.hasSuffix("_classic") {
+            return String(stem.dropLast("_classic".count))
+        }
+        return stem
+    }
+
+    private func enhancedMetadataURL(forRoomURL roomURL: URL) -> URL {
+        let stem = canonicalRoomStem(for: roomURL)
+        return roomURL.deletingLastPathComponent().appendingPathComponent("\(stem).room_metadata.json")
+    }
+
+    func loadEnhancedMetadata(forRoomURL roomURL: URL) -> EnhancedRoomMetadata? {
+        let url = enhancedMetadataURL(forRoomURL: roomURL)
+        if let data = try? Data(contentsOf: url) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            do {
+                return try decoder.decode(EnhancedRoomMetadata.self, from: data)
+            } catch {
+                logDebug("❌ [USDZModelManager] Failed to decode enhanced metadata at \(url.lastPathComponent): \(error)")
+            }
+        }
+
+        let legacyURL = roomURL.deletingLastPathComponent()
+            .appendingPathComponent("\(canonicalRoomStem(for: roomURL)).\(roomURL.pathExtension).meta")
+        guard let legacyData = try? Data(contentsOf: legacyURL),
+              let legacy = try? JSONDecoder().decode([String: String].self, from: legacyData) else {
+            return nil
+        }
+        return EnhancedRoomMetadata.migrate(from: legacy)
+    }
+
+    func loadEnhancedMetadata(forSavedRoomNamed fileName: String, fileType: ModelFileType = .ply) -> EnhancedRoomMetadata? {
+        let extensionName: String
+        switch fileType {
+        case .ply: extensionName = "ply"
+        case .meshroom: extensionName = "meshroom"
+        case .glb: extensionName = "glb"
+        case .usdz: extensionName = "usdz"
+        }
+        let roomURL = modelsDirectory.appendingPathComponent("\(fileName).\(extensionName)")
+        return loadEnhancedMetadata(forRoomURL: roomURL)
+    }
+
+    func saveEnhancedMetadata(_ metadata: EnhancedRoomMetadata, nextTo roomURL: URL) throws {
+        let url = enhancedMetadataURL(forRoomURL: roomURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(metadata)
+        try data.write(to: url, options: [.atomic])
+        logDebug("✅ [USDZModelManager] Enhanced metadata saved: \(url.lastPathComponent)")
+    }
+
+    func saveEnhancedMetadata(
+        _ metadata: EnhancedRoomMetadata,
+        forSavedRoomNamed fileName: String,
+        fileType: ModelFileType = .ply
+    ) throws {
+        let sanitizedName = sanitizeFileName(fileName)
+        let extensionName: String
+        switch fileType {
+        case .ply: extensionName = "ply"
+        case .meshroom: extensionName = "meshroom"
+        case .glb: extensionName = "glb"
+        case .usdz: extensionName = "usdz"
+        }
+        let roomURL = modelsDirectory.appendingPathComponent("\(sanitizedName).\(extensionName)")
+        try saveEnhancedMetadata(metadata, nextTo: roomURL)
+    }
+
     /// Save a PLY file to SavedRooms directory
     func savePLY(
         from sourceURL: URL,
@@ -583,6 +656,18 @@ class USDZModelManager: ObservableObject {
                 try FileManager.default.copyItem(at: destinationURL, to: classicSidecarURL)
                 if debugMode {
                     logDebug("💾 [USDZModelManager] Also saved classic sidecar: \(classicSidecarURL.lastPathComponent)")
+                }
+            }
+
+            let sourceEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: sourceURL)
+            let destinationEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: destinationURL)
+            if FileManager.default.fileExists(atPath: sourceEnhancedMetadataURL.path) {
+                if FileManager.default.fileExists(atPath: destinationEnhancedMetadataURL.path) {
+                    try FileManager.default.removeItem(at: destinationEnhancedMetadataURL)
+                }
+                try FileManager.default.copyItem(at: sourceEnhancedMetadataURL, to: destinationEnhancedMetadataURL)
+                if debugMode {
+                    logDebug("💾 [USDZModelManager] Copied enhanced metadata: \(destinationEnhancedMetadataURL.lastPathComponent)")
                 }
             }
 

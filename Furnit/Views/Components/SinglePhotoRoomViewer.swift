@@ -1500,10 +1500,16 @@ struct SinglePhotoRoomView: View {
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
 
         splatViewerDestination = nil
-        let generationImage = image
+        let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
+        let pxH = max(1, Int(ceil(Double(image.size.height * image.scale))))
+        let generationImage = SHARPService.prepareImageForSharp(image)
         let generationSourceImageURL = sharpSourceImageURL
         let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
         let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
+        logDebug(
+            "🤖 [View] SHARP generation image prepared source=\(pxW)x\(pxH) " +
+            "working=\(Int(generationImage.size.width * generationImage.scale))x\(Int(generationImage.size.height * generationImage.scale))"
+        )
         selectedImage = nil
         fixedImageItem = nil
 
@@ -1523,8 +1529,6 @@ struct SinglePhotoRoomView: View {
                 )
 
                 logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
-                let pxW = max(1, Int(ceil(Double(generationImage.size.width * generationImage.scale))))
-                let pxH = max(1, Int(ceil(Double(generationImage.size.height * generationImage.scale))))
                 await MainActor.run {
                     splatViewerDestination = SplatViewerDestination(
                         plyURL: gen.plyURL,
@@ -2648,4 +2652,3 @@ struct SceneKitViewer: View {
         logDebug("   ✅ Camera setup complete - gestures handled by SceneKitGestureOverlay")
     }
 }
-
