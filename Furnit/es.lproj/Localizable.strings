@@ -116,7 +116,7 @@
 "settings.developer" = "Desarrollador";
 "settings.developerFooter" = "Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento. Ajusta los umbrales para controlar la sensibilidad de detección y el comportamiento de filtrado.";
 "settings.debugMode" = "Modo de depuración";
-"settings.debugModeDescription" = "Mostrar cajas de detección e información de tiempo";
+"settings.debugModeDescription" = "Mostrar cajas de detección, tiempos y registros detallados en consola (Furniture Fit, límites PLY, overlay).";
 "settings.currentValue" = "Valor actual:";
 "settings.account" = "Cuenta";
 "settings.loggedInAs" = "Conectado como";

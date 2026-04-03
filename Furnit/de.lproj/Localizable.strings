@@ -116,7 +116,7 @@
 "settings.developer" = "Entwickler";
 "settings.developerFooter" = "Aktivieren Sie den Debug-Modus, um detaillierte Erkennungsinformationen und Leistungsmetriken anzuzeigen. Passen Sie Schwellenwerte an, um die Erkennungsempfindlichkeit und das Filterverhalten zu steuern.";
 "settings.debugMode" = "Debug-Modus";
-"settings.debugModeDescription" = "Erkennungsrahmen und Zeitinformationen anzeigen";
+"settings.debugModeDescription" = "Erkennungsrahmen, Zeitinfos und ausführliche Konsolenlogs (Furniture Fit, PLY-Grenzen, Overlay) anzeigen.";
 "settings.currentValue" = "Aktueller Wert:";
 "settings.account" = "Konto";
 "settings.loggedInAs" = "Angemeldet als";

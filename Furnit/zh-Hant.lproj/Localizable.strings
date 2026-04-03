@@ -116,7 +116,7 @@
 "settings.developer" = "開發者";
 "settings.developerFooter" = "啟用除錯模式以查看詳細的偵測資訊和效能指標。調整閾值以控制偵測靈敏度和篩選行為。";
 "settings.debugMode" = "除錯模式";
-"settings.debugModeDescription" = "顯示偵測框和計時資訊";
+"settings.debugModeDescription" = "顯示偵測框、計時與詳細主控台日誌（家具適配、PLY 邊界、疊加縮放）。";
 "settings.currentValue" = "目前值：";
 "settings.account" = "帳戶";
 "settings.loggedInAs" = "已登入為";

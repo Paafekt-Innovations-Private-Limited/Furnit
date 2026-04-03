@@ -116,7 +116,7 @@
 "settings.developer" = "Développeur";
 "settings.developerFooter" = "Activez le mode débogage pour voir les informations de détection détaillées et les métriques de performance. Ajustez les seuils pour contrôler la sensibilité de détection et le comportement de filtrage.";
 "settings.debugMode" = "Mode débogage";
-"settings.debugModeDescription" = "Afficher les boîtes de détection et les informations de chronométrage";
+"settings.debugModeDescription" = "Afficher les cadres de détection, le chronométrage et les journaux console détaillés (Furniture Fit, limites PLY, overlay).";
 "settings.currentValue" = "Valeur actuelle :";
 "settings.account" = "Compte";
 "settings.loggedInAs" = "Connecté en tant que";

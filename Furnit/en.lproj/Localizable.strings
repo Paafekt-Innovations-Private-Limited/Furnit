@@ -121,7 +121,7 @@
 "settings.developer" = "Developer";
 "settings.developerFooter" = "Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.";
 "settings.debugMode" = "Debug Mode";
-"settings.debugModeDescription" = "Show detection boxes and timing information";
+"settings.debugModeDescription" = "Show detection boxes, timing, and verbose console logs (Furniture Fit, PLY bounds, overlay scale).";
 "settings.currentValue" = "Current value:";
 "settings.account" = "Account";
 "settings.loggedInAs" = "Logged in as";

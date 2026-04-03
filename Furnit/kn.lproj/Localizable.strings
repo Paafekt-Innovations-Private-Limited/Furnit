@@ -116,7 +116,7 @@
 "settings.developer" = "ಡೆವಲಪರ್";
 "settings.developerFooter" = "ವಿವರವಾದ ಪತ್ತೆ ಮಾಹಿತಿ ಮತ್ತು ಕಾರ್ಯಕ್ಷಮತೆ ಮೆಟ್ರಿಕ್ಸ್ ನೋಡಲು ಡೀಬಗ್ ಮೋಡ್ ಸಕ್ರಿಯಗೊಳಿಸಿ. ಪತ್ತೆ ಸೂಕ್ಷ್ಮತೆ ಮತ್ತು ಫಿಲ್ಟರಿಂಗ್ ನಡವಳಿಕೆಯನ್ನು ನಿಯಂತ್ರಿಸಲು ಮಿತಿಗಳನ್ನು ಹೊಂದಿಸಿ.";
 "settings.debugMode" = "ಡೀಬಗ್ ಮೋಡ್";
-"settings.debugModeDescription" = "ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಸಮಯ ಮಾಹಿತಿ ತೋರಿಸು";
+"settings.debugModeDescription" = "ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು, ಸಮಯ ಮತ್ತು ವಿವರವಾದ ಕನ್ಸೋಲ್ ಲಾಗ್‌ಗಳನ್ನು ತೋರಿಸಿ (ಫರ್ನಿಚರ್ ಫಿಟ್, PLY ಎಲೆಗಳು, ಓವರ್‌ಲೇ ಸ್ಕೇಲ್).";
 "settings.currentValue" = "ಪ್ರಸ್ತುತ ಮೌಲ್ಯ:";
 "settings.account" = "ಖಾತೆ";
 "settings.loggedInAs" = "ಲಾಗಿನ್ ಆಗಿದೆ";

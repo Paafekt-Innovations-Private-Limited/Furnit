@@ -116,7 +116,7 @@
 "settings.developer" = "المطور";
 "settings.developerFooter" = "فعّل وضع التصحيح لرؤية معلومات الكشف التفصيلية ومقاييس الأداء. اضبط العتبات للتحكم في حساسية الكشف وسلوك التصفية.";
 "settings.debugMode" = "وضع التصحيح";
-"settings.debugModeDescription" = "عرض مربعات الكشف ومعلومات التوقيت";
+"settings.debugModeDescription" = "عرض مربعات الكشف والتوقيت وسجلات تفصيلية في الطرفية (Furniture Fit وحدود PLY ومقياس الطبقة).";
 "settings.currentValue" = "القيمة الحالية:";
 "settings.account" = "الحساب";
 "settings.loggedInAs" = "مسجل الدخول كـ";

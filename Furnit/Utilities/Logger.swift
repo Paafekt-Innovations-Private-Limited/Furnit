@@ -20,8 +20,32 @@ func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n
     print(output, terminator: terminator)
 }
 
-// MARK: - Always-on diagnostics (not gated by Settings debug mode)
+// MARK: - Furniture Fit & PLY stdout (Settings → Debug mode only)
+/// PLY bounds / navigation. Filter: `PLY_BOUNDS`.
+func logPlyBoundsDiagnostic(_ message: String) {
+    guard isDebugModeEnabled() else { return }
+    print("[PLY_BOUNDS] \(message)")
+}
 
+/// AR-assisted FurnitureFit metrics. Filter: `FurnitureFitAR`.
+func logFurnitureFitAR(_ message: String) {
+    guard isDebugModeEnabled() else { return }
+    print("[FurnitureFitAR] \(message)")
+}
+
+/// Furniture W×H estimate and pipeline tags. Filter: `FurnitureFitSize`.
+func logFurnitureFitSize(_ message: String) {
+    guard isDebugModeEnabled() else { return }
+    print("[FurnitureFitSize] \(message)")
+}
+
+/// Overlay scale assist. Filter: `FurnitureFitOverlay`.
+func logFurnitureFitOverlay(_ message: String) {
+    guard isDebugModeEnabled() else { return }
+    print("[FurnitureFitOverlay] \(message)")
+}
+
+// MARK: - Always-on diagnostics (not gated by Settings debug mode)
 /// Always-on diagnostics use **only** Unified Logging (`Logger`). Using both `print` and `Logger` made Xcode show **every line twice**. `print`/stdout also often **stalls** on device during long Core ML; `Logger` keeps streaming. Filter debug console or Console.app by subsystem or `SHARP` / `WALL_MEAS`.
 private enum AlwaysOnOSLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
@@ -40,21 +64,6 @@ func logWallMeasurement(_ message: String) {
 func logSharpMilestone(_ message: String) {
     let line = "[SHARP] \(message)"
     AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
-}
-
-/// PLY bounds / navigation — always printed. Filter: `PLY_BOUNDS`.
-func logPlyBoundsDiagnostic(_ message: String) {
-    print("[PLY_BOUNDS] \(message)")
-}
-
-/// AR-assisted FurnitureFit metrics for cross-platform comparison. Filter in Xcode Console: `FurnitureFitAR`.
-func logFurnitureFitAR(_ message: String) {
-    print("[FurnitureFitAR] \(message)")
-}
-
-/// Furniture W×H estimate and pipeline tag (always printed). Filter Xcode / Console.app: `FurnitureFitSize`.
-func logFurnitureFitSize(_ message: String) {
-    print("[FurnitureFitSize] \(message)")
 }
 
 /// Centralized logging utility using os_log framework

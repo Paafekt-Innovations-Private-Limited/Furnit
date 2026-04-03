@@ -176,6 +176,11 @@ struct SharpRoomView: View {
     /// When true, shows ⋮ Calibrate wall and the Tap to calibrate pill during brain (FurnitureFit). Default off (matches Android).
     @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
 
+    /// Furniture height/wall tape UI uses scene depth; omit on non-LiDAR devices (e.g. iPhone 12) where sizing is unreliable.
+    private var supportsMetricFurnitureMeasurementUI: Bool {
+        QualitySettings.supportsLiDARSceneDepth
+    }
+
     /// User-facing Infinite Zoom toggle for the room viewer (matches Settings).
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
@@ -275,7 +280,7 @@ struct SharpRoomView: View {
                                 Label(L10n.RoomViewer.saveRoom, systemImage: "square.and.arrow.down")
                             }
                         }
-                        if showRoomFurnitureCalibrate {
+                        if showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
                             Button(action: { showWallCalibration = true }) {
                                 Label(L10n.RoomViewer.calibrateWall, systemImage: "ruler")
                             }
@@ -1356,12 +1361,14 @@ struct SharpRoomView: View {
                     if showingFurnitureFit {
                         VStack(alignment: .trailing, spacing: 8) {
                             roomIntelligencePlacementCardResetOnExit
-                            if showRoomFurnitureCalibrate {
-                                Button(action: { showFurnitureDimensionsInput = true }) {
-                                    furnitureMeasurementPillContent(showTapHint: true)
+                            if supportsMetricFurnitureMeasurementUI {
+                                if showRoomFurnitureCalibrate {
+                                    Button(action: { showFurnitureDimensionsInput = true }) {
+                                        furnitureMeasurementPillContent(showTapHint: true)
+                                    }
+                                } else {
+                                    furnitureMeasurementPillContent(showTapHint: false)
                                 }
-                            } else {
-                                furnitureMeasurementPillContent(showTapHint: false)
                             }
                         }
                     }
@@ -1397,12 +1404,14 @@ struct SharpRoomView: View {
                     VStack(spacing: 8) {
                         if showingFurnitureFit {
                             roomIntelligencePlacementCardResetOnExit
-                            if showRoomFurnitureCalibrate {
-                                Button(action: { showFurnitureDimensionsInput = true }) {
-                                    furnitureMeasurementPillContent(showTapHint: true)
+                            if supportsMetricFurnitureMeasurementUI {
+                                if showRoomFurnitureCalibrate {
+                                    Button(action: { showFurnitureDimensionsInput = true }) {
+                                        furnitureMeasurementPillContent(showTapHint: true)
+                                    }
+                                } else {
+                                    furnitureMeasurementPillContent(showTapHint: false)
                                 }
-                            } else {
-                                furnitureMeasurementPillContent(showTapHint: false)
                             }
                         }
                         Button(action: { takeScreenshot() }) {
@@ -1432,12 +1441,14 @@ struct SharpRoomView: View {
             errorOverlayView
             if showingFurnitureFit { furnitureFitOverlayView }
             if isSavingRoom { saveRoomProgressOverlay }
-            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate {
+            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
                 calibrationOverlayView
                     .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeight }
                     .onDisappear { calibrationBaselineDetectedHeight = nil }
             }
-            if showWallCalibration, showRoomFurnitureCalibrate { wallCalibrationOverlay }
+            if showWallCalibration, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+                wallCalibrationOverlay
+            }
             bottomBarsOverlayView
         }
     }

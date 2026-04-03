@@ -209,20 +209,22 @@ struct SettingsView: View {
                     .tint(.cyan)
                     .disabled(!QualitySettings.supportsFurnitureFitARAssisted)
 
-                    Toggle(isOn: $showRoomFurnitureCalibrate) {
-                        HStack {
-                            Image(systemName: "slider.horizontal.3")
-                                .foregroundColor(.purple)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.showRoomFurnitureCalibrate)
-                                    .font(.headline)
-                                Text(L10n.Settings.showRoomFurnitureCalibrateDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                    if QualitySettings.supportsLiDARSceneDepth {
+                        Toggle(isOn: $showRoomFurnitureCalibrate) {
+                            HStack {
+                                Image(systemName: "slider.horizontal.3")
+                                    .foregroundColor(.purple)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(L10n.Settings.showRoomFurnitureCalibrate)
+                                        .font(.headline)
+                                    Text(L10n.Settings.showRoomFurnitureCalibrateDescription)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
+                        .tint(.purple)
                     }
-                    .tint(.purple)
                 } header: {
                     Text(L10n.Settings.furnitureSegmentationSection)
                 }
