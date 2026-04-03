@@ -275,6 +275,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let maxStableOverlayScaleDrift: CGFloat = 0.18
     private let arOverlayResyncJumpFraction: CGFloat = 0.22
     private let arOverlayResyncHeightDriftFraction: Float = 0.22
+    /// Primary scoring: penalize YOLO boxes that fill most of the model frame (desk / table / wrapping paper).
+    /// Those steal `selectPrimary` from cup/glass and make AR overlay scale swing wildly when the camera moves.
+    private let primarySelectionSoftAreaNormPivot: Float = 0.30
+    private let primarySelectionLargeBoxPenaltyK: Float = 5.2
 
     /// Throttled logging for oscillation diagnosis (when `debugMode` is on).
     private var overlayDebugLastAssistedLabel: String = ""
@@ -982,10 +986,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                                 )
                             }
                         } else {
-                            let maxStep: CGFloat = 0.08
+                            // Slightly slower EMA when depth is noisy on small objects (glass / cup) to cut visible pulsing.
+                            let maxStep: CGFloat = 0.06
                             let delta = max(-maxStep, min(maxStep, target - base))
                             let clampedTarget = base + delta
-                            let alpha: CGFloat = 0.16
+                            let alpha: CGFloat = 0.12
                             smoothedArOverlayScale = base * (1.0 - alpha) + clampedTarget * alpha
                         }
                     }
@@ -2107,8 +2112,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let confTerm = pow(d.confidence, 1.5)
             let areaTerm = pow(areaNorm, 0.8)
             let centerTerm = pow(max(0, centerScore), 0.5)
+            let oversized = max(0, areaNorm - primarySelectionSoftAreaNormPivot)
+            let largeBoxPenalty = exp(-primarySelectionLargeBoxPenaltyK * oversized)
 
-            let score = confTerm * areaTerm * centerTerm
+            let score = confTerm * areaTerm * centerTerm * largeBoxPenalty
             if score > maxScore {
                 maxScore = score
                 bestIdx = i
