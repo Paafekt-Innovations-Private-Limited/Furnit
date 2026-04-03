@@ -311,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "വീതി";
 "roomViewer.wallHeightPlaceholder" = "ഉയരം";
 "roomViewer.saveErrorUnknown" = "അജ്ഞാത പിശക്";
+"roomViewer.placementIntelligenceTitle" = "പ്ലേസ്മെന്റ് ഇന്റലിജൻസ്";
+"roomViewer.placementBadgeStyleOnly" = "ശൈലി";
+"roomViewer.placementNoFit" = "പൊരുത്തമില്ല";
+"roomViewer.placementFitCount" = "%d പൊരുത്തം";
+"roomViewer.placementDetectedSize" = "കണ്ടെത്തി %.2f × %.2f × %.2f മീ";
+"roomViewer.placementMetricUnavailableNote" = "പൂർണ്ണ വലുപ്പ പരിശോധന ആഴം-സെൻസിംഗ് ഉള്ള iPhone-കളിൽ മികച്ചത്. താഴെയുള്ള നിറ സാമ്യം ഇപ്പോഴും പ്രയോജനകരമാണ്.";
+"roomViewer.placementHarmonySummary" = "സമന്വയം %.2f (%@) · വ്യത്യാസം %.2f · ശൈലി പൊരുത്തം %.2f";
+"roomViewer.harmonyTypeAnalogous" = "സമാന";
+"roomViewer.harmonyTypeComplementary" = "പൂരക";
+"roomViewer.harmonyTypeTriadic" = "ത്രയ";
+"roomViewer.harmonyTypeSplitComplementary" = "വിഭജിത പൂരക";
+"roomViewer.harmonyTypeNeutral" = "നിഷ്പക്ഷ";
+"roomViewer.harmonyTypeClash" = "സംഘർഷം";
+"roomViewer.aestheticRecoNeutralClash" = "പാലറ്റ് സംഘർഷം കുറയ്ക്കാൻ കൂടുതൽ നിഷ്പക്ഷ നിറം പരിഗണിക്കുക.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "നിറബന്ധം സമന്വയപൂർണ്ണവും മുറിയുടെ പാലറ്റിന് അടുത്തുമാണ്.";
+"roomViewer.aestheticRecoComplementaryFocal" = "പൂരക വ്യത്യാസം ശക്തമായ ഫോക്കൽ പോയിന്റ് സൃഷ്ടിക്കും.";
+"roomViewer.aestheticRecoContrastLow" = "നിലത്തിനൊപ്പം മികച്ച ദൃശ്യ വേർതിരിവിന് വ്യത്യാസം വർദ്ധിപ്പിക്കുക.";
+"roomViewer.aestheticRecoContrastHigh" = "വ്യത്യാസം ശക്തമാണ്—ഫർണിച്ചർ ഉടൻ തന്നെ വ്യക്തമാകും.";
+"roomViewer.aestheticRecoStyleMismatch" = "%@-ന് അടുത്തുള്ള ശൈലി ഈ മുറിയിൽ കൂടുതൽ സുസംഗതമായി തോന്നും.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "നിലവിലെ ഫർണിച്ചർ പ്രൊഫൈൽ മുറിയുടെ പാലറ്റുമായി വ്യാപകമായി പൊരുത്തപ്പെടുന്നു.";
+"roomViewer.styleTag.modern" = "ആധുനിക";
+"roomViewer.styleTag.minimalist" = "മിനിമൽ";
+"roomViewer.styleTag.contemporary" = "സമകാലിക";
+"roomViewer.styleTag.industrial" = "വ്യാവസായിക";
+"roomViewer.styleTag.rustic" = "ഗ്രാമീണ";
+"roomViewer.styleTag.farmhouse" = "ഫാംഹൗസ്";
+"roomViewer.styleTag.traditional" = "പാരമ്പര്യ";
+"roomViewer.styleTag.eclectic" = "മിശ്ര";
+"roomViewer.styleTag.scandinavian" = "സ്കാൻഡിനേവിയൻ";
+"roomViewer.styleTag.nordic" = "നോർഡിക്";
+"roomViewer.styleTag.classic" = "ക്ലാസിക്";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "റിപ്പോർട്ട് സമർപ്പിക്കുക";

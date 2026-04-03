@@ -311,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "వెడల్పు";
 "roomViewer.wallHeightPlaceholder" = "ఎత్తు";
 "roomViewer.saveErrorUnknown" = "తెలియని దోషం";
+"roomViewer.placementIntelligenceTitle" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్";
+"roomViewer.placementBadgeStyleOnly" = "శైలి";
+"roomViewer.placementNoFit" = "సరిపోదు";
+"roomViewer.placementFitCount" = "%d సరిపోలు";
+"roomViewer.placementDetectedSize" = "కనుగొనబడింది %.2f × %.2f × %.2f మీ";
+"roomViewer.placementMetricUnavailableNote" = "పూర్తి పరిమాణ తనిఖీ లోతు-సెన్సింగ్ ఉన్న iPhoneలలో మంచిది. క్రింది రంగు సామరస్యం ఇంకా ఉపయోగపడుతుంది.";
+"roomViewer.placementHarmonySummary" = "సామరస్యం %.2f (%@) · కాంట్రాస్ట్ %.2f · శైలి సరిపోలిక %.2f";
+"roomViewer.harmonyTypeAnalogous" = "సమాన";
+"roomViewer.harmonyTypeComplementary" = "పూరక";
+"roomViewer.harmonyTypeTriadic" = "త్రయ";
+"roomViewer.harmonyTypeSplitComplementary" = "విభజిత పూరక";
+"roomViewer.harmonyTypeNeutral" = "తటస్థ";
+"roomViewer.harmonyTypeClash" = "ఘర్షణ";
+"roomViewer.aestheticRecoNeutralClash" = "ప్యాలెట్ ఘర్షణ తగ్గించడానికి మరింత తటస్థ రంగు పరిగణించండి.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "రంగు సంబంధం సామరస్యపూర్వకం మరియు గది ప్యాలెట్‌కు దగ్గరగా ఉంది.";
+"roomViewer.aestheticRecoComplementaryFocal" = "పూరక కాంట్రాస్ట్ బలమైన ఫోకల్ పాయింట్ సృష్టించగలదు.";
+"roomViewer.aestheticRecoContrastLow" = "నేలతో మెరుగైన దృశ్య వేరుపాటు కోసం కాంట్రాస్ట్ పెంచండి.";
+"roomViewer.aestheticRecoContrastHigh" = "కాంట్రాస్ట్ బలంగా ఉంది—ఫర్నిచర్ వెంటనే కనిపిస్తుంది.";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ దగ్గర శైలి ఈ గదిలో మరింత సమన్వయంగా అనిపిస్తుంది.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ప్రస్తుత ఫర్నిచర్ ప్రొఫైల్ గది ప్యాలెట్‌తో విస్తృతంగా అనుకూలంగా ఉంది.";
+"roomViewer.styleTag.modern" = "ఆధునిక";
+"roomViewer.styleTag.minimalist" = "మినిమల్";
+"roomViewer.styleTag.contemporary" = "సమకాలీన";
+"roomViewer.styleTag.industrial" = "పారిశ్రామిక";
+"roomViewer.styleTag.rustic" = "గ్రామీణ";
+"roomViewer.styleTag.farmhouse" = "ఫార్మ్‌హౌస్";
+"roomViewer.styleTag.traditional" = "సాంప్రదాయ";
+"roomViewer.styleTag.eclectic" = "మిశ్రమ";
+"roomViewer.styleTag.scandinavian" = "స్కాండినేవియన్";
+"roomViewer.styleTag.nordic" = "నార్డిక్";
+"roomViewer.styleTag.classic" = "క్లాసిక్";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "రిపోర్ట్ సబ్మిట్ చేయి";

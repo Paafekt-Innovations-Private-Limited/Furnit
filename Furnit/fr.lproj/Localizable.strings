@@ -312,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "Largeur";
 "roomViewer.wallHeightPlaceholder" = "Hauteur";
 "roomViewer.saveErrorUnknown" = "Erreur inconnue";
+"roomViewer.placementIntelligenceTitle" = "Intelligence de placement";
+"roomViewer.placementBadgeStyleOnly" = "Style";
+"roomViewer.placementNoFit" = "Ne rentre pas";
+"roomViewer.placementFitCount" = "%d compatible";
+"roomViewer.placementDetectedSize" = "Détecté %.2f × %.2f × %.2f m";
+"roomViewer.placementMetricUnavailableNote" = "Le dimensionnement complet fonctionne mieux avec la profondeur. L’harmonie des couleurs ci-dessous reste utile.";
+"roomViewer.placementHarmonySummary" = "Harmonie %.2f (%@) · contraste %.2f · accord de style %.2f";
+"roomViewer.harmonyTypeAnalogous" = "Analogue";
+"roomViewer.harmonyTypeComplementary" = "Complémentaire";
+"roomViewer.harmonyTypeTriadic" = "Triadique";
+"roomViewer.harmonyTypeSplitComplementary" = "Complémentaire divisé";
+"roomViewer.harmonyTypeNeutral" = "Neutre";
+"roomViewer.harmonyTypeClash" = "Conflit";
+"roomViewer.aestheticRecoNeutralClash" = "Une couleur plus neutre peut réduire les accrochages de palette.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "La relation des couleurs est harmonieuse et proche de la palette de la pièce.";
+"roomViewer.aestheticRecoComplementaryFocal" = "Le contraste complémentaire peut créer un fort point focal.";
+"roomViewer.aestheticRecoContrastLow" = "Augmentez le contraste avec le sol pour mieux séparer visuellement.";
+"roomViewer.aestheticRecoContrastHigh" = "Le contraste est fort : le meuble ressort immédiatement.";
+"roomViewer.aestheticRecoStyleMismatch" = "Un style plus proche de %@ paraîtra plus cohérent dans cette pièce.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "Le profil mobilier actuel est globalement compatible avec la palette de la pièce.";
+"roomViewer.styleTag.modern" = "moderne";
+"roomViewer.styleTag.minimalist" = "minimaliste";
+"roomViewer.styleTag.contemporary" = "contemporain";
+"roomViewer.styleTag.industrial" = "industriel";
+"roomViewer.styleTag.rustic" = "rustique";
+"roomViewer.styleTag.farmhouse" = "ferme";
+"roomViewer.styleTag.traditional" = "traditionnel";
+"roomViewer.styleTag.eclectic" = "éclectique";
+"roomViewer.styleTag.scandinavian" = "scandinave";
+"roomViewer.styleTag.nordic" = "nordique";
+"roomViewer.styleTag.classic" = "classique";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Soumettre le rapport";

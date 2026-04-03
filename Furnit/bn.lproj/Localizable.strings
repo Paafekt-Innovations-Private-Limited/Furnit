@@ -329,6 +329,37 @@
 "roomViewer.wallWidthPlaceholder" = "প্রস্থ";
 "roomViewer.wallHeightPlaceholder" = "উচ্চতা";
 "roomViewer.saveErrorUnknown" = "অজানা ত্রুটি";
+"roomViewer.placementIntelligenceTitle" = "স্থাপনা বুদ্ধিমত্তা";
+"roomViewer.placementBadgeStyleOnly" = "স্টাইল";
+"roomViewer.placementNoFit" = "মানাচ্ছে না";
+"roomViewer.placementFitCount" = "%d মানানো";
+"roomViewer.placementDetectedSize" = "সনাক্ত %.2f × %.2f × %.2f মি";
+"roomViewer.placementMetricUnavailableNote" = "সম্পূর্ণ আকার মিলিয়ে নেওয়া গভীরতা-সেন্সিং সহ iPhone-এ ভালো কাজ করে। নিচের রঙের সামঞ্জস্য এখনও কাজে লাগে।";
+"roomViewer.placementHarmonySummary" = "সুর %.2f (%@) · বৈপরীত্য %.2f · স্টাইল মিল %.2f";
+"roomViewer.harmonyTypeAnalogous" = "সদৃশ";
+"roomViewer.harmonyTypeComplementary" = "পরিপূরক";
+"roomViewer.harmonyTypeTriadic" = "ত্রয়ী";
+"roomViewer.harmonyTypeSplitComplementary" = "বিভক্ত পরিপূরক";
+"roomViewer.harmonyTypeNeutral" = "নিরপেক্ষ";
+"roomViewer.harmonyTypeClash" = "সংঘাত";
+"roomViewer.aestheticRecoNeutralClash" = "প্যালেট সংঘাত কমাতে আরও নিরপেক্ষ রঙ বিবেচনা করুন।";
+"roomViewer.aestheticRecoAnalogousHarmony" = "রঙের সম্পর্ক সুরেলা এবং ঘরের প্যালেটের কাছাকাছি।";
+"roomViewer.aestheticRecoComplementaryFocal" = "পরিপূরক বৈপরীত্য শক্তিশালী ফোকাল পয়েন্ট তৈরি করতে পারে।";
+"roomViewer.aestheticRecoContrastLow" = "ভাল দৃশ্যমান পৃথকীকরণের জন্য মেঝের সাথে বৈপরীত্য বাড়ান।";
+"roomViewer.aestheticRecoContrastHigh" = "বৈপরীত্য শক্তিশালী—আসবাবটি সাথে সাথে চোখে পড়বে।";
+"roomViewer.aestheticRecoStyleMismatch" = "%@-এর কাছাকাছি স্টাইল এই ঘরে আরও সুসংগত মনে হবে।";
+"roomViewer.aestheticRecoBroadlyCompatible" = "বর্তমান আসবাবের প্রোফাইল ঘরের প্যালেটের সাথে ব্যাপকভাবে সামঞ্জস্যপূর্ণ।";
+"roomViewer.styleTag.modern" = "আধুনিক";
+"roomViewer.styleTag.minimalist" = "মিনিমাল";
+"roomViewer.styleTag.contemporary" = "সমসাময়িক";
+"roomViewer.styleTag.industrial" = "শিল্প";
+"roomViewer.styleTag.rustic" = "গ্রামীণ";
+"roomViewer.styleTag.farmhouse" = "খামারঘর";
+"roomViewer.styleTag.traditional" = "ঐতিহ্যবাহী";
+"roomViewer.styleTag.eclectic" = "মিশ্র";
+"roomViewer.styleTag.scandinavian" = "স্ক্যান্ডিনেভিয়ান";
+"roomViewer.styleTag.nordic" = "নর্ডিক";
+"roomViewer.styleTag.classic" = "ক্লাসিক";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "রিপোর্ট জমা দিন";

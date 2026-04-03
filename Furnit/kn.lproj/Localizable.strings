@@ -311,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "ಅಗಲ";
 "roomViewer.wallHeightPlaceholder" = "ಎತ್ತರ";
 "roomViewer.saveErrorUnknown" = "ಅಜ್ಞಾತ ದೋಷ";
+"roomViewer.placementIntelligenceTitle" = "ಸ್ಥಾಪನೆ ಬುದ್ಧಿಮತ್ತೆ";
+"roomViewer.placementBadgeStyleOnly" = "ಶೈಲಿ";
+"roomViewer.placementNoFit" = "ಹೊಂದುವುದಿಲ್ಲ";
+"roomViewer.placementFitCount" = "%d ಹೊಂದಿಕೆ";
+"roomViewer.placementDetectedSize" = "ಗುರುತಿಸಲಾಗಿದೆ %.2f × %.2f × %.2f ಮೀ";
+"roomViewer.placementMetricUnavailableNote" = "ಪೂರ್ಣ ಗಾತ್ರ ಪರಿಶೀಲನೆ ಆಳ-ಸಂವೇದನೆಯ iPhone ನಲ್ಲಿ ಉತ್ತಮ. ಕೆಳಗಿನ ಬಣ್ಣ ಸಾಮರಸ್ಯ ಇನ್ನೂ ಸಹಾಯಕವಾಗಿದೆ.";
+"roomViewer.placementHarmonySummary" = "ಸಾಮರಸ್ಯ %.2f (%@) · ವ್ಯತ್ಯಾಸ %.2f · ಶೈಲಿ ಹೊಂದಾಣಿಕೆ %.2f";
+"roomViewer.harmonyTypeAnalogous" = "ಸಮಾನ";
+"roomViewer.harmonyTypeComplementary" = "ಪೂರಕ";
+"roomViewer.harmonyTypeTriadic" = "ತ್ರಯ";
+"roomViewer.harmonyTypeSplitComplementary" = "ವಿಭಜಿತ ಪೂರಕ";
+"roomViewer.harmonyTypeNeutral" = "ತಟಸ್ಥ";
+"roomViewer.harmonyTypeClash" = "ಘರ್ಷಣೆ";
+"roomViewer.aestheticRecoNeutralClash" = "ಪ್ಯಾಲೆಟ್ ಘರ್ಷಣೆ ಕಡಿಮೆ ಮಾಡಲು ಹೆಚ್ಚು ತಟಸ್ಥ ಬಣ್ಣ ಪರಿಗಣಿಸಿ.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "ಬಣ್ಣ ಸಂಬಂಧ ಸಾಮರಸ್ಯಪೂರ್ಣವಾಗಿದೆ ಮತ್ತು ಕೋಣೆಯ ಪ್ಯಾಲೆಟ್‌ಗೆ ಹತ್ತಿರ.";
+"roomViewer.aestheticRecoComplementaryFocal" = "ಪೂರಕ ವ್ಯತ್ಯಾಶ ಬಲವಾದ ಕೇಂದ್ರ ಬಿಂದು ರಚಿಸಬಹುದು.";
+"roomViewer.aestheticRecoContrastLow" = "ನೆಲಕ್ಕೆ ವಿಭಿನ್ನ ದೃಶ್ಯ ವಿಭಜನೆಗೆ ವ್ಯತ್ಯಾಸ ಹೆಚ್ಚಿಸಿ.";
+"roomViewer.aestheticRecoContrastHigh" = "ವ್ಯತ್ಯಾಶ ಬಲವಾಗಿದೆ—ಪೀಸ್ ತಕ್ಷಣ ಕಾಣಿಸುತ್ತದೆ.";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ ಹತ್ತಿರದ ಶೈಲಿ ಈ ಕೋಣೆಯಲ್ಲಿ ಹೆಚ್ಚು ಸುಸಂಗತವಾಗಿ ಕಾಣುತ್ತದೆ.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ಪ್ರಸ್ತುತ ಫರ್ನಿಚರ್ ಪ್ರೊಫೈಲ್ ಕೋಣೆಯ ಪ್ಯಾಲೆಟ್‌ನೊಂದಿಗೆ ವ್ಯಾಪಕವಾಗಿ ಹೊಂದಾಣಿಕೆಯಾಗಿದೆ.";
+"roomViewer.styleTag.modern" = "ಆಧುನಿಕ";
+"roomViewer.styleTag.minimalist" = "ಮಿನಿಮಲ್";
+"roomViewer.styleTag.contemporary" = "ಸಮಕಾಲೀನ";
+"roomViewer.styleTag.industrial" = "ಕೈಗಾರಿಕಾ";
+"roomViewer.styleTag.rustic" = "ಗ್ರಾಮೀಣ";
+"roomViewer.styleTag.farmhouse" = "ಫಾರ್ಮ್‌ಹೌಸ್";
+"roomViewer.styleTag.traditional" = "ಸಾಂಪ್ರದಾಯಿಕ";
+"roomViewer.styleTag.eclectic" = "ಮಿಶ್ರ";
+"roomViewer.styleTag.scandinavian" = "ಸ್ಕ್ಯಾಂಡಿನೇವಿಯನ್";
+"roomViewer.styleTag.nordic" = "ನಾರ್ಡಿಕ್";
+"roomViewer.styleTag.classic" = "ಕ್ಲಾಸಿಕ್";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "ವರದಿ ಸಲ್ಲಿಸು";

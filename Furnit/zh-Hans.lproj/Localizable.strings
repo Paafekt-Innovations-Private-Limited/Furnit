@@ -312,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "宽度";
 "roomViewer.wallHeightPlaceholder" = "高度";
 "roomViewer.saveErrorUnknown" = "未知错误";
+"roomViewer.placementIntelligenceTitle" = "摆放智能";
+"roomViewer.placementBadgeStyleOnly" = "风格";
+"roomViewer.placementNoFit" = "放不下";
+"roomViewer.placementFitCount" = "%d 处可放";
+"roomViewer.placementDetectedSize" = "测得 %.2f × %.2f × %.2f 米";
+"roomViewer.placementMetricUnavailableNote" = "完整尺寸适配在具备深度传感的 iPhone 上更准确。下方的色彩和谐度仍有参考价值。";
+"roomViewer.placementHarmonySummary" = "协调度 %.2f（%@）· 对比度 %.2f · 风格匹配 %.2f";
+"roomViewer.harmonyTypeAnalogous" = "类似色";
+"roomViewer.harmonyTypeComplementary" = "互补色";
+"roomViewer.harmonyTypeTriadic" = "三色";
+"roomViewer.harmonyTypeSplitComplementary" = "分裂互补";
+"roomViewer.harmonyTypeNeutral" = "中性";
+"roomViewer.harmonyTypeClash" = "冲突";
+"roomViewer.aestheticRecoNeutralClash" = "试试更中性的颜色，以减轻配色冲突。";
+"roomViewer.aestheticRecoAnalogousHarmony" = "色彩关系和谐，且接近房间主色调。";
+"roomViewer.aestheticRecoComplementaryFocal" = "互补对比能形成强烈的视觉焦点。";
+"roomViewer.aestheticRecoContrastLow" = "提高与地面的对比度，层次会更清晰。";
+"roomViewer.aestheticRecoContrastHigh" = "对比很强，家具会非常醒目。";
+"roomViewer.aestheticRecoStyleMismatch" = "风格更接近「%@」时，在这个房间里会更协调。";
+"roomViewer.aestheticRecoBroadlyCompatible" = "当前家具概况与房间整体配色大体相容。";
+"roomViewer.styleTag.modern" = "现代";
+"roomViewer.styleTag.minimalist" = "极简";
+"roomViewer.styleTag.contemporary" = "当代";
+"roomViewer.styleTag.industrial" = "工业风";
+"roomViewer.styleTag.rustic" = "乡村";
+"roomViewer.styleTag.farmhouse" = "农舍";
+"roomViewer.styleTag.traditional" = "传统";
+"roomViewer.styleTag.eclectic" = "混搭";
+"roomViewer.styleTag.scandinavian" = "斯堪的纳维亚";
+"roomViewer.styleTag.nordic" = "北欧";
+"roomViewer.styleTag.classic" = "经典";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交报告";

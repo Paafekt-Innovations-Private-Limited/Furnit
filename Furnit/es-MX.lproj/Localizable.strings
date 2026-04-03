@@ -312,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "Ancho";
 "roomViewer.wallHeightPlaceholder" = "Alto";
 "roomViewer.saveErrorUnknown" = "Error desconocido";
+"roomViewer.placementIntelligenceTitle" = "Inteligencia de colocación";
+"roomViewer.placementBadgeStyleOnly" = "Estilo";
+"roomViewer.placementNoFit" = "No cabe";
+"roomViewer.placementFitCount" = "%d encaja";
+"roomViewer.placementDetectedSize" = "Detectado %.2f × %.2f × %.2f m";
+"roomViewer.placementMetricUnavailableNote" = "El ajuste de tamaño completo funciona mejor con profundidad. La armonía de color de abajo sigue aplicando.";
+"roomViewer.placementHarmonySummary" = "Armonía %.2f (%@) · contraste %.2f · encaje de estilo %.2f";
+"roomViewer.harmonyTypeAnalogous" = "Análoga";
+"roomViewer.harmonyTypeComplementary" = "Complementaria";
+"roomViewer.harmonyTypeTriadic" = "Triádica";
+"roomViewer.harmonyTypeSplitComplementary" = "Complementaria dividida";
+"roomViewer.harmonyTypeNeutral" = "Neutra";
+"roomViewer.harmonyTypeClash" = "Conflicto";
+"roomViewer.aestheticRecoNeutralClash" = "Prueba un color más neutro para reducir el choque de paleta.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "La relación de color es armoniosa y cercana a la paleta del espacio.";
+"roomViewer.aestheticRecoComplementaryFocal" = "El contraste complementario puede crear un punto focal fuerte.";
+"roomViewer.aestheticRecoContrastLow" = "Aumenta el contraste con el piso para separar mejor visualmente.";
+"roomViewer.aestheticRecoContrastHigh" = "El contraste es fuerte: la pieza destacará de inmediato.";
+"roomViewer.aestheticRecoStyleMismatch" = "Un estilo más cercano a %@ se verá más coherente en este cuarto.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "El perfil actual del mueble encaja en general con la paleta del espacio.";
+"roomViewer.styleTag.modern" = "moderno";
+"roomViewer.styleTag.minimalist" = "minimalista";
+"roomViewer.styleTag.contemporary" = "contemporáneo";
+"roomViewer.styleTag.industrial" = "industrial";
+"roomViewer.styleTag.rustic" = "rústico";
+"roomViewer.styleTag.farmhouse" = "granja";
+"roomViewer.styleTag.traditional" = "tradicional";
+"roomViewer.styleTag.eclectic" = "ecléctico";
+"roomViewer.styleTag.scandinavian" = "escandinavo";
+"roomViewer.styleTag.nordic" = "nórdico";
+"roomViewer.styleTag.classic" = "clásico";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Enviar reporte";

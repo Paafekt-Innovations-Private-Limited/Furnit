@@ -213,10 +213,10 @@ struct SharpRoomView: View {
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
     /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
     @State private var isPlacementIntelligenceExpanded = false
-    /// Pinch hint (top-trailing): icon always visible; text shows on load and when tapped, auto-hides after 10s.
+    /// Pinch hint (top-trailing): icon always visible; text shows on load and when tapped, auto-hides after 3s.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
-    /// Brain hint (above brain button): text auto-hides after 10s; tap icon always stays; tap toggles text.
+    /// Brain hint (above brain button): text auto-hides after 3s; tap icon always stays; tap toggles text.
     @State private var brainHintExplanationVisible = false
     @State private var brainHintHideTextTask: Task<Void, Never>?
     @EnvironmentObject var authManager: AuthenticationManager
@@ -545,7 +545,7 @@ struct SharpRoomView: View {
         pinchHintHideTextTask = nil
     }
 
-    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 10) {
+    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 3) {
         pinchHintHideTextTask?.cancel()
         pinchHintHideTextTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(seconds))
@@ -557,14 +557,14 @@ struct SharpRoomView: View {
     private func restartPinchGestureHint() {
         cancelPinchHintTasks()
         pinchHintExplanationVisible = true
-        schedulePinchHintTextAutoHide(seconds: 10)
+        schedulePinchHintTextAutoHide(seconds: 3)
     }
 
     private func onPinchHintIconTapped() {
         cancelPinchHintTasks()
         pinchHintExplanationVisible.toggle()
         if pinchHintExplanationVisible {
-            schedulePinchHintTextAutoHide(seconds: 10)
+            schedulePinchHintTextAutoHide(seconds: 3)
         }
     }
 
@@ -573,7 +573,7 @@ struct SharpRoomView: View {
         brainHintHideTextTask = nil
     }
 
-    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 10) {
+    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
         brainHintHideTextTask?.cancel()
         brainHintHideTextTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(seconds))
@@ -585,14 +585,14 @@ struct SharpRoomView: View {
     private func restartBrainGestureHint() {
         cancelBrainHintTasks()
         brainHintExplanationVisible = true
-        scheduleBrainHintTextAutoHide(seconds: 10)
+        scheduleBrainHintTextAutoHide(seconds: 3)
     }
 
     private func onBrainHintIconTapped() {
         cancelBrainHintTasks()
         brainHintExplanationVisible.toggle()
         if brainHintExplanationVisible {
-            scheduleBrainHintTextAutoHide(seconds: 10)
+            scheduleBrainHintTextAutoHide(seconds: 3)
         }
     }
 
@@ -652,7 +652,7 @@ struct SharpRoomView: View {
         .zIndex(12)
     }
 
-    /// Top-trailing hint: pinch icon stays; helper text shows on load and when tapped, hides after 10s.
+    /// Top-trailing hint: pinch icon stays; helper text shows on load and when tapped, hides after 3s.
     private var pinchGestureHintOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
@@ -1206,8 +1206,11 @@ struct SharpRoomView: View {
     @ViewBuilder
     private var roomIntelligencePlacementCard: some View {
         if showingFurnitureFit,
-           let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence(),
-           let fit = latestFitCheckResult {
+           roomModel != nil,
+           placementIntelligenceHasFurnitureSignal,
+           latestAestheticScore != nil {
+            let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
+            let fit = latestFitCheckResult
             VStack(alignment: .leading, spacing: 4) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -1215,17 +1218,23 @@ struct SharpRoomView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Placement Intelligence")
+                        Text(L10n.RoomViewer.placementIntelligenceTitle)
                             .font(.caption.bold())
                             .foregroundColor(.white)
                         Spacer(minLength: 8)
-                        Text(
-                            fit.fitsInRoom
-                                ? "\(max(fit.fitLocations.count, 1)) fit"
-                                : "No fit"
-                        )
-                        .font(.caption2.bold())
-                        .foregroundColor(fit.fitsInRoom ? .green : .red)
+                        if let fit {
+                            Text(
+                                fit.fitsInRoom
+                                    ? L10n.RoomViewer.placementFitCount(max(fit.fitLocations.count, 1))
+                                    : L10n.RoomViewer.placementNoFit
+                            )
+                            .font(.caption2.bold())
+                            .foregroundColor(fit.fitsInRoom ? .green : .red)
+                        } else {
+                            Text(L10n.RoomViewer.placementBadgeStyleOnly)
+                                .font(.caption2.bold())
+                                .foregroundColor(.cyan.opacity(0.95))
+                        }
                         Image(systemName: isPlacementIntelligenceExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption.bold())
                             .foregroundColor(.white.opacity(0.85))
@@ -1234,57 +1243,64 @@ struct SharpRoomView: View {
                 .buttonStyle(.plain)
 
                 if isPlacementIntelligenceExpanded {
-                    Text(
-                        String(
-                            format: "Detected %.2f × %.2f × %.2f m",
-                            dimensions.widthM,
-                            dimensions.heightM,
-                            dimensions.depthM
-                        )
-                    )
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.92))
-                    if fit.fitsInRoom {
-                        Text(
-                            fit.fitLocations.isEmpty
-                                ? "Fits room bounds. No clear free-floor region yet."
-                                : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
-                        )
-                        .font(.caption2)
-                        .foregroundColor(.green)
-                    } else {
-                        Text("Current furniture footprint exceeds the detected room extents.")
-                            .font(.caption2)
-                            .foregroundColor(.red)
-                    }
-                    if let bestCorner = latestCornerPlacementSuggestions.first {
-                        Text(
-                            String(
-                                format: "Best corner score %.2f, rot %.0f°",
-                                bestCorner.score,
-                                bestCorner.yRotationRad * 180 / .pi
-                            )
-                        )
-                        .font(.caption2)
-                        .foregroundColor(.orange)
-                    }
-                    if let firstWarning = fit.warnings.first {
-                        Text(firstWarning)
-                            .font(.caption2)
-                            .foregroundColor(.yellow)
-                    } else if latestEstimatedFurnitureDepthMeters != nil {
-                        Text("Depth is estimated until catalog or semantic data is available.")
+                    if dimensions == nil {
+                        Text(L10n.RoomViewer.placementMetricUnavailableNote)
                             .font(.caption2)
                             .foregroundColor(.gray)
                     }
+                    if let dimensions {
+                        Text(
+                            L10n.RoomViewer.placementDetectedSizeMeters(
+                                width: Double(dimensions.widthM),
+                                height: Double(dimensions.heightM),
+                                depth: Double(dimensions.depthM)
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.92))
+                    }
+                    if let fit {
+                        if fit.fitsInRoom {
+                            Text(
+                                fit.fitLocations.isEmpty
+                                    ? "Fits room bounds. No clear free-floor region yet."
+                                    : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
+                            )
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                        } else {
+                            Text("Current furniture footprint exceeds the detected room extents.")
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                        }
+                        if let bestCorner = latestCornerPlacementSuggestions.first {
+                            Text(
+                                String(
+                                    format: "Best corner score %.2f, rot %.0f°",
+                                    bestCorner.score,
+                                    bestCorner.yRotationRad * 180 / .pi
+                                )
+                            )
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                        }
+                        if let firstWarning = fit.warnings.first {
+                            Text(firstWarning)
+                                .font(.caption2)
+                                .foregroundColor(.yellow)
+                        } else if latestEstimatedFurnitureDepthMeters != nil {
+                            Text("Depth is estimated until catalog or semantic data is available.")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
                     if let aesthetic = latestAestheticScore {
                         Text(
-                            String(
-                                format: "Harmony %.2f (%@) · contrast %.2f · style fit %.2f",
-                                aesthetic.harmonyScore,
-                                aesthetic.harmonyType.rawValue,
-                                aesthetic.contrastScore,
-                                aesthetic.styleCompatibilityScore
+                            L10n.RoomViewer.placementHarmonySummary(
+                                harmonyScore: aesthetic.harmonyScore,
+                                harmonyTypeName: aesthetic.harmonyType.localizedDisplayName,
+                                contrastScore: aesthetic.contrastScore,
+                                styleFit: aesthetic.styleCompatibilityScore
                             )
                         )
                         .font(.caption2)
@@ -1313,7 +1329,7 @@ struct SharpRoomView: View {
                 }
             }
             .onChange(of: latestFitCheckResult?.fitsInRoom) { _, _ in
-                if latestFitCheckResult == nil {
+                if latestFitCheckResult == nil, latestAestheticScore == nil {
                     isPlacementIntelligenceExpanded = false
                 }
             }
@@ -2007,10 +2023,23 @@ struct SharpRoomView: View {
         return RoomFurnitureDimensions(widthM: width, heightM: height, depthM: estimatedDepth)
     }
 
+    /// Width, segmentation color, or full W×H×D — enough to show style hints without LiDAR height.
+    private var placementIntelligenceHasFurnitureSignal: Bool {
+        if let width = detectedFurnitureWidth, width.isFinite, width > 0.05 { return true }
+        if segmentedFurnitureMeanSRGB != nil { return true }
+        if derivedDetectedFurnitureDimensionsForRoomIntelligence() != nil { return true }
+        return false
+    }
+
     private func updateRoomPlacementIntelligence() {
-        guard showingFurnitureFit,
-              let roomModel,
-              let furniture = derivedDetectedFurnitureDimensionsForRoomIntelligence() else {
+        guard showingFurnitureFit else {
+            latestFitCheckResult = nil
+            latestCornerPlacementSuggestions = []
+            latestEstimatedFurnitureDepthMeters = nil
+            latestAestheticScore = nil
+            return
+        }
+        guard let roomModel else {
             latestFitCheckResult = nil
             latestCornerPlacementSuggestions = []
             latestEstimatedFurnitureDepthMeters = nil
@@ -2018,14 +2047,35 @@ struct SharpRoomView: View {
             return
         }
 
-        latestEstimatedFurnitureDepthMeters = furniture.depthM
-        let fitEngine = FitCheckEngine(roomModel: roomModel)
-        let fitResult = fitEngine.checkFit(furniture: furniture)
-        let cornerPlacement = CornerPlacement(roomModel: roomModel)
-        let suggestions = Array(cornerPlacement.suggestions(for: furniture).prefix(3))
+        let hasFurnitureSignal = placementIntelligenceHasFurnitureSignal
+        guard hasFurnitureSignal else {
+            latestFitCheckResult = nil
+            latestCornerPlacementSuggestions = []
+            latestEstimatedFurnitureDepthMeters = nil
+            latestAestheticScore = nil
+            return
+        }
 
-        latestFitCheckResult = fitResult
-        latestCornerPlacementSuggestions = suggestions
+        if let furniture = derivedDetectedFurnitureDimensionsForRoomIntelligence() {
+            latestEstimatedFurnitureDepthMeters = furniture.depthM
+            let fitEngine = FitCheckEngine(roomModel: roomModel)
+            let fitResult = fitEngine.checkFit(furniture: furniture)
+            let cornerPlacement = CornerPlacement(roomModel: roomModel)
+            let suggestions = Array(cornerPlacement.suggestions(for: furniture).prefix(3))
+            latestFitCheckResult = fitResult
+            latestCornerPlacementSuggestions = suggestions
+
+            logDebug(
+                "📐 [SharpRoomView] Placement intelligence updated " +
+                "furniture=\(String(format: "%.2f", furniture.widthM))×\(String(format: "%.2f", furniture.heightM))×\(String(format: "%.2f", furniture.depthM))m " +
+                "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count)"
+            )
+        } else {
+            latestEstimatedFurnitureDepthMeters = nil
+            latestFitCheckResult = nil
+            latestCornerPlacementSuggestions = []
+            logDebug("📐 [SharpRoomView] Placement intelligence: metric fit skipped (no height); computing aesthetic only")
+        }
 
         let palette = roomModel.surfacePalette
         let roomStyleTags = inferredRoomStyleTags(from: palette)
@@ -2037,10 +2087,7 @@ struct SharpRoomView: View {
         latestAestheticScore = aestheticAdvisor.evaluate(furniture: furnitureProfile)
 
         logDebug(
-            "📐 [SharpRoomView] Placement intelligence updated " +
-            "furniture=\(String(format: "%.2f", furniture.widthM))×\(String(format: "%.2f", furniture.heightM))×\(String(format: "%.2f", furniture.depthM))m " +
-            "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count) " +
-            "aesthetic_h=\(String(format: "%.2f", latestAestheticScore?.harmonyScore ?? 0))"
+            "📐 [SharpRoomView] Placement aesthetic harmony=\(String(format: "%.2f", latestAestheticScore?.harmonyScore ?? 0))"
         )
     }
 

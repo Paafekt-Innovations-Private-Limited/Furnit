@@ -329,6 +329,37 @@
 "roomViewer.wallWidthPlaceholder" = "العرض";
 "roomViewer.wallHeightPlaceholder" = "الارتفاع";
 "roomViewer.saveErrorUnknown" = "خطأ غير معروف";
+"roomViewer.placementIntelligenceTitle" = "ذكاء التنسيق";
+"roomViewer.placementBadgeStyleOnly" = "الأسلوب";
+"roomViewer.placementNoFit" = "لا يتناسب";
+"roomViewer.placementFitCount" = "%d مناسب";
+"roomViewer.placementDetectedSize" = "مُكتشف %.2f × %.2f × %.2f م";
+"roomViewer.placementMetricUnavailableNote" = "قياس المقاس الكامل يعمل أفضل مع أجهزة iPhone ذات عمق. تناسق الألوان أدناه ما يزال مفيدًا.";
+"roomViewer.placementHarmonySummary" = "انسجام %.2f (%@) · تباين %.2f · تناسق الأسلوب %.2f";
+"roomViewer.harmonyTypeAnalogous" = "مماثل";
+"roomViewer.harmonyTypeComplementary" = "تكميلي";
+"roomViewer.harmonyTypeTriadic" = "ثلاثي";
+"roomViewer.harmonyTypeSplitComplementary" = "تكميلي مُجزّأ";
+"roomViewer.harmonyTypeNeutral" = "محايد";
+"roomViewer.harmonyTypeClash" = "تضارب";
+"roomViewer.aestheticRecoNeutralClash" = "جرّب لونًا أكثر حيادية لتقليل تعارض الألوان.";
+"roomViewer.aestheticRecoAnalogousHarmony" = "علاقة الألوان متناغمة وقريبة من لوحة الغرفة.";
+"roomViewer.aestheticRecoComplementaryFocal" = "التباين التكميلي يمكن أن يخلق بؤرة بصرية قوية.";
+"roomViewer.aestheticRecoContrastLow" = "زِد التباين مع الأرضية لفصل أوضح بصريًا.";
+"roomViewer.aestheticRecoContrastHigh" = "التباين قوي وسيبرز القطعة فورًا.";
+"roomViewer.aestheticRecoStyleMismatch" = "أسلوب أقرب إلى %@ سيبدو أكثر تماسكًا في هذه الغرفة.";
+"roomViewer.aestheticRecoBroadlyCompatible" = "ملف الأثاث الحالي متوافق عمومًا مع لوحة ألوان الغرفة.";
+"roomViewer.styleTag.modern" = "عصري";
+"roomViewer.styleTag.minimalist" = "بسيط";
+"roomViewer.styleTag.contemporary" = "معاصر";
+"roomViewer.styleTag.industrial" = "صناعي";
+"roomViewer.styleTag.rustic" = "ريفي";
+"roomViewer.styleTag.farmhouse" = "ريفي أنيق";
+"roomViewer.styleTag.traditional" = "تقليدي";
+"roomViewer.styleTag.eclectic" = "انتقائي";
+"roomViewer.styleTag.scandinavian" = "إسكندنافي";
+"roomViewer.styleTag.nordic" = "شمالي";
+"roomViewer.styleTag.classic" = "كلاسيكي";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "إرسال التقرير";

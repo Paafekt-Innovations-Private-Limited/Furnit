@@ -312,6 +312,37 @@
 "roomViewer.wallWidthPlaceholder" = "寬度";
 "roomViewer.wallHeightPlaceholder" = "高度";
 "roomViewer.saveErrorUnknown" = "未知錯誤";
+"roomViewer.placementIntelligenceTitle" = "擺放智慧";
+"roomViewer.placementBadgeStyleOnly" = "風格";
+"roomViewer.placementNoFit" = "放不下";
+"roomViewer.placementFitCount" = "%d 處可放";
+"roomViewer.placementDetectedSize" = "測得 %.2f × %.2f × %.2f 公尺";
+"roomViewer.placementMetricUnavailableNote" = "完整尺寸適配在具備深度感測的 iPhone 上更準確。下方的色彩和諧度仍有參考價值。";
+"roomViewer.placementHarmonySummary" = "協調度 %.2f（%@）· 對比度 %.2f · 風格契合 %.2f";
+"roomViewer.harmonyTypeAnalogous" = "類似色";
+"roomViewer.harmonyTypeComplementary" = "互補色";
+"roomViewer.harmonyTypeTriadic" = "三色";
+"roomViewer.harmonyTypeSplitComplementary" = "分裂互補";
+"roomViewer.harmonyTypeNeutral" = "中性";
+"roomViewer.harmonyTypeClash" = "衝突";
+"roomViewer.aestheticRecoNeutralClash" = "試試更中性的顏色，以減輕配色衝突。";
+"roomViewer.aestheticRecoAnalogousHarmony" = "色彩和諧，且接近房間主色調。";
+"roomViewer.aestheticRecoComplementaryFocal" = "互補對比能形成強烈的視覺焦點。";
+"roomViewer.aestheticRecoContrastLow" = "提高與地面的對比度，層次會更清晰。";
+"roomViewer.aestheticRecoContrastHigh" = "對比很強，家具會非常醒目。";
+"roomViewer.aestheticRecoStyleMismatch" = "風格更接近「%@」時，在這個房間裡會更協調。";
+"roomViewer.aestheticRecoBroadlyCompatible" = "目前家具概況與房間整體配色大致相容。";
+"roomViewer.styleTag.modern" = "現代";
+"roomViewer.styleTag.minimalist" = "極簡";
+"roomViewer.styleTag.contemporary" = "當代";
+"roomViewer.styleTag.industrial" = "工業風";
+"roomViewer.styleTag.rustic" = "鄉村";
+"roomViewer.styleTag.farmhouse" = "農舍";
+"roomViewer.styleTag.traditional" = "傳統";
+"roomViewer.styleTag.eclectic" = "混搭";
+"roomViewer.styleTag.scandinavian" = "斯堪地那維亞";
+"roomViewer.styleTag.nordic" = "北歐";
+"roomViewer.styleTag.classic" = "經典";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交報告";

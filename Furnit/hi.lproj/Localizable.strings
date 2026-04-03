@@ -311,6 +311,37 @@
 "roomViewer.wallWidthPlaceholder" = "चौड़ाई";
 "roomViewer.wallHeightPlaceholder" = "ऊँचाई";
 "roomViewer.saveErrorUnknown" = "अज्ञात त्रुटि";
+"roomViewer.placementIntelligenceTitle" = "प्लेसमेंट इंटेलिजेंस";
+"roomViewer.placementBadgeStyleOnly" = "स्टाइल";
+"roomViewer.placementNoFit" = "फिट नहीं";
+"roomViewer.placementFitCount" = "%d फिट";
+"roomViewer.placementDetectedSize" = "पता चला %.2f × %.2f × %.2f मी";
+"roomViewer.placementMetricUnavailableNote" = "पूर्ण आकार जाँच गहराई वाले iPhone पर सबसे अच्छी है। नीचे रंग सामंजस्य अभी भी मदद करता है।";
+"roomViewer.placementHarmonySummary" = "सामंजस्य %.2f (%@) · कंट्रास्ट %.2f · स्टाइल मिलान %.2f";
+"roomViewer.harmonyTypeAnalogous" = "समान";
+"roomViewer.harmonyTypeComplementary" = "पूरक";
+"roomViewer.harmonyTypeTriadic" = "त्रिक";
+"roomViewer.harmonyTypeSplitComplementary" = "विभाजित पूरक";
+"roomViewer.harmonyTypeNeutral" = "तटस्थ";
+"roomViewer.harmonyTypeClash" = "टकराव";
+"roomViewer.aestheticRecoNeutralClash" = "पैलेट टकराव कम करने के लिए अधिक तटस्थ रंग आज़माएँ।";
+"roomViewer.aestheticRecoAnalogousHarmony" = "रंग संबंध सामंजस्यपूर्ण है और कमरे की पैलेट के करीब है।";
+"roomViewer.aestheticRecoComplementaryFocal" = "पूरक कंट्रास्ट मजबूत फोकल पॉइंट बना सकता है।";
+"roomViewer.aestheticRecoContrastLow" = "फर्श के साथ बेहतर विज़ुअल अलगाव के लिए कंट्रास्ट बढ़ाएँ।";
+"roomViewer.aestheticRecoContrastHigh" = "कंट्रास्ट मजबूत है—फर्नीचर तुरंत नज़र आएगा।";
+"roomViewer.aestheticRecoStyleMismatch" = "%@ के करीब स्टाइल इस कमरे में अधिक सुसंगत लगेगा।";
+"roomViewer.aestheticRecoBroadlyCompatible" = "वर्तमान फर्नीचर प्रोफ़ाइल कमरे की पैलेट के साथ व्यापक रूप से मेल खाती है।";
+"roomViewer.styleTag.modern" = "आधुनिक";
+"roomViewer.styleTag.minimalist" = "मिनिमल";
+"roomViewer.styleTag.contemporary" = "समकालीन";
+"roomViewer.styleTag.industrial" = "औद्योगिक";
+"roomViewer.styleTag.rustic" = "देहाती";
+"roomViewer.styleTag.farmhouse" = "फार्महाउस";
+"roomViewer.styleTag.traditional" = "पारंपरिक";
+"roomViewer.styleTag.eclectic" = "मिश्रित";
+"roomViewer.styleTag.scandinavian" = "स्कैंडिनेवियाई";
+"roomViewer.styleTag.nordic" = "नॉर्डिक";
+"roomViewer.styleTag.classic" = "क्लासिक";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "रिपोर्ट सबमिट करें";
