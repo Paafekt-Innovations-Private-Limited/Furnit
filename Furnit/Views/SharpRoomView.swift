@@ -207,6 +207,7 @@ struct SharpRoomView: View {
     @State private var latestFitCheckResult: FitCheckResult?
     @State private var latestCornerPlacementSuggestions: [CornerPlacementSuggestion] = []
     @State private var latestEstimatedFurnitureDepthMeters: Float?
+    @State private var isPlacementIntelligenceExpanded = true
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -776,11 +777,19 @@ struct SharpRoomView: View {
             roomModel: roomModel,
             cameraFocalLengthPixels: 0,
             onFurnitureSizeEstimated: { estimate in
-                // Keep numeric room + furniture measurements stable; AR height is used only
-                // for visual overlay sizing inside FurnitureFit, not for recalibrating the room.
+                // Width may still come from the non-AR sizing path, but furniture height is
+                // AR-only so pinhole/raycast cannot contaminate room calibration or placement.
                 detectedFurnitureWidth = estimate.widthMeters
-                detectedFurnitureHeight = estimate.heightMeters
-                detectedFurnitureHeightAR = estimate.arHeightMeters
+                if let arHeight = estimate.arHeightMeters,
+                   arHeight.isFinite,
+                   arHeight > 0.05 {
+                    detectedFurnitureHeight = arHeight
+                    detectedFurnitureHeightAR = arHeight
+                } else {
+                    logFurnitureFitSize(
+                        "phase=viewer_height_skip reason=ar_only_height width_m=\(String(format: "%.3f", estimate.widthMeters))"
+                    )
+                }
             },
             suppressStartupProgress: furnitureFitInitialSegmentationDone,
             onFirstSegmentationComplete: {
@@ -1016,51 +1025,98 @@ struct SharpRoomView: View {
            let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence(),
            let fit = latestFitCheckResult {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Placement Intelligence")
-                    .font(.caption.bold())
-                    .foregroundColor(.white)
-                Text(
-                    String(
-                        format: "Detected %.2f × %.2f × %.2f m",
-                        dimensions.widthM,
-                        dimensions.heightM,
-                        dimensions.depthM
-                    )
-                )
-                .font(.caption2)
-                .foregroundColor(.white.opacity(0.92))
-                if fit.fitsInRoom {
-                    Text(
-                        fit.fitLocations.isEmpty
-                            ? "Fits room bounds. No clear free-floor region yet."
-                            : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
-                    )
-                    .font(.caption2)
-                    .foregroundColor(.green)
-                } else {
-                    Text("Current furniture footprint exceeds the detected room extents.")
-                        .font(.caption2)
-                        .foregroundColor(.red)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isPlacementIntelligenceExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Placement Intelligence")
+                            .font(.caption.bold())
+                            .foregroundColor(.white)
+                        Spacer(minLength: 8)
+                        Text(
+                            fit.fitsInRoom
+                                ? "\(max(fit.fitLocations.count, 1)) fit"
+                                : "No fit"
+                        )
+                        .font(.caption2.bold())
+                        .foregroundColor(fit.fitsInRoom ? .green : .red)
+                        Image(systemName: isPlacementIntelligenceExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.bold())
+                            .foregroundColor(.white.opacity(0.85))
+                    }
                 }
-                if let bestCorner = latestCornerPlacementSuggestions.first {
+                .buttonStyle(.plain)
+
+                if isPlacementIntelligenceExpanded {
                     Text(
                         String(
-                            format: "Best corner score %.2f, rot %.0f°",
-                            bestCorner.score,
-                            bestCorner.yRotationRad * 180 / .pi
+                            format: "Detected %.2f × %.2f × %.2f m",
+                            dimensions.widthM,
+                            dimensions.heightM,
+                            dimensions.depthM
                         )
                     )
                     .font(.caption2)
-                    .foregroundColor(.orange)
-                }
-                if let firstWarning = fit.warnings.first {
-                    Text(firstWarning)
+                    .foregroundColor(.white.opacity(0.92))
+                    if fit.fitsInRoom {
+                        Text(
+                            fit.fitLocations.isEmpty
+                                ? "Fits room bounds. No clear free-floor region yet."
+                                : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
+                        )
                         .font(.caption2)
-                        .foregroundColor(.yellow)
-                } else if latestEstimatedFurnitureDepthMeters != nil {
-                    Text("Depth is estimated until catalog or semantic data is available.")
+                        .foregroundColor(.green)
+                    } else {
+                        Text("Current furniture footprint exceeds the detected room extents.")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    if let bestCorner = latestCornerPlacementSuggestions.first {
+                        Text(
+                            String(
+                                format: "Best corner score %.2f, rot %.0f°",
+                                bestCorner.score,
+                                bestCorner.yRotationRad * 180 / .pi
+                            )
+                        )
                         .font(.caption2)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.orange)
+                    }
+                    if let firstWarning = fit.warnings.first {
+                        Text(firstWarning)
+                            .font(.caption2)
+                            .foregroundColor(.yellow)
+                    } else if latestEstimatedFurnitureDepthMeters != nil {
+                        Text("Depth is estimated until catalog or semantic data is available.")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                } else {
+                    Text(
+                        fit.fitsInRoom
+                            ? (fit.fitLocations.isEmpty
+                                ? "Fits room bounds."
+                                : "Fits room with \(fit.fitLocations.count) candidate region(s).")
+                            : "Current footprint exceeds room extents."
+                    )
+                    .font(.caption2)
+                    .foregroundColor(fit.fitsInRoom ? .green : .red)
+                    if let bestCorner = latestCornerPlacementSuggestions.first {
+                        Text(
+                            String(
+                                format: "Best corner %.2f",
+                                bestCorner.score
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                    } else if latestEstimatedFurnitureDepthMeters != nil {
+                        Text("Depth estimated")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
                 }
             }
             .padding(.horizontal, 10)
@@ -1068,6 +1124,21 @@ struct SharpRoomView: View {
             .background(Color.black.opacity(0.72))
             .cornerRadius(8)
         }
+    }
+
+    @ViewBuilder
+    private var roomIntelligencePlacementCardResetOnExit: some View {
+        roomIntelligencePlacementCard
+            .onChange(of: showingFurnitureFit) { _, isShowing in
+                if !isShowing {
+                    isPlacementIntelligenceExpanded = true
+                }
+            }
+            .onChange(of: latestFitCheckResult?.fitsInRoom) { _, _ in
+                if latestFitCheckResult == nil {
+                    isPlacementIntelligenceExpanded = true
+                }
+            }
     }
 
     @ViewBuilder private var bottomBarsOverlayView: some View {
@@ -1105,7 +1176,7 @@ struct SharpRoomView: View {
                     .allowsHitTesting(false)
                     if showingFurnitureFit {
                         VStack(alignment: .trailing, spacing: 8) {
-                            roomIntelligencePlacementCard
+                            roomIntelligencePlacementCardResetOnExit
                             if showRoomFurnitureCalibrate {
                                 Button(action: { showFurnitureDimensionsInput = true }) {
                                     furnitureMeasurementPillContent(showTapHint: true)
@@ -1160,7 +1231,7 @@ struct SharpRoomView: View {
                     Spacer().allowsHitTesting(false)
                     VStack(spacing: 8) {
                         if showingFurnitureFit {
-                            roomIntelligencePlacementCard
+                            roomIntelligencePlacementCardResetOnExit
                             if showRoomFurnitureCalibrate {
                                 Button(action: { showFurnitureDimensionsInput = true }) {
                                     furnitureMeasurementPillContent(showTapHint: true)

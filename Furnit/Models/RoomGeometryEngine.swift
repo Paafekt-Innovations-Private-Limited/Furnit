@@ -11,6 +11,9 @@ public struct RoomGeometryConfig: Sendable, Equatable {
     public var standardCeilingHeightM: Float = 2.4
     public var maxPointDistance: Float = 12.0
     public var minPointCount: Int = 80
+    public var minPlaneInlierCount: Int = 18
+    public var wallCandidateMinHeightFraction: Float = 0.14
+    public var wallCandidateMaxHeightFraction: Float = 0.92
 
     public static let `default` = RoomGeometryConfig()
 }
@@ -128,7 +131,15 @@ public final class RoomGeometryEngine {
             return nil
         }
         if ceiling.normal.y > 0 {
-            ceiling = PlaneFit(normal: -ceiling.normal, centroid: ceiling.centroid, d: -ceiling.d, confidence: ceiling.confidence, bounds: ceiling.bounds)
+            ceiling = PlaneFit(
+                normal: -ceiling.normal,
+                centroid: ceiling.centroid,
+                d: -ceiling.d,
+                confidence: ceiling.confidence,
+                bounds: ceiling.bounds,
+                inlierCount: ceiling.inlierCount,
+                rmsError: ceiling.rmsError
+            )
         }
         guard ceiling.centroid.y > floor.centroid.y + config.ransacInlierThreshold else { return nil }
         return DetectedPlane(
@@ -142,8 +153,12 @@ public final class RoomGeometryEngine {
     }
 
     public func extractWallPlanes(from points: [SIMD3<Float>], floor: DetectedPlane) -> [DetectedPlane] {
+        let floorHeightBand = wallCandidateHeightBand(points: points, floor: floor)
         let floorFiltered = points.filter {
-            abs(floor.distance(to: $0)) > config.ransacInlierThreshold * 1.5
+            let floorDistance = dot($0 - floor.centroid, floor.normal)
+            guard floorDistance > floorHeightBand.minHeight,
+                  floorDistance < floorHeightBand.maxHeight else { return false }
+            return abs(floor.distance(to: $0)) > config.ransacInlierThreshold * 1.5
         }
         var remaining = floorFiltered
         var walls: [DetectedPlane] = []
@@ -288,6 +303,8 @@ public final class RoomGeometryEngine {
         let d: Float
         let confidence: Float
         let bounds: AABB3
+        let inlierCount: Int
+        let rmsError: Float
     }
 
     private func candidatePointsForHorizontalPlane(from points: [SIMD3<Float>], upper: Bool) -> [SIMD3<Float>] {
@@ -306,6 +323,7 @@ public final class RoomGeometryEngine {
         guard points.count >= 3 else { return nil }
 
         var bestFit: PlaneFit?
+        var bestQuality: Float = -.greatestFiniteMagnitude
         for _ in 0..<config.ransacIterations {
             let sample = randomPlaneSample(from: points)
             let rawNormal = cross(sample.1 - sample.0, sample.2 - sample.0)
@@ -326,25 +344,89 @@ public final class RoomGeometryEngine {
 
             let d = -dot(normal, sample.0)
             let inliers = points.filter { abs(dot(normal, $0) + d) < config.ransacInlierThreshold }
-            guard inliers.count >= 12 else { continue }
+            guard inliers.count >= config.minPlaneInlierCount else { continue }
+            guard let fit = refinePlaneFit(
+                inliers: inliers,
+                originalPoints: points,
+                expected: expected,
+                preferPositiveY: preferPositiveY
+            ) else { continue }
 
-            let centroid = inliers.reduce(.zero, +) / Float(inliers.count)
-            let refinedD = -dot(normal, centroid)
-            let confidence = Float(inliers.count) / Float(points.count)
-            let fit = PlaneFit(
-                normal: normal,
-                centroid: centroid,
-                d: refinedD,
-                confidence: confidence,
-                bounds: computeAABB(points: inliers)
-            )
-
-            if bestFit == nil || confidence > bestFit!.confidence {
+            let alignmentScore: Float
+            switch expected {
+            case .horizontal:
+                alignmentScore = abs(fit.normal.y)
+            case .vertical:
+                alignmentScore = 1 - min(abs(fit.normal.y), 1)
+            }
+            let quality = fit.confidence + alignmentScore * 0.05 - min(fit.rmsError / max(config.ransacInlierThreshold, 0.001), 1) * 0.08
+            if bestFit == nil || quality > bestQuality {
                 bestFit = fit
+                bestQuality = quality
             }
         }
 
         return bestFit
+    }
+
+    private func refinePlaneFit(
+        inliers: [SIMD3<Float>],
+        originalPoints: [SIMD3<Float>],
+        expected: PlaneExpectation,
+        preferPositiveY: Bool?
+    ) -> PlaneFit? {
+        guard inliers.count >= config.minPlaneInlierCount else { return nil }
+        let centroid = inliers.reduce(.zero, +) / Float(inliers.count)
+        let covariance = covarianceMatrix(points: inliers, centroid: centroid)
+        guard var normal = smallestEigenvector(ofSymmetric3x3: covariance) else { return nil }
+        normal = normalizeOrZero(normal)
+        guard length_squared(normal) > 1e-8 else { return nil }
+
+        switch expected {
+        case .horizontal:
+            guard abs(normal.y) > 0.72 else { return nil }
+        case .vertical:
+            guard abs(normal.y) < 0.35 else { return nil }
+        }
+
+        if let preferPositiveY {
+            if preferPositiveY, normal.y < 0 { normal = -normal }
+            if !preferPositiveY, normal.y > 0 { normal = -normal }
+        }
+
+        let d = -dot(normal, centroid)
+        let refinedInliers = originalPoints.filter { abs(dot(normal, $0) + d) < config.ransacInlierThreshold }
+        guard refinedInliers.count >= config.minPlaneInlierCount else { return nil }
+
+        let refinedCentroid = refinedInliers.reduce(.zero, +) / Float(refinedInliers.count)
+        let refinedCovariance = covarianceMatrix(points: refinedInliers, centroid: refinedCentroid)
+        guard var refinedNormal = smallestEigenvector(ofSymmetric3x3: refinedCovariance) else { return nil }
+        refinedNormal = normalizeOrZero(refinedNormal)
+        guard length_squared(refinedNormal) > 1e-8 else { return nil }
+
+        switch expected {
+        case .horizontal:
+            guard abs(refinedNormal.y) > 0.72 else { return nil }
+        case .vertical:
+            guard abs(refinedNormal.y) < 0.35 else { return nil }
+        }
+
+        if let preferPositiveY {
+            if preferPositiveY, refinedNormal.y < 0 { refinedNormal = -refinedNormal }
+            if !preferPositiveY, refinedNormal.y > 0 { refinedNormal = -refinedNormal }
+        }
+
+        let refinedD = -dot(refinedNormal, refinedCentroid)
+        let rms = rmsPlaneError(points: refinedInliers, normal: refinedNormal, d: refinedD)
+        return PlaneFit(
+            normal: refinedNormal,
+            centroid: refinedCentroid,
+            d: refinedD,
+            confidence: Float(refinedInliers.count) / Float(max(originalPoints.count, 1)),
+            bounds: computeAABB(points: refinedInliers),
+            inlierCount: refinedInliers.count,
+            rmsError: rms
+        )
     }
 
     private func randomPlaneSample(from points: [SIMD3<Float>]) -> (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>) {
@@ -365,6 +447,30 @@ public final class RoomGeometryEngine {
             result.append(corner)
         }
         return result
+    }
+
+    private func wallCandidateHeightBand(
+        points: [SIMD3<Float>],
+        floor: DetectedPlane
+    ) -> (minHeight: Float, maxHeight: Float) {
+        let positiveHeights = points
+            .map { dot($0 - floor.centroid, floor.normal) }
+            .filter { $0.isFinite && $0 > config.ransacInlierThreshold }
+            .sorted()
+
+        guard let maxObserved = positiveHeights.last else {
+            return (config.ransacInlierThreshold * 2, .greatestFiniteMagnitude)
+        }
+
+        let minHeight = max(
+            config.ransacInlierThreshold * 2,
+            maxObserved * config.wallCandidateMinHeightFraction
+        )
+        let maxHeight = max(
+            minHeight + config.ransacInlierThreshold,
+            maxObserved * config.wallCandidateMaxHeightFraction
+        )
+        return (minHeight, maxHeight)
     }
 
     private func solvePlaneIntersectionPoint(_ p1: DetectedPlane, _ p2: DetectedPlane) -> SIMD3<Float>? {
@@ -412,6 +518,116 @@ public final class RoomGeometryEngine {
         let lengthSquared = simd_length_squared(vector)
         guard lengthSquared > 1e-8 else { return .zero }
         return vector / sqrt(lengthSquared)
+    }
+
+    private func covarianceMatrix(points: [SIMD3<Float>], centroid: SIMD3<Float>) -> simd_float3x3 {
+        var covariance = simd_float3x3()
+        for point in points {
+            let delta = point - centroid
+            matrixSet(&covariance, row: 0, col: 0, value: matrixGet(covariance, row: 0, col: 0) + delta.x * delta.x)
+            matrixSet(&covariance, row: 0, col: 1, value: matrixGet(covariance, row: 0, col: 1) + delta.x * delta.y)
+            matrixSet(&covariance, row: 0, col: 2, value: matrixGet(covariance, row: 0, col: 2) + delta.x * delta.z)
+            matrixSet(&covariance, row: 1, col: 0, value: matrixGet(covariance, row: 1, col: 0) + delta.y * delta.x)
+            matrixSet(&covariance, row: 1, col: 1, value: matrixGet(covariance, row: 1, col: 1) + delta.y * delta.y)
+            matrixSet(&covariance, row: 1, col: 2, value: matrixGet(covariance, row: 1, col: 2) + delta.y * delta.z)
+            matrixSet(&covariance, row: 2, col: 0, value: matrixGet(covariance, row: 2, col: 0) + delta.z * delta.x)
+            matrixSet(&covariance, row: 2, col: 1, value: matrixGet(covariance, row: 2, col: 1) + delta.z * delta.y)
+            matrixSet(&covariance, row: 2, col: 2, value: matrixGet(covariance, row: 2, col: 2) + delta.z * delta.z)
+        }
+        let scale = 1 / Float(max(points.count, 1))
+        return covariance * scale
+    }
+
+    private func rmsPlaneError(points: [SIMD3<Float>], normal: SIMD3<Float>, d: Float) -> Float {
+        guard !points.isEmpty else { return .greatestFiniteMagnitude }
+        let sum = points.reduce(Float.zero) { partial, point in
+            let error = dot(normal, point) + d
+            return partial + error * error
+        }
+        return sqrt(sum / Float(points.count))
+    }
+
+    private func smallestEigenvector(ofSymmetric3x3 matrix: simd_float3x3) -> SIMD3<Float>? {
+        var a = matrix
+        var v = matrix_identity_float3x3
+
+        for _ in 0..<10 {
+            let offDiag = [
+                (0, 1, abs(matrixGet(a, row: 0, col: 1))),
+                (0, 2, abs(matrixGet(a, row: 0, col: 2))),
+                (1, 2, abs(matrixGet(a, row: 1, col: 2)))
+            ]
+            guard let pivot = offDiag.max(by: { $0.2 < $1.2 }), pivot.2 > 1e-7 else { break }
+            jacobiRotate(matrix: &a, eigenvectors: &v, p: pivot.0, q: pivot.1)
+        }
+
+        let eigenvalues = [
+            matrixGet(a, row: 0, col: 0),
+            matrixGet(a, row: 1, col: 1),
+            matrixGet(a, row: 2, col: 2)
+        ]
+        guard let minIndex = eigenvalues.enumerated().min(by: { $0.element < $1.element })?.offset else {
+            return nil
+        }
+        let vector = SIMD3<Float>(
+            matrixGet(v, row: 0, col: minIndex),
+            matrixGet(v, row: 1, col: minIndex),
+            matrixGet(v, row: 2, col: minIndex)
+        )
+        return length_squared(vector) > 1e-8 ? vector : nil
+    }
+
+    private func jacobiRotate(
+        matrix a: inout simd_float3x3,
+        eigenvectors v: inout simd_float3x3,
+        p: Int,
+        q: Int
+    ) {
+        guard p != q else { return }
+        let app = matrixGet(a, row: p, col: p)
+        let aqq = matrixGet(a, row: q, col: q)
+        let apq = matrixGet(a, row: p, col: q)
+        guard abs(apq) > 1e-8 else { return }
+
+        let tau = (aqq - app) / (2 * apq)
+        let t: Float = tau >= 0
+            ? 1 / (tau + sqrt(1 + tau * tau))
+            : -1 / (-tau + sqrt(1 + tau * tau))
+        let c = 1 / sqrt(1 + t * t)
+        let s = t * c
+
+        for r in 0..<3 where r != p && r != q {
+            let arp = matrixGet(a, row: r, col: p)
+            let arq = matrixGet(a, row: r, col: q)
+            let newRp = c * arp - s * arq
+            let newRq = c * arq + s * arp
+            matrixSet(&a, row: r, col: p, value: newRp)
+            matrixSet(&a, row: p, col: r, value: newRp)
+            matrixSet(&a, row: r, col: q, value: newRq)
+            matrixSet(&a, row: q, col: r, value: newRq)
+        }
+
+        let newApp = c * c * app - 2 * s * c * apq + s * s * aqq
+        let newAqq = s * s * app + 2 * s * c * apq + c * c * aqq
+        matrixSet(&a, row: p, col: p, value: newApp)
+        matrixSet(&a, row: q, col: q, value: newAqq)
+        matrixSet(&a, row: p, col: q, value: 0)
+        matrixSet(&a, row: q, col: p, value: 0)
+
+        for r in 0..<3 {
+            let vrp = matrixGet(v, row: r, col: p)
+            let vrq = matrixGet(v, row: r, col: q)
+            matrixSet(&v, row: r, col: p, value: c * vrp - s * vrq)
+            matrixSet(&v, row: r, col: q, value: s * vrp + c * vrq)
+        }
+    }
+
+    private func matrixGet(_ matrix: simd_float3x3, row: Int, col: Int) -> Float {
+        matrix[col][row]
+    }
+
+    private func matrixSet(_ matrix: inout simd_float3x3, row: Int, col: Int, value: Float) {
+        matrix[col][row] = value
     }
 }
 
