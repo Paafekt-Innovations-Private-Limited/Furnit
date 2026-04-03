@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import MetalKit
 import Metal
 import MetalSplatter
@@ -165,6 +166,11 @@ struct GaussianSplatView: UIViewRepresentable {
         private var setupGeneration: Int = 0
         private var hasRenderedDepthFrame = false
 
+        /// Screenshot requests: one frame consumes one completion (Metal readback; `drawHierarchy` cannot capture `CAMetalLayer` reliably).
+        private var pendingScreenshotCompletions: [(UIImage?) -> Void] = []
+        /// Shared, CPU-readable target for an extra composite pass — never blit **from** the CAMetalLayer drawable (that aborts under validation).
+        private var screenshotCaptureTexture: MTLTexture?
+
         /// Axis-aligned bounds from loaded `SplatPoint` positions (MetalSplatter 1.x `SplatRenderer` does not expose `boundingBox` / `centroid`).
         private var sceneBoundsMin: SIMD3<Float>?
         private var sceneBoundsMax: SIMD3<Float>?
@@ -259,10 +265,12 @@ struct GaussianSplatView: UIViewRepresentable {
 
             splatScratchTexture = nil
             depthScratchTexture = nil
+            screenshotCaptureTexture = nil
             hasRenderedDepthFrame = false
             compositePipeline = nil
             commandQueue = nil
             device = nil
+            flushAllPendingScreenshotRequestsWithNil()
             currentURL = nil
             sceneBoundsMin = nil
             sceneBoundsMax = nil
@@ -457,14 +465,92 @@ struct GaussianSplatView: UIViewRepresentable {
             splatScratchTexture = nil
             scratchWidth = 0
             scratchHeight = 0
+            screenshotCaptureTexture = nil
+        }
+
+        /// Enqueues a one-shot capture of the next composite frame (offscreen shared texture → `UIImage` on the main queue).
+        func scheduleScreenshotCapture(completion: @escaping (UIImage?) -> Void) {
+            let enqueue = { [weak self] in
+                self?.pendingScreenshotCompletions.append(completion)
+                self?.view?.setNeedsDisplay()
+            }
+            if Thread.isMainThread {
+                enqueue()
+            } else {
+                DispatchQueue.main.async(execute: enqueue)
+            }
+        }
+
+        private func flushAllPendingScreenshotRequestsWithNil() {
+            let completions = pendingScreenshotCompletions
+            pendingScreenshotCompletions.removeAll()
+            for completion in completions {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+            }
+        }
+
+        private func ensureScreenshotCaptureTexture(device: MTLDevice, width: Int, height: Int, pixelFormat: MTLPixelFormat) -> MTLTexture? {
+            if let existing = screenshotCaptureTexture,
+               existing.width == width, existing.height == height, existing.pixelFormat == pixelFormat {
+                return existing
+            }
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: pixelFormat,
+                width: width,
+                height: height,
+                mipmapped: false
+            )
+            descriptor.storageMode = .shared
+            descriptor.usage = [.renderTarget, .shaderRead]
+            guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+            screenshotCaptureTexture = texture
+            return texture
+        }
+
+        private static func makeUIImage(fromBGRA texture: MTLTexture, scale: CGFloat) -> UIImage? {
+            let width = texture.width
+            let height = texture.height
+            let bytesPerPixel = 4
+            let rowBytes = ((width * bytesPerPixel + 255) / 256) * 256
+            var raw = [UInt8](repeating: 0, count: rowBytes * height)
+            let region = MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0), size: MTLSize(width: width, height: height, depth: 1))
+            texture.getBytes(&raw, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
+            guard let provider = CGDataProvider(data: Data(raw) as CFData) else { return nil }
+            let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
+            guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+            guard let cgImage = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: rowBytes,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo,
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: true,
+                intent: .defaultIntent
+            ) else { return nil }
+            return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
         }
 
         func draw(in view: MTKView) {
-            guard let renderer = splatRenderer,
-                  let commandQueue = commandQueue,
-                  let drawable = view.currentDrawable,
-                  let metalDevice = device
-            else { return }
+            guard let commandQueue = commandQueue, let metalDevice = device else {
+                flushAllPendingScreenshotRequestsWithNil()
+                return
+            }
+            guard let renderer = splatRenderer else {
+                flushAllPendingScreenshotRequestsWithNil()
+                return
+            }
+            guard let drawable = view.currentDrawable else {
+                if !pendingScreenshotCompletions.isEmpty {
+                    view.setNeedsDisplay()
+                }
+                return
+            }
 
             let timeout = DispatchTime.now() + 0.1
             if inFlightSemaphore.wait(timeout: timeout) != .success {
@@ -477,11 +563,16 @@ struct GaussianSplatView: UIViewRepresentable {
 
             guard let commandBuffer = commandQueue.makeCommandBuffer() else {
                 inFlightSemaphore.signal()
+                flushAllPendingScreenshotRequestsWithNil()
                 return
             }
             commandBuffer.addCompletedHandler { [weak self] _ in
                 self?.inFlightSemaphore.signal()
             }
+
+            let screenshotCompletion: ((UIImage?) -> Void)? = pendingScreenshotCompletions.isEmpty
+                ? nil
+                : pendingScreenshotCompletions.removeFirst()
 
             let vp = viewport
             lastProjectionMatrix = vp.projectionMatrix
@@ -506,6 +597,42 @@ struct GaussianSplatView: UIViewRepresentable {
                     )
                 } catch {
                     logDebug("❌ [GaussianSplatView] Render error: \(error)")
+                }
+
+                if let completion = screenshotCompletion,
+                   let captureTexture = ensureScreenshotCaptureTexture(
+                       device: metalDevice,
+                       width: scratch.width,
+                       height: scratch.height,
+                       pixelFormat: view.colorPixelFormat
+                   ) {
+                    let capturePassDesc = MTLRenderPassDescriptor()
+                    capturePassDesc.colorAttachments[0].texture = captureTexture
+                    capturePassDesc.colorAttachments[0].loadAction = .dontCare
+                    capturePassDesc.colorAttachments[0].storeAction = .store
+                    if let captureEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: capturePassDesc) {
+                        captureEncoder.setRenderPipelineState(pipeline)
+                        captureEncoder.setFragmentTexture(scratch, index: 0)
+                        var compositeParams: [Float] = [splatCompositeExposure, splatCompositeShadowLift]
+                        captureEncoder.setFragmentBytes(&compositeParams, length: MemoryLayout<Float>.stride * 2, index: 0)
+                        captureEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                        captureEncoder.endEncoding()
+                        let contentScale = view.contentScaleFactor
+                        commandBuffer.addCompletedHandler { _ in
+                            let image = Self.makeUIImage(fromBGRA: captureTexture, scale: contentScale)
+                            DispatchQueue.main.async {
+                                completion(image)
+                            }
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            completion(nil)
+                        }
+                    }
+                } else if let completion = screenshotCompletion {
+                    DispatchQueue.main.async {
+                        completion(nil)
+                    }
                 }
 
                 let compPassDesc = MTLRenderPassDescriptor()
@@ -534,11 +661,21 @@ struct GaussianSplatView: UIViewRepresentable {
                 } catch {
                     logDebug("❌ [GaussianSplatView] Render error: \(error)")
                 }
+                if let completion = screenshotCompletion {
+                    DispatchQueue.main.async {
+                        completion(nil)
+                    }
+                }
             }
 
             hasRenderedDepthFrame = true
+
             commandBuffer.present(drawable)
             commandBuffer.commit()
+
+            if !pendingScreenshotCompletions.isEmpty {
+                view.setNeedsDisplay()
+            }
             // During warm-up, keep requesting new frames so the room sharpens quickly even when idle.
             if let warmupEndTime, CFAbsoluteTimeGetCurrent() < warmupEndTime {
                 view.setNeedsDisplay()

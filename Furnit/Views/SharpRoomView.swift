@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreML
 import Photos
 import MetalKit
@@ -1296,15 +1297,126 @@ struct SharpRoomView: View {
     private func takeScreenshot() {
         logDebug("📸 Taking screenshot...")
         isCapturingSnapshot = true
+        splatMeasurementHost.captureScreenshot { image in
+            DispatchQueue.main.async {
+                if let image {
+                    logDebug("📸 Splat screenshot captured (Metal readback), saving to Photos...")
+                    let composed = compositeSharpRoomSnapshotWithFurnitureFitIfNeeded(splatImage: image)
+                    saveSharpRoomSnapshotToPhotos(composed)
+                } else {
+                    logDebug("📸 Metal capture unavailable; falling back to window hierarchy...")
+                    captureSharpRoomSnapshotViaDrawHierarchy()
+                    return
+                }
+                isCapturingSnapshot = false
+            }
+        }
+    }
+
+    private func saveSharpRoomSnapshotToPhotos(_ image: UIImage) {
+        let saveBlock = {
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            logDebug("✅ Saved Sharp Room snapshot to Photos")
+        }
+        if #available(iOS 14, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            switch status {
+            case .authorized, .limited:
+                saveBlock()
+            case .denied, .restricted:
+                logDebug("❌ Photos add-only access denied or restricted")
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                    DispatchQueue.main.async {
+                        if newStatus == .authorized || newStatus == .limited {
+                            saveBlock()
+                        } else {
+                            logDebug("❌ Photos add-only access not granted")
+                        }
+                    }
+                }
+            @unknown default:
+                logDebug("❌ Unknown Photos authorization status")
+            }
+        } else {
+            let status = PHPhotoLibrary.authorizationStatus()
+            switch status {
+            case .authorized, .limited:
+                saveBlock()
+            case .denied, .restricted:
+                logDebug("❌ Photos access denied or restricted")
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization { newStatus in
+                    DispatchQueue.main.async {
+                        if newStatus == .authorized || newStatus == .limited {
+                            saveBlock()
+                        } else {
+                            logDebug("❌ Photos access not granted")
+                        }
+                    }
+                }
+            @unknown default:
+                logDebug("❌ Unknown Photos authorization status (legacy)")
+            }
+        }
+    }
+
+    /// Metal capture is only the `MTKView`; Furniture Fit draws segmentation in ``FurnitureFitContainerView`` above it. Composite both into one full-window image.
+    private func compositeSharpRoomSnapshotWithFurnitureFitIfNeeded(splatImage: UIImage) -> UIImage {
+        guard showingFurnitureFit else { return splatImage }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap { $0.windows }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first,
+              let mtkView = findFirstMTKView(in: window) else {
+            logDebug("📸 Composite: no window or MTKView — using splat-only image")
+            return splatImage
+        }
+        let furnitureViews = collectFurnitureFitContainerViews(in: window)
+        guard let furnitureView = furnitureViews.last else {
+            logDebug("📸 Composite: no FurnitureFitContainerView — using splat-only image")
+            return splatImage
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.screen.scale
+        format.opaque = true
+        let bounds = window.bounds
+        let renderer = UIGraphicsImageRenderer(bounds: bounds, format: format)
+        return renderer.image { ctx in
+            UIColor(white: 0.5, alpha: 1).setFill()
+            ctx.fill(bounds)
+
+            let mtkFrame = mtkView.convert(mtkView.bounds, to: window)
+            splatImage.draw(in: mtkFrame)
+
+            let fitFrame = furnitureView.convert(furnitureView.bounds, to: window)
+            ctx.cgContext.saveGState()
+            ctx.cgContext.translateBy(x: fitFrame.origin.x, y: fitFrame.origin.y)
+            furnitureView.drawHierarchy(in: CGRect(origin: .zero, size: furnitureView.bounds.size), afterScreenUpdates: true)
+            ctx.cgContext.restoreGState()
+        }
+    }
+
+    private func collectFurnitureFitContainerViews(in root: UIView) -> [FurnitureFitContainerView] {
+        var out: [FurnitureFitContainerView] = []
+        if let fit = root as? FurnitureFitContainerView {
+            out.append(fit)
+        }
+        for sub in root.subviews {
+            out.append(contentsOf: collectFurnitureFitContainerViews(in: sub))
+        }
+        return out
+    }
+
+    private func captureSharpRoomSnapshotViaDrawHierarchy() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let windows = scenes.flatMap { $0.windows }
             guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
                 isCapturingSnapshot = false
-                logDebug("❌ No window found")
+                logDebug("❌ No window found for snapshot")
                 return
             }
-            // Prefer capturing just the splat renderer (Metal view) if present. Fallback to full window.
             let targetView: UIView = findFirstMTKView(in: window) ?? window
             let format = UIGraphicsImageRendererFormat()
             format.scale = targetView.traitCollection.displayScale
@@ -1312,12 +1424,9 @@ struct SharpRoomView: View {
             let image = renderer.image { _ in
                 targetView.drawHierarchy(in: targetView.bounds, afterScreenUpdates: true)
             }
-            logDebug("📸 Screenshot captured, saving to Photos...")
-            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            logDebug("✅ Screenshot saved to Photos")
-            DispatchQueue.main.async {
-                isCapturingSnapshot = false
-            }
+            logDebug("📸 Hierarchy snapshot captured, saving to Photos...")
+            saveSharpRoomSnapshotToPhotos(image)
+            isCapturingSnapshot = false
         }
     }
 
