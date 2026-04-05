@@ -265,6 +265,13 @@ struct SharpRoomView: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.55)
                         .multilineTextAlignment(.center)
+                    if splatMeasurementHost.arModeEnabled {
+                        Text("Saved room dimensions; AR only drives camera motion")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                    }
                 }
                 .accessibilityElement(children: .combine)
             }

@@ -223,9 +223,10 @@ struct GaussianSplatView: UIViewRepresentable {
         let infiniteZoom: Bool
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
-        var splatCompositeExposure: Float = 1.0
+        /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
+        var splatCompositeExposure: Float = 1.12
         /// Additive lift on dark tonemapped samples (smoothstep mask).
-        var splatCompositeShadowLift: Float = 0.0
+        var splatCompositeShadowLift: Float = 0.05
 
         private struct DepthReadbackSnapshot {
             let width: Int
@@ -330,8 +331,8 @@ struct GaussianSplatView: UIViewRepresentable {
             drawableSize      = mtkView.drawableSize
             self.view         = mtkView
             currentURL        = plyURL
-            splatCompositeExposure = 1.0
-            splatCompositeShadowLift = 0.0
+            splatCompositeExposure = 1.12
+            splatCompositeShadowLift = 0.05
             isSharpClassicPly = plyURL.lastPathComponent.contains("_classic")
             // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
             cameraYaw = 0

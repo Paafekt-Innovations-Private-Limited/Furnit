@@ -500,6 +500,62 @@ class SHARPService: ObservableObject {
 
     // MARK: - Image Preprocessing
 
+    /// Logs a few spatially separated BGRA samples so we can see whether color is already gone
+    /// before SHARP inference or only later in the export/render path.
+    private func logInputColorDiagnostics(_ buffer: CVPixelBuffer) {
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        guard width > 0, height > 0 else { return }
+
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else { return }
+
+        let pointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let samplePoints: [(x: Int, y: Int)] = [
+            (max(0, width / 16), max(0, height / 16)),
+            (width / 2, height / 2),
+            (max(0, width / 4), max(0, (height * 3) / 4)),
+            (max(0, (width * 3) / 4), max(0, height / 3)),
+            (max(0, width / 2), max(0, height / 4)),
+        ]
+
+        var minimumR: UInt8 = 255
+        var minimumG: UInt8 = 255
+        var minimumB: UInt8 = 255
+        var maximumR: UInt8 = 0
+        var maximumG: UInt8 = 0
+        var maximumB: UInt8 = 0
+        var grayscaleSampleCount = 0
+
+        for (x, y) in samplePoints {
+            let clampedX = min(max(x, 0), width - 1)
+            let clampedY = min(max(y, 0), height - 1)
+            let offset = clampedY * bytesPerRow + clampedX * 4
+            let blue = pointer[offset + 0]
+            let green = pointer[offset + 1]
+            let red = pointer[offset + 2]
+            let alpha = pointer[offset + 3]
+            let channelSpread = max(abs(Int(red) - Int(green)), abs(Int(green) - Int(blue)))
+            let looksGray = channelSpread < 5
+            if looksGray { grayscaleSampleCount += 1 }
+
+            minimumR = min(minimumR, red); minimumG = min(minimumG, green); minimumB = min(minimumB, blue)
+            maximumR = max(maximumR, red); maximumG = max(maximumG, green); maximumB = max(maximumB, blue)
+
+            logDebug(
+                "  🎨 Pixel(\(clampedX),\(clampedY)) BGRA=(\(blue), \(green), \(red), \(alpha)) " +
+                "rgb_spread=\(channelSpread) \(looksGray ? "GRAY?" : "COLOR")"
+            )
+        }
+
+        logDebug(
+            "  🎨 Channel ranges R[\(minimumR)-\(maximumR)] G[\(minimumG)-\(maximumG)] B[\(minimumB)-\(maximumB)] " +
+            "gray_like_samples=\(grayscaleSampleCount)/\(samplePoints.count)"
+        )
+    }
+
     /// Preprocess image for SHARP model input
     /// - Parameter image: Source UIImage
     /// - Returns: CVPixelBuffer sized to 1536x1536 (model expects Image type)
@@ -561,6 +617,7 @@ class SHARPService: ObservableObject {
     private func preprocessAndRunInference(workingImage: UIImage) async throws -> [Float] {
         let inputBuffer = try await preprocessImage(workingImage)
         logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+        logInputColorDiagnostics(inputBuffer)
         return try await runInference(inputBuffer)
     }
 
