@@ -471,6 +471,7 @@ struct SharpRoomView: View {
             loadError: $error,
             zoomLevel: $metalSplatterZoom,
             infiniteZoom: infiniteZoomEnabled,
+            arReferenceOrientation: photoOrientation,
             onBoundsAvailable: { bounds in
                 DispatchQueue.main.async {
                     metalBounds = bounds

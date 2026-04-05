@@ -40,6 +40,9 @@ struct GaussianSplatView: UIViewRepresentable {
     /// When true, use dolly-style pinch zoom with a much wider range and smaller near plane (matches the Room Viewer “Infinite Zoom” setting).
     let infiniteZoom: Bool
 
+    /// Source room/photo orientation. Portrait rooms need an AR camera roll compensation so motion tracking starts upright.
+    let arReferenceOrientation: PhotoOrientation
+
     /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
     var onBoundsAvailable: ((RoomBounds) -> Void)?
 
@@ -59,6 +62,7 @@ struct GaussianSplatView: UIViewRepresentable {
             loadError: $loadError,
             zoomLevel: $zoomLevel,
             infiniteZoom: infiniteZoom,
+            arReferenceOrientation: arReferenceOrientation,
             onBoundsAvailable: onBoundsAvailable
         )
     }
@@ -222,6 +226,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         /// Whether to use wide-range dolly-style pinch zoom and a smaller near plane (matches the “Infinite Zoom” setting).
         let infiniteZoom: Bool
+        let arReferenceOrientation: PhotoOrientation
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
@@ -244,12 +249,14 @@ struct GaussianSplatView: UIViewRepresentable {
             loadError: Binding<String?>,
             zoomLevel:  Binding<Float>,
             infiniteZoom: Bool,
+            arReferenceOrientation: PhotoOrientation,
             onBoundsAvailable: ((RoomBounds) -> Void)?
         ) {
             _isLoading = isLoading
             _loadError = loadError
             _zoomLevel = zoomLevel
             self.infiniteZoom = infiniteZoom
+            self.arReferenceOrientation = arReferenceOrientation
             self.onBoundsAvailable = onBoundsAvailable
             super.init()
         }
@@ -797,31 +804,28 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
             }
 
+            // ── Apply user orbit / zoom in both touch and AR camera modes ─────────────────
+            let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
+                                                 axis: SIMD3<Float>(0, 1, 0))
+            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
+                                                 axis: SIMD3<Float>(1, 0, 0))
+            let userRotation = pitchMatrix * yawMatrix
+            let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
+            let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
+
+            let baseView = matrixLookAt(
+                eye:    rotatedEye,
+                target: lookAt,
+                up:     SIMD3<Float>(0, 1, 0)
+            )
+
             let viewBase: simd_float4x4
             if arModeEnabled {
-                let baseView = matrixLookAt(
-                    eye: camPos,
-                    target: lookAt,
-                    up: SIMD3<Float>(0, 1, 0)
-                )
                 let baseCameraWorld = simd_inverse(baseView)
-                let arCameraWorld = baseCameraWorld * arRelativeTransform
+                let arCameraWorld = baseCameraWorld * arBaseOrientationTransform * arRelativeTransform
                 viewBase = simd_inverse(arCameraWorld)
             } else {
-                // ── Apply user orbit ─────────────────────────────────────────
-                let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
-                                                     axis: SIMD3<Float>(0, 1, 0))
-                let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
-                                                     axis: SIMD3<Float>(1, 0, 0))
-                let userRotation = pitchMatrix * yawMatrix
-                let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
-                let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
-
-                viewBase = matrixLookAt(
-                    eye:    rotatedEye,
-                    target: lookAt,
-                    up:     SIMD3<Float>(0, 1, 0)
-                )
+                viewBase = baseView
             }
 
             let viewMatrix = viewBase * scaleMatrix
@@ -840,6 +844,17 @@ struct GaussianSplatView: UIViewRepresentable {
                 screenSize:       SIMD2(x: Int(drawableSize.width),
                                         y: Int(drawableSize.height))
             )
+        }
+
+        private var arBaseOrientationTransform: simd_float4x4 {
+            switch arReferenceOrientation {
+            case .portrait, .square:
+                // AR tracking is landscape-native; portrait SHARP rooms need a fixed roll compensation
+                // so default AR mode starts upright instead of sideways.
+                return matrix4x4Rotation(radians: -.pi / 2, axis: SIMD3<Float>(0, 0, 1))
+            case .landscape:
+                return matrix_identity_float4x4
+            }
         }
 
         // MARK: - Room measurement (depth buffer raycast)
@@ -1820,6 +1835,7 @@ private func logSphericalHarmonicsSanityCheck(points: [SplatPoint], plyFileName:
         loadError: .constant(nil as String?),
         zoomLevel: .constant(1.0),
         infiniteZoom: true,
+        arReferenceOrientation: .landscape,
         onBoundsAvailable: nil,
         measurementHost: nil
     )
