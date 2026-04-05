@@ -20,7 +20,7 @@ private enum GaussianSplatLoadError: LocalizedError {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. **Room bounds and depth raycast** use whatever file is loaded (usually classic). For `_classic`, Y/Z are flipped to match view scale `(1,-1,-1)` before ``RoomBounds/defaultSplatCameraEyeAndTarget``.
+/// SHARP / SharpRoom: Metal loads `_classic.ply` (uchar RGB) when present. **Room bounds and depth raycast** use whatever file is loaded (usually classic). For `_classic`, Y/Z are flipped to match view scale `(1,-1,-1)` after ``RoomBounds/defaultSplatCameraEyeAndTarget(photoOrientation:)`` (same min-Z back → max-Z front rail for portrait and landscape; ``photoOrientation`` is for AR roll).
 struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: Public interface
@@ -225,6 +225,9 @@ struct GaussianSplatView: UIViewRepresentable {
         private var isGeneratingDeviceOrientationForSharpRoom = false
         /// True while SwiftUI shows alerts/sheets that need a responsive main thread; AR session is paused.
         private var modalHeavyWorkPaused = false
+        /// When the AR delegate runs off the main thread, coalesce to one main dispatch (avoids queued blocks piling up).
+        private var pendingARRawTransform: simd_float4x4?
+        private var arPoseFlushToMainScheduled = false
         /// Throttle auto-recenter (OOB translation, large twist, orientation flip).
         private var lastAutoARRecenterTime: CFAbsoluteTime = 0
         private let arAutoRecenterCooldownSeconds: CFTimeInterval = 0.55
@@ -805,9 +808,12 @@ struct GaussianSplatView: UIViewRepresentable {
                     minZ: boundsMin.z, maxZ: boundsMax.z
                 )
                 // Back-center → front wall (``RoomBounds/defaultSplatCameraEyeAndTarget``). Same padding in AR
-                // and touch so opening pose matches the “imaginary back wall” list-room framing (AR used looser 0.55 before).
-                let baseCameraPadding: Float = 0.32
-                let (eye, target) = rb.defaultSplatCameraEyeAndTarget(cameraPadding: baseCameraPadding)
+                // and touch; matches tighter back-wall standoff in ``RoomMeasurement``.
+                let baseCameraPadding: Float = 0.05
+                let (eye, target) = rb.defaultSplatCameraEyeAndTarget(
+                    cameraPadding: baseCameraPadding,
+                    photoOrientation: arReferenceOrientation
+                )
                 camPos = eye + cameraOffset
                 lookAt = target + cameraOffset
             } else if let centroid {
@@ -973,6 +979,37 @@ struct GaussianSplatView: UIViewRepresentable {
             }
         }
 
+        /// Applies pose from ``ARMotionTracker`` on the main thread without retaining ``ARFrame`` (value-type copy only).
+        private func applyARRelativePoseFromTracker(_ rawTransform: simd_float4x4) {
+            if Thread.isMainThread {
+                guard !modalHeavyWorkPaused else { return }
+                arRelativeTransform = scaledRelativeTransform(rawTransform)
+                view?.setNeedsDisplay()
+                return
+            }
+            pendingARRawTransform = rawTransform
+            guard !arPoseFlushToMainScheduled else { return }
+            arPoseFlushToMainScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                self?.flushCoalescedARRawTransformOnMain()
+            }
+        }
+
+        private func flushCoalescedARRawTransformOnMain() {
+            arPoseFlushToMainScheduled = false
+            guard let raw = pendingARRawTransform else { return }
+            pendingARRawTransform = nil
+            guard !modalHeavyWorkPaused else { return }
+            arRelativeTransform = scaledRelativeTransform(raw)
+            view?.setNeedsDisplay()
+            if pendingARRawTransform != nil {
+                arPoseFlushToMainScheduled = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.flushCoalescedARRawTransformOnMain()
+                }
+            }
+        }
+
         func setARModeEnabled(_ enabled: Bool) {
             guard arModeEnabled != enabled else { return }
             arModeEnabled = enabled
@@ -980,16 +1017,15 @@ struct GaussianSplatView: UIViewRepresentable {
                 if arMotionTracker == nil {
                     let tracker = ARMotionTracker()
                     tracker.onRelativePoseUpdate = { [weak self] transform in
-                        DispatchQueue.main.async {
-                            guard let self else { return }
-                            guard !self.modalHeavyWorkPaused else { return }
-                            self.arRelativeTransform = self.scaledRelativeTransform(transform)
-                            self.view?.setNeedsDisplay()
-                        }
+                        self?.applyARRelativePoseFromTracker(transform)
                     }
                     tracker.onTrackingStatus = { [weak self] text in
-                        DispatchQueue.main.async {
+                        if Thread.isMainThread {
                             self?.measurementHost?.updateARStatus(text)
+                        } else {
+                            DispatchQueue.main.async { [weak self] in
+                                self?.measurementHost?.updateARStatus(text)
+                            }
                         }
                     }
                     arMotionTracker = tracker
@@ -1015,6 +1051,8 @@ struct GaussianSplatView: UIViewRepresentable {
                     UIDevice.current.endGeneratingDeviceOrientationNotifications()
                     isGeneratingDeviceOrientationForSharpRoom = false
                 }
+                pendingARRawTransform = nil
+                arPoseFlushToMainScheduled = false
                 arMotionTracker?.stop()
                 arRelativeTransform = matrix_identity_float4x4
                 arRecenterTransform = matrix_identity_float4x4

@@ -54,14 +54,14 @@ struct RoomBoundaryManager {
         RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
     }
 
-    /// Match Android RoomBoundaryManager: depth-adaptive inset (18% for tiny rooms, up to 50% for deep).
+    /// Match ``RoomBounds`` splat framing (depth-adaptive inset; tighter back-wall standoff).
     private static func backCenterInsetFraction(depth: Float) -> Float {
         let t = min(1.0, max(0.0, depth / 6.0))
-        return 0.18 + 0.32 * t
+        return 0.035 + 0.065 * t
     }
 
-    /// Camera at back center with depth-adaptive inset (matches Android when room opened from list / room created).
-    private let cameraPadding: Float = 0.3
+    /// Camera at back center with depth-adaptive inset (matches Metal / list / preview).
+    private let cameraPadding: Float = 0.05
 
     /// Calculate camera position using Android formula: back center, depth-adaptive inset, look at front wall.
     func getCameraAtBackCenter() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
@@ -616,41 +616,49 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    /// On-screen pan pad (not in the ⋮ menu). Same notifications as Metal/WebGL parity; shown in AR mode too (nudges splat camera offset alongside AR tracking).
-    private var cameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            HStack(spacing: 8) {
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
-                    Image(systemName: "arrow.left")
+    /// Touch ↔ AR quick toggle (⋮ menu also toggles). No status text — avoids clutter and overlap with the D-pad.
+    private var arModeQuickTogglePill: some View {
+        Button {
+            let next = !splatMeasurementHost.arModeEnabled
+            logDebug("📱 [SharpRoomView] quick toggle in-room AR enabled=\(next)")
+            splatMeasurementHost.setARModeEnabled(next)
+        } label: {
+            Label(
+                splatMeasurementHost.arModeEnabled ? "Touch" : "AR",
+                systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw.fill" : "iphone"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Capsule().fill((splatMeasurementHost.arModeEnabled ? Color.green : Color.blue).opacity(0.85)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Switches between touch camera and AR motion tracking")
+    }
+
+    /// D-pad cluster only (same notifications as Metal/WebGL parity).
+    private var cameraDPadCluster: some View {
+        HStack(spacing: 8) {
+            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            VStack(spacing: 8) {
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
+                    Image(systemName: "arrow.up")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
                         .background(Circle().fill(Color.black.opacity(0.5)))
                 }
                 .buttonStyle(.plain)
-                VStack(spacing: 8) {
-                    Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
-                    Image(systemName: "arrow.right")
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
+                    Image(systemName: "arrow.down")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
@@ -658,12 +666,38 @@ struct SharpRoomView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Portrait: AR pill **above** D-pad so they never overlap. Landscape: D-pad only (AR from ⋮ menu).
+    private var cameraButtonsOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            Group {
+                if photoOrientation == .portrait {
+                    VStack(alignment: .leading, spacing: 12) {
+                        arModeQuickTogglePill
+                        cameraDPadCluster
+                    }
+                } else {
+                    cameraDPadCluster
+                }
+            }
             .padding(.leading, 12)
-            .padding(.top, splatMeasurementHost.arModeEnabled ? 132 : 12)
+            .padding(.top, 12)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        // Above ``sharpRoomAROverlay`` (15) when both are visible so arrows stay tappable.
-        .zIndex(splatMeasurementHost.arModeEnabled ? 16 : 12)
+        .zIndex(18)
     }
 
     /// Top-trailing hint: pinch icon stays; helper text shows on load and when tapped, hides after 3s.
@@ -1402,7 +1436,6 @@ struct SharpRoomView: View {
             if !isLoading {
                 cameraButtonsOverlay
                 pinchGestureHintOverlay
-                sharpRoomAROverlay
             }
             if isLoading { loadingOverlayView }
             errorOverlayView
@@ -1418,48 +1451,6 @@ struct SharpRoomView: View {
             }
             bottomBarsOverlayView
         }
-    }
-
-    @ViewBuilder private var sharpRoomAROverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Button(action: {
-                        let next = !splatMeasurementHost.arModeEnabled
-                        logDebug("📱 [SharpRoomView] quick toggle in-room AR enabled=\(next)")
-                        splatMeasurementHost.setARModeEnabled(next)
-                    }) {
-                        Label(
-                            splatMeasurementHost.arModeEnabled ? "Touch" : "AR",
-                            systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw.fill" : "iphone"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill((splatMeasurementHost.arModeEnabled ? Color.green : Color.blue).opacity(0.85)))
-                    }
-                    .buttonStyle(.plain)
-
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(splatMeasurementHost.arStatusText)
-                    Text(splatMeasurementHost.furnitureStatusText)
-                    Text("Placed furniture: \(splatMeasurementHost.placedFurnitureCount)")
-                }
-                .font(.caption2.monospaced())
-                .foregroundColor(.white)
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.72)))
-            }
-            .padding(12)
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(15)
     }
 
     // MARK: - Number Pad Helper

@@ -84,15 +84,17 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // Copy pose state immediately; never retain `ARFrame` past this method (no async captures, no stored frame).
         let currentTransform = frame.camera.transform
+        let trackingState = frame.camera.trackingState
         if initialTransform == nil {
             // Capturing during `.limited(.initializing)` bakes a bad reference and the room stays tilted.
-            guard case .normal = frame.camera.trackingState else {
+            guard case .normal = trackingState else {
                 let now = CFAbsoluteTimeGetCurrent()
                 if now - lastLimitedInitialLogTime > 1.0 {
                     lastLimitedInitialLogTime = now
                     logDebug(
-                        "📍 [ARMotionTracker] deferring initial reference — trackingState=\(frame.camera.trackingState) " +
+                        "📍 [ARMotionTracker] deferring initial reference — trackingState=\(trackingState) " +
                             "(wait for .normal)"
                     )
                 }
