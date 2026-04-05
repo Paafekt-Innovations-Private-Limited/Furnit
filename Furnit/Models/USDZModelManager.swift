@@ -301,6 +301,25 @@ class USDZModelManager: ObservableObject {
         return models.first { $0.fileName == fileName }
     }
     
+    /// Writes `photoOrientation` into `\(fileName).\(modelFileExtension).meta`, merging with existing keys.
+    /// Used when thumbnail EXIF / aspect corrects stale meta so AR roll and reopen use the same orientation.
+    func mergePhotoOrientationIntoSavedRoomMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        photoOrientation: PhotoOrientation
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+        dict["photoOrientation"] = photoOrientation.rawValue
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
     /// Merges YOLO ratio calibration keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
     func mergeYoloCalibrationMetadata(
         fileName: String,
@@ -750,9 +769,20 @@ class USDZModelManager: ObservableObject {
         if let thumbURL = savedRoomThumbnailURL(stem: fileName),
            let image = UIImage(contentsOfFile: thumbURL.path) {
             let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
-            if fromThumb != base.orientation,
-               AppStateManager.shared.qualitySettings.debugMode {
-                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent))")
+            if fromThumb != base.orientation {
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
+                }
+                try? mergePhotoOrientationIntoSavedRoomMetadata(
+                    fileName: fileName,
+                    modelFileExtension: "ply",
+                    photoOrientation: fromThumb
+                )
+                DispatchQueue.main.async { [weak self] in
+                    self?.refreshModels()
+                }
+            } else if AppStateManager.shared.qualitySettings.debugMode {
+                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) matches thumbnail (\(thumbURL.lastPathComponent))")
             }
             return base.replacingOrientation(fromThumb)
         }

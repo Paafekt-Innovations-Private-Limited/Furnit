@@ -398,11 +398,9 @@ struct SharpRoomView: View {
             }
         }
         .onChange(of: isLoading) { _, loading in
-            guard !loading,
-                  allowSave,
-                  !didEnableDefaultARCamera else { return }
+            guard !loading, !didEnableDefaultARCamera else { return }
             didEnableDefaultARCamera = true
-            logDebug("📱 [SharpRoomView] Fresh room loaded — enabling in-room AR camera by default")
+            logDebug("📱 [SharpRoomView] Splat loaded — enabling AR camera by default (saved list + new room)")
             splatMeasurementHost.setARModeEnabled(true)
         }
         .onDisappear {
@@ -592,7 +590,7 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    /// On-screen pan pad (not in the ⋮ menu).
+    /// On-screen pan pad (not in the ⋮ menu). Same notifications as Metal/WebGL parity; shown in AR mode too (nudges splat camera offset alongside AR tracking).
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
@@ -634,10 +632,12 @@ struct SharpRoomView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(12)
+            .padding(.leading, 12)
+            .padding(.top, splatMeasurementHost.arModeEnabled ? 132 : 12)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(12)
+        // Above ``sharpRoomAROverlay`` (15) when both are visible so arrows stay tappable.
+        .zIndex(splatMeasurementHost.arModeEnabled ? 16 : 12)
     }
 
     /// Top-trailing hint: pinch icon stays; helper text shows on load and when tapped, hides after 3s.
@@ -886,7 +886,7 @@ struct SharpRoomView: View {
     }
 
     private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
-        if let savedRoomModel, let saved = savedRoomMetersDimensions {
+        if let saved = savedRoomMetersDimensions {
             return saved
         }
         if savedRoomModel == nil {
@@ -1374,9 +1374,7 @@ struct SharpRoomView: View {
     @ViewBuilder private var allOverlaysLayer: some View {
         ZStack {
             if !isLoading {
-                if !splatMeasurementHost.arModeEnabled {
-                    cameraButtonsOverlay
-                }
+                cameraButtonsOverlay
                 pinchGestureHintOverlay
                 sharpRoomAROverlay
             }

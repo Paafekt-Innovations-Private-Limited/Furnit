@@ -124,6 +124,9 @@ struct GaussianSplatView: UIViewRepresentable {
         coordinator.appliedZoomLevel = zoomLevel
         measurementHost?.coordinator = coordinator
         coordinator.measurementHost = measurementHost
+        if let host = measurementHost {
+            coordinator.setARModeEnabled(host.arModeEnabled)
+        }
         mtkView.setNeedsDisplay()
     }
 
@@ -909,6 +912,7 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         func setARModeEnabled(_ enabled: Bool) {
+            guard arModeEnabled != enabled else { return }
             arModeEnabled = enabled
             if enabled {
                 if arMotionTracker == nil {
