@@ -53,6 +53,7 @@
 "home.noModels" = "No se encontraron modelos 3D";
 "home.noModelsDescription" = "¡Crea tu primera habitación a partir de una foto!";
 "home.createRoom" = "Crear habitación desde foto";
+"home.createRoomHint" = "Toca aquí para crear una habitación";
 "home.roomsRemaining" = "%d de %d habitaciones disponibles";
 "home.deleteHint" = "Elimina habitaciones antiguas para crear nuevas";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";

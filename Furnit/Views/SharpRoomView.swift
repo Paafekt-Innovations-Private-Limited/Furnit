@@ -220,7 +220,7 @@ struct SharpRoomView: View {
     @State private var metalSplatterZoom: Float = 1.0
     /// Bridges splat ``GaussianSplatView/Coordinator`` for splat depth point cloud (room intelligence), not metric raycast sizing.
     @StateObject private var splatMeasurementHost = GaussianSplatMeasurementHost()
-    @State private var showARFurniturePicker = false
+    @State private var didEnableDefaultARCamera = false
     /// YOLO wall + pinhole + monodepth/EXIF (``WallMeasurementEstimator``) from last successful save; drives meters + `sceneToMeters` when present.
     @State private var yoloWallMeasurementMeters: (width: Float, height: Float, depth: Float)?
     @State private var roomModel: RoomModel?
@@ -247,33 +247,43 @@ struct SharpRoomView: View {
         sharpRoomBody
     }
 
-    private var sharpRoomBody: some View {
+    @ViewBuilder
+    private var sharpRoomBaseLayer: some View {
         ZStack {
             metalSplatAndGestureLayer
             allOverlaysLayer
         }
         .background(Color.gray)
+    }
+
+    @ViewBuilder
+    private var navigationTitleContent: some View {
+        VStack(spacing: 2) {
+            Text(navigationRoomMetersLine)
+                .font(.headline)
+                .lineLimit(2)
+                .minimumScaleFactor(0.55)
+                .multilineTextAlignment(.center)
+            if splatMeasurementHost.arModeEnabled {
+                Text("Saved room dimensions; AR only drives camera motion")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var sharpRoomBody: some View {
+        sharpRoomBaseLayer
         .navigationBarHidden(isCapturingSnapshot)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(allowSave)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(navigationRoomMetersLine)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.55)
-                        .multilineTextAlignment(.center)
-                    if splatMeasurementHost.arModeEnabled {
-                        Text("Saved room dimensions; AR only drives camera motion")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+                navigationTitleContent
             }
             if allowSave {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -330,11 +340,6 @@ struct SharpRoomView: View {
                             )
                         }
                         Button(action: {
-                            showARFurniturePicker = true
-                        }) {
-                            Label("Add Furniture In Room", systemImage: "sofa")
-                        }
-                        Button(action: {
                             splatMeasurementHost.rotateSelectedFurniture(by: .pi / 12)
                         }) {
                             Label("Rotate Selected Furniture", systemImage: "rotate.right")
@@ -353,17 +358,6 @@ struct SharpRoomView: View {
         .sheet(isPresented: $showShareSheet) {
             // Share the classic/front-rotated PLY when available (matches what Metal renders).
             ShareSheet(activityItems: [classicPlyURL])
-        }
-        .confirmationDialog("Add Furniture In Room", isPresented: $showARFurniturePicker, titleVisibility: .visible) {
-            ForEach(SharpRoomFurnitureCatalog.standardItems) { item in
-                Button("\(item.category) (\(String(format: "%.2f", item.dimensions.x))×\(String(format: "%.2f", item.dimensions.y))×\(String(format: "%.2f", item.dimensions.z))m)") {
-                    logDebug("🪑 [SharpRoomView] pending in-room furniture category=\(item.category)")
-                    splatMeasurementHost.setPendingFurnitureItem(item)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Pick a furniture box, then tap the room floor to place it. In AR camera mode, move the phone to walk around the room.")
         }
         .onAppear {
             // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
@@ -402,6 +396,14 @@ struct SharpRoomView: View {
                 showFurnitureDimensionsInput = false
                 showWallCalibration = false
             }
+        }
+        .onChange(of: isLoading) { _, loading in
+            guard !loading,
+                  allowSave,
+                  !didEnableDefaultARCamera else { return }
+            didEnableDefaultARCamera = true
+            logDebug("📱 [SharpRoomView] Fresh room loaded — enabling in-room AR camera by default")
+            splatMeasurementHost.setARModeEnabled(true)
         }
         .onDisappear {
             cancelPinchHintTasks()
@@ -1522,15 +1524,6 @@ struct SharpRoomView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button(action: { showARFurniturePicker = true }) {
-                        Label("Furniture", systemImage: "sofa.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.black.opacity(0.72)))
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -1870,8 +1863,7 @@ struct SharpRoomView: View {
 
     @MainActor
     private func currentValidatedEnhancedMetadata() -> EnhancedRoomMetadata? {
-        if let metadata = enhancedRoomMetadata,
-           metadata.roomModel() != nil {
+        if let metadata = enhancedRoomMetadata {
             return metadata
         }
 
@@ -1968,84 +1960,21 @@ struct SharpRoomView: View {
             }
 
             await MainActor.run { saveProgress = 0.12 }
-            var roomW = await MainActor.run { displayRoomWidth }
-            var roomH = await MainActor.run { displayRoomHeight }
-            var roomD = await MainActor.run { displayRoomDepth }
-            let boundBased = await MainActor.run { roomDimensionsBoundBased }
-            logWallMeasurement("saveRoom baseline display W×H×D=\(roomW)×\(roomH)×\(roomD) bound_based=\(boundBased)")
+            let roomW = await MainActor.run { displayRoomWidth }
+            let roomH = await MainActor.run { displayRoomHeight }
+            let roomD = await MainActor.run { displayRoomDepth }
+            logDebug("💾 [SharpRoomView] Save: using current display W×H×D=\(roomW)×\(roomH)×\(roomD) m")
 
-            let folder = await MainActor.run { classicPlyURL.deletingLastPathComponent() }
-            let thumbURL = await MainActor.run { resolvedThumbnailURL(forClassicPly: classicPlyURL) }
-            let thumbExists = FileManager.default.fileExists(atPath: thumbURL.path)
-            let thumbImage = UIImage(contentsOfFile: thumbURL.path)
-            logWallMeasurement(
-                "saveRoom wall_measure folder=\(folder.lastPathComponent) thumb=\(thumbURL.lastPathComponent) exists=\(thumbExists) decoded=\(thumbImage != nil)",
-            )
-            // YOLO wall measure always (thumbnail + model + prefs) so `wallMeasurementHeightMeters` is non-nil for
-            // RoomGeometryEngine — independent of bounds-based **display** toggle.
-            let yoloMeasured: WallMeasurementEstimator.Result? = await runYoloWallMeasurementForScale(
-                folder: folder,
-                thumbnail: thumbImage,
-                boundBasedDisplay: boundBased
-            )
-
-            if boundBased {
-                if let b = await MainActor.run { effectiveBounds } {
-                    logWallMeasurement(
-                        "saveRoom bounds_based PLY scene AABB (su) W×H×D=\(b.width)×\(b.height)×\(b.depth) " +
-                            "(YOLO still ran for scale; saved room metres from plane-aware / resolved unless YOLO UI enabled)"
-                    )
-                    logDebug(
-                        "📐 [SharpRoomView] Save: bounds-based UI — PLY AABB in su; YOLO height feeds engine only; clearing yoloWallMeasurementMeters state",
-                    )
-                    await MainActor.run { yoloWallMeasurementMeters = nil }
-                } else {
-                    logWallMeasurement(
-                        "saveRoom bounds_based: no effectiveBounds yet — keeping baseline W×H×D=\(roomW)×\(roomH)×\(roomD)",
-                    )
-                    await MainActor.run { yoloWallMeasurementMeters = nil }
-                }
-            } else if let measured = yoloMeasured {
-                roomW = measured.widthMeters
-                roomH = measured.heightMeters
-                roomD = measured.depthMeters
-                logWallMeasurement(
-                    "saveRoom YOLO wall W×H×D=\(roomW)×\(roomH)×\(roomD) mode=\(measured.calibrationMode) (plane-based UI off)",
-                )
-                logDebug(
-                    "📐 [SharpRoomView] YOLO wall measurement drives save W×H×D: \(roomW)×\(roomH)×\(roomD) m (\(measured.calibrationMode))",
-                )
-                await MainActor.run {
-                    yoloWallMeasurementMeters = (measured.widthMeters, measured.heightMeters, measured.depthMeters)
-                    jsFrontWallWidth = measured.widthMeters
-                    jsFrontWallHeight = measured.heightMeters
-                }
-            } else {
-                logWallMeasurement(
-                    "saveRoom YOLO measure nil — keeping baseline W×H×D=\(roomW)×\(roomH)×\(roomD) (plane/resolved next)",
-                )
-            }
+            /*
+            Save-time remeasurement disabled by request.
+            The room has already been measured/calibrated during creation, so saving now simply
+            persists the current display dimensions instead of rerunning YOLO wall measurement /
+            room-geometry extraction and potentially drifting from the live room state.
+            */
 
             await MainActor.run { saveProgress = 0.32 }
-            let metadataForSave = await prepareEnhancedMetadataForSaveIfNeeded(yoloWall: yoloMeasured)
+            let metadataForSave = await MainActor.run { currentValidatedEnhancedMetadata() }
             let modelSceneForSave = await MainActor.run { roomModelSceneDimensions }
-
-            if yoloMeasured == nil {
-                let resolved = await MainActor.run { resolvedRoomMetersDimensions }
-                if let r = resolved {
-                    roomW = r.width
-                    roomH = r.height
-                    roomD = r.depth
-                    let tag = await MainActor.run { roomDimensionsBoundBased ? "bounds/model fallback" : "YOLO wall measure unavailable" }
-                    logWallMeasurement(
-                        "saveRoom using resolved W×H×D=\(roomW)×\(roomH)×\(roomD) (\(tag))",
-                    )
-                    logDebug(
-                        "📐 [SharpRoomView] Save: resolved W×H×D=\(String(format: "%.2f", roomW))×" +
-                        "\(String(format: "%.2f", roomH))×\(String(format: "%.2f", roomD))m"
-                    )
-                }
-            }
 
             await MainActor.run {
                 if roomW.isFinite, roomH.isFinite, roomW > 0.05, roomH > 0.05 {

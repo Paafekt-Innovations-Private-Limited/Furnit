@@ -80,6 +80,7 @@ enum L10n {
         static let noModels = "home.noModels".localized
         static let noModelsDescription = "home.noModelsDescription".localized
         static let createRoom = "home.createRoom".localized
+        static let createRoomHint = "home.createRoomHint".localized
         static func roomsRemaining(_ remaining: Int, _ total: Int) -> String {
             "home.roomsRemaining".localized(remaining, total)
         }

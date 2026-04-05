@@ -53,6 +53,7 @@
 "home.noModels" = "कोई 3D मॉडल नहीं मिला";
 "home.noModelsDescription" = "एक फोटो से अपना पहला कमरा बनाएं!";
 "home.createRoom" = "फोटो से कमरा बनाएं";
+"home.createRoomHint" = "कमरा बनाने के लिए यहाँ टैप करें";
 "home.roomsRemaining" = "%d में से %d कमरे शेष";
 "home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
 "home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";

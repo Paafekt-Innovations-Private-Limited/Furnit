@@ -53,6 +53,7 @@
 "home.noModels" = "未找到3D模型";
 "home.noModelsDescription" = "從照片建立你的第一個房間！";
 "home.createRoom" = "從照片建立房間";
+"home.createRoomHint" = "點這裡建立房間";
 "home.roomsRemaining" = "剩餘%d/%d個房間";
 "home.deleteHint" = "刪除舊房間以建立新房間";
 "home.swipeHint" = "向左滑動刪除";

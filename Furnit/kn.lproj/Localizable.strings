@@ -53,6 +53,7 @@
 "home.noModels" = "3D ಮಾದರಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ";
 "home.noModelsDescription" = "ಫೋಟೋದಿಂದ ನಿಮ್ಮ ಮೊದಲ ಕೊಠಡಿಯನ್ನು ರಚಿಸಿ!";
 "home.createRoom" = "ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು";
+"home.createRoomHint" = "ಕೋಣೆಯನ್ನು ರಚಿಸಲು ಇಲ್ಲಿ ಟ್ಯಾಪ್ ಮಾಡಿ";
 "home.roomsRemaining" = "%d/%d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ";
 "home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
 "home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";

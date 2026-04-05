@@ -53,6 +53,7 @@
 "home.noModels" = "Aucun modèle 3D trouvé";
 "home.noModelsDescription" = "Créez votre première pièce à partir d'une photo !";
 "home.createRoom" = "Créer une pièce à partir d'une photo";
+"home.createRoomHint" = "Touchez ici pour créer une pièce";
 "home.roomsRemaining" = "%d pièces sur %d restantes";
 "home.deleteHint" = "Supprimez d'anciennes pièces pour en créer de nouvelles";
 "home.swipeHint" = "Balayez vers la gauche pour supprimer";

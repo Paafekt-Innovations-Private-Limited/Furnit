@@ -53,6 +53,7 @@
 "home.noModels" = "Keine 3D-Modelle gefunden";
 "home.noModelsDescription" = "Erstellen Sie Ihren ersten Raum aus einem Foto!";
 "home.createRoom" = "Raum aus Foto erstellen";
+"home.createRoomHint" = "Tippe hier, um einen Raum zu erstellen";
 "home.roomsRemaining" = "%d von %d Räumen verfügbar";
 "home.deleteHint" = "Alte Räume löschen, um neue zu erstellen";
 "home.swipeHint" = "Nach links wischen zum Löschen";
