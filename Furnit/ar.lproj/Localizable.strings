@@ -53,6 +53,7 @@
 "home.noModels" = "لم يتم العثور على نماذج ثلاثية الأبعاد";
 "home.noModelsDescription" = "أنشئ غرفتك الأولى من صورة!";
 "home.createRoom" = "إنشاء غرفة من صورة";
+"home.createRoomHint" = "اضغط هنا لإنشاء غرفة";
 "home.roomsRemaining" = "%d/%d غرف متبقية";
 "home.deleteHint" = "احذف الغرف القديمة لإنشاء غرف جديدة";
 "home.swipeHint" = "اسحب لليسار للحذف";

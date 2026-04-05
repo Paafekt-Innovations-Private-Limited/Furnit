@@ -44,6 +44,7 @@ struct GaussianSplatViewerView: View {
                     loadError: $loadError,
                     zoomLevel: $zoomLevel,
                     infiniteZoom: infiniteZoomEnabled,
+                    arReferenceOrientation: model.photoOrientation,
                     onBoundsAvailable: nil
                 )
                 .ignoresSafeArea()

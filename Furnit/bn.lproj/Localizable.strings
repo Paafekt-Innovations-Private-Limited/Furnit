@@ -53,6 +53,7 @@
 "home.noModels" = "কোনো 3D মডেল পাওয়া যায়নি";
 "home.noModelsDescription" = "ছবি থেকে আপনার প্রথম রুম তৈরি করুন!";
 "home.createRoom" = "ছবি থেকে রুম তৈরি করুন";
+"home.createRoomHint" = "রুম তৈরি করতে এখানে ট্যাপ করুন";
 "home.roomsRemaining" = "%d/%d রুম বাকি";
 "home.deleteHint" = "নতুন তৈরি করতে পুরানো রুম মুছুন";
 "home.swipeHint" = "মুছতে বামে সোয়াইপ করুন";

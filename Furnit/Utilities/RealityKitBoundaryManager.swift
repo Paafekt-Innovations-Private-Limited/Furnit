@@ -11,7 +11,7 @@ class RealityKitBoundaryManager {
     private let boundaryPadding: Float = 0.15
     
     /// Match Android RoomBoundaryManager.CAMERA_PADDING
-    private let cameraPadding: Float = 0.3
+    private let cameraPadding: Float = 0.05
     
     // ✅ NEW: Public accessor for bounds (used by camera positioning)
     var bounds: (min: SIMD3<Float>, max: SIMD3<Float>)? {
@@ -213,7 +213,7 @@ class RealityKitBoundaryManager {
     /// Shallow rooms: smaller fraction (camera stays near back). Deep rooms: larger fraction (camera further in).
     private func backCenterInsetFraction(depth: Float) -> Float {
         let t = min(1.0, max(0.0, depth / 6.0))
-        return 0.18 + 0.32 * t  // 18% for tiny rooms, up to 50% for deep rooms
+        return 0.035 + 0.065 * t  // matches RoomBounds (stay near back wall)
     }
     
     /// Camera at back CENTER with depth-adaptive inset (matches Android when room opened from list / room created).

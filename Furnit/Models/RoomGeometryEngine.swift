@@ -167,9 +167,6 @@ public final class RoomGeometryEngine {
 
     public var config: RoomGeometryConfig
 
-    /// YOLO-derived wall measurement height in metres.
-    public var wallMeasurementHeightMeters: Float?
-
     /// User-confirmed or measured ceiling height in metres.
     public var referenceCeilingHeightMeters: Float?
 
@@ -185,7 +182,6 @@ public final class RoomGeometryEngine {
         depthQuery: SplatDepthQueryable,
         colorReader: SplatColorReadable?,
         cameraInfo: SourceCameraInfo,
-        wallMeasurementHeightMeters: Float? = nil,
         referenceCeilingHeightMeters: Float? = nil,
         config: RoomGeometryConfig = RoomGeometryConfig()
     ) {
@@ -193,7 +189,6 @@ public final class RoomGeometryEngine {
         self.colorRead = colorReader ?? NullSplatColorReader()
         self.cameraInfo = cameraInfo
         self.config = config
-        self.wallMeasurementHeightMeters = wallMeasurementHeightMeters
         self.referenceCeilingHeightMeters = referenceCeilingHeightMeters
     }
 
@@ -412,18 +407,8 @@ public final class RoomGeometryEngine {
 
     // MARK: - estimateSceneToMeters  (Change 4)
 
-    /// Estimates the scene-unit → metre conversion factor.
-    ///
-    /// **Bounds-based mode** (`config.useBoundsBasedRoomSize == true`):
-    ///   - YOLO height / floor↔ceiling plane distance when available, else YOLO / AABB Y
-    ///   - Else: reference ceiling_m / plane height, then ceiling_m / AABB Y
-    ///
-    /// **Plane-based mode** (`config.useBoundsBasedRoomSize == false`):
-    ///   - BEST:  YOLO height / floor↔ceiling plane distance
-    ///   - YOLO + AABB Y (with bleed warning)
-    ///   - reference/standard ceiling + plane distance
-    ///   - subjectDistance / AABB Z
-    ///   - Fallback: ceiling_m / AABB Y
+    /// Estimates the scene-unit → metre conversion factor from PLY/ceiling depth span and reference ceiling height
+    /// (or subject distance as a last resort). Wall-YOLO / pinhole tape-height scaling has been removed.
     ///
     /// - Parameter plyHeightSU: P3–P97 vertical span (scene units) from full PLY via ``measurePLYExtents``.
     ///   When set, used before sparse depth-grid ceiling distance for height denominators.
@@ -448,38 +433,7 @@ public final class RoomGeometryEngine {
         let verticalFallbackSU = max((plyHeightSU ?? bounds.size.y), 0.001)
 
         if config.useBoundsBasedRoomSize {
-            // ── BOUNDS-BASED: prefer floor↔ceiling height for scale (matches metric RoomModel.heightMeters)
             logDebug("📐 [RoomGeometryEngine] sceneToMeters: BOUNDS-BASED mode active")
-            if let yoloH = wallMeasurementHeightMeters,
-               yoloH > 0.5, yoloH < 10, yoloH.isFinite {
-                if let ph = planeHeightSU {
-                    let scale = yoloH / ph
-                    logDebug(
-                        "📐 [RoomGeometryEngine] sceneToMeters BOUNDS-BASED YOLO / plane height: " +
-                        "yolo_h_m=\(String(format: "%.3f", yoloH)) plane_h_su=\(String(format: "%.4f", ph)) " +
-                        "aabb_y_su=\(String(format: "%.4f", bounds.size.y)) scale=\(String(format: "%.4f", scale))"
-                    )
-                    return scale
-                }
-                if verticalFallbackSU > 0.001 {
-                    let scale = yoloH / verticalFallbackSU
-                    logDebug(
-                        "📐 [RoomGeometryEngine] sceneToMeters BOUNDS-BASED YOLO / vertical fallback SU (no plane height): " +
-                        "yolo_h_m=\(String(format: "%.3f", yoloH)) vert_fallback_su=\(String(format: "%.4f", verticalFallbackSU)) " +
-                        "scale=\(String(format: "%.4f", scale))"
-                    )
-                    return scale
-                }
-            } else if wallMeasurementHeightMeters == nil {
-                logDebug(
-                    "📐 [RoomGeometryEngine] sceneToMeters BOUNDS-BASED: wallMeasurementHeightMeters nil — " +
-                    "using reference ceiling_m=\(String(format: "%.3f", ceilingM)) for scale numerator (enable YOLO / thumbnail for tape-height scale)"
-                )
-            } else if let yh = wallMeasurementHeightMeters, !(yh > 0.5 && yh < 10 && yh.isFinite) {
-                logDebug(
-                    "📐 [RoomGeometryEngine] sceneToMeters BOUNDS-BASED: YOLO height out of range (\(yh)) — ceiling fallback"
-                )
-            }
             if let ph = planeHeightSU {
                 let scale = ceilingM / ph
                 logDebug(
@@ -496,32 +450,7 @@ public final class RoomGeometryEngine {
             return fallback
         }
 
-        // ── PLANE-BASED: new path (existing cascade) ───────────────────────
-        if let yoloH = wallMeasurementHeightMeters,
-           yoloH > 0.5, yoloH < 10, yoloH.isFinite,
-           verticalFallbackSU > 0.001 {
-            if let ph = planeHeightSU, ph > 0.001 {
-                let scale = yoloH / ph
-                logDebug(
-                    "📐 [RoomGeometryEngine] sceneToMeters BEST (YOLO + height SU; PLY when set): " +
-                    "yolo_h_m=\(String(format: "%.3f", yoloH)) sceneH_su=\(String(format: "%.4f", ph)) " +
-                    "scale=\(String(format: "%.4f", scale))"
-                )
-                return scale
-            }
-            logDebug(
-                "📐 [RoomGeometryEngine] sceneToMeters YOLO+vertical fallback: no height SU from ceiling/PLY " +
-                "vert_fallback_su=\(String(format: "%.4f", verticalFallbackSU))"
-            )
-            let scale = yoloH / verticalFallbackSU
-            logDebug(
-                "📐 [RoomGeometryEngine] sceneToMeters YOLO wall height / vertical SU: " +
-                "yolo_h_m=\(String(format: "%.3f", yoloH)) vert_fallback_su=\(String(format: "%.4f", verticalFallbackSU)) " +
-                "scale=\(String(format: "%.4f", scale))"
-            )
-            return scale
-        }
-
+        // ── PLANE-BASED ─────────────────────────────────────────────────────
         if let ph = planeHeightSU, ph > 0.001 {
             let scale = ceilingM / ph
             logDebug(

@@ -23,6 +23,11 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.requestRedrawForDepthMeasure()
     }
 
+    /// Resets orbit, zoom, scene scale, and AR motion baseline (same as Recenter toolbar / notification).
+    func recenterSharpRoomCamera() {
+        coordinator?.performSharpRoomRecenter()
+    }
+
     /// Reads the last splat depth buffer and builds a trimmed grid point cloud (see ``GaussianSplatView.Coordinator/measureRoomFromDepthBuffer()``). Call on the main thread after at least one frame.
     func measureRoom() -> RoomRaycastDimensions? {
         coordinator?.measureRoomFromDepthBuffer()
@@ -51,6 +56,11 @@ final class GaussianSplatMeasurementHost: ObservableObject {
     func setARModeEnabled(_ enabled: Bool) {
         arModeEnabled = enabled
         coordinator?.setARModeEnabled(enabled)
+    }
+
+    /// Pauses ARKit while alerts/sheets need the main thread (e.g. save-room name field).
+    func setModalHeavyWorkPaused(_ paused: Bool) {
+        coordinator?.setModalHeavyWorkPaused(paused)
     }
 
     func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {

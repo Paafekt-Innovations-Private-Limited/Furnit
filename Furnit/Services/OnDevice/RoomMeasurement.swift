@@ -43,6 +43,35 @@ enum PhotoOrientation: String, Codable, Hashable {
         }
     }
 
+    /// For **saved** SHARP thumbnails and other upright JPEGs: orientation is usually baked to `.up`, so
+    /// ``detect(from:)`` would wrongly return `.landscape` for portrait rooms (AR roll then stays landscape-native).
+    /// Uses EXIF 90° tags when present; otherwise infers from pixel aspect of the stored bitmap.
+    static func detectFromStoredRoomThumbnail(_ image: UIImage) -> PhotoOrientation {
+        let exif = image.imageOrientation
+        let w = Float(image.size.width * image.scale)
+        let h = Float(image.size.height * image.scale)
+
+        switch exif {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            logDebug("📐 [Orientation] thumbnail EXIF .left/.right → portrait")
+            return .portrait
+        case .up, .upMirrored, .down, .downMirrored:
+            guard w > 1, h > 1 else { return .portrait }
+            if h > w * 1.05 {
+                logDebug("📐 [Orientation] thumbnail upright bitmap \(w)×\(h) → portrait")
+                return .portrait
+            }
+            if w > h * 1.05 {
+                logDebug("📐 [Orientation] thumbnail upright bitmap \(w)×\(h) → landscape")
+                return .landscape
+            }
+            logDebug("📐 [Orientation] thumbnail ~square \(w)×\(h) → square")
+            return .square
+        @unknown default:
+            return .portrait
+        }
+    }
+
     /// User-friendly description
     var hint: String {
         switch self {
@@ -76,21 +105,40 @@ struct RoomBounds: Hashable {
 
     // MARK: - Default splat / list-room camera (Android `RoomBoundaryManager` parity)
 
-    /// Depth-adaptive inset from the back wall (18% for tiny rooms → 50% for deep rooms).
+    /// Small depth-adaptive inset from the back face, then an extra pull toward that back wall (see pull constants).
     private static func backCenterInsetFraction(depth: Float) -> Float {
         let t = min(1.0, max(0.0, depth / 6.0))
-        return 0.18 + 0.32 * t
+        return 0.035 + 0.065 * t
     }
 
-    /// Eye and look-at target for MetalSplatter: **back center** of the room, looking at the **front wall** center.
-    /// Matches ``RoomBoundaryManager/getCameraAtBackCenter()`` and Android list-room / thumbnail framing (not “in front of front wall” at centroid).
-    func defaultSplatCameraEyeAndTarget(cameraPadding: Float = 0.3) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        let fraction = Self.backCenterInsetFraction(depth: depth)
-        let insetFromBack = max(depth * fraction, cameraPadding)
-        let camZ = minZ + insetFromBack
+    /// Nudge eye toward the back wall after inset (moves away from the front wall in +Z-forward framing).
+    private static let pullTowardBackWallFraction: Float = 0.055
+    private static let maxInsetFromBackAsDepthFraction: Float = 0.10
+    private static let minClearanceFromBackPlane: Float = 0.06
+
+    /// Eye and look-at target for MetalSplatter: **back center** of the room, looking at the **front wall** center
+    /// (`minZ` → back face, `maxZ` → front in trimmed PLY bounds). Same rail for **portrait and landscape** captures:
+    /// Android WebView applies a landscape π·Y mesh rotation; iOS Metal does not, so swapping Z rails for landscape
+    /// put the camera on the wrong end (facing open/grey past the slab). ``photoOrientation`` is still passed for
+    /// call-site clarity; AR roll uses it separately in ``GaussianSplatView``.
+    func defaultSplatCameraEyeAndTarget(
+        cameraPadding: Float = 0.05,
+        photoOrientation: PhotoOrientation? = nil
+    ) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        _ = photoOrientation
+        let d = max(depth, 1e-3)
+        let fraction = Self.backCenterInsetFraction(depth: d)
+        var insetFromBack = max(d * fraction, cameraPadding)
+        insetFromBack = min(insetFromBack, d * Self.maxInsetFromBackAsDepthFraction)
+        let pull = d * Self.pullTowardBackWallFraction
         let camY = centerY + 0.4
+        var z = minZ + insetFromBack
+        z -= pull
+        z = max(z, minZ + Self.minClearanceFromBackPlane)
+        let camZ = z
+        let targetZ = maxZ
         let eye = SIMD3<Float>(centerX, camY, camZ)
-        let target = SIMD3<Float>(centerX, centerY, maxZ)
+        let target = SIMD3<Float>(centerX, centerY, targetZ)
         return (eye, target)
     }
 }

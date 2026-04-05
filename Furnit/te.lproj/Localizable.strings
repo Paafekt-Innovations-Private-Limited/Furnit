@@ -53,6 +53,7 @@
 "home.noModels" = "3D మోడల్స్ కనుగొనబడలేదు";
 "home.noModelsDescription" = "ఫోటో నుండి మీ మొదటి గదిని సృష్టించండి!";
 "home.createRoom" = "ఫోటో నుండి గది సృష్టించు";
+"home.createRoomHint" = "గదిని సృష్టించడానికి ఇక్కడ టాప్ చేయండి";
 "home.roomsRemaining" = "%d/%d గదులు మిగిలి ఉన్నాయి";
 "home.deleteHint" = "కొత్తవి సృష్టించడానికి పాత గదులను తొలగించండి";
 "home.swipeHint" = "తొలగించడానికి ఎడమకు స్వైప్ చేయండి";

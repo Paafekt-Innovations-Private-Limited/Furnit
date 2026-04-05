@@ -53,6 +53,7 @@
 "home.noModels" = "No se encontraron modelos 3D";
 "home.noModelsDescription" = "¡Crea tu primer cuarto a partir de una foto!";
 "home.createRoom" = "Crear cuarto desde foto";
+"home.createRoomHint" = "Toca aquí para crear un cuarto";
 "home.roomsRemaining" = "%d de %d cuartos disponibles";
 "home.deleteHint" = "Elimina cuartos viejos para crear nuevos";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";
