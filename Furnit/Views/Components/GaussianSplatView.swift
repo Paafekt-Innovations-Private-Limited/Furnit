@@ -1614,6 +1614,12 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
                 return
             }
+            // AR: device pose drives the camera; one-finger pan here only orbited the splat (touch-mode
+            // behavior) and felt like “drag the room” instead of walking + pinch zoom.
+            if arModeEnabled {
+                gesture.setTranslation(.zero, in: gesture.view)
+                return
+            }
             let translation = gesture.translation(in: gesture.view)
             cameraYaw   -= Float(translation.x) * dragSensitivity
             cameraPitch -= Float(translation.y) * dragSensitivity

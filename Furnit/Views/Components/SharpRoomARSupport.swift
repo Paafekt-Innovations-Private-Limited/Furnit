@@ -86,16 +86,37 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
             logDebug("📍 [ARMotionTracker] captured initial camera transform (trackingState=normal)")
         }
         guard let initialTransform else { return }
-        // Keep full device orientation (so the user can tilt to look at furniture) but lock world-space
-        // height to the reference frame. Raw `inv(initial)*current` couples pitch/height drift with
-        // translation so walking reads as sliding up/down; floor-locked Y feels like walking on the room floor.
-        var floorPlaneCamera = currentTransform
-        floorPlaneCamera.columns.3 = SIMD4<Float>(
-            currentTransform.columns.3.x,
+        // Full device rotation (tilt to look at furniture). Position: floor height locked to reference Y,
+        // and horizontal motion projected onto opening **forward** (XZ) so walking reads as pinch-style
+        // dolly into/out of the scene — not lateral “one-finger pan” strafe from sideways steps.
+        let p0 = SIMD3<Float>(
+            initialTransform.columns.3.x,
             initialTransform.columns.3.y,
-            currentTransform.columns.3.z,
-            1
+            initialTransform.columns.3.z
         )
+        let p1 = SIMD3<Float>(
+            currentTransform.columns.3.x,
+            currentTransform.columns.3.y,
+            currentTransform.columns.3.z
+        )
+        let deltaH = SIMD3<Float>(p1.x - p0.x, 0, p1.z - p0.z)
+        var forwardXZ = SIMD3<Float>(
+            -initialTransform.columns.2.x,
+            0,
+            -initialTransform.columns.2.z
+        )
+        let forwardLen = simd_length(forwardXZ)
+        if forwardLen < 1e-4 {
+            forwardXZ = SIMD3<Float>(0, 0, -1)
+        } else {
+            forwardXZ /= forwardLen
+        }
+        let alongForward = simd_dot(deltaH, forwardXZ)
+        let dollyH = forwardXZ * alongForward
+        let pSynth = SIMD3<Float>(p0.x + dollyH.x, p0.y, p0.z + dollyH.z)
+
+        var floorPlaneCamera = currentTransform
+        floorPlaneCamera.columns.3 = SIMD4<Float>(pSynth.x, pSynth.y, pSynth.z, 1)
         let relativeTransform = simd_mul(simd_inverse(initialTransform), floorPlaneCamera)
         onRelativePoseUpdate?(relativeTransform)
     }
