@@ -574,4 +574,24 @@
     <string name="single_photo_phase_finalize">Finalize</string>
     <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
     <string name="home_sharp_generation_stopped">AI room generation stopped</string>
+
+    <!-- Placement intelligence -->
+    <string name="placement_title">Placement Intelligence</string>
+    <string name="placement_badge_style_only">Style</string>
+    <string name="placement_no_fit">No fit</string>
+    <string name="placement_fit_count">%1$d fit</string>
+    <string name="placement_detected_size">Detected %1$.2f × %2$.2f × %3$.2f m</string>
+    <string name="placement_metric_unavailable_note">Full room-fit sizing works best when metric furniture size is available. Color harmony below still applies.</string>
+    <string name="placement_harmony_summary">Harmony %1$.2f (%2$s) · contrast %3$.2f · style fit %4$.2f</string>
+    <string name="placement_fit_no_region">Fits room bounds. No clear free-floor region yet.</string>
+    <string name="placement_fit_regions">Fits room. %1$d candidate floor region(s).</string>
+    <string name="placement_exceeds_room">Current furniture footprint exceeds the detected room extents.</string>
+    <string name="placement_best_corner">Best corner score %1$.2f, rot %2$.0f°</string>
+    <string name="placement_depth_estimated">Depth is estimated until catalog or semantic data is available.</string>
+    <string name="placement_harmony_analogous">Analogous</string>
+    <string name="placement_harmony_complementary">Complementary</string>
+    <string name="placement_harmony_triadic">Triadic</string>
+    <string name="placement_harmony_split_complementary">Split complementary</string>
+    <string name="placement_harmony_neutral">Neutral</string>
+    <string name="placement_harmony_clash">Clash</string>
 </resources>

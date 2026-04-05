@@ -1122,7 +1122,6 @@ class FurnitureFitManager(private val context: Context) {
         val bboxKept = mutableListOf<Detection>()
         for (detection in detections) {
             if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
-            if (detection.classId != primaryDetection.classId) continue
 
             val candidateLeft = detection.x - detection.w / 2f
             val candidateTop = detection.y - detection.h / 2f

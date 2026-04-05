@@ -51,6 +51,7 @@ private enum AlwaysOnOSLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
     static let sharp = Logger(subsystem: subsystem, category: "SHARP")
     static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
+    static let arRoom = Logger(subsystem: subsystem, category: "AR_ROOM")
 }
 
 /// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
@@ -64,6 +65,12 @@ func logWallMeasurement(_ message: String) {
 func logSharpMilestone(_ message: String) {
     let line = "[SHARP] \(message)"
     AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
+}
+
+/// Sharp Room: SHARP-derived room W×H×D plus optional Live Room virtual-camera–relative AABB (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
+func logARRoomMeasure(_ message: String) {
+    let line = "[AR_ROOM_MEASURE] \(message)"
+    AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
 }
 
 /// Centralized logging utility using os_log framework

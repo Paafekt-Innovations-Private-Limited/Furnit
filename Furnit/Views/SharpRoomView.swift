@@ -89,10 +89,12 @@ struct SharpRoomView: View {
     let savedRoomModel: USDZModel?
     @Environment(\.dismiss) private var dismiss
 
-    /// PLY for MetalSplatter: `_classic.ply` when present (uchar RGB); else the room base `.ply` (no `_3dgs` in this path).
+    /// PLY for MetalSplatter: legacy `_classic.ply` when present, otherwise the canonical saved `.ply`.
     private let viewerPlyURL: URL
-    /// Classic PLY (front-rotated) when available; falls back to base.
-    private let classicPlyURL: URL
+    /// Share/export target. Saved rooms use the canonical saved `.ply`; fresh previews share the current PLY.
+    private let shareablePlyURL: URL
+    /// Whether this room should use SHARP classic orientation/rendering even without `_classic` in the file name.
+    private let viewerUsesClassicPlyBehavior: Bool
 
     /// SHARP **`_classic.ply`** write-time AABB (scene units); set when pushing from ``SinglePhotoRoomViewer`` after generation.
     private let sharpPlyAabbW: Float?
@@ -129,30 +131,27 @@ struct SharpRoomView: View {
 
         let basePath = plyURL.path
         let fm = FileManager.default
+        let savedRoomWantsClassicBehavior = savedRoomModel?.isClassicPly == true
 
         if basePath.hasSuffix("_classic.ply") {
             self.viewerPlyURL = plyURL
-            self.classicPlyURL = plyURL
+            self.shareablePlyURL = plyURL
+            self.viewerUsesClassicPlyBehavior = true
         } else {
             let classic = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_classic.ply"))
-            if fm.fileExists(atPath: classic.path) {
+            let legacyClassicExists = fm.fileExists(atPath: classic.path)
+            if legacyClassicExists {
                 self.viewerPlyURL = classic
             } else {
                 self.viewerPlyURL = plyURL
             }
-            if fm.fileExists(atPath: classic.path) {
-                self.classicPlyURL = classic
-            } else {
-                self.classicPlyURL = plyURL
-            }
+            self.shareablePlyURL = plyURL
+            self.viewerUsesClassicPlyBehavior = legacyClassicExists || savedRoomWantsClassicBehavior
         }
     }
 
     /// Bounds from the splat PLY (computed when loading; see `GaussianSplatView.onBoundsAvailable`).
     @State private var metalBounds: RoomBounds?
-
-    /// First successful depth-grid sample per viewer session; reused so plane fits / ``sceneToMeters`` do not drift between pre-save and save.
-    @State private var cachedRoomGeometryPointCloud: [SIMD3<Float>]?
 
     /// Grid for ``GaussianSplatMeasurementHost/buildPointCloudForRoomGeometry`` (keep in sync with host defaults).
     private enum RoomGeometryDepthSampling {
@@ -228,6 +227,7 @@ struct SharpRoomView: View {
     @State private var roomName = ""
     @State private var showShareSheet = false
     @State private var isCapturingSnapshot = false
+    @State private var sharpRoomUIPauseApplied = false
     /// After first Furniture Fit segmentation this viewer session, skip startup progress when toggling brain on again.
     @State private var furnitureFitInitialSegmentationDone = false
     /// Pinch zoom for MetalSplatter (`GaussianSplatView`).
@@ -235,6 +235,7 @@ struct SharpRoomView: View {
     /// Bridges splat ``GaussianSplatView/Coordinator`` for splat depth point cloud (room intelligence).
     @StateObject private var splatMeasurementHost = GaussianSplatMeasurementHost()
     @State private var didEnableDefaultARCamera = false
+    @State private var autoEnableARTask: Task<Void, Never>?
     @State private var roomModel: RoomModel?
     @State private var enhancedRoomMetadata: EnhancedRoomMetadata?
     @State private var isExtractingRoomGeometry = false
@@ -381,7 +382,7 @@ struct SharpRoomView: View {
             }
         .sheet(isPresented: $showShareSheet) {
             // Share the classic/front-rotated PLY when available (matches what Metal renders).
-            ShareSheet(activityItems: [classicPlyURL])
+            ShareSheet(activityItems: [shareablePlyURL])
         }
         .onAppear {
             // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
@@ -417,6 +418,20 @@ struct SharpRoomView: View {
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: splatMeasurementHost.arPlaneRoomMeasurement) { _, measurement in
+            if let measurement {
+                logARRoomMeasure(
+                    "phase=arkit_planes_ready live_room=\(splatMeasurementHost.arModeEnabled ? "on" : "off") " +
+                        "arkit_plane_m_W×H×D=\(String(format: "%.4f", measurement.widthMeters))×" +
+                        "\(String(format: "%.4f", measurement.heightMeters))×" +
+                        "\(String(format: "%.4f", measurement.depthMeters)) " +
+                        "room_dims_authoritative_source=\(measurement.sourceLabel)"
+                )
+            } else if splatMeasurementHost.arModeEnabled {
+                logARRoomMeasure("phase=arkit_planes_ready live_room=on arkit_plane_note=not_ready")
+            }
+            updateRoomPlacementIntelligence()
+        }
         .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
             if !enabled {
                 showFurnitureDimensionsInput = false
@@ -426,10 +441,22 @@ struct SharpRoomView: View {
         .onChange(of: isLoading) { _, loading in
             guard !loading, !didEnableDefaultARCamera else { return }
             didEnableDefaultARCamera = true
-            logDebug("📱 [SharpRoomView] Splat loaded — enabling AR camera by default (saved list + new room)")
-            splatMeasurementHost.setARModeEnabled(true)
+            if allowSave {
+                logDebug("📱 [SharpRoomView] Splat loaded — deferring AR camera auto-enable for fresh SHARP room (conservative camera handoff after capture/generation)")
+                autoEnableARTask?.cancel()
+                autoEnableARTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    if Task.isCancelled { return }
+                    splatMeasurementHost.setARModeEnabled(true)
+                }
+            } else {
+                logDebug("📱 [SharpRoomView] Splat loaded — enabling AR camera by default for saved room")
+                splatMeasurementHost.setARModeEnabled(true)
+            }
         }
         .onDisappear {
+            autoEnableARTask?.cancel()
+            autoEnableARTask = nil
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             OrientationLockManager.shared.unlock()
@@ -477,7 +504,6 @@ struct SharpRoomView: View {
         }
         .onChange(of: isLoading) { _, loading in
             if loading {
-                invalidateRoomGeometryPointCloudCache(reason: "splat load started")
                 cancelPinchHintTasks()
                 cancelBrainHintTasks()
             } else {
@@ -498,11 +524,12 @@ struct SharpRoomView: View {
             zoomLevel: $metalSplatterZoom,
             infiniteZoom: infiniteZoomEnabled,
             arReferenceOrientation: photoOrientation,
+            treatAsClassicPly: viewerUsesClassicPlyBehavior,
             onBoundsAvailable: { bounds in
                 DispatchQueue.main.async {
                     metalBounds = bounds
                     seedFrontWallDimensionsFromPlyBoundsIfNeeded()
-                    let plyKind = viewerPlyURL.lastPathComponent.contains("_classic") ? "classic_ply" : "base_ply"
+                    let plyKind = viewerUsesClassicPlyBehavior ? "classic_ply" : "base_ply"
                     logPlyBoundsDiagnostic(
                         "Metal splat AABB (\(plyKind) file=\(viewerPlyURL.lastPathComponent)) su: " +
                         "W=\(String(format: "%.3f", bounds.width)) H=\(String(format: "%.3f", bounds.height)) D=\(String(format: "%.3f", bounds.depth)) " +
@@ -533,7 +560,7 @@ struct SharpRoomView: View {
     }
 
     private func logSharpRoomDimensionApproaches(metalBounds _: RoomBounds) {
-        let plyKind = viewerPlyURL.lastPathComponent.contains("_classic") ? "classic_ply" : "base_ply"
+        let plyKind = viewerUsesClassicPlyBehavior ? "classic_ply" : "base_ply"
         let mode = roomDimensionsBoundBased ? "bounds_based" : "plane_based"
         logPlyBoundsDiagnostic(
             "SHARP_ROOM_COMPARE (5) metric_room_dims (\(plyKind) \(viewerPlyURL.lastPathComponent)): \(mode)"
@@ -862,12 +889,25 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
+    private var arPlaneMeasuredRoomDimensions: (width: Float, height: Float, depth: Float)? {
+        guard let measurement = splatMeasurementHost.arPlaneRoomMeasurement else { return nil }
+        let width = measurement.widthMeters
+        let height = measurement.heightMeters
+        let depth = measurement.depthMeters
+        guard width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
+        }
+        return (width, height, depth)
+    }
+
     /// Width/height/depth for nav title, FurnitureFit, and save.
     /// On a **fresh** SHARP session (`savedRoomModel == nil`), async geometry extraction still builds
     /// ``roomModel`` for placement / sidecar, but **never** replaces these displayed metres (avoids 3×4 m
     /// defaults jumping after extraction). Saved-home rows use `.meta` / persisted model instead.
     private var displayRoomWidth: Float {
-        calibratedRoomWidth
+        arPlaneMeasuredRoomDimensions?.width
+            ?? calibratedRoomWidth
             ?? resolvedRoomMetersDimensions?.width
             ?? savedRoomWidth
             ?? savedRoomModel?.roomWidth
@@ -875,7 +915,8 @@ struct SharpRoomView: View {
     }
 
     private var displayRoomHeight: Float {
-        calibratedRoomHeight
+        arPlaneMeasuredRoomDimensions?.height
+            ?? calibratedRoomHeight
             ?? resolvedRoomMetersDimensions?.height
             ?? savedRoomHeight
             ?? savedRoomModel?.roomHeight
@@ -884,7 +925,8 @@ struct SharpRoomView: View {
 
     /// Depth in meters.
     private var displayRoomDepth: Float {
-        resolvedRoomMetersDimensions?.depth
+        arPlaneMeasuredRoomDimensions?.depth
+            ?? resolvedRoomMetersDimensions?.depth
             ?? savedRoomModel?.roomDepth
             ?? 4.0
     }
@@ -933,7 +975,8 @@ struct SharpRoomView: View {
 
     /// Baseline W/H before calibration in meter space when available.
     private var sourceRoomWidth: Float {
-        resolvedRoomMetersDimensions?.width
+        arPlaneMeasuredRoomDimensions?.width
+            ?? resolvedRoomMetersDimensions?.width
             ?? savedRoomWidth
             ?? savedRoomModel?.roomWidth
             ?? jsFrontWallWidth
@@ -941,7 +984,8 @@ struct SharpRoomView: View {
     }
 
     private var sourceRoomHeight: Float {
-        resolvedRoomMetersDimensions?.height
+        arPlaneMeasuredRoomDimensions?.height
+            ?? resolvedRoomMetersDimensions?.height
             ?? savedRoomHeight
             ?? savedRoomModel?.roomHeight
             ?? jsFrontWallHeight
@@ -949,6 +993,9 @@ struct SharpRoomView: View {
     }
 
     private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        if let arPlanes = arPlaneMeasuredRoomDimensions {
+            return arPlanes
+        }
         if let saved = savedRoomMetersDimensions {
             return saved
         }
@@ -1654,23 +1701,9 @@ struct SharpRoomView: View {
 
     // MARK: - Save Room Functions
 
-    @MainActor
-    private func invalidateRoomGeometryPointCloudCache(reason: String) {
-        if cachedRoomGeometryPointCloud != nil {
-            logDebug("📐 [PointCloud] cache cleared (\(reason))")
-        }
-        cachedRoomGeometryPointCloud = nil
-    }
-
-    /// Depth-buffer grid for ``RoomGeometryEngine``. Caches the first successful sample in this viewer so pre-save and save use the same world points (stable RANSAC / ``sceneToMeters``).
+    /// Depth-buffer grid for ``RoomGeometryEngine``.
     @MainActor
     private func pointCloudForRoomGeometrySession() async -> [SIMD3<Float>] {
-        if let cached = cachedRoomGeometryPointCloud, cached.count >= 3 {
-            logDebug(
-                "📐 [PointCloud] reuse \(cached.count) cached depth samples — deterministic geometry for session",
-            )
-            return cached
-        }
         splatMeasurementHost.requestRedrawForDepthMeasure()
         try? await Task.sleep(nanoseconds: 120_000_000)
         let pts = splatMeasurementHost.buildPointCloudForRoomGeometry(
@@ -1679,13 +1712,12 @@ struct SharpRoomView: View {
             maxDistance: RoomGeometryDepthSampling.maxDistance
         )
         if pts.count >= 3 {
-            cachedRoomGeometryPointCloud = pts
             logDebug(
-                "📐 [PointCloud] captured & cached \(pts.count) samples " +
-                    "(\(RoomGeometryDepthSampling.rows)×\(RoomGeometryDepthSampling.cols), maxDist=\(RoomGeometryDepthSampling.maxDistance)) — later extractions reuse",
+                "📐 [PointCloud] captured \(pts.count) samples " +
+                    "(\(RoomGeometryDepthSampling.rows)×\(RoomGeometryDepthSampling.cols), maxDist=\(RoomGeometryDepthSampling.maxDistance))",
             )
         } else {
-            logDebug("📐 [PointCloud] capture returned \(pts.count) samples — not caching (<3)")
+            logDebug("📐 [PointCloud] capture returned \(pts.count) samples")
         }
         return pts
     }
@@ -1734,7 +1766,10 @@ struct SharpRoomView: View {
             showWallCalibration ||
             showShareSheet ||
             furnitureCalibSheet ||
+            showingFurnitureFit ||
             isCapturingSnapshot
+        guard pause != sharpRoomUIPauseApplied else { return }
+        sharpRoomUIPauseApplied = pause
         splatMeasurementHost.setModalHeavyWorkPaused(pause)
     }
 
@@ -1899,8 +1934,13 @@ struct SharpRoomView: View {
         }
 
         isExtractingRoomGeometry = true
+        splatMeasurementHost.setModalHeavyWorkPaused(true)
 
         Task { @MainActor in
+            defer {
+                splatMeasurementHost.setModalHeavyWorkPaused(false)
+                isExtractingRoomGeometry = false
+            }
             let cameraInfo = loadSourceCameraInfo()
             let usableColorReader: (any SplatColorReadable)? = {
                 guard let clr = splatMeasurementHost.colorReader,
@@ -1929,11 +1969,15 @@ struct SharpRoomView: View {
                     "\(String(format: "%.2f", model.heightMeters))×\(String(format: "%.2f", model.depthMeters))m " +
                     "sceneToMeters=\(String(format: "%.4f", model.sceneToMeters)) bound_based=\(roomDimensionsBoundBased) pts=\(points.count)"
                 )
+                splatMeasurementHost.logARRoomMeasureAfterGeometryExtraction(
+                    roomModel: model,
+                    plyURL: viewerPlyURL,
+                    boundBased: roomDimensionsBoundBased,
+                    pointCloudCount: points.count
+                )
             } catch {
                 logDebug("❌ [SharpRoomView] Room geometry extraction failed: \(error.localizedDescription)")
             }
-
-            isExtractingRoomGeometry = false
         }
     }
 
@@ -1959,6 +2003,28 @@ struct SharpRoomView: View {
         return RoomFurnitureDimensions(widthM: width, heightM: height, depthM: estimatedDepth)
     }
 
+    private var authoritativeRoomModelForMetrics: RoomModel? {
+        guard let roomModel else { return nil }
+        guard let arPlanes = arPlaneMeasuredRoomDimensions else { return roomModel }
+
+        let currentWidth = roomModel.widthMeters
+        let currentHeight = roomModel.heightMeters
+        let currentDepth = roomModel.depthMeters
+        let ratioCandidates = [
+            currentWidth > 0.05 ? arPlanes.width / currentWidth : nil,
+            currentHeight > 0.05 ? arPlanes.height / currentHeight : nil,
+            currentDepth > 0.05 ? arPlanes.depth / currentDepth : nil,
+        ]
+        .compactMap { $0 }
+        .filter { $0.isFinite && $0 > 0.05 }
+
+        guard !ratioCandidates.isEmpty else { return roomModel }
+        let sortedRatios = ratioCandidates.sorted()
+        let representativeRatio = sortedRatios[sortedRatios.count / 2]
+        let updatedSceneToMeters = roomModel.sceneToMeters * representativeRatio
+        return roomModel.withSceneToMeters(updatedSceneToMeters)
+    }
+
     /// Width, segmentation color, or full W×H×D — enough to show style hints without LiDAR height.
     private var placementIntelligenceHasFurnitureSignal: Bool {
         if let width = detectedFurnitureWidth, width.isFinite, width > 0.05 { return true }
@@ -1975,7 +2041,7 @@ struct SharpRoomView: View {
             latestAestheticScore = nil
             return
         }
-        guard let roomModel else {
+        guard let roomModel = authoritativeRoomModelForMetrics else {
             latestFitCheckResult = nil
             latestCornerPlacementSuggestions = []
             latestEstimatedFurnitureDepthMeters = nil

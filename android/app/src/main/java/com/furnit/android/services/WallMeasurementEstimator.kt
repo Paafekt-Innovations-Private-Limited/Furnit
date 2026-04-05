@@ -66,12 +66,25 @@ object WallMeasurementEstimator {
         val calibrationMode: String,
     )
 
-    fun measure(context: Context, roomFolder: File, prefs: SharedPreferences): Result? {
+    data class PlyBounds(
+        val width: Float,
+        val height: Float,
+        val depth: Float,
+    )
+
+    fun measure(
+        context: Context,
+        roomFolder: File,
+        prefs: SharedPreferences,
+        plyBounds: PlyBounds? = null,
+        photoOrientation: String = "portrait",
+    ): Result? {
         LogUtil.i(
             TAG,
             "measure begin folder=${roomFolder.absolutePath} pref_enabled=${prefs.getBoolean(PREF_ENABLED, true)} " +
                 "calibration=${prefs.getString(PREF_CALIBRATION, CAL_AUTO)} scale_depth=${prefs.getBoolean(PREF_SCALE_DEPTH, false)} " +
-                "ceiling_m=${prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f)} assumed_z_m=${prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f)} sensor_mm=${prefs.getFloat(PREF_SENSOR_WIDTH_MM, 6.4f)}",
+                "ceiling_m=${prefs.getFloat(PREF_ASSUMED_CEILING_M, 2.5f)} assumed_z_m=${prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f)} " +
+                "sensor_mm=${prefs.getFloat(PREF_SENSOR_WIDTH_MM, 6.4f)} plyBounds=${plyBounds != null}",
         )
         if (!prefs.getBoolean(PREF_ENABLED, true)) {
             LogUtil.i(TAG, "measure skip: pref $PREF_ENABLED is false")
@@ -126,26 +139,30 @@ object WallMeasurementEstimator {
             if (d.isFinite() && d > 0.1 && d < 30.0) d.toFloat() else null
         }
         val wallDepthMono = mono?.let { medianMonodepthAt(it, wallRect, iw, ih) }
-        val wallDepth: Float
-        val depthSource: String
+        val pinholeDepth: Float
+        val pinholeDepthSource: String
         when {
+            plyBounds != null && plyBounds.depth.isFinite() && plyBounds.depth > 0.1f -> {
+                pinholeDepth = plyBounds.depth
+                pinholeDepthSource = "ply_z_span"
+            }
             wallDepthMono != null && wallDepthMono.isFinite() && wallDepthMono > 0f -> {
-                wallDepth = wallDepthMono
-                depthSource = "monodepth"
+                pinholeDepth = wallDepthMono
+                pinholeDepthSource = "monodepth"
             }
             subjectDistanceM != null -> {
-                wallDepth = subjectDistanceM
-                depthSource = "exif_subject_distance"
+                pinholeDepth = subjectDistanceM
+                pinholeDepthSource = "exif_subject_distance"
             }
             else -> {
-                wallDepth = prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f).coerceIn(0.5f, 20f)
-                depthSource = "assumed_z"
+                pinholeDepth = prefs.getFloat(PREF_ASSUMED_DEPTH_M, 2.5f).coerceIn(0.5f, 20f)
+                pinholeDepthSource = "assumed_z"
             }
         }
-        LogUtil.i(TAG, "wall_depth value=$wallDepth source=$depthSource")
+        LogUtil.i(TAG, "pinhole_depth value=$pinholeDepth source=$pinholeDepthSource")
 
-        val rawW = (wallPixelW / focalPx) * wallDepth
-        val rawH = (wallPixelH / focalPx) * wallDepth
+        val rawW = (wallPixelW / focalPx) * pinholeDepth
+        val rawH = (wallPixelH / focalPx) * pinholeDepth
         LogUtil.i(TAG, "raw_geom_m rawW=$rawW rawH=$rawH (pre-scale)")
 
         val calibrationMode = prefs.getString(PREF_CALIBRATION, CAL_AUTO) ?: CAL_AUTO
@@ -154,7 +171,7 @@ object WallMeasurementEstimator {
             dets = dets,
             classNames = classNames,
             mono = mono,
-            wallDepth = wallDepth,
+            wallDepth = pinholeDepth,
             focalPx = focalPx,
             iw = iw,
             ih = ih,
@@ -167,10 +184,32 @@ object WallMeasurementEstimator {
             return null
         }
 
-        var widthM = rawW * scale
-        var heightM = rawH * scale
-        widthM = widthM.coerceIn(1.5f, 12f)
-        heightM = heightM.coerceIn(1.5f, 5f)
+        val maxRealisticWidth = if (photoOrientation == "landscape") 8.0f else 5.0f
+        val maxRealisticHeight = if (photoOrientation == "landscape") 3.2f else 3.5f
+        var widthM = (rawW * scale).coerceIn(1.5f, maxRealisticWidth)
+        var heightM = (rawH * scale).coerceIn(1.5f, maxRealisticHeight)
+        if (plyBounds != null) {
+            if (plyBounds.width.isFinite() && plyBounds.width > 0.05f && widthM > plyBounds.width) {
+                widthM = plyBounds.width.coerceIn(1.5f, maxRealisticWidth)
+            }
+            if (plyBounds.height.isFinite() && plyBounds.height > 0.05f && heightM > plyBounds.height) {
+                heightM = plyBounds.height.coerceIn(1.5f, maxRealisticHeight)
+            }
+            LogUtil.i(
+                TAG,
+                "ply_sanity_cap scene_w=${plyBounds.width} scene_h=${plyBounds.height} capped_w=$widthM capped_h=$heightM",
+            )
+        }
+        val roomDepth = if (plyBounds != null && plyBounds.depth.isFinite() && plyBounds.depth > 0.1f) {
+            plyBounds.depth
+        } else {
+            pinholeDepth
+        }
+        val roomDepthMode = if (plyBounds != null && plyBounds.depth.isFinite() && plyBounds.depth > 0.1f) {
+            if (pinholeDepthSource == "ply_z_span") "ply_z" else "${pinholeDepthSource}+ply_z"
+        } else {
+            pinholeDepthSource
+        }
         LogUtil.i(TAG, "measure ok mode=$modeStr scale=$scale wm=${widthM}m hm=${heightM}m wallSource=$wallSource")
         val scaleWhy = when (modeStr) {
             "door" -> "scale=${STANDARD_DOOR_M}m_std_door/doorH_raw (door bbox + depth → metric scale)"
@@ -181,13 +220,13 @@ object WallMeasurementEstimator {
         }
         LogUtil.i(
             TAG,
-            "measure_final mode=$modeStr width_m=$widthM height_m=$heightM depth_meters=$wallDepth ($depthSource) " +
+            "measure_final mode=$modeStr width_m=$widthM height_m=$heightM depth_meters=$roomDepth ($roomDepthMode) " +
                 "wall_bbox_px_w=$wallPixelW wall_bbox_px_h=$wallPixelH image_px=${iw}x$ih " +
                 "focal_px=$focalPx ($focalReason) " +
                 "pre_scale rawW_m=$rawW rawH_m=$rawH scale=$scale ($scaleWhy) " +
                 "formula width_m=rawW*scale height_m=rawH*scale wall_source=$wallSource",
         )
-        return Result(widthM, heightM, wallDepth, modeStr)
+        return Result(widthM, heightM, roomDepth, modeStr)
     }
 
     private data class MonoBuffer(val w: Int, val h: Int, val c: Int, val data: FloatArray)

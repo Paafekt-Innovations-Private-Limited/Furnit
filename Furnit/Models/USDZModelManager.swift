@@ -19,6 +19,7 @@ private struct SavedRoomDiskMetadata {
     let sharpRoomHeightAtYoloCapture: Float?
     /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
     let displayName: String?
+    let isClassicPly: Bool
 
     static let empty = SavedRoomDiskMetadata(
         orientation: .portrait,
@@ -32,7 +33,8 @@ private struct SavedRoomDiskMetadata {
         yoloFurnitureHeightFracByClass: nil,
         yoloRefImageHeightPx: nil,
         sharpRoomHeightAtYoloCapture: nil,
-        displayName: nil
+        displayName: nil,
+        isClassicPly: false
     )
 
     static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
@@ -46,6 +48,7 @@ private struct SavedRoomDiskMetadata {
         let yoloWall = metadata["yoloWallHeightFrac"].flatMap { Float($0) }
         let yoloRefH = metadata["yoloRefImageHeightPx"].flatMap { Int($0) }
         let sharpCap = metadata["sharpRoomHeightAtYoloCapture"].flatMap { Float($0) }
+        let isClassicPly = metadata["isClassicPly"].flatMap { Bool($0) } ?? false
         var furnMap: [String: Float]?
         if let json = metadata["yoloFurnitureHeightFracByClass"],
            let data = json.data(using: .utf8),
@@ -66,7 +69,8 @@ private struct SavedRoomDiskMetadata {
             yoloFurnitureHeightFracByClass: furnMap,
             yoloRefImageHeightPx: yoloRefH,
             sharpRoomHeightAtYoloCapture: sharpCap,
-            displayName: displayName
+            displayName: displayName,
+            isClassicPly: isClassicPly
         )
     }
 
@@ -83,7 +87,26 @@ private struct SavedRoomDiskMetadata {
             yoloFurnitureHeightFracByClass: yoloFurnitureHeightFracByClass,
             yoloRefImageHeightPx: yoloRefImageHeightPx,
             sharpRoomHeightAtYoloCapture: sharpRoomHeightAtYoloCapture,
-            displayName: displayName
+            displayName: displayName,
+            isClassicPly: isClassicPly
+        )
+    }
+
+    func replacingClassicPly(_ newValue: Bool) -> SavedRoomDiskMetadata {
+        SavedRoomDiskMetadata(
+            orientation: orientation,
+            width: width,
+            height: height,
+            depth: depth,
+            sceneWidth: sceneWidth,
+            sceneHeight: sceneHeight,
+            sceneDepth: sceneDepth,
+            yoloWallHeightFrac: yoloWallHeightFrac,
+            yoloFurnitureHeightFracByClass: yoloFurnitureHeightFracByClass,
+            yoloRefImageHeightPx: yoloRefImageHeightPx,
+            sharpRoomHeightAtYoloCapture: sharpRoomHeightAtYoloCapture,
+            displayName: displayName,
+            isClassicPly: newValue
         )
     }
 }
@@ -108,6 +131,7 @@ class USDZModelManager: ObservableObject {
             logDebug("📦 [USDZModelManager] Initializing...")
         }
         createDirectoriesIfNeeded()
+        migrateLegacyClassicSavedRoomsIfNeeded()
         loadModels()
         if AppStateManager.shared.qualitySettings.debugMode {
             logDebug("📦 [USDZModelManager] Initialization complete. Loaded \(models.count) models")
@@ -125,6 +149,53 @@ class USDZModelManager: ObservableObject {
             } catch {
                 if AppStateManager.shared.qualitySettings.debugMode {
                     logDebug("❌ [USDZModelManager] Failed to create directory: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Migrates legacy duplicate `Name_classic.ply` saved-room sidecars into the new single-file `Name.ply` format.
+    private func migrateLegacyClassicSavedRoomsIfNeeded() {
+        let fileManager = FileManager.default
+        guard let directoryContents = try? fileManager.contentsOfDirectory(
+            at: modelsDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        let legacyClassicURLs = directoryContents.filter { fileURL in
+            fileURL.pathExtension.lowercased() == "ply" &&
+            fileURL.deletingPathExtension().lastPathComponent.hasSuffix("_classic")
+        }
+        guard !legacyClassicURLs.isEmpty else { return }
+
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        for legacyClassicURL in legacyClassicURLs {
+            let legacyClassicStem = legacyClassicURL.deletingPathExtension().lastPathComponent
+            let canonicalStem = String(legacyClassicStem.dropLast("_classic".count))
+            let canonicalPLYURL = modelsDirectory.appendingPathComponent("\(canonicalStem).ply")
+
+            do {
+                if !fileManager.fileExists(atPath: canonicalPLYURL.path) {
+                    try fileManager.moveItem(at: legacyClassicURL, to: canonicalPLYURL)
+                    if debugMode {
+                        logDebug("♻️ [USDZModelManager] Migrated legacy classic-only room \(legacyClassicStem) → \(canonicalStem).ply")
+                    }
+                } else {
+                    try fileManager.removeItem(at: legacyClassicURL)
+                    if debugMode {
+                        logDebug("♻️ [USDZModelManager] Removed duplicate legacy classic sidecar: \(legacyClassicURL.lastPathComponent)")
+                    }
+                }
+                try mergeClassicPlyFlagIntoSavedRoomMetadata(
+                    fileName: canonicalStem,
+                    modelFileExtension: "ply",
+                    isClassicPly: true
+                )
+            } catch {
+                if debugMode {
+                    logDebug("⚠️ [USDZModelManager] Legacy classic migration skipped for \(legacyClassicURL.lastPathComponent): \(error.localizedDescription)")
                 }
             }
         }
@@ -180,18 +251,10 @@ class USDZModelManager: ObservableObject {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
             let allModelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
-            let plyStems = Set(
-                allModelFiles.compactMap { fileURL -> String? in
-                    guard fileURL.pathExtension.lowercased() == "ply" else { return nil }
-                    return fileURL.deletingPathExtension().lastPathComponent
-                }
-            )
             let modelFiles = allModelFiles.filter { fileURL in
                 guard fileURL.pathExtension.lowercased() == "ply" else { return true }
                 let stem = fileURL.deletingPathExtension().lastPathComponent
-                guard stem.hasSuffix("_classic") else { return true }
-                let baseName = String(stem.dropLast("_classic".count))
-                return !plyStems.contains(baseName)
+                return !stem.hasSuffix("_classic")
             }
 
             if debugMode {
@@ -272,7 +335,8 @@ class USDZModelManager: ObservableObject {
                     yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
                     yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
                     sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
-                    customDisplayName: metadata.displayName
+                    customDisplayName: metadata.displayName,
+                    isClassicPly: metadata.isClassicPly
                 )
                 savedRoomModels.append(model)
             }
@@ -316,6 +380,24 @@ class USDZModelManager: ObservableObject {
             dict = existing
         }
         dict["photoOrientation"] = photoOrientation.rawValue
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
+    /// Writes `isClassicPly` into `\(fileName).\(modelFileExtension).meta`, merging with existing keys.
+    private func mergeClassicPlyFlagIntoSavedRoomMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        isClassicPly: Bool
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+        dict["isClassicPly"] = isClassicPly ? "true" : "false"
         let out = try JSONEncoder().encode(dict)
         try out.write(to: metadataURL, options: [.atomic])
     }
@@ -424,6 +506,11 @@ class USDZModelManager: ObservableObject {
                 fileExtension = "usdz"
             }
             let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension)")
+            let classicSidecarURL = modelsDirectory.appendingPathComponent("\(model.fileName)_classic.ply")
+            let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+            let enhancedMetadataSidecarURL = enhancedMetadataURL(forRoomURL: fileURL)
+            let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(model.fileName)_thumbnail.jpg")
+            let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(model.fileName)_thumbnail.png")
             
             do {
                 if FileManager.default.fileExists(atPath: fileURL.path) {
@@ -437,12 +524,34 @@ class USDZModelManager: ObservableObject {
                     }
                 }
 
-                // Also delete metadata sidecar (all saved types may have *.meta)
-                let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
                 if FileManager.default.fileExists(atPath: metadataURL.path) {
                     try FileManager.default.removeItem(at: metadataURL)
                     if debugMode {
                         logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
+                    try FileManager.default.removeItem(at: classicSidecarURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Classic sidecar deleted: \(classicSidecarURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: enhancedMetadataSidecarURL.path) {
+                    try FileManager.default.removeItem(at: enhancedMetadataSidecarURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Enhanced metadata deleted: \(enhancedMetadataSidecarURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: thumbnailJPGURL.path) {
+                    try FileManager.default.removeItem(at: thumbnailJPGURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailJPGURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: thumbnailPNGURL.path) {
+                    try FileManager.default.removeItem(at: thumbnailPNGURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Thumbnail deleted: \(thumbnailPNGURL.lastPathComponent)")
                     }
                 }
             } catch {
@@ -457,10 +566,10 @@ class USDZModelManager: ObservableObject {
             }
         }
         
-        // Remove from models array
-        models.remove(at: modelIndex)
+        // Rebuild from disk so sidecars / stragglers cannot remain visible in UI.
+        refreshModels()
         if debugMode {
-            logDebug("✅ [USDZModelManager] Model removed from list. Remaining: \(models.count)")
+            logDebug("✅ [USDZModelManager] Delete finished; models reloaded from disk")
         }
     }
     
@@ -661,6 +770,7 @@ class USDZModelManager: ObservableObject {
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
         let classicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
+        let sourceIsClassicPly = sourceURL.lastPathComponent.contains("_classic")
 
         // Check if source exists
         guard FileManager.default.fileExists(atPath: sourceURL.path) else {
@@ -685,15 +795,6 @@ class USDZModelManager: ObservableObject {
 
             // Copy PLY file
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-
-            // SHARP save uses `Room_*_classic.ply` as the Metal source; copied to `Name.ply` loses the `_classic` suffix.
-            // Duplicate as `Name_classic.ply` so `SharpRoomView` picks the same URL as preview and `GaussianSplatView` applies classic camera/flip.
-            if sourceURL.lastPathComponent.contains("_classic") {
-                try FileManager.default.copyItem(at: destinationURL, to: classicSidecarURL)
-                if debugMode {
-                    logDebug("💾 [USDZModelManager] Also saved classic sidecar: \(classicSidecarURL.lastPathComponent)")
-                }
-            }
 
             let sourceEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: sourceURL)
             let destinationEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: destinationURL)
@@ -727,6 +828,7 @@ class USDZModelManager: ObservableObject {
             if let sd = roomSceneDepth {
                 metadata["roomSceneDepth"] = String(format: "%.4f", sd)
             }
+            metadata["isClassicPly"] = sourceIsClassicPly ? "true" : "false"
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)
 
@@ -754,6 +856,7 @@ class USDZModelManager: ObservableObject {
     /// Load all metadata from PLY metadata file (orientation, dimensions, optional YOLO ratios)
     private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
+        let legacyClassicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
 
         let base: SavedRoomDiskMetadata
         if FileManager.default.fileExists(atPath: metadataURL.path),
@@ -763,15 +866,18 @@ class USDZModelManager: ObservableObject {
         } else {
             base = .empty
         }
+        let normalizedBase = base.replacingClassicPly(
+            base.isClassicPly || FileManager.default.fileExists(atPath: legacyClassicSidecarURL.path)
+        )
 
         // Opening from list: AR roll uses `photoOrientation`. Prefer EXIF from saved thumbnail (same source as SHARP)
         // when present so orientation matches creation even if `.meta` defaulted to portrait or was stale.
         if let thumbURL = savedRoomThumbnailURL(stem: fileName),
            let image = UIImage(contentsOfFile: thumbURL.path) {
             let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
-            if fromThumb != base.orientation {
+            if fromThumb != normalizedBase.orientation {
                 if AppStateManager.shared.qualitySettings.debugMode {
-                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
+                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
                 }
                 try? mergePhotoOrientationIntoSavedRoomMetadata(
                     fileName: fileName,
@@ -782,12 +888,12 @@ class USDZModelManager: ObservableObject {
                     self?.refreshModels()
                 }
             } else if AppStateManager.shared.qualitySettings.debugMode {
-                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) matches thumbnail (\(thumbURL.lastPathComponent))")
+                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) matches thumbnail (\(thumbURL.lastPathComponent))")
             }
-            return base.replacingOrientation(fromThumb)
+            return normalizedBase.replacingOrientation(fromThumb)
         }
 
-        return base
+        return normalizedBase
     }
 
     private func savedRoomThumbnailURL(stem: String) -> URL? {

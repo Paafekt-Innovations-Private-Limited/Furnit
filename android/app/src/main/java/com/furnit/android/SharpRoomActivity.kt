@@ -40,13 +40,28 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import kotlin.math.max
 import kotlin.math.min
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
+import com.furnit.android.models.roomintelligence.AestheticAdvisor
+import com.furnit.android.models.roomintelligence.AestheticScore
+import com.furnit.android.models.roomintelligence.CornerPlacement
+import com.furnit.android.models.roomintelligence.CornerPlacementSuggestion
+import com.furnit.android.models.roomintelligence.FitCheckEngine
+import com.furnit.android.models.roomintelligence.FitCheckResult
+import com.furnit.android.models.roomintelligence.FurnitureProfile
+import com.furnit.android.models.roomintelligence.HarmonyType
+import com.furnit.android.models.roomintelligence.RoomFurnitureDimensions
+import com.furnit.android.models.roomintelligence.RoomIntelligenceLoader
+import com.furnit.android.models.roomintelligence.RoomModel
+import com.furnit.android.models.roomintelligence.SurfacePalette
+import com.furnit.android.models.roomintelligence.Vec3f
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.RoomDisplayName
+import com.furnit.android.utils.FurnitureSegmentationMeanColor
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.services.FurnitureFitManager
@@ -214,8 +229,19 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainCalibrationPillContainer: View? = null
     private var brainCalibrationPillLine1: TextView? = null
     private var brainCalibrationPillLine2: TextView? = null
+    private var placementIntelligenceCard: View? = null
+    private var placementIntelligenceStatusView: TextView? = null
+    private var placementIntelligenceBodyView: TextView? = null
+    private var isPlacementIntelligenceExpanded = false
     private var lastBrainOverlayScaleLogMs: Long = 0L
     private var lastBrainArBridgeLogMs: Long = 0L
+    private var roomPlacementModel: RoomModel? = null
+    private var latestFitCheckResult: FitCheckResult? = null
+    private var latestCornerPlacementSuggestions: List<CornerPlacementSuggestion> = emptyList()
+    private var latestAestheticScore: AestheticScore? = null
+    private var latestEstimatedFurnitureDepthMeters: Float? = null
+    private var segmentedFurnitureMeanSrgb: Vec3f? = null
+    private var latestBrainPrimaryDetection: DetectionResult? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
@@ -362,7 +388,6 @@ class SharpRoomActivity : AppCompatActivity() {
             finish()
             return
         }
-
         val rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#808080"))
 
@@ -495,6 +520,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
         sharpRoomContentRoot = rootLayout
+        reloadPlacementRoomModel()
         prewarmBrainSegmentationIfNeeded()
 
         // Apply status bar insets; pan overlay sits below top bar
@@ -822,6 +848,251 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun setPlacementIntelligenceVisible(visible: Boolean) {
+        runOnUiThread {
+            placementIntelligenceCard?.visibility = if (visible) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun reloadPlacementRoomModel() {
+        val roomFile = plyPath?.let { File(it) }?.takeIf { it.exists() }
+        val roomFolderFile = roomFolder?.let { File(it) }?.takeIf { it.isDirectory }
+        roomPlacementModel = RoomIntelligenceLoader.load(
+            roomFile = roomFile,
+            roomFolder = roomFolderFile,
+            roomWidthMeters = effRoomWidth(),
+            roomHeightMeters = effRoomHeight(),
+            roomDepthMeters = roomDepth,
+        )
+        updateRoomPlacementIntelligence()
+    }
+
+    private fun derivedDetectedFurnitureDimensionsForRoomIntelligence(): RoomFurnitureDimensions? {
+        val detection = latestBrainPrimaryDetection ?: return null
+        val height = effectiveBrainFurnitureHeightDisplayMeters()
+            ?.takeIf { it.isFinite() && it > 0.05f }
+            ?: return null
+        val aspect = if (detection.h > 1e-3f) {
+            (detection.w / detection.h).coerceIn(0.25f, 4f)
+        } else {
+            0.9f
+        }
+        val width = (height * aspect).coerceIn(0.15f, max(0.25f, effRoomWidth() * 0.95f))
+        val depth = (width * 0.72f).coerceIn(0.25f, 1.4f)
+        return RoomFurnitureDimensions(widthM = width, heightM = height, depthM = depth)
+    }
+
+    private fun placementIntelligenceHasFurnitureSignal(): Boolean {
+        return latestBrainPrimaryDetection != null ||
+            segmentedFurnitureMeanSrgb != null ||
+            derivedDetectedFurnitureDimensionsForRoomIntelligence() != null
+    }
+
+    private fun inferredRoomStyleTags(palette: SurfacePalette): List<String> {
+        val tags = linkedSetOf<String>()
+        listOfNotNull(palette.floor, palette.walls, palette.ceiling).forEach { layer ->
+            when (layer.hint) {
+                SurfacePalette.MaterialHint.WOOD -> {
+                    tags += "rustic"
+                    tags += "traditional"
+                }
+                SurfacePalette.MaterialHint.TILE -> tags += "modern"
+                SurfacePalette.MaterialHint.CONCRETE -> {
+                    tags += "industrial"
+                    tags += "modern"
+                }
+                SurfacePalette.MaterialHint.CARPET -> {
+                    tags += "traditional"
+                    tags += "eclectic"
+                }
+                SurfacePalette.MaterialHint.PLASTER -> {
+                    tags += "modern"
+                    tags += "scandinavian"
+                }
+                SurfacePalette.MaterialHint.BRICK -> {
+                    tags += "traditional"
+                    tags += "industrial"
+                }
+                SurfacePalette.MaterialHint.MARBLE -> {
+                    tags += "modern"
+                    tags += "luxury"
+                }
+                SurfacePalette.MaterialHint.UNKNOWN -> Unit
+            }
+        }
+        return if (tags.isEmpty()) listOf("modern", "minimalist") else tags.take(6)
+    }
+
+    private fun heuristicFurnitureProfileForAesthetic(
+        roomModel: RoomModel,
+        segmentedMeanSrgb: Vec3f?,
+    ): FurnitureProfile {
+        val palette = roomModel.surfacePalette
+        val wall = palette.walls?.dominantColors?.firstOrNull()
+        val floor = palette.floor?.dominantColors?.firstOrNull()
+        val ceiling = palette.ceiling?.dominantColors?.firstOrNull()
+        val primary = when {
+            segmentedMeanSrgb != null -> segmentedMeanSrgb
+            wall != null -> {
+                Vec3f(
+                    x = min(wall.x * 0.82f + 0.06f, 1f),
+                    y = min(wall.y * 0.78f + 0.05f, 1f),
+                    z = min(wall.z * 0.74f + 0.04f, 1f),
+                )
+            }
+            floor != null -> {
+                Vec3f(
+                    x = 0.38f * 0.55f + floor.x * 0.45f,
+                    y = 0.38f * 0.55f + floor.y * 0.45f,
+                    z = 0.38f * 0.55f + floor.z * 0.45f,
+                )
+            }
+            ceiling != null -> {
+                Vec3f(
+                    x = ceiling.x * 0.55f,
+                    y = ceiling.y * 0.52f,
+                    z = ceiling.z * 0.48f,
+                )
+            }
+            else -> Vec3f(0.44f, 0.40f, 0.36f)
+        }
+        return FurnitureProfile(
+            primaryColor = primary,
+            accentColor = null,
+            styleTags = listOf("modern", "minimalist", "contemporary"),
+        )
+    }
+
+    private fun harmonyTypeDisplayName(type: HarmonyType): String {
+        return when (type) {
+            HarmonyType.ANALOGOUS -> getString(R.string.placement_harmony_analogous)
+            HarmonyType.COMPLEMENTARY -> getString(R.string.placement_harmony_complementary)
+            HarmonyType.TRIADIC -> getString(R.string.placement_harmony_triadic)
+            HarmonyType.SPLIT_COMPLEMENTARY -> getString(R.string.placement_harmony_split_complementary)
+            HarmonyType.NEUTRAL -> getString(R.string.placement_harmony_neutral)
+            HarmonyType.CLASH -> getString(R.string.placement_harmony_clash)
+        }
+    }
+
+    private fun updatePlacementIntelligenceCard() {
+        runOnUiThread {
+            val card = placementIntelligenceCard ?: return@runOnUiThread
+            val statusView = placementIntelligenceStatusView ?: return@runOnUiThread
+            val bodyView = placementIntelligenceBodyView ?: return@runOnUiThread
+            val fit = latestFitCheckResult
+            val aesthetic = latestAestheticScore
+            val dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
+            val shouldShow = brainDetectionOverlay.visibility == View.VISIBLE &&
+                placementIntelligenceHasFurnitureSignal() &&
+                (fit != null || aesthetic != null)
+            card.visibility = if (shouldShow) View.VISIBLE else View.GONE
+            if (!shouldShow) return@runOnUiThread
+
+            statusView.text = when {
+                fit == null -> getString(R.string.placement_badge_style_only)
+                fit.fitsInRoom -> getString(R.string.placement_fit_count, max(fit.fitLocations.size, 1))
+                else -> getString(R.string.placement_no_fit)
+            }
+            statusView.setTextColor(
+                when {
+                    fit == null -> Color.parseColor("#7FDBFF")
+                    fit.fitsInRoom -> Color.parseColor("#4CAF50")
+                    else -> Color.parseColor("#FF6B6B")
+                },
+            )
+
+            val lines = mutableListOf<String>()
+            if (dimensions == null) {
+                lines += getString(R.string.placement_metric_unavailable_note)
+            } else {
+                lines += getString(
+                    R.string.placement_detected_size,
+                    dimensions.widthM.toDouble(),
+                    dimensions.heightM.toDouble(),
+                    dimensions.depthM.toDouble(),
+                )
+            }
+            fit?.let {
+                lines += if (it.fitsInRoom) {
+                    if (it.fitLocations.isEmpty()) {
+                        getString(R.string.placement_fit_no_region)
+                    } else {
+                        getString(R.string.placement_fit_regions, it.fitLocations.size)
+                    }
+                } else {
+                    getString(R.string.placement_exceeds_room)
+                }
+                latestCornerPlacementSuggestions.firstOrNull()?.let { best ->
+                    lines += getString(
+                        R.string.placement_best_corner,
+                        best.score.toDouble(),
+                        (best.yRotationRad * 180f / Math.PI.toFloat()).toDouble(),
+                    )
+                }
+                it.warnings.firstOrNull()?.let { warning -> lines += warning }
+                    ?: if (latestEstimatedFurnitureDepthMeters != null) {
+                        lines += getString(R.string.placement_depth_estimated)
+                    } else {
+                        Unit
+                    }
+            }
+            aesthetic?.let {
+                lines += getString(
+                    R.string.placement_harmony_summary,
+                    it.harmonyScore.toDouble(),
+                    harmonyTypeDisplayName(it.harmonyType),
+                    it.contrastScore.toDouble(),
+                    it.styleCompatibilityScore.toDouble(),
+                )
+                it.recommendations.take(4).forEach { reco -> lines += "\u2022 $reco" }
+            }
+            bodyView.text = lines.joinToString("\n")
+            bodyView.visibility = if (isPlacementIntelligenceExpanded) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun updateRoomPlacementIntelligence() {
+        if (!::brainDetectionOverlay.isInitialized) {
+            return
+        }
+        if (brainDetectionOverlay.visibility != View.VISIBLE || !placementIntelligenceHasFurnitureSignal()) {
+            latestFitCheckResult = null
+            latestCornerPlacementSuggestions = emptyList()
+            latestEstimatedFurnitureDepthMeters = null
+            latestAestheticScore = null
+            updatePlacementIntelligenceCard()
+            return
+        }
+        val roomModel = roomPlacementModel ?: run {
+            updatePlacementIntelligenceCard()
+            return
+        }
+
+        val dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
+        if (dimensions != null) {
+            latestEstimatedFurnitureDepthMeters = dimensions.depthM
+            val fitEngine = FitCheckEngine(roomModel)
+            latestFitCheckResult = fitEngine.checkFit(dimensions)
+            latestCornerPlacementSuggestions = CornerPlacement(roomModel).suggestions(dimensions).take(3)
+            DebugLogger.d(
+                TAG,
+                "Placement intelligence updated furniture=${String.format(Locale.US, "%.2f", dimensions.widthM)}x" +
+                    "${String.format(Locale.US, "%.2f", dimensions.heightM)}x${String.format(Locale.US, "%.2f", dimensions.depthM)} " +
+                    "fits=${latestFitCheckResult?.fitsInRoom} fitLocations=${latestFitCheckResult?.fitLocations?.size ?: 0}",
+            )
+        } else {
+            latestEstimatedFurnitureDepthMeters = null
+            latestFitCheckResult = null
+            latestCornerPlacementSuggestions = emptyList()
+        }
+
+        val palette = roomModel.surfacePalette
+        val roomStyleTags = inferredRoomStyleTags(palette)
+        val furnitureProfile = heuristicFurnitureProfileForAesthetic(roomModel, segmentedFurnitureMeanSrgb)
+        latestAestheticScore = AestheticAdvisor(palette, roomStyleTags).evaluate(furnitureProfile)
+        updatePlacementIntelligenceCard()
+    }
+
     /** Dialog for per-object furniture calibration in brain overlay. */
     private fun showBrainCalibrationDialog() {
         if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) return
@@ -850,6 +1121,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 brainRealFurnitureHeightMeters = real
                 // For now, reflect calibration in UI; viewer scaling can be added via JS hook later.
                 updateBrainCalibrationPill()
+                updateRoomPlacementIntelligence()
                 Toast.makeText(ctx, getString(R.string.smartypants_room_scaled, String.format(Locale.US, "%.2f", factor)), Toast.LENGTH_SHORT).show()
             }
             .show()
@@ -899,6 +1171,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 )
                 // Persist calibrated dimensions so the home list and future viewer sessions match.
                 roomDimensionsLockedByTapeCalibration = true
+                reloadPlacementRoomModel()
                 persistSparkBoxDimensionsDebounced()
             }
             .show()
@@ -1026,6 +1299,55 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             brainCalibrationPillContainer = pillContainer
             addView(pillContainer)
+
+            val placementCardContent = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(14).toFloat()
+                    setColor(Color.parseColor("#D91C1C1E"))
+                }
+            }
+            val placementTitle = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.placement_title)
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                setTypeface(null, Typeface.BOLD)
+            }
+            val placementStatusView = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.placement_badge_style_only)
+                setTextColor(Color.parseColor("#7FDBFF"))
+                textSize = 12f
+                setTypeface(null, Typeface.BOLD)
+            }
+            placementIntelligenceStatusView = placementStatusView
+            val placementBodyView = TextView(this@SharpRoomActivity).apply {
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                visibility = View.GONE
+            }
+            placementIntelligenceBodyView = placementBodyView
+            placementCardContent.addView(placementTitle)
+            placementCardContent.addView(placementStatusView)
+            placementCardContent.addView(placementBodyView)
+            val placementContainer = FrameLayout(this@SharpRoomActivity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                    bottomMargin = dpToPx(132)
+                }
+                visibility = View.GONE
+                addView(placementCardContent)
+                setOnClickListener {
+                    isPlacementIntelligenceExpanded = !isPlacementIntelligenceExpanded
+                    updatePlacementIntelligenceCard()
+                }
+            }
+            placementIntelligenceCard = placementContainer
+            addView(placementContainer)
         }
     }
 
@@ -1213,6 +1535,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainProgressOverlay.visibility = View.VISIBLE
         setBrainCalibrationPillVisible(true)
         updateBrainCalibrationPill()
+        updatePlacementIntelligenceCard()
     }
 
     /** Every brain tap should show progress until the first result for that tap arrives. */
@@ -1228,6 +1551,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setMaskAndDetections(mask, detections, inputSize)
         brainDetectionOverlay.visibility = View.VISIBLE
         setBrainSegmentationButtonActive(true)
+        updatePlacementIntelligenceCard()
     }
 
     private fun setBrainSegmentationButtonActive(active: Boolean) {
@@ -1245,6 +1569,7 @@ class SharpRoomActivity : AppCompatActivity() {
         hideBrainProgressOverlay()
         stopBrainDetection()
         setBrainCalibrationPillVisible(false)
+        setPlacementIntelligenceVisible(false)
     }
 
     private fun createInitializedFurnitureFitManager(): FurnitureFitManager? {
@@ -1407,6 +1732,8 @@ class SharpRoomActivity : AppCompatActivity() {
                                 brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
                                     ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
                             lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
+                            latestBrainPrimaryDetection = dets.firstOrNull()
+                            segmentedFurnitureMeanSrgb = mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
                             brainDetectionOverlayView.setMaskAndDetections(
                                 mask,
                                 dets,
@@ -1414,6 +1741,7 @@ class SharpRoomActivity : AppCompatActivity() {
                                 brainOverlayScaleForDetection(dets.firstOrNull(), size, effectiveBrainFurnitureHeightDisplayMeters()),
                             )
                             updateBrainCalibrationPill()
+                            updateRoomPlacementIntelligence()
                         }
                     }
                 } finally {
@@ -1499,6 +1827,8 @@ class SharpRoomActivity : AppCompatActivity() {
                         brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
                             ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
                     lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
+                    latestBrainPrimaryDetection = dets.firstOrNull()
+                    segmentedFurnitureMeanSrgb = mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
                     brainDetectionOverlayView.setMaskAndDetections(
                         mask,
                         dets,
@@ -1521,6 +1851,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                     brainArController?.onInferenceFinished()
                     updateBrainCalibrationPill()
+                    updateRoomPlacementIntelligence()
                 }
             }
         }
@@ -1545,7 +1876,14 @@ class SharpRoomActivity : AppCompatActivity() {
         brainLockedFurnitureHeightMeters = null
         brainRealFurnitureHeightMeters = null
         brainCalibrationScaleFactor = 1.0f
+        latestBrainPrimaryDetection = null
+        segmentedFurnitureMeanSrgb = null
+        latestFitCheckResult = null
+        latestCornerPlacementSuggestions = emptyList()
+        latestAestheticScore = null
+        latestEstimatedFurnitureDepthMeters = null
         updateBrainCalibrationPill()
+        updatePlacementIntelligenceCard()
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) { }
@@ -2315,7 +2653,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 "saveRoom start name=$name folder=$folderPath before W×H×D=$rw×$rh×${rd} pref_measure=${prefs.getBoolean(WallMeasurementEstimator.PREF_ENABLED, true)}",
             )
             val measured = withContext(Dispatchers.Default) {
-                WallMeasurementEstimator.measure(this@SharpRoomActivity, File(folderPath), prefs)
+                WallMeasurementEstimator.measure(
+                    this@SharpRoomActivity,
+                    File(folderPath),
+                    prefs,
+                    plyBounds = WallMeasurementEstimator.PlyBounds(rw, rh, rd),
+                    photoOrientation = photoOrientation,
+                )
             }
             if (measured == null) {
                 LogUtil.i("WALL_MEAS", "saveRoom measure returned null — keeping viewer dims W×H×D=$rw×$rh×$rd")
@@ -2505,6 +2849,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     "[box3_measured] final W×H=$roomWidth×$roomHeight title_m_label depth=$roomDepth arDisplayScale=$arDisplayScale " +
                         "hasSavedMeta=$hasSavedDimensions folder=$roomFolder",
                 )
+                reloadPlacementRoomModel()
                 persistSparkBoxDimensionsDebounced()
             }
         }
@@ -2578,6 +2923,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     "SHARP_ROOM_MEAS",
                     "[box3_metrics] final W×H×D=$roomWidth×$roomHeight×$roomDepth rawXYZ=$rawSpanX×$rawSpanY×$rawSpanZ source=${source ?: "unknown"} thinZ=$thinZ arDisplayScale=$arDisplayScale folder=$roomFolder",
                 )
+                reloadPlacementRoomModel()
                 persistSparkBoxDimensionsDebounced()
             }
         }

@@ -30,6 +30,8 @@ struct USDZModel: Identifiable, Hashable {
     let sharpRoomHeightAtYoloCapture: Float?
     /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
     let customDisplayName: String?
+    /// Saved PLY should be treated like SHARP classic orientation/rendering even without `_classic` filename suffix.
+    let isClassicPly: Bool
 
     // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false, customDisplayName: String? = nil) {
@@ -50,6 +52,7 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloRefImageHeightPx = nil
         self.sharpRoomHeightAtYoloCapture = nil
         self.customDisplayName = customDisplayName
+        self.isClassicPly = false
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
@@ -72,7 +75,8 @@ struct USDZModel: Identifiable, Hashable {
         yoloFurnitureHeightFracByClass: [String: Float]? = nil,
         yoloRefImageHeightPx: Int? = nil,
         sharpRoomHeightAtYoloCapture: Float? = nil,
-        customDisplayName: String? = nil
+        customDisplayName: String? = nil,
+        isClassicPly: Bool = false
     ) {
         self.name = name
         self.fileName = fileName
@@ -91,6 +95,7 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloRefImageHeightPx = yoloRefImageHeightPx
         self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
         self.customDisplayName = customDisplayName
+        self.isClassicPly = isClassicPly
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }

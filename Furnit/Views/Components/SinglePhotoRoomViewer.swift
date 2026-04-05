@@ -1872,6 +1872,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCapture(_ image: UIImage) {
             logDebug("📷 [WideAngle] Captured image: \(image.size)")
+            CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "capturedImage")
             parent.photoLibraryAssetLocalId = nil
             parent.capturedImage = image.fixedOrientation()
             parent.dismiss()
@@ -1879,6 +1880,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCancel() {
             logDebug("📷 [WideAngle] User cancelled")
+            CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "cancel")
             parent.dismiss()
         }
     }
@@ -1893,6 +1895,7 @@ class WideAngleCameraViewController: UIViewController {
     weak var delegate: WideAngleCameraDelegate?
 
     private var captureSession: AVCaptureSession?
+    private var captureSessionObserverTokens: [NSObjectProtocol] = []
     private var photoOutput: AVCapturePhotoOutput?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentDevice: AVCaptureDevice?
@@ -1928,6 +1931,12 @@ class WideAngleCameraViewController: UIViewController {
     private func setupCamera() {
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
+        if let captureSession {
+            captureSessionObserverTokens = CameraOwnershipDiagnostics.makeCaptureSessionObservers(
+                session: captureSession,
+                owner: "WideAngleCameraViewController.AVCapture"
+            )
+        }
 
         // Try to get ultra-wide camera first for wider field of view
         var device: AVCaptureDevice?
@@ -1971,6 +1980,7 @@ class WideAngleCameraViewController: UIViewController {
             }
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_startRequested")
                 self?.captureSession?.startRunning()
             }
 
@@ -2111,13 +2121,20 @@ class WideAngleCameraViewController: UIViewController {
     }
 
     @objc private func cancelCapture() {
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=cancel")
         captureSession?.stopRunning()
         delegate?.wideAngleCameraDidCancel()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=viewWillDisappear")
         captureSession?.stopRunning()
+    }
+
+    deinit {
+        CameraOwnershipDiagnostics.removeObservers(captureSessionObserverTokens)
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController", event: "deinit")
     }
 }
 
@@ -2135,6 +2152,8 @@ extension WideAngleCameraViewController: AVCapturePhotoCaptureDelegate {
         }
 
         logDebug("✅ [WideAngle] Photo captured: \(image.size)")
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController", event: "photoOutput_didFinishProcessing")
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=photoCaptured")
         captureSession?.stopRunning()
         delegate?.wideAngleCameraDidCapture(image)
     }
@@ -2193,6 +2212,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         logDebug("📷 [Camera] Opening standard camera")
+        CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "present")
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         picker.delegate = context.coordinator
@@ -2215,6 +2235,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📷 [Camera] Photo captured")
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "didFinishPicking")
             parent.sourceImageURL = nil
             parent.photoLibraryAssetLocalId = nil
             if let md = info[.mediaMetadata] {
@@ -2228,11 +2249,13 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
             } else {
                 logDebug("❌ [Camera] Failed to get UIImage")
             }
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "dismiss_requested", details: "reason=didFinishPicking")
             parent.dismiss()
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             logDebug("📷 [Camera] User cancelled")
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "dismiss_requested", details: "reason=cancel")
             parent.dismiss()
         }
     }

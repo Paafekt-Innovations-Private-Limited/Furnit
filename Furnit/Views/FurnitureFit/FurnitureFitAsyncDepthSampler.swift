@@ -69,6 +69,7 @@ final class FurnitureFitAsyncDepthSampler {
             config.worldAlignment = .gravity
             config.planeDetection = [.horizontal, .vertical]
 
+            CameraOwnershipDiagnostics.log(owner: "FurnitureFitAsyncDepthSampler.ARSession", event: "ar_run", details: "reason=start")
             self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
 
             logFurnitureFitAR(
@@ -91,6 +92,7 @@ final class FurnitureFitAsyncDepthSampler {
             guard let self else { return }
             self.sampleTimer?.invalidate()
             self.sampleTimer = nil
+            CameraOwnershipDiagnostics.log(owner: "FurnitureFitAsyncDepthSampler.ARSession", event: "ar_pause", details: "reason=stop")
             self.arSession.pause()
             self.isRunning = false
             self.stateLock.lock()
@@ -98,6 +100,10 @@ final class FurnitureFitAsyncDepthSampler {
             self.lastFocalLengthY = nil
             self.stateLock.unlock()
         }
+    }
+
+    deinit {
+        CameraOwnershipDiagnostics.log(owner: "FurnitureFitAsyncDepthSampler", event: "deinit")
     }
 
     private func sampleDepth() {

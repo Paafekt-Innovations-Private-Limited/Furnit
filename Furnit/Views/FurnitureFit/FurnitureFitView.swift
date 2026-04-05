@@ -8,6 +8,7 @@ import CoreML
 import Accelerate
 import AVFoundation
 import ARKit
+import QuartzCore
 import CoreMotion
 import SceneKit
 import CoreText
@@ -147,12 +148,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Camera
     private let captureSession = AVCaptureSession()
+    private var captureSessionObserverTokens: [NSObjectProtocol] = []
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
     private let captureSessionControlQueue = DispatchQueue(label: "com.furnit.capture.control", qos: .userInitiated)
 
     // MARK: AR camera path (optional — when AR-assisted sizing enabled and ARKit supported)
     private let arSession = ARSession()
+    private let arSessionDelegateQueue = DispatchQueue(label: "com.furnit.furniturefit.arsession", qos: .userInitiated)
     private let arSCNView: ARSCNView = {
         let v = ARSCNView(frame: .zero)
         v.automaticallyUpdatesLighting = false
@@ -364,6 +367,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// While inference is running, camera frames are dropped; when set, next completion clears `lastProcessTime` so the following frame is not delayed by `processInterval`.
     private var preferImmediateNextInference = false
     private let frameLock = NSLock() // Protects lastProcessTime, isProcessing, preferImmediateNextInference
+    /// ARKit holds `ARFrame`s until `session(_:didUpdate:)` returns; CI BGRA + depth copy must stay well below camera FPS.
+    private static let arSessionDelegateHeavyMinInterval: TimeInterval = 0.28
+    /// Monotonic guard so we skip `didUpdate` **before** taking `frameLock` (cheap drops while inference is still running).
+    private var lastARHeavyWorkFinishCAC: CFTimeInterval = 0
 
     /// Serial queue for AR-assisted measurement (depth → height → overlay scale). This is
     /// coalesced rather than fully debounced so continuous segmentation frames do not starve
@@ -541,6 +548,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func commonInit() {
         backgroundColor = .clear
         isUserInteractionEnabled = true
+        CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView", event: "init")
         
         previewLayer.session = captureSession
         previewLayer.videoGravity = .resizeAspectFill
@@ -613,11 +621,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             name: AVCaptureSession.runtimeErrorNotification,
             object: captureSession
         )
+        captureSessionObserverTokens = CameraOwnershipDiagnostics.makeCaptureSessionObservers(
+            session: captureSession,
+            owner: "FurnitureFitContainerView.AVCapture"
+        )
         arSession.delegate = self
+        arSession.delegateQueue = arSessionDelegateQueue
         
         setupCamera()
         setupMetal()
         if debugMode { logDebug("✅ FurnitureFitContainerView initialized") }
+    }
+
+    deinit {
+        CameraOwnershipDiagnostics.removeObservers(captureSessionObserverTokens)
+        NotificationCenter.default.removeObserver(self)
+        CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView", event: "deinit")
     }
     
     private func setupMetal() {
@@ -1213,6 +1232,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         isProcessing = false
         preferImmediateNextInference = false
         frameLock.unlock()
+        lastARHeavyWorkFinishCAC = 0
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
         segmentationCompletedOnceThisSession = false
@@ -1234,10 +1254,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         DispatchQueue.main.async {
             self.isUsingARCameraPath = false
             self.isARDepthCompanionSessionRunning = false
+            CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.ARSession", event: "ar_pause", details: "reason=stop")
             self.arSession.pause()
         }
         captureSessionControlQueue.async {
             if self.captureSession.isRunning {
+                CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_stopRequested")
                 self.captureSession.stopRunning()
             }
         }
@@ -1328,8 +1350,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    /// Sharp Room already supplies splat-surface depth and may also run Live Room motion tracking.
+    /// In that host, avoid spinning up a second ARKit session for Furniture Fit.
+    private var shouldForceClassicCameraPath: Bool {
+        sharpRoomSplatMeasurementHost != nil
+    }
+
     private func startPreferredCameraPathIfNeeded() {
-        let wantAR = AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+        let wantAR = !shouldForceClassicCameraPath
+            && AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
             && !suppressARDepthCompanionAfterCaptureFailure
         if wantAR {
             startARCameraPathIfNeeded()
@@ -1355,6 +1384,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     guard let self, self.isUsingARCameraPath else { return }
                     let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
                     let hasLiDAR = QualitySettings.supportsLiDARSceneDepth
+                    CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.ARSession", event: "ar_run", details: "reason=startARCameraPath lidar=\(hasLiDAR)")
                     self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
                     logFurnitureFitAR("AR session started — lidar=\(hasLiDAR) depthSource=\(hasLiDAR ? "sceneDepth" : "planeRaycast") (filter: FurnitureFitAR FurnitureFitOverlay)")
 
@@ -1406,12 +1436,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             self.arCompanionStartGeneration &+= 1
             let companionLaunchToken = self.arCompanionStartGeneration
             self.isARDepthCompanionSessionRunning = false
+            CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.ARSession", event: "ar_pause", details: "reason=startClassicCameraPath")
             self.arSession.pause()
 
             self.captureSessionControlQueue.async { [weak self] in
                 guard let self else { return }
                 self.setupCamera()
                 if !self.captureSession.isRunning {
+                    CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_startRequested")
                     self.captureSession.startRunning()
                 }
                 // Floor-contact depth estimation stays on the AVCapture path; no AR companion is started here.
@@ -1419,14 +1451,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             if self.debugMode {
-                logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active, AR path not selected")
+                let reason = self.shouldForceClassicCameraPath
+                    ? "sharp_room_uses_splat_depth_and_live_room_pose"
+                    : "ar_path_not_selected"
+                logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active reason=\(reason)")
             }
 
             if !Self.didLogFurnitureFitSizingPolicy {
                 Self.didLogFurnitureFitSizingPolicy = true
-                logFurnitureFitSize(
-                    "policy=floor_contact_only: AVCapture video + floor-contact depth heuristic from bbox/mask bottom. AR path not selected."
-                )
+                if self.shouldForceClassicCameraPath {
+                    logFurnitureFitSize(
+                        "policy=sharp_room_classic_camera: AVCapture video + SHARP/splat-aware sizing. No separate Furniture Fit ARSession when Sharp Room host is active."
+                    )
+                } else {
+                    logFurnitureFitSize(
+                        "policy=floor_contact_only: AVCapture video + floor-contact depth heuristic from bbox/mask bottom. AR path not selected."
+                    )
+                }
             }
         }
     }
@@ -3855,20 +3896,19 @@ extension FurnitureFitContainerView {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isUsingARCameraPath else { return }
         isARDepthCompanionSessionRunning = true
+        let t = CACurrentMediaTime()
+        if lastARHeavyWorkFinishCAC > 0, t - lastARHeavyWorkFinishCAC < Self.arSessionDelegateHeavyMinInterval {
+            return
+        }
         frameLock.lock()
         if isProcessing {
             preferImmediateNextInference = true
             frameLock.unlock()
             return
         }
-        let now = Date()
-        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval
-        if shouldProcess {
-            isProcessing = true
-            lastProcessTime = now
-        }
+        isProcessing = true
+        lastProcessTime = Date()
         frameLock.unlock()
-        guard shouldProcess else { return }
         guard let bgra = FurnitureFitARSupport.copyCapturedImageToBGRA(
             frame: frame,
             reuse: &arBGRAReuse,
@@ -3884,6 +3924,7 @@ extension FurnitureFitContainerView {
             bgraHeight: CVPixelBufferGetHeight(bgra),
             lockedOrientation: lockedOrientation
         )
+        lastARHeavyWorkFinishCAC = CACurrentMediaTime()
         detectionQueue.async { [weak self] in
             self?.processFrame(bgra, arDepthSnapshot: depthSnapshot)
         }

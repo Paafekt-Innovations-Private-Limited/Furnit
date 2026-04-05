@@ -1,4 +1,5 @@
 import ARKit
+import CoreVideo
 import UIKit
 import SwiftUI
 
@@ -13,11 +14,14 @@ class ARKitCameraManager: NSObject, ObservableObject {
     
     // ARKit session and configuration
     private let arSession = ARSession()
+    private let arSessionDelegateQueue = DispatchQueue(label: "com.furnit.arkit-camera-manager", qos: .userInitiated)
     private var arConfiguration = ARWorldTrackingConfiguration()
     
-    // Latest frame data for on-demand capture
-    private var latestFrame: ARFrame?
-    private let frameProcessingQueue = DispatchQueue(label: "arkit.frame.processing", qos: .userInitiated)
+    /// Standalone copy of `ARFrame.capturedImage` — **never** store `ARFrame`; retaining it past `didUpdate` exhausts ARKit’s frame pool.
+    private var latestCapturedImageBuffer: CVPixelBuffer?
+    private var lastCapturedImageCopyTime: CFAbsoluteTime = 0
+    /// Avoid doing a full camera buffer copy on every ARKit frame (still well under typical camera FPS).
+    private let capturedImageCopyMinInterval: CFTimeInterval = 0.1
     
     override init() {
         super.init()
@@ -31,6 +35,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     private func setupARSession() {
         // Set delegate to receive frame updates
         arSession.delegate = self
+        arSession.delegateQueue = arSessionDelegateQueue
         
         // Configure for world tracking (provides camera access)
         arConfiguration = ARWorldTrackingConfiguration()
@@ -45,6 +50,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         }
         
         logDebug("🎯 ARKit session configured for camera frame capture")
+        CameraOwnershipDiagnostics.log(owner: "ARKitCameraManager", event: "configured")
     }
     
     // MARK: - Session Control
@@ -62,6 +68,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         }
         
         // Run the AR session on main queue (ARKit requirement)
+        CameraOwnershipDiagnostics.log(owner: "ARKitCameraManager", event: "ar_run", details: "reason=startSession")
         arSession.run(arConfiguration, options: [.resetTracking, .removeExistingAnchors])
         
         // Update session status
@@ -77,10 +84,11 @@ class ARKitCameraManager: NSObject, ObservableObject {
         logDebug("🎯 Stopping ARKit camera session...")
         
         // Pause the AR session
+        CameraOwnershipDiagnostics.log(owner: "ARKitCameraManager", event: "ar_pause", details: "reason=stopSession")
         arSession.pause()
         
-        // Clear frame data
-        latestFrame = nil
+        latestCapturedImageBuffer = nil
+        lastCapturedImageCopyTime = 0
         capturedImage = nil
         currentFrameImage = nil
         
@@ -89,13 +97,17 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         logDebug("✅ ARKit camera session stopped")
     }
+
+    deinit {
+        CameraOwnershipDiagnostics.log(owner: "ARKitCameraManager", event: "deinit")
+    }
     
     // MARK: - Frame Capture
     
     // Capture current camera frame for backend API (full resolution)
     @MainActor
     func captureCurrentFrameForAPI() -> UIImage? {
-        guard let currentFrame = latestFrame else {
+        guard let buffer = latestCapturedImageBuffer else {
             errorMessage = "No camera frame available - ensure AR session is running"
             logDebug("⚠️ No current frame available for capture")
             return nil
@@ -103,8 +115,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         logDebug("📷 Capturing current ARKit camera frame for 3D generation...")
         
-        // Convert ARFrame's camera image to UIImage without resizing
-        guard let rawUIImage = convertPixelBufferToUIImage(currentFrame.capturedImage) else {
+        guard let rawUIImage = convertPixelBufferToUIImage(buffer) else {
             errorMessage = "Failed to convert camera frame to image"
             logDebug("⚠️ Failed to convert ARFrame to UIImage")
             return nil
@@ -130,7 +141,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     // This is synchronous and doesn't use continuations - no more leaks!
     @MainActor
     func captureCurrentFrame() -> UIImage? {
-        guard let currentFrame = latestFrame else {
+        guard let buffer = latestCapturedImageBuffer else {
             errorMessage = "No camera frame available - ensure AR session is running"
             logDebug("⚠️ No current frame available for capture")
             return nil
@@ -138,8 +149,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         logDebug("📷 Capturing current ARKit camera frame for segmentation...")
         
-        // Convert ARFrame's camera image to UIImage
-        guard let rawUIImage = convertPixelBufferToUIImage(currentFrame.capturedImage) else {
+        guard let rawUIImage = convertPixelBufferToUIImage(buffer) else {
             errorMessage = "Failed to convert camera frame to image"
             logDebug("⚠️ Failed to convert ARFrame to UIImage")
             return nil
@@ -238,44 +248,78 @@ class ARKitCameraManager: NSObject, ObservableObject {
     
     // MARK: - Async Frame Capture (Alternative Method)
 
-    // Async version that waits for the next frame if needed.  Runs on the
-    // main actor to safely access `latestFrame` and update state without
-    // passing non-Sendable values across concurrency boundaries.  This
-    // implementation waits for up to ~100ms for a new frame by sleeping
-    // cooperatively.  It avoids the use of `DispatchQueue.asyncAfter`,
-    // which otherwise requires `@Sendable` closures and prohibits
-    // capturing non-Sendable types like `CVPixelBuffer`.
     @MainActor
     func captureNextFrame() async -> UIImage? {
-        // If we have a recent frame, use it immediately
-        if let currentFrame = latestFrame {
-            return convertPixelBufferToUIImage(currentFrame.capturedImage)
+        if let buffer = latestCapturedImageBuffer {
+            return convertPixelBufferToUIImage(buffer)
         }
-
-        // Otherwise wait briefly for a new frame.  Sleep in 50ms increments
-        // and check for a frame each time.  We ignore cancellation errors
-        // because this is an opportunistic capture.
         for _ in 0..<2 {
             try? await Task.sleep(nanoseconds: 50_000_000)
-            if let newFrame = latestFrame {
-                return convertPixelBufferToUIImage(newFrame.capturedImage)
+            if let buffer = latestCapturedImageBuffer {
+                return convertPixelBufferToUIImage(buffer)
             }
         }
         return nil
+    }
+
+    /// Byte-copy into an owned buffer so `didUpdate` can return without retaining `ARFrame` (handles multi-plane YUV camera buffers).
+    private static func standalonePixelBufferCopy(of src: CVPixelBuffer) -> CVPixelBuffer? {
+        let w = CVPixelBufferGetWidth(src)
+        let h = CVPixelBufferGetHeight(src)
+        let fmt = CVPixelBufferGetPixelFormatType(src)
+        var dst: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferPixelFormatTypeKey: fmt,
+            kCVPixelBufferWidthKey: w,
+            kCVPixelBufferHeightKey: h,
+            kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, fmt, attrs as CFDictionary, &dst) == kCVReturnSuccess,
+              let out = dst else { return nil }
+
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        CVPixelBufferLockBaseAddress(out, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(out, [])
+            CVPixelBufferUnlockBaseAddress(src, .readOnly)
+        }
+
+        let planeCount = CVPixelBufferGetPlaneCount(src)
+        if planeCount == 0 {
+            guard let sb = CVPixelBufferGetBaseAddress(src), let db = CVPixelBufferGetBaseAddress(out) else { return nil }
+            let sbRow = CVPixelBufferGetBytesPerRow(src)
+            let dbRow = CVPixelBufferGetBytesPerRow(out)
+            let rowCopy = min(sbRow, dbRow)
+            for y in 0..<h {
+                memcpy(db.advanced(by: y * dbRow), sb.advanced(by: y * sbRow), rowCopy)
+            }
+        } else {
+            for plane in 0..<planeCount {
+                guard let sb = CVPixelBufferGetBaseAddressOfPlane(src, plane),
+                      let db = CVPixelBufferGetBaseAddressOfPlane(out, plane) else { return nil }
+                let ph = CVPixelBufferGetHeightOfPlane(src, plane)
+                let sbRow = CVPixelBufferGetBytesPerRowOfPlane(src, plane)
+                let dbRow = CVPixelBufferGetBytesPerRowOfPlane(out, plane)
+                let rowCopy = min(sbRow, dbRow)
+                for y in 0..<ph {
+                    memcpy(db.advanced(by: y * dbRow), sb.advanced(by: y * sbRow), rowCopy)
+                }
+            }
+        }
+        return out
     }
 }
 
 // MARK: - ARSessionDelegate
 
 extension ARKitCameraManager: ARSessionDelegate {
-    // Receive camera frames from ARKit session
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // Store latest frame for on-demand capture
-        latestFrame = frame
-        
-        // We intentionally avoid updating `currentFrameImage` here to prevent
-        // cross-actor violations when capturing `CVPixelBuffer` or `UIImage`.
-        // Preview updates can be handled elsewhere on the main actor if needed.
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastCapturedImageCopyTime < capturedImageCopyMinInterval { return }
+        lastCapturedImageCopyTime = now
+        let src = frame.capturedImage
+        guard let copy = Self.standalonePixelBufferCopy(of: src) else { return }
+        latestCapturedImageBuffer = copy
     }
     
     // Handle session errors

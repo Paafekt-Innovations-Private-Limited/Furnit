@@ -355,4 +355,18 @@ public struct RoomModel: Equatable, Sendable {
     public func toScene(depthMeters: Float) -> Float {
         depthMeters / max(sceneToMeters, 0.0001)
     }
+
+    public func withSceneToMeters(_ newSceneToMeters: Float) -> RoomModel {
+        RoomModel(
+            aabb: aabb,
+            floor: floor,
+            ceiling: ceiling,
+            walls: walls,
+            corners: corners,
+            freeFloorRegions: freeFloorRegions,
+            surfacePalette: surfacePalette,
+            cameraInfo: cameraInfo,
+            sceneToMeters: newSceneToMeters
+        )
+    }
 }

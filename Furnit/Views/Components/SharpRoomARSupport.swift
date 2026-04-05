@@ -3,6 +3,16 @@ import ARKit
 import UIKit
 import simd
 
+struct ARPlaneRoomMeasurement: Equatable, Sendable {
+    let widthMeters: Float
+    let heightMeters: Float
+    let depthMeters: Float
+    let floorAnchorCount: Int
+    let wallAnchorCount: Int
+
+    var sourceLabel: String { "ARKit_plane_detection_m_W×H×D" }
+}
+
 struct SharpRoomFurnitureItem: Identifiable, Equatable {
     let id = UUID()
     let category: String
@@ -32,11 +42,24 @@ enum SharpRoomFurnitureCatalog {
 
 final class ARMotionTracker: NSObject, ARSessionDelegate {
     let session = ARSession()
+    private let sessionDelegateQueue = DispatchQueue(label: "com.furnit.sharproom.ar-motion", qos: .userInitiated)
     var initialTransform: simd_float4x4?
     var onRelativePoseUpdate: ((simd_float4x4) -> Void)?
     var onTrackingStatus: ((String) -> Void)?
+    var onPlaneRoomMeasurementUpdate: ((ARPlaneRoomMeasurement?) -> Void)?
     /// Debug: log at most once per second while waiting for `.normal` before first reference.
     private var lastLimitedInitialLogTime: CFAbsoluteTime = 0
+    private var planeAnchorsByID: [UUID: ARPlaneAnchor] = [:]
+    private var lastPublishedPlaneMeasurement: ARPlaneRoomMeasurement?
+
+    /// Sharp Live Room: 6DoF pose plus ARKit plane detection.
+    static func makeLiveRoomConfiguration() -> ARWorldTrackingConfiguration {
+        let config = ARWorldTrackingConfiguration()
+        config.worldAlignment = .gravity
+        config.planeDetection = [.horizontal, .vertical]
+        config.isLightEstimationEnabled = false
+        return config
+    }
 
     func start() {
         guard ARWorldTrackingConfiguration.isSupported else {
@@ -44,24 +67,30 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
             logDebug("❌ [ARMotionTracker] world tracking unsupported")
             return
         }
-        let config = ARWorldTrackingConfiguration()
-        config.planeDetection = []
-        config.isLightEstimationEnabled = false
+        let config = Self.makeLiveRoomConfiguration()
         session.delegate = self
+        session.delegateQueue = sessionDelegateQueue
         initialTransform = nil
         lastLimitedInitialLogTime = 0
-        logDebug("🚀 [ARMotionTracker] starting tracking-only AR session")
+        planeAnchorsByID.removeAll()
+        publishPlaneRoomMeasurement(nil)
+        CameraOwnershipDiagnostics.log(owner: "ARMotionTracker", event: "ar_run", details: "reason=start")
+        logDebug("🚀 [ARMotionTracker] starting Live Room AR session worldAlignment=gravity planeDetection=horizontal+vertical frameSemantics=none")
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
     }
 
     func stop() {
+        CameraOwnershipDiagnostics.log(owner: "ARMotionTracker", event: "ar_pause", details: "reason=stop")
         logDebug("🛑 [ARMotionTracker] stopping tracking-only AR session")
         session.pause()
         initialTransform = nil
+        planeAnchorsByID.removeAll()
+        publishPlaneRoomMeasurement(nil)
     }
 
     /// Pauses frame delivery so ARKit stops flooding the main queue (SwiftUI alerts / `TextField` stay responsive).
     func pauseForModal() {
+        CameraOwnershipDiagnostics.log(owner: "ARMotionTracker", event: "ar_pause", details: "reason=modal_or_camera_handoff")
         session.pause()
         logDebug("⏸️ [ARMotionTracker] session paused for modal UI")
     }
@@ -69,18 +98,87 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
     /// Resumes after ``pauseForModal`` without resetting the world map (pair with Sharp Room modal dismiss).
     func resumeAfterModal() {
         guard ARWorldTrackingConfiguration.isSupported else { return }
-        let config = ARWorldTrackingConfiguration()
-        config.planeDetection = []
-        config.isLightEstimationEnabled = false
+        let config = Self.makeLiveRoomConfiguration()
+        CameraOwnershipDiagnostics.log(owner: "ARMotionTracker", event: "ar_run", details: "reason=resume")
         session.run(config, options: [])
         logDebug("▶️ [ARMotionTracker] session resumed after modal UI")
+    }
+
+    deinit {
+        CameraOwnershipDiagnostics.log(owner: "ARMotionTracker", event: "deinit")
     }
 
     /// Clears the stored reference pose so the next `didUpdate` uses the current device pose as identity (Sharp Room recenter).
     func resetReferencePose() {
         initialTransform = nil
-        lastLimitedInitialLogTime = 0
+        // Do **not** set `lastLimitedInitialLogTime = 0`: `now - 0` is huge, so the defer log throttle
+        // would pass on every frame while waiting for `.normal`. Refresh the window from "now" instead.
+        lastLimitedInitialLogTime = CFAbsoluteTimeGetCurrent()
         logDebug("📍 [ARMotionTracker] reference pose cleared — next frame becomes new origin (after .normal)")
+    }
+
+    private func isFloorPlane(_ plane: ARPlaneAnchor) -> Bool {
+        switch plane.classification {
+        case .floor:
+            return true
+        case .none:
+            return plane.alignment == .horizontal
+        default:
+            return false
+        }
+    }
+
+    private func isWallPlane(_ plane: ARPlaneAnchor) -> Bool {
+        switch plane.classification {
+        case .wall:
+            return true
+        case .none:
+            return plane.alignment == .vertical
+        default:
+            return false
+        }
+    }
+
+    private func publishPlaneRoomMeasurement(_ measurement: ARPlaneRoomMeasurement?) {
+        guard lastPublishedPlaneMeasurement != measurement else { return }
+        lastPublishedPlaneMeasurement = measurement
+        DispatchQueue.main.async { [weak self] in
+            self?.onPlaneRoomMeasurementUpdate?(measurement)
+        }
+    }
+
+    private func recomputePlaneRoomMeasurement() {
+        let floorPlanes = planeAnchorsByID.values.filter(isFloorPlane)
+        let wallPlanes = planeAnchorsByID.values.filter(isWallPlane)
+
+        guard let bestFloor = floorPlanes.max(by: {
+            ($0.extent.x * $0.extent.z) < ($1.extent.x * $1.extent.z)
+        }) else {
+            publishPlaneRoomMeasurement(nil)
+            return
+        }
+
+        let wallHeights = wallPlanes.map { $0.extent.y }.filter { $0.isFinite && $0 > 0.2 }
+        guard let bestWallHeight = wallHeights.max(), bestWallHeight > 0.5 else {
+            publishPlaneRoomMeasurement(nil)
+            return
+        }
+
+        let measurement = ARPlaneRoomMeasurement(
+            widthMeters: bestFloor.extent.x,
+            heightMeters: bestWallHeight,
+            depthMeters: bestFloor.extent.z,
+            floorAnchorCount: floorPlanes.count,
+            wallAnchorCount: wallPlanes.count
+        )
+        logDebug(
+            "📐 [AR_MEASURE] authoritative room from planes W×H×D=" +
+                "\(String(format: "%.3f", measurement.widthMeters))×" +
+                "\(String(format: "%.3f", measurement.heightMeters))×" +
+                "\(String(format: "%.3f", measurement.depthMeters))m " +
+                "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount)"
+        )
+        publishPlaneRoomMeasurement(measurement)
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -88,20 +186,21 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         let currentTransform = frame.camera.transform
         let trackingState = frame.camera.trackingState
         if initialTransform == nil {
-            // Capturing during `.limited(.initializing)` bakes a bad reference and the room stays tilted.
-            guard case .normal = trackingState else {
+            // Sharp Live Room uses pose as a motion hint over the splat; IMU-backed poses are still useful
+            // when visual tracking is `.limited` (e.g. phone aimed at the on-screen room). Only `.notAvailable`
+            // has no usable 6DoF.
+            if case .notAvailable = trackingState {
                 let now = CFAbsoluteTimeGetCurrent()
                 if now - lastLimitedInitialLogTime > 1.0 {
                     lastLimitedInitialLogTime = now
                     logDebug(
-                        "📍 [ARMotionTracker] deferring initial reference — trackingState=\(trackingState) " +
-                            "(wait for .normal)"
+                        "📍 [ARMotionTracker] waiting for pose — trackingState=\(trackingState)"
                     )
                 }
                 return
             }
             initialTransform = currentTransform
-            logDebug("📍 [ARMotionTracker] captured initial camera transform (trackingState=normal)")
+            logDebug("📍 [ARMotionTracker] captured initial camera transform (trackingState=\(trackingState))")
         }
         guard let initialTransform else { return }
         // Full device rotation (tilt to look at furniture). Position: floor height locked to reference Y,
@@ -136,7 +235,11 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         var floorPlaneCamera = currentTransform
         floorPlaneCamera.columns.3 = SIMD4<Float>(pSynth.x, pSynth.y, pSynth.z, 1)
         let relativeTransform = simd_mul(simd_inverse(initialTransform), floorPlaneCamera)
-        onRelativePoseUpdate?(relativeTransform)
+        // Always hop to main: never run consumer work synchronously in `didUpdate` — a slow callback
+        // retains many `ARFrame`s and triggers "delegate is retaining N ARFrames" from ARKit.
+        DispatchQueue.main.async { [weak self] in
+            self?.onRelativePoseUpdate?(relativeTransform)
+        }
     }
 
     func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
@@ -151,6 +254,42 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         }
         onTrackingStatus?(status)
         logDebug("📷 [ARMotionTracker] \(status) — trackingState=\(camera.trackingState)")
+    }
+
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+        var changed = false
+        for anchor in anchors {
+            guard let plane = anchor as? ARPlaneAnchor else { continue }
+            planeAnchorsByID[plane.identifier] = plane
+            changed = true
+        }
+        if changed {
+            recomputePlaneRoomMeasurement()
+        }
+    }
+
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        var changed = false
+        for anchor in anchors {
+            guard let plane = anchor as? ARPlaneAnchor else { continue }
+            planeAnchorsByID[plane.identifier] = plane
+            changed = true
+        }
+        if changed {
+            recomputePlaneRoomMeasurement()
+        }
+    }
+
+    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        var changed = false
+        for anchor in anchors {
+            guard anchor is ARPlaneAnchor else { continue }
+            planeAnchorsByID.removeValue(forKey: anchor.identifier)
+            changed = true
+        }
+        if changed {
+            recomputePlaneRoomMeasurement()
+        }
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
