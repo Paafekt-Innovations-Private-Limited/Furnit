@@ -91,6 +91,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var roomRaycastSceneDimensions: RoomRaycastDimensions?
     /// Canonical room intelligence model when available. Used to prefer persisted calibration and camera hints over heuristic sizing.
     var roomModel: RoomModel?
+    /// Sharp Room: when Live Room is on, furniture depth uses the splat depth buffer instead of device-pitch floor heuristics.
+    weak var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost?
     var cameraFocalLengthPixels: Float = 0
 
     private var captureBackCamera: AVCaptureDevice?
@@ -1225,6 +1227,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         furnitureFitCameraStartupInitiated = false
         arCompanionStartGeneration &+= 1
         suppressARDepthCompanionAfterCaptureFailure = false
+        sharpRoomSplatMeasurementHost = nil
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -1546,6 +1549,43 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (depthMeters, measuredPitchDeg, effectivePitchDeg)
     }
 
+    /// Sharp Room Live Room: depth to the splat surface at the floor-contact pixel (matches virtual camera). Caller must be on the main thread.
+    private func liveRoomSplatDepthMetersForFloorContactIfAvailable(
+        contactImageX: Float,
+        contactImageY: Float,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> Float? {
+        guard let host = sharpRoomSplatMeasurementHost,
+              host.arModeEnabled,
+              let rm = roomModel,
+              rm.sceneToMeters > 1e-5,
+              window != nil else { return nil }
+
+        let dest = maskImageView.convert(maskImageView.bounds, to: nil)
+        guard dest.width > 2, dest.height > 2 else { return nil }
+
+        let iw = CGFloat(imageWidth)
+        let ih = CGFloat(imageHeight)
+        let scale = max(dest.width / iw, dest.height / ih)
+        let dispW = iw * scale
+        let dispH = ih * scale
+        let ox = dest.midX - dispW * 0.5
+        let oy = dest.midY - dispH * 0.5
+        let px = (CGFloat(contactImageX) + 0.5) / iw
+        let py = (CGFloat(contactImageY) + 0.5) / ih
+        let windowPoint = CGPoint(x: ox + px * dispW, y: oy + py * dispH)
+
+        guard let sceneDist = host.splatCameraToSurfaceDistanceSceneUnits(atWindowPoint: windowPoint),
+              sceneDist.isFinite,
+              sceneDist > 0.02,
+              sceneDist < 500 else { return nil }
+
+        let meters = sceneDist * rm.sceneToMeters
+        guard meters.isFinite, meters > 0.15, meters < 40 else { return nil }
+        return meters
+    }
+
     private func floorContactSizingResult(
         contactImageX: Float,
         contactImageY: Float,
@@ -1570,12 +1610,55 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         if focalLengthX < 1 { focalLengthX = Float(imageWidth) * 0.73 }
         let focalLengthY = focalLengthX
-        let depthEstimate = floorContactDepthEstimateMeters(
-            contactImageY: clampedImageY,
-            imageHeight: imageHeight,
-            focalPixels: focalLengthY
-        )
-        let depthMeters = depthEstimate.depthMeters
+
+        let liveRoomSplatDepthMeters: Float? = {
+            if Thread.isMainThread {
+                return liveRoomSplatDepthMetersForFloorContactIfAvailable(
+                    contactImageX: clampedImageX,
+                    contactImageY: clampedImageY,
+                    imageWidth: imageWidth,
+                    imageHeight: imageHeight
+                )
+            }
+            var out: Float?
+            DispatchQueue.main.sync {
+                out = self.liveRoomSplatDepthMetersForFloorContactIfAvailable(
+                    contactImageX: clampedImageX,
+                    contactImageY: clampedImageY,
+                    imageWidth: imageWidth,
+                    imageHeight: imageHeight
+                )
+            }
+            return out
+        }()
+
+        let depthMeters: Float
+        let measuredPitchDeg: Float?
+        let effectivePitchDeg: Float
+        let depthPipelineSuffix: String
+        if let dm = liveRoomSplatDepthMeters {
+            depthMeters = dm
+            measuredPitchDeg = nil
+            effectivePitchDeg = 0
+            depthPipelineSuffix = "_splatLiveRoom"
+            logFurnitureFitSize(
+                "phase=metric_depth source=splat_live_room depth_m=\(String(format: "%.3f", dm)) " +
+                    "contact_px=(\(Int(clampedImageX)),\(Int(clampedImageY))) buf=\(imageWidth)×\(imageHeight)"
+            )
+        } else {
+            let depthEstimate = floorContactDepthEstimateMeters(
+                contactImageY: clampedImageY,
+                imageHeight: imageHeight,
+                focalPixels: focalLengthY
+            )
+            depthMeters = depthEstimate.depthMeters
+            measuredPitchDeg = depthEstimate.measuredPitchDeg
+            effectivePitchDeg = depthEstimate.effectivePitchDeg
+            depthPipelineSuffix =
+                "_pitch\(String(format: "%.1f", depthEstimate.effectivePitchDeg))" +
+                (depthEstimate.measuredPitchDeg != nil ? "_motion" : "_fallback")
+        }
+
         let preferredRoomMetricSize = preferredRoomModelMetricSize(
             contactImageX: clampedImageX,
             contactImageY: clampedImageY,
@@ -1632,9 +1715,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (
             metric: (
                 size: FurnitureSceneSize(width: widthMeters, height: heightMeters, depth: depthThicknessMeters),
-                pipeline: sizingPipelinePrefix +
-                    "_pitch\(String(format: "%.1f", depthEstimate.effectivePitchDeg))" +
-                    (depthEstimate.measuredPitchDeg != nil ? "_motion" : "_fallback"),
+                pipeline: sizingPipelinePrefix + depthPipelineSuffix,
                 distanceMeters: depthMeters
             ),
             contactImageX: Int(round(clampedImageX)),
@@ -1642,8 +1723,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             widthPixels: widthPixels,
             heightPixels: heightPixels,
             focalPixels: focalLengthY,
-            measuredPitchDeg: depthEstimate.measuredPitchDeg,
-            effectivePitchDeg: depthEstimate.effectivePitchDeg
+            measuredPitchDeg: measuredPitchDeg,
+            effectivePitchDeg: effectivePitchDeg
         )
     }
 

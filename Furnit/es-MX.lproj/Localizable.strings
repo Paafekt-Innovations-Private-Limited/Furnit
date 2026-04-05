@@ -434,6 +434,11 @@
 "sharp.done" = "¡Listo!";
 "sharp.couldNotCreateRoom" = "No se pudo crear el cuarto";
 "sharp.cancelled" = "Cancelado";
+"sharp.liveRoom" = "Sala en vivo";
+"sharp.stillRoom" = "Sala fija";
+"sharp.liveRoomCameraMode" = "Modo cámara sala en vivo";
+"sharp.stillRoomCameraMode" = "Modo cámara sala fija";
+"sharp.cameraModeToggleAccessibilityHint" = "Cambia entre la cámara de sala fija y sala en vivo.";
 "photoRoom.odrOneTimeDownload" = "Descarga única (~1,2 GB)";
 "photoRoom.modelGeneratedTitle" = "Modelo 3D generado";
 "photoRoom.generationFailedTitle" = "Error al generar";

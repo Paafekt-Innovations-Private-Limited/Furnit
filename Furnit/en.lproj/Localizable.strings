@@ -345,6 +345,11 @@
 "sharp.done" = "Done!";
 "sharp.couldNotCreateRoom" = "Couldn't create room";
 "sharp.cancelled" = "Cancelled";
+"sharp.liveRoom" = "Live Room";
+"sharp.stillRoom" = "Still Room";
+"sharp.liveRoomCameraMode" = "Live Room Camera Mode";
+"sharp.stillRoomCameraMode" = "Still Room Camera Mode";
+"sharp.cameraModeToggleAccessibilityHint" = "Switches between Still Room and Live Room camera.";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "3D Room View";

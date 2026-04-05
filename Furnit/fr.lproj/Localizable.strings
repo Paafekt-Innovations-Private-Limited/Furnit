@@ -434,6 +434,11 @@
 "sharp.done" = "Terminé !";
 "sharp.couldNotCreateRoom" = "Impossible de créer la pièce";
 "sharp.cancelled" = "Annulé";
+"sharp.liveRoom" = "Pièce en direct";
+"sharp.stillRoom" = "Pièce fixe";
+"sharp.liveRoomCameraMode" = "Mode caméra pièce en direct";
+"sharp.stillRoomCameraMode" = "Mode caméra pièce fixe";
+"sharp.cameraModeToggleAccessibilityHint" = "Bascule entre la caméra pièce fixe et pièce en direct.";
 "photoRoom.odrOneTimeDownload" = "Téléchargement unique (~1,2 Go)";
 "photoRoom.modelGeneratedTitle" = "Modèle 3D généré";
 "photoRoom.generationFailedTitle" = "Échec de la génération";

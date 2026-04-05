@@ -86,6 +86,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("🔥 [AppDelegate] didFinishLaunching START")
         }
 
+        SHARPService.purgeTemporarySharpModelsDirectoryAtLaunch()
+
         // ✅ Configure Firebase logging level based on debug mode
         if debugMode {
             // Debug mode ON: Show all Firebase logs

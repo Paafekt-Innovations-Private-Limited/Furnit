@@ -357,7 +357,9 @@ struct SharpRoomView: View {
                             splatMeasurementHost.setARModeEnabled(next)
                         }) {
                             Label(
-                                splatMeasurementHost.arModeEnabled ? "Touch Camera Mode" : "AR Camera Mode",
+                                splatMeasurementHost.arModeEnabled
+                                    ? L10n.Sharp.stillRoomCameraMode
+                                    : L10n.Sharp.liveRoomCameraMode,
                                 systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw" : "iphone"
                             )
                         }
@@ -616,7 +618,7 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    /// Touch ↔ AR quick toggle (⋮ menu also toggles). No status text — avoids clutter and overlap with the D-pad.
+    /// Still Room ↔ Live Room quick toggle (⋮ menu also toggles). No status text — avoids clutter and overlap with the D-pad.
     private var arModeQuickTogglePill: some View {
         Button {
             let next = !splatMeasurementHost.arModeEnabled
@@ -624,7 +626,7 @@ struct SharpRoomView: View {
             splatMeasurementHost.setARModeEnabled(next)
         } label: {
             Label(
-                splatMeasurementHost.arModeEnabled ? "Touch" : "AR",
+                splatMeasurementHost.arModeEnabled ? L10n.Sharp.stillRoom : L10n.Sharp.liveRoom,
                 systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw.fill" : "iphone"
             )
             .font(.caption.weight(.semibold))
@@ -634,7 +636,7 @@ struct SharpRoomView: View {
             .background(Capsule().fill((splatMeasurementHost.arModeEnabled ? Color.green : Color.blue).opacity(0.85)))
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Switches between touch camera and AR motion tracking")
+        .accessibilityHint(L10n.Sharp.cameraModeToggleAccessibilityHint)
     }
 
     /// D-pad cluster only (same notifications as Metal/WebGL parity).
@@ -677,7 +679,7 @@ struct SharpRoomView: View {
         }
     }
 
-    /// AR / Touch pill always **above** D-pad (portrait + landscape). Sharp Room “AR” is motion-tracked splat camera
+    /// Live / Still Room pill always **above** D-pad (portrait + landscape). “Live Room” is motion-tracked splat camera
     /// (no live camera passthrough). Landscape uses a trailing `Spacer` in a full-height column so controls stay top-left.
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
@@ -1018,7 +1020,8 @@ struct SharpRoomView: View {
             },
             onSegmentationMaskMeanColorSRGB: { meanSRGB in
                 segmentedFurnitureMeanSRGB = meanSRGB
-            }
+            },
+            sharpRoomSplatMeasurementHost: splatMeasurementHost
         )
         .ignoresSafeArea()
         .zIndex(100)

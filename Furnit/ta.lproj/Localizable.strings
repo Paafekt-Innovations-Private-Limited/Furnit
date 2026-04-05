@@ -433,6 +433,11 @@
 "sharp.done" = "முடிந்தது!";
 "sharp.couldNotCreateRoom" = "அறையை உருவாக்க முடியவில்லை";
 "sharp.cancelled" = "ரத்துசெய்யப்பட்டது";
+"sharp.liveRoom" = "நேரடி அறை";
+"sharp.stillRoom" = "நிலையான அறை";
+"sharp.liveRoomCameraMode" = "நேரடி அறை கேமரா பயன்முறை";
+"sharp.stillRoomCameraMode" = "நிலையான அறை கேமரா பயன்முறை";
+"sharp.cameraModeToggleAccessibilityHint" = "நிலையான மற்றும் நேரடி அறை கேமராவுக்கு இடையே மாற்றுகிறது.";
 "photoRoom.odrOneTimeDownload" = "ஒருமுறை பதிவிறக்கம் (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D மாதிரி உருவாக்கப்பட்டது";
 "photoRoom.generationFailedTitle" = "உருவாக்கம் தோல்வி";

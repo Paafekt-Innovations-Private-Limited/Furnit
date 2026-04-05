@@ -433,6 +433,11 @@
 "sharp.done" = "تم!";
 "sharp.couldNotCreateRoom" = "تعذر إنشاء الغرفة";
 "sharp.cancelled" = "أُلغي";
+"sharp.liveRoom" = "غرفة مباشرة";
+"sharp.stillRoom" = "غرفة ثابتة";
+"sharp.liveRoomCameraMode" = "وضع كاميرا الغرفة المباشرة";
+"sharp.stillRoomCameraMode" = "وضع كاميرا الغرفة الثابتة";
+"sharp.cameraModeToggleAccessibilityHint" = "يبدّل بين كاميرا الغرفة الثابتة والمباشرة.";
 "photoRoom.odrOneTimeDownload" = "تنزيل لمرة واحدة (~1.2 غيغابايت)";
 "photoRoom.modelGeneratedTitle" = "تم إنشاء النموذج ثلاثي الأبعاد";
 "photoRoom.generationFailedTitle" = "فشل الإنشاء";

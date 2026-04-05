@@ -433,6 +433,11 @@
 "sharp.done" = "हो गया!";
 "sharp.couldNotCreateRoom" = "कमरा नहीं बन सका";
 "sharp.cancelled" = "रद्द";
+"sharp.liveRoom" = "लाइव रूम";
+"sharp.stillRoom" = "स्थिर रूम";
+"sharp.liveRoomCameraMode" = "लाइव रूम कैमरा मोड";
+"sharp.stillRoomCameraMode" = "स्थिर रूम कैमरा मोड";
+"sharp.cameraModeToggleAccessibilityHint" = "स्थिर और लाइव रूम कैमरे के बीच बदलता है।";
 "photoRoom.odrOneTimeDownload" = "एक बार का डाउनलोड (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D मॉडल बन गया";
 "photoRoom.generationFailedTitle" = "निर्माण विफल";

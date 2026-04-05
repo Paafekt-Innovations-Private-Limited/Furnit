@@ -657,6 +657,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var onFirstSegmentationComplete: (() -> Void)?
     /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
+    /// Sharp Room only: splat depth for furniture sizing when Live Room (AR) is on.
+    var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -668,6 +670,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
         view.roomModel = roomModel
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
+        view.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
         view.confidenceThreshold = scoreThreshold
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
@@ -685,6 +688,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.roomDepthMeters = roomDepthMeters
         uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
         uiView.roomModel = roomModel
+        uiView.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
         uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
         uiView.confidenceThreshold = scoreThreshold
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
@@ -696,6 +700,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
         uiView.setModel(nil)
+        uiView.sharpRoomSplatMeasurementHost = nil
         uiView.stop()
     }
 }

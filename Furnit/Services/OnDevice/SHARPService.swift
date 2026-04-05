@@ -2,6 +2,11 @@ import Foundation
 import UIKit
 import CoreML
 
+/// App sandbox temp directory for unsaved Sharp previews (`Room_*_classic.ply`, thumbnails). Not `Documents/SavedRooms`.
+private func sharpModelsTemporaryDirectoryURL() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("SHARPModels", isDirectory: true)
+}
+
 /// PLY URL plus axis-aligned bounds in **scene units** for **`_classic.ply`** (same vertex frame as in-app Metal viewer).
 struct SHARPGenerationResult: Sendable {
     let plyURL: URL
@@ -167,9 +172,27 @@ class SHARPService: ObservableObject {
     // MARK: - File Management
 
     /// Directory for generated PLY files (temp until user explicitly saves)
-    private var modelsDirectory: URL {
-        let tempDirectory = FileManager.default.temporaryDirectory
-        return tempDirectory.appendingPathComponent("SHARPModels", isDirectory: true)
+    private var modelsDirectory: URL { sharpModelsTemporaryDirectoryURL() }
+
+    /// Deletes all files under the temp `SHARPModels` folder. Call on cold launch so restarting from Xcode
+    /// after an abandoned Sharp Room preview does not leave `Room_*_classic.ply` (and thumbnails) on disk.
+    nonisolated static func purgeTemporarySharpModelsDirectoryAtLaunch() {
+        let directoryURL = sharpModelsTemporaryDirectoryURL()
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: directoryURL.path) else { return }
+        do {
+            let childURLs = try fileManager.contentsOfDirectory(
+                at: directoryURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+            for url in childURLs {
+                try fileManager.removeItem(at: url)
+            }
+            logDebug("SHARP: purged \(childURLs.count) preview file(s) from temporary SHARPModels at launch")
+        } catch {
+            logDebug("SHARP: purge SHARPModels at launch failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Initialization
