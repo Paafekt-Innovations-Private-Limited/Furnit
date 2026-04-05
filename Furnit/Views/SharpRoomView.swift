@@ -5,6 +5,23 @@ import Photos
 import MetalKit
 import simd
 
+// MARK: - Modal pause sync (AR + TextField responsiveness)
+
+/// Bundles alert/sheet flags so one `onChange` can pause ARKit without bloating the SwiftUI type checker.
+private struct SharpRoomModalPauseToken: Equatable {
+    var showRoomNameInput: Bool
+    var isSavingRoom: Bool
+    var showSaveAlert: Bool
+    var showDiscardUnsavedAlert: Bool
+    var showCalibrationRejectAlert: Bool
+    var showWallCalibration: Bool
+    var showShareSheet: Bool
+    var showFurnitureDimensionsInput: Bool
+    var showRoomFurnitureCalibrate: Bool
+    var supportsMetricFurnitureMeasurementUI: Bool
+    var isCapturingSnapshot: Bool
+}
+
 // MARK: - Room Boundary Manager
 
 /// Boundary manager for WebGL Gaussian splat rendering
@@ -275,26 +292,31 @@ struct SharpRoomView: View {
         .navigationBarHidden(isCapturingSnapshot)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(allowSave)
+        // Always hide the system back: in landscape its touch target is often covered by the wide `.principal`
+        // toolbar title: explicit leading `Back` stays tappable (saved list + new room).
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                navigationTitleContent
-            }
-            if allowSave {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    if allowSave {
                         if saveWasSuccessful {
                             dismiss()
                         } else {
                             showDiscardUnsavedAlert = true
                         }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text(L10n.Common.back)
-                        }
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text(L10n.Common.back)
                     }
                 }
+            }
+            ToolbarItem(placement: .principal) {
+                navigationTitleContent
+                    .allowsHitTesting(false)
             }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button {
@@ -365,7 +387,9 @@ struct SharpRoomView: View {
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
             loadPersistedRoomMetadataIfNeeded()
+            syncModalHeavyWorkPauseForSharpRoomUI()
         }
+        .onChange(of: sharpRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSharpRoomUI() }
         .onChange(of: showingFurnitureFit) { _, isOn in
             logFurnitureFitSize(
                 "phase=toggle active=\(isOn) suppressStartupProgress=\(furnitureFitInitialSegmentationDone) " +
@@ -407,6 +431,7 @@ struct SharpRoomView: View {
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             OrientationLockManager.shared.unlock()
+            splatMeasurementHost.setModalHeavyWorkPaused(false)
             splatMeasurementHost.setARModeEnabled(false)
             SHARPService.shared.releaseResources()
             yoloeService.releaseResources()
@@ -457,7 +482,8 @@ struct SharpRoomView: View {
                 restartBrainGestureHint()
             }
         }
-        .defersSystemGestures(on: .all)
+        // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
+        .defersSystemGestures(on: [.top, .bottom, .trailing])
         .disableBackSwipeIf(allowSave)
     }
 
@@ -1692,6 +1718,39 @@ struct SharpRoomView: View {
         }
 
         return nil
+    }
+
+    private var sharpRoomModalPauseToken: SharpRoomModalPauseToken {
+        SharpRoomModalPauseToken(
+            showRoomNameInput: showRoomNameInput,
+            isSavingRoom: isSavingRoom,
+            showSaveAlert: showSaveAlert,
+            showDiscardUnsavedAlert: showDiscardUnsavedAlert,
+            showCalibrationRejectAlert: showCalibrationRejectAlert,
+            showWallCalibration: showWallCalibration,
+            showShareSheet: showShareSheet,
+            showFurnitureDimensionsInput: showFurnitureDimensionsInput,
+            showRoomFurnitureCalibrate: showRoomFurnitureCalibrate,
+            supportsMetricFurnitureMeasurementUI: supportsMetricFurnitureMeasurementUI,
+            isCapturingSnapshot: isCapturingSnapshot
+        )
+    }
+
+    /// Pauses ARKit while modal UI is up so `TextField` / alerts are not competing with per-frame `ARSession` main-queue work.
+    private func syncModalHeavyWorkPauseForSharpRoomUI() {
+        let furnitureCalibSheet =
+            showFurnitureDimensionsInput && showRoomFurnitureCalibrate && supportsMetricFurnitureMeasurementUI
+        let pause =
+            showRoomNameInput ||
+            isSavingRoom ||
+            showSaveAlert ||
+            showDiscardUnsavedAlert ||
+            showCalibrationRejectAlert ||
+            showWallCalibration ||
+            showShareSheet ||
+            furnitureCalibSheet ||
+            isCapturingSnapshot
+        splatMeasurementHost.setModalHeavyWorkPaused(pause)
     }
 
     private func startSavingRoom() {

@@ -58,6 +58,11 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.setARModeEnabled(enabled)
     }
 
+    /// Pauses ARKit while alerts/sheets need the main thread (e.g. save-room name field).
+    func setModalHeavyWorkPaused(_ paused: Bool) {
+        coordinator?.setModalHeavyWorkPaused(paused)
+    }
+
     func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {
         coordinator?.setPendingFurnitureItem(item)
     }

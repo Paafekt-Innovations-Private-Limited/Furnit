@@ -222,6 +222,14 @@ struct GaussianSplatView: UIViewRepresentable {
 
         private var didRegisterSharpRoomNotifications = false
         private var notificationTokens: [NSObjectProtocol] = []
+        private var isGeneratingDeviceOrientationForSharpRoom = false
+        /// True while SwiftUI shows alerts/sheets that need a responsive main thread; AR session is paused.
+        private var modalHeavyWorkPaused = false
+        /// Throttle auto-recenter (OOB translation, large twist, orientation flip).
+        private var lastAutoARRecenterTime: CFAbsoluteTime = 0
+        private let arAutoRecenterCooldownSeconds: CFTimeInterval = 0.55
+        /// Total rotation angle of AR relative pose past this (rad) triggers recenter like translation OOB.
+        private let arAutoRecenterMaxRotationRadians: Float = 75 * (.pi / 180)
 
         // ── Camera constants ──────────────────────────────────────────────────
         private let maxPitch:        Float = 1.4
@@ -294,6 +302,10 @@ struct GaussianSplatView: UIViewRepresentable {
             }
             notificationTokens.removeAll()
             didRegisterSharpRoomNotifications = false
+            if isGeneratingDeviceOrientationForSharpRoom {
+                UIDevice.current.endGeneratingDeviceOrientationNotifications()
+                isGeneratingDeviceOrientationForSharpRoom = false
+            }
 
             if Thread.isMainThread {
                 targetView?.delegate = nil
@@ -792,7 +804,9 @@ struct GaussianSplatView: UIViewRepresentable {
                     minY: boundsMin.y, maxY: boundsMax.y,
                     minZ: boundsMin.z, maxZ: boundsMax.z
                 )
-                let baseCameraPadding: Float = arModeEnabled ? 0.55 : 0.3
+                // Back-center → front wall (``RoomBounds/defaultSplatCameraEyeAndTarget``). Same padding in AR
+                // and touch so opening pose matches the “imaginary back wall” list-room framing (AR used looser 0.55 before).
+                let baseCameraPadding: Float = 0.32
                 let (eye, target) = rb.defaultSplatCameraEyeAndTarget(cameraPadding: baseCameraPadding)
                 camPos = eye + cameraOffset
                 lookAt = target + cameraOffset
@@ -919,11 +933,44 @@ struct GaussianSplatView: UIViewRepresentable {
                 arRelativeTransform = matrix_identity_float4x4
             }
             hasLoggedARViewerSpaceTransform = false
+            lastAutoARRecenterTime = CFAbsoluteTimeGetCurrent()
             logDebug(
                 "🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset; AR baseline cleared; " +
                 "alignmentRecenter=\(arModeEnabled ? "inv(arBase)" : "off")"
             )
             view?.setNeedsDisplay()
+        }
+
+        /// Auto-recenter when AR translation leaves the allowed radius, user twists past ``arAutoRecenterMaxRotationRadians``, or device orientation changes.
+        private func performAutoARRecenterIfNeeded(reason: String) {
+            guard arModeEnabled else { return }
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastAutoARRecenterTime < arAutoRecenterCooldownSeconds { return }
+            lastAutoARRecenterTime = now
+            logDebug("🔄 [GaussianSplatAR] auto-recenter reason=\(reason)")
+            performSharpRoomRecenter()
+        }
+
+        /// Angle (rad) of the 3×3 rotation part from identity; robust for orthonormal matrices from ARKit.
+        private static func rotationAngleFromRigidUpper3x3(_ m: simd_float4x4) -> Float {
+            let trace = m.columns.0.x + m.columns.1.y + m.columns.2.z
+            let cosTheta = max(-1, min(1, (trace - 1) * 0.5))
+            return acos(cosTheta)
+        }
+
+        func setModalHeavyWorkPaused(_ paused: Bool) {
+            guard modalHeavyWorkPaused != paused else { return }
+            modalHeavyWorkPaused = paused
+            if paused {
+                if arModeEnabled {
+                    arMotionTracker?.pauseForModal()
+                }
+            } else {
+                if arModeEnabled {
+                    arMotionTracker?.resumeAfterModal()
+                }
+                view?.setNeedsDisplay()
+            }
         }
 
         func setARModeEnabled(_ enabled: Bool) {
@@ -935,6 +982,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     tracker.onRelativePoseUpdate = { [weak self] transform in
                         DispatchQueue.main.async {
                             guard let self else { return }
+                            guard !self.modalHeavyWorkPaused else { return }
                             self.arRelativeTransform = self.scaledRelativeTransform(transform)
                             self.view?.setNeedsDisplay()
                         }
@@ -951,11 +999,22 @@ struct GaussianSplatView: UIViewRepresentable {
                 hasLoggedARViewerSpaceTransform = false
                 measurementHost?.updateARStatus("Starting AR camera tracking")
                 arMotionTracker?.start()
+                if !isGeneratingDeviceOrientationForSharpRoom {
+                    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+                    isGeneratingDeviceOrientationForSharpRoom = true
+                }
                 logDebug(
                     "📱 [GaussianSplatAR] enabled alignment=inv(arBase) photoOrientation=\(arReferenceOrientation) " +
                     "so first AR frame matches touch baseView"
                 )
+                if modalHeavyWorkPaused {
+                    arMotionTracker?.pauseForModal()
+                }
             } else {
+                if isGeneratingDeviceOrientationForSharpRoom {
+                    UIDevice.current.endGeneratingDeviceOrientationNotifications()
+                    isGeneratingDeviceOrientationForSharpRoom = false
+                }
                 arMotionTracker?.stop()
                 arRelativeTransform = matrix_identity_float4x4
                 arRecenterTransform = matrix_identity_float4x4
@@ -1315,13 +1374,25 @@ struct GaussianSplatView: UIViewRepresentable {
                 let viewerFlip = matrix4x4Scale(1, -1, -1)
                 adjusted = viewerFlip * adjusted * viewerFlip
             }
+            let twist = Self.rotationAngleFromRigidUpper3x3(adjusted)
+            if twist > arAutoRecenterMaxRotationRadians {
+                performAutoARRecenterIfNeeded(reason: "ar_rotation_\(Int(twist * 180 / .pi))deg")
+                return matrix_identity_float4x4
+            }
             var scaled = adjusted
             scaled.columns.3.x *= arMovementScale
             scaled.columns.3.y *= arMovementScale
             scaled.columns.3.z *= arMovementScale
             let tRaw = SIMD3<Float>(scaled.columns.3.x, scaled.columns.3.y, scaled.columns.3.z)
-            let tClamped = clampARTranslationVector(tRaw)
-            scaled.columns.3 = SIMD4<Float>(tClamped.x, tClamped.y, tClamped.z, scaled.columns.3.w)
+            let maxR = arMaxAllowedTranslation
+            let len = simd_length(tRaw)
+            if len > maxR {
+                performAutoARRecenterIfNeeded(
+                    reason: String(format: "ar_translation_oob len=%.2f max=%.2f", len, maxR)
+                )
+                return matrix_identity_float4x4
+            }
+            scaled.columns.3 = SIMD4<Float>(tRaw.x, tRaw.y, tRaw.z, scaled.columns.3.w)
             if !hasLoggedARViewerSpaceTransform {
                 hasLoggedARViewerSpaceTransform = true
                 let raw = transform.columns.3
@@ -1340,13 +1411,6 @@ struct GaussianSplatView: UIViewRepresentable {
             let extent = boundsMax - boundsMin
             let diagonal = simd_length(extent)
             return max(2.0, diagonal * 0.5)
-        }
-
-        private func clampARTranslationVector(_ translation: SIMD3<Float>) -> SIMD3<Float> {
-            let maxR = arMaxAllowedTranslation
-            let len = simd_length(translation)
-            if len <= maxR || len < 1e-6 { return translation }
-            return translation * (maxR / len)
         }
 
         private func placePendingFurniture(at screenPoint: CGPoint, item: SharpRoomFurnitureItem) {
@@ -1807,6 +1871,16 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
             }
             notificationTokens.append(moveRightToken)
+
+            let orientationToken = nc.addObserver(
+                forName: UIDevice.orientationDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self, self.arModeEnabled else { return }
+                self.performAutoARRecenterIfNeeded(reason: "device_orientation")
+            }
+            notificationTokens.append(orientationToken)
         }
 
         // MARK: - Matrix Utilities

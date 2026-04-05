@@ -60,6 +60,22 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         initialTransform = nil
     }
 
+    /// Pauses frame delivery so ARKit stops flooding the main queue (SwiftUI alerts / `TextField` stay responsive).
+    func pauseForModal() {
+        session.pause()
+        logDebug("⏸️ [ARMotionTracker] session paused for modal UI")
+    }
+
+    /// Resumes after ``pauseForModal`` without resetting the world map (pair with Sharp Room modal dismiss).
+    func resumeAfterModal() {
+        guard ARWorldTrackingConfiguration.isSupported else { return }
+        let config = ARWorldTrackingConfiguration()
+        config.planeDetection = []
+        config.isLightEstimationEnabled = false
+        session.run(config, options: [])
+        logDebug("▶️ [ARMotionTracker] session resumed after modal UI")
+    }
+
     /// Clears the stored reference pose so the next `didUpdate` uses the current device pose as identity (Sharp Room recenter).
     func resetReferencePose() {
         initialTransform = nil
@@ -128,11 +144,11 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
             status = "AR tracking normal"
         case .notAvailable:
             status = "AR tracking unavailable"
-        case .limited(let reason):
-            status = "AR tracking limited: \(reason)"
+        case .limited:
+            status = "AR tracking limited"
         }
         onTrackingStatus?(status)
-        logDebug("📷 [ARMotionTracker] \(status)")
+        logDebug("📷 [ARMotionTracker] \(status) — trackingState=\(camera.trackingState)")
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
