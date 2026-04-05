@@ -197,6 +197,7 @@ struct GaussianSplatView: UIViewRepresentable {
         private var arModeEnabled: Bool = false
         private var arRelativeTransform: simd_float4x4 = matrix_identity_float4x4
         private let arMovementScale: Float = 2.0
+        private var hasLoggedARViewerSpaceTransform = false
         private var pendingFurnitureItem: SharpRoomFurnitureItem?
         private var placedFurniture: [SharpRoomPlacedFurniture] = []
         private var selectedFurnitureID: UUID?
@@ -875,6 +876,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     arMotionTracker = tracker
                 }
                 arRelativeTransform = matrix_identity_float4x4
+                hasLoggedARViewerSpaceTransform = false
                 measurementHost?.updateARStatus("Starting AR camera tracking")
                 arMotionTracker?.start()
                 logDebug("📱 [GaussianSplatAR] enabled")
@@ -1230,10 +1232,27 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         private func scaledRelativeTransform(_ transform: simd_float4x4) -> simd_float4x4 {
-            var scaled = transform
+            var adjusted = transform
+            if isSharpClassicPly {
+                // Classic SHARP viewer space flips Y/Z; conjugate the AR pose into that same basis
+                // before we apply it to the camera world transform.
+                let viewerFlip = matrix4x4Scale(1, -1, -1)
+                adjusted = viewerFlip * adjusted * viewerFlip
+            }
+            var scaled = adjusted
             scaled.columns.3.x *= arMovementScale
             scaled.columns.3.y *= arMovementScale
             scaled.columns.3.z *= arMovementScale
+            if !hasLoggedARViewerSpaceTransform {
+                hasLoggedARViewerSpaceTransform = true
+                let raw = transform.columns.3
+                let mapped = adjusted.columns.3
+                logDebug(
+                    "📱 [GaussianSplatAR] raw_relative_pos=(\(String(format: "%.4f", raw.x)),\(String(format: "%.4f", raw.y)),\(String(format: "%.4f", raw.z))) " +
+                    "viewer_space_pos=(\(String(format: "%.4f", mapped.x)),\(String(format: "%.4f", mapped.y)),\(String(format: "%.4f", mapped.z))) " +
+                    "classic_flip_applied=\(isSharpClassicPly)"
+                )
+            }
             return scaled
         }
 

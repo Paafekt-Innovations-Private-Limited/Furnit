@@ -857,6 +857,18 @@ struct SharpRoomView: View {
         return RoomRaycastDimensions(width: ext.width, height: ext.height, depth: ext.depth)
     }
 
+    private var savedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        guard let savedRoomModel,
+              let width = savedRoomModel.roomWidth,
+              let height = savedRoomModel.roomHeight,
+              let depth = savedRoomModel.roomDepth,
+              width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
+        }
+        return (width, height, depth)
+    }
+
     /// Width/height/depth for nav title, FurnitureFit, and save.
     /// Resolution order: ``yoloWallMeasurementMeters`` (photo wall measure) → ``roomModel`` plane-aware metres
     /// (floor–ceiling height, opposing-wall footprint) → if **bounds-based**, full PLY AABB (scene) × ``roomModel.sceneToMeters``.
@@ -945,6 +957,9 @@ struct SharpRoomView: View {
     private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let y = yoloWallMeasurementMeters {
             return (y.width, y.height, y.depth)
+        }
+        if savedRoomModel != nil, let saved = savedRoomMetersDimensions {
+            return saved
         }
         if let m = roomModelMetersDimensions {
             return m
@@ -2045,10 +2060,10 @@ struct SharpRoomView: View {
                     from: viewerPlyURL,
                     name: savedName,
                     photoOrientation: photoOrientation,
-                    roomWidth: nil,
+                    roomWidth: roomW,
                     roomHeight: roomH,
                     roomDepth: roomD,
-                    roomSceneWidth: nil,
+                    roomSceneWidth: modelSceneForSave?.width,
                     roomSceneHeight: modelSceneForSave?.height,
                     roomSceneDepth: modelSceneForSave?.depth
                 ) { success, error in
@@ -2065,7 +2080,7 @@ struct SharpRoomView: View {
                         } else if success {
                             print(
                                 "[SAVE_ENHANCED_METADATA] room=\"\(savedName)\" — no EnhancedRoomMetadata (nil). " +
-                                "PLY save used display meters H×D=\(roomH)×\(roomD) (width omitted)"
+                                "PLY save used display meters W×H×D=\(roomW)×\(roomH)×\(roomD)"
                             )
                         }
                         saveProgress = 1.0
