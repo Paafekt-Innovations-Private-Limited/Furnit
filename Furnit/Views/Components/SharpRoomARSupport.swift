@@ -35,6 +35,8 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
     var initialTransform: simd_float4x4?
     var onRelativePoseUpdate: ((simd_float4x4) -> Void)?
     var onTrackingStatus: ((String) -> Void)?
+    /// Debug: log at most once per second while waiting for `.normal` before first reference.
+    private var lastLimitedInitialLogTime: CFAbsoluteTime = 0
 
     func start() {
         guard ARWorldTrackingConfiguration.isSupported else {
@@ -47,6 +49,7 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         config.isLightEstimationEnabled = false
         session.delegate = self
         initialTransform = nil
+        lastLimitedInitialLogTime = 0
         logDebug("🚀 [ARMotionTracker] starting tracking-only AR session")
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
     }
@@ -60,17 +63,40 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
     /// Clears the stored reference pose so the next `didUpdate` uses the current device pose as identity (Sharp Room recenter).
     func resetReferencePose() {
         initialTransform = nil
-        logDebug("📍 [ARMotionTracker] reference pose cleared — next frame becomes new origin")
+        lastLimitedInitialLogTime = 0
+        logDebug("📍 [ARMotionTracker] reference pose cleared — next frame becomes new origin (after .normal)")
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let currentTransform = frame.camera.transform
         if initialTransform == nil {
+            // Capturing during `.limited(.initializing)` bakes a bad reference and the room stays tilted.
+            guard case .normal = frame.camera.trackingState else {
+                let now = CFAbsoluteTimeGetCurrent()
+                if now - lastLimitedInitialLogTime > 1.0 {
+                    lastLimitedInitialLogTime = now
+                    logDebug(
+                        "📍 [ARMotionTracker] deferring initial reference — trackingState=\(frame.camera.trackingState) " +
+                            "(wait for .normal)"
+                    )
+                }
+                return
+            }
             initialTransform = currentTransform
-            logDebug("📍 [ARMotionTracker] captured initial camera transform")
+            logDebug("📍 [ARMotionTracker] captured initial camera transform (trackingState=normal)")
         }
         guard let initialTransform else { return }
-        let relativeTransform = simd_mul(simd_inverse(initialTransform), currentTransform)
+        // Keep full device orientation (so the user can tilt to look at furniture) but lock world-space
+        // height to the reference frame. Raw `inv(initial)*current` couples pitch/height drift with
+        // translation so walking reads as sliding up/down; floor-locked Y feels like walking on the room floor.
+        var floorPlaneCamera = currentTransform
+        floorPlaneCamera.columns.3 = SIMD4<Float>(
+            currentTransform.columns.3.x,
+            initialTransform.columns.3.y,
+            currentTransform.columns.3.z,
+            1
+        )
+        let relativeTransform = simd_mul(simd_inverse(initialTransform), floorPlaneCamera)
         onRelativePoseUpdate?(relativeTransform)
     }
 

@@ -878,6 +878,12 @@ struct GaussianSplatView: UIViewRepresentable {
             }
         }
 
+        /// When `arRelativeTransform` is identity, `baseCameraWorld * arBase * arTouchModeAlignmentRecenter == baseCameraWorld`,
+        /// so the AR view matrix matches touch-mode ``baseView`` (no portrait roll pop or post-recenter tilt).
+        private var arTouchModeAlignmentRecenter: simd_float4x4 {
+            simd_inverse(arBaseOrientationTransform)
+        }
+
         // MARK: - Room measurement (depth buffer raycast)
 
         /// Queues one redraw so depth / view–proj matrices match the current camera before a CPU depth read.
@@ -901,13 +907,22 @@ struct GaussianSplatView: UIViewRepresentable {
             zoomLevel = 1.0
             sceneScale = SIMD2(1, 1)
             if arModeEnabled {
-                arRecenterTransform = simd_inverse(arRelativeTransform)
+                // `arRelativeTransform` is always built from ARMotionTracker’s *session-start* reference.
+                // `arRecenterTransform = inverse(arRelative)` only cancels motion if the next `arRelative`
+                // stays in that same frame — it does not, so the room skews after recenter.
+                // Clear the tracker baseline so the next frame’s relative pose is identity at this device pose.
+                arMotionTracker?.resetReferencePose()
+                arRelativeTransform = matrix_identity_float4x4
+                arRecenterTransform = arTouchModeAlignmentRecenter
             } else {
                 arRecenterTransform = matrix_identity_float4x4
                 arRelativeTransform = matrix_identity_float4x4
             }
             hasLoggedARViewerSpaceTransform = false
-            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit, zoom, scale, AR offset")
+            logDebug(
+                "🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset; AR baseline cleared; " +
+                "alignmentRecenter=\(arModeEnabled ? "inv(arBase)" : "off")"
+            )
             view?.setNeedsDisplay()
         }
 
@@ -932,11 +947,14 @@ struct GaussianSplatView: UIViewRepresentable {
                     arMotionTracker = tracker
                 }
                 arRelativeTransform = matrix_identity_float4x4
-                arRecenterTransform = matrix_identity_float4x4
+                arRecenterTransform = arTouchModeAlignmentRecenter
                 hasLoggedARViewerSpaceTransform = false
                 measurementHost?.updateARStatus("Starting AR camera tracking")
                 arMotionTracker?.start()
-                logDebug("📱 [GaussianSplatAR] enabled")
+                logDebug(
+                    "📱 [GaussianSplatAR] enabled alignment=inv(arBase) photoOrientation=\(arReferenceOrientation) " +
+                    "so first AR frame matches touch baseView"
+                )
             } else {
                 arMotionTracker?.stop()
                 arRelativeTransform = matrix_identity_float4x4
