@@ -28,6 +28,15 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.performSharpRoomRecenter()
     }
 
+    /// Euclidean distance from the **splat virtual camera** to the surface hit along the view ray, in **scene units**.
+    /// Point must be in **window** coordinates (same as ``UIView.convert(_:to:)`` with `nil`). Call from the main thread.
+    /// Used by Furniture Fit in Live Room so metric depth matches the rendered splat, not the floor-contact + device-pitch heuristic.
+    func splatCameraToSurfaceDistanceSceneUnits(atWindowPoint windowPoint: CGPoint) -> Float? {
+        guard let mtkView = coordinator?.view else { return nil }
+        let pointInSplat = mtkView.convert(windowPoint, from: nil)
+        return coordinator?.depthAt(screenPoint: pointInSplat)
+    }
+
     /// Reads the last splat depth buffer and builds a trimmed grid point cloud (see ``GaussianSplatView.Coordinator/measureRoomFromDepthBuffer()``). Call on the main thread after at least one frame.
     func measureRoom() -> RoomRaycastDimensions? {
         coordinator?.measureRoomFromDepthBuffer()

@@ -1020,7 +1020,8 @@ struct SharpRoomView: View {
             },
             onSegmentationMaskMeanColorSRGB: { meanSRGB in
                 segmentedFurnitureMeanSRGB = meanSRGB
-            }
+            },
+            sharpRoomSplatMeasurementHost: splatMeasurementHost
         )
         .ignoresSafeArea()
         .zIndex(100)
