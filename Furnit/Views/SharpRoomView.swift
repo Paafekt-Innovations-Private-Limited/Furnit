@@ -677,24 +677,25 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Portrait: AR pill **above** D-pad so they never overlap. Landscape: D-pad only (AR from ⋮ menu).
+    /// AR / Touch pill always **above** D-pad (portrait + landscape). Sharp Room “AR” is motion-tracked splat camera
+    /// (no live camera passthrough). Landscape uses a trailing `Spacer` in a full-height column so controls stay top-left.
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            Group {
-                if photoOrientation == .portrait {
-                    VStack(alignment: .leading, spacing: 12) {
-                        arModeQuickTogglePill
-                        cameraDPadCluster
-                    }
-                } else {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    arModeQuickTogglePill
                     cameraDPadCluster
                 }
+                .padding(.leading, 12)
+                .padding(.top, 12)
+                if photoOrientation == .landscape {
+                    Spacer(minLength: 0)
+                }
             }
-            .padding(.leading, 12)
-            .padding(.top, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(18)
@@ -1348,16 +1349,6 @@ struct SharpRoomView: View {
                     .allowsHitTesting(false)
                 HStack(spacing: 20) {
                     brainButtonWithHintAbove
-                    HStack(spacing: 6) {
-                        Image(systemName: "iphone.landscape").font(.caption)
-                        Text(NSLocalizedString("orientation.heldHorizontally", comment: "")).font(.caption2)
-                        Text("-").font(.caption2)
-                        Text(NSLocalizedString("orientation.landscape", comment: "")).font(.caption2).fontWeight(.medium)
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Color.black.opacity(0.5)).cornerRadius(8)
-                    .allowsHitTesting(false)
                     if showingFurnitureFit {
                         VStack(alignment: .trailing, spacing: 8) {
                             roomIntelligencePlacementCardResetOnExit
