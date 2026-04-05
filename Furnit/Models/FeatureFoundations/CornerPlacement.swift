@@ -1,6 +1,7 @@
 import Foundation
 import simd
 
+
 public struct CornerPlacementSuggestion: Equatable, Sendable {
     public let corner: RoomCorner
     public let suggestedPositionScene: SIMD3<Float>
@@ -43,8 +44,23 @@ public struct CornerPlacement {
     }
 
     private func candidateRotations(for corner: RoomCorner) -> [Float] {
-        let base = atan2(corner.bisector.z, corner.bisector.x)
+        let base = inwardBisectorYaw(for: corner)
         return [base, base + (.pi / 2)]
+    }
+
+    private func inwardBisectorXZ(for corner: RoomCorner) -> SIMD3<Float> {
+        let flatCenter = SIMD3<Float>(roomModel.aabb.center.x, roomModel.floor.pointOnPlane.y, roomModel.aabb.center.z)
+        var delta = flatCenter - corner.position
+        delta = SIMD3<Float>(delta.x, 0, delta.z)
+        if simd_length_squared(delta) < 1e-8 {
+            return SIMD3<Float>(1, 0, 0)
+        }
+        return simd_normalize(delta)
+    }
+
+    private func inwardBisectorYaw(for corner: RoomCorner) -> Float {
+        let b = inwardBisectorXZ(for: corner)
+        return atan2(b.z, b.x)
     }
 
     private func evaluate(
@@ -53,7 +69,8 @@ public struct CornerPlacement {
         rotation: Float
     ) -> CornerPlacementSuggestion? {
         let halfDiagonalScene = sqrt(furniture.widthM * furniture.widthM + furniture.depthM * furniture.depthM) / (2 * max(roomModel.sceneToMeters, 0.0001))
-        let position = corner.position + corner.bisector * halfDiagonalScene
+        let bisector = inwardBisectorXZ(for: corner)
+        let position = corner.position + bisector * halfDiagonalScene
         guard roomModel.roomBounds.contains(position) else { return nil }
 
         let clearance = ClearanceReport(frontM: 1.0, backM: 0.2, leftM: 0.2, rightM: 0.2)

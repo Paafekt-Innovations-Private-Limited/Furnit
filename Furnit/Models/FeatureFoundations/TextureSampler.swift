@@ -63,7 +63,7 @@ private func classifyMaterial(_ color: SIMD3<Float>) -> SurfacePalette.MaterialH
     let brightness = maxChannel
 
     if brightness > 0.86, saturation < 0.10 { return .plaster }
-    if brightness < 0.18 { return .fabric }
+    if brightness < 0.18 { return .carpet }
     if r > g, g > b, saturation > 0.12 { return .wood }
     if brightness > 0.60, saturation < 0.15 { return .concrete }
     if brightness > 0.45, saturation > 0.05 { return .tile }
@@ -116,13 +116,13 @@ public struct TextureSampler {
     }
 
     private func classifySurface(_ point: SIMD3<Float>) -> SurfaceSamplePoint.SurfaceType {
-        if let floor = roomModel.floorPlane, abs(floor.distance(to: point)) < 0.10 {
+        if abs(roomModel.floor.distance(to: point)) < 0.10 {
             return .floor
         }
-        if let ceiling = roomModel.ceilingPlane, abs(ceiling.distance(to: point)) < 0.10 {
+        if let ceiling = roomModel.ceiling, abs(ceiling.distance(to: point)) < 0.10 {
             return .ceiling
         }
-        if roomModel.wallPlanes.contains(where: { abs($0.distance(to: point)) < 0.10 }) {
+        if roomModel.walls.contains(where: { abs($0.distance(to: point)) < 0.10 }) {
             return .wall
         }
         return .unknown
@@ -134,10 +134,10 @@ public struct TextureSampler {
             let colors = screenPoints.compactMap { colorReader.colorAt(screenPoint: $0) }
             guard colors.count >= 3 else { return nil }
             let clustered = kMeansColors(colors, k: min(5, colors.count))
-            return SurfacePalette.SurfaceColors(
-                dominantColors: clustered,
-                materialHints: clustered.map(classifyMaterial)
-            )
+            let primary = clustered[0]
+            let secondary = clustered.count > 1 ? clustered[1] : nil
+            let hint = classifyMaterial(primary)
+            return SurfacePalette.SurfaceColors(primary: primary, secondary: secondary, hint: hint)
         }
 
         return SurfacePalette(

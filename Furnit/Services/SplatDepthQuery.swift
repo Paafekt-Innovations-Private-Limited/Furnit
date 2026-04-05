@@ -19,6 +19,10 @@ public protocol SplatDepthQueryable: AnyObject {
 
     /// Viewport size in points.
     var viewportSize: CGSize { get }
+
+    /// Strided subsample of true 3D splat centers in scene space when the PLY loader has built it; otherwise nil.
+    /// Used for floor-aligned PLY extent estimates (not viewport depth-grid points).
+    var trimmedSplatPositions: [SIMD3<Float>]? { get }
 }
 
 public extension SplatDepthQueryable {
@@ -64,5 +68,41 @@ public extension SplatDepthQueryable {
         }
 
         return points
+    }
+}
+
+// MARK: - Two-tap scene scale (known metric distance between two screen points)
+
+public struct TwoPointSplatCalibration: Sendable {
+    public let pointA: SIMD3<Float>
+    public let pointB: SIMD3<Float>
+    public let knownDistanceMeters: Float
+    public let sceneDistance: Float
+    public let sceneToMeters: Float
+
+    /// Unprojects two taps and derives ``sceneToMeters`` = `knownDistanceMeters` / scene segment length.
+    public static func make(
+        screenA: CGPoint,
+        screenB: CGPoint,
+        knownDistanceMeters: Float,
+        depthQuery: SplatDepthQueryable
+    ) -> TwoPointSplatCalibration? {
+        guard knownDistanceMeters > 0.01,
+              let depthA = depthQuery.depthAt(screenPoint: screenA),
+              let depthB = depthQuery.depthAt(screenPoint: screenB),
+              let pointA = depthQuery.unproject(screenPoint: screenA, depth: depthA),
+              let pointB = depthQuery.unproject(screenPoint: screenB, depth: depthB)
+        else { return nil }
+
+        let sceneDist = simd_distance(pointA, pointB)
+        guard sceneDist > 0.001 else { return nil }
+
+        return TwoPointSplatCalibration(
+            pointA: pointA,
+            pointB: pointB,
+            knownDistanceMeters: knownDistanceMeters,
+            sceneDistance: sceneDist,
+            sceneToMeters: knownDistanceMeters / sceneDist
+        )
     }
 }
