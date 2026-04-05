@@ -1498,6 +1498,7 @@ struct SinglePhotoRoomView: View {
     private func startSHARPGeneration(image: UIImage) {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
+        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
 
         splatViewerDestination = nil
         let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
@@ -1516,6 +1517,7 @@ struct SinglePhotoRoomView: View {
         URLCache.shared.removeAllCachedResponses()
         // Drop YOLOE while SHARP runs (same as sheet onAppear) so two large Core ML stacks are not resident.
         YOLOEModelService.shared.releaseResources()
+        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_yolo_release")
 
         Task {
             do {
@@ -1529,6 +1531,7 @@ struct SinglePhotoRoomView: View {
                 )
 
                 logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
+                logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_generate ply=\(gen.plyURL.lastPathComponent)")
                 await MainActor.run {
                     splatViewerDestination = SplatViewerDestination(
                         plyURL: gen.plyURL,

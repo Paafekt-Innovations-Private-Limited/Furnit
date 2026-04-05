@@ -435,11 +435,13 @@ class SHARPService: ObservableObject {
         photoLibraryAssetLocalId: String? = nil,
     ) async throws -> SHARPGenerationResult {
         logDebug("SHARP: Starting Gaussian generation")
+        logMemorySnapshot("SHARPService.generateGaussians", details: "phase=start")
 
         // Load model on-demand if not already loaded
         if model == nil {
             logDebug("SHARP: Model not loaded yet, loading now...")
             await loadModel()
+            logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_model_load")
         }
 
         guard model != nil else {
@@ -456,31 +458,59 @@ class SHARPService: ObservableObject {
         do {
             // Compute the small working image in a tight scope so the full-res originals
             // are released before Core ML prediction (saves ~100 MB on 4 GB devices).
-            let (workingImage, orientedSize): (UIImage, CGSize) = autoreleasepool {
+            let preparedImage: (UIImage, CGSize) = autoreleasepool {
                 let orientedSize = Self.orientedPixelSize(for: image)
                 let prepared = Self.prepareImageForSharp(image)
                 return (prepared, orientedSize)
             }
+            var workingImage: UIImage? = preparedImage.0
+            let orientedSize = preparedImage.1
 
             progress = 0.1
             statusMessage = L10n.Sharp.creatingRoom
             progress = 0.2
-            let gaussianParams = try await preprocessAndRunInference(workingImage: workingImage)
-            logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
+            logMemorySnapshot(
+                "SHARPService.generateGaussians",
+                details: "phase=before_inference working_px=\(Int((workingImage?.size.width ?? 0) * (workingImage?.scale ?? 1)))x\(Int((workingImage?.size.height ?? 0) * (workingImage?.scale ?? 1)))"
+            )
+            guard let workingImageForInference = workingImage else {
+                throw GenerationError.invalidImage
+            }
+            var gaussianParams: [Float]? = try await preprocessAndRunInference(workingImage: workingImageForInference)
+            let gaussianCount = (gaussianParams?.count ?? 0) / Self.paramsPerGaussian
+            logDebug("SHARP: Generated \(gaussianCount) Gaussians")
+            logMemorySnapshot(
+                "SHARPService.generateGaussians",
+                details: "phase=after_inference gaussian_count=\(gaussianCount)"
+            )
 
             statusMessage = L10n.Sharp.almostDone
             progress = 0.8
             let plyURLs = try await writePLY(
-                gaussianParams,
+                gaussianParams ?? [],
                 sourceImageSize: orientedSize,
                 applyAspectCorrection: true
             )
+            gaussianParams?.removeAll(keepingCapacity: false)
+            gaussianParams = nil
+            logMemorySnapshot(
+                "SHARPService.generateGaussians",
+                details: "phase=after_write_ply ply=\(plyURLs.classic.lastPathComponent)"
+            )
+            logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_drop_gaussian_params")
             logSharpMilestone(
                 "PLY written on Swift/Core ML path (not C++): \(plyURLs.classic.lastPathComponent) — Metal viewer loads this file",
             )
             logDebug("SHARP: Saved classic PLY to \(plyURLs.classic.path)")
-            let thumbSource = Self.imageForWallMeasurementThumbnail(workingImage, maxPixel: 1024)
+            guard let workingImageForThumbnail = workingImage else {
+                throw GenerationError.invalidImage
+            }
+            let thumbSource = autoreleasepool {
+                Self.imageForWallMeasurementThumbnail(workingImageForThumbnail, maxPixel: 1024)
+            }
             saveThumbnailForWallMeasurement(image: thumbSource, classicPlyURL: plyURLs.classic)
+            workingImage = nil
+            logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_drop_working_image")
             let roomFolder = plyURLs.classic.deletingLastPathComponent()
             await CameraExifSidecar.writeMerged(
                 roomFolder: roomFolder,
@@ -496,6 +526,7 @@ class SHARPService: ObservableObject {
             statusMessage = L10n.Sharp.done
 
             releaseInferenceMemoryAfterGeneration()
+            logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_release_inference_memory")
 
             return SHARPGenerationResult(
                 plyURL: plyURL,
@@ -510,6 +541,7 @@ class SHARPService: ObservableObject {
             logSharpMilestone("generation failed: \(error.localizedDescription)")
             logDebug("SHARP: Generation failed: \(error)")
             releaseInferenceMemoryAfterGeneration()
+            logMemorySnapshot("SHARPService.generateGaussians", details: "phase=failed_after_release")
             throw error
         }
     }
@@ -1081,6 +1113,9 @@ class SHARPService: ObservableObject {
             "classic_aabb_max_xyz=(\(String(format: "%.6f", clMaxX)),\(String(format: "%.6f", clMaxY)),\(String(format: "%.6f", clMaxZ))) " +
             "first_gaussian_row_xyz_pre_writePLYFlip=(\(firstRowXYZ)) splats=\(gaussianCount) file=\(classicFileName)"
         )
+
+        rows.removeAll(keepingCapacity: false)
+        logMemorySnapshot("SHARPService.writePLY", details: "phase=after_drop_rows ply=\(classicFileName) splats=\(gaussianCount)")
 
         return (classic: classicFileURL, aabbWidth: width, aabbHeight: height, aabbDepth: depth)
     }

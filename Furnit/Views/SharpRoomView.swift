@@ -217,6 +217,7 @@ struct SharpRoomView: View {
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0.0
+    @State private var saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
     @State private var savingTimer: Timer?
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
@@ -278,7 +279,7 @@ struct SharpRoomView: View {
                 .minimumScaleFactor(0.55)
                 .multilineTextAlignment(.center)
             if splatMeasurementHost.arModeEnabled {
-                Text("Saved room dimensions; AR only drives camera motion")
+                Text("AR plane detection is measuring the room")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(2)
@@ -442,16 +443,9 @@ struct SharpRoomView: View {
             guard !loading, !didEnableDefaultARCamera else { return }
             didEnableDefaultARCamera = true
             if allowSave {
-                logDebug("📱 [SharpRoomView] Splat loaded — deferring AR camera auto-enable for fresh SHARP room (conservative camera handoff after capture/generation)")
-                autoEnableARTask?.cancel()
-                autoEnableARTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 2_500_000_000)
-                    if Task.isCancelled { return }
-                    splatMeasurementHost.setARModeEnabled(true)
-                }
+                logDebug("📱 [SharpRoomView] Fresh SHARP room loaded — AR will not auto-start; user must enable AR after SHARP generation/resources fully settle")
             } else {
-                logDebug("📱 [SharpRoomView] Splat loaded — enabling AR camera by default for saved room")
-                splatMeasurementHost.setARModeEnabled(true)
+                logDebug("📱 [SharpRoomView] Saved room loaded — defaulting to still room; AR will only start on user action")
             }
         }
         .onDisappear {
@@ -546,8 +540,8 @@ struct SharpRoomView: View {
         .onChange(of: isLoading) { _, loading in
             guard !loading else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                splatMeasurementHost.requestRedrawForDepthMeasure()
-                scheduleRoomGeometryExtractionIfNeeded()
+                // AR-only mode: disable legacy SHARP depth-grid / RoomGeometryEngine room measurement.
+                logDebug("📐 [SharpRoomView] AR-only mode — skipped non-AR room geometry extraction")
             }
         }
         .onAppear {
@@ -560,11 +554,7 @@ struct SharpRoomView: View {
     }
 
     private func logSharpRoomDimensionApproaches(metalBounds _: RoomBounds) {
-        let plyKind = viewerUsesClassicPlyBehavior ? "classic_ply" : "base_ply"
-        let mode = roomDimensionsBoundBased ? "bounds_based" : "plane_based"
-        logPlyBoundsDiagnostic(
-            "SHARP_ROOM_COMPARE (5) metric_room_dims (\(plyKind) \(viewerPlyURL.lastPathComponent)): \(mode)"
-        )
+        logDebug("📐 [SharpRoomView] AR-only mode — skipped SHARP room dimension comparison logging")
     }
 
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {}
@@ -902,33 +892,18 @@ struct SharpRoomView: View {
     }
 
     /// Width/height/depth for nav title, FurnitureFit, and save.
-    /// On a **fresh** SHARP session (`savedRoomModel == nil`), async geometry extraction still builds
-    /// ``roomModel`` for placement / sidecar, but **never** replaces these displayed metres (avoids 3×4 m
-    /// defaults jumping after extraction). Saved-home rows use `.meta` / persisted model instead.
+    /// AR-only mode: dimensions come from AR plane detection, not SHARP geometry / depth-grid extraction.
     private var displayRoomWidth: Float {
-        arPlaneMeasuredRoomDimensions?.width
-            ?? calibratedRoomWidth
-            ?? resolvedRoomMetersDimensions?.width
-            ?? savedRoomWidth
-            ?? savedRoomModel?.roomWidth
-            ?? 4.0
+        arPlaneMeasuredRoomDimensions?.width ?? 0
     }
 
     private var displayRoomHeight: Float {
-        arPlaneMeasuredRoomDimensions?.height
-            ?? calibratedRoomHeight
-            ?? resolvedRoomMetersDimensions?.height
-            ?? savedRoomHeight
-            ?? savedRoomModel?.roomHeight
-            ?? 3.0
+        arPlaneMeasuredRoomDimensions?.height ?? 0
     }
 
     /// Depth in meters.
     private var displayRoomDepth: Float {
-        arPlaneMeasuredRoomDimensions?.depth
-            ?? resolvedRoomMetersDimensions?.depth
-            ?? savedRoomModel?.roomDepth
-            ?? 4.0
+        arPlaneMeasuredRoomDimensions?.depth ?? 0
     }
 
     /// Nav bar: **height × depth** in metres only (width deferred).
@@ -938,9 +913,6 @@ struct SharpRoomView: View {
         if let r = resolvedRoomMetersDimensions {
             h = r.height
             d = r.depth
-        } else if savedRoomModel != nil, let m = roomModelMetersDimensions {
-            h = m.height
-            d = m.depth
         } else {
             h = displayRoomHeight
             d = displayRoomDepth
@@ -948,72 +920,20 @@ struct SharpRoomView: View {
         if h.isFinite, d.isFinite, h > 0.05, d > 0.05 {
             return String(format: "%.1f m H × %.1f m D", h, d)
         }
-        if allowSave, savedRoomModel != nil {
-            if let r = roomModelSceneDimensions {
-                return String(
-                    format: "%.3f × %.3f su H×D (bounds)",
-                    r.height, r.depth
-                )
-            }
-            return L10n.RoomViewer.measuringRoom
-        }
-        if let scene = roomModelSceneDimensions {
-            return String(
-                format: "%.3f × %.3f su H×D (saved bounds)",
-                scene.height, scene.depth
-            )
-        }
-        if let m = savedRoomModel,
-           let sh = m.roomSceneHeight, let sd = m.roomSceneDepth {
-            return String(
-                format: "%.3f × %.3f su H×D (saved raycast)",
-                sh, sd
-            )
-        }
-        return String(format: "%.1f m H × %.1f m D", displayRoomHeight, displayRoomDepth)
+        return L10n.RoomViewer.measuringRoom
     }
 
     /// Baseline W/H before calibration in meter space when available.
     private var sourceRoomWidth: Float {
-        arPlaneMeasuredRoomDimensions?.width
-            ?? resolvedRoomMetersDimensions?.width
-            ?? savedRoomWidth
-            ?? savedRoomModel?.roomWidth
-            ?? jsFrontWallWidth
-            ?? 4.0
+        arPlaneMeasuredRoomDimensions?.width ?? 0
     }
 
     private var sourceRoomHeight: Float {
-        arPlaneMeasuredRoomDimensions?.height
-            ?? resolvedRoomMetersDimensions?.height
-            ?? savedRoomHeight
-            ?? savedRoomModel?.roomHeight
-            ?? jsFrontWallHeight
-            ?? 3.0
+        arPlaneMeasuredRoomDimensions?.height ?? 0
     }
 
     private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
-        if let arPlanes = arPlaneMeasuredRoomDimensions {
-            return arPlanes
-        }
-        if let saved = savedRoomMetersDimensions {
-            return saved
-        }
-        if savedRoomModel == nil {
-            return nil
-        }
-        if let m = roomModelMetersDimensions {
-            return m
-        }
-        if roomDimensionsBoundBased,
-           let b = effectiveBounds,
-           let rm = roomModel,
-           rm.sceneToMeters > 0,
-           b.width > 0.01, b.height > 0.01, b.depth > 0.01 {
-            let s = rm.sceneToMeters
-            return (b.width * s, b.height * s, b.depth * s)
-        }
-        return nil
+        arPlaneMeasuredRoomDimensions
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -1023,11 +943,6 @@ struct SharpRoomView: View {
 
     /// Scene-unit room for Furniture Fit ratios: extracted room bounds or persisted `.meta` scene fields.
     private var furnitureFitSceneDimensions: RoomRaycastDimensions? {
-        if let scene = roomModelSceneDimensions { return scene }
-        if let m = savedRoomModel,
-           let w = m.roomSceneWidth, let h = m.roomSceneHeight, let d = m.roomSceneDepth {
-            return RoomRaycastDimensions(width: w, height: h, depth: d)
-        }
         return nil
     }
 
@@ -1677,7 +1592,7 @@ struct SharpRoomView: View {
                         .foregroundColor(.green)
                 }
 
-                Text(L10n.RoomViewer.savingRoomEllipsis)
+                Text(saveProgressStatusText)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
@@ -1724,17 +1639,7 @@ struct SharpRoomView: View {
 
     @MainActor
     private func currentValidatedEnhancedMetadata() -> EnhancedRoomMetadata? {
-        if let metadata = enhancedRoomMetadata {
-            return metadata
-        }
-
-        if let roomModel {
-            let metadata = EnhancedRoomMetadata.from(roomModel: roomModel, preserving: enhancedRoomMetadata)
-            enhancedRoomMetadata = metadata
-            return metadata
-        }
-
-        return nil
+        enhancedRoomMetadata
     }
 
     private var sharpRoomModalPauseToken: SharpRoomModalPauseToken {
@@ -1766,7 +1671,6 @@ struct SharpRoomView: View {
             showWallCalibration ||
             showShareSheet ||
             furnitureCalibSheet ||
-            showingFurnitureFit ||
             isCapturingSnapshot
         guard pause != sharpRoomUIPauseApplied else { return }
         sharpRoomUIPauseApplied = pause
@@ -1789,35 +1693,55 @@ struct SharpRoomView: View {
             try? await Task.sleep(nanoseconds: 180_000_000)
 
             await MainActor.run {
-                splatMeasurementHost.requestRedrawForDepthMeasure()
-            }
-            try? await Task.sleep(nanoseconds: 120_000_000)
-
-            await MainActor.run {
                 withAnimation(.easeIn(duration: 0.3)) {
                     isSavingRoom = true
                     saveProgress = 0.0
+                    saveProgressStatusText = "Measuring room..."
                 }
             }
 
-            await MainActor.run { saveProgress = 0.12 }
-            let roomW = await MainActor.run { displayRoomWidth }
-            let roomH = await MainActor.run { displayRoomHeight }
-            let roomD = await MainActor.run { displayRoomDepth }
-            logDebug("💾 [SharpRoomView] Save: using current display W×H×D=\(roomW)×\(roomH)×\(roomD) m")
-
-            await MainActor.run { saveProgress = 0.32 }
-            let metadataForSave = await MainActor.run { currentValidatedEnhancedMetadata() }
-            let modelSceneForSave = await MainActor.run { roomModelSceneDimensions }
+            await MainActor.run { saveProgress = 0.15 }
+            let burstMeasurement = await withCheckedContinuation { (continuation: CheckedContinuation<ARPlaneRoomMeasurement?, Never>) in
+                splatMeasurementHost.measureRoomWithARBurst { measurement in
+                    continuation.resume(returning: measurement)
+                }
+            }
 
             await MainActor.run {
-                if roomW.isFinite, roomH.isFinite, roomW > 0.05, roomH > 0.05 {
+                if let burstMeasurement {
+                    splatMeasurementHost.updateARPlaneRoomMeasurement(burstMeasurement)
+                }
+                saveProgress = 0.35
+                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+            }
+
+            let fallbackARDimensions = await MainActor.run { arPlaneMeasuredRoomDimensions }
+            let roomW = burstMeasurement?.widthMeters ?? fallbackARDimensions?.width
+            let roomH = burstMeasurement?.heightMeters ?? fallbackARDimensions?.height
+            let roomD = burstMeasurement?.depthMeters ?? fallbackARDimensions?.depth
+            if let roomW, let roomH, let roomD {
+                logDebug(
+                    "🟢 [SharpRoomView] Save: burst AR W×H×D=" +
+                        "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m"
+                )
+            } else {
+                logDebug(
+                    "🔴 [SharpRoomView] Save: burst AR returned nil dims — W×H×D=" +
+                        "\(String(describing: roomW))×\(String(describing: roomH))×\(String(describing: roomD))m"
+                )
+            }
+
+            await MainActor.run { saveProgress = 0.5 }
+            let metadataForSave = await MainActor.run { currentValidatedEnhancedMetadata() }
+
+            await MainActor.run {
+                if let roomW, let roomH, roomW.isFinite, roomH.isFinite, roomW > 0.05, roomH > 0.05 {
                     jsFrontWallWidth = roomW
                     jsFrontWallHeight = roomH
                 }
             }
 
-            await MainActor.run { saveProgress = 0.55 }
+            await MainActor.run { saveProgress = 0.72 }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 modelManager.savePLY(
                     from: viewerPlyURL,
@@ -1826,9 +1750,9 @@ struct SharpRoomView: View {
                     roomWidth: roomW,
                     roomHeight: roomH,
                     roomDepth: roomD,
-                    roomSceneWidth: modelSceneForSave?.width,
-                    roomSceneHeight: modelSceneForSave?.height,
-                    roomSceneDepth: modelSceneForSave?.depth
+                    roomSceneWidth: nil,
+                    roomSceneHeight: nil,
+                    roomSceneDepth: nil
                 ) { success, error in
                     logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
                     Task { @MainActor in
@@ -1875,6 +1799,7 @@ struct SharpRoomView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             isSavingRoom = false
             saveProgress = 0.0
+            saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
         }
 
         roomName = ""
@@ -1891,94 +1816,26 @@ struct SharpRoomView: View {
                 fileType: savedRoomModel.fileType
             ) {
                 enhancedRoomMetadata = metadata
-                roomModel = metadata.roomModel()
-                logDebug(
-                    "📐 [SharpRoomView] Loaded enhanced metadata for saved room: " +
-                        "sceneToMeters=\(String(format: "%.4f", metadata.sceneToMeters))"
-                )
+                roomModel = nil
+                logDebug("📐 [SharpRoomView] AR-only mode — ignored saved room geometry metadata")
                 return
             }
         }
 
         if let metadata = modelManager.loadEnhancedMetadata(forRoomURL: viewerPlyURL) {
             enhancedRoomMetadata = metadata
-            roomModel = metadata.roomModel()
-            logDebug("📐 [SharpRoomView] Loaded enhanced metadata from live room sidecar")
+            roomModel = nil
+            logDebug("📐 [SharpRoomView] AR-only mode — ignored live room geometry metadata")
         }
     }
 
     private func scheduleRoomGeometryExtractionIfNeeded() {
-        guard savedRoomModel == nil else {
-            logDebug("📐 [SharpRoomView] Skipping room geometry extraction on saved-room open")
-            return
-        }
-        guard roomModel == nil,
-              !isExtractingRoomGeometry,
-              !isLoading else { return }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            triggerRoomGeometryExtractionIfNeeded()
-        }
+        logDebug("📐 [SharpRoomView] AR-only mode — room geometry extraction disabled")
     }
 
     private func triggerRoomGeometryExtractionIfNeeded(force: Bool = false) {
-        guard savedRoomModel == nil else {
-            logDebug("📐 [SharpRoomView] Ignoring room geometry extraction trigger for saved-room open")
-            return
-        }
-        guard force || roomModel == nil else { return }
-        guard !isExtractingRoomGeometry else { return }
-        guard let depthQuery = splatMeasurementHost.depthQuery else {
-            logDebug("❌ [SharpRoomView] Cannot extract room geometry — depth query unavailable")
-            return
-        }
-
-        isExtractingRoomGeometry = true
-        splatMeasurementHost.setModalHeavyWorkPaused(true)
-
-        Task { @MainActor in
-            defer {
-                splatMeasurementHost.setModalHeavyWorkPaused(false)
-                isExtractingRoomGeometry = false
-            }
-            let cameraInfo = loadSourceCameraInfo()
-            let usableColorReader: (any SplatColorReadable)? = {
-                guard let clr = splatMeasurementHost.colorReader,
-                      clr.supportsColorReadback else { return nil }
-                return clr
-            }()
-            var geoConfig = RoomGeometryConfig()
-            geoConfig.useBoundsBasedRoomSize = roomDimensionsBoundBased
-            let engine = RoomGeometryEngine(
-                depthQuery: depthQuery,
-                colorReader: usableColorReader,
-                cameraInfo: cameraInfo,
-                referenceCeilingHeightMeters: calibratedRoomHeight,
-                config: geoConfig
-            )
-
-            let points = await pointCloudForRoomGeometrySession()
-            do {
-                let model = try engine.extractRoomModel(points: points)
-                roomModel = model
-                let metadata = EnhancedRoomMetadata.from(roomModel: model, preserving: enhancedRoomMetadata)
-                enhancedRoomMetadata = metadata
-                persistEnhancedRoomMetadataIfPossible(metadata)
-                logDebug(
-                    "📐 [SharpRoomView] Room model extracted W×H×D=\(String(format: "%.2f", model.widthMeters))×" +
-                    "\(String(format: "%.2f", model.heightMeters))×\(String(format: "%.2f", model.depthMeters))m " +
-                    "sceneToMeters=\(String(format: "%.4f", model.sceneToMeters)) bound_based=\(roomDimensionsBoundBased) pts=\(points.count)"
-                )
-                splatMeasurementHost.logARRoomMeasureAfterGeometryExtraction(
-                    roomModel: model,
-                    plyURL: viewerPlyURL,
-                    boundBased: roomDimensionsBoundBased,
-                    pointCloudCount: points.count
-                )
-            } catch {
-                logDebug("❌ [SharpRoomView] Room geometry extraction failed: \(error.localizedDescription)")
-            }
-        }
+        let _ = force
+        logDebug("📐 [SharpRoomView] AR-only mode — RoomGeometryEngine / RANSAC path commented out")
     }
 
     private func persistEnhancedRoomMetadataIfPossible(_ metadata: EnhancedRoomMetadata) {
@@ -2004,25 +1861,7 @@ struct SharpRoomView: View {
     }
 
     private var authoritativeRoomModelForMetrics: RoomModel? {
-        guard let roomModel else { return nil }
-        guard let arPlanes = arPlaneMeasuredRoomDimensions else { return roomModel }
-
-        let currentWidth = roomModel.widthMeters
-        let currentHeight = roomModel.heightMeters
-        let currentDepth = roomModel.depthMeters
-        let ratioCandidates = [
-            currentWidth > 0.05 ? arPlanes.width / currentWidth : nil,
-            currentHeight > 0.05 ? arPlanes.height / currentHeight : nil,
-            currentDepth > 0.05 ? arPlanes.depth / currentDepth : nil,
-        ]
-        .compactMap { $0 }
-        .filter { $0.isFinite && $0 > 0.05 }
-
-        guard !ratioCandidates.isEmpty else { return roomModel }
-        let sortedRatios = ratioCandidates.sorted()
-        let representativeRatio = sortedRatios[sortedRatios.count / 2]
-        let updatedSceneToMeters = roomModel.sceneToMeters * representativeRatio
-        return roomModel.withSceneToMeters(updatedSceneToMeters)
+        nil
     }
 
     /// Width, segmentation color, or full W×H×D — enough to show style hints without LiDAR height.

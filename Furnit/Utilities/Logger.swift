@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import Darwin
 
 // MARK: - Runtime Debug Mode Check
 /// Check if debug mode is enabled in Settings
@@ -52,6 +53,7 @@ private enum AlwaysOnOSLog {
     static let sharp = Logger(subsystem: subsystem, category: "SHARP")
     static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
     static let arRoom = Logger(subsystem: subsystem, category: "AR_ROOM")
+    static let memory = Logger(subsystem: subsystem, category: "MEMORY")
 }
 
 /// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
@@ -71,6 +73,63 @@ func logSharpMilestone(_ message: String) {
 func logARRoomMeasure(_ message: String) {
     let line = "[AR_ROOM_MEASURE] \(message)"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
+}
+
+private struct AppMemorySnapshot {
+    let residentBytes: UInt64
+    let physicalFootprintBytes: UInt64
+    let deviceMemoryBytes: UInt64
+
+    var residentMB: Double { Double(residentBytes) / 1024.0 / 1024.0 }
+    var footprintMB: Double { Double(physicalFootprintBytes) / 1024.0 / 1024.0 }
+    var estimatedRemainingMB: Double {
+        Double(max(0, Int64(deviceMemoryBytes) - Int64(physicalFootprintBytes))) / 1024.0 / 1024.0
+    }
+}
+
+private func currentAppMemorySnapshot() -> AppMemorySnapshot? {
+    var basicInfo = mach_task_basic_info()
+    var basicCount = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+    let basicResult = withUnsafeMutablePointer(to: &basicInfo) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(basicCount)) {
+            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &basicCount)
+        }
+    }
+    guard basicResult == KERN_SUCCESS else { return nil }
+
+    var vmInfo = task_vm_info_data_t()
+    var vmCount = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let vmResult = withUnsafeMutablePointer(to: &vmInfo) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(vmCount)) {
+            task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &vmCount)
+        }
+    }
+    let footprintBytes = vmResult == KERN_SUCCESS ? UInt64(vmInfo.phys_footprint) : UInt64(basicInfo.resident_size)
+
+    return AppMemorySnapshot(
+        residentBytes: UInt64(basicInfo.resident_size),
+        physicalFootprintBytes: footprintBytes,
+        deviceMemoryBytes: ProcessInfo.processInfo.physicalMemory
+    )
+}
+
+/// Lightweight memory diagnostics for tracing which stage caused pressure.
+/// Filter by category `MEMORY` or search `[MEMORY]`.
+func logMemorySnapshot(_ source: String, details: String? = nil) {
+    guard let snapshot = currentAppMemorySnapshot() else {
+        let line = "[MEMORY] source=\(source) snapshot=unavailable"
+        AlwaysOnOSLog.memory.notice("\(line, privacy: .public)")
+        return
+    }
+    var line =
+        "[MEMORY] source=\(source) " +
+        "resident_mb=\(String(format: "%.1f", snapshot.residentMB)) " +
+        "footprint_mb=\(String(format: "%.1f", snapshot.footprintMB)) " +
+        "remaining_est_mb=\(String(format: "%.1f", snapshot.estimatedRemainingMB))"
+    if let details, !details.isEmpty {
+        line += " details=\(details)"
+    }
+    AlwaysOnOSLog.memory.notice("\(line, privacy: .public)")
 }
 
 /// Centralized logging utility using os_log framework

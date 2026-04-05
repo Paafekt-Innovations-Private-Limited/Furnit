@@ -113,6 +113,7 @@ private struct SavedRoomDiskMetadata {
 
 class USDZModelManager: ObservableObject {
     @Published var models: [USDZModel] = []
+    private let supportedSavedRoomExtensions = Set(["usdz", "ply", "meshroom", "glb"])
     
     // Directory for saved rooms
     private let documentsDirectory: URL = {
@@ -132,6 +133,7 @@ class USDZModelManager: ObservableObject {
         }
         createDirectoriesIfNeeded()
         migrateLegacyClassicSavedRoomsIfNeeded()
+        cleanupOrphanSavedRoomArtifactsIfNeeded()
         loadModels()
         if AppStateManager.shared.qualitySettings.debugMode {
             logDebug("📦 [USDZModelManager] Initialization complete. Loaded \(models.count) models")
@@ -200,9 +202,70 @@ class USDZModelManager: ObservableObject {
             }
         }
     }
+
+    private func primarySavedRoomStem(for fileURL: URL) -> String? {
+        let ext = fileURL.pathExtension.lowercased()
+        guard supportedSavedRoomExtensions.contains(ext) else { return nil }
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        guard !(ext == "ply" && stem.hasSuffix("_classic")) else { return nil }
+        return stem
+    }
+
+    private func orphanArtifactStem(for fileURL: URL) -> String? {
+        let fileName = fileURL.lastPathComponent
+        if fileName.hasSuffix(".room_metadata.json") {
+            return String(fileName.dropLast(".room_metadata.json".count))
+        }
+        if fileName.hasSuffix(".meta") {
+            let withoutMeta = fileURL.deletingPathExtension().lastPathComponent
+            return URL(fileURLWithPath: withoutMeta).deletingPathExtension().lastPathComponent
+        }
+        if fileName.hasSuffix("_thumbnail.jpg") {
+            return String(fileName.dropLast("_thumbnail.jpg".count))
+        }
+        if fileName.hasSuffix("_thumbnail.png") {
+            return String(fileName.dropLast("_thumbnail.png".count))
+        }
+        if fileName.hasSuffix("_classic.ply") {
+            return String(fileName.dropLast("_classic.ply".count))
+        }
+        return nil
+    }
+
+    private func cleanupOrphanSavedRoomArtifactsIfNeeded() {
+        let fileManager = FileManager.default
+        guard let directoryContents = try? fileManager.contentsOfDirectory(
+            at: modelsDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        let livePrimaryStems = Set(directoryContents.compactMap(primarySavedRoomStem(for:)))
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        for fileURL in directoryContents {
+            guard let orphanStem = orphanArtifactStem(for: fileURL),
+                  !livePrimaryStems.contains(orphanStem) else {
+                continue
+            }
+
+            do {
+                try fileManager.removeItem(at: fileURL)
+                if debugMode {
+                    logDebug("🧹 [USDZModelManager] Removed orphan saved-room artifact: \(fileURL.lastPathComponent)")
+                }
+            } catch {
+                if debugMode {
+                    logDebug("⚠️ [USDZModelManager] Failed to remove orphan artifact \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
     
     private func loadModels() {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        cleanupOrphanSavedRoomArtifactsIfNeeded()
         
         if debugMode {
             logDebug("📦 [USDZModelManager] Starting to load models...")
@@ -336,7 +399,8 @@ class USDZModelManager: ObservableObject {
                     yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
                     sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
                     customDisplayName: metadata.displayName,
-                    isClassicPly: metadata.isClassicPly
+                    isClassicPly: metadata.isClassicPly,
+                    cachedResolvedURL: fileURL
                 )
                 savedRoomModels.append(model)
             }
@@ -560,6 +624,7 @@ class USDZModelManager: ObservableObject {
                 }
                 CrashReporter.shared.report(error, context: "Deleting Room")
             }
+            cleanupOrphanSavedRoomArtifactsIfNeeded()
         } else {
             if debugMode {
                 logDebug("⚠️ [USDZModelManager] Skipping file deletion - this is a bundle model")

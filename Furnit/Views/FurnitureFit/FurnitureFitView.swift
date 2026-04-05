@@ -332,6 +332,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Reusable prototype buffers (FIXED: prevents ~26MB allocation per frame)
     private var protoRawFloats: [Float] = []
     private var protoPlanes: [Float] = []
+    private var protoPlanesInterleaved: [Float] = []
 
     // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
     /// Stretch path: full frame scaled to the model square (matches Android / ONNX-style preprocessing).
@@ -3119,7 +3120,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Parse Prototypes (FIXED: Accelerate for Float16)
     // Reuses instance-level buffers and uses Accelerate for FP16 → FP32 conversion.
-    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
+    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], interleavedPlanes: [Float], count: Int, height: Int, width: Int)? {
         var shape = proto.shape.map { $0.intValue }
         if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
         guard shape.count == 3 else { return nil }
@@ -3145,6 +3146,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         if protoPlanes.count != count * planeSize {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
+        }
+        if protoPlanesInterleaved.count != count * planeSize {
+            protoPlanesInterleaved = [Float](repeating: 0, count: count * planeSize)
         }
 
         if proto.dataType == .float32 {
@@ -3347,7 +3351,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        return (protoPlanes, count, h, w)
+
+        // GPU fused kernels prefer [pixel][32] so one pixel's prototype vector is contiguous.
+        protoPlanes.withUnsafeBufferPointer { src in
+            protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
+                guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
+                for protoIndex in 0..<planeSize {
+                    let dstRowBase = protoIndex * count
+                    for channel in 0..<count {
+                        dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
+                    }
+                }
+            }
+        }
+
+        return (protoPlanes, protoPlanesInterleaved, count, h, w)
     }
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.

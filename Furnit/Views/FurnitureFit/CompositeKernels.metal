@@ -1,6 +1,10 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// NOTE: All source textures here are expected to be bgra8Unorm.
+// Metal reads BGRA as (r=B, g=G, b=R, a=A), so the float4(s.b, s.g, s.r, ...)
+// swizzle below converts source BGRA reads back into RGB output order.
+
 // Composite mask over camera texture, output to output texture
 // Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output texture is bgra8Unorm (memory order B,G,R,A)
 kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]],
@@ -18,6 +22,7 @@ kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]
 }
 
 // Build maskSmall in prototype space: max over detections of dot(A[pixel], coeffs[j]) then threshold > 0
+// planes is laid out as [planeSize][32] so the 32 prototype coefficients for one pixel are contiguous.
 kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
                                   const device float *coeffs   [[buffer(1)]],
                                   device uchar *outMask        [[buffer(2)]],
@@ -26,11 +31,12 @@ kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
                                   uint gid [[thread_position_in_grid]]) {
     if (gid >= planeSize) return;
     float maxLogit = -3.4e38f;
+    uint planeBase = gid * 32;
     // 32 prototype channels per pixel
     for (uint j = 0; j < detCount; ++j) {
         float dotv = 0.0f;
         for (uint k = 0; k < 32; ++k) {
-            float a = planes[k * planeSize + gid];
+            float a = planes[planeBase + k];
             float c = coeffs[j * 32 + k];
             dotv += a * c;
         }
@@ -41,7 +47,7 @@ kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
 
 // Fused kernel: compute max(A·coeffs) in prototype space and composite into output
 // Buffers:
-//  b0: planes (float[32 * pW * pH]) laid out as 32 planes contiguous
+//  b0: planes (float[pW * pH * 32]) laid out as [pixel][32] contiguous per prototype sample
 //  b1: coeffs (float[detCount * 32]) row-major per detection
 // Bytes:
 //  i2: pW (uint32)
@@ -97,17 +103,22 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
     float py = v * float(pH - 1);
 
     // Nearest neighbor sampling in prototype space for performance
-    uint ix = (uint)round(px);
-    uint iy = (uint)round(py);
+    uint ix = min((uint)round(px), pW - 1);
+    uint iy = min((uint)round(py), pH - 1);
     uint planeSize = pW * pH;
     uint protIdx = iy * pW + ix;
+    if (protIdx >= planeSize) {
+        outTex.write(float4(0.0, 0.0, 0.0, 0.0), gid);
+        return;
+    }
+    uint planeBase = protIdx * 32;
 
-    // Compute max over detections of dot(prototypes[:, protIdx], coeffs[j][:])
+    // Compute max over detections of dot(prototypes[protIdx, :], coeffs[j][:])
     float maxLogit = -3.4e38f;
     for (uint j = 0; j < detCount; ++j) {
         float dotv = 0.0f;
         for (uint k = 0; k < 32; ++k) {
-            float a = planes[k * planeSize + protIdx];
+            float a = planes[planeBase + k];
             float c = coeffs[j * 32 + k];
             dotv += a * c;
         }
@@ -117,7 +128,7 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
     // Threshold at 0 and composite (same as CPU union mask). Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
     if (maxLogit > 0.0f) {
-        float4 s = src.read(uint2(gid.x, gid.y));
+        float4 s = src.read(gid);
         out = float4(s.b, s.g, s.r, 1.0);
     }
     outTex.write(out, gid);
@@ -167,7 +178,7 @@ kernel void sp_maxMaskAndCompositeMorphed(texture2d<float, access::read>  src   
 
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
     if (protoMask[protIdx] > 0) {
-        float4 s = src.read(uint2(gid.x, gid.y));
+        float4 s = src.read(gid);
         out = float4(s.b, s.g, s.r, 1.0);
     }
     outTex.write(out, gid);

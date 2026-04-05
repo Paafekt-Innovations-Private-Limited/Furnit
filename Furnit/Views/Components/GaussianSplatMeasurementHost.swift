@@ -68,6 +68,13 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.setARModeEnabled(enabled)
     }
 
+    /// Runs a short exclusive AR session while the splat renderer is frozen, then returns the best plane-based room measurement.
+    func measureRoomWithARBurst(completion: @escaping (ARPlaneRoomMeasurement?) -> Void) {
+        coordinator?.measureRoomWithARBurst(completion: completion) ?? DispatchQueue.main.async {
+            completion(nil)
+        }
+    }
+
     /// Pauses ARKit while alerts/sheets need the main thread (e.g. save-room name field).
     func setModalHeavyWorkPaused(_ paused: Bool) {
         coordinator?.setModalHeavyWorkPaused(paused)
