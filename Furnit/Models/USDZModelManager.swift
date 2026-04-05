@@ -69,6 +69,23 @@ private struct SavedRoomDiskMetadata {
             displayName: displayName
         )
     }
+
+    func replacingOrientation(_ newOrientation: PhotoOrientation) -> SavedRoomDiskMetadata {
+        SavedRoomDiskMetadata(
+            orientation: newOrientation,
+            width: width,
+            height: height,
+            depth: depth,
+            sceneWidth: sceneWidth,
+            sceneHeight: sceneHeight,
+            sceneDepth: sceneDepth,
+            yoloWallHeightFrac: yoloWallHeightFrac,
+            yoloFurnitureHeightFracByClass: yoloFurnitureHeightFracByClass,
+            yoloRefImageHeightPx: yoloRefImageHeightPx,
+            sharpRoomHeightAtYoloCapture: sharpRoomHeightAtYoloCapture,
+            displayName: displayName
+        )
+    }
 }
 
 class USDZModelManager: ObservableObject {
@@ -694,6 +711,9 @@ class USDZModelManager: ObservableObject {
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)
 
+            // Copy SHARP wall-measurement thumbnail next to saved PLY so list reload can infer capture orientation for AR/UI.
+            copyThumbnailFromSHARPSessionIfPresent(sourceURL: sourceURL, savedStem: fileName)
+
             if debugMode {
                 logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
                 logDebug("✅ [USDZModelManager] Metadata saved to: \(metadataURL.path)")
@@ -716,13 +736,59 @@ class USDZModelManager: ObservableObject {
     private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
-        guard FileManager.default.fileExists(atPath: metadataURL.path),
-              let data = try? Data(contentsOf: metadataURL),
-              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return .empty
+        let base: SavedRoomDiskMetadata
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            base = SavedRoomDiskMetadata.parse(dictionary: dict)
+        } else {
+            base = .empty
         }
 
-        return SavedRoomDiskMetadata.parse(dictionary: metadata)
+        // Opening from list: AR roll uses `photoOrientation`. Prefer EXIF from saved thumbnail (same source as SHARP)
+        // when present so orientation matches creation even if `.meta` defaulted to portrait or was stale.
+        if let thumbURL = savedRoomThumbnailURL(stem: fileName),
+           let image = UIImage(contentsOfFile: thumbURL.path) {
+            let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
+            if fromThumb != base.orientation,
+               AppStateManager.shared.qualitySettings.debugMode {
+                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(base.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent))")
+            }
+            return base.replacingOrientation(fromThumb)
+        }
+
+        return base
+    }
+
+    private func savedRoomThumbnailURL(stem: String) -> URL? {
+        let jpg = modelsDirectory.appendingPathComponent("\(stem)_thumbnail.jpg")
+        if FileManager.default.fileExists(atPath: jpg.path) { return jpg }
+        let png = modelsDirectory.appendingPathComponent("\(stem)_thumbnail.png")
+        if FileManager.default.fileExists(atPath: png.path) { return png }
+        return nil
+    }
+
+    /// Copies `RoomStamp_thumbnail.jpg` (or `.png`) from the SHARP session folder into SavedRooms as `savedStem_thumbnail.*`.
+    private func copyThumbnailFromSHARPSessionIfPresent(sourceURL: URL, savedStem: String) {
+        let sourceDir = sourceURL.deletingLastPathComponent()
+        var sessionStem = sourceURL.deletingPathExtension().lastPathComponent
+        if sessionStem.hasSuffix("_classic") {
+            sessionStem = String(sessionStem.dropLast("_classic".count))
+        }
+        let fm = FileManager.default
+        for ext in ["jpg", "png"] {
+            let src = sourceDir.appendingPathComponent("\(sessionStem)_thumbnail.\(ext)")
+            guard fm.fileExists(atPath: src.path) else { continue }
+            let dest = modelsDirectory.appendingPathComponent("\(savedStem)_thumbnail.\(ext)")
+            try? fm.removeItem(at: dest)
+            do {
+                try fm.copyItem(at: src, to: dest)
+                logDebug("💾 [USDZModelManager] Copied thumbnail \(src.lastPathComponent) → \(dest.lastPathComponent)")
+            } catch {
+                logDebug("❌ [USDZModelManager] Thumbnail copy failed: \(error.localizedDescription)")
+            }
+            return
+        }
     }
 
     /// Save a mesh room (image + metadata) to SavedRooms directory

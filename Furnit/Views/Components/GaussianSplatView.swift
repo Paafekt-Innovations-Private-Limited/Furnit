@@ -200,8 +200,10 @@ struct GaussianSplatView: UIViewRepresentable {
         private var arMotionTracker: ARMotionTracker?
         private var arModeEnabled: Bool = false
         private var arRelativeTransform: simd_float4x4 = matrix_identity_float4x4
-        private let arMovementScale: Float = 2.0
+        /// AR translation scale (meters-ish); kept conservative so small device moves don't throw the room out of frame.
+        private let arMovementScale: Float = 0.9
         private var hasLoggedARViewerSpaceTransform = false
+        private var arRecenterTransform: simd_float4x4 = matrix_identity_float4x4
         private var pendingFurnitureItem: SharpRoomFurnitureItem?
         private var placedFurniture: [SharpRoomPlacedFurniture] = []
         private var selectedFurnitureID: UUID?
@@ -262,7 +264,12 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         deinit {
-            teardown(view: view)
+            let nc = NotificationCenter.default
+            for token in notificationTokens {
+                nc.removeObserver(token)
+            }
+            notificationTokens.removeAll()
+            arMotionTracker?.stop()
         }
 
         // MARK: Setup
@@ -296,6 +303,13 @@ struct GaussianSplatView: UIViewRepresentable {
             arMotionTracker?.stop()
             arMotionTracker = nil
 
+            // Drain the queue so in-flight completion handlers run before we release the coordinator.
+            // (Swift’s `MTLCommandQueue` protocol does not expose `waitUntilAllCommandsCompleted`.)
+            if let queue = commandQueue, let fence = queue.makeCommandBuffer() {
+                fence.commit()
+                fence.waitUntilCompleted()
+            }
+
             rendererLock.lock()
             _splatRenderer = nil
             rendererLock.unlock()
@@ -313,7 +327,9 @@ struct GaussianSplatView: UIViewRepresentable {
             sceneBoundsMax = nil
             sceneCentroid = nil
             warmupEndTime = nil
-            overlayView?.removeFromSuperview()
+            if Thread.isMainThread {
+                overlayView?.removeFromSuperview()
+            }
             overlayView = nil
             furnitureShapeLayers.removeAll()
             projectedFurnitureHitRects.removeAll()
@@ -614,8 +630,9 @@ struct GaussianSplatView: UIViewRepresentable {
                 flushAllPendingScreenshotRequestsWithNil()
                 return
             }
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                self?.inFlightSemaphore.signal()
+            let inflightSemaphore = inFlightSemaphore
+            commandBuffer.addCompletedHandler { _ in
+                inflightSemaphore.signal()
             }
 
             let screenshotCompletion: ((UIImage?) -> Void)? = pendingScreenshotCompletions.isEmpty
@@ -772,7 +789,8 @@ struct GaussianSplatView: UIViewRepresentable {
                     minY: boundsMin.y, maxY: boundsMax.y,
                     minZ: boundsMin.z, maxZ: boundsMax.z
                 )
-                let (eye, target) = rb.defaultSplatCameraEyeAndTarget(cameraPadding: 0.3)
+                let baseCameraPadding: Float = arModeEnabled ? 0.55 : 0.3
+                let (eye, target) = rb.defaultSplatCameraEyeAndTarget(cameraPadding: baseCameraPadding)
                 camPos = eye + cameraOffset
                 lookAt = target + cameraOffset
             } else if let centroid {
@@ -822,7 +840,7 @@ struct GaussianSplatView: UIViewRepresentable {
             let viewBase: simd_float4x4
             if arModeEnabled {
                 let baseCameraWorld = simd_inverse(baseView)
-                let arCameraWorld = baseCameraWorld * arBaseOrientationTransform * arRelativeTransform
+                let arCameraWorld = baseCameraWorld * arBaseOrientationTransform * arRecenterTransform * arRelativeTransform
                 viewBase = simd_inverse(arCameraWorld)
             } else {
                 viewBase = baseView
@@ -871,6 +889,25 @@ struct GaussianSplatView: UIViewRepresentable {
             return drawableSize
         }
 
+        /// Orbit, zoom, scene scale, and AR relative pose back to defaults; re-baselines ARKit reference on next frame.
+        func performSharpRoomRecenter() {
+            cameraYaw = 0
+            cameraPitch = 0
+            cameraOffset = .zero
+            appliedZoomLevel = 1.0
+            zoomLevel = 1.0
+            sceneScale = SIMD2(1, 1)
+            if arModeEnabled {
+                arRecenterTransform = simd_inverse(arRelativeTransform)
+            } else {
+                arRecenterTransform = matrix_identity_float4x4
+                arRelativeTransform = matrix_identity_float4x4
+            }
+            hasLoggedARViewerSpaceTransform = false
+            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit, zoom, scale, AR offset")
+            view?.setNeedsDisplay()
+        }
+
         func setARModeEnabled(_ enabled: Bool) {
             arModeEnabled = enabled
             if enabled {
@@ -891,6 +928,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     arMotionTracker = tracker
                 }
                 arRelativeTransform = matrix_identity_float4x4
+                arRecenterTransform = matrix_identity_float4x4
                 hasLoggedARViewerSpaceTransform = false
                 measurementHost?.updateARStatus("Starting AR camera tracking")
                 arMotionTracker?.start()
@@ -898,6 +936,7 @@ struct GaussianSplatView: UIViewRepresentable {
             } else {
                 arMotionTracker?.stop()
                 arRelativeTransform = matrix_identity_float4x4
+                arRecenterTransform = matrix_identity_float4x4
                 measurementHost?.updateARStatus("AR camera off")
                 logDebug("📱 [GaussianSplatAR] disabled")
                 view?.setNeedsDisplay()
@@ -1258,6 +1297,9 @@ struct GaussianSplatView: UIViewRepresentable {
             scaled.columns.3.x *= arMovementScale
             scaled.columns.3.y *= arMovementScale
             scaled.columns.3.z *= arMovementScale
+            let tRaw = SIMD3<Float>(scaled.columns.3.x, scaled.columns.3.y, scaled.columns.3.z)
+            let tClamped = clampARTranslationVector(tRaw)
+            scaled.columns.3 = SIMD4<Float>(tClamped.x, tClamped.y, tClamped.z, scaled.columns.3.w)
             if !hasLoggedARViewerSpaceTransform {
                 hasLoggedARViewerSpaceTransform = true
                 let raw = transform.columns.3
@@ -1269,6 +1311,20 @@ struct GaussianSplatView: UIViewRepresentable {
                 )
             }
             return scaled
+        }
+
+        private var arMaxAllowedTranslation: Float {
+            guard let boundsMin = sceneBoundsMin, let boundsMax = sceneBoundsMax else { return 3.5 }
+            let extent = boundsMax - boundsMin
+            let diagonal = simd_length(extent)
+            return max(2.0, diagonal * 0.5)
+        }
+
+        private func clampARTranslationVector(_ translation: SIMD3<Float>) -> SIMD3<Float> {
+            let maxR = arMaxAllowedTranslation
+            let len = simd_length(translation)
+            if len <= maxR || len < 1e-6 { return translation }
+            return translation * (maxR / len)
         }
 
         private func placePendingFurniture(at screenPoint: CGPoint, item: SharpRoomFurnitureItem) {
@@ -1621,13 +1677,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 queue:   nil
             ) { [weak self] _ in
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.cameraYaw    = 0
-                    self.cameraPitch  = 0
-                    self.cameraOffset = .zero
-                    self.appliedZoomLevel = 1.0
-                    self.zoomLevel = 1.0
-                    self.view?.setNeedsDisplay()
+                    self?.performSharpRoomRecenter()
                 }
             }
             notificationTokens.append(recenterToken)

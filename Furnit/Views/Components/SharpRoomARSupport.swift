@@ -57,6 +57,12 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         initialTransform = nil
     }
 
+    /// Clears the stored reference pose so the next `didUpdate` uses the current device pose as identity (Sharp Room recenter).
+    func resetReferencePose() {
+        initialTransform = nil
+        logDebug("📍 [ARMotionTracker] reference pose cleared — next frame becomes new origin")
+    }
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let currentTransform = frame.camera.transform
         if initialTransform == nil {
