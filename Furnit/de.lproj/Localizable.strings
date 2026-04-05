@@ -445,6 +445,11 @@
 "sharp.done" = "Erledigt!";
 "sharp.couldNotCreateRoom" = "Raum konnte nicht erstellt werden";
 "sharp.cancelled" = "Abgebrochen";
+"sharp.liveRoom" = "Live-Raum";
+"sharp.stillRoom" = "Still-Raum";
+"sharp.liveRoomCameraMode" = "Live-Raum-Kameramodus";
+"sharp.stillRoomCameraMode" = "Still-Raum-Kameramodus";
+"sharp.cameraModeToggleAccessibilityHint" = "Wechselt zwischen Still-Raum- und Live-Raum-Kamera.";
 "photoRoom.odrOneTimeDownload" = "Einmaliger Download (~1,2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D-Modell erstellt";
 "photoRoom.generationFailedTitle" = "Generierung fehlgeschlagen";

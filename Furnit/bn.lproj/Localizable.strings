@@ -433,6 +433,11 @@
 "sharp.done" = "হয়ে গেছে!";
 "sharp.couldNotCreateRoom" = "রুম তৈরি করা যায়নি";
 "sharp.cancelled" = "বাতিল";
+"sharp.liveRoom" = "লাইভ রুম";
+"sharp.stillRoom" = "স্টিল রুম";
+"sharp.liveRoomCameraMode" = "লাইভ রুম ক্যামেরা মোড";
+"sharp.stillRoomCameraMode" = "স্টিল রুম ক্যামেরা মোড";
+"sharp.cameraModeToggleAccessibilityHint" = "স্টিল রুম ও লাইভ রুম ক্যামেরার মধ্যে বদলায়।";
 "photoRoom.odrOneTimeDownload" = "একবারের ডাউনলোড (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D মডেল তৈরি হয়েছে";
 "photoRoom.generationFailedTitle" = "তৈরি ব্যর্থ";

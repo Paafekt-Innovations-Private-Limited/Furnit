@@ -433,6 +433,11 @@
 "sharp.done" = "ಮುಗಿದಿದೆ!";
 "sharp.couldNotCreateRoom" = "ಕೊಠಡಿ ರಚಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ";
 "sharp.cancelled" = "ರದ್ದುಮಾಡಲಾಗಿದೆ";
+"sharp.liveRoom" = "ಲೈವ್ ರೂಮ್";
+"sharp.stillRoom" = "ಸ್ಟಿಲ್ ರೂಮ್";
+"sharp.liveRoomCameraMode" = "ಲೈವ್ ರೂಮ್ ಕ್ಯಾಮರಾ ಮೋಡ್";
+"sharp.stillRoomCameraMode" = "ಸ್ಟಿಲ್ ರೂಮ್ ಕ್ಯಾಮರಾ ಮೋಡ್";
+"sharp.cameraModeToggleAccessibilityHint" = "ಸ್ಟಿಲ್ ರೂಮ್ ಮತ್ತು ಲೈವ್ ರೂಮ್ ಕ್ಯಾಮರಾ ನಡುವೆ ಬದಲಾಯಿಸುತ್ತದೆ.";
 "photoRoom.odrOneTimeDownload" = "ಒಂದು ಬಾರಿ ಡೌನ್‌ಲೋಡ್ (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D ಮಾದರಿ ರಚಿಸಲಾಗಿದೆ";
 "photoRoom.generationFailedTitle" = "ರಚನೆ ವಿಫಲವಾಗಿದೆ";

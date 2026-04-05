@@ -433,6 +433,11 @@
 "sharp.done" = "పూర్తయింది!";
 "sharp.couldNotCreateRoom" = "గదిని సృష్టించలేకపోయాం";
 "sharp.cancelled" = "రద్దు";
+"sharp.liveRoom" = "లైవ్ రూమ్";
+"sharp.stillRoom" = "స్టిల్ రూమ్";
+"sharp.liveRoomCameraMode" = "లైవ్ రూమ్ కెమెరా మోడ్";
+"sharp.stillRoomCameraMode" = "స్టిల్ రూమ్ కెమెరా మోడ్";
+"sharp.cameraModeToggleAccessibilityHint" = "స్టిల్ రూమ్ మరియు లైవ్ రూమ్ కెమెరా మధ్య మారుతుంది.";
 "photoRoom.odrOneTimeDownload" = "ఒకసారి డౌన్‌లోడ్ (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D మోడల్ సృష్టించబడింది";
 "photoRoom.generationFailedTitle" = "సృష్టి విఫలమైంది";

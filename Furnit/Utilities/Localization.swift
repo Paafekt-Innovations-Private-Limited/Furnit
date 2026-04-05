@@ -181,6 +181,13 @@ enum L10n {
         static let done = "sharp.done".localized
         static let couldNotCreateRoom = "sharp.couldNotCreateRoom".localized
         static let cancelled = "sharp.cancelled".localized
+        /// Motion-tracked splat camera (formerly labeled “AR”).
+        static let liveRoom = "sharp.liveRoom".localized
+        /// Touch/orbit splat camera (formerly labeled “Touch”).
+        static let stillRoom = "sharp.stillRoom".localized
+        static let liveRoomCameraMode = "sharp.liveRoomCameraMode".localized
+        static let stillRoomCameraMode = "sharp.stillRoomCameraMode".localized
+        static let cameraModeToggleAccessibilityHint = "sharp.cameraModeToggleAccessibilityHint".localized
     }
 
     // MARK: Licenses & Attributions

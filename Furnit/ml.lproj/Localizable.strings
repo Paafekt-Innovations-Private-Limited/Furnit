@@ -433,6 +433,11 @@
 "sharp.done" = "പൂർത്തിയായി!";
 "sharp.couldNotCreateRoom" = "മുറി സൃഷ്ടിക്കാനായില്ല";
 "sharp.cancelled" = "റദ്ദാക്കി";
+"sharp.liveRoom" = "ലൈവ് റൂം";
+"sharp.stillRoom" = "സ്റ്റിൽ റൂം";
+"sharp.liveRoomCameraMode" = "ലൈവ് റൂം ക്യാമറാ മോഡ്";
+"sharp.stillRoomCameraMode" = "സ്റ്റിൽ റൂം ക്യാമറാ മോഡ്";
+"sharp.cameraModeToggleAccessibilityHint" = "സ്റ്റിൽ റൂമിന്റെയും ലൈവ് റൂമിന്റെയും ക്യാമറയ്ക്കിടയിൽ മാറ്റുന്നു.";
 "photoRoom.odrOneTimeDownload" = "ഒറ്റത്തവണ ഡൗൺലോഡ് (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D മോഡൽ സൃഷ്ടിച്ചു";
 "photoRoom.generationFailedTitle" = "സൃഷ്ടി പരാജയപ്പെട്ടു";

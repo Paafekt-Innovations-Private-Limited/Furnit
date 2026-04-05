@@ -434,6 +434,11 @@
 "sharp.done" = "完成！";
 "sharp.couldNotCreateRoom" = "無法建立房間";
 "sharp.cancelled" = "已取消";
+"sharp.liveRoom" = "動態房間";
+"sharp.stillRoom" = "靜態房間";
+"sharp.liveRoomCameraMode" = "動態房間相機模式";
+"sharp.stillRoomCameraMode" = "靜態房間相機模式";
+"sharp.cameraModeToggleAccessibilityHint" = "在靜態房間與動態房間相機之間切換。";
 "photoRoom.odrOneTimeDownload" = "一次性下載（約 1.2 GB）";
 "photoRoom.modelGeneratedTitle" = "已產生3D模型";
 "photoRoom.generationFailedTitle" = "產生失敗";
