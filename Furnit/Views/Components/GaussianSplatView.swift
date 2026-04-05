@@ -89,11 +89,18 @@ struct GaussianSplatView: UIViewRepresentable {
                                            action: #selector(Coordinator.handlePan(_:)))
         let pinch = UIPinchGestureRecognizer(target: context.coordinator,
                                               action: #selector(Coordinator.handlePinch(_:)))
+        let tap = UITapGestureRecognizer(target: context.coordinator,
+                                         action: #selector(Coordinator.handleTap(_:)))
+        let rotation = UIRotationGestureRecognizer(target: context.coordinator,
+                                                   action: #selector(Coordinator.handleRotation(_:)))
         mtkView.addGestureRecognizer(pan)
         mtkView.addGestureRecognizer(pinch)
+        mtkView.addGestureRecognizer(tap)
+        mtkView.addGestureRecognizer(rotation)
 
         mtkView.delegate = context.coordinator
         measurementHost?.coordinator = context.coordinator
+        context.coordinator.measurementHost = measurementHost
         context.coordinator.setup(view: mtkView, plyURL: plyURL)
 
         return mtkView
@@ -112,6 +119,7 @@ struct GaussianSplatView: UIViewRepresentable {
         // “Modifying state during view update”.
         coordinator.appliedZoomLevel = zoomLevel
         measurementHost?.coordinator = coordinator
+        coordinator.measurementHost = measurementHost
         mtkView.setNeedsDisplay()
     }
 
@@ -130,6 +138,7 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Zoom used for projection (updated from parent in `updateUIView` without writing the binding).
         var appliedZoomLevel: Float = 1.0
         var onBoundsAvailable: ((RoomBounds) -> Void)?
+        weak var measurementHost: GaussianSplatMeasurementHost?
         var supportsColorReadback: Bool { false }
 
         /// Last camera matrices used for splat rendering (for depth raycast).
@@ -166,6 +175,13 @@ struct GaussianSplatView: UIViewRepresentable {
         private var setupGeneration: Int = 0
         private var hasRenderedDepthFrame = false
 
+        /// After loading a PLY we **subsample** splat centers with a stride so the list stays ~`/maxTrimmedSampleCount`
+        /// (~60k). **Camera framing** `sceneBoundsMin` / `sceneBoundsMax` come from **per-axis P3–P97** on that
+        /// subsample (≈3% / 97%: `lo` / `hi` indices on sorted X, Y, and Z marginals — not paired 3D points).
+        /// This property is the **full** strided subsample passed to ``RoomGeometryEngine/measurePLYExtents``;
+        /// percentile trimming is applied **there** (and for framing), **not** by slicing this array.
+        private(set) var trimmedSplatPositions: [SIMD3<Float>]?
+
         /// Screenshot requests: one frame consumes one completion (Metal readback; `drawHierarchy` cannot capture `CAMetalLayer` reliably).
         private var pendingScreenshotCompletions: [(UIImage?) -> Void] = []
         /// Shared, CPU-readable target for an extra composite pass — never blit **from** the CAMetalLayer drawable (that aborts under validation).
@@ -177,6 +193,17 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneCentroid: SIMD3<Float>?
         /// True when viewing a SHARP `_classic.ply` splat; used to undo the extra (y,z) → (-y,-z) flip applied at export so the room is not upside down.
         private var isSharpClassicPly: Bool = false
+        private var arMotionTracker: ARMotionTracker?
+        private var arModeEnabled: Bool = false
+        private var arRelativeTransform: simd_float4x4 = matrix_identity_float4x4
+        private let arMovementScale: Float = 2.0
+        private var hasLoggedARViewerSpaceTransform = false
+        private var pendingFurnitureItem: SharpRoomFurnitureItem?
+        private var placedFurniture: [SharpRoomPlacedFurniture] = []
+        private var selectedFurnitureID: UUID?
+        private weak var overlayView: UIView?
+        private var furnitureShapeLayers: [UUID: CAShapeLayer] = [:]
+        private var projectedFurnitureHitRects: [UUID: CGRect] = [:]
 
         // Camera orbit & pan state
         var cameraYaw:    Float = 0
@@ -197,9 +224,10 @@ struct GaussianSplatView: UIViewRepresentable {
         let infiniteZoom: Bool
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
-        var splatCompositeExposure: Float = 1.0
+        /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
+        var splatCompositeExposure: Float = 1.12
         /// Additive lift on dark tonemapped samples (smoothstep mask).
-        var splatCompositeShadowLift: Float = 0.0
+        var splatCompositeShadowLift: Float = 0.05
 
         private struct DepthReadbackSnapshot {
             let width: Int
@@ -258,6 +286,8 @@ struct GaussianSplatView: UIViewRepresentable {
             if self.view === targetView || targetView == nil {
                 view = nil
             }
+            arMotionTracker?.stop()
+            arMotionTracker = nil
 
             rendererLock.lock()
             _splatRenderer = nil
@@ -276,6 +306,10 @@ struct GaussianSplatView: UIViewRepresentable {
             sceneBoundsMax = nil
             sceneCentroid = nil
             warmupEndTime = nil
+            overlayView?.removeFromSuperview()
+            overlayView = nil
+            furnitureShapeLayers.removeAll()
+            projectedFurnitureHitRects.removeAll()
         }
 
         func setup(view mtkView: MTKView, plyURL: URL) {
@@ -298,8 +332,8 @@ struct GaussianSplatView: UIViewRepresentable {
             drawableSize      = mtkView.drawableSize
             self.view         = mtkView
             currentURL        = plyURL
-            splatCompositeExposure = 1.0
-            splatCompositeShadowLift = 0.0
+            splatCompositeExposure = 1.12
+            splatCompositeShadowLift = 0.05
             isSharpClassicPly = plyURL.lastPathComponent.contains("_classic")
             // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
             cameraYaw = 0
@@ -325,6 +359,16 @@ struct GaussianSplatView: UIViewRepresentable {
                 compositePipeline = try? device.makeRenderPipelineState(descriptor: desc)
             }
             logDebug("🔧 [GaussianSplatView] composite pipeline=\(compositePipeline != nil)")
+
+            if overlayView == nil {
+                let overlay = UIView(frame: mtkView.bounds)
+                overlay.backgroundColor = .clear
+                overlay.isUserInteractionEnabled = false
+                overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                mtkView.addSubview(overlay)
+                overlayView = overlay
+                logDebug("🧩 [GaussianSplatView] furniture overlay view attached")
+            }
 
             // ── Notifications ─────────────────────────────────────────────────
             if !didRegisterSharpRoomNotifications {
@@ -357,17 +401,15 @@ struct GaussianSplatView: UIViewRepresentable {
                     let points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
 
-                    // Full AABB is exact; trimmed P3–P97 camera framing uses a sample on large scenes to avoid
-                    // sorting 3 arrays of 1M+ splats every time a saved room is opened.
+                    // Full AABB over all splats is exact (below). For camera framing we subsample (stride → ~60k),
+                    // then build an AABB from per-axis P3–P97 on that subsample so we don’t sort millions of
+                    // coordinates on every open. `trimmedSplatPositions` stores the whole subsample; P3–P97 is
+                    // only used to set min/max framing bounds, not to shrink the array handed to geometry.
                     let splatCount = points.count
                     let maxTrimmedSampleCount = 60_000
                     let trimSampleStride = max(1, splatCount / maxTrimmedSampleCount)
-                    var sampledX: [Float] = []
-                    var sampledY: [Float] = []
-                    var sampledZ: [Float] = []
-                    sampledX.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
-                    sampledY.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
-                    sampledZ.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+                    var sampledPositions: [SIMD3<Float>] = []
+                    sampledPositions.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
 
                     var fullMin = points[0].position
                     var fullMax = points[0].position
@@ -378,27 +420,25 @@ struct GaussianSplatView: UIViewRepresentable {
                         fullMax = simd_max(fullMax, position)
                         positionSum += position
                         if index % trimSampleStride == 0 {
-                            sampledX.append(position.x)
-                            sampledY.append(position.y)
-                            sampledZ.append(position.z)
+                            sampledPositions.append(position)
                         }
                     }
                     let centroid = positionSum / Float(points.count)
 
-                    if sampledX.isEmpty {
-                        sampledX.append(points[0].position.x)
-                        sampledY.append(points[0].position.y)
-                        sampledZ.append(points[0].position.z)
+                    if sampledPositions.isEmpty {
+                        sampledPositions.append(points[0].position)
                     }
 
-                    sampledX.sort()
-                    sampledY.sort()
-                    sampledZ.sort()
-                    let trimmedSampleCount = sampledX.count
+                    // P3–P97 per axis on the **same** subsample (independent marginal percentiles).
+                    // Sorting X/Y/Z separately then indexing with the same i was incorrect (mixed unrelated samples).
+                    let xs = sampledPositions.map(\.x).sorted()
+                    let ys = sampledPositions.map(\.y).sorted()
+                    let zs = sampledPositions.map(\.z).sorted()
+                    let trimmedSampleCount = sampledPositions.count
                     let lo = min(trimmedSampleCount - 1, max(0, Int(Float(trimmedSampleCount) * 0.03)))
                     let hi = min(trimmedSampleCount - 1, max(lo, Int(Float(trimmedSampleCount) * 0.97)))
-                    let trimmedMin = SIMD3<Float>(sampledX[lo], sampledY[lo], sampledZ[lo])
-                    let trimmedMax = SIMD3<Float>(sampledX[hi], sampledY[hi], sampledZ[hi])
+                    let trimmedMin = SIMD3<Float>(xs[lo], ys[lo], zs[lo])
+                    let trimmedMax = SIMD3<Float>(xs[hi], ys[hi], zs[hi])
 
                     let cameraBoundsMin = trimmedMin
                     let cameraBoundsMax = trimmedMax
@@ -441,6 +481,7 @@ struct GaussianSplatView: UIViewRepresentable {
                         self.sceneBoundsMin = cameraBoundsMin
                         self.sceneBoundsMax = cameraBoundsMax
                         self.sceneCentroid = cameraCentroid
+                        self.trimmedSplatPositions = sampledPositions
                         self.splatRenderer = renderer
                         self.isLoading = false
                         self.warmupEndTime = CFAbsoluteTimeGetCurrent() + 3.0
@@ -577,6 +618,7 @@ struct GaussianSplatView: UIViewRepresentable {
             let vp = viewport
             lastProjectionMatrix = vp.projectionMatrix
             lastViewMatrix = vp.viewMatrix
+            refreshFurnitureOverlay()
 
             if let pipeline = compositePipeline,
                let scratch = ensureSplatScratchTexture(
@@ -755,20 +797,32 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
             }
 
-            // ── Apply user orbit ─────────────────────────────────────────────
-            let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
-                                                 axis: SIMD3<Float>(0, 1, 0))
-            let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
-                                                 axis: SIMD3<Float>(1, 0, 0))
-            let userRotation = pitchMatrix * yawMatrix
-            let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
-            let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
+            let viewBase: simd_float4x4
+            if arModeEnabled {
+                let baseView = matrixLookAt(
+                    eye: camPos,
+                    target: lookAt,
+                    up: SIMD3<Float>(0, 1, 0)
+                )
+                let baseCameraWorld = simd_inverse(baseView)
+                let arCameraWorld = baseCameraWorld * arRelativeTransform
+                viewBase = simd_inverse(arCameraWorld)
+            } else {
+                // ── Apply user orbit ─────────────────────────────────────────
+                let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
+                                                     axis: SIMD3<Float>(0, 1, 0))
+                let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
+                                                     axis: SIMD3<Float>(1, 0, 0))
+                let userRotation = pitchMatrix * yawMatrix
+                let offset4      = userRotation * SIMD4<Float>(camPos - lookAt, 0)
+                let rotatedEye   = lookAt + SIMD3<Float>(offset4.x, offset4.y, offset4.z)
 
-            let viewBase = matrixLookAt(
-                eye:    rotatedEye,
-                target: lookAt,
-                up:     SIMD3<Float>(0, 1, 0)
-            )
+                viewBase = matrixLookAt(
+                    eye:    rotatedEye,
+                    target: lookAt,
+                    up:     SIMD3<Float>(0, 1, 0)
+                )
+            }
 
             let viewMatrix = viewBase * scaleMatrix
 
@@ -800,6 +854,81 @@ struct GaussianSplatView: UIViewRepresentable {
                 return view.bounds.size
             }
             return drawableSize
+        }
+
+        func setARModeEnabled(_ enabled: Bool) {
+            arModeEnabled = enabled
+            if enabled {
+                if arMotionTracker == nil {
+                    let tracker = ARMotionTracker()
+                    tracker.onRelativePoseUpdate = { [weak self] transform in
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+                            self.arRelativeTransform = self.scaledRelativeTransform(transform)
+                            self.view?.setNeedsDisplay()
+                        }
+                    }
+                    tracker.onTrackingStatus = { [weak self] text in
+                        DispatchQueue.main.async {
+                            self?.measurementHost?.updateARStatus(text)
+                        }
+                    }
+                    arMotionTracker = tracker
+                }
+                arRelativeTransform = matrix_identity_float4x4
+                hasLoggedARViewerSpaceTransform = false
+                measurementHost?.updateARStatus("Starting AR camera tracking")
+                arMotionTracker?.start()
+                logDebug("📱 [GaussianSplatAR] enabled")
+            } else {
+                arMotionTracker?.stop()
+                arRelativeTransform = matrix_identity_float4x4
+                measurementHost?.updateARStatus("AR camera off")
+                logDebug("📱 [GaussianSplatAR] disabled")
+                view?.setNeedsDisplay()
+            }
+        }
+
+        func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {
+            pendingFurnitureItem = item
+            let text = item.map {
+                String(
+                    format: "Pending %@ %.2f×%.2f×%.2f m — tap floor to place",
+                    $0.category, $0.dimensions.x, $0.dimensions.y, $0.dimensions.z
+                )
+            } ?? "Furniture: none"
+            measurementHost?.updateFurnitureStatus(text, count: placedFurniture.count)
+            logDebug("🪑 [GaussianSplatAR] pending furniture=\(item?.category ?? "nil")")
+        }
+
+        func clearPlacedFurniture() {
+            placedFurniture.removeAll()
+            selectedFurnitureID = nil
+            pendingFurnitureItem = nil
+            updateFurnitureStatusSummary("Furniture cleared")
+            refreshFurnitureOverlay()
+            view?.setNeedsDisplay()
+            logDebug("🧹 [GaussianSplatAR] cleared placed furniture")
+        }
+
+        func rotateSelectedFurniture(by radians: Float) {
+            guard let selectedFurnitureID,
+                  let index = placedFurniture.firstIndex(where: { $0.id == selectedFurnitureID }) else {
+                measurementHost?.updateFurnitureStatus("No selected furniture to rotate", count: placedFurniture.count)
+                return
+            }
+            placedFurniture[index].rotationY += radians
+            recheckFitment(at: index)
+            updateFurnitureStatusSummary(
+                String(
+                    format: "Rotated %@ to %.1f°",
+                    placedFurniture[index].item.category,
+                    placedFurniture[index].rotationY * 180 / .pi
+                )
+            )
+            refreshFurnitureOverlay()
+            view?.setNeedsDisplay()
+            logDebug("🔄 [GaussianSplatAR] rotated selected furniture by \(radians) rad")
         }
 
         func depthAt(screenPoint: CGPoint) -> Float? {
@@ -885,9 +1014,13 @@ struct GaussianSplatView: UIViewRepresentable {
             nil
         }
 
-        /// Copies the last rendered splat depth texture to CPU and derives a robust scene-unit room extent from
-        /// a trimmed point cloud. This is still a view-dependent fallback, but it is materially better than a
-        /// five-ray slice and avoids treating center-ray camera distance as room depth.
+        /// Copies the last rendered splat depth texture to CPU and derives scene-unit **W×H×D** from a grid
+        /// point cloud (**view-dependent** fallback vs full PLY).
+        ///
+        /// **Trimming:** ``trimmedSceneDimensions(points:trimFraction:)`` / ``trimmedRange(values:trimFraction:)``
+        /// drop **the same fraction from both ends** of each axis’s sorted coordinates (this path passes
+        /// **0.06** → ~**6%** dropped below the low quantile and ~**6%** above the high on X, Y, and Z
+        /// independently). That yields a more robust span than raw min/max on depth noise / outliers.
         func measureRoomFromDepthBuffer() -> RoomRaycastDimensions? {
             guard let snapshot = makeDepthSnapshot() else { return nil }
             let sampledPoints = buildPointCloud(
@@ -901,6 +1034,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 return nil
             }
 
+            // Symmetric per-axis trim (6% each tail); see trimmedSceneDimensions / trimmedRange.
             let dims = trimmedSceneDimensions(points: sampledPoints, trimFraction: 0.06)
             let fname = currentURL?.lastPathComponent ?? "unknown"
             let plyKind = isSharpClassicPly ? "classic_ply" : "base_ply"
@@ -948,6 +1082,7 @@ struct GaussianSplatView: UIViewRepresentable {
             return points
         }
 
+        /// World-axis AABB span after **`trimmedRange`** on X, Y, and Z separately (marginal trim, not 3D peel).
         private func trimmedSceneDimensions(
             points: [SIMD3<Float>],
             trimFraction: Float
@@ -963,6 +1098,8 @@ struct GaussianSplatView: UIViewRepresentable {
             )
         }
 
+        /// Sorted 1D values: drop **≈`trimFraction` × N** samples from the **low** end and the same count
+        /// from the **high** end (capped so indices never cross). Used for depth-grid fallback sizing only.
         private func trimmedRange(values: [Float], trimFraction: Float) -> (lower: Float, upper: Float) {
             guard !values.isEmpty else { return (0, 0.001) }
             let sorted = values.sorted()
@@ -1094,9 +1231,296 @@ struct GaussianSplatView: UIViewRepresentable {
             return SIMD3<Float>(world.x, world.y, world.z)
         }
 
+        private func scaledRelativeTransform(_ transform: simd_float4x4) -> simd_float4x4 {
+            var adjusted = transform
+            if isSharpClassicPly {
+                // Classic SHARP viewer space flips Y/Z; conjugate the AR pose into that same basis
+                // before we apply it to the camera world transform.
+                let viewerFlip = matrix4x4Scale(1, -1, -1)
+                adjusted = viewerFlip * adjusted * viewerFlip
+            }
+            var scaled = adjusted
+            scaled.columns.3.x *= arMovementScale
+            scaled.columns.3.y *= arMovementScale
+            scaled.columns.3.z *= arMovementScale
+            if !hasLoggedARViewerSpaceTransform {
+                hasLoggedARViewerSpaceTransform = true
+                let raw = transform.columns.3
+                let mapped = adjusted.columns.3
+                logDebug(
+                    "📱 [GaussianSplatAR] raw_relative_pos=(\(String(format: "%.4f", raw.x)),\(String(format: "%.4f", raw.y)),\(String(format: "%.4f", raw.z))) " +
+                    "viewer_space_pos=(\(String(format: "%.4f", mapped.x)),\(String(format: "%.4f", mapped.y)),\(String(format: "%.4f", mapped.z))) " +
+                    "classic_flip_applied=\(isSharpClassicPly)"
+                )
+            }
+            return scaled
+        }
+
+        private func placePendingFurniture(at screenPoint: CGPoint, item: SharpRoomFurnitureItem) {
+            guard let hitPoint = floorIntersection(screenPoint: screenPoint) else {
+                measurementHost?.updateFurnitureStatus("No floor hit for \(item.category) tap", count: placedFurniture.count)
+                logDebug("❌ [GaussianSplatAR] no floor hit for pending furniture \(item.category)")
+                return
+            }
+            var piece = SharpRoomPlacedFurniture(
+                id: UUID(),
+                item: item,
+                position: SIMD3<Float>(hitPoint.x, hitPoint.y + item.dimensions.y / 2, hitPoint.z),
+                rotationY: 0,
+                fits: true,
+                clearanceMeters: 0
+            )
+            placedFurniture.append(piece)
+            selectedFurnitureID = piece.id
+            pendingFurnitureItem = nil
+            recheckFitment(at: placedFurniture.count - 1)
+            piece = placedFurniture[placedFurniture.count - 1]
+            updateFurnitureStatusSummary(
+                String(
+                    format: "Placed %@ clearance %.0f cm",
+                    piece.item.category,
+                    piece.clearanceMeters * 100
+                )
+            )
+            refreshFurnitureOverlay()
+            view?.setNeedsDisplay()
+            logDebug(
+                "✅ [GaussianSplatAR] placed furniture category=\(piece.item.category) pos=\(piece.position) " +
+                "dims=\(piece.item.dimensions) fits=\(piece.fits)"
+            )
+        }
+
+        private func selectFurniture(near screenPoint: CGPoint) {
+            guard !projectedFurnitureHitRects.isEmpty else {
+                selectedFurnitureID = nil
+                updateFurnitureStatusSummary("No furniture to select")
+                return
+            }
+            if let containing = projectedFurnitureHitRects.first(where: { $0.value.insetBy(dx: -18, dy: -18).contains(screenPoint) }) {
+                selectedFurnitureID = containing.key
+            } else {
+                let best = projectedFurnitureHitRects.min { lhs, rhs in
+                    let lc = CGPoint(x: lhs.value.midX, y: lhs.value.midY)
+                    let rc = CGPoint(x: rhs.value.midX, y: rhs.value.midY)
+                    let ld = hypot(lc.x - screenPoint.x, lc.y - screenPoint.y)
+                    let rd = hypot(rc.x - screenPoint.x, rc.y - screenPoint.y)
+                    return ld < rd
+                }
+                selectedFurnitureID = best?.key
+            }
+            if let selectedFurnitureID,
+               let selected = placedFurniture.first(where: { $0.id == selectedFurnitureID }) {
+                updateFurnitureStatusSummary("Selected \(selected.item.category)")
+                logDebug("🎯 [GaussianSplatAR] selected furniture \(selected.item.category)")
+            }
+            refreshFurnitureOverlay()
+            view?.setNeedsDisplay()
+        }
+
+        private func moveSelectedFurniture(_ id: UUID, to screenPoint: CGPoint) {
+            guard let index = placedFurniture.firstIndex(where: { $0.id == id }),
+                  let hitPoint = floorIntersection(screenPoint: screenPoint) else { return }
+            let halfHeight = placedFurniture[index].item.dimensions.y / 2
+            placedFurniture[index].position = SIMD3<Float>(hitPoint.x, hitPoint.y + halfHeight, hitPoint.z)
+            recheckFitment(at: index)
+            updateFurnitureStatusSummary(
+                String(
+                    format: "Moved %@ clearance %.0f cm",
+                    placedFurniture[index].item.category,
+                    placedFurniture[index].clearanceMeters * 100
+                )
+            )
+            refreshFurnitureOverlay()
+            view?.setNeedsDisplay()
+        }
+
+        private func floorIntersection(screenPoint: CGPoint) -> SIMD3<Float>? {
+            guard let ray = screenPointToWorldRay(screenPoint),
+                  let boundsMin = sceneBoundsMin else { return nil }
+            let planePoint = SIMD3<Float>(0, boundsMin.y, 0)
+            let planeNormal = SIMD3<Float>(0, 1, 0)
+            let denom = simd_dot(ray.direction, planeNormal)
+            guard abs(denom) > 0.0001 else { return nil }
+            let t = simd_dot(planePoint - ray.origin, planeNormal) / denom
+            guard t > 0 else { return nil }
+            return ray.origin + ray.direction * t
+        }
+
+        private func screenPointToWorldRay(_ point: CGPoint) -> (origin: SIMD3<Float>, direction: SIMD3<Float>)? {
+            guard viewportSize.width > 1, viewportSize.height > 1 else { return nil }
+            let ndcX = Float(point.x / viewportSize.width) * 2 - 1
+            let ndcY = 1 - Float(point.y / viewportSize.height) * 2
+
+            let invProjection = simd_inverse(lastProjectionMatrix)
+            let invView = simd_inverse(lastViewMatrix)
+
+            var nearPoint = invProjection * SIMD4<Float>(ndcX, ndcY, 0, 1)
+            var farPoint = invProjection * SIMD4<Float>(ndcX, ndcY, 1, 1)
+            guard abs(nearPoint.w) > 1e-6, abs(farPoint.w) > 1e-6 else { return nil }
+            nearPoint /= nearPoint.w
+            farPoint /= farPoint.w
+
+            let worldNear = invView * nearPoint
+            let worldFar = invView * farPoint
+            let origin = SIMD3<Float>(worldNear.x, worldNear.y, worldNear.z)
+            let direction = normalize(SIMD3<Float>(
+                worldFar.x - worldNear.x,
+                worldFar.y - worldNear.y,
+                worldFar.z - worldNear.z
+            ))
+            return (origin, direction)
+        }
+
+        private func recheckFitment(at index: Int) {
+            guard placedFurniture.indices.contains(index),
+                  let boundsMin = sceneBoundsMin,
+                  let boundsMax = sceneBoundsMax else { return }
+
+            var piece = placedFurniture[index]
+            let halfW = piece.item.dimensions.x / 2
+            let halfD = piece.item.dimensions.z / 2
+            let cosR = cos(piece.rotationY)
+            let sinR = sin(piece.rotationY)
+            let corners = [
+                SIMD2<Float>( halfW * cosR - halfD * sinR,  halfW * sinR + halfD * cosR),
+                SIMD2<Float>(-halfW * cosR - halfD * sinR, -halfW * sinR + halfD * cosR),
+                SIMD2<Float>( halfW * cosR + halfD * sinR,  halfW * sinR - halfD * cosR),
+                SIMD2<Float>(-halfW * cosR + halfD * sinR, -halfW * sinR - halfD * cosR),
+            ]
+
+            var fits = true
+            var minimumClearance = Float.greatestFiniteMagnitude
+
+            for corner in corners {
+                let worldX = piece.position.x + corner.x
+                let worldZ = piece.position.z + corner.y
+                let clearX = min(worldX - boundsMin.x, boundsMax.x - worldX)
+                let clearZ = min(worldZ - boundsMin.z, boundsMax.z - worldZ)
+                let clearance = min(clearX, clearZ)
+                minimumClearance = min(minimumClearance, clearance)
+                if clearance < 0 { fits = false }
+            }
+
+            for otherIndex in placedFurniture.indices where otherIndex != index {
+                let other = placedFurniture[otherIndex]
+                let centerDistance = simd_distance(
+                    SIMD2<Float>(piece.position.x, piece.position.z),
+                    SIMD2<Float>(other.position.x, other.position.z)
+                )
+                let minimumSpacing = (piece.item.dimensions.x + other.item.dimensions.x) / 2
+                minimumClearance = min(minimumClearance, centerDistance - minimumSpacing)
+                if centerDistance < minimumSpacing { fits = false }
+            }
+
+            piece.fits = fits
+            piece.clearanceMeters = minimumClearance.isFinite ? max(0, minimumClearance) : 0
+            placedFurniture[index] = piece
+            logDebug(
+                "📏 [GaussianSplatAR] fitment category=\(piece.item.category) fits=\(fits) " +
+                "clearance=\(String(format: "%.3f", piece.clearanceMeters))m"
+            )
+        }
+
+        private func updateFurnitureStatusSummary(_ text: String) {
+            measurementHost?.updateFurnitureStatus(text, count: placedFurniture.count)
+        }
+
+        private func refreshFurnitureOverlay() {
+            guard let overlayView else { return }
+            var nextRects: [UUID: CGRect] = [:]
+            var usedIDs = Set<UUID>()
+
+            for piece in placedFurniture {
+                let points = projectedBoxPoints(for: piece)
+                let layer = furnitureShapeLayers[piece.id] ?? {
+                    let created = CAShapeLayer()
+                    created.fillColor = UIColor.clear.cgColor
+                    created.lineWidth = (selectedFurnitureID == piece.id) ? 3 : 2
+                    overlayView.layer.addSublayer(created)
+                    furnitureShapeLayers[piece.id] = created
+                    return created
+                }()
+
+                usedIDs.insert(piece.id)
+                let path = UIBezierPath()
+                if points.count == 8 {
+                    let edges = [(0,1),(1,3),(3,2),(2,0),(4,5),(5,7),(7,6),(6,4),(0,4),(1,5),(2,6),(3,7)]
+                    for (edgeIndex, edge) in edges.enumerated() {
+                        let start = points[edge.0]
+                        let end = points[edge.1]
+                        if edgeIndex == 0 { path.move(to: start) } else { path.move(to: start) }
+                        path.addLine(to: end)
+                    }
+                    let bounds = points.reduce(into: CGRect.null) { partial, point in
+                        partial = partial.union(CGRect(origin: point, size: .zero).insetBy(dx: -14, dy: -14))
+                    }
+                    nextRects[piece.id] = bounds
+                }
+                layer.path = path.cgPath
+                layer.strokeColor = (piece.fits ? UIColor.systemGreen : UIColor.systemRed).cgColor
+                layer.lineWidth = (selectedFurnitureID == piece.id) ? 3 : 2
+                layer.isHidden = points.count != 8
+            }
+
+            for (id, layer) in furnitureShapeLayers where !usedIDs.contains(id) {
+                layer.removeFromSuperlayer()
+                furnitureShapeLayers.removeValue(forKey: id)
+            }
+            projectedFurnitureHitRects = nextRects
+        }
+
+        private func projectedBoxPoints(for piece: SharpRoomPlacedFurniture) -> [CGPoint] {
+            let half = piece.item.dimensions * 0.5
+            let localPoints = [
+                SIMD3<Float>(-half.x, -half.y, -half.z),
+                SIMD3<Float>( half.x, -half.y, -half.z),
+                SIMD3<Float>(-half.x, -half.y,  half.z),
+                SIMD3<Float>( half.x, -half.y,  half.z),
+                SIMD3<Float>(-half.x,  half.y, -half.z),
+                SIMD3<Float>( half.x,  half.y, -half.z),
+                SIMD3<Float>(-half.x,  half.y,  half.z),
+                SIMD3<Float>( half.x,  half.y,  half.z),
+            ]
+            let rotation = matrix4x4Rotation(radians: piece.rotationY, axis: SIMD3<Float>(0, 1, 0))
+            var points: [CGPoint] = []
+            points.reserveCapacity(8)
+            for local in localPoints {
+                let rotated = rotation * SIMD4<Float>(local.x, local.y, local.z, 1)
+                let world = SIMD3<Float>(rotated.x, rotated.y, rotated.z) + piece.position
+                guard let projected = projectWorldPoint(world) else { return [] }
+                points.append(projected)
+            }
+            return points
+        }
+
+        private func projectWorldPoint(_ world: SIMD3<Float>) -> CGPoint? {
+            let clip = lastProjectionMatrix * (lastViewMatrix * SIMD4<Float>(world.x, world.y, world.z, 1))
+            guard abs(clip.w) > 1e-6 else { return nil }
+            let ndc = clip / clip.w
+            let x = CGFloat((ndc.x + 1) * 0.5) * viewportSize.width
+            let y = CGFloat((1 - ndc.y) * 0.5) * viewportSize.height
+            return CGPoint(x: x, y: y)
+        }
+
         // MARK: Gesture Handlers
 
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            let screenPoint = gesture.location(in: gesture.view)
+            if let pendingFurnitureItem {
+                placePendingFurniture(at: screenPoint, item: pendingFurnitureItem)
+                return
+            }
+            selectFurniture(near: screenPoint)
+        }
+
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            if arModeEnabled, let selectedFurnitureID {
+                moveSelectedFurniture(selectedFurnitureID, to: gesture.location(in: gesture.view))
+                if gesture.state == .ended {
+                    logDebug("↔️ [GaussianSplatAR] furniture drag ended")
+                }
+                return
+            }
             let translation = gesture.translation(in: gesture.view)
             cameraYaw   -= Float(translation.x) * dragSensitivity
             cameraPitch -= Float(translation.y) * dragSensitivity
@@ -1114,6 +1538,12 @@ struct GaussianSplatView: UIViewRepresentable {
             zoomLevel = clamped
             gesture.scale = 1.0
             view?.setNeedsDisplay()
+        }
+
+        @objc func handleRotation(_ gesture: UIRotationGestureRecognizer) {
+            guard arModeEnabled else { return }
+            rotateSelectedFurniture(by: Float(gesture.rotation))
+            gesture.rotation = 0
         }
 
         // MARK: Scratch Texture

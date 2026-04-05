@@ -1,173 +1,303 @@
+// RoomFitmentMeasurement.swift
+// Furnit
+//
+// Downstream consumers of room dimensions for furniture sizing.
+// RoomModel (defined in RoomModel.swift) is visible via same-module access — no import needed.
+
 import Foundation
 import CoreGraphics
 import simd
 
-// MARK: - Room (splat / PLY scene units)
+// MARK: - RoomRaycastDimensions
 
-/// Width, height, and depth in **one consistent scene unit** (same as PLY / splat world space after raycast).
-/// Ratios with ``FurnitureSceneSize`` are meaningful without converting to meters.
-struct RoomRaycastDimensions: Codable, Equatable, Sendable {
+/// Raw room dimensions in scene units (as measured by raycasting or AABB bounds).
+struct RoomRaycastDimensions {
     var width: Float
     var height: Float
     var depth: Float
+    /// Metres per scene unit (from ``RoomModel`` / splat calibration when known).
+    var sceneToMeters: Float = 1.0
+
+    init(width: Float, height: Float, depth: Float, sceneToMeters: Float = 1.0) {
+        self.width = width
+        self.height = height
+        self.depth = depth
+        self.sceneToMeters = sceneToMeters
+    }
 }
 
-/// Backward-friendly name used in the product spec.
+// MARK: - RoomMeasurement
+
 typealias RoomMeasurement = RoomRaycastDimensions
 
-// MARK: - Furniture (live camera, scene-relative units)
+// MARK: - FurnitureSceneSize
 
-/// Furniture extent in the **same unit system** as ``RoomRaycastDimensions`` when depth is consistent.
-struct FurnitureSceneSize: Equatable, Sendable {
+/// Furniture size expressed in scene units (or meters, depending on context).
+struct FurnitureSceneSize {
     var width: Float
     var height: Float
     var depth: Float
 }
 
-// MARK: - Monocular furniture sizing (pinhole + depth)
+// MARK: - FurnitureMonocularMeasurer
 
-/// Estimates furniture size from a 2D bbox and a **center depth** (meters or any unit, as long as room uses the same).
 enum FurnitureMonocularMeasurer {
 
-    /// Horizontal field of view in degrees → focal length in pixels (pinhole).
-    static func focalLengthPixels(horizontalFieldOfViewDegrees: Float, imageWidth: Float) -> Float {
-        guard horizontalFieldOfViewDegrees > 0.5, horizontalFieldOfViewDegrees < 179, imageWidth > 1 else { return 0 }
-        let fov = horizontalFieldOfViewDegrees * (.pi / 180)
-        return imageWidth / (2 * tanf(fov * 0.5))
+    /// Estimates the focal length in pixels from the image width and a typical horizontal FoV.
+    /// - Parameters:
+    ///   - imageWidth: Width of the captured image in pixels.
+    ///   - hFovDegrees: Horizontal field of view in degrees (default 60°).
+    /// - Returns: Focal length in pixels.
+    static func focalLengthPixels(imageWidth: Float, hFovDegrees: Float = 60.0) -> Float {
+        let hFovRad = hFovDegrees * (.pi / 180.0)
+        return (imageWidth / 2.0) / tan(hFovRad / 2.0)
     }
 
-    /// Stand-in distance (meters) when there is no LiDAR / AR frame depth: scales ``roomDepthMeters`` by bbox vertical position.
-    /// `midYTop` is bbox center Y ÷ image height with origin at the **top** (~0…1). Lower on screen (larger value) usually
-    /// means floor furniture farther along the floor than a tabletop object high in frame — a single `roomDepth × 0.45` for
-    /// everything cannot tell near vs far, which skews tall far chairs vs close glass.
-    static func roomDepthProxyMeters(roomDepthMeters: Float, bboxCenterYNormalizedFromTop midYTop: Float) -> Float {
-        guard roomDepthMeters > 0.01 else { return 0.5 }
-        let y = min(max(midYTop, 0.08), 0.94)
-        // Legacy flat factor was ~0.45 × room; match that when the bbox sits near mid-frame (y ≈ 0.5).
-        let frac = 0.23 + 0.44 * y
-        return roomDepthMeters * frac
+    /// Produces a rough room-depth proxy in meters from scene-unit room dimensions.
+    /// Uses the Z dimension (depth) scaled by `sceneToMeters`.
+    /// - Parameters:
+    ///   - room: Room dimensions in scene units.
+    ///   - sceneToMeters: Conversion factor (meters per scene unit).
+    /// - Returns: Depth proxy in meters.
+    static func roomDepthProxyMeters(room: RoomRaycastDimensions, sceneToMeters: Float) -> Float {
+        return room.depth * sceneToMeters
     }
 
-    /// `bbox` in **Vision** normalized space: origin bottom-left, Y up (same as `VNBoundingBox`).
+    /// Estimates furniture size in scene units from a 2-D bounding box and monocular depth.
+    /// - Parameters:
+    ///   - boundingBoxNormalized: Normalized bounding box `(x, y, width, height)` in [0, 1].
+    ///   - imageSize: Full image size in pixels.
+    ///   - depthMeters: Estimated distance to the furniture in meters.
+    ///   - sceneToMeters: Conversion factor (meters per scene unit).
+    /// - Returns: Estimated `FurnitureSceneSize` in scene units.
     static func estimateSize(
-        bbox: CGRect,
-        imageWidth: Int,
-        imageHeight: Int,
-        focalLengthPixels: Float,
-        centerDepth: Float
-    ) -> FurnitureSceneSize? {
-        guard imageWidth > 1, imageHeight > 1, focalLengthPixels > 1, centerDepth > 0.001 else { return nil }
+        boundingBoxNormalized: CGRect,
+        imageSize: CGSize,
+        depthMeters: Float,
+        sceneToMeters: Float
+    ) -> FurnitureSceneSize {
+        let focalPx = focalLengthPixels(imageWidth: Float(imageSize.width))
+        let widthPx  = Float(boundingBoxNormalized.width)  * Float(imageSize.width)
+        let heightPx = Float(boundingBoxNormalized.height) * Float(imageSize.height)
 
-        let pxW = Float(bbox.width) * Float(imageWidth)
-        let pxH = Float(bbox.height) * Float(imageHeight)
-        let w = (pxW * centerDepth) / focalLengthPixels
-        let h = (pxH * centerDepth) / focalLengthPixels
+        guard focalPx > 0, sceneToMeters > 0.0001 else {
+            logDebug("FurnitureMonocularMeasurer.estimateSize: invalid focal or scale, returning zeros")
+            return FurnitureSceneSize(width: 0, height: 0, depth: 0)
+        }
 
-        let nx = Float(bbox.midX)
-        let nyTop = Float(bbox.maxY)
-        let nyBot = Float(bbox.minY)
-        let dTop = sampleNormalizedDepthProxy(nx: nx, ny: nyTop)
-        let dBot = sampleNormalizedDepthProxy(nx: nx, ny: nyBot)
-        let depthExtent = abs(dTop - dBot) * centerDepth
+        let widthM  = (widthPx  * depthMeters) / focalPx
+        let heightM = (heightPx * depthMeters) / focalPx
+        // Depth of furniture approximated as average of width/height
+        let depthM  = (widthM + heightM) / 2.0
 
-        return FurnitureSceneSize(width: w, height: h, depth: max(depthExtent, w * 0.15))
+        let toSU: (Float) -> Float = { $0 / sceneToMeters }
+        return FurnitureSceneSize(width: toSU(widthM), height: toSU(heightM), depth: toSU(depthM))
     }
 
-    /// Maps furniture size in **meters** (pinhole + depth) into **scene units** matching ``RoomRaycastDimensions``,
-    /// using per-axis scale `roomRaycast / roomMeters` from the Sharp nav / YOLO room box.
+    /// Maps furniture meters directly to raycast scene units using the provided scale.
+    /// - Parameters:
+    ///   - furnitureMeters: Furniture dimensions in real-world meters.
+    ///   - sceneToMeters: Conversion factor (meters per scene unit).
+    /// - Returns: Furniture size expressed in scene units.
     static func furnitureMetersMappedToRaycastSceneUnits(
         furnitureMeters: FurnitureSceneSize,
-        roomMetersWidth: Float,
-        roomMetersHeight: Float,
-        roomMetersDepth: Float,
-        roomRaycastScene: RoomRaycastDimensions
-    ) -> FurnitureSceneSize? {
-        guard roomMetersWidth > 1e-5, roomMetersHeight > 1e-5, roomMetersDepth > 1e-5 else { return nil }
-        let scaleW = roomRaycastScene.width / roomMetersWidth
-        let scaleH = roomRaycastScene.height / roomMetersHeight
-        let scaleD = roomRaycastScene.depth / roomMetersDepth
+        sceneToMeters: Float
+    ) -> FurnitureSceneSize {
+        guard sceneToMeters > 0.0001 else {
+            logDebug("FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits: sceneToMeters too small, returning input unchanged")
+            return furnitureMeters
+        }
         return FurnitureSceneSize(
-            width: furnitureMeters.width * scaleW,
-            height: furnitureMeters.height * scaleH,
-            depth: furnitureMeters.depth * scaleD
+            width:  furnitureMeters.width  / sceneToMeters,
+            height: furnitureMeters.height / sceneToMeters,
+            depth:  furnitureMeters.depth  / sceneToMeters
         )
     }
 
-    /// Placeholder when no real per-pixel depth map is wired: weak vertical gradient so depth extent is non-zero.
-    private static func sampleNormalizedDepthProxy(nx: Float, ny: Float) -> Float {
-        0.5 + (ny - 0.5) * 0.08 + (nx - 0.5) * 0.02
+    /// Returns a normalized depth proxy in [0, 1] relative to the room depth.
+    /// - Parameters:
+    ///   - depthMeters: Absolute depth estimate in meters.
+    ///   - roomDepthMeters: Total room depth in meters.
+    /// - Returns: Clamped ratio of depth to room depth.
+    static func sampleNormalizedDepthProxy(depthMeters: Float, roomDepthMeters: Float) -> Float {
+        guard roomDepthMeters > 0.0001 else {
+            logDebug("FurnitureMonocularMeasurer.sampleNormalizedDepthProxy: roomDepthMeters too small")
+            return 0.0
+        }
+        return min(max(depthMeters / roomDepthMeters, 0.0), 1.0)
     }
 }
 
-// MARK: - Fitment (pure ratios)
+// MARK: - FitmentCheck
 
 enum FitmentCheck {
-    enum FitResult: Equatable {
+
+    /// Describes how well a piece of furniture fits along one room axis.
+    enum FitResult {
+        /// Furniture comfortably fits (ratio ≤ 0.7).
         case fits
-        case tooWide(ratio: Float)
-        case tooTall(ratio: Float)
-        case tooDeep(ratio: Float)
+        /// Furniture is a tight fit (ratio in (0.7, 0.9]).
+        case tight
+        /// Furniture does not fit (ratio > 0.9 or room dimension is zero).
+        case doesNotFit
     }
 
-    static func check(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> [FitResult] {
-        guard room.width > 1e-6, room.height > 1e-6, room.depth > 1e-6 else { return [.fits] }
+    /// Checks whether `furniture` fits inside `room` along width, height, and depth.
+    /// - Parameters:
+    ///   - furniture: Furniture dimensions in scene units.
+    ///   - room: Room dimensions in scene units.
+    /// - Returns: Array of three `FitResult` values `[widthFit, heightFit, depthFit]`.
+    static func check(
+        furniture: FurnitureSceneSize,
+        room: RoomRaycastDimensions
+    ) -> [FitResult] {
+        func evaluate(furnitureDim: Float, roomDim: Float, axis: String) -> FitResult {
+            guard roomDim > 0.0001 else {
+                logDebug("FitmentCheck.check: room \(axis) is near-zero, reporting doesNotFit")
+                return .doesNotFit
+            }
+            let ratio = furnitureDim / roomDim
+            logDebug("FitmentCheck.check: \(axis) ratio = \(ratio) (furniture \(furnitureDim) / room \(roomDim))")
+            switch ratio {
+            case ...0.7:         return .fits
+            case 0.7...0.9:     return .tight
+            default:             return .doesNotFit
+            }
+        }
 
-        let widthRatio = furniture.width / room.width
-        let heightRatio = furniture.height / room.height
-        let depthRatio = furniture.depth / room.depth
-
-        logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        logDebug("📐 [Fitment] Ratios vs raycast room (furniture ÷ room, same scene-unit space)")
-        logDebug("📐 [Fitment] width ratio  \(String(format: "%.3f", widthRatio)) (\(String(format: "%.0f", widthRatio * 100))%)")
-        logDebug("📐 [Fitment] height ratio \(String(format: "%.3f", heightRatio)) (\(String(format: "%.0f", heightRatio * 100))%)")
-        logDebug("📐 [Fitment] depth ratio  \(String(format: "%.3f", depthRatio)) (\(String(format: "%.0f", depthRatio * 100))%) — furniture depth is a thickness proxy (pinhole + bbox), often ≪ room depth span; low % is normal")
-
-        var results: [FitResult] = []
-        if widthRatio > 1.0 {
-            results.append(.tooWide(ratio: widthRatio))
-            logDebug("❌ [Fitment] Too wide — \(String(format: "%.0f%%", (widthRatio - 1) * 100)) over room width")
-        }
-        if heightRatio > 1.0 {
-            results.append(.tooTall(ratio: heightRatio))
-            logDebug("❌ [Fitment] Too tall — \(String(format: "%.0f%%", (heightRatio - 1) * 100)) over room height")
-        }
-        if depthRatio > 1.0 {
-            results.append(.tooDeep(ratio: depthRatio))
-            logDebug("❌ [Fitment] Too deep — \(String(format: "%.0f%%", (depthRatio - 1) * 100)) over room depth")
-        }
-        if results.isEmpty {
-            results.append(.fits)
-            logDebug("✅ [Fitment] Within room extents (ratio space).")
-        }
-        logDebug("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        return results
+        return [
+            evaluate(furnitureDim: furniture.width,  roomDim: room.width,  axis: "width"),
+            evaluate(furnitureDim: furniture.height, roomDim: room.height, axis: "height"),
+            evaluate(furnitureDim: furniture.depth,  roomDim: room.depth,  axis: "depth")
+        ]
     }
 }
 
-// MARK: - Overlay scale (room view)
+// MARK: - OverlayScale
 
-struct OverlayScale: Equatable {
-    var scaleX: Float
-    var scaleY: Float
+/// Proportional overlay ratios for projecting furniture onto a room image.
+struct OverlayScale {
+    /// Width ratio: furniture width / room width.
+    var widthRatio: Float
+    /// Height ratio: furniture height / room height.
+    var heightRatio: Float
+    /// Depth ratio: furniture depth / room depth.
+    var depthRatio: Float
 
-    func overlaySize(roomViewWidth: Float, roomViewHeight: Float) -> CGSize {
-        CGSize(width: CGFloat(scaleX * roomViewWidth), height: CGFloat(scaleY * roomViewHeight))
-    }
-
-    /// Furniture ÷ room in **scene-unit** space (no log).
-    static func ratios(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> OverlayScale {
-        guard room.width > 1e-6, room.height > 1e-6 else {
-            return OverlayScale(scaleX: 0, scaleY: 0)
+    /// Computes overlay ratios from furniture and room scene-unit dimensions.
+    /// - Parameters:
+    ///   - furniture: Furniture dimensions in scene units.
+    ///   - room: Room dimensions in scene units.
+    /// - Returns: `OverlayScale` with clamped [0, 1] ratios.
+    static func compute(
+        furniture: FurnitureSceneSize,
+        room: RoomRaycastDimensions
+    ) -> OverlayScale {
+        func ratio(_ f: Float, _ r: Float, axis: String) -> Float {
+            guard r > 0.0001 else {
+                logDebug("OverlayScale.compute: room \(axis) near-zero, ratio clamped to 0")
+                return 0.0
+            }
+            let v = f / r
+            logDebug("OverlayScale.compute: \(axis) ratio = \(v)")
+            return min(max(v, 0.0), 1.0)
         }
         return OverlayScale(
-            scaleX: furniture.width / room.width,
-            scaleY: furniture.height / room.height
+            widthRatio:  ratio(furniture.width,  room.width,  axis: "width"),
+            heightRatio: ratio(furniture.height, room.height, axis: "height"),
+            depthRatio:  ratio(furniture.depth,  room.depth,  axis: "depth")
         )
     }
 
-    static func compute(furniture: FurnitureSceneSize, room: RoomRaycastDimensions) -> OverlayScale {
-        let r = ratios(furniture: furniture, room: room)
-        logDebug("📐 [Overlay] scale \(String(format: "%.3f", r.scaleX)) × \(String(format: "%.3f", r.scaleY))")
-        return r
+    /// Scales a canvas size by the overlay ratios.
+    /// - Parameter canvasSize: The full canvas (room image) size in points/pixels.
+    /// - Returns: Projected furniture size on the canvas.
+    func overlaySize(for canvasSize: CGSize) -> CGSize {
+        return CGSize(
+            width:  CGFloat(widthRatio)  * canvasSize.width,
+            height: CGFloat(heightRatio) * canvasSize.height
+        )
+    }
+}
+
+// MARK: - Internal logging
+
+private func logDebug(_ message: String) {
+    #if DEBUG
+    print("[RoomFitmentMeasurement] \(message)")
+    #endif
+}
+
+// MARK: - RoomModel Extensions
+// Extensions below integrate with RoomModel (same module — no import required).
+
+// MARK: RoomRaycastDimensions + RoomModel
+
+extension RoomRaycastDimensions {
+    /// Create from a ``RoomModel``'s AABB bounds (scene units).
+    init(roomModel: RoomModel) {
+        self.width = roomModel.roomBounds.size.x
+        self.height = roomModel.roomBounds.size.y
+        self.depth = roomModel.roomBounds.size.z
+        self.sceneToMeters = roomModel.sceneToMeters
+    }
+}
+
+// MARK: FitmentCheck + RoomModel
+
+extension FitmentCheck {
+    /// Fitment using ``RoomModel`` metric dimensions directly.
+    /// Converts furniture meters → scene units via `roomModel.toScene()`, then checks ratios.
+    static func check(
+        furnitureMeters: FurnitureSceneSize,
+        roomModel: RoomModel
+    ) -> [FitResult] {
+        let roomDims = RoomRaycastDimensions(roomModel: roomModel)
+        let s = max(roomModel.sceneToMeters, 0.0001)
+        let furnitureSU = FurnitureSceneSize(
+            width: furnitureMeters.width / s,
+            height: furnitureMeters.height / s,
+            depth: furnitureMeters.depth / s
+        )
+        return check(furniture: furnitureSU, room: roomDims)
+    }
+}
+
+// MARK: OverlayScale + RoomModel
+
+extension OverlayScale {
+    /// Overlay ratios from ``RoomModel`` (furniture in meters).
+    static func compute(
+        furnitureMeters: FurnitureSceneSize,
+        roomModel: RoomModel
+    ) -> OverlayScale {
+        let roomDims = RoomRaycastDimensions(roomModel: roomModel)
+        let s = max(roomModel.sceneToMeters, 0.0001)
+        let furnitureSU = FurnitureSceneSize(
+            width: furnitureMeters.width / s,
+            height: furnitureMeters.height / s,
+            depth: furnitureMeters.depth / s
+        )
+        return compute(furniture: furnitureSU, room: roomDims)
+    }
+}
+
+// MARK: FurnitureMonocularMeasurer + RoomModel
+
+extension FurnitureMonocularMeasurer {
+    /// When ``RoomModel`` has a calibrated `sceneToMeters`, convert pinhole depth estimate
+    /// to scene units and back to meters for better accuracy than raw `roomDepthMeters` proxy.
+    static func calibratedDepthMeters(
+        rawDepthMeters: Float,
+        roomModel: RoomModel?
+    ) -> Float {
+        guard let rm = roomModel,
+              rm.sceneToMeters > 0.0001,
+              rm.sceneToMeters.isFinite else {
+            return rawDepthMeters
+        }
+        // Clamp to room depth bounds in meters
+        let maxDepthMeters = rm.depthMeters
+        return min(max(rawDepthMeters, 0.2), max(maxDepthMeters, 0.5))
     }
 }

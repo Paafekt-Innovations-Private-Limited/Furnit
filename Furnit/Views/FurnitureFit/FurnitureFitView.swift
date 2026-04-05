@@ -1567,8 +1567,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         var focalLengthX = cameraFocalLengthPixels
         if focalLengthX < 1, let camera = captureBackCamera {
             focalLengthX = FurnitureMonocularMeasurer.focalLengthPixels(
-                horizontalFieldOfViewDegrees: camera.activeFormat.videoFieldOfView,
-                imageWidth: Float(imageWidth)
+                imageWidth: Float(imageWidth),
+                hFovDegrees: Float(camera.activeFormat.videoFieldOfView)
             )
         }
         if focalLengthX < 1 { focalLengthX = Float(imageWidth) * 0.73 }
@@ -1769,15 +1769,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return proportionalFallback()
         }
 
-        guard let focalLengthMM = roomModel.cameraInfo.focalLengthMM,
+        guard let cam = roomModel.cameraInfo,
+              let focalLengthMM = cam.focalLengthMM,
               focalLengthMM > 0,
-              let sensorWidthMM = roomModel.cameraInfo.sensorWidthMM,
+              let sensorWidthMM = cam.sensorWidthMM,
               sensorWidthMM > 0 else {
             logFurnitureFitSize(
                 "phase=room_model_sizing_unavailable reason=missing_intrinsics " +
                 "sceneToMeters=\(String(format: "%.4f", roomModel.sceneToMeters)) " +
-                "focal_mm=\(String(format: "%.2f", roomModel.cameraInfo.focalLengthMM ?? 0)) " +
-                "sensor_w_mm=\(String(format: "%.2f", roomModel.cameraInfo.sensorWidthMM ?? 0))"
+                "focal_mm=\(String(format: "%.2f", roomModel.cameraInfo?.focalLengthMM ?? 0)) " +
+                "sensor_w_mm=\(String(format: "%.2f", roomModel.cameraInfo?.sensorWidthMM ?? 0))"
             )
             return proportionalFallback()
         }
@@ -1785,15 +1786,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let intrinsics = DepthSizingService.CameraIntrinsics(
             focalLengthMM: focalLengthMM,
             sensorWidthMM: sensorWidthMM,
-            imageWidthPx: Float(roomModel.cameraInfo.imageWidthPx ?? imageWidth),
-            imageHeightPx: Float(roomModel.cameraInfo.imageHeightPx ?? imageHeight)
+            imageWidthPx: Float(cam.imageWidthPx ?? imageWidth),
+            imageHeightPx: Float(cam.imageHeightPx ?? imageHeight)
         )
         let sizingService = DepthSizingService(
             intrinsics: intrinsics,
             sceneToMeters: roomModel.sceneToMeters
         )
 
-        let sceneDepth = roomModel.toScene(depthMeters)
+        let sceneDepth = roomModel.toScene(depthMeters: depthMeters)
         guard sceneDepth.isFinite, sceneDepth > 0 else {
             logFurnitureFitSize(
                 "phase=room_model_sizing_unavailable reason=invalid_scene_depth " +
@@ -1999,13 +2000,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let furnMeters = metric.size
 
         // Pinhole path is in meters; room raycast is in splat scene units — align before ratio checks.
-        guard let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
+        let sceneToMeters: Float = {
+            if let m = roomModel?.sceneToMeters, m > 1e-4 { return m }
+            if room.depth > 1e-5 { return roomDepthMeters / room.depth }
+            if room.width > 1e-5 { return roomWidthMeters / room.width }
+            return 0
+        }()
+        guard sceneToMeters > 1e-4 else { return }
+        let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
             furnitureMeters: furnMeters,
-            roomMetersWidth: roomWidthMeters,
-            roomMetersHeight: roomHeightMeters,
-            roomMetersDepth: roomDepthMeters,
-            roomRaycastScene: room
-        ) else { return }
+            sceneToMeters: sceneToMeters
+        )
 
         logFurnitureFitSize(
             "phase=fitment_abs furniture_su=\(String(format: "%.3f", furnSu.width))×\(String(format: "%.3f", furnSu.height))×\(String(format: "%.3f", furnSu.depth)) " +

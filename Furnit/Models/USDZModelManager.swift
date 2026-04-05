@@ -560,7 +560,7 @@ class USDZModelManager: ObservableObject {
               let legacy = try? JSONDecoder().decode([String: String].self, from: legacyData) else {
             return nil
         }
-        return EnhancedRoomMetadata.migrate(from: legacy)
+        return EnhancedRoomMetadata.fromLegacyFlatMeta(legacy)
     }
 
     func loadEnhancedMetadata(forSavedRoomNamed fileName: String, fileType: ModelFileType = .ply) -> EnhancedRoomMetadata? {

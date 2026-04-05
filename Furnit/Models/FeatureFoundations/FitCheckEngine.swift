@@ -93,7 +93,7 @@ public struct FitCheckEngine {
             guard widthFitsRegion || rotatedFitsRegion else { return nil }
 
             let regionCenterUV = (region.uvBounds.min + region.uvBounds.max) * 0.5
-            let floorOrigin = roomModel.floorPlane?.centroid ?? roomModel.roomBounds.center
+            let floorOrigin = roomModel.floor.pointOnPlane
             let centerScene = SIMD3<Float>(floorOrigin.x + regionCenterUV.x, floorOrigin.y, floorOrigin.z + regionCenterUV.y)
             let clearance = ClearanceReport(
                 frontM: max(0, region.areaSqM.squareRoot() - furniture.depthM),

@@ -2,6 +2,7 @@ import CoreGraphics
 import CoreML
 import Foundation
 import UIKit
+import Vision
 
 /// YOLO wall segmentation + SHARP monodepth (on disk) + camera EXIF → front wall width/height in meters
 /// plus **camera-to-wall depth** (`Result.depthMeters`) for room metadata.
@@ -35,6 +36,64 @@ enum WallMeasurementEstimator {
     private static let calAuto = "auto"
     private static let calDoor = "door"
     private static let calCeiling = "ceiling"
+
+    // MARK: - Vision horizon (PLY Z-span → angle-aware depth heuristic)
+
+    private static func cgImagePropertyOrientation(_ o: UIImage.Orientation) -> CGImagePropertyOrientation {
+        switch o {
+        case .up: return .up
+        case .upMirrored: return .upMirrored
+        case .down: return .down
+        case .downMirrored: return .downMirrored
+        case .left: return .left
+        case .leftMirrored: return .leftMirrored
+        case .right: return .right
+        case .rightMirrored: return .rightMirrored
+        @unknown default: return .up
+        }
+    }
+
+    /// `VNHorizonObservation.angle` (rad): horizon vs image x-axis; used as a cheap pitch proxy for gallery photos.
+    private static func horizonPitchRadians(thumbnail: UIImage) -> Float? {
+        guard let cgImage = thumbnail.cgImage else {
+            logWallMeasurement("horizon skip: no CGImage")
+            return nil
+        }
+        let orientation = cgImagePropertyOrientation(thumbnail.imageOrientation)
+        let request = VNDetectHorizonRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            logWallMeasurement("horizon Vision perform failed: \(error.localizedDescription)")
+            return nil
+        }
+        guard let obs = request.results?.first else {
+            logWallMeasurement("horizon no observation")
+            return nil
+        }
+        return Float(obs.angle)
+    }
+
+    /// Angle-aware depth from splat **Z span** (~ground distance) vs tilted optical axis: `depth ≈ zSpan * cos(pitch)`.
+    private static func zSpanWithHorizonDecomposition(rawZSpan: Float, pitchRad: Float?) -> (
+        depthAlong: Float,
+        heightAlong: Float,
+        applied: Bool
+    ) {
+        guard rawZSpan.isFinite, rawZSpan > 0,
+              let pitch = pitchRad, pitch.isFinite
+        else {
+            return (rawZSpan, 0, false)
+        }
+        let p = Double(pitch)
+        let c = cos(p)
+        let s = sin(p)
+        let raw = Double(rawZSpan)
+        let along = Float(max(0.05, raw * c))
+        let vertical = Float(raw * s)
+        return (along, vertical, true)
+    }
 
     // MARK: - Label matchers
 
@@ -175,19 +234,48 @@ enum WallMeasurementEstimator {
             logWallMeasurement("monodepth_file=false path=\(monoURL.path)")
         }
 
-        let wallDepth: Float
-        let depthSource: String
-        if let mono, let md = mono.medianAt(rect: wallRect, imageWidth: iw, imageHeight: ih), md > 0 {
-            wallDepth = md
-            depthSource = "monodepth"
-        } else if let sd = exif.flatMap({ numericExifValue($0["subjectDistanceMeters"]) }), sd > 0.1, sd < 30 {
-            wallDepth = Float(sd)
-            depthSource = "exif_subject_distance"
+        let horizonPitch = horizonPitchRadians(thumbnail: thumbnail)
+        if let hp = horizonPitch {
+            let deg = hp * 180 / Float.pi
+            logWallMeasurement(
+                "horizon observe pitch_rad=\(String(format: "%.5f", hp)) pitch_deg=\(String(format: "%.2f", deg)) " +
+                    "(VNDetectHorizonRequest; SHARP Z-span → cos/sin split)"
+            )
         } else {
-            wallDepth = max(0.5, min(20, assumedZ))
-            depthSource = "assumed_z"
+            logWallMeasurement("horizon observe unavailable — no VN horizon angle (ply_z left un-tilt-corrected)")
         }
-        logWallMeasurement("wall_depth value=\(wallDepth) source=\(depthSource)")
+
+        /// Depth for pinhole W/H: same basis as saved room depth when PLY bounds exist (Z span of loaded splat AABB).
+        let pinholeDepth: Float
+        let pinholeDepthSource: String
+        if let ply = plyBounds, ply.depth > 0.1 {
+            let (zAdj, zHeightAlong, didHorizon) = zSpanWithHorizonDecomposition(
+                rawZSpan: ply.depth,
+                pitchRad: horizonPitch,
+            )
+            if didHorizon {
+                logWallMeasurement(
+                    "ply_z_horizon raw_z_span_su=\(String(format: "%.6f", ply.depth)) " +
+                        "depth_along≈z*cos=\(String(format: "%.6f", zAdj)) " +
+                        "height_along≈z*sin=\(String(format: "%.6f", zHeightAlong))"
+                )
+            }
+            pinholeDepth = zAdj
+            pinholeDepthSource = didHorizon ? "ply_z_span_horizon" : "ply_z_span"
+        } else if let mono, let md = mono.medianAt(rect: wallRect, imageWidth: iw, imageHeight: ih), md > 0 {
+            pinholeDepth = md
+            pinholeDepthSource = "monodepth"
+        } else if let sd = exif.flatMap({ numericExifValue($0["subjectDistanceMeters"]) }), sd > 0.1, sd < 30 {
+            pinholeDepth = Float(sd)
+            pinholeDepthSource = "exif_subject_distance"
+        } else {
+            pinholeDepth = max(0.5, min(20, assumedZ))
+            pinholeDepthSource = "assumed_z"
+        }
+        logWallMeasurement(
+            "pinhole_depth value=\(String(format: "%.6f", pinholeDepth)) source=\(pinholeDepthSource) " +
+                "(W/H use same Z as room depth when plyBounds present)"
+        )
 
         // --- Width / Height: YOLO pinhole (targets the wall surface) ---
         // PLY AABB measures the whole 3D scene, not the front wall — it over-estimates
@@ -204,15 +292,15 @@ enum WallMeasurementEstimator {
 
         let wallPxW = Float(max(1, wallRect.width))
         let wallPxH = Float(max(1, wallRect.height))
-        let rawW = (wallPxW / focalPx) * wallDepth
-        let rawH = (wallPxH / focalPx) * wallDepth
+        let rawW = (wallPxW / focalPx) * pinholeDepth
+        let rawH = (wallPxH / focalPx) * pinholeDepth
 
         let (scale, calMode) = calibrationScale(
             rawH: rawH,
             detections: mapped,
             names: names,
             mono: mono,
-            wallDepth: wallDepth,
+            wallDepth: pinholeDepth,
             focalPx: focalPx,
             imageWidth: iw,
             imageHeight: ih,
@@ -234,22 +322,43 @@ enum WallMeasurementEstimator {
             )
         }
 
-        // PLY depth (Z span) is a direct 3D measurement — better than camera-to-wall distance for room depth.
+        // Saved room depth: PLY Z span when available (same units as pinhole when ply_z_span was used).
         let roomDepth: Float
         let depthMode: String
         if let bounds = plyBounds, bounds.depth > 0.1 {
-            roomDepth = bounds.depth
-            depthMode = "\(depthSource)+ply_z"
+            let (roomZ, roomVert, didHorizonRoom) = zSpanWithHorizonDecomposition(
+                rawZSpan: bounds.depth,
+                pitchRad: horizonPitch,
+            )
+            roomDepth = roomZ
+            if didHorizonRoom,
+               pinholeDepthSource != "ply_z_span",
+               pinholeDepthSource != "ply_z_span_horizon" {
+                logWallMeasurement(
+                    "ply_z_horizon room_depth_only raw=\(String(format: "%.6f", bounds.depth)) " +
+                        "cos_depth=\(String(format: "%.6f", roomZ)) sin_h=\(String(format: "%.6f", roomVert)) " +
+                        "pinhole_source=\(pinholeDepthSource)"
+                )
+            }
+            if didHorizonRoom {
+                depthMode =
+                    (pinholeDepthSource == "ply_z_span" || pinholeDepthSource == "ply_z_span_horizon")
+                    ? "ply_z_horizon"
+                    : "\(pinholeDepthSource)+ply_z_horizon"
+            } else {
+                depthMode = pinholeDepthSource == "ply_z_span" ? "ply_z" : "\(pinholeDepthSource)+ply_z"
+            }
         } else {
-            roomDepth = wallDepth
-            depthMode = depthSource
+            roomDepth = pinholeDepth
+            depthMode = pinholeDepthSource
         }
 
         logWallMeasurement(
             "measure_final mode=\(calMode) width_m=\(String(format: "%.3f", wm)) height_m=\(String(format: "%.3f", hm)) " +
                 "depth=\(String(format: "%.3f", roomDepth))(\(depthMode)) wall_source=\(wallSource) " +
                 "focal_px=\(String(format: "%.1f", focalPx))(\(focalHow)) " +
-                "raw_geom_m w=\(String(format: "%.3f", rawW)) h=\(String(format: "%.3f", rawH)) scale=\(String(format: "%.4f", scale))",
+                "raw_geom_m w=\(String(format: "%.3f", rawW)) h=\(String(format: "%.3f", rawH)) scale=\(String(format: "%.4f", scale)) " +
+                "pinhole_z=\(String(format: "%.3f", pinholeDepth))(\(pinholeDepthSource))",
         )
         return Result(widthMeters: wm, heightMeters: hm, depthMeters: roomDepth, calibrationMode: calMode)
     }

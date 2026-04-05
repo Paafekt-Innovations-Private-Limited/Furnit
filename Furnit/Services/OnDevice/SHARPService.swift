@@ -57,10 +57,6 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
-    /// Extra **linear** scale applied only in `_3dgs.ply` (SuperSplat / external viewers). In-app Metal uses `_classic.ply`, not this file.
-    /// Stored scales are log(σ); we add `log(factor)` per axis. Tune down if export looks mushy; up if banding in external viewers.
-    private static let threeDGSMetalViewerLinearScaleFactor: Float = 1.65
-
     /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
     /// Aggressive caps on ≤6GB phones shrink the `UIImage` before the 1536² stretch (model input size unchanged).
     private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
@@ -408,7 +404,7 @@ class SHARPService: ObservableObject {
     ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
     ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
     ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
-    /// - Returns: URL of the primary PLY written by `writePLY`.
+    /// - Returns: URL of the `_classic.ply` written by `writePLY` (Metal viewer frame).
     func generateGaussians(
         from image: UIImage,
         sourceImageURL: URL? = nil,
@@ -457,11 +453,9 @@ class SHARPService: ObservableObject {
                 applyAspectCorrection: true
             )
             logSharpMilestone(
-                "PLY files written on Swift/Core ML path (not C++): classic=\(plyURLs.classic.lastPathComponent) — WebView loads these next",
+                "PLY written on Swift/Core ML path (not C++): \(plyURLs.classic.lastPathComponent) — Metal viewer loads this file",
             )
-            logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
-            logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
-            logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
+            logDebug("SHARP: Saved classic PLY to \(plyURLs.classic.path)")
             let thumbSource = Self.imageForWallMeasurementThumbnail(workingImage, maxPixel: 1024)
             saveThumbnailForWallMeasurement(image: thumbSource, classicPlyURL: plyURLs.classic)
             let roomFolder = plyURLs.classic.deletingLastPathComponent()
@@ -471,7 +465,7 @@ class SHARPService: ObservableObject {
                 mediaMetadata: captureMediaMetadata,
                 photoLibraryAssetLocalId: photoLibraryAssetLocalId,
             )
-            let plyURL = plyURLs.original
+            let plyURL = plyURLs.classic
 
             // Complete
             progress = 1.0
@@ -505,6 +499,62 @@ class SHARPService: ObservableObject {
     }
 
     // MARK: - Image Preprocessing
+
+    /// Logs a few spatially separated BGRA samples so we can see whether color is already gone
+    /// before SHARP inference or only later in the export/render path.
+    private func logInputColorDiagnostics(_ buffer: CVPixelBuffer) {
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        guard width > 0, height > 0 else { return }
+
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else { return }
+
+        let pointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let samplePoints: [(x: Int, y: Int)] = [
+            (max(0, width / 16), max(0, height / 16)),
+            (width / 2, height / 2),
+            (max(0, width / 4), max(0, (height * 3) / 4)),
+            (max(0, (width * 3) / 4), max(0, height / 3)),
+            (max(0, width / 2), max(0, height / 4)),
+        ]
+
+        var minimumR: UInt8 = 255
+        var minimumG: UInt8 = 255
+        var minimumB: UInt8 = 255
+        var maximumR: UInt8 = 0
+        var maximumG: UInt8 = 0
+        var maximumB: UInt8 = 0
+        var grayscaleSampleCount = 0
+
+        for (x, y) in samplePoints {
+            let clampedX = min(max(x, 0), width - 1)
+            let clampedY = min(max(y, 0), height - 1)
+            let offset = clampedY * bytesPerRow + clampedX * 4
+            let blue = pointer[offset + 0]
+            let green = pointer[offset + 1]
+            let red = pointer[offset + 2]
+            let alpha = pointer[offset + 3]
+            let channelSpread = max(abs(Int(red) - Int(green)), abs(Int(green) - Int(blue)))
+            let looksGray = channelSpread < 5
+            if looksGray { grayscaleSampleCount += 1 }
+
+            minimumR = min(minimumR, red); minimumG = min(minimumG, green); minimumB = min(minimumB, blue)
+            maximumR = max(maximumR, red); maximumG = max(maximumG, green); maximumB = max(maximumB, blue)
+
+            logDebug(
+                "  🎨 Pixel(\(clampedX),\(clampedY)) BGRA=(\(blue), \(green), \(red), \(alpha)) " +
+                "rgb_spread=\(channelSpread) \(looksGray ? "GRAY?" : "COLOR")"
+            )
+        }
+
+        logDebug(
+            "  🎨 Channel ranges R[\(minimumR)-\(maximumR)] G[\(minimumG)-\(maximumG)] B[\(minimumB)-\(maximumB)] " +
+            "gray_like_samples=\(grayscaleSampleCount)/\(samplePoints.count)"
+        )
+    }
 
     /// Preprocess image for SHARP model input
     /// - Parameter image: Source UIImage
@@ -567,6 +617,7 @@ class SHARPService: ObservableObject {
     private func preprocessAndRunInference(workingImage: UIImage) async throws -> [Float] {
         let inputBuffer = try await preprocessImage(workingImage)
         logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+        logInputColorDiagnostics(inputBuffer)
         return try await runInference(inputBuffer)
     }
 
@@ -802,12 +853,12 @@ class SHARPService: ObservableObject {
 
     // MARK: - PLY Writing
 
-    /// Write Gaussian parameters to PLY file
+    /// Write Gaussian parameters to a single Metal-facing `_classic.ply` (uchar RGB, Y/Z flip for in-app viewer).
     private func writePLY(
         _ params: [Float],
         sourceImageSize: CGSize,
         applyAspectCorrection: Bool,
-    ) async throws -> (original: URL, classic: URL, threeDGS: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
+    ) async throws -> (classic: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
@@ -827,12 +878,8 @@ class SHARPService: ObservableObject {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
-        let fileName = "Room_\(timestamp).ply"
         let classicFileName = "Room_\(timestamp)_classic.ply"
-        let threeDGSFileName = "Room_\(timestamp)_3dgs.ply"
-        let fileURL = modelsDirectory.appendingPathComponent(fileName)
         let classicFileURL = modelsDirectory.appendingPathComponent(classicFileName)
-        let threeDGSFileURL = modelsDirectory.appendingPathComponent(threeDGSFileName)
 
         // Build PLY content - use uchar red/green/blue for proper color display
         let plyContent = """
@@ -856,44 +903,14 @@ class SHARPService: ObservableObject {
         end_header\n
         """
 
-        // 3DGS format header (SuperSplat compatible)
-        // Must use f_dc_* for colors (SuperSplat requirement)
-        let threeDGSHeader = """
-        ply
-        format binary_little_endian 1.0
-        element vertex \(gaussianCount)
-        property float x
-        property float y
-        property float z
-        property float nx
-        property float ny
-        property float nz
-        property float f_dc_0
-        property float f_dc_1
-        property float f_dc_2
-        property float opacity
-        property float scale_0
-        property float scale_1
-        property float scale_2
-        property float rot_0
-        property float rot_1
-        property float rot_2
-        property float rot_3
-        end_header\n
-        """
-
-        // SH coefficient constant: C0 = 0.5 * sqrt(1/pi)
+        // SH coefficient constant: C0 = 0.5 * sqrt(1/pi) (debug logging)
         let SH_C0: Float = 0.28209479177387814
-        let threeDGSExtraLogScale = log(Self.threeDGSMetalViewerLinearScaleFactor)
 
-        // Per-vertex byte sizes for capacity reservation
-        // original/classic: 11 floats (44 B) + 3 UInt8 (3 B) = 47 B
-        // threeDGS:         17 floats (68 B)
+        // Per-vertex byte size: 11 floats (44 B) + 3 UInt8 (3 B) = 47 B
         let standardVertexBytes = 47
-        let threeDGSVertexBytes = 68
 
-        // Pre-compute per-gaussian values shared across all three PLY variants.
-        // Stored in a flat struct-of-arrays to avoid triple-pass over `filteredParams`.
+        // Pre-compute per-gaussian values for classic PLY.
+        // Stored in a flat struct-of-arrays to avoid a second pass over `filteredParams`.
         struct GaussianRow {
             var x, y, z: Float             // transformed position
             var s0, s1, s2: Float          // log-scale
@@ -976,7 +993,7 @@ class SHARPService: ObservableObject {
             logDebug("  color (uchar): (\(red), \(green), \(blue))")
         }
 
-        // Helper: write standard (original/classic) PLY with pre-reserved Data.
+        // Helper: write uchar-RGB PLY with optional Y/Z flip (classic uses flip for Metal).
         func writeStandardPLY(toURL url: URL, flipYZ: Bool) throws {
             let headerData = Data(plyContent.utf8)
             var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes)
@@ -1012,57 +1029,12 @@ class SHARPService: ObservableObject {
             try buf.write(to: url)
         }
 
-        // Write original PLY, then release its buffer before building the next.
-        try writeStandardPLY(toURL: fileURL, flipYZ: false)
-
-        // Classic PLY: (x, -y, -z) applied via flipYZ.
+        // Classic PLY only: (x, -y, -z) via flipYZ — matches MetalSplatter / GaussianSplatView.
         try writeStandardPLY(toURL: classicFileURL, flipYZ: true)
 
-        // 3DGS / SuperSplat PLY — built and written last.
-        do {
-            let headerData = Data(threeDGSHeader.utf8)
-            var buf = Data(capacity: headerData.count + gaussianCount * threeDGSVertexBytes)
-            buf.append(headerData)
-            for g in rows {
-                var px = g.x; var py = g.y; var pz = g.z
-                buf.append(Data(bytes: &px, count: 4))
-                buf.append(Data(bytes: &py, count: 4))
-                buf.append(Data(bytes: &pz, count: 4))
-                var nx: Float = 0; var ny: Float = 0; var nz: Float = 0
-                buf.append(Data(bytes: &nx, count: 4))
-                buf.append(Data(bytes: &ny, count: 4))
-                buf.append(Data(bytes: &nz, count: 4))
-                var f0 = (g.rawR - 0.5) / SH_C0
-                var f1 = (g.rawG - 0.5) / SH_C0
-                var f2 = (g.rawB - 0.5) / SH_C0
-                buf.append(Data(bytes: &f0, count: 4))
-                buf.append(Data(bytes: &f1, count: 4))
-                buf.append(Data(bytes: &f2, count: 4))
-                var op = g.opacity
-                buf.append(Data(bytes: &op, count: 4))
-                var sg0 = g.s0 + threeDGSExtraLogScale
-                var sg1 = g.s1 + threeDGSExtraLogScale
-                var sg2 = g.s2 + threeDGSExtraLogScale
-                buf.append(Data(bytes: &sg0, count: 4))
-                buf.append(Data(bytes: &sg1, count: 4))
-                buf.append(Data(bytes: &sg2, count: 4))
-                var r0 = g.r0; var r1 = g.r1; var r2 = g.r2; var r3 = g.r3
-                buf.append(Data(bytes: &r0, count: 4))
-                buf.append(Data(bytes: &r1, count: 4))
-                buf.append(Data(bytes: &r2, count: 4))
-                buf.append(Data(bytes: &r3, count: 4))
-            }
-            try buf.write(to: threeDGSFileURL)
-        }
-
-        // Verify
-        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-        let fileSize = attributes[.size] as? UInt64 ?? 0
-        let threeDGSAttributes = try FileManager.default.attributesOfItem(atPath: threeDGSFileURL.path)
-        let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
-        logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
-        logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
-        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). In-app Metal uses `_classic.ply`.")
+        let attributes = try FileManager.default.attributesOfItem(atPath: classicFileURL.path)
+        let classicSize = attributes[.size] as? UInt64 ?? 0
+        logDebug("SHARP: Classic PLY saved (\(classicSize / 1024) KB) — only export (Metal uchar RGB)")
 
         logPlyBoundsDiagnostic(
             "SHARP classic_ply room bounds (vertex frame written to *_classic.ply; in-app Metal uses this file): " +
@@ -1072,7 +1044,22 @@ class SHARPService: ObservableObject {
             "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
         )
 
-        return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL, aabbWidth: width, aabbHeight: height, aabbDepth: depth)
+        let firstRowXYZ: String = {
+            guard let r = rows.first else { return "n/a" }
+            return String(format: "%.6f,%.6f,%.6f", r.x, r.y, r.z)
+        }()
+        logDebug(
+            "[ROOM_CREATE_COMPARE] phase=sharp_ply_export " +
+            "inputSquare=\(Self.inputSize) sourceImage_px=\(Int(sourceImageSize.width))x\(Int(sourceImageSize.height)) " +
+            "applyAspectCorrection=\(applyAspectCorrection) " +
+            "aspect_xy=(\(String(format: "%.6f", aspectCorrection.x)),\(String(format: "%.6f", aspectCorrection.y))) " +
+            "classic_aabb_vertexFrame_su_whd=(\(String(format: "%.6f", width)),\(String(format: "%.6f", height)),\(String(format: "%.6f", depth))) " +
+            "classic_aabb_min_xyz=(\(String(format: "%.6f", clMinX)),\(String(format: "%.6f", clMinY)),\(String(format: "%.6f", clMinZ))) " +
+            "classic_aabb_max_xyz=(\(String(format: "%.6f", clMaxX)),\(String(format: "%.6f", clMaxY)),\(String(format: "%.6f", clMaxZ))) " +
+            "first_gaussian_row_xyz_pre_writePLYFlip=(\(firstRowXYZ)) splats=\(gaussianCount) file=\(classicFileName)"
+        )
+
+        return (classic: classicFileURL, aabbWidth: width, aabbHeight: height, aabbDepth: depth)
     }
 
     /// Writes `Room_<stamp>_thumbnail.jpg` next to the classic PLY so [WallMeasurementEstimator] can load it on save.
