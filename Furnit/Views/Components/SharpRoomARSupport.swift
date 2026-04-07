@@ -9,18 +9,25 @@ struct ARPlaneRoomMeasurement: Equatable, Sendable {
     let depthMeters: Float
     let floorAnchorCount: Int
     let wallAnchorCount: Int
-    let usedDefaultCeilingHeight: Bool
-    /// True when no horizontal floor was found; W×D use wall patch + default depth (ARKit never saw the floor).
+    let ceilingAnchorCount: Int
+    let totalPlaneCount: Int
+    /// True when no floor was found (W×D come from wall/other plane corners only).
     let usedWallOnlyFallback: Bool
 
     var sourceLabel: String {
-        if usedWallOnlyFallback {
-            return "ARKit_plane_wall_only_m_W×H×D"
+        if ceilingAnchorCount > 0 && floorAnchorCount > 0 {
+            return "ARKit_floor+ceiling+walls_m_W×H×D"
         }
-        if usedDefaultCeilingHeight {
-            return "ARKit_plane_floor_only_m_W×H×D"
+        if floorAnchorCount > 0 && wallAnchorCount > 0 {
+            return "ARKit_floor+walls_m_W×H×D"
         }
-        return "ARKit_plane_detection_m_W×H×D"
+        if floorAnchorCount > 0 {
+            return "ARKit_floor_only_m_W×H×D"
+        }
+        if wallAnchorCount > 0 {
+            return "ARKit_walls_only_m_W×H×D"
+        }
+        return "ARKit_planes_m_W×H×D"
     }
 }
 
@@ -191,27 +198,30 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         let floorCount = planeAnchorsByID.values.filter(isFloorPlane).count
         let wallCount = planeAnchorsByID.values.filter(isWallPlane).count
 
+        let ceilingCount = planeAnchorsByID.values.filter({ $0.classification == .ceiling }).count
+        let totalDetected = floorCount + wallCount + ceilingCount
+
         if let trackingState = lastTrackingState {
             switch trackingState {
             case .notAvailable:
-                publishScanGuidance("Move phone slowly to start AR")
+                publishScanGuidance("Point phone at the REAL room around you — move slowly side-to-side")
                 return
             case .limited(let reason):
                 switch reason {
                 case .initializing:
-                    publishScanGuidance("Move phone slowly while AR initializes")
+                    publishScanGuidance("Point at real floor/walls (not the screen). Slowly move side-to-side")
                     return
                 case .insufficientFeatures:
-                    publishScanGuidance("Aim at floor-wall edges with more texture and light")
+                    publishScanGuidance("Need more texture — aim at floor edges, furniture, corners. Move phone side-to-side slowly")
                     return
                 case .excessiveMotion:
-                    publishScanGuidance("Hold steadier for a moment")
+                    publishScanGuidance("Too fast — hold steadier for a moment, then resume slow sweep")
                     return
                 case .relocalizing:
                     publishScanGuidance("Return to the same view for AR relocalization")
                     return
                 @unknown default:
-                    publishScanGuidance("Move phone slowly to help AR stabilize")
+                    publishScanGuidance("Move phone slowly side-to-side to help AR stabilize")
                     return
                 }
             case .normal:
@@ -219,151 +229,193 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
             }
         }
 
-        if floorCount == 0 && wallCount == 0 {
-            publishScanGuidance("Tilt down and step back so floor and wall are both visible")
+        if totalDetected == 0 {
+            publishScanGuidance("Aim camera at floor-wall junction. Sweep left-right slowly")
         } else if floorCount == 0 && wallCount > 0 {
-            publishScanGuidance("Good wall found. Tilt down until floor enters the frame")
+            publishScanGuidance("Wall found (\(wallCount)). Tilt down to show the floor")
         } else if floorCount > 0 && wallCount == 0 {
-            publishScanGuidance("Good floor found. Lift up slightly to include a wall")
+            publishScanGuidance("Floor found (\(floorCount)). Lift up to show a wall")
+        } else if ceilingCount > 0 {
+            publishScanGuidance("Floor+wall+ceiling detected (\(totalDetected) planes). Hold or keep sweeping for accuracy")
         } else {
-            publishScanGuidance("Good coverage. Sweep left and right slowly, then hold still")
+            publishScanGuidance("Floor+wall detected (\(totalDetected) planes). Tilt up for ceiling, or keep sweeping")
         }
     }
 
-    private static let defaultCeilingHeightMeters: Float = 2.44
-    /// When only a wall patch is visible (no floor), depth has no AR ground truth — conservative default room depth.
-    private static let defaultRoomDepthWallOnlyMeters: Float = 3.0
+    // MARK: - World-space plane corner projection
 
-    /// For vertical planes, ARKit often stores the tall dimension in `extent.x` or `extent.z`, not `.y`.
-    /// Project each local axis onto gravity to recover vertical and horizontal spans in metres.
-    private func gravityAlignedWallSpansMeters(_ plane: ARPlaneAnchor) -> (vertical: Float, horizontal: Float) {
+    /// Returns the four world-space corners of an `ARPlaneAnchor`'s estimated rectangle.
+    private func worldCorners(of plane: ARPlaneAnchor) -> [SIMD3<Float>] {
+        let t = plane.transform
+        let halfW = plane.extent.x * 0.5
+        let halfD = plane.extent.z * 0.5
+        let localCorners: [SIMD4<Float>] = [
+            SIMD4<Float>(-halfW, 0, -halfD, 1),
+            SIMD4<Float>( halfW, 0, -halfD, 1),
+            SIMD4<Float>(-halfW, 0,  halfD, 1),
+            SIMD4<Float>( halfW, 0,  halfD, 1)
+        ]
+        return localCorners.map { local in
+            let w = t * local
+            return SIMD3<Float>(w.x, w.y, w.z)
+        }
+    }
+
+    /// Returns the world-space center of an `ARPlaneAnchor`.
+    private func worldCenter(of plane: ARPlaneAnchor) -> SIMD3<Float> {
+        let c = plane.transform * SIMD4<Float>(plane.center.x, plane.center.y, plane.center.z, 1)
+        return SIMD3<Float>(c.x, c.y, c.z)
+    }
+
+    /// Gravity-aligned vertical span of a wall anchor (projects local axes onto world up).
+    private func wallVerticalSpan(_ plane: ARPlaneAnchor) -> Float {
         let worldUp = SIMD3<Float>(0, 1, 0)
         let t = plane.transform
         let e = plane.extent
-        let axisVectorsAndLengths: [(SIMD3<Float>, Float)] = [
+        let axes: [(SIMD3<Float>, Float)] = [
             (SIMD3<Float>(t.columns.0.x, t.columns.0.y, t.columns.0.z), e.x),
             (SIMD3<Float>(t.columns.1.x, t.columns.1.y, t.columns.1.z), e.y),
             (SIMD3<Float>(t.columns.2.x, t.columns.2.y, t.columns.2.z), e.z)
         ]
-        var maxVertical: Float = 0
-        var maxHorizontal: Float = 0
-        for (axisVec, length) in axisVectorsAndLengths {
+        var maxV: Float = 0
+        for (axisVec, length) in axes {
             guard length.isFinite, length > 1e-5 else { continue }
-            let lenAxis = simd_length(axisVec)
-            guard lenAxis > 1e-5 else { continue }
-            let d = axisVec / lenAxis
-            let vertical = abs(simd_dot(d, worldUp)) * length
-            let cosUp = simd_dot(d, worldUp)
-            let sinThetaSq = max(0, 1 - cosUp * cosUp)
-            let horizontal = sqrt(sinThetaSq) * length
-            maxVertical = max(maxVertical, vertical)
-            maxHorizontal = max(maxHorizontal, horizontal)
+            let len = simd_length(axisVec)
+            guard len > 1e-5 else { continue }
+            let v = abs(simd_dot(axisVec / len, worldUp)) * length
+            maxV = max(maxV, v)
         }
-        if maxVertical < 0.2 || maxHorizontal < 0.2 {
-            let sorted = [plane.extent.x, plane.extent.y, plane.extent.z].sorted()
-            let thin = sorted[0], mid = sorted[1], thick = sorted[2]
-            _ = thin
-            return (thick, mid)
+        if maxV < 0.01 {
+            return max(plane.extent.x, max(plane.extent.y, plane.extent.z))
         }
-        return (maxVertical, maxHorizontal)
+        return maxV
     }
 
-    private func bestWallHeightFromPlanes(_ wallPlanes: [ARPlaneAnchor]) -> Float {
-        wallPlanes.map { gravityAlignedWallSpansMeters($0).vertical }.max() ?? 0
+    /// Approximate wall normal in world XZ (horizontal direction the wall faces).
+    private func wallWorldNormal(_ plane: ARPlaneAnchor) -> SIMD3<Float> {
+        let t = plane.transform
+        let localNormal = SIMD4<Float>(0, 1, 0, 0)
+        let wn = t * localNormal
+        var n = SIMD3<Float>(wn.x, 0, wn.z)
+        let len = simd_length(n)
+        if len > 1e-5 { n /= len } else { n = SIMD3<Float>(0, 0, 1) }
+        return n
     }
 
-    private func wallPatchAreaScore(_ plane: ARPlaneAnchor) -> Float {
-        let spans = gravityAlignedWallSpansMeters(plane)
-        return spans.vertical * spans.horizontal
+    /// Human-readable cardinal direction from a wall's world normal.
+    private func wallDirection(_ plane: ARPlaneAnchor) -> String {
+        let n = wallWorldNormal(plane)
+        let absX = abs(n.x)
+        let absZ = abs(n.z)
+        if absX > absZ {
+            return n.x > 0 ? "facing+X(right)" : "facing-X(left)"
+        } else {
+            return n.z > 0 ? "facing+Z(back)" : "facing-Z(front)"
+        }
     }
+
+    // MARK: - Collated room measurement from ALL planes
 
     private func recomputePlaneRoomMeasurement() {
-        let floorPlanes = planeAnchorsByID.values.filter(isFloorPlane)
-        let wallPlanes = planeAnchorsByID.values.filter(isWallPlane)
+        let allPlanes = Array(planeAnchorsByID.values)
+        let floorPlanes = allPlanes.filter(isFloorPlane)
+        let wallPlanes = allPlanes.filter(isWallPlane)
+        let ceilingPlanes = allPlanes.filter { $0.classification == .ceiling }
         refreshScanGuidance()
 
-        let bestFloor = floorPlanes.max(by: {
-            ($0.extent.x * $0.extent.z) < ($1.extent.x * $1.extent.z)
-        })
-
-        let wallVerticalSpans = wallPlanes.map { gravityAlignedWallSpansMeters($0).vertical }
-        let bestWallHeight = wallVerticalSpans.max()
-
-        if let bestFloor {
-            let floorArea = bestFloor.extent.x * bestFloor.extent.z
-            let hasQualifyingWall = (bestWallHeight ?? 0) > 0.3
-            let usedDefaultCeiling = !hasQualifyingWall
-            let heightMeters = hasQualifyingWall ? bestWallHeight! : Self.defaultCeilingHeightMeters
-
-            if !hasQualifyingWall {
-                logDebug(
-                    "🟡 [AR_MEASURE] floor found but no qualifying wall (best_wall_vert_gravity=\(bestWallHeight.map { String(format: "%.2f", $0) } ?? "none"), " +
-                        "threshold=0.30m) — using default ceiling \(String(format: "%.2f", Self.defaultCeilingHeightMeters))m " +
-                        "(floors=\(floorPlanes.count) walls=\(wallPlanes.count) floor_area=\(String(format: "%.2f", floorArea))m² " +
-                        "wall_vert_spans=\(wallVerticalSpans.map { String(format: "%.2f", $0) }))"
-                )
-            }
-
-            let measurement = ARPlaneRoomMeasurement(
-                widthMeters: bestFloor.extent.x,
-                heightMeters: heightMeters,
-                depthMeters: bestFloor.extent.z,
-                floorAnchorCount: floorPlanes.count,
-                wallAnchorCount: hasQualifyingWall ? wallPlanes.count : 0,
-                usedDefaultCeilingHeight: usedDefaultCeiling,
-                usedWallOnlyFallback: false
-            )
+        guard !allPlanes.isEmpty else {
             logDebug(
-                "🟢 [AR_MEASURE] room from planes W×H×D=" +
-                    "\(String(format: "%.3f", measurement.widthMeters))×" +
-                    "\(String(format: "%.3f", measurement.heightMeters))×" +
-                    "\(String(format: "%.3f", measurement.depthMeters))m " +
-                    "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount) " +
-                    "default_ceiling=\(usedDefaultCeiling) wall_only=false"
-            )
-            publishPlaneRoomMeasurement(measurement)
-            return
-        }
-
-        guard let bestWall = wallPlanes.max(by: { wallPatchAreaScore($0) < wallPatchAreaScore($1) }) else {
-            logDebug(
-                "🟡 [AR_MEASURE] gate: no floor and no wall planes " +
-                    "(total_anchors=\(planeAnchorsByID.count) floors=\(floorPlanes.count) walls=\(wallPlanes.count))"
+                "🟡 [AR_MEASURE] no planes at all (total_anchors=\(planeAnchorsByID.count))"
             )
             publishPlaneRoomMeasurement(nil)
             return
         }
 
-        let spans = gravityAlignedWallSpansMeters(bestWall)
-        let wallVert = spans.vertical
-        let wallHoriz = spans.horizontal
-        let hasQualifyingWallHeight = wallVert > 0.3
-        let heightMeters = hasQualifyingWallHeight ? wallVert : Self.defaultCeilingHeightMeters
-        let widthMeters = max(wallHoriz, 1.0)
-        let depthMeters = Self.defaultRoomDepthWallOnlyMeters
+        var worldMinX: Float =  .greatestFiniteMagnitude
+        var worldMaxX: Float = -.greatestFiniteMagnitude
+        var worldMinY: Float =  .greatestFiniteMagnitude
+        var worldMaxY: Float = -.greatestFiniteMagnitude
+        var worldMinZ: Float =  .greatestFiniteMagnitude
+        var worldMaxZ: Float = -.greatestFiniteMagnitude
+
+        for plane in allPlanes {
+            for corner in worldCorners(of: plane) {
+                worldMinX = min(worldMinX, corner.x)
+                worldMaxX = max(worldMaxX, corner.x)
+                worldMinY = min(worldMinY, corner.y)
+                worldMaxY = max(worldMaxY, corner.y)
+                worldMinZ = min(worldMinZ, corner.z)
+                worldMaxZ = max(worldMaxZ, corner.z)
+            }
+        }
+
+        let hasAnyExtent = worldMinX < worldMaxX || worldMinY < worldMaxY || worldMinZ < worldMaxZ
+
+        guard hasAnyExtent else {
+            logDebug(
+                "🟡 [AR_MEASURE] planes found but no usable world extent " +
+                    "(floors=\(floorPlanes.count) walls=\(wallPlanes.count) ceilings=\(ceilingPlanes.count) total=\(allPlanes.count))"
+            )
+            publishPlaneRoomMeasurement(nil)
+            return
+        }
+
+        let spanX = worldMaxX - worldMinX
+        let spanY = worldMaxY - worldMinY
+        let spanZ = worldMaxZ - worldMinZ
+
+        let wallHeights = wallPlanes.map { wallVerticalSpan($0) }
+        let bestWallVert = wallHeights.max() ?? 0
+
+        let widthMeters  = max(spanX, spanZ)
+        let depthMeters  = min(spanX, spanZ)
+        let heightMeters = max(spanY, bestWallVert)
+
+        let planeDetails = allPlanes.map { plane -> String in
+            let kind: String
+            switch plane.classification {
+            case .floor:   kind = "floor"
+            case .wall:    kind = "wall"
+            case .ceiling: kind = "ceiling"
+            case .table:   kind = "table"
+            case .seat:    kind = "seat"
+            case .door:    kind = "door"
+            case .window:  kind = "window"
+            case .none:    kind = plane.alignment == .horizontal ? "horiz?" : "vert?"
+            @unknown default: kind = "unk"
+            }
+            let center = worldCenter(of: plane)
+            let ext = String(format: "%.2f×%.2f", plane.extent.x, plane.extent.z)
+            let cStr = String(format: "(%.2f,%.2f,%.2f)", center.x, center.y, center.z)
+            if isWallPlane(plane) {
+                let dir = wallDirection(plane)
+                let vSpan = String(format: "%.2f", wallVerticalSpan(plane))
+                return "\(kind)[\(ext) v=\(vSpan)m \(dir) @\(cStr)]"
+            }
+            return "\(kind)[\(ext) @\(cStr)]"
+        }
 
         logDebug(
-            "🟡 [AR_MEASURE] no floor plane — wall-only fallback " +
-                "(walls=\(wallPlanes.count) patch_gravity_v×h=\(String(format: "%.2f", wallVert))×\(String(format: "%.2f", wallHoriz))m " +
-                "extent_xyz=\(String(format: "%.2f", bestWall.extent.x))×\(String(format: "%.2f", bestWall.extent.y))×\(String(format: "%.2f", bestWall.extent.z)) " +
-                "default_depth=\(String(format: "%.2f", depthMeters))m tip=tilt_down_to_find_floor)"
+            "🟢 [AR_MEASURE] collated room W×H×D=" +
+                "\(String(format: "%.3f", widthMeters))×" +
+                "\(String(format: "%.3f", heightMeters))×" +
+                "\(String(format: "%.3f", depthMeters))m " +
+                "bbox X[\(String(format: "%.2f", worldMinX)),\(String(format: "%.2f", worldMaxX))] " +
+                "Y[\(String(format: "%.2f", worldMinY)),\(String(format: "%.2f", worldMaxY))] " +
+                "Z[\(String(format: "%.2f", worldMinZ)),\(String(format: "%.2f", worldMaxZ))] " +
+                "floors=\(floorPlanes.count) walls=\(wallPlanes.count) ceilings=\(ceilingPlanes.count) total=\(allPlanes.count) " +
+                "planes=[\(planeDetails.joined(separator: "; "))]"
         )
 
         let measurement = ARPlaneRoomMeasurement(
             widthMeters: widthMeters,
             heightMeters: heightMeters,
             depthMeters: depthMeters,
-            floorAnchorCount: 0,
+            floorAnchorCount: floorPlanes.count,
             wallAnchorCount: wallPlanes.count,
-            usedDefaultCeilingHeight: !hasQualifyingWallHeight,
-            usedWallOnlyFallback: true
-        )
-        logDebug(
-            "🟢 [AR_MEASURE] room wall-only W×H×D=" +
-                "\(String(format: "%.3f", measurement.widthMeters))×" +
-                "\(String(format: "%.3f", measurement.heightMeters))×" +
-                "\(String(format: "%.3f", measurement.depthMeters))m " +
-                "walls=\(measurement.wallAnchorCount) default_ceiling=\(!hasQualifyingWallHeight) wall_only=true"
+            ceilingAnchorCount: ceilingPlanes.count,
+            totalPlaneCount: allPlanes.count,
+            usedWallOnlyFallback: floorPlanes.isEmpty && !wallPlanes.isEmpty
         )
         publishPlaneRoomMeasurement(measurement)
     }
@@ -480,9 +532,9 @@ final class ARMotionTracker: NSObject, ARSessionDelegate {
         }
         let ext = String(format: "%.2f×%.2f×%.2f", plane.extent.x, plane.extent.y, plane.extent.z)
         if isWallPlane(plane) {
-            let g = gravityAlignedWallSpansMeters(plane)
-            let grav = String(format: "grav_v×h=%.2f×%.2f", g.vertical, g.horizontal)
-            return "\(kind) ext=\(ext) \(grav)"
+            let vSpan = wallVerticalSpan(plane)
+            let dir = wallDirection(plane)
+            return "\(kind) ext=\(ext) vert=\(String(format: "%.2f", vSpan))m \(dir)"
         }
         return "\(kind) \(ext)"
     }

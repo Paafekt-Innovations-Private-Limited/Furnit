@@ -206,9 +206,30 @@ class USDZModelManager: ObservableObject {
     private func primarySavedRoomStem(for fileURL: URL) -> String? {
         let ext = fileURL.pathExtension.lowercased()
         guard supportedSavedRoomExtensions.contains(ext) else { return nil }
-        let stem = fileURL.deletingPathExtension().lastPathComponent
-        guard !(ext == "ply" && stem.hasSuffix("_classic")) else { return nil }
-        return stem
+        return fileURL.deletingPathExtension().lastPathComponent
+    }
+
+    private func canonicalPlyStem(for fileName: String) -> String {
+        if fileName.hasSuffix("_classic") {
+            return String(fileName.dropLast("_classic".count))
+        }
+        if fileName.hasSuffix("_3dgs") {
+            return String(fileName.dropLast("_3dgs".count))
+        }
+        return fileName
+    }
+
+    private func displayNameForSavedRoom(fileName: String, fileType: ModelFileType, metadataDisplayName: String?) -> String? {
+        guard fileType == .ply else { return metadataDisplayName }
+        let canonicalStem = canonicalPlyStem(for: fileName)
+        let baseName = metadataDisplayName ?? canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized
+        if fileName.hasSuffix("_classic") {
+            return "\(baseName) (Classic PLY)"
+        }
+        if fileName.hasSuffix("_3dgs") {
+            return "\(baseName) (3DGS PLY)"
+        }
+        return "\(baseName) (PLY)"
     }
 
     private func orphanArtifactStem(for fileURL: URL) -> String? {
@@ -226,8 +247,14 @@ class USDZModelManager: ObservableObject {
         if fileName.hasSuffix("_thumbnail.png") {
             return String(fileName.dropLast("_thumbnail.png".count))
         }
+        if fileName.hasSuffix("_sharp_camera.json") {
+            return String(fileName.dropLast("_sharp_camera.json".count))
+        }
         if fileName.hasSuffix("_classic.ply") {
             return String(fileName.dropLast("_classic.ply".count))
+        }
+        if fileName.hasSuffix("_3dgs.ply") {
+            return String(fileName.dropLast("_3dgs.ply".count))
         }
         return nil
     }
@@ -314,11 +341,7 @@ class USDZModelManager: ObservableObject {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
             let allModelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
-            let modelFiles = allModelFiles.filter { fileURL in
-                guard fileURL.pathExtension.lowercased() == "ply" else { return true }
-                let stem = fileURL.deletingPathExtension().lastPathComponent
-                return !stem.hasSuffix("_classic")
-            }
+            let modelFiles = allModelFiles
 
             if debugMode {
                 logDebug("📦 [USDZModelManager] Found \(modelFiles.count) model files in SavedRooms")
@@ -368,7 +391,7 @@ class USDZModelManager: ObservableObject {
                 let metadata: SavedRoomDiskMetadata
                 switch fileType {
                 case .ply:
-                    metadata = loadPLYMetadata(for: fileName)
+                    metadata = loadPLYMetadata(for: canonicalPlyStem(for: fileName))
                 case .meshroom:
                     metadata = loadMeshRoomMetadata(for: fileName)
                 case .glb:
@@ -398,7 +421,11 @@ class USDZModelManager: ObservableObject {
                     yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
                     yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
                     sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
-                    customDisplayName: metadata.displayName,
+                    customDisplayName: displayNameForSavedRoom(
+                        fileName: fileName,
+                        fileType: fileType,
+                        metadataDisplayName: metadata.displayName
+                    ),
                     isClassicPly: metadata.isClassicPly,
                     cachedResolvedURL: fileURL
                 )
@@ -462,6 +489,28 @@ class USDZModelManager: ObservableObject {
             dict = existing
         }
         dict["isClassicPly"] = isClassicPly ? "true" : "false"
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
+    /// Writes calibrated room dimensions into `\(fileName).\(modelFileExtension).meta`, merging with existing keys.
+    func mergeRoomDimensionsIntoSavedRoomMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        roomWidth: Float,
+        roomHeight: Float,
+        roomDepth: Float
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+        dict["roomWidth"] = String(format: "%.2f", roomWidth)
+        dict["roomHeight"] = String(format: "%.2f", roomHeight)
+        dict["roomDepth"] = String(format: "%.2f", roomDepth)
         let out = try JSONEncoder().encode(dict)
         try out.write(to: metadataURL, options: [.atomic])
     }
@@ -569,12 +618,14 @@ class USDZModelManager: ObservableObject {
             case .usdz:
                 fileExtension = "usdz"
             }
-            let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension)")
-            let classicSidecarURL = modelsDirectory.appendingPathComponent("\(model.fileName)_classic.ply")
-            let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+            let canonicalFileName = (model.fileType == .ply) ? canonicalPlyStem(for: model.fileName) : model.fileName
+            let fileURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension)")
+            let classicSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_classic.ply")
+            let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_3dgs.ply")
+            let metadataURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension).meta")
             let enhancedMetadataSidecarURL = enhancedMetadataURL(forRoomURL: fileURL)
-            let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(model.fileName)_thumbnail.jpg")
-            let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(model.fileName)_thumbnail.png")
+            let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.jpg")
+            let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.png")
             
             do {
                 if FileManager.default.fileExists(atPath: fileURL.path) {
@@ -598,6 +649,12 @@ class USDZModelManager: ObservableObject {
                     try FileManager.default.removeItem(at: classicSidecarURL)
                     if debugMode {
                         logDebug("✅ [USDZModelManager] Classic sidecar deleted: \(classicSidecarURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: threeDGSSidecarURL.path) {
+                    try FileManager.default.removeItem(at: threeDGSSidecarURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] 3DGS sidecar deleted: \(threeDGSSidecarURL.lastPathComponent)")
                     }
                 }
                 if FileManager.default.fileExists(atPath: enhancedMetadataSidecarURL.path) {
@@ -834,6 +891,7 @@ class USDZModelManager: ObservableObject {
         let fileName = sanitizeFileName(name)
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
         let classicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
+        let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_3dgs.ply")
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
         let sourceIsClassicPly = sourceURL.lastPathComponent.contains("_classic")
 
@@ -857,9 +915,21 @@ class USDZModelManager: ObservableObject {
             if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
                 try FileManager.default.removeItem(at: classicSidecarURL)
             }
+            if FileManager.default.fileExists(atPath: threeDGSSidecarURL.path) {
+                try FileManager.default.removeItem(at: threeDGSSidecarURL)
+            }
 
-            // Copy PLY file
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+            let sourceSet = siblingPlyURLs(for: sourceURL)
+            let destinationSet = siblingPlyURLs(forBaseSavedRoomURL: destinationURL)
+
+            let canonicalSourceURL = sourceSet.original ?? sourceURL
+            try FileManager.default.copyItem(at: canonicalSourceURL, to: destinationSet.original)
+            if let sourceClassicURL = sourceSet.classic {
+                try FileManager.default.copyItem(at: sourceClassicURL, to: destinationSet.classic)
+            }
+            if let sourceThreeDGSURL = sourceSet.threeDGS {
+                try FileManager.default.copyItem(at: sourceThreeDGSURL, to: destinationSet.threeDGS)
+            }
 
             let sourceEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: sourceURL)
             let destinationEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: destinationURL)
@@ -872,6 +942,9 @@ class USDZModelManager: ObservableObject {
                     logDebug("💾 [USDZModelManager] Copied enhanced metadata: \(destinationEnhancedMetadataURL.lastPathComponent)")
                 }
             }
+
+            CameraExifSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
+            SharpCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
 
             // Save metadata (orientation and dimensions)
             var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
@@ -893,7 +966,7 @@ class USDZModelManager: ObservableObject {
             if let sd = roomSceneDepth {
                 metadata["roomSceneDepth"] = String(format: "%.4f", sd)
             }
-            metadata["isClassicPly"] = sourceIsClassicPly ? "true" : "false"
+            metadata["isClassicPly"] = (sourceSet.classic != nil || sourceIsClassicPly) ? "true" : "false"
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)
 
@@ -902,6 +975,12 @@ class USDZModelManager: ObservableObject {
 
             if debugMode {
                 logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
+                if sourceSet.classic != nil {
+                    logDebug("✅ [USDZModelManager] Classic sidecar saved to: \(destinationSet.classic.path)")
+                }
+                if sourceSet.threeDGS != nil {
+                    logDebug("✅ [USDZModelManager] 3DGS sidecar saved to: \(destinationSet.threeDGS.path)")
+                }
                 logDebug("✅ [USDZModelManager] Metadata saved to: \(metadataURL.path)")
             }
 
@@ -967,6 +1046,35 @@ class USDZModelManager: ObservableObject {
         let png = modelsDirectory.appendingPathComponent("\(stem)_thumbnail.png")
         if FileManager.default.fileExists(atPath: png.path) { return png }
         return nil
+    }
+
+    private func siblingPlyURLs(for sourceURL: URL) -> (original: URL?, classic: URL?, threeDGS: URL?) {
+        let directory = sourceURL.deletingLastPathComponent()
+        var stem = sourceURL.deletingPathExtension().lastPathComponent
+        if stem.hasSuffix("_classic") {
+            stem = String(stem.dropLast("_classic".count))
+        } else if stem.hasSuffix("_3dgs") {
+            stem = String(stem.dropLast("_3dgs".count))
+        }
+        let original = directory.appendingPathComponent("\(stem).ply")
+        let classic = directory.appendingPathComponent("\(stem)_classic.ply")
+        let threeDGS = directory.appendingPathComponent("\(stem)_3dgs.ply")
+        let fm = FileManager.default
+        return (
+            original: fm.fileExists(atPath: original.path) ? original : nil,
+            classic: fm.fileExists(atPath: classic.path) ? classic : nil,
+            threeDGS: fm.fileExists(atPath: threeDGS.path) ? threeDGS : nil
+        )
+    }
+
+    private func siblingPlyURLs(forBaseSavedRoomURL baseURL: URL) -> (original: URL, classic: URL, threeDGS: URL) {
+        let directory = baseURL.deletingLastPathComponent()
+        let stem = baseURL.deletingPathExtension().lastPathComponent
+        return (
+            original: baseURL,
+            classic: directory.appendingPathComponent("\(stem)_classic.ply"),
+            threeDGS: directory.appendingPathComponent("\(stem)_3dgs.ply")
+        )
     }
 
     /// Copies `RoomStamp_thumbnail.jpg` (or `.png`) from the SHARP session folder into SavedRooms as `savedStem_thumbnail.*`.

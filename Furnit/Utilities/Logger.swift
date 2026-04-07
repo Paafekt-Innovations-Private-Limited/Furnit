@@ -53,6 +53,7 @@ private enum AlwaysOnOSLog {
     static let sharp = Logger(subsystem: subsystem, category: "SHARP")
     static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
     static let arRoom = Logger(subsystem: subsystem, category: "AR_ROOM")
+    static let depthPro = Logger(subsystem: subsystem, category: "DEPTH_PRO")
     static let memory = Logger(subsystem: subsystem, category: "MEMORY")
 }
 
@@ -73,6 +74,12 @@ func logSharpMilestone(_ message: String) {
 func logARRoomMeasure(_ message: String) {
     let line = "[AR_ROOM_MEASURE] \(message)"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
+}
+
+/// Depth Pro metric-depth pipeline. Filter: `DEPTH_PRO` or `[DEPTH_PRO]`.
+func logDepthPro(_ message: String) {
+    let line = "[DEPTH_PRO] \(message.uppercased())"
+    AlwaysOnOSLog.depthPro.notice("\(line, privacy: .public)")
 }
 
 private struct AppMemorySnapshot {

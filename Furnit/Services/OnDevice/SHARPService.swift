@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import CoreML
+import simd
 
 /// App sandbox temp directory for unsaved Sharp previews (`Room_*_classic.ply`, thumbnails). Not `Documents/SavedRooms`.
 private func sharpModelsTemporaryDirectoryURL() -> URL {
@@ -59,42 +60,26 @@ class SHARPService: ObservableObject {
     /// Input image size expected by SHARP model
     private static let inputSize: Int = 1536
 
+    /// 3DGS export uses a slightly larger linear scale so external viewers match expected splat size.
+    private static let threeDGSMetalViewerLinearScaleFactor: Float = 1.65
+
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
-    /// Longer edge of picked photos is often 4k+; decoding/drawing that while loading SHARP peaks RAM on 4GB devices (e.g. iPhone 12).
-    /// Aggressive caps on ≤6GB phones shrink the `UIImage` before the 1536² stretch (model input size unchanged).
-    private static func maxSourcePixelDimensionBeforeSharp() -> CGFloat {
-        let b = ProcessInfo.processInfo.physicalMemory
-        let conservativeCap: CGFloat
-        if b < 4 * 1024 * 1024 * 1024 {
-            conservativeCap = 1024
-        } else if b < 6 * 1024 * 1024 * 1024 {
-            conservativeCap = 1280
-        } else {
-            conservativeCap = CGFloat(inputSize)
-        }
-        // The SHARP model always consumes 1536². Keeping a larger source image only increases decode pressure.
-        return min(conservativeCap, CGFloat(inputSize))
-    }
-
-    /// Creates an oriented working image for SHARP in a single render pass.
-    /// This avoids allocating a full-resolution `.fixedOrientation()` intermediate before downsizing.
+    /// Creates an upright working image for SHARP without the older pre-downscale step.
+    /// Python SHARP resizes the full oriented image directly to 1536×1536, so we only
+    /// normalize orientation here and leave the final squish to `preprocessImage`.
     static func prepareImageForSharp(_ image: UIImage) -> UIImage {
         let orientedSize = orientedPixelSize(for: image)
         let w = orientedSize.width
         let h = orientedSize.height
         guard w > 1, h > 1 else { return image }
 
-        let maxEdge = max(w, h)
-        let limit = maxSourcePixelDimensionBeforeSharp()
         let needsOrientationFix = image.imageOrientation != .up
-        let needsResize = maxEdge > limit + 0.5
-        guard needsOrientationFix || needsResize else { return image }
+        guard needsOrientationFix else { return image }
 
-        let scaleDown = min(1, limit / maxEdge)
-        let newW = max(1, Int((w * scaleDown).rounded(.down)))
-        let newH = max(1, Int((h * scaleDown).rounded(.down)))
+        let newW = max(1, Int(w.rounded(.down)))
+        let newH = max(1, Int(h.rounded(.down)))
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = false
@@ -103,8 +88,8 @@ class SHARPService: ObservableObject {
             image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
         }
         logDebug(
-            "SHARP: Prepared photo for memory/orientation \(Int(w))×\(Int(h)) orient=\(image.imageOrientation.rawValue) " +
-            "→ \(newW)×\(newH) (max edge ≤\(Int(limit))px)"
+            "[GREEN][SHARP_PREPROCESS] SOURCE=\(Int(w))X\(Int(h)) ORIENT=\(image.imageOrientation.rawValue) " +
+            "PREPARED=\(newW)X\(newH) MODE=ORIENT_ONLY"
         )
         return rendered
     }
@@ -486,10 +471,22 @@ class SHARPService: ObservableObject {
 
             statusMessage = L10n.Sharp.almostDone
             progress = 0.8
+            let mergedExif = await CameraExifSidecar.collectMerged(
+                imageURL: sourceImageURL,
+                mediaMetadata: captureMediaMetadata,
+                photoLibraryAssetLocalId: photoLibraryAssetLocalId
+            )
+            let sharpCamera = SharpCameraSidecar.infoIfPossible(
+                sourceImageSize: orientedSize,
+                inputSquarePx: Self.inputSize,
+                exif: mergedExif
+            )
+
             let plyURLs = try await writePLY(
                 gaussianParams ?? [],
                 sourceImageSize: orientedSize,
-                applyAspectCorrection: true
+                applyAspectCorrection: false,
+                sharpCamera: sharpCamera
             )
             gaussianParams?.removeAll(keepingCapacity: false)
             gaussianParams = nil
@@ -501,7 +498,9 @@ class SHARPService: ObservableObject {
             logSharpMilestone(
                 "PLY written on Swift/Core ML path (not C++): \(plyURLs.classic.lastPathComponent) — Metal viewer loads this file",
             )
+            logDebug("SHARP: Saved original PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved classic PLY to \(plyURLs.classic.path)")
+            logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
             guard let workingImageForThumbnail = workingImage else {
                 throw GenerationError.invalidImage
             }
@@ -512,11 +511,28 @@ class SHARPService: ObservableObject {
             workingImage = nil
             logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_drop_working_image")
             let roomFolder = plyURLs.classic.deletingLastPathComponent()
-            await CameraExifSidecar.writeMerged(
-                roomFolder: roomFolder,
-                imageURL: sourceImageURL,
-                mediaMetadata: captureMediaMetadata,
-                photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+            logWallMeasurement(
+                "camera_exif_sidecar request folder=\(roomFolder.lastPathComponent) " +
+                    "source_url=\(sourceImageURL?.lastPathComponent ?? "nil") " +
+                    "has_media_metadata=\(captureMediaMetadata != nil) " +
+                    "phasset_id=\(photoLibraryAssetLocalId ?? "nil")"
+            )
+            if !mergedExif.isEmpty {
+                CameraExifSidecar.mergeDerivedValues(roomFolder: roomFolder, additions: mergedExif)
+            } else {
+                await CameraExifSidecar.writeMerged(
+                    roomFolder: roomFolder,
+                    imageURL: sourceImageURL,
+                    mediaMetadata: captureMediaMetadata,
+                    photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+                )
+            }
+            let exif = mergedExif.isEmpty ? CameraExifSidecar.load(roomFolder: roomFolder) : mergedExif
+            SharpCameraSidecar.writeIfPossible(
+                roomURL: plyURLs.classic,
+                sourceImageSize: orientedSize,
+                inputSquarePx: Self.inputSize,
+                exif: exif
             )
             let plyURL = plyURLs.classic
 
@@ -527,6 +543,7 @@ class SHARPService: ObservableObject {
 
             releaseInferenceMemoryAfterGeneration()
             logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_release_inference_memory")
+            logDepthPro("AUTO RUN DEFERRED AFTER SHARP GENERATION TO AVOID POST-GENERATION MEMORY SPIKE")
 
             return SHARPGenerationResult(
                 plyURL: plyURL,
@@ -662,6 +679,11 @@ class SHARPService: ObservableObject {
             context.interpolationQuality = .high
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
         }
+
+        logDebug(
+            "[GREEN][SHARP_PREPROCESS] SOURCE_DRAW=\(cgImage.width)X\(cgImage.height) " +
+            "MODEL_INPUT=\(size)X\(size) RESIZE=DIRECT_SQUISH PAD=NONE"
+        )
 
         return buffer
     }
@@ -908,12 +930,13 @@ class SHARPService: ObservableObject {
 
     // MARK: - PLY Writing
 
-    /// Write Gaussian parameters to a single Metal-facing `_classic.ply` (uchar RGB, Y/Z flip for in-app viewer).
+    /// Write Gaussian parameters to base, `_classic`, and `_3dgs` PLY variants.
     private func writePLY(
         _ params: [Float],
         sourceImageSize: CGSize,
         applyAspectCorrection: Bool,
-    ) async throws -> (classic: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
+        sharpCamera: SharpCameraSidecar.Info?,
+    ) async throws -> (original: URL, classic: URL, threeDGS: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
@@ -921,9 +944,34 @@ class SHARPService: ObservableObject {
         let aspectCorrection = applyAspectCorrection
             ? Self.sharpAspectCorrectionFactors(for: sourceImageSize)
             : (x: Float(1), y: Float(1))
+        let unprojectionFocalPx: Float = {
+            guard let sharpCamera else { return 0 }
+            // Unprojection is done in source-image coordinates, so it must use the
+            // EXIF-derived focal scaled to the same source image size.
+            return sharpCamera.sourceFocalPx
+        }()
+        let resizedFxPx: Float = {
+            guard let sharpCamera, unprojectionFocalPx > 0.01 else { return 0 }
+            return unprojectionFocalPx * (Float(sharpCamera.inputSquarePx) / Float(sharpCamera.sourceImageWidthPx))
+        }()
+        let resizedFyPx: Float = {
+            guard let sharpCamera, unprojectionFocalPx > 0.01 else { return 0 }
+            return unprojectionFocalPx * (Float(sharpCamera.inputSquarePx) / Float(sharpCamera.sourceImageHeightPx))
+        }()
+        let unprojectionScaleX: Float = {
+            guard let sharpCamera, resizedFxPx > 0.01 else { return 1 }
+            return Float(sharpCamera.inputSquarePx) / (2 * resizedFxPx)
+        }()
+        let unprojectionScaleY: Float = {
+            guard let sharpCamera, resizedFyPx > 0.01 else { return 1 }
+            return Float(sharpCamera.inputSquarePx) / (2 * resizedFyPx)
+        }()
         logDebug(
-            "SHARP: PLY aspect correction image=\(Int(sourceImageSize.width))x\(Int(sourceImageSize.height)) " +
-            "corr=(\(String(format: "%.4f", aspectCorrection.x)), \(String(format: "%.4f", aspectCorrection.y)))"
+            "[GREEN][SHARP_UNPROJECT] IMAGE=\(Int(sourceImageSize.width))X\(Int(sourceImageSize.height)) " +
+            "corr=(\(String(format: "%.4f", aspectCorrection.x)), \(String(format: "%.4f", aspectCorrection.y))) " +
+            "FOCAL_PX=\(String(format: "%.2f", unprojectionFocalPx)) " +
+            "FX_FY_RESIZED=(\(String(format: "%.2f", resizedFxPx)),\(String(format: "%.2f", resizedFyPx))) " +
+            "UNPROJECT_XY=(\(String(format: "%.4f", unprojectionScaleX)),\(String(format: "%.4f", unprojectionScaleY)))"
         )
 
         // Ensure output directory exists
@@ -933,14 +981,59 @@ class SHARPService: ObservableObject {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
+        let fileName = "Room_\(timestamp).ply"
         let classicFileName = "Room_\(timestamp)_classic.ply"
+        let threeDGSFileName = "Room_\(timestamp)_3dgs.ply"
+        let fileURL = modelsDirectory.appendingPathComponent(fileName)
         let classicFileURL = modelsDirectory.appendingPathComponent(classicFileName)
+        let threeDGSFileURL = modelsDirectory.appendingPathComponent(threeDGSFileName)
+
+        let metadataElementsHeader = """
+        element extrinsic 16
+        property float extrinsic
+        element intrinsic 9
+        property float intrinsic
+        element image_size 2
+        property uint image_size
+        element frame 2
+        property int frame
+        element disparity 2
+        property float disparity
+        element color_space 1
+        property uchar color_space
+        element version 3
+        property uchar version
+        """
+
+        let plyHeaderPrefix = """
+        ply
+        format binary_little_endian 1.0
+
+        """
 
         // Build PLY content - use uchar red/green/blue for proper color display
         let plyContent = """
-        ply
-        format binary_little_endian 1.0
-        element vertex \(gaussianCount)
+        \(plyHeaderPrefix)element vertex \(gaussianCount)
+        property float x
+        property float y
+        property float z
+        property float scale_0
+        property float scale_1
+        property float scale_2
+        property float rot_0
+        property float rot_1
+        property float rot_2
+        property float rot_3
+        property float opacity
+        property uchar red
+        property uchar green
+        property uchar blue
+        \(metadataElementsHeader)
+        end_header\n
+        """
+
+        let classicPlyContent = """
+        \(plyHeaderPrefix)element vertex \(gaussianCount)
         property float x
         property float y
         property float z
@@ -958,11 +1051,256 @@ class SHARPService: ObservableObject {
         end_header\n
         """
 
+        let threeDGSHeader = """
+        \(plyHeaderPrefix)element vertex \(gaussianCount)
+        property float x
+        property float y
+        property float z
+        property float nx
+        property float ny
+        property float nz
+        property float f_dc_0
+        property float f_dc_1
+        property float f_dc_2
+        property float opacity
+        property float scale_0
+        property float scale_1
+        property float scale_2
+        property float rot_0
+        property float rot_1
+        property float rot_2
+        property float rot_3
+        \(metadataElementsHeader)
+        end_header\n
+        """
+
         // SH coefficient constant: C0 = 0.5 * sqrt(1/pi) (debug logging)
         let SH_C0: Float = 0.28209479177387814
+        let threeDGSExtraLogScale = log(Self.threeDGSMetalViewerLinearScaleFactor)
 
         // Per-vertex byte size: 11 floats (44 B) + 3 UInt8 (3 B) = 47 B
         let standardVertexBytes = 47
+        let threeDGSVertexBytes = 68
+        let metadataBytes = (16 + 9 + 2 + 2 + 2) * 4 + 1 + 3
+
+        func matrixGet(_ m: simd_float3x3, _ row: Int, _ col: Int) -> Float {
+            m[col][row]
+        }
+
+        func matrixSet(_ m: inout simd_float3x3, _ row: Int, _ col: Int, _ value: Float) {
+            m[col][row] = value
+        }
+
+        func rotationMatrixFromQuaternion(wxyz q: SIMD4<Float>) -> simd_float3x3 {
+            let norm = simd_length(q)
+            let nq = norm > 1e-8 ? q / norm : SIMD4<Float>(1, 0, 0, 0)
+            let w = nq.x
+            let x = nq.y
+            let y = nq.z
+            let z = nq.w
+
+            let r0 = SIMD3<Float>(1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y))
+            let r1 = SIMD3<Float>(2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x))
+            let r2 = SIMD3<Float>(2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y))
+            return simd_float3x3(
+                columns: (
+                    SIMD3<Float>(r0.x, r1.x, r2.x),
+                    SIMD3<Float>(r0.y, r1.y, r2.y),
+                    SIMD3<Float>(r0.z, r1.z, r2.z)
+                )
+            )
+        }
+
+        func quaternionFromRotationMatrix(_ m: simd_float3x3) -> SIMD4<Float> {
+            let trace = matrixGet(m, 0, 0) + matrixGet(m, 1, 1) + matrixGet(m, 2, 2)
+            let q: SIMD4<Float>
+            if trace > 0 {
+                let s = sqrt(max(trace + 1, 1e-8)) * 2
+                q = SIMD4<Float>(
+                    0.25 * s,
+                    (matrixGet(m, 2, 1) - matrixGet(m, 1, 2)) / s,
+                    (matrixGet(m, 0, 2) - matrixGet(m, 2, 0)) / s,
+                    (matrixGet(m, 1, 0) - matrixGet(m, 0, 1)) / s
+                )
+            } else if matrixGet(m, 0, 0) > matrixGet(m, 1, 1), matrixGet(m, 0, 0) > matrixGet(m, 2, 2) {
+                let s = sqrt(max(1 + matrixGet(m, 0, 0) - matrixGet(m, 1, 1) - matrixGet(m, 2, 2), 1e-8)) * 2
+                q = SIMD4<Float>(
+                    (matrixGet(m, 2, 1) - matrixGet(m, 1, 2)) / s,
+                    0.25 * s,
+                    (matrixGet(m, 0, 1) + matrixGet(m, 1, 0)) / s,
+                    (matrixGet(m, 0, 2) + matrixGet(m, 2, 0)) / s
+                )
+            } else if matrixGet(m, 1, 1) > matrixGet(m, 2, 2) {
+                let s = sqrt(max(1 + matrixGet(m, 1, 1) - matrixGet(m, 0, 0) - matrixGet(m, 2, 2), 1e-8)) * 2
+                q = SIMD4<Float>(
+                    (matrixGet(m, 0, 2) - matrixGet(m, 2, 0)) / s,
+                    (matrixGet(m, 0, 1) + matrixGet(m, 1, 0)) / s,
+                    0.25 * s,
+                    (matrixGet(m, 1, 2) + matrixGet(m, 2, 1)) / s
+                )
+            } else {
+                let s = sqrt(max(1 + matrixGet(m, 2, 2) - matrixGet(m, 0, 0) - matrixGet(m, 1, 1), 1e-8)) * 2
+                q = SIMD4<Float>(
+                    (matrixGet(m, 1, 0) - matrixGet(m, 0, 1)) / s,
+                    (matrixGet(m, 0, 2) + matrixGet(m, 2, 0)) / s,
+                    (matrixGet(m, 1, 2) + matrixGet(m, 2, 1)) / s,
+                    0.25 * s
+                )
+            }
+            let norm = simd_length(q)
+            return norm > 1e-8 ? q / norm : SIMD4<Float>(1, 0, 0, 0)
+        }
+
+        func jacobiEigenDecompositionSymmetric(_ input: simd_float3x3) -> (values: SIMD3<Float>, vectors: simd_float3x3) {
+            var a = input
+            var v = matrix_identity_float3x3
+
+            func rotate(_ p: Int, _ q: Int) {
+                let app = matrixGet(a, p, p)
+                let aqq = matrixGet(a, q, q)
+                let apq = matrixGet(a, p, q)
+                if abs(apq) < 1e-7 { return }
+                let phi = 0.5 * atan2(2 * apq, aqq - app)
+                let c = cos(phi)
+                let s = sin(phi)
+
+                for r in 0..<3 where r != p && r != q {
+                    let arp = matrixGet(a, r, p)
+                    let arq = matrixGet(a, r, q)
+                    matrixSet(&a, r, p, c * arp - s * arq)
+                    matrixSet(&a, p, r, matrixGet(a, r, p))
+                    matrixSet(&a, r, q, s * arp + c * arq)
+                    matrixSet(&a, q, r, matrixGet(a, r, q))
+                }
+
+                let newApp = c * c * app - 2 * s * c * apq + s * s * aqq
+                let newAqq = s * s * app + 2 * s * c * apq + c * c * aqq
+                matrixSet(&a, p, p, newApp)
+                matrixSet(&a, q, q, newAqq)
+                matrixSet(&a, p, q, 0)
+                matrixSet(&a, q, p, 0)
+
+                for r in 0..<3 {
+                    let vrp = matrixGet(v, r, p)
+                    let vrq = matrixGet(v, r, q)
+                    matrixSet(&v, r, p, c * vrp - s * vrq)
+                    matrixSet(&v, r, q, s * vrp + c * vrq)
+                }
+            }
+
+            for _ in 0..<12 {
+                let candidates: [(Float, Int, Int)] = [
+                    (abs(matrixGet(a, 0, 1)), 0, 1),
+                    (abs(matrixGet(a, 0, 2)), 0, 2),
+                    (abs(matrixGet(a, 1, 2)), 1, 2),
+                ]
+                guard let pivot = candidates.max(by: { $0.0 < $1.0 }), pivot.0 > 1e-7 else { break }
+                rotate(pivot.1, pivot.2)
+            }
+
+            var values = [matrixGet(a, 0, 0), matrixGet(a, 1, 1), matrixGet(a, 2, 2)]
+            var vectors = [
+                SIMD3<Float>(matrixGet(v, 0, 0), matrixGet(v, 1, 0), matrixGet(v, 2, 0)),
+                SIMD3<Float>(matrixGet(v, 0, 1), matrixGet(v, 1, 1), matrixGet(v, 2, 1)),
+                SIMD3<Float>(matrixGet(v, 0, 2), matrixGet(v, 1, 2), matrixGet(v, 2, 2)),
+            ]
+            let order = (0..<3).sorted { values[$0] > values[$1] }
+            values = order.map { values[$0] }
+            vectors = order.map { vectors[$0] }
+
+            var rotation = simd_float3x3(columns: (vectors[0], vectors[1], vectors[2]))
+            if simd_determinant(rotation) < 0 {
+                rotation.columns.2 *= -1
+            }
+            return (
+                SIMD3<Float>(max(values[0], 1e-8), max(values[1], 1e-8), max(values[2], 1e-8)),
+                rotation
+            )
+        }
+
+        func transformScalesAndRotation(
+            scales linearScales: SIMD3<Float>,
+            quaternion wxyz: SIMD4<Float>
+        ) -> (scales: SIMD3<Float>, quaternion: SIMD4<Float>) {
+            let transform = simd_float3x3(diagonal: SIMD3<Float>(unprojectionScaleX, unprojectionScaleY, 1))
+            if abs(unprojectionScaleX - 1) < 1e-6, abs(unprojectionScaleY - 1) < 1e-6 {
+                return (linearScales, wxyz)
+            }
+            let rotation = rotationMatrixFromQuaternion(wxyz: wxyz)
+            let diagonal = simd_float3x3(diagonal: linearScales * linearScales)
+            let covariance = rotation * diagonal * rotation.transpose
+            let transformed = transform * covariance * transform.transpose
+            let decomposition = jacobiEigenDecompositionSymmetric(transformed)
+            let singularValues = SIMD3<Float>(
+                sqrt(decomposition.values.x),
+                sqrt(decomposition.values.y),
+                sqrt(decomposition.values.z)
+            )
+            let quaternion = quaternionFromRotationMatrix(decomposition.vectors)
+            return (singularValues, quaternion)
+        }
+
+        func appendMetadataElements(
+            to data: inout Data,
+            focalPx: Float,
+            imageWidth: Int,
+            imageHeight: Int,
+            particleCount: Int,
+            disparities: [Float]
+        ) {
+            let focal = focalPx > 0.01 ? focalPx : max(Float(imageWidth), Float(imageHeight)) * 0.5
+            let cx = Float(imageWidth) * 0.5
+            let cy = Float(imageHeight) * 0.5
+
+            let extrinsic: [Float] = [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            ]
+            for var value in extrinsic {
+                data.append(Data(bytes: &value, count: 4))
+            }
+
+            let intrinsic: [Float] = [
+                focal, 0, cx,
+                0, focal, cy,
+                0, 0, 1,
+            ]
+            for var value in intrinsic {
+                data.append(Data(bytes: &value, count: 4))
+            }
+
+            let imageSize: [UInt32] = [UInt32(max(imageWidth, 0)), UInt32(max(imageHeight, 0))]
+            for var value in imageSize {
+                data.append(Data(bytes: &value, count: 4))
+            }
+
+            let frame: [Int32] = [1, Int32(particleCount)]
+            for var value in frame {
+                data.append(Data(bytes: &value, count: 4))
+            }
+
+            let disparityRange: [Float]
+            if disparities.isEmpty {
+                disparityRange = [0, 0]
+            } else {
+                let p10 = disparities[min(max(Int(Float(disparities.count - 1) * 0.1), 0), disparities.count - 1)]
+                let p90 = disparities[min(max(Int(Float(disparities.count - 1) * 0.9), 0), disparities.count - 1)]
+                disparityRange = [p10, p90]
+            }
+            for var value in disparityRange {
+                data.append(Data(bytes: &value, count: 4))
+            }
+
+            var colorSpace: UInt8 = 0 // sRGB
+            data.append(Data(bytes: &colorSpace, count: 1))
+
+            let version: [UInt8] = [1, 5, 0]
+            for var value in version {
+                data.append(Data(bytes: &value, count: 1))
+            }
+        }
 
         // Pre-compute per-gaussian values for classic PLY.
         // Stored in a flat struct-of-arrays to avoid a second pass over `filteredParams`.
@@ -982,8 +1320,8 @@ class SHARPService: ObservableObject {
 
         for i in 0..<gaussianCount {
             let o = i * Self.paramsPerGaussian
-            let x = filteredParams[o + 0] * aspectCorrection.x
-            let y = -(filteredParams[o + 1] * aspectCorrection.y)
+            let x = filteredParams[o + 0] * aspectCorrection.x * unprojectionScaleX
+            let y = -(filteredParams[o + 1] * aspectCorrection.y * unprojectionScaleY)
             let z = -filteredParams[o + 2]
 
             let rr0 = filteredParams[o + 6]
@@ -996,12 +1334,24 @@ class SHARPService: ObservableObject {
             let rawOp = filteredParams[o + 10]
             let clOp = min(max(rawOp, 1e-4), 1.0 - 1e-4)
 
+            let transformed = transformScalesAndRotation(
+                scales: SIMD3<Float>(
+                    max(filteredParams[o + 3] * scaleBoost, minScale),
+                    max(filteredParams[o + 4] * scaleBoost, minScale),
+                    max(filteredParams[o + 5] * scaleBoost, minScale)
+                ),
+                quaternion: SIMD4<Float>(rr0 * inv, rr1 * inv, rr2 * inv, rr3 * inv)
+            )
+
             rows.append(GaussianRow(
                 x: x, y: y, z: z,
-                s0: log(max(filteredParams[o + 3] * scaleBoost, minScale)),
-                s1: log(max(filteredParams[o + 4] * scaleBoost, minScale)),
-                s2: log(max(filteredParams[o + 5] * scaleBoost, minScale)),
-                r0: rr0 * inv, r1: rr1 * inv, r2: rr2 * inv, r3: rr3 * inv,
+                s0: log(max(transformed.scales.x, minScale)),
+                s1: log(max(transformed.scales.y, minScale)),
+                s2: log(max(transformed.scales.z, minScale)),
+                r0: transformed.quaternion.x,
+                r1: transformed.quaternion.y,
+                r2: transformed.quaternion.z,
+                r3: transformed.quaternion.w,
                 opacity: log(clOp / (1.0 - clOp)),
                 rawR: filteredParams[o + 11],
                 rawG: filteredParams[o + 12],
@@ -1028,6 +1378,64 @@ class SHARPService: ObservableObject {
         let height = clMaxY - clMinY
         let depth = clMaxZ - clMinZ
 
+        struct BackWallDimensions {
+            let zMode: Float
+            let zMedian: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+            let count: Int
+            let band: Float
+        }
+
+        func estimateBackWallDimensions() -> BackWallDimensions? {
+            guard !rows.isEmpty else { return nil }
+
+            let depths = rows.map { -$0.z }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard depths.count >= 64 else { return nil }
+
+            let minDepth = depths.first ?? 0
+            let maxDepth = depths.last ?? 0
+            let depthSpan = maxDepth - minDepth
+            guard depthSpan.isFinite, depthSpan > 0.01 else { return nil }
+
+            let binCount = 200
+            let binWidth = max(depthSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for z in depths {
+                var index = Int(((z - minDepth) / binWidth).rounded(.down))
+                index = min(max(index, 0), binCount - 1)
+                histogram[index] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+
+            let zMode = minDepth + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * abs(zMode), 0.05)
+            let backWallRows = rows.filter { abs((-($0.z)) - zMode) < band }
+            guard backWallRows.count >= 64 else { return nil }
+
+            let xs = backWallRows.map(\.x).sorted()
+            let ys = backWallRows.map(\.y).sorted()
+            let zs = backWallRows.map { -$0.z }.sorted()
+            let idx5 = min(xs.count - 1, max(0, Int(Float(xs.count) * 0.05)))
+            let idx95 = min(xs.count - 1, max(idx5, Int(Float(xs.count) * 0.95)))
+            let rawWidth = xs[idx95] - xs[idx5]
+            let rawHeight = ys[idx95] - ys[idx5]
+            let zMedian = zs[zs.count / 2]
+
+            return BackWallDimensions(
+                zMode: zMode,
+                zMedian: zMedian,
+                width: rawWidth / 1.2,
+                height: rawHeight / 1.2,
+                depth: zMedian * 1.08,
+                count: backWallRows.count,
+                band: band
+            )
+        }
+
         // Debug first few gaussians
         for i in 0..<min(3, rows.count) {
             let g = rows[i]
@@ -1048,10 +1456,23 @@ class SHARPService: ObservableObject {
             logDebug("  color (uchar): (\(red), \(green), \(blue))")
         }
 
+        func disparitiesForRows(flipYZ: Bool) -> [Float] {
+            var disparities: [Float] = []
+            disparities.reserveCapacity(rows.count)
+            for g in rows {
+                let z = flipYZ ? -g.z : g.z
+                guard abs(z) > 1e-6, z.isFinite else { continue }
+                disparities.append(1.0 / z)
+            }
+            disparities.sort()
+            return disparities
+        }
+
         // Helper: write uchar-RGB PLY with optional Y/Z flip (classic uses flip for Metal).
-        func writeStandardPLY(toURL url: URL, flipYZ: Bool) throws {
-            let headerData = Data(plyContent.utf8)
-            var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes)
+        func writeStandardPLY(toURL url: URL, flipYZ: Bool, includeMetadataElements: Bool) throws {
+            let headerString = includeMetadataElements ? plyContent : classicPlyContent
+            let headerData = Data(headerString.utf8)
+            var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes + (includeMetadataElements ? metadataBytes : 0))
             buf.append(headerData)
             let gamma: Float = 1.0 / 2.2
             let brightness: Float = 1.1
@@ -1081,15 +1502,92 @@ class SHARPService: ObservableObject {
                 buf.append(Data(bytes: &green, count: 1))
                 buf.append(Data(bytes: &blue, count: 1))
             }
+            if includeMetadataElements {
+                appendMetadataElements(
+                    to: &buf,
+                    focalPx: unprojectionFocalPx,
+                    imageWidth: Int(sourceImageSize.width.rounded()),
+                    imageHeight: Int(sourceImageSize.height.rounded()),
+                    particleCount: gaussianCount,
+                    disparities: disparitiesForRows(flipYZ: flipYZ)
+                )
+            }
             try buf.write(to: url)
         }
 
-        // Classic PLY only: (x, -y, -z) via flipYZ — matches MetalSplatter / GaussianSplatView.
-        try writeStandardPLY(toURL: classicFileURL, flipYZ: true)
+        func writeThreeDGSPly(toURL url: URL) throws {
+            let headerData = Data(threeDGSHeader.utf8)
+            var buf = Data(capacity: headerData.count + gaussianCount * threeDGSVertexBytes + metadataBytes)
+            buf.append(headerData)
+            for g in rows {
+                var px = g.x
+                var py = g.y
+                var pz = g.z
+                buf.append(Data(bytes: &px, count: 4))
+                buf.append(Data(bytes: &py, count: 4))
+                buf.append(Data(bytes: &pz, count: 4))
 
-        let attributes = try FileManager.default.attributesOfItem(atPath: classicFileURL.path)
-        let classicSize = attributes[.size] as? UInt64 ?? 0
-        logDebug("SHARP: Classic PLY saved (\(classicSize / 1024) KB) — only export (Metal uchar RGB)")
+                var nx: Float = 0
+                var ny: Float = 0
+                var nz: Float = 0
+                buf.append(Data(bytes: &nx, count: 4))
+                buf.append(Data(bytes: &ny, count: 4))
+                buf.append(Data(bytes: &nz, count: 4))
+
+                var f0 = (g.rawR - 0.5) / SH_C0
+                var f1 = (g.rawG - 0.5) / SH_C0
+                var f2 = (g.rawB - 0.5) / SH_C0
+                buf.append(Data(bytes: &f0, count: 4))
+                buf.append(Data(bytes: &f1, count: 4))
+                buf.append(Data(bytes: &f2, count: 4))
+
+                var op = g.opacity
+                buf.append(Data(bytes: &op, count: 4))
+
+                var sg0 = g.s0 + threeDGSExtraLogScale
+                var sg1 = g.s1 + threeDGSExtraLogScale
+                var sg2 = g.s2 + threeDGSExtraLogScale
+                buf.append(Data(bytes: &sg0, count: 4))
+                buf.append(Data(bytes: &sg1, count: 4))
+                buf.append(Data(bytes: &sg2, count: 4))
+
+                var r0 = g.r0
+                var r1 = g.r1
+                var r2 = g.r2
+                var r3 = g.r3
+                buf.append(Data(bytes: &r0, count: 4))
+                buf.append(Data(bytes: &r1, count: 4))
+                buf.append(Data(bytes: &r2, count: 4))
+                buf.append(Data(bytes: &r3, count: 4))
+            }
+            appendMetadataElements(
+                to: &buf,
+                focalPx: unprojectionFocalPx,
+                imageWidth: Int(sourceImageSize.width.rounded()),
+                imageHeight: Int(sourceImageSize.height.rounded()),
+                particleCount: gaussianCount,
+                disparities: disparitiesForRows(flipYZ: false)
+            )
+            try buf.write(to: url)
+        }
+
+        try writeStandardPLY(toURL: fileURL, flipYZ: false, includeMetadataElements: true)
+        // Classic PLY only: (x, -y, -z) via flipYZ — matches MetalSplatter / GaussianSplatView.
+        try writeStandardPLY(toURL: classicFileURL, flipYZ: true, includeMetadataElements: false)
+        try writeThreeDGSPly(toURL: threeDGSFileURL)
+
+        let originalAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let classicAttributes = try FileManager.default.attributesOfItem(atPath: classicFileURL.path)
+        let threeDGSAttributes = try FileManager.default.attributesOfItem(atPath: threeDGSFileURL.path)
+        let originalSize = originalAttributes[.size] as? UInt64 ?? 0
+        let classicSize = classicAttributes[.size] as? UInt64 ?? 0
+        let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
+        logDebug("SHARP: PLY file saved (\(originalSize / 1024) KB)")
+        logDebug("SHARP: Classic PLY saved (\(classicSize / 1024) KB) — Metal uchar RGB")
+        logDebug(
+            "SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; " +
+            "σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). In-app Metal uses `_classic.ply`."
+        )
 
         logPlyBoundsDiagnostic(
             "SHARP classic_ply room bounds (vertex frame written to *_classic.ply; in-app Metal uses this file): " +
@@ -1098,6 +1596,19 @@ class SHARPService: ObservableObject {
             "Y[\(String(format: "%.3f", clMinY)),\(String(format: "%.3f", clMaxY))] " +
             "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
         )
+
+        if let backWall = estimateBackWallDimensions() {
+            logDebug(
+                "[GREEN][ROOM_DIMS] BACK_WALL_MODE Z=\(String(format: "%.4f", backWall.zMode)) " +
+                "Z_MEDIAN=\(String(format: "%.4f", backWall.zMedian)) " +
+                "BAND=\(String(format: "%.4f", backWall.band)) COUNT=\(backWall.count) " +
+                "W=\(String(format: "%.4f", backWall.width)) " +
+                "H=\(String(format: "%.4f", backWall.height)) " +
+                "D=\(String(format: "%.4f", backWall.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS] BACK_WALL_MODE unavailable count=\(rows.count)")
+        }
 
         let firstRowXYZ: String = {
             guard let r = rows.first else { return "n/a" }
@@ -1117,7 +1628,14 @@ class SHARPService: ObservableObject {
         rows.removeAll(keepingCapacity: false)
         logMemorySnapshot("SHARPService.writePLY", details: "phase=after_drop_rows ply=\(classicFileName) splats=\(gaussianCount)")
 
-        return (classic: classicFileURL, aabbWidth: width, aabbHeight: height, aabbDepth: depth)
+        return (
+            original: fileURL,
+            classic: classicFileURL,
+            threeDGS: threeDGSFileURL,
+            aabbWidth: width,
+            aabbHeight: height,
+            aabbDepth: depth
+        )
     }
 
     /// Writes `Room_<stamp>_thumbnail.jpg` next to the classic PLY so [WallMeasurementEstimator] can load it on save.

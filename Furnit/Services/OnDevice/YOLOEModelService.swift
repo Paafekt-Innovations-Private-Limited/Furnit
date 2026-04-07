@@ -21,8 +21,9 @@ class YOLOEModelService: ObservableObject {
 
     // MARK: - On-Demand Resources
 
-    /// Tag assigned to the bundled YOLOE model package in Xcode's ODR settings
-    private static let yoloeModelTag = "YOLOEModel"
+    /// ODR tag for the YOLOE Core ML package. Must change when shipping a new model so TestFlight/App Store
+    /// clients do not reuse a cached asset from an older build (same tag = stale model).
+    private static let yoloeModelTag = "yoloe_model_v26"
 
     /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource
     private var resourceRequest: NSBundleResourceRequest?

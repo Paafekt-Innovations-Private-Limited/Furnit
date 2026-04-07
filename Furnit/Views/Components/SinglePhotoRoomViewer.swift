@@ -3,6 +3,8 @@ import SceneKit
 import Accelerate
 import CoreML
 import Photos
+import PhotosUI
+import UniformTypeIdentifiers
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -1554,48 +1556,109 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        logDebug("📱 [PhotoPicker] Creating UIImagePickerController")
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        logDebug("📱 [PhotoPicker] Creating PHPickerViewController")
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
     }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
     
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: PhotoPickerView
         
         init(_ parent: PhotoPickerView) {
             self.parent = parent
             logDebug("📱 [PhotoPicker] Coordinator initialized")
         }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            logDebug("📱 [PhotoPicker] Image picked from library")
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            logDebug("📱 [PhotoPicker] PHPicker finished results=\(results.count)")
             parent.captureMediaMetadata = nil
-            parent.sourceImageURL = info[.imageURL] as? URL
-            if #available(iOS 11, *) {
-                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
-            } else {
-                parent.photoLibraryAssetLocalId = nil
+            guard let result = results.first else {
+                logDebug("❌ [PhotoPicker] No result selected")
+                parent.dismiss()
+                return
             }
-            if let image = info[.originalImage] as? UIImage {
-                logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
-                // Pass original image - EXIF needed for orientation detection
-                parent.selectedImage = image
-            } else {
-                logDebug("❌ [PhotoPicker] Failed to get UIImage")
+
+            parent.photoLibraryAssetLocalId = result.assetIdentifier
+            logDebug("📱 [PhotoPicker] assetIdentifier=\(result.assetIdentifier ?? "nil")")
+
+            copyOriginalImageFile(from: result.itemProvider)
+
+            guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
+                logDebug("❌ [PhotoPicker] Item provider cannot load UIImage")
+                parent.dismiss()
+                return
             }
-            parent.dismiss()
+
+            result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        logDebug("❌ [PhotoPicker] UIImage load failed: \(error.localizedDescription)")
+                    }
+                    if let image = object as? UIImage {
+                        logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
+                        self.parent.selectedImage = image
+                    } else {
+                        logDebug("❌ [PhotoPicker] Failed to get UIImage")
+                    }
+                    self.parent.dismiss()
+                }
+            }
         }
-        
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            logDebug("❌ [PhotoPicker] User cancelled")
-            parent.dismiss()
+
+        private func copyOriginalImageFile(from provider: NSItemProvider) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                if let url {
+                    self.copyPickedFile(at: url, source: "file_representation")
+                    return
+                }
+                if let error {
+                    logDebug("❌ [PhotoPicker] fileRepresentation failed: \(error.localizedDescription)")
+                }
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let error {
+                        logDebug("❌ [PhotoPicker] dataRepresentation failed: \(error.localizedDescription)")
+                    }
+                    guard let data else { return }
+                    let ext = provider.suggestedName?.split(separator: ".").last.map(String.init) ?? "img"
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+                    do {
+                        try data.write(to: tempURL, options: [.atomic])
+                        DispatchQueue.main.async {
+                            self.parent.sourceImageURL = tempURL
+                            logDebug("📱 [PhotoPicker] Copied original data to: \(tempURL.lastPathComponent) bytes=\(data.count)")
+                        }
+                    } catch {
+                        logDebug("❌ [PhotoPicker] temp write failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+
+        private func copyPickedFile(at url: URL, source: String) {
+            let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    try FileManager.default.removeItem(at: tempURL)
+                }
+                try FileManager.default.copyItem(at: url, to: tempURL)
+                DispatchQueue.main.async {
+                    self.parent.sourceImageURL = tempURL
+                    logDebug("📱 [PhotoPicker] Copied original \(source) to: \(tempURL.lastPathComponent)")
+                }
+            } catch {
+                logDebug("❌ [PhotoPicker] copy \(source) failed: \(error.localizedDescription)")
+            }
         }
     }
 }
@@ -1808,42 +1871,101 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
     @Binding var photoLibraryAssetLocalId: String?
     @Environment(\.dismiss) var dismiss
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
-        picker.allowsEditing = false
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: PhotoLibraryPicker
 
         init(_ parent: PhotoLibraryPicker) {
             self.parent = parent
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             parent.captureMediaMetadata = nil
-            parent.sourceImageURL = info[.imageURL] as? URL
-            if #available(iOS 11, *) {
-                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
-            } else {
-                parent.photoLibraryAssetLocalId = nil
+            guard let result = results.first else {
+                parent.dismiss()
+                return
             }
-            if let image = info[.originalImage] as? UIImage {
-                logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
-                parent.selectedImage = image
+
+            parent.photoLibraryAssetLocalId = result.assetIdentifier
+            logDebug("📷 [PhotoPicker] PHPicker assetIdentifier=\(result.assetIdentifier ?? "nil")")
+            copyOriginalImageFile(from: result.itemProvider)
+
+            guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
+                parent.dismiss()
+                return
             }
-            parent.dismiss()
+
+            result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        logDebug("❌ [PhotoPicker] UIImage load failed: \(error.localizedDescription)")
+                    }
+                    if let image = object as? UIImage {
+                        logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
+                        self.parent.selectedImage = image
+                    }
+                    self.parent.dismiss()
+                }
+            }
         }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.dismiss()
+        private func copyOriginalImageFile(from provider: NSItemProvider) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                if let url {
+                    self.copyPickedFile(at: url, source: "file_representation")
+                    return
+                }
+                if let error {
+                    logDebug("❌ [PhotoPicker] fileRepresentation failed: \(error.localizedDescription)")
+                }
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let error {
+                        logDebug("❌ [PhotoPicker] dataRepresentation failed: \(error.localizedDescription)")
+                    }
+                    guard let data else { return }
+                    let ext = provider.suggestedName?.split(separator: ".").last.map(String.init) ?? "img"
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+                    do {
+                        try data.write(to: tempURL, options: [.atomic])
+                        DispatchQueue.main.async {
+                            self.parent.sourceImageURL = tempURL
+                            logDebug("📷 [PhotoPicker] Copied original data to: \(tempURL.lastPathComponent) bytes=\(data.count)")
+                        }
+                    } catch {
+                        logDebug("❌ [PhotoPicker] temp write failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+
+        private func copyPickedFile(at url: URL, source: String) {
+            let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    try FileManager.default.removeItem(at: tempURL)
+                }
+                try FileManager.default.copyItem(at: url, to: tempURL)
+                DispatchQueue.main.async {
+                    self.parent.sourceImageURL = tempURL
+                    logDebug("📷 [PhotoPicker] Copied original \(source) to: \(tempURL.lastPathComponent)")
+                }
+            } catch {
+                logDebug("❌ [PhotoPicker] copy \(source) failed: \(error.localizedDescription)")
+            }
         }
     }
 }

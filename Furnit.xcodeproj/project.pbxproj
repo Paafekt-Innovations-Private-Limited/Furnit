@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
 		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
-		61A6214C2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */; settings = {ASSET_TAGS = (YOLOEModel, ); }; };
+		61A6214C2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */; settings = {ASSET_TAGS = (yoloe_model_v26, ); }; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
@@ -165,7 +165,7 @@
 				BuildIndependentTargetsInParallel = 1;
 				KnownAssetTags = (
 					SHARPModel,
-					YOLOEModel,
+					yoloe_model_v26,
 				);
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 1640;

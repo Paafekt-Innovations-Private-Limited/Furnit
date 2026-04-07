@@ -11,6 +11,7 @@ import simd
 private struct SharpRoomModalPauseToken: Equatable {
     var showRoomNameInput: Bool
     var isSavingRoom: Bool
+    var isRunningDepthProCalibration: Bool
     var showSaveAlert: Bool
     var showDiscardUnsavedAlert: Bool
     var showCalibrationRejectAlert: Bool
@@ -91,8 +92,9 @@ struct SharpRoomView: View {
 
     /// PLY for MetalSplatter: legacy `_classic.ply` when present, otherwise the canonical saved `.ply`.
     private let viewerPlyURL: URL
-    /// Share/export target. Saved rooms use the canonical saved `.ply`; fresh previews share the current PLY.
-    private let shareablePlyURL: URL
+    /// Share/export targets. When sibling SHARP variants exist, share all of them together,
+    /// plus camera EXIF sidecar metadata when present.
+    private let shareableRoomURLs: [URL]
     /// Whether this room should use SHARP classic orientation/rendering even without `_classic` in the file name.
     private let viewerUsesClassicPlyBehavior: Bool
 
@@ -131,22 +133,48 @@ struct SharpRoomView: View {
 
         let basePath = plyURL.path
         let fm = FileManager.default
-        let savedRoomWantsClassicBehavior = savedRoomModel?.isClassicPly == true
+        let canonicalStem = Self.canonicalPlyStem(for: plyURL)
+        let canonicalBaseURL = plyURL.deletingLastPathComponent().appendingPathComponent("\(canonicalStem).ply")
+        let canonicalClassicURL = plyURL.deletingLastPathComponent().appendingPathComponent("\(canonicalStem)_classic.ply")
+        let canonicalThreeDGSURL = plyURL.deletingLastPathComponent().appendingPathComponent("\(canonicalStem)_3dgs.ply")
 
+        let preferredViewerCandidates: [URL]
         if basePath.hasSuffix("_classic.ply") {
-            self.viewerPlyURL = plyURL
-            self.shareablePlyURL = plyURL
-            self.viewerUsesClassicPlyBehavior = true
+            preferredViewerCandidates = [plyURL, canonicalClassicURL, canonicalBaseURL, canonicalThreeDGSURL]
         } else {
-            let classic = URL(fileURLWithPath: basePath.replacingOccurrences(of: ".ply", with: "_classic.ply"))
-            let legacyClassicExists = fm.fileExists(atPath: classic.path)
-            if legacyClassicExists {
-                self.viewerPlyURL = classic
-            } else {
-                self.viewerPlyURL = plyURL
-            }
-            self.shareablePlyURL = plyURL
-            self.viewerUsesClassicPlyBehavior = legacyClassicExists || savedRoomWantsClassicBehavior
+            preferredViewerCandidates = [canonicalClassicURL, canonicalBaseURL, canonicalThreeDGSURL, plyURL]
+        }
+        self.viewerPlyURL = preferredViewerCandidates.first(where: { fm.fileExists(atPath: $0.path) }) ?? plyURL
+        self.shareableRoomURLs = Self.shareableRoomURLs(for: plyURL)
+        self.viewerUsesClassicPlyBehavior = self.viewerPlyURL.path.hasSuffix("_classic.ply")
+    }
+
+    private static func canonicalPlyStem(for url: URL) -> String {
+        var stem = url.deletingPathExtension().lastPathComponent
+        if stem.hasSuffix("_classic") {
+            stem = String(stem.dropLast("_classic".count))
+        } else if stem.hasSuffix("_3dgs") {
+            stem = String(stem.dropLast("_3dgs".count))
+        }
+        return stem
+    }
+
+    private static func shareableRoomURLs(for baseURL: URL) -> [URL] {
+        let directory = baseURL.deletingLastPathComponent()
+        let stem = canonicalPlyStem(for: baseURL)
+
+        let candidates = [
+            directory.appendingPathComponent("\(stem).ply"),
+            directory.appendingPathComponent("\(stem)_classic.ply"),
+            directory.appendingPathComponent("\(stem)_3dgs.ply"),
+            directory.appendingPathComponent("\(stem)_camera_exif.json"),
+            directory.appendingPathComponent("camera_exif.json"),
+        ]
+        let fm = FileManager.default
+        var seen = Set<String>()
+        return candidates.filter { url in
+            guard fm.fileExists(atPath: url.path) else { return false }
+            return seen.insert(url.path).inserted
         }
     }
 
@@ -173,6 +201,8 @@ struct SharpRoomView: View {
     // JS-measured front wall dimensions (from actual splat bounds)
     @State private var jsFrontWallWidth: Float?
     @State private var jsFrontWallHeight: Float?
+    @State private var manualDepthProRoomDimensions: (width: Float, height: Float, depth: Float)?
+    @State private var isRunningDepthProCalibration = false
 
     @State private var detectedFurnitureWidth: Float?
     /// Furniture height from ARKit depth when LiDAR/depth is available.
@@ -380,10 +410,9 @@ struct SharpRoomView: View {
                     }
                     .disabled(isLoading)
                 }
-            }
+        }
         .sheet(isPresented: $showShareSheet) {
-            // Share the classic/front-rotated PLY when available (matches what Metal renders).
-            ShareSheet(activityItems: [shareablePlyURL])
+            ShareSheet(activityItems: shareableRoomURLs)
         }
         .onAppear {
             // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
@@ -748,6 +777,37 @@ struct SharpRoomView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(pinchHintAccessibilityLabel)
+
+                if !allowSave {
+                    Button {
+                        Task { await runDepthProRoomCalibration() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isRunningDepthProCalibration {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                            }
+                            Text(isRunningDepthProCalibration ? "CALIBRATING..." : "CALIBRATE SIZE")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.black.opacity(0.62)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRunningDepthProCalibration || isSavingRoom)
+
+                    if let dims = manualDepthProRoomDimensions {
+                        Text(String(format: "%.1f × %.1f × %.1f m", dims.width, dims.height, dims.depth))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.94))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.62)))
+                    }
+                }
             }
             .padding(12)
             .onAppear { restartPinchGestureHint() }
@@ -891,19 +951,23 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
+    private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
+        manualDepthProRoomDimensions ?? arPlaneMeasuredRoomDimensions
+    }
+
     /// Width/height/depth for nav title, FurnitureFit, and save.
     /// AR-only mode: dimensions come from AR plane detection, not SHARP geometry / depth-grid extraction.
     private var displayRoomWidth: Float {
-        arPlaneMeasuredRoomDimensions?.width ?? 0
+        activeRoomMetersDimensions?.width ?? 0
     }
 
     private var displayRoomHeight: Float {
-        arPlaneMeasuredRoomDimensions?.height ?? 0
+        activeRoomMetersDimensions?.height ?? 0
     }
 
     /// Depth in meters.
     private var displayRoomDepth: Float {
-        arPlaneMeasuredRoomDimensions?.depth ?? 0
+        activeRoomMetersDimensions?.depth ?? 0
     }
 
     /// Nav bar: **height × depth** in metres only (width deferred).
@@ -925,15 +989,15 @@ struct SharpRoomView: View {
 
     /// Baseline W/H before calibration in meter space when available.
     private var sourceRoomWidth: Float {
-        arPlaneMeasuredRoomDimensions?.width ?? 0
+        activeRoomMetersDimensions?.width ?? 0
     }
 
     private var sourceRoomHeight: Float {
-        arPlaneMeasuredRoomDimensions?.height ?? 0
+        activeRoomMetersDimensions?.height ?? 0
     }
 
     private var resolvedRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
-        arPlaneMeasuredRoomDimensions
+        activeRoomMetersDimensions
     }
 
     /// Room dimensions for FurnitureFit — same chain as nav title / save.
@@ -1642,10 +1706,131 @@ struct SharpRoomView: View {
         enhancedRoomMetadata
     }
 
+    private func measurementThumbnailForCurrentRoom() -> UIImage? {
+        let roomFolder = viewerPlyURL.deletingLastPathComponent()
+        var stem = viewerPlyURL.deletingPathExtension().lastPathComponent
+        if stem.hasSuffix("_classic") {
+            stem = String(stem.dropLast("_classic".count))
+        }
+        let candidates = [
+            roomFolder.appendingPathComponent("\(stem)_thumbnail.jpg"),
+            roomFolder.appendingPathComponent("\(stem)_thumbnail.png"),
+        ]
+        for url in candidates {
+            if let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    private func measureRoomUsingMetricDepthForSave(plyBounds: RoomBounds?) async -> WallMeasurementEstimator.Result? {
+        guard let thumbnail = measurementThumbnailForCurrentRoom() else {
+            logDebug("📐 [SharpRoomView] Save: no thumbnail available for metric-depth wall measurement")
+            return nil
+        }
+
+        _ = thumbnail
+        _ = plyBounds
+        logDebug("📐 [SharpRoomView] Save: automatic metric measurement disabled; use the Depth Pro calibrate button if needed")
+        return nil
+
+    }
+
+    private func runDepthProRoomCalibration() async {
+        guard !isRunningDepthProCalibration else { return }
+        guard let thumbnail = measurementThumbnailForCurrentRoom() else {
+            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: missing thumbnail")
+            return
+        }
+        let referenceDepthMeters = effectiveBounds?.depth ?? savedRoomMetersDimensions?.depth
+        if let referenceDepthMeters, referenceDepthMeters > 0 {
+            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: using reference depth \(String(format: "%.3f", referenceDepthMeters))m")
+        } else {
+            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: no reference depth; using unit-scale depth")
+        }
+
+        await MainActor.run {
+            isRunningDepthProCalibration = true
+            syncModalHeavyWorkPauseForSharpRoomUI()
+        }
+        defer {
+            Task { @MainActor in
+                isRunningDepthProCalibration = false
+                syncModalHeavyWorkPauseForSharpRoomUI()
+            }
+        }
+
+        var measurement = WallMeasurementEstimator.measureUsingMetricDepthAlignedPLY(
+            roomURL: viewerPlyURL,
+            thumbnail: thumbnail
+        )
+
+        if measurement == nil {
+            await DepthProMetricDepthService.shared.generateMetricDepthIfPossible(
+                roomURL: viewerPlyURL,
+                thumbnail: thumbnail,
+                referenceDepthMeters: referenceDepthMeters
+            )
+            measurement =
+                WallMeasurementEstimator.measureUsingMetricDepthAlignedPLY(
+                    roomURL: viewerPlyURL,
+                    thumbnail: thumbnail
+                ) ??
+                WallMeasurementEstimator.measureUsingMetricDepthOnly(
+                    roomURL: viewerPlyURL,
+                    thumbnail: thumbnail,
+                    photoOrientation: photoOrientation,
+                    plyBounds: effectiveBounds
+                )
+        } else {
+            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: skipped depth model; SHARP edge/global path succeeded")
+        }
+
+        await MainActor.run {
+            guard let measurement else {
+                logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE FAILED")
+                return
+            }
+            manualDepthProRoomDimensions = (
+                width: measurement.widthMeters,
+                height: measurement.heightMeters,
+                depth: measurement.depthMeters
+            )
+            jsFrontWallWidth = measurement.widthMeters
+            jsFrontWallHeight = measurement.heightMeters
+            logDebug(
+                "📐 [SharpRoomView] EXPERIMENTAL CALIBRATE RESULT W×H×D=" +
+                    "\(String(format: "%.3f", measurement.widthMeters))×" +
+                    "\(String(format: "%.3f", measurement.heightMeters))×" +
+                    "\(String(format: "%.3f", measurement.depthMeters))m " +
+                    "mode=\(measurement.calibrationMode)"
+            )
+
+            if !allowSave {
+                let fileName = viewerPlyURL.deletingPathExtension().lastPathComponent
+                let fileExtension = viewerPlyURL.pathExtension
+                do {
+                    try modelManager.mergeRoomDimensionsIntoSavedRoomMetadata(
+                        fileName: fileName,
+                        modelFileExtension: fileExtension,
+                        roomWidth: measurement.widthMeters,
+                        roomHeight: measurement.heightMeters,
+                        roomDepth: measurement.depthMeters
+                    )
+                    logDebug("✅ [SharpRoomView] EXPERIMENTAL CALIBRATE persisted saved-room dims")
+                } catch {
+                    logDebug("❌ [SharpRoomView] EXPERIMENTAL CALIBRATE failed to persist dims: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     private var sharpRoomModalPauseToken: SharpRoomModalPauseToken {
         SharpRoomModalPauseToken(
             showRoomNameInput: showRoomNameInput,
             isSavingRoom: isSavingRoom,
+            isRunningDepthProCalibration: isRunningDepthProCalibration,
             showSaveAlert: showSaveAlert,
             showDiscardUnsavedAlert: showDiscardUnsavedAlert,
             showCalibrationRejectAlert: showCalibrationRejectAlert,
@@ -1665,6 +1850,7 @@ struct SharpRoomView: View {
         let pause =
             showRoomNameInput ||
             isSavingRoom ||
+            isRunningDepthProCalibration ||
             showSaveAlert ||
             showDiscardUnsavedAlert ||
             showCalibrationRejectAlert ||
@@ -1701,10 +1887,12 @@ struct SharpRoomView: View {
             }
 
             await MainActor.run { saveProgress = 0.15 }
-            let burstMeasurement = await withCheckedContinuation { (continuation: CheckedContinuation<ARPlaneRoomMeasurement?, Never>) in
-                splatMeasurementHost.measureRoomWithARBurst { measurement in
-                    continuation.resume(returning: measurement)
-                }
+            let currentPlyBounds = await MainActor.run { metalBounds }
+            let metricMeasurement = await measureRoomUsingMetricDepthForSave(plyBounds: currentPlyBounds)
+
+            let burstMeasurement: ARPlaneRoomMeasurement? = nil
+            if metricMeasurement == nil {
+                logDebug("📐 [SharpRoomView] Save: AR burst disabled; saving without live measurement fallback")
             }
 
             await MainActor.run {
@@ -1715,13 +1903,19 @@ struct SharpRoomView: View {
                 saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
             }
 
-            let fallbackARDimensions = await MainActor.run { arPlaneMeasuredRoomDimensions }
-            let roomW = burstMeasurement?.widthMeters ?? fallbackARDimensions?.width
-            let roomH = burstMeasurement?.heightMeters ?? fallbackARDimensions?.height
-            let roomD = burstMeasurement?.depthMeters ?? fallbackARDimensions?.depth
-            if let roomW, let roomH, let roomD {
+            let fallbackARDimensions = await MainActor.run { activeRoomMetersDimensions }
+            let roomW = metricMeasurement?.widthMeters ?? burstMeasurement?.widthMeters ?? fallbackARDimensions?.width
+            let roomH = metricMeasurement?.heightMeters ?? burstMeasurement?.heightMeters ?? fallbackARDimensions?.height
+            let roomD = metricMeasurement?.depthMeters ?? burstMeasurement?.depthMeters ?? fallbackARDimensions?.depth
+            if let metricMeasurement, let roomW, let roomH, let roomD {
                 logDebug(
-                    "🟢 [SharpRoomView] Save: burst AR W×H×D=" +
+                    "🟢 [SharpRoomView] Save: metric depth W×H×D=" +
+                        "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m " +
+                        "mode=\(metricMeasurement.calibrationMode)"
+                )
+            } else if let roomW, let roomH, let roomD {
+                logDebug(
+                    "🟢 [SharpRoomView] Save: existing calibrated W×H×D=" +
                         "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m"
                 )
             } else {

@@ -1078,11 +1078,12 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         private func drainInFlightMetalWorkBeforeARStartup() {
-            // Future draw suppression does not cancel already submitted GPU work.
-            // Submit a fence and wait so ARKit starts after the current Metal burst drains.
-            guard let commandQueue, let fence = commandQueue.makeCommandBuffer() else { return }
-            fence.commit()
-            fence.waitUntilCompleted()
+            guard let commandQueue else { return }
+            for _ in 0..<GaussianSplatView.maxSimultaneousRenders {
+                guard let buf = commandQueue.makeCommandBuffer() else { break }
+                buf.commit()
+                buf.waitUntilCompleted()
+            }
         }
 
         private func beginARRenderStartupThrottle(seconds: CFTimeInterval = 2.0) {
@@ -1119,29 +1120,65 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         private func burstMeasurementScore(_ measurement: ARPlaneRoomMeasurement) -> Float {
-            let wallOnlyPenalty: Float = measurement.usedWallOnlyFallback ? -25_000 : 0
-            let anchorScore = Float(measurement.floorAnchorCount * 1000 + measurement.wallAnchorCount * 100)
+            let planeScore = Float(
+                measurement.floorAnchorCount * 1000 +
+                measurement.wallAnchorCount * 500 +
+                measurement.ceilingAnchorCount * 800
+            )
             let volumeScore = max(0.001, measurement.widthMeters * measurement.heightMeters * measurement.depthMeters)
-            return wallOnlyPenalty + anchorScore + volumeScore
+            return planeScore + volumeScore
         }
 
         private func scriptedOscillationGuidance(
             normalCollectionDuration: CFTimeInterval,
-            hasMeasurement: Bool
-        ) -> String? {
-            guard !hasMeasurement else { return nil }
+            hasCompleteMeasurement: Bool
+        ) -> (step: Int, total: Int, message: String)? {
+            guard !hasCompleteMeasurement else { return nil }
 
+            let totalSteps = 7
             switch normalCollectionDuration {
-            case ..<2.0:
-                return "Oscillate 1/5: tilt down to include floor"
-            case ..<4.0:
-                return "Oscillate 2/5: pan left slowly"
+            case ..<1.5:
+                return (
+                    1,
+                    totalSteps,
+                    "Front full: keep the phone close to the back wall and show the full front wall"
+                )
+            case ..<3.0:
+                return (
+                    2,
+                    totalSteps,
+                    "Tilt down: include the floor-wall edge and as much floor as possible"
+                )
+            case ..<4.5:
+                return (
+                    3,
+                    totalSteps,
+                    "Pan left: slowly reveal the left wall and left corner"
+                )
             case ..<6.0:
-                return "Oscillate 3/5: pan right slowly"
-            case ..<8.0:
-                return "Oscillate 4/5: step back a little"
+                return (
+                    4,
+                    totalSteps,
+                    "Pan right: slowly reveal the right wall and right corner"
+                )
+            case ..<7.5:
+                return (
+                    5,
+                    totalSteps,
+                    "Tilt up: include upper wall and ceiling line if visible"
+                )
+            case ..<9.0:
+                return (
+                    6,
+                    totalSteps,
+                    "Move front/back slightly: keep full room framed while adding parallax"
+                )
             default:
-                return "Oscillate 5/5: hold still on floor-wall edge"
+                return (
+                    7,
+                    totalSteps,
+                    "Hold still: keep floor plus at least one wall visible while AR refines"
+                )
             }
         }
 
@@ -1178,7 +1215,9 @@ struct GaussianSplatView: UIViewRepresentable {
 
             let tracker = ARMotionTracker()
             arMeasurementBurstTracker = tracker
-            measurementHost?.updateARStatus("Measuring room with AR...")
+            measurementHost?.updateARStatus(
+                "Measuring room — point phone at floor & walls, sweep slowly left-right"
+            )
             measurementHost?.updateARPlaneRoomMeasurement(nil)
 
             var bestMeasurement: ARPlaneRoomMeasurement?
@@ -1214,7 +1253,7 @@ struct GaussianSplatView: UIViewRepresentable {
                                     "\(String(format: "%.3f", measurement.heightMeters))×" +
                                     "\(String(format: "%.3f", measurement.depthMeters))m " +
                                     "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount) " +
-                                    "default_ceiling=\(measurement.usedDefaultCeilingHeight) wall_only=\(measurement.usedWallOnlyFallback)"
+                                    "ceilings=\(measurement.ceilingAnchorCount) total=\(measurement.totalPlaneCount) wall_only=\(measurement.usedWallOnlyFallback)"
                             )
                         }
                     } else {
@@ -1225,80 +1264,103 @@ struct GaussianSplatView: UIViewRepresentable {
                                 "\(String(format: "%.3f", measurement.heightMeters))×" +
                                 "\(String(format: "%.3f", measurement.depthMeters))m " +
                                 "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount) " +
-                                "default_ceiling=\(measurement.usedDefaultCeilingHeight) wall_only=\(measurement.usedWallOnlyFallback)"
+                                "ceilings=\(measurement.ceilingAnchorCount) total=\(measurement.totalPlaneCount) wall_only=\(measurement.usedWallOnlyFallback)"
                         )
                     }
                     self?.measurementHost?.updateARPlaneRoomMeasurement(measurement)
                 }
             }
 
-            tracker.start()
-
             arMeasurementBurstTask = Task { @MainActor [weak self] in
                 guard let self else { return }
 
-                let hardDeadline = CFAbsoluteTimeGetCurrent() + 15.0
-                let minimumCollectionAfterNormal: CFTimeInterval = 5.0
-                let maximumCollectionAfterNormal: CFTimeInterval = 10.0
+                logDebug("⏳ [AR_BURST] GPU cooldown 0.5s before starting ARKit")
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                tracker.start()
+
+                let hardDeadline = CFAbsoluteTimeGetCurrent() + 20.0
+                let minimumCollectionWithMeasurement: CFTimeInterval = 6.0
+                let maximumCollectionWithMeasurement: CFTimeInterval = 15.0
 
                 var lastPollLog: CFAbsoluteTime = 0
                 var lastScriptedGuidance: String?
+                var firstMeasurementTime: CFAbsoluteTime?
 
                 while !Task.isCancelled {
                     let now = CFAbsoluteTimeGetCurrent()
+                    let elapsed = now - burstStartTime
                     let shouldStopForHardTimeout = now >= hardDeadline
-                    let normalCollectionDuration = firstNormalTrackingTime.map { now - $0 } ?? 0
                     let hasFloor = (bestMeasurement?.floorAnchorCount ?? 0) > 0
                     let hasWall = (bestMeasurement?.wallAnchorCount ?? 0) > 0
-                    let wallOnly = bestMeasurement?.usedWallOnlyFallback == true
-                    let hasUsableMeasurement = bestMeasurement != nil && (hasFloor || wallOnly)
-                    let shouldStopForGoodMeasurement =
-                        firstNormalTrackingTime != nil &&
-                        normalCollectionDuration >= minimumCollectionAfterNormal &&
-                        hasUsableMeasurement
-                    let shouldStopForMaxCollection =
-                        firstNormalTrackingTime != nil &&
-                        normalCollectionDuration >= maximumCollectionAfterNormal
+                    let hasCeiling = (bestMeasurement?.ceilingAnchorCount ?? 0) > 0
+                    let totalPlanes = bestMeasurement?.totalPlaneCount ?? 0
+                    let hasUsableMeasurement = bestMeasurement != nil
+
+                    if hasUsableMeasurement && firstMeasurementTime == nil {
+                        firstMeasurementTime = now
+                    }
+                    let collectionDuration = firstMeasurementTime.map { now - $0 } ?? 0
+                    let normalCollectionDuration = firstNormalTrackingTime.map { now - $0 } ?? 0
+
+                    let shouldStopGood = hasUsableMeasurement &&
+                        collectionDuration >= minimumCollectionWithMeasurement &&
+                        (hasFloor && hasWall)
+                    let shouldStopMax = hasUsableMeasurement &&
+                        collectionDuration >= maximumCollectionWithMeasurement
+
+                    let trackingLabel: String
+                    if firstNormalTrackingTime != nil {
+                        trackingLabel = "normal(\(String(format: "%.0f", normalCollectionDuration))s)"
+                    } else {
+                        trackingLabel = "limited"
+                    }
 
                     if now - lastPollLog >= 2.0 {
                         lastPollLog = now
-                        let elapsed = now - burstStartTime
-                        let normalStr = firstNormalTrackingTime != nil
-                            ? String(format: "%.1fs_since_normal", normalCollectionDuration)
-                            : "waiting_for_normal"
                         logDebug(
-                            "🔵 [AR_BURST] poll t=\(String(format: "%.1f", elapsed))s \(normalStr) " +
-                                "has_measurement=\(bestMeasurement != nil) floor=\(hasFloor) wall=\(hasWall) wall_only=\(wallOnly)"
+                            "🔵 [AR_BURST] t=\(String(format: "%.0f", elapsed))s tracking=\(trackingLabel) " +
+                                "planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling) " +
+                                "has_meas=\(hasUsableMeasurement) collecting=\(String(format: "%.0f", collectionDuration))s"
                         )
                     }
 
-                    if let firstNormalTrackingTime,
-                       let scriptedGuidance = scriptedOscillationGuidance(
-                           normalCollectionDuration: normalCollectionDuration,
-                           hasMeasurement: bestMeasurement != nil
+                    let guidanceDuration = firstNormalTrackingTime != nil
+                        ? normalCollectionDuration
+                        : elapsed
+                    if let scriptedGuidance = scriptedOscillationGuidance(
+                           normalCollectionDuration: guidanceDuration,
+                           hasCompleteMeasurement: hasFloor && hasWall
                        ),
-                       scriptedGuidance != lastScriptedGuidance {
-                        lastScriptedGuidance = scriptedGuidance
-                        measurementHost?.updateARStatus(scriptedGuidance)
+                       scriptedGuidance.message != lastScriptedGuidance {
+                        lastScriptedGuidance = scriptedGuidance.message
+                        measurementHost?.updateARStatus(
+                            "Step \(scriptedGuidance.step)/\(scriptedGuidance.total): \(scriptedGuidance.message)"
+                        )
                         logDebug(
-                            "🟣 [AR_OSCILLATE] step=\(scriptedGuidance) elapsed_since_normal=" +
-                                "\(String(format: "%.1f", now - firstNormalTrackingTime))s"
+                            "🟣 [AR_GUIDE] step=\(scriptedGuidance.step)/\(scriptedGuidance.total) " +
+                                "\(scriptedGuidance.message) t=\(String(format: "%.0f", elapsed))s"
                         )
                     }
 
                     if shouldStopForHardTimeout {
-                        logDebug("🟡 [AR_BURST] stopping: hard timeout (\(String(format: "%.0f", hardDeadline - burstStartTime))s)")
+                        let reason = hasUsableMeasurement
+                            ? "hard timeout WITH partial measurement"
+                            : "hard timeout NO measurement — phone may not be seeing room surfaces"
+                        logDebug("🟡 [AR_BURST] stopping: \(reason) (\(String(format: "%.0f", elapsed))s)")
                         break
                     }
-                    if shouldStopForGoodMeasurement {
+                    if shouldStopGood {
                         logDebug(
-                            "🟢 [AR_BURST] stopping: usable measurement after \(String(format: "%.1f", normalCollectionDuration))s " +
-                                "(floor=\(hasFloor) wall_only=\(wallOnly))"
+                            "🟢 [AR_BURST] stopping: good measurement after \(String(format: "%.0f", collectionDuration))s " +
+                                "(planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling))"
                         )
                         break
                     }
-                    if shouldStopForMaxCollection {
-                        logDebug("🟡 [AR_BURST] stopping: max collection time (\(String(format: "%.0f", maximumCollectionAfterNormal))s after normal)")
+                    if shouldStopMax {
+                        logDebug(
+                            "🟡 [AR_BURST] stopping: max collection with partial (\(String(format: "%.0f", collectionDuration))s) " +
+                                "(planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling))"
+                        )
                         break
                     }
 
@@ -1326,13 +1388,20 @@ struct GaussianSplatView: UIViewRepresentable {
                             "\(String(format: "%.3f", finalMeasurement.heightMeters))×" +
                             "\(String(format: "%.3f", finalMeasurement.depthMeters))m " +
                             "floors=\(finalMeasurement.floorAnchorCount) walls=\(finalMeasurement.wallAnchorCount) " +
-                            "default_ceiling=\(finalMeasurement.usedDefaultCeilingHeight) wall_only=\(finalMeasurement.usedWallOnlyFallback) " +
+                            "ceilings=\(finalMeasurement.ceilingAnchorCount) total=\(finalMeasurement.totalPlaneCount) " +
+                            "wall_only=\(finalMeasurement.usedWallOnlyFallback) " +
                             "burst_duration=\(String(format: "%.1f", totalBurstDuration))s"
                     )
                 } else {
+                    let reachedNormal = firstNormalTrackingTime != nil
                     logDebug(
                         "🔴🔴🔴 [AR_BURST] ❌ FAILED — no plane measurement after " +
-                            "\(String(format: "%.1f", totalBurstDuration))s burst"
+                            "\(String(format: "%.1f", totalBurstDuration))s burst " +
+                            "reached_normal=\(reachedNormal) " +
+                            "tip: point camera at textured floor/wall edges, move phone side-to-side slowly"
+                    )
+                    self.measurementHost?.updateARStatus(
+                        "AR could not detect room surfaces. Try again in better light, aim at floor-wall edges"
                     )
                 }
                 completion(finalMeasurement)
