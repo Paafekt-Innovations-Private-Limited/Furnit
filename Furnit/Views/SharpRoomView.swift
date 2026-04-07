@@ -11,7 +11,6 @@ import simd
 private struct SharpRoomModalPauseToken: Equatable {
     var showRoomNameInput: Bool
     var isSavingRoom: Bool
-    var isRunningDepthProCalibration: Bool
     var showSaveAlert: Bool
     var showDiscardUnsavedAlert: Bool
     var showCalibrationRejectAlert: Bool
@@ -201,8 +200,6 @@ struct SharpRoomView: View {
     // JS-measured front wall dimensions (from actual splat bounds)
     @State private var jsFrontWallWidth: Float?
     @State private var jsFrontWallHeight: Float?
-    @State private var manualDepthProRoomDimensions: (width: Float, height: Float, depth: Float)?
-    @State private var isRunningDepthProCalibration = false
 
     @State private var detectedFurnitureWidth: Float?
     /// Furniture height from ARKit depth when LiDAR/depth is available.
@@ -308,13 +305,6 @@ struct SharpRoomView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.55)
                 .multilineTextAlignment(.center)
-            if splatMeasurementHost.arModeEnabled {
-                Text("AR plane detection is measuring the room")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -361,7 +351,7 @@ struct SharpRoomView: View {
                     .disabled(isLoading)
                     .accessibilityLabel(L10n.RoomViewer.recenterView)
 
-                    // Ellipsis menu: share, save, calibrate, overlay reset, AR toggle, furniture actions.
+                    // Ellipsis menu: share, save, calibrate, overlay reset, furniture actions.
                     Menu {
                         if authManager.canShare {
                             Button(action: { showShareSheet = true }) {
@@ -382,18 +372,6 @@ struct SharpRoomView: View {
                             NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitResetOverlayScale"), object: nil)
                         }) {
                             Label(L10n.RoomViewer.resetOverlayScale, systemImage: "arrow.counterclockwise")
-                        }
-                        Button(action: {
-                            let next = !splatMeasurementHost.arModeEnabled
-                            logDebug("📱 [SharpRoomView] toggling in-room AR camera enabled=\(next)")
-                            splatMeasurementHost.setARModeEnabled(next)
-                        }) {
-                            Label(
-                                splatMeasurementHost.arModeEnabled
-                                    ? L10n.Sharp.stillRoomCameraMode
-                                    : L10n.Sharp.liveRoomCameraMode,
-                                systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw" : "iphone"
-                            )
                         }
                         Button(action: {
                             splatMeasurementHost.rotateSelectedFurniture(by: .pi / 12)
@@ -448,20 +426,6 @@ struct SharpRoomView: View {
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: splatMeasurementHost.arPlaneRoomMeasurement) { _, measurement in
-            if let measurement {
-                logARRoomMeasure(
-                    "phase=arkit_planes_ready live_room=\(splatMeasurementHost.arModeEnabled ? "on" : "off") " +
-                        "arkit_plane_m_W×H×D=\(String(format: "%.4f", measurement.widthMeters))×" +
-                        "\(String(format: "%.4f", measurement.heightMeters))×" +
-                        "\(String(format: "%.4f", measurement.depthMeters)) " +
-                        "room_dims_authoritative_source=\(measurement.sourceLabel)"
-                )
-            } else if splatMeasurementHost.arModeEnabled {
-                logARRoomMeasure("phase=arkit_planes_ready live_room=on arkit_plane_note=not_ready")
-            }
-            updateRoomPlacementIntelligence()
-        }
         .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
             if !enabled {
                 showFurnitureDimensionsInput = false
@@ -472,9 +436,9 @@ struct SharpRoomView: View {
             guard !loading, !didEnableDefaultARCamera else { return }
             didEnableDefaultARCamera = true
             if allowSave {
-                logDebug("📱 [SharpRoomView] Fresh SHARP room loaded — AR will not auto-start; user must enable AR after SHARP generation/resources fully settle")
+                logDebug("📱 [SharpRoomView] Fresh SHARP room loaded")
             } else {
-                logDebug("📱 [SharpRoomView] Saved room loaded — defaulting to still room; AR will only start on user action")
+                logDebug("📱 [SharpRoomView] Saved room loaded")
             }
         }
         .onDisappear {
@@ -484,7 +448,6 @@ struct SharpRoomView: View {
             cancelBrainHintTasks()
             OrientationLockManager.shared.unlock()
             splatMeasurementHost.setModalHeavyWorkPaused(false)
-            splatMeasurementHost.setARModeEnabled(false)
             SHARPService.shared.releaseResources()
             yoloeService.releaseResources()
         }
@@ -569,8 +532,7 @@ struct SharpRoomView: View {
         .onChange(of: isLoading) { _, loading in
             guard !loading else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                // AR-only mode: disable legacy SHARP depth-grid / RoomGeometryEngine room measurement.
-                logDebug("📐 [SharpRoomView] AR-only mode — skipped non-AR room geometry extraction")
+                logDebug("📐 [SharpRoomView] Room geometry extraction remains disabled")
             }
         }
         .onAppear {
@@ -583,7 +545,7 @@ struct SharpRoomView: View {
     }
 
     private func logSharpRoomDimensionApproaches(metalBounds _: RoomBounds) {
-        logDebug("📐 [SharpRoomView] AR-only mode — skipped SHARP room dimension comparison logging")
+        logDebug("📐 [SharpRoomView] Skipped legacy SHARP room dimension comparison logging")
     }
 
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {}
@@ -664,27 +626,6 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    /// Still Room ↔ Live Room quick toggle (⋮ menu also toggles). No status text — avoids clutter and overlap with the D-pad.
-    private var arModeQuickTogglePill: some View {
-        Button {
-            let next = !splatMeasurementHost.arModeEnabled
-            logDebug("📱 [SharpRoomView] quick toggle in-room AR enabled=\(next)")
-            splatMeasurementHost.setARModeEnabled(next)
-        } label: {
-            Label(
-                splatMeasurementHost.arModeEnabled ? L10n.Sharp.stillRoom : L10n.Sharp.liveRoom,
-                systemImage: splatMeasurementHost.arModeEnabled ? "hand.draw.fill" : "iphone"
-            )
-            .font(.caption.weight(.semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Capsule().fill((splatMeasurementHost.arModeEnabled ? Color.green : Color.blue).opacity(0.85)))
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint(L10n.Sharp.cameraModeToggleAccessibilityHint)
-    }
-
     /// D-pad cluster only (same notifications as Metal/WebGL parity).
     private var cameraDPadCluster: some View {
         HStack(spacing: 8) {
@@ -725,18 +666,14 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Live / Still Room pill always **above** D-pad (portrait + landscape). “Live Room” is motion-tracked splat camera
-    /// (no live camera passthrough). Landscape uses a trailing `Spacer` in a full-height column so controls stay top-left.
+    /// D-pad overlay only. Landscape uses a trailing `Spacer` in a full-height column so controls stay top-left.
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 12) {
-                    arModeQuickTogglePill
-                    cameraDPadCluster
-                }
+                cameraDPadCluster
                 .padding(.leading, 12)
                 .padding(.top, 12)
                 if photoOrientation == .landscape {
@@ -778,36 +715,6 @@ struct SharpRoomView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(pinchHintAccessibilityLabel)
 
-                if !allowSave {
-                    Button {
-                        Task { await runDepthProRoomCalibration() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isRunningDepthProCalibration {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(.white)
-                            }
-                            Text(isRunningDepthProCalibration ? "CALIBRATING..." : "CALIBRATE SIZE")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.black.opacity(0.62)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isRunningDepthProCalibration || isSavingRoom)
-
-                    if let dims = manualDepthProRoomDimensions {
-                        Text(String(format: "%.1f × %.1f × %.1f m", dims.width, dims.height, dims.depth))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white.opacity(0.94))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.62)))
-                    }
-                }
             }
             .padding(12)
             .onAppear { restartPinchGestureHint() }
@@ -939,24 +846,11 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
-    private var arPlaneMeasuredRoomDimensions: (width: Float, height: Float, depth: Float)? {
-        guard let measurement = splatMeasurementHost.arPlaneRoomMeasurement else { return nil }
-        let width = measurement.widthMeters
-        let height = measurement.heightMeters
-        let depth = measurement.depthMeters
-        guard width.isFinite, height.isFinite, depth.isFinite,
-              width > 0.05, height > 0.05, depth > 0.05 else {
-            return nil
-        }
-        return (width, height, depth)
-    }
-
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
-        manualDepthProRoomDimensions ?? arPlaneMeasuredRoomDimensions
+        savedRoomMetersDimensions
     }
 
     /// Width/height/depth for nav title, FurnitureFit, and save.
-    /// AR-only mode: dimensions come from AR plane detection, not SHARP geometry / depth-grid extraction.
     private var displayRoomWidth: Float {
         activeRoomMetersDimensions?.width ?? 0
     }
@@ -1724,113 +1618,10 @@ struct SharpRoomView: View {
         return nil
     }
 
-    private func measureRoomUsingMetricDepthForSave(plyBounds: RoomBounds?) async -> WallMeasurementEstimator.Result? {
-        guard let thumbnail = measurementThumbnailForCurrentRoom() else {
-            logDebug("📐 [SharpRoomView] Save: no thumbnail available for metric-depth wall measurement")
-            return nil
-        }
-
-        _ = thumbnail
-        _ = plyBounds
-        logDebug("📐 [SharpRoomView] Save: automatic metric measurement disabled; use the Depth Pro calibrate button if needed")
-        return nil
-
-    }
-
-    private func runDepthProRoomCalibration() async {
-        guard !isRunningDepthProCalibration else { return }
-        guard let thumbnail = measurementThumbnailForCurrentRoom() else {
-            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: missing thumbnail")
-            return
-        }
-        let referenceDepthMeters = effectiveBounds?.depth ?? savedRoomMetersDimensions?.depth
-        if let referenceDepthMeters, referenceDepthMeters > 0 {
-            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: using reference depth \(String(format: "%.3f", referenceDepthMeters))m")
-        } else {
-            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: no reference depth; using unit-scale depth")
-        }
-
-        await MainActor.run {
-            isRunningDepthProCalibration = true
-            syncModalHeavyWorkPauseForSharpRoomUI()
-        }
-        defer {
-            Task { @MainActor in
-                isRunningDepthProCalibration = false
-                syncModalHeavyWorkPauseForSharpRoomUI()
-            }
-        }
-
-        var measurement = WallMeasurementEstimator.measureUsingMetricDepthAlignedPLY(
-            roomURL: viewerPlyURL,
-            thumbnail: thumbnail
-        )
-
-        if measurement == nil {
-            await DepthProMetricDepthService.shared.generateMetricDepthIfPossible(
-                roomURL: viewerPlyURL,
-                thumbnail: thumbnail,
-                referenceDepthMeters: referenceDepthMeters
-            )
-            measurement =
-                WallMeasurementEstimator.measureUsingMetricDepthAlignedPLY(
-                    roomURL: viewerPlyURL,
-                    thumbnail: thumbnail
-                ) ??
-                WallMeasurementEstimator.measureUsingMetricDepthOnly(
-                    roomURL: viewerPlyURL,
-                    thumbnail: thumbnail,
-                    photoOrientation: photoOrientation,
-                    plyBounds: effectiveBounds
-                )
-        } else {
-            logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE: skipped depth model; SHARP edge/global path succeeded")
-        }
-
-        await MainActor.run {
-            guard let measurement else {
-                logDebug("📐 [SharpRoomView] EXPERIMENTAL CALIBRATE FAILED")
-                return
-            }
-            manualDepthProRoomDimensions = (
-                width: measurement.widthMeters,
-                height: measurement.heightMeters,
-                depth: measurement.depthMeters
-            )
-            jsFrontWallWidth = measurement.widthMeters
-            jsFrontWallHeight = measurement.heightMeters
-            logDebug(
-                "📐 [SharpRoomView] EXPERIMENTAL CALIBRATE RESULT W×H×D=" +
-                    "\(String(format: "%.3f", measurement.widthMeters))×" +
-                    "\(String(format: "%.3f", measurement.heightMeters))×" +
-                    "\(String(format: "%.3f", measurement.depthMeters))m " +
-                    "mode=\(measurement.calibrationMode)"
-            )
-
-            if !allowSave {
-                let fileName = viewerPlyURL.deletingPathExtension().lastPathComponent
-                let fileExtension = viewerPlyURL.pathExtension
-                do {
-                    try modelManager.mergeRoomDimensionsIntoSavedRoomMetadata(
-                        fileName: fileName,
-                        modelFileExtension: fileExtension,
-                        roomWidth: measurement.widthMeters,
-                        roomHeight: measurement.heightMeters,
-                        roomDepth: measurement.depthMeters
-                    )
-                    logDebug("✅ [SharpRoomView] EXPERIMENTAL CALIBRATE persisted saved-room dims")
-                } catch {
-                    logDebug("❌ [SharpRoomView] EXPERIMENTAL CALIBRATE failed to persist dims: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
     private var sharpRoomModalPauseToken: SharpRoomModalPauseToken {
         SharpRoomModalPauseToken(
             showRoomNameInput: showRoomNameInput,
             isSavingRoom: isSavingRoom,
-            isRunningDepthProCalibration: isRunningDepthProCalibration,
             showSaveAlert: showSaveAlert,
             showDiscardUnsavedAlert: showDiscardUnsavedAlert,
             showCalibrationRejectAlert: showCalibrationRejectAlert,
@@ -1850,7 +1641,6 @@ struct SharpRoomView: View {
         let pause =
             showRoomNameInput ||
             isSavingRoom ||
-            isRunningDepthProCalibration ||
             showSaveAlert ||
             showDiscardUnsavedAlert ||
             showCalibrationRejectAlert ||
@@ -1886,43 +1676,19 @@ struct SharpRoomView: View {
                 }
             }
 
-            await MainActor.run { saveProgress = 0.15 }
-            let currentPlyBounds = await MainActor.run { metalBounds }
-            let metricMeasurement = await measureRoomUsingMetricDepthForSave(plyBounds: currentPlyBounds)
-
-            let burstMeasurement: ARPlaneRoomMeasurement? = nil
-            if metricMeasurement == nil {
-                logDebug("📐 [SharpRoomView] Save: AR burst disabled; saving without live measurement fallback")
-            }
-
-            await MainActor.run {
-                if let burstMeasurement {
-                    splatMeasurementHost.updateARPlaneRoomMeasurement(burstMeasurement)
-                }
-                saveProgress = 0.35
-                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-            }
+            await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }
 
             let fallbackARDimensions = await MainActor.run { activeRoomMetersDimensions }
-            let roomW = metricMeasurement?.widthMeters ?? burstMeasurement?.widthMeters ?? fallbackARDimensions?.width
-            let roomH = metricMeasurement?.heightMeters ?? burstMeasurement?.heightMeters ?? fallbackARDimensions?.height
-            let roomD = metricMeasurement?.depthMeters ?? burstMeasurement?.depthMeters ?? fallbackARDimensions?.depth
-            if let metricMeasurement, let roomW, let roomH, let roomD {
+            let roomW = fallbackARDimensions?.width
+            let roomH = fallbackARDimensions?.height
+            let roomD = fallbackARDimensions?.depth
+            if let roomW, let roomH, let roomD {
                 logDebug(
-                    "🟢 [SharpRoomView] Save: metric depth W×H×D=" +
-                        "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m " +
-                        "mode=\(metricMeasurement.calibrationMode)"
-                )
-            } else if let roomW, let roomH, let roomD {
-                logDebug(
-                    "🟢 [SharpRoomView] Save: existing calibrated W×H×D=" +
+                    "🟢 [SharpRoomView] Save: recorded W×H×D=" +
                         "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m"
                 )
             } else {
-                logDebug(
-                    "🔴 [SharpRoomView] Save: burst AR returned nil dims — W×H×D=" +
-                        "\(String(describing: roomW))×\(String(describing: roomH))×\(String(describing: roomD))m"
-                )
+                logDebug("🔴 [SharpRoomView] Save: room dimensions unavailable")
             }
 
             await MainActor.run { saveProgress = 0.5 }
@@ -2011,7 +1777,7 @@ struct SharpRoomView: View {
             ) {
                 enhancedRoomMetadata = metadata
                 roomModel = nil
-                logDebug("📐 [SharpRoomView] AR-only mode — ignored saved room geometry metadata")
+                logDebug("📐 [SharpRoomView] Ignored saved room geometry metadata")
                 return
             }
         }
@@ -2019,17 +1785,17 @@ struct SharpRoomView: View {
         if let metadata = modelManager.loadEnhancedMetadata(forRoomURL: viewerPlyURL) {
             enhancedRoomMetadata = metadata
             roomModel = nil
-            logDebug("📐 [SharpRoomView] AR-only mode — ignored live room geometry metadata")
+            logDebug("📐 [SharpRoomView] Ignored fresh room geometry metadata")
         }
     }
 
     private func scheduleRoomGeometryExtractionIfNeeded() {
-        logDebug("📐 [SharpRoomView] AR-only mode — room geometry extraction disabled")
+        logDebug("📐 [SharpRoomView] Room geometry extraction disabled")
     }
 
     private func triggerRoomGeometryExtractionIfNeeded(force: Bool = false) {
         let _ = force
-        logDebug("📐 [SharpRoomView] AR-only mode — RoomGeometryEngine / RANSAC path commented out")
+        logDebug("📐 [SharpRoomView] RoomGeometryEngine / RANSAC path disabled")
     }
 
     private func persistEnhancedRoomMetadataIfPossible(_ metadata: EnhancedRoomMetadata) {

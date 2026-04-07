@@ -2,7 +2,7 @@ import Foundation
 import ImageIO
 import Photos
 
-/// Writes `camera_exif.json` next to SHARP outputs for [WallMeasurementEstimator]: focal lengths + **SubjectDistance** (m).
+/// Writes `camera_exif.json` next to SHARP outputs so downstream tools can read focal lengths and **SubjectDistance** (m).
 ///
 /// Library picks often have **no** `imageURL`; we use **PHAsset** image data (preserves EXIF) when available.
 /// In-app camera uses `UIImagePickerController` **mediaMetadata** (`{Exif}`).

@@ -92,7 +92,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var roomRaycastSceneDimensions: RoomRaycastDimensions?
     /// Canonical room intelligence model when available. Used to prefer persisted calibration and camera hints over heuristic sizing.
     var roomModel: RoomModel?
-    /// Sharp Room: when Live Room is on, furniture depth uses the splat depth buffer instead of device-pitch floor heuristics.
+    /// Sharp Room: furniture depth can use the splat depth buffer instead of device-pitch floor heuristics.
     weak var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost?
     var cameraFocalLengthPixels: Float = 0
 
@@ -153,7 +153,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
     private let captureSessionControlQueue = DispatchQueue(label: "com.furnit.capture.control", qos: .userInitiated)
 
-    // MARK: AR camera path (optional — when AR-assisted sizing enabled and ARKit supported)
+    // MARK: Camera Path
     private let arSession = ARSession()
     private let arSessionDelegateQueue = DispatchQueue(label: "com.furnit.furniturefit.arsession", qos: .userInitiated)
     private let arSCNView: ARSCNView = {
@@ -1351,7 +1351,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Sharp Room already supplies splat-surface depth and may also run Live Room motion tracking.
+    /// Sharp Room already supplies splat-surface depth.
     /// In that host, avoid spinning up a second ARKit session for Furniture Fit.
     private var shouldForceClassicCameraPath: Bool {
         sharpRoomSplatMeasurementHost != nil
@@ -1453,7 +1453,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             if self.debugMode {
                 let reason = self.shouldForceClassicCameraPath
-                    ? "sharp_room_uses_splat_depth_and_live_room_pose"
+                    ? "sharp_room_uses_splat_depth"
                     : "ar_path_not_selected"
                 logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active reason=\(reason)")
             }
@@ -1591,7 +1591,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (depthMeters, measuredPitchDeg, effectivePitchDeg)
     }
 
-    /// Sharp Room Live Room: depth to the splat surface at the floor-contact pixel (matches virtual camera). Caller must be on the main thread.
+    /// Sharp Room: depth to the splat surface at the floor-contact pixel (matches the rendered splat camera). Caller must be on the main thread.
     private func liveRoomSplatDepthMetersForFloorContactIfAvailable(
         contactImageX: Float,
         contactImageY: Float,
@@ -1599,7 +1599,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         imageHeight: Int
     ) -> Float? {
         guard let host = sharpRoomSplatMeasurementHost,
-              host.arModeEnabled,
               let rm = roomModel,
               rm.sceneToMeters > 1e-5,
               window != nil else { return nil }
@@ -1682,9 +1681,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             depthMeters = dm
             measuredPitchDeg = nil
             effectivePitchDeg = 0
-            depthPipelineSuffix = "_splatLiveRoom"
+            depthPipelineSuffix = "_splat"
             logFurnitureFitSize(
-                "phase=metric_depth source=splat_live_room depth_m=\(String(format: "%.3f", dm)) " +
+                "phase=metric_depth source=splat depth_m=\(String(format: "%.3f", dm)) " +
                     "contact_px=(\(Int(clampedImageX)),\(Int(clampedImageY))) buf=\(imageWidth)×\(imageHeight)"
             )
         } else {

@@ -1638,7 +1638,7 @@ class SHARPService: ObservableObject {
         )
     }
 
-    /// Writes `Room_<stamp>_thumbnail.jpg` next to the classic PLY so [WallMeasurementEstimator] can load it on save.
+    /// Writes `Room_<stamp>_thumbnail.jpg` next to the classic PLY for downstream room metadata consumers.
     /// JPEG uses ~1/3 the encoding memory of PNG for photo-type images.
     private func saveThumbnailForWallMeasurement(image: UIImage, classicPlyURL: URL) {
         let stem = classicPlyURL.deletingPathExtension().lastPathComponent

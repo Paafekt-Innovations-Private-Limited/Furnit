@@ -657,7 +657,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var onFirstSegmentationComplete: (() -> Void)?
     /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
-    /// Sharp Room only: splat depth for furniture sizing when Live Room (AR) is on.
+    /// Sharp Room only: splat depth for furniture sizing.
     var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {

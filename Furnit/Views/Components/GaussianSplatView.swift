@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import ARKit
 import MetalKit
 import Metal
 import MetalSplatter
@@ -42,7 +41,7 @@ struct GaussianSplatView: UIViewRepresentable {
     /// When true, use dolly-style pinch zoom with a much wider range and smaller near plane (matches the Room Viewer “Infinite Zoom” setting).
     let infiniteZoom: Bool
 
-    /// Source room/photo orientation. Portrait rooms need an AR camera roll compensation so motion tracking starts upright.
+    /// Source room/photo orientation.
     let arReferenceOrientation: PhotoOrientation
 
     /// When true, apply SHARP classic camera/orientation behavior even if the file name does not include `_classic`.
@@ -130,9 +129,6 @@ struct GaussianSplatView: UIViewRepresentable {
         coordinator.appliedZoomLevel = zoomLevel
         measurementHost?.coordinator = coordinator
         coordinator.measurementHost = measurementHost
-        if let host = measurementHost {
-            coordinator.setARModeEnabled(host.arModeEnabled)
-        }
         mtkView.setNeedsDisplay()
     }
 
@@ -209,17 +205,6 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneCentroid: SIMD3<Float>?
         /// True when viewing a SHARP `_classic.ply` splat; used to undo the extra (y,z) → (-y,-z) flip applied at export so the room is not upside down.
         private var isSharpClassicPly: Bool = false
-        private var arMotionTracker: ARMotionTracker?
-        private var arMeasurementBurstTracker: ARMotionTracker?
-        private var arMeasurementBurstTask: Task<Void, Never>?
-        private var arModeEnabled: Bool = false
-        private var arRelativeTransform: simd_float4x4 = matrix_identity_float4x4
-        /// Last splat **virtual camera** world transform when Live Room was on (same frame as ``viewport``). For `[AR_ROOM_MEASURE]` only.
-        private(set) var lastARVirtualCameraWorldForDiagnostics: simd_float4x4?
-        /// AR translation scale (meters-ish); kept conservative so small device moves don't throw the room out of frame.
-        private let arMovementScale: Float = 0.9
-        private var hasLoggedARViewerSpaceTransform = false
-        private var arRecenterTransform: simd_float4x4 = matrix_identity_float4x4
         private var pendingFurnitureItem: SharpRoomFurnitureItem?
         private var placedFurniture: [SharpRoomPlacedFurniture] = []
         private var selectedFurnitureID: UUID?
@@ -235,26 +220,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         private var didRegisterSharpRoomNotifications = false
         private var notificationTokens: [NSObjectProtocol] = []
-        private var isGeneratingDeviceOrientationForSharpRoom = false
-        /// True while one or more features temporarily need Live Room AR paused (modal UI, room extraction, camera contention avoidance).
         private var modalHeavyWorkPaused = false
         private var modalHeavyWorkPauseCount = 0
-        /// Briefly suppress splat draws while ARKit acquires the camera / bootstrap feature map.
-        private var arStartupRenderSuppressedUntil: CFAbsoluteTime = 0
-        private var arStartupRenderResumeWorkItem: DispatchWorkItem?
-        private var didLogARRenderSuppression = false
-        /// When the AR delegate runs off the main thread, coalesce to one main dispatch (avoids queued blocks piling up).
-        private var pendingARRawTransform: simd_float4x4?
-        private var arPoseFlushToMainScheduled = false
-        /// Throttle auto-recenter (OOB translation, large twist, orientation flip).
-        private var lastAutoARRecenterTime: CFAbsoluteTime = 0
-        private let arAutoRecenterCooldownSeconds: CFTimeInterval = 0.55
-        /// `UIDevice.orientationDidChangeNotification` can fire in bursts (unknown/faceUp churn); keep orientation recenter rare.
-        private let arOrientationRecenterCooldownSeconds: CFTimeInterval = 2.25
-        /// Last orientation that actually triggered a recenter (ignores duplicate notifications for the same value).
-        private var lastARDeviceOrientationSeen: UIDeviceOrientation = .unknown
-        /// Total rotation angle of AR relative pose past this (rad) triggers recenter like translation OOB.
-        private let arAutoRecenterMaxRotationRadians: Float = 75 * (.pi / 180)
 
         // ── Camera constants ──────────────────────────────────────────────────
         private let maxPitch:        Float = 1.4
@@ -308,9 +275,6 @@ struct GaussianSplatView: UIViewRepresentable {
                 nc.removeObserver(token)
             }
             notificationTokens.removeAll()
-            arMeasurementBurstTask?.cancel()
-            arMeasurementBurstTracker?.stop()
-            arMotionTracker?.stop()
         }
 
         // MARK: Setup
@@ -332,10 +296,6 @@ struct GaussianSplatView: UIViewRepresentable {
             }
             notificationTokens.removeAll()
             didRegisterSharpRoomNotifications = false
-            if isGeneratingDeviceOrientationForSharpRoom {
-                UIDevice.current.endGeneratingDeviceOrientationNotifications()
-                isGeneratingDeviceOrientationForSharpRoom = false
-            }
 
             if Thread.isMainThread {
                 targetView?.delegate = nil
@@ -345,16 +305,6 @@ struct GaussianSplatView: UIViewRepresentable {
             if self.view === targetView || targetView == nil {
                 view = nil
             }
-            arMeasurementBurstTask?.cancel()
-            arMeasurementBurstTask = nil
-            arMeasurementBurstTracker?.stop()
-            arMeasurementBurstTracker = nil
-            arMotionTracker?.stop()
-            arMotionTracker = nil
-            arStartupRenderResumeWorkItem?.cancel()
-            arStartupRenderResumeWorkItem = nil
-            arStartupRenderSuppressedUntil = 0
-            didLogARRenderSuppression = false
 
             // Drain the queue so in-flight completion handlers run before we release the coordinator.
             // (Swift’s `MTLCommandQueue` protocol does not expose `waitUntilAllCommandsCompleted`.)
@@ -668,16 +618,6 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         func draw(in view: MTKView) {
-            let now = CFAbsoluteTimeGetCurrent()
-            if arStartupRenderSuppressedUntil > now {
-                if !didLogARRenderSuppression {
-                    didLogARRenderSuppression = true
-                    let remainingMs = Int((arStartupRenderSuppressedUntil - now) * 1000)
-                    logDebug("⏸️ [GaussianSplatView] suppressing splat draws during AR startup remaining_ms=\(remainingMs)")
-                }
-                return
-            }
-            didLogARRenderSuppression = false
             guard let commandQueue = commandQueue, let metalDevice = device else {
                 flushAllPendingScreenshotRequestsWithNil()
                 return
@@ -926,7 +866,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 }
             }
 
-            // ── Apply user orbit / zoom in both touch and AR camera modes ─────────────────
+            // ── Apply user orbit / zoom ────────────────────────────────────────────────────
             let yawMatrix   = matrix4x4Rotation(radians: cameraYaw,
                                                  axis: SIMD3<Float>(0, 1, 0))
             let pitchMatrix = matrix4x4Rotation(radians: cameraPitch,
@@ -941,18 +881,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 up:     SIMD3<Float>(0, 1, 0)
             )
 
-            let viewBase: simd_float4x4
-            if arModeEnabled {
-                let baseCameraWorld = simd_inverse(baseView)
-                let arCameraWorld = baseCameraWorld * arBaseOrientationTransform * arRecenterTransform * arRelativeTransform
-                lastARVirtualCameraWorldForDiagnostics = arCameraWorld
-                viewBase = simd_inverse(arCameraWorld)
-            } else {
-                lastARVirtualCameraWorldForDiagnostics = nil
-                viewBase = baseView
-            }
-
-            let viewMatrix = viewBase * scaleMatrix
+            let viewMatrix = baseView * scaleMatrix
 
             let mtlViewport = MTLViewport(
                 originX: 0, originY: 0,
@@ -970,23 +899,6 @@ struct GaussianSplatView: UIViewRepresentable {
             )
         }
 
-        private var arBaseOrientationTransform: simd_float4x4 {
-            switch arReferenceOrientation {
-            case .portrait, .square:
-                // AR tracking is landscape-native; portrait SHARP rooms need a fixed roll compensation
-                // so default AR mode starts upright instead of sideways.
-                return matrix4x4Rotation(radians: -.pi / 2, axis: SIMD3<Float>(0, 0, 1))
-            case .landscape:
-                return matrix_identity_float4x4
-            }
-        }
-
-        /// When `arRelativeTransform` is identity, `baseCameraWorld * arBase * arTouchModeAlignmentRecenter == baseCameraWorld`,
-        /// so the AR view matrix matches touch-mode ``baseView`` (no portrait roll pop or post-recenter tilt).
-        private var arTouchModeAlignmentRecenter: simd_float4x4 {
-            simd_inverse(arBaseOrientationTransform)
-        }
-
         // MARK: - Room measurement (depth buffer raycast)
 
         /// Queues one redraw so depth / view–proj matrices match the current camera before a CPU depth read.
@@ -1001,7 +913,7 @@ struct GaussianSplatView: UIViewRepresentable {
             return drawableSize
         }
 
-        /// Orbit, zoom, scene scale, and AR relative pose back to defaults; re-baselines ARKit reference on next frame.
+        /// Orbit, zoom, and scene scale back to defaults.
         func performSharpRoomRecenter() {
             cameraYaw = 0
             cameraPitch = 0
@@ -1009,52 +921,8 @@ struct GaussianSplatView: UIViewRepresentable {
             appliedZoomLevel = 1.0
             zoomLevel = 1.0
             sceneScale = SIMD2(1, 1)
-            if arModeEnabled {
-                // `arRelativeTransform` is always built from ARMotionTracker’s *session-start* reference.
-                // `arRecenterTransform = inverse(arRelative)` only cancels motion if the next `arRelative`
-                // stays in that same frame — it does not, so the room skews after recenter.
-                // Clear the tracker baseline so the next frame’s relative pose is identity at this device pose.
-                arMotionTracker?.resetReferencePose()
-                arRelativeTransform = matrix_identity_float4x4
-                arRecenterTransform = arTouchModeAlignmentRecenter
-            } else {
-                arRecenterTransform = matrix_identity_float4x4
-                arRelativeTransform = matrix_identity_float4x4
-            }
-            hasLoggedARViewerSpaceTransform = false
-            lastAutoARRecenterTime = CFAbsoluteTimeGetCurrent()
-            logDebug(
-                "🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset; AR baseline cleared; " +
-                "alignmentRecenter=\(arModeEnabled ? "inv(arBase)" : "off")"
-            )
+            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset")
             view?.setNeedsDisplay()
-        }
-
-        /// Auto-recenter when AR translation leaves the allowed radius, user twists past ``arAutoRecenterMaxRotationRadians``, or device orientation changes.
-        private func performAutoARRecenterIfNeeded(reason: String) {
-            guard arModeEnabled else { return }
-            let now = CFAbsoluteTimeGetCurrent()
-            let minGap = (reason == "device_orientation")
-                ? arOrientationRecenterCooldownSeconds
-                : arAutoRecenterCooldownSeconds
-            if now - lastAutoARRecenterTime < minGap { return }
-            lastAutoARRecenterTime = now
-            logDebug("🔄 [GaussianSplatAR] auto-recenter reason=\(reason)")
-            performSharpRoomRecenter()
-        }
-
-        private static func isMeaningfulInterfaceDeviceOrientation(_ o: UIDeviceOrientation) -> Bool {
-            switch o {
-            case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight: true
-            default: false
-            }
-        }
-
-        /// Angle (rad) of the 3×3 rotation part from identity; robust for orthonormal matrices from ARKit.
-        private static func rotationAngleFromRigidUpper3x3(_ m: simd_float4x4) -> Float {
-            let trace = m.columns.0.x + m.columns.1.y + m.columns.2.z
-            let cosTheta = max(-1, min(1, (trace - 1) * 0.5))
-            return acos(cosTheta)
         }
 
         func setModalHeavyWorkPaused(_ paused: Bool) {
@@ -1062,460 +930,13 @@ struct GaussianSplatView: UIViewRepresentable {
                 modalHeavyWorkPauseCount += 1
                 guard !modalHeavyWorkPaused else { return }
                 modalHeavyWorkPaused = true
-                if arModeEnabled {
-                    arMotionTracker?.pauseForModal()
-                }
                 return
             }
 
             modalHeavyWorkPauseCount = max(0, modalHeavyWorkPauseCount - 1)
             guard modalHeavyWorkPauseCount == 0, modalHeavyWorkPaused else { return }
             modalHeavyWorkPaused = false
-            if arModeEnabled {
-                arMotionTracker?.resumeAfterModal()
-            }
             view?.setNeedsDisplay()
-        }
-
-        private func drainInFlightMetalWorkBeforeARStartup() {
-            guard let commandQueue else { return }
-            for _ in 0..<GaussianSplatView.maxSimultaneousRenders {
-                guard let buf = commandQueue.makeCommandBuffer() else { break }
-                buf.commit()
-                buf.waitUntilCompleted()
-            }
-        }
-
-        private func beginARRenderStartupThrottle(seconds: CFTimeInterval = 2.0) {
-            warmupEndTime = nil
-            arStartupRenderResumeWorkItem?.cancel()
-            arStartupRenderSuppressedUntil = .greatestFiniteMagnitude
-            didLogARRenderSuppression = false
-            logMemorySnapshot("GaussianSplatView.beginARRenderStartupThrottle", details: "phase=before_drain")
-            drainInFlightMetalWorkBeforeARStartup()
-            logMemorySnapshot("GaussianSplatView.beginARRenderStartupThrottle", details: "phase=after_drain")
-            let resumeTime = CFAbsoluteTimeGetCurrent() + seconds
-            arStartupRenderSuppressedUntil = resumeTime
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.arStartupRenderSuppressedUntil = 0
-                self.didLogARRenderSuppression = false
-                self.view?.setNeedsDisplay()
-                logDebug("▶️ [GaussianSplatView] resumed splat draws after AR startup throttle")
-                logMemorySnapshot("GaussianSplatView.beginARRenderStartupThrottle", details: "phase=resumed_draws")
-            }
-            arStartupRenderResumeWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: workItem)
-        }
-
-        private func resumeRendererAfterARBurst() {
-            arStartupRenderResumeWorkItem?.cancel()
-            arStartupRenderResumeWorkItem = nil
-            arStartupRenderSuppressedUntil = 0
-            didLogARRenderSuppression = false
-            view?.enableSetNeedsDisplay = true
-            view?.isPaused = true
-            view?.setNeedsDisplay()
-            logDebug("▶️ [GaussianSplatView] resumed renderer after AR measurement burst")
-        }
-
-        private func burstMeasurementScore(_ measurement: ARPlaneRoomMeasurement) -> Float {
-            let planeScore = Float(
-                measurement.floorAnchorCount * 1000 +
-                measurement.wallAnchorCount * 500 +
-                measurement.ceilingAnchorCount * 800
-            )
-            let volumeScore = max(0.001, measurement.widthMeters * measurement.heightMeters * measurement.depthMeters)
-            return planeScore + volumeScore
-        }
-
-        private func scriptedOscillationGuidance(
-            normalCollectionDuration: CFTimeInterval,
-            hasCompleteMeasurement: Bool
-        ) -> (step: Int, total: Int, message: String)? {
-            guard !hasCompleteMeasurement else { return nil }
-
-            let totalSteps = 7
-            switch normalCollectionDuration {
-            case ..<1.5:
-                return (
-                    1,
-                    totalSteps,
-                    "Front full: keep the phone close to the back wall and show the full front wall"
-                )
-            case ..<3.0:
-                return (
-                    2,
-                    totalSteps,
-                    "Tilt down: include the floor-wall edge and as much floor as possible"
-                )
-            case ..<4.5:
-                return (
-                    3,
-                    totalSteps,
-                    "Pan left: slowly reveal the left wall and left corner"
-                )
-            case ..<6.0:
-                return (
-                    4,
-                    totalSteps,
-                    "Pan right: slowly reveal the right wall and right corner"
-                )
-            case ..<7.5:
-                return (
-                    5,
-                    totalSteps,
-                    "Tilt up: include upper wall and ceiling line if visible"
-                )
-            case ..<9.0:
-                return (
-                    6,
-                    totalSteps,
-                    "Move front/back slightly: keep full room framed while adding parallax"
-                )
-            default:
-                return (
-                    7,
-                    totalSteps,
-                    "Hold still: keep floor plus at least one wall visible while AR refines"
-                )
-            }
-        }
-
-        func measureRoomWithARBurst(completion: @escaping (ARPlaneRoomMeasurement?) -> Void) {
-            guard let view else {
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
-                return
-            }
-            guard arMeasurementBurstTask == nil else {
-                logDebug("⚠️ [GaussianSplatView] AR measurement burst already in progress")
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
-                return
-            }
-
-            let shouldRestoreLiveAR = arModeEnabled
-            if shouldRestoreLiveAR {
-                measurementHost?.arModeEnabled = false
-                setARModeEnabled(false)
-            }
-
-            arStartupRenderResumeWorkItem?.cancel()
-            arStartupRenderResumeWorkItem = nil
-            arStartupRenderSuppressedUntil = .greatestFiniteMagnitude
-            didLogARRenderSuppression = false
-            view.isPaused = true
-            view.enableSetNeedsDisplay = false
-            logMemorySnapshot("GaussianSplatView.measureRoomWithARBurst", details: "phase=before_drain")
-            drainInFlightMetalWorkBeforeARStartup()
-            logMemorySnapshot("GaussianSplatView.measureRoomWithARBurst", details: "phase=after_drain")
-
-            let tracker = ARMotionTracker()
-            arMeasurementBurstTracker = tracker
-            measurementHost?.updateARStatus(
-                "Measuring room — point phone at floor & walls, sweep slowly left-right"
-            )
-            measurementHost?.updateARPlaneRoomMeasurement(nil)
-
-            var bestMeasurement: ARPlaneRoomMeasurement?
-            var firstNormalTrackingTime: CFAbsoluteTime?
-            let burstStartTime = CFAbsoluteTimeGetCurrent()
-
-            tracker.onTrackingStatus = { [weak self] text in
-                DispatchQueue.main.async {
-                    self?.measurementHost?.updateARStatus(text)
-                    if text == "AR tracking normal", firstNormalTrackingTime == nil {
-                        firstNormalTrackingTime = CFAbsoluteTimeGetCurrent()
-                        let elapsedSinceBurst = firstNormalTrackingTime! - burstStartTime
-                        logDebug("📐 [AR_BURST] tracking reached normal after \(String(format: "%.1f", elapsedSinceBurst))s; collecting planes")
-                    }
-                }
-            }
-            tracker.onScanGuidanceUpdate = { [weak self] guidance in
-                DispatchQueue.main.async {
-                    self?.measurementHost?.updateARStatus(guidance)
-                }
-            }
-            tracker.onPlaneRoomMeasurementUpdate = { [weak self] measurement in
-                DispatchQueue.main.async {
-                    guard let measurement else { return }
-                    if let currentBestMeasurement = bestMeasurement {
-                        let candidateScore = self?.burstMeasurementScore(measurement) ?? 0
-                        let currentScore = self?.burstMeasurementScore(currentBestMeasurement) ?? 0
-                        if candidateScore > currentScore {
-                            bestMeasurement = measurement
-                            logDebug(
-                                "🟢 [AR_BURST] better measurement W×H×D=" +
-                                    "\(String(format: "%.3f", measurement.widthMeters))×" +
-                                    "\(String(format: "%.3f", measurement.heightMeters))×" +
-                                    "\(String(format: "%.3f", measurement.depthMeters))m " +
-                                    "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount) " +
-                                    "ceilings=\(measurement.ceilingAnchorCount) total=\(measurement.totalPlaneCount) wall_only=\(measurement.usedWallOnlyFallback)"
-                            )
-                        }
-                    } else {
-                        bestMeasurement = measurement
-                        logDebug(
-                            "🟢 [AR_BURST] first measurement W×H×D=" +
-                                "\(String(format: "%.3f", measurement.widthMeters))×" +
-                                "\(String(format: "%.3f", measurement.heightMeters))×" +
-                                "\(String(format: "%.3f", measurement.depthMeters))m " +
-                                "floors=\(measurement.floorAnchorCount) walls=\(measurement.wallAnchorCount) " +
-                                "ceilings=\(measurement.ceilingAnchorCount) total=\(measurement.totalPlaneCount) wall_only=\(measurement.usedWallOnlyFallback)"
-                        )
-                    }
-                    self?.measurementHost?.updateARPlaneRoomMeasurement(measurement)
-                }
-            }
-
-            arMeasurementBurstTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-
-                logDebug("⏳ [AR_BURST] GPU cooldown 0.5s before starting ARKit")
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                tracker.start()
-
-                let hardDeadline = CFAbsoluteTimeGetCurrent() + 20.0
-                let minimumCollectionWithMeasurement: CFTimeInterval = 6.0
-                let maximumCollectionWithMeasurement: CFTimeInterval = 15.0
-
-                var lastPollLog: CFAbsoluteTime = 0
-                var lastScriptedGuidance: String?
-                var firstMeasurementTime: CFAbsoluteTime?
-
-                while !Task.isCancelled {
-                    let now = CFAbsoluteTimeGetCurrent()
-                    let elapsed = now - burstStartTime
-                    let shouldStopForHardTimeout = now >= hardDeadline
-                    let hasFloor = (bestMeasurement?.floorAnchorCount ?? 0) > 0
-                    let hasWall = (bestMeasurement?.wallAnchorCount ?? 0) > 0
-                    let hasCeiling = (bestMeasurement?.ceilingAnchorCount ?? 0) > 0
-                    let totalPlanes = bestMeasurement?.totalPlaneCount ?? 0
-                    let hasUsableMeasurement = bestMeasurement != nil
-
-                    if hasUsableMeasurement && firstMeasurementTime == nil {
-                        firstMeasurementTime = now
-                    }
-                    let collectionDuration = firstMeasurementTime.map { now - $0 } ?? 0
-                    let normalCollectionDuration = firstNormalTrackingTime.map { now - $0 } ?? 0
-
-                    let shouldStopGood = hasUsableMeasurement &&
-                        collectionDuration >= minimumCollectionWithMeasurement &&
-                        (hasFloor && hasWall)
-                    let shouldStopMax = hasUsableMeasurement &&
-                        collectionDuration >= maximumCollectionWithMeasurement
-
-                    let trackingLabel: String
-                    if firstNormalTrackingTime != nil {
-                        trackingLabel = "normal(\(String(format: "%.0f", normalCollectionDuration))s)"
-                    } else {
-                        trackingLabel = "limited"
-                    }
-
-                    if now - lastPollLog >= 2.0 {
-                        lastPollLog = now
-                        logDebug(
-                            "🔵 [AR_BURST] t=\(String(format: "%.0f", elapsed))s tracking=\(trackingLabel) " +
-                                "planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling) " +
-                                "has_meas=\(hasUsableMeasurement) collecting=\(String(format: "%.0f", collectionDuration))s"
-                        )
-                    }
-
-                    let guidanceDuration = firstNormalTrackingTime != nil
-                        ? normalCollectionDuration
-                        : elapsed
-                    if let scriptedGuidance = scriptedOscillationGuidance(
-                           normalCollectionDuration: guidanceDuration,
-                           hasCompleteMeasurement: hasFloor && hasWall
-                       ),
-                       scriptedGuidance.message != lastScriptedGuidance {
-                        lastScriptedGuidance = scriptedGuidance.message
-                        measurementHost?.updateARStatus(
-                            "Step \(scriptedGuidance.step)/\(scriptedGuidance.total): \(scriptedGuidance.message)"
-                        )
-                        logDebug(
-                            "🟣 [AR_GUIDE] step=\(scriptedGuidance.step)/\(scriptedGuidance.total) " +
-                                "\(scriptedGuidance.message) t=\(String(format: "%.0f", elapsed))s"
-                        )
-                    }
-
-                    if shouldStopForHardTimeout {
-                        let reason = hasUsableMeasurement
-                            ? "hard timeout WITH partial measurement"
-                            : "hard timeout NO measurement — phone may not be seeing room surfaces"
-                        logDebug("🟡 [AR_BURST] stopping: \(reason) (\(String(format: "%.0f", elapsed))s)")
-                        break
-                    }
-                    if shouldStopGood {
-                        logDebug(
-                            "🟢 [AR_BURST] stopping: good measurement after \(String(format: "%.0f", collectionDuration))s " +
-                                "(planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling))"
-                        )
-                        break
-                    }
-                    if shouldStopMax {
-                        logDebug(
-                            "🟡 [AR_BURST] stopping: max collection with partial (\(String(format: "%.0f", collectionDuration))s) " +
-                                "(planes=\(totalPlanes) floor=\(hasFloor) wall=\(hasWall) ceil=\(hasCeiling))"
-                        )
-                        break
-                    }
-
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                }
-
-                tracker.stop()
-                self.arMeasurementBurstTracker = nil
-                self.arMeasurementBurstTask = nil
-                self.resumeRendererAfterARBurst()
-
-                if shouldRestoreLiveAR {
-                    self.measurementHost?.arModeEnabled = true
-                    self.setARModeEnabled(true)
-                } else {
-                    self.measurementHost?.updateARStatus("AR camera off")
-                }
-
-                let finalMeasurement = bestMeasurement
-                let totalBurstDuration = CFAbsoluteTimeGetCurrent() - burstStartTime
-                if let finalMeasurement {
-                    logDebug(
-                        "🟢🟢🟢 [AR_BURST] ✅ SUCCESS W×H×D=" +
-                            "\(String(format: "%.3f", finalMeasurement.widthMeters))×" +
-                            "\(String(format: "%.3f", finalMeasurement.heightMeters))×" +
-                            "\(String(format: "%.3f", finalMeasurement.depthMeters))m " +
-                            "floors=\(finalMeasurement.floorAnchorCount) walls=\(finalMeasurement.wallAnchorCount) " +
-                            "ceilings=\(finalMeasurement.ceilingAnchorCount) total=\(finalMeasurement.totalPlaneCount) " +
-                            "wall_only=\(finalMeasurement.usedWallOnlyFallback) " +
-                            "burst_duration=\(String(format: "%.1f", totalBurstDuration))s"
-                    )
-                } else {
-                    let reachedNormal = firstNormalTrackingTime != nil
-                    logDebug(
-                        "🔴🔴🔴 [AR_BURST] ❌ FAILED — no plane measurement after " +
-                            "\(String(format: "%.1f", totalBurstDuration))s burst " +
-                            "reached_normal=\(reachedNormal) " +
-                            "tip: point camera at textured floor/wall edges, move phone side-to-side slowly"
-                    )
-                    self.measurementHost?.updateARStatus(
-                        "AR could not detect room surfaces. Try again in better light, aim at floor-wall edges"
-                    )
-                }
-                completion(finalMeasurement)
-            }
-        }
-
-        /// Applies pose from ``ARMotionTracker`` on the main thread without retaining ``ARFrame`` (value-type copy only).
-        private func applyARRelativePoseFromTracker(_ rawTransform: simd_float4x4) {
-            if Thread.isMainThread {
-                guard !modalHeavyWorkPaused else { return }
-                arRelativeTransform = scaledRelativeTransform(rawTransform)
-                if arStartupRenderSuppressedUntil <= CFAbsoluteTimeGetCurrent() {
-                    view?.setNeedsDisplay()
-                }
-                return
-            }
-            pendingARRawTransform = rawTransform
-            guard !arPoseFlushToMainScheduled else { return }
-            arPoseFlushToMainScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                self?.flushCoalescedARRawTransformOnMain()
-            }
-        }
-
-        private func flushCoalescedARRawTransformOnMain() {
-            arPoseFlushToMainScheduled = false
-            guard let raw = pendingARRawTransform else { return }
-            pendingARRawTransform = nil
-            guard !modalHeavyWorkPaused else { return }
-            arRelativeTransform = scaledRelativeTransform(raw)
-            if arStartupRenderSuppressedUntil <= CFAbsoluteTimeGetCurrent() {
-                view?.setNeedsDisplay()
-            }
-            if pendingARRawTransform != nil {
-                arPoseFlushToMainScheduled = true
-                DispatchQueue.main.async { [weak self] in
-                    self?.flushCoalescedARRawTransformOnMain()
-                }
-            }
-        }
-
-        func setARModeEnabled(_ enabled: Bool) {
-            guard arModeEnabled != enabled else { return }
-            arModeEnabled = enabled
-            if enabled {
-                logMemorySnapshot("GaussianSplatView.setARModeEnabled", details: "phase=enable_requested")
-                if arMotionTracker == nil {
-                    let tracker = ARMotionTracker()
-                    tracker.onRelativePoseUpdate = { [weak self] transform in
-                        self?.applyARRelativePoseFromTracker(transform)
-                    }
-                    tracker.onTrackingStatus = { [weak self] text in
-                        if Thread.isMainThread {
-                            self?.measurementHost?.updateARStatus(text)
-                        } else {
-                            DispatchQueue.main.async { [weak self] in
-                                self?.measurementHost?.updateARStatus(text)
-                            }
-                        }
-                    }
-                    tracker.onPlaneRoomMeasurementUpdate = { [weak self] measurement in
-                        if Thread.isMainThread {
-                            self?.measurementHost?.updateARPlaneRoomMeasurement(measurement)
-                        } else {
-                            DispatchQueue.main.async { [weak self] in
-                                self?.measurementHost?.updateARPlaneRoomMeasurement(measurement)
-                            }
-                        }
-                    }
-                    arMotionTracker = tracker
-                }
-                arRelativeTransform = matrix_identity_float4x4
-                arRecenterTransform = arTouchModeAlignmentRecenter
-                hasLoggedARViewerSpaceTransform = false
-                let curOrient = UIDevice.current.orientation
-                lastARDeviceOrientationSeen = Self.isMeaningfulInterfaceDeviceOrientation(curOrient) ? curOrient : .unknown
-                measurementHost?.updateARStatus("Starting AR camera tracking")
-                beginARRenderStartupThrottle()
-                logMemorySnapshot("GaussianSplatView.setARModeEnabled", details: "phase=before_ar_start")
-                arMotionTracker?.start()
-                logMemorySnapshot("GaussianSplatView.setARModeEnabled", details: "phase=after_ar_start")
-                if !isGeneratingDeviceOrientationForSharpRoom {
-                    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-                    isGeneratingDeviceOrientationForSharpRoom = true
-                }
-                logDebug(
-                    "📱 [GaussianSplatAR] enabled alignment=inv(arBase) photoOrientation=\(arReferenceOrientation) " +
-                    "so first AR frame matches touch baseView"
-                )
-                if modalHeavyWorkPaused {
-                    arMotionTracker?.pauseForModal()
-                }
-            } else {
-                logMemorySnapshot("GaussianSplatView.setARModeEnabled", details: "phase=disable_requested")
-                if isGeneratingDeviceOrientationForSharpRoom {
-                    UIDevice.current.endGeneratingDeviceOrientationNotifications()
-                    isGeneratingDeviceOrientationForSharpRoom = false
-                }
-                pendingARRawTransform = nil
-                arPoseFlushToMainScheduled = false
-                lastARDeviceOrientationSeen = .unknown
-                arStartupRenderResumeWorkItem?.cancel()
-                arStartupRenderResumeWorkItem = nil
-                arStartupRenderSuppressedUntil = 0
-                didLogARRenderSuppression = false
-                arMotionTracker?.stop()
-                arRelativeTransform = matrix_identity_float4x4
-                arRecenterTransform = matrix_identity_float4x4
-                lastARVirtualCameraWorldForDiagnostics = nil
-                measurementHost?.updateARStatus("AR camera off")
-                measurementHost?.updateARPlaneRoomMeasurement(nil)
-                logDebug("📱 [GaussianSplatAR] disabled")
-                view?.setNeedsDisplay()
-            }
         }
 
         func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {
@@ -1527,7 +948,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 )
             } ?? "Furniture: none"
             measurementHost?.updateFurnitureStatus(text, count: placedFurniture.count)
-            logDebug("🪑 [GaussianSplatAR] pending furniture=\(item?.category ?? "nil")")
+            logDebug("🪑 [GaussianSplatFurniture] pending furniture=\(item?.category ?? "nil")")
         }
 
         func clearPlacedFurniture() {
@@ -1537,7 +958,7 @@ struct GaussianSplatView: UIViewRepresentable {
             updateFurnitureStatusSummary("Furniture cleared")
             refreshFurnitureOverlay()
             view?.setNeedsDisplay()
-            logDebug("🧹 [GaussianSplatAR] cleared placed furniture")
+            logDebug("🧹 [GaussianSplatFurniture] cleared placed furniture")
         }
 
         func rotateSelectedFurniture(by radians: Float) {
@@ -1557,7 +978,7 @@ struct GaussianSplatView: UIViewRepresentable {
             )
             refreshFurnitureOverlay()
             view?.setNeedsDisplay()
-            logDebug("🔄 [GaussianSplatAR] rotated selected furniture by \(radians) rad")
+            logDebug("🔄 [GaussianSplatFurniture] rotated selected furniture by \(radians) rad")
         }
 
         func depthAt(screenPoint: CGPoint) -> Float? {
@@ -1860,57 +1281,10 @@ struct GaussianSplatView: UIViewRepresentable {
             return SIMD3<Float>(world.x, world.y, world.z)
         }
 
-        private func scaledRelativeTransform(_ transform: simd_float4x4) -> simd_float4x4 {
-            var adjusted = transform
-            if isSharpClassicPly {
-                // Classic SHARP viewer space flips Y/Z; conjugate the AR pose into that same basis
-                // before we apply it to the camera world transform.
-                let viewerFlip = matrix4x4Scale(1, -1, -1)
-                adjusted = viewerFlip * adjusted * viewerFlip
-            }
-            let twist = Self.rotationAngleFromRigidUpper3x3(adjusted)
-            if twist > arAutoRecenterMaxRotationRadians {
-                performAutoARRecenterIfNeeded(reason: "ar_rotation_\(Int(twist * 180 / .pi))deg")
-                return matrix_identity_float4x4
-            }
-            var scaled = adjusted
-            scaled.columns.3.x *= arMovementScale
-            scaled.columns.3.y *= arMovementScale
-            scaled.columns.3.z *= arMovementScale
-            let tRaw = SIMD3<Float>(scaled.columns.3.x, scaled.columns.3.y, scaled.columns.3.z)
-            let maxR = arMaxAllowedTranslation
-            let len = simd_length(tRaw)
-            if len > maxR {
-                performAutoARRecenterIfNeeded(
-                    reason: String(format: "ar_translation_oob len=%.2f max=%.2f", len, maxR)
-                )
-                return matrix_identity_float4x4
-            }
-            scaled.columns.3 = SIMD4<Float>(tRaw.x, tRaw.y, tRaw.z, scaled.columns.3.w)
-            if !hasLoggedARViewerSpaceTransform {
-                hasLoggedARViewerSpaceTransform = true
-                let raw = transform.columns.3
-                let mapped = adjusted.columns.3
-                logDebug(
-                    "📱 [GaussianSplatAR] raw_relative_pos=(\(String(format: "%.4f", raw.x)),\(String(format: "%.4f", raw.y)),\(String(format: "%.4f", raw.z))) " +
-                    "viewer_space_pos=(\(String(format: "%.4f", mapped.x)),\(String(format: "%.4f", mapped.y)),\(String(format: "%.4f", mapped.z))) " +
-                    "classic_flip_applied=\(isSharpClassicPly)"
-                )
-            }
-            return scaled
-        }
-
-        private var arMaxAllowedTranslation: Float {
-            guard let boundsMin = sceneBoundsMin, let boundsMax = sceneBoundsMax else { return 3.5 }
-            let extent = boundsMax - boundsMin
-            let diagonal = simd_length(extent)
-            return max(2.0, diagonal * 0.5)
-        }
-
         private func placePendingFurniture(at screenPoint: CGPoint, item: SharpRoomFurnitureItem) {
             guard let hitPoint = floorIntersection(screenPoint: screenPoint) else {
                 measurementHost?.updateFurnitureStatus("No floor hit for \(item.category) tap", count: placedFurniture.count)
-                logDebug("❌ [GaussianSplatAR] no floor hit for pending furniture \(item.category)")
+                logDebug("❌ [GaussianSplatFurniture] no floor hit for pending furniture \(item.category)")
                 return
             }
             var piece = SharpRoomPlacedFurniture(
@@ -1936,7 +1310,7 @@ struct GaussianSplatView: UIViewRepresentable {
             refreshFurnitureOverlay()
             view?.setNeedsDisplay()
             logDebug(
-                "✅ [GaussianSplatAR] placed furniture category=\(piece.item.category) pos=\(piece.position) " +
+                "✅ [GaussianSplatFurniture] placed furniture category=\(piece.item.category) pos=\(piece.position) " +
                 "dims=\(piece.item.dimensions) fits=\(piece.fits)"
             )
         }
@@ -1962,7 +1336,7 @@ struct GaussianSplatView: UIViewRepresentable {
             if let selectedFurnitureID,
                let selected = placedFurniture.first(where: { $0.id == selectedFurnitureID }) {
                 updateFurnitureStatusSummary("Selected \(selected.item.category)")
-                logDebug("🎯 [GaussianSplatAR] selected furniture \(selected.item.category)")
+                logDebug("🎯 [GaussianSplatFurniture] selected furniture \(selected.item.category)")
             }
             refreshFurnitureOverlay()
             view?.setNeedsDisplay()
@@ -2067,7 +1441,7 @@ struct GaussianSplatView: UIViewRepresentable {
             piece.clearanceMeters = minimumClearance.isFinite ? max(0, minimumClearance) : 0
             placedFurniture[index] = piece
             logDebug(
-                "📏 [GaussianSplatAR] fitment category=\(piece.item.category) fits=\(fits) " +
+                "📏 [GaussianSplatFurniture] fitment category=\(piece.item.category) fits=\(fits) " +
                 "clearance=\(String(format: "%.3f", piece.clearanceMeters))m"
             )
         }
@@ -2165,15 +1539,6 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
-            if arModeEnabled, let selectedFurnitureID {
-                moveSelectedFurniture(selectedFurnitureID, to: gesture.location(in: gesture.view))
-                if gesture.state == .ended {
-                    logDebug("↔️ [GaussianSplatAR] furniture drag ended")
-                }
-                return
-            }
-            // Live Room: device pose still drives the view, but user orbit (yaw/pitch) is composed first
-            // in ``viewportDescriptor`` — same as Still Room so pinch + one-finger look work together.
             let translation = gesture.translation(in: gesture.view)
             cameraYaw   -= Float(translation.x) * dragSensitivity
             cameraPitch -= Float(translation.y) * dragSensitivity
@@ -2194,7 +1559,6 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         @objc func handleRotation(_ gesture: UIRotationGestureRecognizer) {
-            guard arModeEnabled else { return }
             rotateSelectedFurniture(by: Float(gesture.rotation))
             gesture.rotation = 0
         }
@@ -2362,22 +1726,6 @@ struct GaussianSplatView: UIViewRepresentable {
             }
             notificationTokens.append(moveRightToken)
 
-            let orientationToken = nc.addObserver(
-                forName: UIDevice.orientationDidChangeNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self, self.arModeEnabled else { return }
-                let o = UIDevice.current.orientation
-                guard Self.isMeaningfulInterfaceDeviceOrientation(o) else { return }
-                guard o != self.lastARDeviceOrientationSeen else { return }
-                let before = self.lastAutoARRecenterTime
-                self.performAutoARRecenterIfNeeded(reason: "device_orientation")
-                if self.lastAutoARRecenterTime != before {
-                    self.lastARDeviceOrientationSeen = o
-                }
-            }
-            notificationTokens.append(orientationToken)
         }
 
         // MARK: - Matrix Utilities

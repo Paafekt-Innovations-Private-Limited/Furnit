@@ -70,7 +70,7 @@ func logSharpMilestone(_ message: String) {
     AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
 }
 
-/// Sharp Room: SHARP-derived room W×H×D plus optional Live Room virtual-camera–relative AABB (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
+/// Sharp Room: SHARP-derived room W×H×D diagnostics (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
 func logARRoomMeasure(_ message: String) {
     let line = "[AR_ROOM_MEASURE] \(message)"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
