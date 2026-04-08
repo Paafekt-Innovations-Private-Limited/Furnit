@@ -365,6 +365,7 @@
 "roomViewer.saveSuccess" = "Room '%@' saved successfully!";
 "roomViewer.saveFailed" = "Failed to save room: %@";
 "roomViewer.roomSaveTitle" = "Room Save";
+"roomViewer.duplicateRoomName" = "A room with this name already exists.";
 "roomPreview.unsavedTitle" = "Leave without saving?";
 "roomPreview.unsavedMessage" = "Your room has not been saved yet. If you go back now, you will lose this preview.";
 "roomPreview.stay" = "Stay";
@@ -455,6 +456,7 @@
 "camera.chooseOrientationShort" = "Portrait or landscape";
 "camera.chooseMode" = "Choose Camera Mode";
 "camera.chooseModeHint" = "Select camera lens for your room";
+"camera.ar.hint" = "Point at the room, hold steady, then capture. We use AR for accurate camera intrinsics (and scene depth on LiDAR).";
 "camera.standard" = "Standard";
 "camera.wideAngle" = "Wide Angle";
 "camera.standard.desc" = "Standard 1x lens • Hold in any orientation";

@@ -114,6 +114,8 @@ struct HomeTab: View {
     @State private var selectedModelForInfo: USDZModel?
     @State private var renameTarget: USDZModel?
     @State private var renameDraft = ""
+    @State private var renameErrorMessage = ""
+    @State private var showRenameErrorAlert = false
     @State private var createRoomHintExplanationVisible = false
     @State private var createRoomHintHideTextTask: Task<Void, Never>?
 
@@ -337,12 +339,22 @@ struct HomeTab: View {
                 }
                 Button(L10n.Common.save) {
                     if let room = renameTarget {
-                        try? modelManager.updateDisplayName(for: room, newName: renameDraft)
+                        do {
+                            try modelManager.updateDisplayName(for: room, newName: renameDraft)
+                        } catch {
+                            renameErrorMessage = error.localizedDescription
+                            showRenameErrorAlert = true
+                        }
                     }
                     renameTarget = nil
                 }
             } message: {
                 Text(L10n.Home.renameRoomMessage)
+            }
+            .alert("Rename Failed", isPresented: $showRenameErrorAlert) {
+                Button(L10n.Common.ok, role: .cancel) { }
+            } message: {
+                Text(renameErrorMessage)
             }
         }
         .onAppear {

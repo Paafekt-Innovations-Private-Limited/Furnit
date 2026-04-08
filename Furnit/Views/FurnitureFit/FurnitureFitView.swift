@@ -73,6 +73,8 @@ struct FurnitureSizeEstimate {
 
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
+    private static let minimumARFurnitureHeightMeters: Float = 0.25
+    private static let minimumARFurnitureWidthMeters: Float = 0.25
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
@@ -708,7 +710,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
-    /// Non-AR room scaling is disabled. Furniture measurement and overlay scale are AR-only.
+    /// When AR/LiDAR sizing is unavailable, fall back to the detected bbox pixel proportion
+    /// relative to the room image so the overlay still scales with room dimensions.
     private func updateAutoScaleFromRoom(
         primaryBx1: Int,
         primaryBy1: Int,
@@ -723,11 +726,57 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         _ = primaryBy1
         _ = primaryBx2
         _ = primaryBy2
-        _ = imageWidth
-        _ = imageHeight
         _ = arDepthSnapshot
         _ = preferRoomRaycastSizing
-        autoScaleFromRoom = 1.0
+
+        let arSizingReady =
+            hasARKitAssistedSizingPayload &&
+            arAssistedScaleValid &&
+            normalizedARFurnitureHeightMeters() != nil &&
+            autoScaleFromAR.isFinite &&
+            autoScaleFromAR > 0
+
+        guard !arSizingReady else {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
+        guard imageWidth > 0, imageHeight > 0,
+              bounds.width > 1, bounds.height > 1,
+              primaryBboxInView.width > 1, primaryBboxInView.height > 1 else {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
+        let targetWidthFraction = CGFloat(max(1, primaryBx2 - primaryBx1)) / CGFloat(imageWidth)
+        let targetHeightFraction = CGFloat(max(1, primaryBy2 - primaryBy1)) / CGFloat(imageHeight)
+        let currentWidthFraction = primaryBboxInView.width / bounds.width
+        let currentHeightFraction = primaryBboxInView.height / bounds.height
+
+        var scaleCandidates: [CGFloat] = []
+        if currentWidthFraction > 0.0001, targetWidthFraction.isFinite {
+            let widthScale = targetWidthFraction / currentWidthFraction
+            if widthScale.isFinite, widthScale > 0 {
+                scaleCandidates.append(widthScale)
+            }
+        }
+        if currentHeightFraction > 0.0001, targetHeightFraction.isFinite {
+            let heightScale = targetHeightFraction / currentHeightFraction
+            if heightScale.isFinite, heightScale > 0 {
+                scaleCandidates.append(heightScale)
+            }
+        }
+
+        if scaleCandidates.isEmpty {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
+        let proportionalScale = scaleCandidates.reduce(0, +) / CGFloat(scaleCandidates.count)
+        autoScaleFromRoom = min(max(proportionalScale, 0.25), 2.5)
         applyCurrentOverlayScaleTransform()
     }
 
@@ -774,8 +823,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        // No usable AR metric (AVCapture-only, non-LiDAR, or depth/planes never validate): overlay stays 1× AR factor
-        // but pinch/pan must still work. `handlePinch` / `handlePan` are gated on `.measuredPlacement` only.
+        // No usable AR metric: fall back to room-proportion scaling, but pinch/pan must still work.
+        // `handlePinch` / `handlePan` are gated on `.measuredPlacement` only.
         stableOverlayMeasurementFrameCount += 1
         if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
             overlayPresentationMode = .measuredPlacement
@@ -784,10 +833,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Combined overlay: AR metric scale × pinch. Non-AR room scaling is disabled.
+    /// Combined overlay: AR metric scale when available, else room-proportion fallback, then user pinch.
     private func applyCurrentOverlayScaleTransform() {
         let arOn = hasARKitAssistedSizingPayload && arAssistedScaleValid
-        let roomFactor: CGFloat = 1.0
+        let roomFactor: CGFloat = arOn ? 1.0 : autoScaleFromRoom
         let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
         let product = roomFactor * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
@@ -809,7 +858,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if arOn {
             assistedLabel = "AR"
         } else if wantAR {
-            assistedLabel = "1x_AR_unavailable"
+            assistedLabel = "ROOM_PROP_AR_unavailable"
+        } else if abs(autoScaleFromRoom - 1.0) > 0.02 {
+            assistedLabel = "ROOM_PROP"
         } else {
             assistedLabel = "1x"
         }
@@ -962,15 +1013,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 distanceMeters: d,
                 focalLengthYPixels: fy
                ) {
+                let effectiveARHeight = arAssistedSizingEnabled
+                    ? max(estH, Self.minimumARFurnitureHeightMeters)
+                    : estH
                 let previousEstimatedHeightMeters = lastAREstimatedHeightMeters
-                lastAREstimatedHeightMeters = estH
+                lastAREstimatedHeightMeters = effectiveARHeight
                 let roomHeight = max(roomHeightMeters, 0.01)
                 let currentImageHeightFraction = max(
                     CGFloat(bboxHeightImagePx) / CGFloat(max(1, imageHeight)),
                     0.01
                 )
                 let targetImageHeightFraction = CGFloat(
-                    min(max(estH / roomHeight, 0.01), 0.98)
+                    min(max(effectiveARHeight / roomHeight, 0.01), 0.98)
                 )
                 let raw = targetImageHeightFraction / currentImageHeightFraction
                 if raw.isFinite, raw > 0 {
@@ -983,11 +1037,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         focalLengthXPixels: fx
                        ) {
                         didPublishARRefinedFurnitureMetersEstimate = true
+                        let effectiveARWidth = arAssistedSizingEnabled
+                            ? max(estW, Self.minimumARFurnitureWidthMeters)
+                            : estW
                         logFurnitureFitSize(
-                            "phase=ar_overlay_refine distSource=\(distSource) dist_m=\(String(format: "%.3f", d)) W×H_m=\(String(format: "%.3f", estW))×\(String(format: "%.3f", estH)) metric_px=\(Int(bboxWidthImagePx))x\(Int(bboxHeightImagePx)) (requires AR companion + valid depth)"
+                            "phase=ar_overlay_refine distSource=\(distSource) dist_m=\(String(format: "%.3f", d)) W×H_m=\(String(format: "%.3f", effectiveARWidth))×\(String(format: "%.3f", effectiveARHeight)) metric_px=\(Int(bboxWidthImagePx))x\(Int(bboxHeightImagePx)) (requires AR companion + valid depth)"
                         )
                         onFurnitureSizeEstimated?(
-                            FurnitureSizeEstimate(widthMeters: estW, heightMeters: estH, arHeightMeters: estH)
+                            makeFurnitureSizeEstimate(
+                                widthMeters: effectiveARWidth,
+                                heightMeters: effectiveARHeight,
+                                arHeightMeters: effectiveARHeight
+                            )
                         )
                     }
                     let target = min(max(raw, minCombinedOverlayScale), maxCombinedOverlayScale)
@@ -1008,7 +1069,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         let heightDriftFraction: Float = {
                             guard let previousEstimatedHeightMeters,
                                   previousEstimatedHeightMeters > 0 else { return 0 }
-                            return abs(estH - previousEstimatedHeightMeters) / previousEstimatedHeightMeters
+                            return abs(effectiveARHeight - previousEstimatedHeightMeters) / previousEstimatedHeightMeters
                         }()
                         if relativeJump >= arOverlayResyncJumpFraction ||
                             heightDriftFraction >= arOverlayResyncHeightDriftFraction {
@@ -1034,7 +1095,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     arAssistedConsecutiveMisses = 0
                     overlayPresentationMode = .measuredPlacement
                     stableOverlayMeasurementFrameCount = max(stableOverlayMeasurementFrameCount, requiredStableOverlayMeasurementFrames)
-                    lastStableOverlayHeightMeters = estH
+                    lastStableOverlayHeightMeters = effectiveARHeight
                     lastStableOverlayScale = autoScaleFromAR
                     let estW = (bboxWidthImagePx / max(fx, 1)) * d
                     let nowLog = Date().timeIntervalSince1970
@@ -1045,7 +1106,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         let assistedLog: CGFloat = arOnLog ? autoScaleFromAR : 1.0
                         let combinedOverlay = roomUsedLog * assistedLog * userPinchScale
                         logFurnitureFitAR(
-                            "distSource=\(distSource) dist=\(String(format: "%.2f", d))m furniture=\(String(format: "%.2f", estW))×\(String(format: "%.2f", estH))m roomH=\(String(format: "%.2f", roomHeight))m targetFrac=\(String(format: "%.3f", targetImageHeightFraction)) currentFrac=\(String(format: "%.3f", currentImageHeightFraction)) ratio=\(String(format: "%.3f", raw)) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomUsedLog)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) overlay=\(String(format: "%.3f", combinedOverlay)) tracking=\(trackingName) metricPx=\(Int(bboxWidthImagePx))×\(Int(bboxHeightImagePx)) fy=\(String(format: "%.1f", fy)) fx=\(String(format: "%.1f", fx))"
+                            "distSource=\(distSource) dist=\(String(format: "%.2f", d))m furniture=\(String(format: "%.2f", estW))×\(String(format: "%.2f", effectiveARHeight))m roomH=\(String(format: "%.2f", roomHeight))m targetFrac=\(String(format: "%.3f", targetImageHeightFraction)) currentFrac=\(String(format: "%.3f", currentImageHeightFraction)) ratio=\(String(format: "%.3f", raw)) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomUsedLog)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) overlay=\(String(format: "%.3f", combinedOverlay)) tracking=\(trackingName) metricPx=\(Int(bboxWidthImagePx))×\(Int(bboxHeightImagePx)) fy=\(String(format: "%.1f", fy)) fx=\(String(format: "%.1f", fx))"
                         )
                     }
                     applyCurrentOverlayScaleTransform()
@@ -3641,6 +3702,29 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return h
     }
 
+    private func makeFurnitureSizeEstimate(
+        widthMeters: Float,
+        heightMeters: Float,
+        arHeightMeters: Float?
+    ) -> FurnitureSizeEstimate {
+        var finalWidth = widthMeters
+        var finalHeight = heightMeters
+        var finalARHeight = arHeightMeters
+
+        if arAssistedSizingEnabled, let arHeightMeters, arHeightMeters.isFinite, arHeightMeters > 0 {
+            let clampedARHeight = max(arHeightMeters, Self.minimumARFurnitureHeightMeters)
+            finalARHeight = clampedARHeight
+            finalHeight = max(heightMeters, clampedARHeight)
+            finalWidth = max(widthMeters, Self.minimumARFurnitureWidthMeters)
+        }
+
+        return FurnitureSizeEstimate(
+            widthMeters: finalWidth,
+            heightMeters: finalHeight,
+            arHeightMeters: finalARHeight
+        )
+    }
+
     /// Call on main **after** the composited segmentation mask is applied to `maskImageView` (or when compose failed but mask had foreground).
     private func commitFurnitureSizeAfterSegmentationMaskApplied(
         maskHasForeground: Bool,
@@ -3690,7 +3774,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 heightMeters: heightMeters,
                 arHeightMeters: arHeight
             )
-            onFurnitureSizeEstimated?(est)
+            onFurnitureSizeEstimated?(makeFurnitureSizeEstimate(
+                widthMeters: est.widthMeters,
+                heightMeters: est.heightMeters,
+                arHeightMeters: est.arHeightMeters
+            ))
         }
     }
 
@@ -3730,7 +3818,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 arHeightMeters: arHeight
             )
             DispatchQueue.main.async {
-                self.onFurnitureSizeEstimated?(est)
+                self.onFurnitureSizeEstimated?(self.makeFurnitureSizeEstimate(
+                    widthMeters: est.widthMeters,
+                    heightMeters: est.heightMeters,
+                    arHeightMeters: est.arHeightMeters
+                ))
             }
         }
 
@@ -3761,7 +3853,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let value = lastAREstimatedHeightMeters,
               value.isFinite,
               value > 0.05 else { return nil }
-        return value
+        return arAssistedSizingEnabled ? max(value, Self.minimumARFurnitureHeightMeters) : value
     }
 
     // MARK: - Gestures

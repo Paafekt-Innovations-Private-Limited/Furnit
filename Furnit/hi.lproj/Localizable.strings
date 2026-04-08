@@ -284,6 +284,7 @@
 "roomViewer.saveSuccess" = "कमरा '%@' सफलतापूर्वक सहेजा गया!";
 "roomViewer.saveFailed" = "कमरा सहेजने में विफल: %@";
 "roomViewer.roomSaveTitle" = "कमरा सहेजें";
+"roomViewer.duplicateRoomName" = "इस नाम से एक कमरा पहले से मौजूद है।";
 "roomPreview.unsavedTitle" = "बिना सहेजे वापस जाएँ?";
 "roomPreview.unsavedMessage" = "आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।";
 "roomPreview.stay" = "रुकें";

@@ -254,14 +254,57 @@ class USDZModelManager: ObservableObject {
     private func displayNameForSavedRoom(fileName: String, fileType: ModelFileType, metadataDisplayName: String?) -> String? {
         guard fileType == .ply else { return metadataDisplayName }
         let canonicalStem = canonicalPlyStem(for: fileName)
-        let baseName = metadataDisplayName ?? canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized
+        let baseName = (metadataDisplayName ?? canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized)
+            .replacingOccurrences(of: " \\((Classic |3DGS )?PLY\\)$", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         if fileName.hasSuffix("_classic") {
             return "\(baseName) (Classic PLY)"
         }
         if fileName.hasSuffix("_3dgs") {
             return "\(baseName) (3DGS PLY)"
         }
-        return "\(baseName) (PLY)"
+        return baseName
+    }
+
+    private func normalizedSavedRoomName(_ rawName: String) -> String {
+        rawName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " \\((Classic |3DGS )?PLY\\)$", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+    }
+
+    func hasSavedRoomNameConflict(_ proposedName: String, excludingFileName: String? = nil) -> Bool {
+        let trimmed = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        let normalizedProposedName = normalizedSavedRoomName(trimmed)
+        let proposedStem = sanitizeFileName(trimmed).lowercased()
+        let excludedStem = excludingFileName.map { canonicalPlyStem(for: $0).lowercased() }
+
+        for model in models where model.isSavedRoom {
+            let modelStem = canonicalPlyStem(for: model.fileName).lowercased()
+            if let excludedStem, modelStem == excludedStem {
+                continue
+            }
+            if modelStem == proposedStem {
+                return true
+            }
+            let normalizedDisplayName = normalizedSavedRoomName(model.displayName)
+            if normalizedDisplayName == normalizedProposedName {
+                return true
+            }
+        }
+
+        let directFileURL = modelsDirectory.appendingPathComponent("\(sanitizeFileName(trimmed)).ply")
+        if FileManager.default.fileExists(atPath: directFileURL.path) {
+            let directStem = canonicalPlyStem(for: directFileURL.deletingPathExtension().lastPathComponent).lowercased()
+            if directStem != excludedStem {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func orphanArtifactStem(for fileURL: URL) -> String? {
@@ -380,7 +423,7 @@ class USDZModelManager: ObservableObject {
     private func readFloat32(from data: Data, offset: Int) -> Float? {
         guard offset >= 0, offset + 4 <= data.count else { return nil }
         var bits: UInt32 = 0
-        withUnsafeMutableBytes(of: &bits) { rawBuffer in
+        _ = withUnsafeMutableBytes(of: &bits) { rawBuffer in
             data.copyBytes(to: rawBuffer, from: offset..<(offset + 4))
         }
         return Float(bitPattern: UInt32(littleEndian: bits))
@@ -855,6 +898,9 @@ class USDZModelManager: ObservableObject {
         guard !trimmed.isEmpty else {
             throw NSError(domain: "USDZModelManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty name"])
         }
+        guard !hasSavedRoomNameConflict(trimmed, excludingFileName: model.fileName) else {
+            throw NSError(domain: "USDZModelManager", code: 2, userInfo: [NSLocalizedDescriptionKey: L10n.RoomViewer.duplicateRoomName])
+        }
         let fileExtension: String
         switch model.fileType {
         case .ply: fileExtension = "ply"
@@ -1235,17 +1281,24 @@ class USDZModelManager: ObservableObject {
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
+                // Active saved-room dimensions now come from the live SHARP preview path
+                // (ROOM_DIMS_V7). The older on-disk remeasurement path is kept here only as
+                // fallback/reference so saved list + ruler stay consistent with the room the
+                // user saw before tapping Save.
                 let measured = measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
-                let finalRoomWidth = measured?.width ?? roomWidth
-                let finalRoomHeight = measured?.height ?? roomHeight
-                let finalRoomDepth = measured?.depth ?? roomDepth
-                let finalSceneWidth = measured?.sceneWidth ?? roomSceneWidth
-                let finalSceneHeight = measured?.sceneHeight ?? roomSceneHeight
-                let finalSceneDepth = measured?.sceneDepth ?? roomSceneDepth
+                let finalRoomWidth = roomWidth ?? measured?.width
+                let finalRoomHeight = roomHeight ?? measured?.height
+                let finalRoomDepth = roomDepth ?? measured?.depth
+                let finalSceneWidth = roomSceneWidth ?? measured?.sceneWidth
+                let finalSceneHeight = roomSceneHeight ?? measured?.sceneHeight
+                let finalSceneDepth = roomSceneDepth ?? measured?.sceneDepth
 
                 let sourceTag: String
                 let approachTag: String
-                if measured != nil {
+                if roomWidth != nil || roomHeight != nil || roomDepth != nil {
+                    sourceTag = "preview_v7"
+                    approachTag = "room_dims_v7_preview"
+                } else if measured != nil {
                     sourceTag = "measured"
                     approachTag = "pythagoras_diagonal"
                 } else if finalRoomWidth != nil || finalRoomHeight != nil || finalRoomDepth != nil {
@@ -1256,7 +1309,20 @@ class USDZModelManager: ObservableObject {
                     approachTag = "none"
                 }
 
-                if let measured, debugMode {
+                if debugMode, sourceTag == "preview_v7",
+                   let finalRoomWidth, let finalRoomHeight, let finalRoomDepth {
+                    let sceneWidthString = finalSceneWidth.map { String(format: "%.4f", $0) } ?? "nil"
+                    let sceneHeightString = finalSceneHeight.map { String(format: "%.4f", $0) } ?? "nil"
+                    let sceneDepthString = finalSceneDepth.map { String(format: "%.4f", $0) } ?? "nil"
+                    logDebug(
+                        "[GREEN][ROOM_DIMS_APP][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
+                        "W=\(String(format: "%.4f", finalRoomWidth)) " +
+                        "H=\(String(format: "%.4f", finalRoomHeight)) " +
+                        "D=\(String(format: "%.4f", finalRoomDepth)) " +
+                        "SCENE_WHD=(\(sceneWidthString),\(sceneHeightString),\(sceneDepthString))"
+                    )
+                } else if let measured, debugMode {
                     logDebug(
                         "[GREEN][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
                         "SOURCE=\(sourceTag.uppercased()) APPROACH=LEGACY_BACK_WALL_PERCENTILE " +
@@ -1327,7 +1393,9 @@ class USDZModelManager: ObservableObject {
                 if let sd = finalSceneDepth {
                     metadata["roomSceneDepth"] = String(format: "%.4f", sd)
                 }
-                if let measured {
+                if sourceTag == "preview_v7" {
+                    metadata["roomDimsApproach"] = "room_dims_v7_preview"
+                } else if let measured {
                     metadata["roomDimsApproach"] = "pythagoras_diagonal"
                     metadata["roomFloorDiagonal"] = String(format: "%.4f", measured.floorDiagonal)
                     metadata["roomTrimmedXSpan"] = String(format: "%.4f", measured.trimmedXSpan)

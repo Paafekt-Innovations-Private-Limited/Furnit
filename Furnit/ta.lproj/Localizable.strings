@@ -284,6 +284,7 @@
 "roomViewer.saveSuccess" = "அறை '%@' வெற்றிகரமாக சேமிக்கப்பட்டது!";
 "roomViewer.saveFailed" = "அறை சேமிப்பு தோல்வி: %@";
 "roomViewer.roomSaveTitle" = "அறையைச் சேமி";
+"roomViewer.duplicateRoomName" = "இந்த பெயருடன் ஒரு அறை ஏற்கனவே உள்ளது.";
 "roomPreview.unsavedTitle" = "சேமிக்காமல் பின்செல்லவா?";
 "roomPreview.unsavedMessage" = "உங்கள் அறை இன்னும் சேமிக்கப்படவில்லை. இப்போது பின்சென்றால் இந்த முன்னோட்டம் இழக்கப்படலாம்.";
 "roomPreview.stay" = "இருங்கள்";

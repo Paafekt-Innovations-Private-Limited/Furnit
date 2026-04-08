@@ -302,6 +302,7 @@
 "roomViewer.saveSuccess" = "রুম '%@' সফলভাবে সেভ হয়েছে!";
 "roomViewer.saveFailed" = "রুম সেভ ব্যর্থ: %@";
 "roomViewer.roomSaveTitle" = "রুম সেভ করুন";
+"roomViewer.duplicateRoomName" = "এই নামে একটি রুম ইতিমধ্যে বিদ্যমান।";
 "roomPreview.unsavedTitle" = "সংরক্ষণ না করে ফিরে যাবেন?";
 "roomPreview.unsavedMessage" = "আপনার রুম এখনও সংরক্ষিত হয়নি। এখন ফিরে গেলে এই প্রিভিউ হারিয়ে যেতে পারে।";
 "roomPreview.stay" = "থাকুন";

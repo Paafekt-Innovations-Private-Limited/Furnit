@@ -302,6 +302,7 @@
 "roomViewer.saveSuccess" = "تم حفظ الغرفة '%@' بنجاح!";
 "roomViewer.saveFailed" = "فشل حفظ الغرفة: %@";
 "roomViewer.roomSaveTitle" = "حفظ الغرفة";
+"roomViewer.duplicateRoomName" = "توجد بالفعل غرفة بهذا الاسم.";
 "roomPreview.unsavedTitle" = "المغادرة دون حفظ؟";
 "roomPreview.unsavedMessage" = "لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.";
 "roomPreview.stay" = "البقاء";

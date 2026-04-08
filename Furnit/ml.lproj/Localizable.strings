@@ -284,6 +284,7 @@
 "roomViewer.saveSuccess" = "മുറി '%@' വിജയകരമായി സേവ് ചെയ്തു!";
 "roomViewer.saveFailed" = "മുറി സേവ് ചെയ്യൽ പരാജയപ്പെട്ടു: %@";
 "roomViewer.roomSaveTitle" = "മുറി സേവ് ചെയ്യുക";
+"roomViewer.duplicateRoomName" = "ഈ പേരിൽ ഒരു മുറി ഇതിനകം നിലവിലുണ്ട്.";
 "roomPreview.unsavedTitle" = "സേവ് ചെയ്യാതെ പിൻവാങ്ങണോ?";
 "roomPreview.unsavedMessage" = "നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.";
 "roomPreview.stay" = "നിൽക്കുക";

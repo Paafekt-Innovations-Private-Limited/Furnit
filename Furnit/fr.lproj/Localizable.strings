@@ -285,6 +285,7 @@
 "roomViewer.saveSuccess" = "Pièce '%@' enregistrée avec succès !";
 "roomViewer.saveFailed" = "Échec de l'enregistrement de la pièce : %@";
 "roomViewer.roomSaveTitle" = "Enregistrer la pièce";
+"roomViewer.duplicateRoomName" = "Une pièce avec ce nom existe déjà.";
 "roomPreview.unsavedTitle" = "Partir sans enregistrer ?";
 "roomPreview.unsavedMessage" = "La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.";
 "roomPreview.stay" = "Rester";

@@ -285,6 +285,7 @@
 "roomViewer.saveSuccess" = "房間「%@」儲存成功！";
 "roomViewer.saveFailed" = "儲存房間失敗：%@";
 "roomViewer.roomSaveTitle" = "儲存房間";
+"roomViewer.duplicateRoomName" = "已存在同名房間。";
 "roomPreview.unsavedTitle" = "不儲存就返回？";
 "roomPreview.unsavedMessage" = "房間尚未儲存。若現在返回，將遺失此預覽。";
 "roomPreview.stay" = "留下";

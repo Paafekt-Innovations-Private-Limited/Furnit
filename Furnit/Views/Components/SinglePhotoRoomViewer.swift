@@ -904,6 +904,8 @@ struct SinglePhotoRoomView: View {
     @State private var sharpCaptureMediaMetadata: [AnyHashable: Any]?
     /// Library asset id for EXIF via `PHImageManager.requestImageDataAndOrientation` when `imageURL` is nil.
     @State private var sharpPhotoLibraryAssetLocalId: String?
+    /// ARKit capture intrinsics / depth flags (see ``ARRoomPhotoCaptureViewController``) merged into `camera_exif.json`.
+    @State private var sharpSupplementalCameraDoubles: [String: Double]?
 
     var body: some View {
         ZStack {
@@ -1249,6 +1251,7 @@ struct SinglePhotoRoomView: View {
                 sourceImageURL: $sharpSourceImageURL,
                 captureMediaMetadata: $sharpCaptureMediaMetadata,
                 photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
@@ -1267,6 +1270,7 @@ struct SinglePhotoRoomView: View {
                 sourceImageURL: $sharpSourceImageURL,
                 captureMediaMetadata: $sharpCaptureMediaMetadata,
                 photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📷 [View] Camera capture dismissed")
@@ -1283,6 +1287,7 @@ struct SinglePhotoRoomView: View {
                 sharpSourceImageURL = nil
                 sharpCaptureMediaMetadata = nil
                 sharpPhotoLibraryAssetLocalId = nil
+                sharpSupplementalCameraDoubles = nil
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
@@ -1525,6 +1530,7 @@ struct SinglePhotoRoomView: View {
         let generationSourceImageURL = sharpSourceImageURL
         let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
         let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
+        let generationSupplementalCameraDoubles = sharpSupplementalCameraDoubles
         logDebug(
             "🤖 [View] SHARP generation image prepared source=\(pxW)x\(pxH) " +
             "working=\(Int(generationImage.size.width * generationImage.scale))x\(Int(generationImage.size.height * generationImage.scale))"
@@ -1546,6 +1552,7 @@ struct SinglePhotoRoomView: View {
                     sourceImageURL: generationSourceImageURL,
                     captureMediaMetadata: generationCaptureMediaMetadata,
                     photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
+                    supplementalCameraDoubles: generationSupplementalCameraDoubles,
                 )
 
                 logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
@@ -1576,6 +1583,7 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
@@ -1604,6 +1612,7 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             logDebug("📱 [PhotoPicker] PHPicker finished results=\(results.count)")
             parent.captureMediaMetadata = nil
+            parent.supplementalCameraDoubles = nil
             guard let result = results.first else {
                 logDebug("❌ [PhotoPicker] No result selected")
                 parent.dismiss()
@@ -1719,6 +1728,7 @@ struct CameraCaptureView: View {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     @State private var showCamera = false
@@ -1850,19 +1860,32 @@ struct CameraCaptureView: View {
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
-                CameraViewRepresentable(
-                    capturedImage: $capturedImage,
-                    sourceImageURL: $sourceImageURL,
-                    captureMediaMetadata: $captureMediaMetadata,
-                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
-                    orientation: selectedOrientation,
-                )
+                Group {
+                    if ARRoomPhotoCapturePolicy.useARKitForStandardRoomPhoto {
+                        ARRoomPhotoCaptureRepresentable(
+                            capturedImage: $capturedImage,
+                            sourceImageURL: $sourceImageURL,
+                            captureMediaMetadata: $captureMediaMetadata,
+                            supplementalCameraDoubles: $supplementalCameraDoubles,
+                        )
+                    } else {
+                        CameraViewRepresentable(
+                            capturedImage: $capturedImage,
+                            sourceImageURL: $sourceImageURL,
+                            captureMediaMetadata: $captureMediaMetadata,
+                            photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                            supplementalCameraDoubles: $supplementalCameraDoubles,
+                            orientation: selectedOrientation,
+                        )
+                    }
+                }
                 .ignoresSafeArea()
             }
             .fullScreenCover(isPresented: $showWideAngleCamera) {
                 WideAngleCameraView(
                     capturedImage: $capturedImage,
                     photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    supplementalCameraDoubles: $supplementalCameraDoubles,
                 )
                 .ignoresSafeArea()
             }
@@ -1872,6 +1895,7 @@ struct CameraCaptureView: View {
                     sourceImageURL: $sourceImageURL,
                     captureMediaMetadata: $captureMediaMetadata,
                     photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    supplementalCameraDoubles: $supplementalCameraDoubles,
                 )
             }
             .onChange(of: capturedImage) { _, newImage in
@@ -1879,6 +1903,11 @@ struct CameraCaptureView: View {
                     logDebug("📷 [Camera] Photo captured: \(image.size)")
                     selectedImage = image
                     dismiss()
+                }
+            }
+            .onChange(of: showCamera) { _, isShowing in
+                if isShowing {
+                    supplementalCameraDoubles = nil
                 }
             }
         }
@@ -1891,6 +1920,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
@@ -1916,6 +1946,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             parent.captureMediaMetadata = nil
+            parent.supplementalCameraDoubles = nil
             guard let result = results.first else {
                 parent.dismiss()
                 return
@@ -1998,6 +2029,7 @@ import AVFoundation
 struct WideAngleCameraView: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> WideAngleCameraViewController {
@@ -2020,6 +2052,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
         func wideAngleCameraDidCapture(_ image: UIImage) {
             logDebug("📷 [WideAngle] Captured image: \(image.size)")
             CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "capturedImage")
+            parent.supplementalCameraDoubles = nil
             parent.photoLibraryAssetLocalId = nil
             parent.capturedImage = image.fixedOrientation()
             parent.dismiss()
@@ -2028,6 +2061,7 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
         func wideAngleCameraDidCancel() {
             logDebug("📷 [WideAngle] User cancelled")
             CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "cancel")
+            parent.supplementalCameraDoubles = nil
             parent.dismiss()
         }
     }
@@ -2354,6 +2388,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     let orientation: CaptureOrientation
     @Environment(\.dismiss) var dismiss
 
@@ -2383,6 +2418,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📷 [Camera] Photo captured")
             CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "didFinishPicking")
+            parent.supplementalCameraDoubles = nil
             parent.sourceImageURL = nil
             parent.photoLibraryAssetLocalId = nil
             if let md = info[.mediaMetadata] {
@@ -2403,6 +2439,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             logDebug("📷 [Camera] User cancelled")
             CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "dismiss_requested", details: "reason=cancel")
+            parent.supplementalCameraDoubles = nil
             parent.dismiss()
         }
     }
@@ -2559,7 +2596,7 @@ struct SceneKitViewer: View {
             Button(L10n.Common.save) {
                 startSavingRoom()
             }
-            .disabled(roomName.isEmpty)
+            .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
             Text(L10n.RoomViewer.enterName)
         }
@@ -2664,7 +2701,8 @@ struct SceneKitViewer: View {
     
     // MARK: - Save Room Functions
     private func startSavingRoom() {
-        guard !roomName.isEmpty else {
+        let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomName.isEmpty else {
             return
         }
 
@@ -2672,8 +2710,15 @@ struct SceneKitViewer: View {
         if modelManager == nil {
             modelManager = USDZModelManager()
         }
+        if modelManager?.hasSavedRoomNameConflict(trimmedRoomName) == true {
+            saveAlertMessage = L10n.RoomViewer.duplicateRoomName
+            saveWasSuccessful = false
+            showSaveAlert = true
+            return
+        }
 
-        let savedName = roomName  // ✅ Capture the name BEFORE clearing
+        let savedName = trimmedRoomName  // ✅ Capture the name BEFORE clearing
+        roomName = trimmedRoomName
         logDebug("💾 [Viewer] Starting room save process: \(savedName)")
 
         withAnimation(.easeIn(duration: 0.3)) {

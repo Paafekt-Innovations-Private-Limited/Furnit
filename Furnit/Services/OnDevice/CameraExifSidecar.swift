@@ -16,11 +16,13 @@ enum CameraExifSidecar {
         imageURL: URL?,
         mediaMetadata: [AnyHashable: Any]?,
         photoLibraryAssetLocalId: String?,
+        supplementalDoubles: [String: Double]? = nil,
     ) async {
         let merged = await collectMerged(
             imageURL: imageURL,
             mediaMetadata: mediaMetadata,
-            photoLibraryAssetLocalId: photoLibraryAssetLocalId
+            photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+            supplementalDoubles: supplementalDoubles
         )
         if merged["focalLengthMm"] == nil, merged["focalLengthPx"] == nil {
             logWallMeasurement(
@@ -42,6 +44,7 @@ enum CameraExifSidecar {
         imageURL: URL?,
         mediaMetadata: [AnyHashable: Any]?,
         photoLibraryAssetLocalId: String?,
+        supplementalDoubles: [String: Double]? = nil,
     ) async -> [String: Double] {
         logWallMeasurement(
             "camera_exif_sidecar collect begin " +
@@ -71,6 +74,12 @@ enum CameraExifSidecar {
             logWallMeasurement("camera_exif_sidecar write source=camera_metadata keys=\(cameraMetadata.keys.sorted())")
         }
         absorb(cameraMetadata)
+        if let extra = supplementalDoubles {
+            for (key, value) in extra {
+                merged[key] = value
+            }
+            logWallMeasurement("camera_exif_sidecar absorb supplemental keys=\(extra.keys.sorted())")
+        }
         logWallMeasurement("camera_exif_sidecar merged keys=\(merged.keys.sorted())")
         return merged
     }

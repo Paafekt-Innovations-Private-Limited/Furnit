@@ -415,12 +415,14 @@ class SHARPService: ObservableObject {
     ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
     ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
     ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
+    ///   - supplementalCameraDoubles: e.g. ARKit intrinsics from ``ARRoomPhotoCaptureViewController`` (merged into `camera_exif.json`).
     /// - Returns: URL of the `_classic.ply` written by `writePLY` for the fresh preview.
     func generateGaussians(
         from image: UIImage,
         sourceImageURL: URL? = nil,
         captureMediaMetadata: [AnyHashable: Any]? = nil,
         photoLibraryAssetLocalId: String? = nil,
+        supplementalCameraDoubles: [String: Double]? = nil,
     ) async throws -> SHARPGenerationResult {
         logDebug("SHARP: Starting Gaussian generation")
         logMemorySnapshot("SHARPService.generateGaussians", details: "phase=start")
@@ -477,7 +479,8 @@ class SHARPService: ObservableObject {
             let mergedExif = await CameraExifSidecar.collectMerged(
                 imageURL: sourceImageURL,
                 mediaMetadata: captureMediaMetadata,
-                photoLibraryAssetLocalId: photoLibraryAssetLocalId
+                photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+                supplementalDoubles: supplementalCameraDoubles
             )
             let sharpCamera = SharpCameraSidecar.infoIfPossible(
                 sourceImageSize: orientedSize,
@@ -527,6 +530,7 @@ class SHARPService: ObservableObject {
                     imageURL: sourceImageURL,
                     mediaMetadata: captureMediaMetadata,
                     photoLibraryAssetLocalId: photoLibraryAssetLocalId,
+                    supplementalDoubles: supplementalCameraDoubles,
                 )
             }
             let exif = mergedExif.isEmpty ? CameraExifSidecar.load(roomFolder: roomFolder) : mergedExif
@@ -1277,11 +1281,25 @@ class SHARPService: ObservableObject {
             let band: Float
         }
 
+        // Measurement approach guide:
+        // - ROOM_DIMS: legacy back-wall percentile baseline kept for comparison logs only.
+        // - ROOM_DIMS_APP: active app-bound path; now wired to V7 output.
+        // - ROOM_DIMS_V3: floor-plane RANSAC + PCA diagnostics used by V7 tilt / PCA inputs.
+        // - ROOM_DIMS_V4: scene-extension correction reference, not wired to UI.
+        // - ROOM_DIMS_V5: adaptive scene-extension reference, not wired to UI.
+        // - ROOM_DIMS_V6: auto corner/straight reference, not wired to UI.
+        // - ROOM_DIMS_V7: active production candidate used for preview + saved-room metadata.
+        //
+        // Non-active approaches are intentionally left isolated below so they can be deleted
+        // later without touching the app-bound measurement path.
+
         // Experimental comparison-only path. Keep isolated so it is easy to remove if it
         // does not outperform the current ROOM_DIMS_APP approach.
         struct FloorAlignedPCADimensions {
             let floorNormal: SIMD3<Float>
             let tiltDegrees: Float
+            let tiltRawDegrees: Float
+            let tiltReliable: Bool
             let sampleCount: Int
             let ransacIterations: Int
             let ransacInliers: Int
@@ -1375,6 +1393,10 @@ class SHARPService: ObservableObject {
             let cuboidRatio: Float
             let cuboidThreshold: Float
             let tiltDegrees: Float
+            let tiltReliable: Bool
+            let trimmedXSpan: Float
+            let trimmedYSpan: Float
+            let trimmedZSpan: Float
             let floorDiagonal: Float
             let shortDiagonal: Float
             let pcaSpan1: Float
@@ -1514,9 +1536,36 @@ class SHARPService: ObservableObject {
                 return min(max(raw, 0), count - 1)
             }
 
-            let depthSeedValues = positions.map(\.z).sorted()
-            let seedDepth = depthSeedValues[percentileIndex(0.80, count: depthSeedValues.count)]
-            var rng = SeedableRNG(seed: UInt64(bitPattern: Int64((seedDepth * 1_000_000).rounded())))
+            let xs = positions.map(\.x).filter(\.isFinite).sorted()
+            let depths = positions.map(\.z).filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, depths.count >= 64 else { return nil }
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedZSpan > 0.01 else { return nil }
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
+            let binCount = 200
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for depth in trimmedDepths {
+                var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
+                bucket = min(max(bucket, 0), binCount - 1)
+                histogram[bucket] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+            let backWallZ = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * backWallZ, 1e-4)
+            let backWallPoints = positions.filter { abs($0.z - backWallZ) < band }
+            let backWallXs = backWallPoints.map(\.x).filter(\.isFinite).sorted()
+            guard backWallXs.count >= 64 else { return nil }
+            let x5 = backWallXs[percentileIndex(0.05, count: backWallXs.count)]
+            let x95 = backWallXs[percentileIndex(0.95, count: backWallXs.count)]
+            let rawWidthSeed = x95 - x5
+            let ransacSeed = UInt64(bitPattern: Int64((backWallZ * 1_000_000 + rawWidthSeed * 1_000).rounded()))
+            var rng = SeedableRNG(seed: ransacSeed)
 
             var sampled: [SIMD3<Float>] = []
             sampled.reserveCapacity(sampleCount)
@@ -1660,12 +1709,16 @@ class SHARPService: ObservableObject {
 
             let roomWidth = min(span1, span2)
             let roomDepth = max(span1, span2)
-            let tiltDegrees = acos(clampedCosTheta) * 180 / .pi
+            let originalTiltDegrees = acos(abs(bestNormal.y)) * 180 / .pi
+            let tiltReliable = originalTiltDegrees < 25 && bestInliers > 3000
+            let tiltDegrees: Float = tiltReliable ? originalTiltDegrees : 8.0
             _ = bestD // retained for quick future debugging/removal without touching the RANSAC core
 
             return FloorAlignedPCADimensions(
                 floorNormal: bestNormal,
                 tiltDegrees: tiltDegrees,
+                tiltRawDegrees: originalTiltDegrees,
+                tiltReliable: tiltReliable,
                 sampleCount: sampleCount,
                 ransacIterations: ransacIterations,
                 ransacInliers: bestInliers,
@@ -2108,15 +2161,15 @@ class SHARPService: ObservableObject {
                   trimmedXSpan > 0.01, trimmedYSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
 
             let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let imageWidth = Float(sourceImageSize.width)
+            let imageHeight = Float(sourceImageSize.height)
+            let isLandscape = imageWidth > imageHeight
+            let imageAspect = min(imageWidth, imageHeight) > 1e-6 ? (max(imageWidth, imageHeight) / min(imageWidth, imageHeight)) : 1
+            let cuboidThreshold: Float = isLandscape ? (1.50 * imageAspect) : 1.45
             let maxSpan = max(trimmedXSpan, max(trimmedYSpan, trimmedZSpan))
             let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
             guard minSpan > 1e-6 else { return nil }
             let cuboidRatio = maxSpan / minSpan
-            let imageWidth = Float(sourceImageSize.width)
-            let imageHeight = Float(sourceImageSize.height)
-            let isLandscape = imageWidth > imageHeight
-            let imageAspect = imageHeight > 1e-6 ? (imageWidth / imageHeight) : 1
-            let cuboidThreshold: Float = isLandscape ? (1.45 * imageAspect) : 1.45
             let isCornerShot = cuboidRatio < cuboidThreshold
             let orientationLabel = isLandscape ? "LANDSCAPE" : "PORTRAIT"
 
@@ -2154,7 +2207,8 @@ class SHARPService: ObservableObject {
             let pcaSpan1 = v3?.span1 ?? 0
             let pcaSpan2 = v3?.span2 ?? 0
             let shortDiagonal = min(pcaSpan1, pcaSpan2)
-            let tiltDegrees = v3?.tiltDegrees ?? 0
+            let tiltDegrees = v3?.tiltDegrees ?? 8.0
+            let tiltReliable = v3?.tiltReliable ?? false
 
             let roomWidth: Float
             let roomHeight: Float
@@ -2168,59 +2222,35 @@ class SHARPService: ObservableObject {
                 roomHeight = rawHeight / 1.2
                 roomDepth = floorDiagonal
             } else if isCornerShot {
-                let product = floorDiagonal * shortDiagonal / 2
-                let sumOfSquares = floorDiagonal * floorDiagonal
-                let sumSquared = sumOfSquares + 2 * product
-                let diffSquared = sumOfSquares - 2 * product
-
-                var side1: Float
-                var side2: Float
-                if diffSquared >= 0 {
-                    let sum = sqrt(max(0, sumSquared))
-                    let diff = sqrt(max(0, diffSquared))
-                    side1 = (sum + diff) / 2
-                    side2 = (sum - diff) / 2
-                } else {
-                    let side = floorDiagonal / sqrt(2)
-                    side1 = side
-                    side2 = side
-                }
-
-                let larger = max(side1, side2)
-                let smaller = min(side1, side2)
-                let aspectRatio = smaller > 1e-6 ? (larger / smaller) : .greatestFiniteMagnitude
-                let asymmetry = larger > 1e-6 ? abs(larger - smaller) / larger : .greatestFiniteMagnitude
-                let rhombusValid =
-                    side1 > 0.5 &&
-                    side2 > 0.5 &&
-                    aspectRatio < 5 &&
-                    aspectRatio > 0.2
-
-                if rhombusValid && asymmetry <= 0.6 {
-                    shotType = "CORNER_RHOMBUS"
-                    if rawWidth > rawHeight {
-                        roomWidth = side1
-                        roomDepth = side2
-                    } else {
-                        roomWidth = side2
-                        roomDepth = side1
-                    }
-                } else {
-                    shotType = "CORNER_V6_FALLBACK"
-                    roomWidth = rawWidth / 1.2
-                    let diagSquared = floorDiagonal * floorDiagonal
-                    let widthSquared = roomWidth * roomWidth
-                    if diagSquared > widthSquared {
-                        roomDepth = sqrt(max(0, diagSquared - widthSquared))
-                    } else {
-                        roomDepth = floorDiagonal
-                    }
-                }
-
+                roomWidth = rawWidth / 1.2
                 if tiltDegrees < 12 {
                     roomHeight = rawHeight / 1.2
                 } else {
                     roomHeight = rawHeight
+                }
+                let product = floorDiagonal * shortDiagonal / 2
+                let sumOfSquares = floorDiagonal * floorDiagonal
+                let diffSquared = sumOfSquares - 2 * product
+                if diffSquared >= 0 {
+                    let sum = sqrt(max(0, sumOfSquares + 2 * product))
+                    let diff = sqrt(max(0, diffSquared))
+                    let side1 = (sum + diff) / 2
+                    let side2 = (sum - diff) / 2
+                    let rhombusRatio = max(side1, side2) > 1e-6 ? abs(side1 - side2) / max(side1, side2) : .greatestFiniteMagnitude
+                    if rhombusRatio < 0.5 && side1 > 0.5 && side2 > 0.5 {
+                        shotType = "CORNER_V6_FALLBACK"
+                    } else {
+                        shotType = "CORNER_V6_FALLBACK"
+                    }
+                } else {
+                    shotType = "CORNER_V6_FALLBACK"
+                }
+                let widthSquared = roomWidth * roomWidth
+                let diagSquared = floorDiagonal * floorDiagonal
+                if diagSquared > widthSquared {
+                    roomDepth = sqrt(max(0, diagSquared - widthSquared))
+                } else {
+                    roomDepth = floorDiagonal
                 }
             } else {
                 shotType = "STRAIGHT"
@@ -2252,6 +2282,10 @@ class SHARPService: ObservableObject {
                 cuboidRatio: cuboidRatio,
                 cuboidThreshold: cuboidThreshold,
                 tiltDegrees: tiltDegrees,
+                tiltReliable: tiltReliable,
+                trimmedXSpan: trimmedXSpan,
+                trimmedYSpan: trimmedYSpan,
+                trimmedZSpan: trimmedZSpan,
                 floorDiagonal: floorDiagonal,
                 shortDiagonal: isCornerShot ? shortDiagonal : 0,
                 pcaSpan1: pcaSpan1,
@@ -2331,6 +2365,8 @@ class SHARPService: ObservableObject {
         )
 
         let backWallDimensions = estimateBackWallDimensions()
+        let roomDimsV3 = estimateRoomDimensionsV3()
+        let roomDimsV7 = estimateRoomDimensionsV7()
         if let backWall = backWallDimensions {
             logDebug(
                 "[GREEN][ROOM_DIMS] APPROACH=LEGACY_BACK_WALL_PERCENTILE " +
@@ -2343,32 +2379,19 @@ class SHARPService: ObservableObject {
                 "H=\(String(format: "%.4f", backWall.legacyHeight)) " +
                 "D=\(String(format: "%.4f", backWall.legacyDepth))"
             )
-            logDebug(
-                "[GREEN][ROOM_DIMS_APP] APPROACH=PYTHAGORAS_DIAGONAL " +
-                "FLOOR_DIAG=\(String(format: "%.4f", backWall.floorDiagonal)) " +
-                "TRIMMED_X=\(String(format: "%.4f", backWall.trimmedXSpan)) " +
-                "TRIMMED_Y=\(String(format: "%.4f", backWall.trimmedYSpan)) " +
-                "TRIMMED_Z=\(String(format: "%.4f", backWall.trimmedZSpan)) " +
-                "BACK_WALL_Z=\(String(format: "%.4f", backWall.zMode)) " +
-                "BACK_WALL_Z_MEAN=\(String(format: "%.4f", backWall.zMean)) " +
-                "BAND=\(String(format: "%.4f", backWall.band)) COUNT=\(backWall.count) " +
-                "RAW_W=\(String(format: "%.4f", backWall.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", backWall.rawHeight)) " +
-                "W=\(String(format: "%.4f", backWall.width)) " +
-                "H=\(String(format: "%.4f", backWall.height)) " +
-                "D=\(String(format: "%.4f", backWall.depth))"
-            )
         } else {
-            logDebug("[RED][ROOM_DIMS_APP] APPROACH=PYTHAGORAS_DIAGONAL unavailable count=\(rows.count)")
+            logDebug("[RED][ROOM_DIMS] APPROACH=LEGACY_BACK_WALL_PERCENTILE unavailable count=\(rows.count)")
         }
 
-        if let roomDimsV3 = estimateRoomDimensionsV3() {
+        if let roomDimsV3 {
             logDebug(
                 "[GREEN][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA " +
                 "FLOOR_NORMAL=(\(String(format: "%.4f", roomDimsV3.floorNormal.x))," +
                 "\(String(format: "%.4f", roomDimsV3.floorNormal.y))," +
                 "\(String(format: "%.4f", roomDimsV3.floorNormal.z))) " +
                 "TILT_DEG=\(String(format: "%.2f", roomDimsV3.tiltDegrees)) " +
+                "TILT_RAW=\(String(format: "%.2f", roomDimsV3.tiltRawDegrees)) " +
+                "TILT_RELIABLE=\(roomDimsV3.tiltReliable) " +
                 "RANSAC_SAMPLES=\(roomDimsV3.sampleCount) " +
                 "RANSAC_ITERS=\(roomDimsV3.ransacIterations) " +
                 "RANSAC_INLIERS=\(roomDimsV3.ransacInliers) " +
@@ -2385,85 +2408,49 @@ class SHARPService: ObservableObject {
             logDebug("[RED][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA unavailable count=\(rows.count)")
         }
 
-        if let roomDimsV4 = estimateRoomDimensionsV4() {
-            logDebug(
-                "[\(roomDimsV4.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V4] APPROACH=\(roomDimsV4.approach) " +
-                "IMAGE=\(Int(roomDimsV4.imageWidth.rounded()))X\(Int(roomDimsV4.imageHeight.rounded())) " +
-                "FOCAL_PX=\(String(format: "%.4f", roomDimsV4.focalPx)) " +
-                "FOV_DIAG=\(String(format: "%.4f", roomDimsV4.fovDiagonal)) " +
-                "MIN_DEPTH=\(String(format: "%.4f", roomDimsV4.minDepth)) " +
-                "MAX_LATERAL=\(String(format: "%.4f", roomDimsV4.maxLateral)) " +
-                "SCENE_EXT=\(String(format: "%.4f", roomDimsV4.sceneExtension)) " +
-                "RAW_W=\(String(format: "%.4f", roomDimsV4.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", roomDimsV4.rawHeight)) " +
-                "W=\(String(format: "%.4f", roomDimsV4.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV4.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV4.depth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS_V4] APPROACH=SHARP_SCENE_EXTENSION unavailable count=\(rows.count)")
-        }
+        // Unwired comparison approaches retained for future A/B work. They stay commented
+        // out so V7 is the only non-legacy path exercised by preview/list/ruler.
+        /*
+        if let roomDimsV4 = estimateRoomDimensionsV4() { ... }
+        if let roomDimsV5 = estimateRoomDimensionsV5() { ... }
+        if let roomDimsV6 = estimateRoomDimensionsV6() { ... }
+        */
 
-        if let roomDimsV5 = estimateRoomDimensionsV5() {
+        if let roomDimsV7 {
             logDebug(
-                "[\(roomDimsV5.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V5] APPROACH=\(roomDimsV5.approach) " +
-                "IMAGE=\(Int(roomDimsV5.imageWidth.rounded()))X\(Int(roomDimsV5.imageHeight.rounded())) " +
-                "FOCAL_PX=\(String(format: "%.4f", roomDimsV5.focalPx)) " +
-                "FOV_DIAG=\(String(format: "%.4f", roomDimsV5.fovDiagonal)) " +
-                "MIN_DEPTH=\(String(format: "%.4f", roomDimsV5.minDepth)) " +
-                "BACK_WALL_Z=\(String(format: "%.4f", roomDimsV5.backWallZ)) " +
-                "MAX_LATERAL=\(String(format: "%.4f", roomDimsV5.maxLateral)) " +
-                "SCENE_EXT=\(String(format: "%.4f", roomDimsV5.sceneExtension)) " +
-                "FOV_W_AT_BW=\(String(format: "%.4f", roomDimsV5.fovWidthAtBackWall)) " +
-                "FOV_H_AT_BW=\(String(format: "%.4f", roomDimsV5.fovHeightAtBackWall)) " +
-                "FILL_W=\(String(format: "%.4f", roomDimsV5.fillRatioWidth)) " +
-                "FILL_H=\(String(format: "%.4f", roomDimsV5.fillRatioHeight)) " +
-                "BLEND_W=\(String(format: "%.4f", roomDimsV5.blendWidth)) " +
-                "BLEND_H=\(String(format: "%.4f", roomDimsV5.blendHeight)) " +
-                "RAW_W=\(String(format: "%.4f", roomDimsV5.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", roomDimsV5.rawHeight)) " +
-                "CORR_W=\(String(format: "%.4f", roomDimsV5.correctedWidth)) " +
-                "CORR_H=\(String(format: "%.4f", roomDimsV5.correctedHeight)) " +
-                "W=\(String(format: "%.4f", roomDimsV5.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV5.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV5.depth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS_V5] APPROACH=ADAPTIVE_SCENE_EXTENSION unavailable count=\(rows.count)")
-        }
-
-        if let roomDimsV6 = estimateRoomDimensionsV6() {
-            logDebug(
-                "[\(roomDimsV6.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V6] APPROACH=\(roomDimsV6.usedFocal ? "AUTO_\(roomDimsV6.shotType)" : roomDimsV6.shotType) " +
-                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV6.cuboidRatio)) " +
-                "THRESHOLD=\(String(format: "%.4f", roomDimsV6.cuboidThreshold)) " +
-                "IS_CORNER=\(roomDimsV6.isCornerShot) " +
-                "ORIENTATION=\(roomDimsV6.orientationLabel) " +
-                "TILT_DEG=\(String(format: "%.2f", roomDimsV6.tiltDegrees)) " +
-                "TRIMMED_X=\(String(format: "%.4f", roomDimsV6.trimmedXSpan)) " +
-                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV6.trimmedYSpan)) " +
-                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV6.trimmedZSpan)) " +
-                "FLOOR_DIAG=\(String(format: "%.4f", roomDimsV6.floorDiagonal)) " +
-                "FILL_W=\(String(format: "%.4f", roomDimsV6.fillWidth)) " +
-                "BLEND=\(String(format: "%.4f", roomDimsV6.blend)) " +
-                "RAW_W=\(String(format: "%.4f", roomDimsV6.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", roomDimsV6.rawHeight)) " +
-                "W=\(String(format: "%.4f", roomDimsV6.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV6.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV6.depth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS_V6] APPROACH=AUTO unavailable count=\(rows.count)")
-        }
-
-        if let roomDimsV7 = estimateRoomDimensionsV7() {
-            logDebug(
-                "[\(roomDimsV7.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
-                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.cuboidRatio)) " +
-                "THRESHOLD=\(String(format: "%.4f", roomDimsV7.cuboidThreshold)) " +
-                "IS_CORNER=\(roomDimsV7.isCornerShot) " +
+                "[GREEN][ROOM_DIMS_APP] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
+                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.usedFocal ? roomDimsV7.cuboidRatio : 0)) " +
+                "THRESHOLD=\(roomDimsV7.usedFocal ? String(format: "%.4f", roomDimsV7.cuboidThreshold) : "N/A") " +
+                "IS_CORNER=\((roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL").contains("CORNER")) " +
                 "ORIENTATION=\(roomDimsV7.orientationLabel) " +
                 "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
+                "TILT_RELIABLE=\(roomDimsV7.tiltReliable) " +
+                "HAS_FOCAL=\(roomDimsV7.usedFocal) " +
+                "TRIMMED_X=\(String(format: "%.4f", roomDimsV7.trimmedXSpan)) " +
+                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV7.trimmedYSpan)) " +
+                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV7.trimmedZSpan)) " +
+                "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
+                "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
+                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV7.pcaSpan1))," +
+                "\(String(format: "%.4f", roomDimsV7.pcaSpan2))) " +
+                "RAW_W=\(String(format: "%.4f", roomDimsV7.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", roomDimsV7.rawHeight)) " +
+                "W=\(String(format: "%.4f", roomDimsV7.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV7.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV7.depth))"
+            )
+            logDebug(
+                "[GREEN][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
+                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.usedFocal ? roomDimsV7.cuboidRatio : 0)) " +
+                "THRESHOLD=\(roomDimsV7.usedFocal ? String(format: "%.4f", roomDimsV7.cuboidThreshold) : "N/A") " +
+                "IS_CORNER=\((roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL").contains("CORNER")) " +
+                "ORIENTATION=\(roomDimsV7.orientationLabel) " +
+                "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
+                "TILT_RELIABLE=\(roomDimsV7.tiltReliable) " +
+                "HAS_FOCAL=\(roomDimsV7.usedFocal) " +
+                "TRIMMED_X=\(String(format: "%.4f", roomDimsV7.trimmedXSpan)) " +
+                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV7.trimmedYSpan)) " +
+                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV7.trimmedZSpan)) " +
                 "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
                 "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
                 "PCA_SPANS=(\(String(format: "%.4f", roomDimsV7.pcaSpan1))," +
@@ -2475,7 +2462,8 @@ class SHARPService: ObservableObject {
                 "D=\(String(format: "%.4f", roomDimsV7.depth))"
             )
         } else {
-            logDebug("[RED][ROOM_DIMS_V7] APPROACH=RHOMBUS unavailable count=\(rows.count)")
+            logDebug("[RED][ROOM_DIMS_APP] APPROACH=ROOM_DIMS_V7 unavailable count=\(rows.count)")
+            logDebug("[RED][ROOM_DIMS_V7] APPROACH=ROOM_DIMS_V7 unavailable count=\(rows.count)")
         }
 
         let firstRowXYZ: String = {
@@ -2501,9 +2489,9 @@ class SHARPService: ObservableObject {
             aabbWidth: width,
             aabbHeight: height,
             aabbDepth: depth,
-            roomWidth: backWallDimensions?.width,
-            roomHeight: backWallDimensions?.height,
-            roomDepth: backWallDimensions?.depth
+            roomWidth: roomDimsV7?.width ?? backWallDimensions?.width,
+            roomHeight: roomDimsV7?.height ?? backWallDimensions?.height,
+            roomDepth: roomDimsV7?.depth ?? backWallDimensions?.depth
         )
     }
 

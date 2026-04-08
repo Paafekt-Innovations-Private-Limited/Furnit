@@ -314,6 +314,7 @@
 "roomViewer.saveSuccess" = "Raum '%@' erfolgreich gespeichert!";
 "roomViewer.saveFailed" = "Raum konnte nicht gespeichert werden: %@";
 "roomViewer.roomSaveTitle" = "Raum speichern";
+"roomViewer.duplicateRoomName" = "Ein Raum mit diesem Namen existiert bereits.";
 "roomPreview.unsavedTitle" = "Ohne Speichern verlassen?";
 "roomPreview.unsavedMessage" = "Der Raum wurde noch nicht gespeichert. Wenn Sie jetzt zurückgehen, verlieren Sie diese Vorschau.";
 "roomPreview.stay" = "Bleiben";

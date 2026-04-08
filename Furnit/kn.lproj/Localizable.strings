@@ -284,6 +284,7 @@
 "roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
 "roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
 "roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomViewer.duplicateRoomName" = "ಈ ಹೆಸರಿನೊಂದಿಗೆ ಒಂದು ಕೊಠಡಿ ಈಗಾಗಲೇ ಅಸ್ತಿತ್ವದಲ್ಲಿದೆ.";
 "roomPreview.unsavedTitle" = "ಉಳಿಸದೆಯೇ ಹಿಂದೆ ಹೋಗುವುದೇ?";
 "roomPreview.unsavedMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.";
 "roomPreview.stay" = "ಇಲ್ಲೇ ಇರಿ";

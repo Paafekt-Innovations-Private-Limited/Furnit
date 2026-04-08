@@ -285,6 +285,7 @@
 "roomViewer.saveSuccess" = "¡Habitación '%@' guardada correctamente!";
 "roomViewer.saveFailed" = "Error al guardar habitación: %@";
 "roomViewer.roomSaveTitle" = "Guardar habitación";
+"roomViewer.duplicateRoomName" = "Ya existe una habitación con este nombre.";
 "roomPreview.unsavedTitle" = "¿Salir sin guardar?";
 "roomPreview.unsavedMessage" = "La habitación aún no se ha guardado. Si vuelves ahora, perderás esta vista previa.";
 "roomPreview.stay" = "Quedarse";

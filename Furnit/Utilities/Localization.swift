@@ -311,6 +311,8 @@ enum L10n {
             "roomViewer.saveFailed".localized(error)
         }
         static let roomSaveTitle = "roomViewer.roomSaveTitle".localized
+        /// Shown when saving a Sharp/ML room and the chosen name collides with an existing saved room.
+        static let duplicateRoomName = "roomViewer.duplicateRoomName".localized
         static let share = "roomViewer.share".localized
         static let calibrateWall = "roomViewer.calibrateWall".localized
         static let recenterView = "roomViewer.recenterView".localized
