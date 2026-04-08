@@ -92,8 +92,7 @@ struct SharpRoomView: View {
 
     /// Exact selected PLY for MetalSplatter.
     private let viewerPlyURL: URL
-    /// Share/export targets. When sibling SHARP variants exist, share all of them together,
-    /// plus camera EXIF sidecar metadata when present.
+    /// Share/export targets for the exact currently viewed PLY plus camera EXIF sidecar metadata when present.
     private let shareableRoomURLs: [URL]
     /// Whether this room should use SHARP classic orientation/rendering even without `_classic` in the file name.
     private let viewerUsesClassicPlyBehavior: Bool
@@ -143,7 +142,7 @@ struct SharpRoomView: View {
 
         self.viewerPlyURL = plyURL
         self.shareableRoomURLs = Self.shareableRoomURLs(for: plyURL)
-        self.viewerUsesClassicPlyBehavior = self.viewerPlyURL.path.hasSuffix("_classic.ply")
+        self.viewerUsesClassicPlyBehavior = self.viewerPlyURL.path.hasSuffix("_classic.ply") || (savedRoomModel?.isClassicPly ?? false)
     }
 
     private static func canonicalPlyStem(for url: URL) -> String {
@@ -161,9 +160,7 @@ struct SharpRoomView: View {
         let stem = canonicalPlyStem(for: baseURL)
 
         let candidates = [
-            directory.appendingPathComponent("\(stem).ply"),
-            directory.appendingPathComponent("\(stem)_classic.ply"),
-            directory.appendingPathComponent("\(stem)_3dgs.ply"),
+            baseURL,
             directory.appendingPathComponent("\(stem)_camera_exif.json"),
             directory.appendingPathComponent("camera_exif.json"),
         ]
@@ -989,6 +986,7 @@ struct SharpRoomView: View {
         let stem = viewerPlyURL.deletingPathExtension().lastPathComponent
         let isSavedBasePly = !allowSave &&
             savedRoomModel != nil &&
+            !(savedRoomModel?.isClassicPly ?? false) &&
             viewerPlyURL.pathExtension.lowercased() == "ply" &&
             !stem.hasSuffix("_classic") &&
             !stem.hasSuffix("_3dgs")

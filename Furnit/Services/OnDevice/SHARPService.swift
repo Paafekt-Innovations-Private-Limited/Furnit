@@ -415,7 +415,7 @@ class SHARPService: ObservableObject {
     ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
     ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
     ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
-    /// - Returns: URL of the plain base `.ply` written by `writePLY` for the fresh preview.
+    /// - Returns: URL of the `_classic.ply` written by `writePLY` for the fresh preview.
     func generateGaussians(
         from image: UIImage,
         sourceImageURL: URL? = nil,
@@ -491,7 +491,7 @@ class SHARPService: ObservableObject {
                 applyAspectCorrection: false,
                 sharpCamera: sharpCamera
             )
-            let plyURL = plyURLs.original
+            let plyURL = plyURLs.classic
             gaussianParams?.removeAll(keepingCapacity: false)
             gaussianParams = nil
             logMemorySnapshot(
@@ -500,11 +500,9 @@ class SHARPService: ObservableObject {
             )
             logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_drop_gaussian_params")
             logSharpMilestone(
-                "PLY written on Swift/Core ML path (not C++): \(plyURL.lastPathComponent) — fresh preview loads plain base PLY",
+                "PLY written on Swift/Core ML path (not C++): \(plyURL.lastPathComponent) — fresh preview loads classic PLY",
             )
-            logDebug("SHARP: Saved original PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved classic PLY to \(plyURLs.classic.path)")
-            logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
             guard let workingImageForThumbnail = workingImage else {
                 throw GenerationError.invalidImage
             }
@@ -936,16 +934,14 @@ class SHARPService: ObservableObject {
 
     // MARK: - PLY Writing
 
-    /// Write Gaussian parameters to base, `_classic`, and `_3dgs` PLY variants.
+    /// Write Gaussian parameters to a single `_classic.ply` variant used by the in-app Metal renderer.
     private func writePLY(
         _ params: [Float],
         sourceImageSize: CGSize,
         applyAspectCorrection: Bool,
         sharpCamera: SharpCameraSidecar.Info?,
     ) async throws -> (
-        original: URL,
         classic: URL,
-        threeDGS: URL,
         aabbWidth: Float,
         aabbHeight: Float,
         aabbDepth: Float,
@@ -997,55 +993,13 @@ class SHARPService: ObservableObject {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
-        let fileName = "Room_\(timestamp).ply"
         let classicFileName = "Room_\(timestamp)_classic.ply"
-        let threeDGSFileName = "Room_\(timestamp)_3dgs.ply"
-        let fileURL = modelsDirectory.appendingPathComponent(fileName)
         let classicFileURL = modelsDirectory.appendingPathComponent(classicFileName)
-        let threeDGSFileURL = modelsDirectory.appendingPathComponent(threeDGSFileName)
-
-        let metadataElementsHeader = """
-        element extrinsic 16
-        property float extrinsic
-        element intrinsic 9
-        property float intrinsic
-        element image_size 2
-        property uint image_size
-        element frame 2
-        property int frame
-        element disparity 2
-        property float disparity
-        element color_space 1
-        property uchar color_space
-        element version 3
-        property uchar version
-        """
 
         let plyHeaderPrefix = """
         ply
         format binary_little_endian 1.0
 
-        """
-
-        // Build PLY content - use uchar red/green/blue for proper color display
-        let plyContent = """
-        \(plyHeaderPrefix)element vertex \(gaussianCount)
-        property float x
-        property float y
-        property float z
-        property float scale_0
-        property float scale_1
-        property float scale_2
-        property float rot_0
-        property float rot_1
-        property float rot_2
-        property float rot_3
-        property float opacity
-        property uchar red
-        property uchar green
-        property uchar blue
-        \(metadataElementsHeader)
-        end_header\n
         """
 
         let classicPlyContent = """
@@ -1067,37 +1021,8 @@ class SHARPService: ObservableObject {
         end_header\n
         """
 
-        let threeDGSHeader = """
-        \(plyHeaderPrefix)element vertex \(gaussianCount)
-        property float x
-        property float y
-        property float z
-        property float nx
-        property float ny
-        property float nz
-        property float f_dc_0
-        property float f_dc_1
-        property float f_dc_2
-        property float opacity
-        property float scale_0
-        property float scale_1
-        property float scale_2
-        property float rot_0
-        property float rot_1
-        property float rot_2
-        property float rot_3
-        \(metadataElementsHeader)
-        end_header\n
-        """
-
-        // SH coefficient constant: C0 = 0.5 * sqrt(1/pi) (debug logging)
-        let SH_C0: Float = 0.28209479177387814
-        let threeDGSExtraLogScale = log(Self.threeDGSMetalViewerLinearScaleFactor)
-
         // Per-vertex byte size: 11 floats (44 B) + 3 UInt8 (3 B) = 47 B
         let standardVertexBytes = 47
-        let threeDGSVertexBytes = 68
-        let metadataBytes = (16 + 9 + 2 + 2 + 2) * 4 + 1 + 3
 
         func matrixGet(_ m: simd_float3x3, _ row: Int, _ col: Int) -> Float {
             m[col][row]
@@ -1256,68 +1181,6 @@ class SHARPService: ObservableObject {
             return (singularValues, quaternion)
         }
 
-        func appendMetadataElements(
-            to data: inout Data,
-            focalPx: Float,
-            imageWidth: Int,
-            imageHeight: Int,
-            particleCount: Int,
-            disparities: [Float]
-        ) {
-            let focal = focalPx > 0.01 ? focalPx : max(Float(imageWidth), Float(imageHeight)) * 0.5
-            let cx = Float(imageWidth) * 0.5
-            let cy = Float(imageHeight) * 0.5
-
-            let extrinsic: [Float] = [
-                1, 0, 0, 0,
-                0, 1, 0, 0,
-                0, 0, 1, 0,
-                0, 0, 0, 1,
-            ]
-            for var value in extrinsic {
-                data.append(Data(bytes: &value, count: 4))
-            }
-
-            let intrinsic: [Float] = [
-                focal, 0, cx,
-                0, focal, cy,
-                0, 0, 1,
-            ]
-            for var value in intrinsic {
-                data.append(Data(bytes: &value, count: 4))
-            }
-
-            let imageSize: [UInt32] = [UInt32(max(imageWidth, 0)), UInt32(max(imageHeight, 0))]
-            for var value in imageSize {
-                data.append(Data(bytes: &value, count: 4))
-            }
-
-            let frame: [Int32] = [1, Int32(particleCount)]
-            for var value in frame {
-                data.append(Data(bytes: &value, count: 4))
-            }
-
-            let disparityRange: [Float]
-            if disparities.isEmpty {
-                disparityRange = [0, 0]
-            } else {
-                let p10 = disparities[min(max(Int(Float(disparities.count - 1) * 0.1), 0), disparities.count - 1)]
-                let p90 = disparities[min(max(Int(Float(disparities.count - 1) * 0.9), 0), disparities.count - 1)]
-                disparityRange = [p10, p90]
-            }
-            for var value in disparityRange {
-                data.append(Data(bytes: &value, count: 4))
-            }
-
-            var colorSpace: UInt8 = 0 // sRGB
-            data.append(Data(bytes: &colorSpace, count: 1))
-
-            let version: [UInt8] = [1, 5, 0]
-            for var value in version {
-                data.append(Data(bytes: &value, count: 1))
-            }
-        }
-
         // Pre-compute per-gaussian values for classic PLY.
         // Stored in a flat struct-of-arrays to avoid a second pass over `filteredParams`.
         struct GaussianRow {
@@ -1414,6 +1277,24 @@ class SHARPService: ObservableObject {
             let band: Float
         }
 
+        // Experimental comparison-only path. Keep isolated so it is easy to remove if it
+        // does not outperform the current ROOM_DIMS_APP approach.
+        struct FloorAlignedPCADimensions {
+            let floorNormal: SIMD3<Float>
+            let tiltDegrees: Float
+            let sampleCount: Int
+            let ransacIterations: Int
+            let ransacInliers: Int
+            let epsilon: Float
+            let lambda1: Float
+            let lambda2: Float
+            let span1: Float
+            let span2: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+        }
+
         func estimateBackWallDimensions() -> BackWallDimensions? {
             guard !rows.isEmpty else { return nil }
 
@@ -1479,6 +1360,18 @@ class SHARPService: ObservableObject {
             let legacyHeight = rawHeight / 1.2
             let legacyDepth = zMedian * 1.08
             let finalDepth = floorDiagonal
+            let finalWidth: Float
+            if rawHeight > rawWidth {
+                finalWidth = sqrt(max(0, rawHeight * rawHeight - rawWidth * rawWidth))
+            } else {
+                finalWidth = rawWidth
+            }
+            let finalHeight: Float
+            if trimmedYSpan > trimmedXSpan {
+                finalHeight = sqrt(max(0, trimmedYSpan * trimmedYSpan - trimmedXSpan * trimmedXSpan))
+            } else {
+                finalHeight = trimmedYSpan
+            }
 
             return BackWallDimensions(
                 zMode: zMode,
@@ -1493,11 +1386,188 @@ class SHARPService: ObservableObject {
                 legacyWidth: legacyWidth,
                 legacyHeight: legacyHeight,
                 legacyDepth: legacyDepth,
-                width: rawWidth,
-                height: rawHeight,
+                width: finalWidth,
+                height: finalHeight,
                 depth: finalDepth,
                 count: backWallRows.count,
                 band: band
+            )
+        }
+
+        func estimateRoomDimensionsV3() -> FloorAlignedPCADimensions? {
+            guard rows.count >= 128 else { return nil }
+
+            let positions = rows.map { SIMD3<Float>($0.x, $0.y, abs($0.z)) }
+            let sampleCount = min(50_000, positions.count)
+            let ransacIterations = 500
+            let epsilon: Float = 0.05
+
+            var rng = SystemRandomNumberGenerator()
+            var sampled: [SIMD3<Float>] = []
+            sampled.reserveCapacity(sampleCount)
+            for _ in 0..<sampleCount {
+                let index = Int.random(in: 0..<positions.count, using: &rng)
+                sampled.append(positions[index])
+            }
+            guard sampled.count >= 3 else { return nil }
+
+            var bestNormal = SIMD3<Float>(0, 1, 0)
+            var bestD: Float = 0
+            var bestInliers = 0
+
+            for _ in 0..<ransacIterations {
+                let i0 = Int.random(in: 0..<sampled.count, using: &rng)
+                let i1 = Int.random(in: 0..<sampled.count, using: &rng)
+                let i2 = Int.random(in: 0..<sampled.count, using: &rng)
+                let p0 = sampled[i0]
+                let p1 = sampled[i1]
+                let p2 = sampled[i2]
+                let v1 = p1 - p0
+                let v2 = p2 - p0
+                let crossVector = simd_cross(v1, v2)
+                let crossLength = simd_length(crossVector)
+                guard crossLength > 1e-6 else { continue }
+
+                var normal = crossVector / crossLength
+                var d = -simd_dot(normal, p0)
+                guard abs(normal.y) > 0.8 else { continue }
+                if normal.y < 0 {
+                    normal *= -1
+                    d *= -1
+                }
+
+                var inliers = 0
+                for point in sampled {
+                    if abs(simd_dot(normal, point) + d) < epsilon {
+                        inliers += 1
+                    }
+                }
+
+                if inliers > bestInliers {
+                    bestInliers = inliers
+                    bestNormal = normal
+                    bestD = d
+                }
+            }
+
+            guard bestInliers > 0 else { return nil }
+
+            let target = SIMD3<Float>(0, 1, 0)
+            let clampedCosTheta = min(max(simd_dot(bestNormal, target), -1), 1)
+            let rotationAxisRaw = simd_cross(bestNormal, target)
+            let sinTheta = simd_length(rotationAxisRaw)
+            let rotationMatrix: simd_float3x3
+            if sinTheta < 1e-6 {
+                rotationMatrix = matrix_identity_float3x3
+            } else {
+                let axis = rotationAxisRaw / sinTheta
+                let ax = axis.x
+                let ay = axis.y
+                let az = axis.z
+                let c = clampedCosTheta
+                let s = sinTheta
+                let t = 1 - c
+                rotationMatrix = simd_float3x3(
+                    SIMD3<Float>(t * ax * ax + c, t * ax * ay - s * az, t * ax * az + s * ay),
+                    SIMD3<Float>(t * ax * ay + s * az, t * ay * ay + c, t * ay * az - s * ax),
+                    SIMD3<Float>(t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c)
+                )
+            }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            var rotatedY: [Float] = []
+            var floorPoints: [SIMD2<Float>] = []
+            rotatedY.reserveCapacity(positions.count)
+            floorPoints.reserveCapacity(positions.count)
+
+            for position in positions {
+                let rotated = rotationMatrix * position
+                rotatedY.append(rotated.y)
+                floorPoints.append(SIMD2<Float>(rotated.x, rotated.z))
+            }
+
+            guard rotatedY.count >= 64, floorPoints.count >= 64 else { return nil }
+            rotatedY.sort()
+            let yP3 = rotatedY[percentileIndex(0.03, count: rotatedY.count)]
+            let yP97 = rotatedY[percentileIndex(0.97, count: rotatedY.count)]
+            let roomHeight = yP97 - yP3
+
+            let n = Float(floorPoints.count)
+            let meanX = floorPoints.reduce(0) { $0 + $1.x } / n
+            let meanZ = floorPoints.reduce(0) { $0 + $1.y } / n
+
+            var cxx: Float = 0
+            var cxz: Float = 0
+            var czz: Float = 0
+            for point in floorPoints {
+                let dx = point.x - meanX
+                let dz = point.y - meanZ
+                cxx += dx * dx
+                cxz += dx * dz
+                czz += dz * dz
+            }
+            cxx /= n
+            cxz /= n
+            czz /= n
+
+            let trace = cxx + czz
+            let determinant = cxx * czz - cxz * cxz
+            let discriminant = sqrt(max(0, trace * trace / 4 - determinant))
+            let lambda1 = trace / 2 + discriminant
+            let lambda2 = trace / 2 - discriminant
+
+            let e1: SIMD2<Float>
+            if abs(cxz) > 1e-6 {
+                e1 = simd_normalize(SIMD2<Float>(lambda1 - czz, cxz))
+            } else {
+                e1 = SIMD2<Float>(1, 0)
+            }
+            let e2 = SIMD2<Float>(-e1.y, e1.x)
+
+            var uValues: [Float] = []
+            var vValues: [Float] = []
+            uValues.reserveCapacity(floorPoints.count)
+            vValues.reserveCapacity(floorPoints.count)
+
+            for point in floorPoints {
+                let centered = SIMD2<Float>(point.x - meanX, point.y - meanZ)
+                uValues.append(simd_dot(centered, e1))
+                vValues.append(simd_dot(centered, e2))
+            }
+
+            uValues.sort()
+            vValues.sort()
+            let uP3 = uValues[percentileIndex(0.03, count: uValues.count)]
+            let uP97 = uValues[percentileIndex(0.97, count: uValues.count)]
+            let vP3 = vValues[percentileIndex(0.03, count: vValues.count)]
+            let vP97 = vValues[percentileIndex(0.97, count: vValues.count)]
+            let span1 = uP97 - uP3
+            let span2 = vP97 - vP3
+
+            let roomWidth = min(span1, span2)
+            let roomDepth = max(span1, span2)
+            let tiltDegrees = acos(clampedCosTheta) * 180 / .pi
+            _ = bestD // retained for quick future debugging/removal without touching the RANSAC core
+
+            return FloorAlignedPCADimensions(
+                floorNormal: bestNormal,
+                tiltDegrees: tiltDegrees,
+                sampleCount: sampleCount,
+                ransacIterations: ransacIterations,
+                ransacInliers: bestInliers,
+                epsilon: epsilon,
+                lambda1: lambda1,
+                lambda2: lambda2,
+                span1: span1,
+                span2: span2,
+                width: roomWidth,
+                height: roomHeight,
+                depth: roomDepth
             )
         }
 
@@ -1505,9 +1575,6 @@ class SHARPService: ObservableObject {
         for i in 0..<min(3, rows.count) {
             let g = rows[i]
             let quatLen = sqrt(g.r0*g.r0 + g.r1*g.r1 + g.r2*g.r2 + g.r3*g.r3)
-            let f0 = (g.rawR - 0.5) / SH_C0
-            let f1 = (g.rawG - 0.5) / SH_C0
-            let f2 = (g.rawB - 0.5) / SH_C0
             let gamma: Float = 1.0 / 2.2; let bright: Float = 1.1
             let red = UInt8(min(max(Int(pow(min(max(g.rawR * bright, 0), 1), gamma) * 255), 0), 255))
             let green = UInt8(min(max(Int(pow(min(max(g.rawG * bright, 0), 1), gamma) * 255), 0), 255))
@@ -1517,32 +1584,18 @@ class SHARPService: ObservableObject {
             logDebug("  scale (log): (\(g.s0), \(g.s1), \(g.s2))")
             logDebug("  rot: (\(g.r0), \(g.r1), \(g.r2), \(g.r3)) len=\(quatLen)")
             logDebug("  opacity (logit): \(g.opacity)")
-            logDebug("  f_dc (SH): (\(f0), \(f1), \(f2))")
             logDebug("  color (uchar): (\(red), \(green), \(blue))")
         }
 
-        func disparitiesForRows(flipYZ: Bool) -> [Float] {
-            var disparities: [Float] = []
-            disparities.reserveCapacity(rows.count)
-            for g in rows {
-                let z = flipYZ ? -g.z : g.z
-                guard abs(z) > 1e-6, z.isFinite else { continue }
-                disparities.append(1.0 / z)
-            }
-            disparities.sort()
-            return disparities
-        }
-
-        // Helper: write uchar-RGB PLY with optional Y/Z flip (classic uses flip for Metal).
-        func writeStandardPLY(toURL url: URL, flipYZ: Bool, includeMetadataElements: Bool) throws {
-            let headerString = includeMetadataElements ? plyContent : classicPlyContent
-            let headerData = Data(headerString.utf8)
-            var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes + (includeMetadataElements ? metadataBytes : 0))
+        // Helper: write uchar-RGB PLY with Y/Z flip for the in-app Metal renderer.
+        func writeClassicPLY(toURL url: URL) throws {
+            let headerData = Data(classicPlyContent.utf8)
+            var buf = Data(capacity: headerData.count + gaussianCount * standardVertexBytes)
             buf.append(headerData)
             let gamma: Float = 1.0 / 2.2
             let brightness: Float = 1.1
             for g in rows {
-                var px = g.x; var py = flipYZ ? -g.y : g.y; var pz = flipYZ ? -g.z : g.z
+                var px = g.x; var py = -g.y; var pz = -g.z
                 buf.append(Data(bytes: &px, count: 4))
                 buf.append(Data(bytes: &py, count: 4))
                 buf.append(Data(bytes: &pz, count: 4))
@@ -1567,92 +1620,14 @@ class SHARPService: ObservableObject {
                 buf.append(Data(bytes: &green, count: 1))
                 buf.append(Data(bytes: &blue, count: 1))
             }
-            if includeMetadataElements {
-                appendMetadataElements(
-                    to: &buf,
-                    focalPx: unprojectionFocalPx,
-                    imageWidth: Int(sourceImageSize.width.rounded()),
-                    imageHeight: Int(sourceImageSize.height.rounded()),
-                    particleCount: gaussianCount,
-                    disparities: disparitiesForRows(flipYZ: flipYZ)
-                )
-            }
             try buf.write(to: url)
         }
 
-        func writeThreeDGSPly(toURL url: URL) throws {
-            let headerData = Data(threeDGSHeader.utf8)
-            var buf = Data(capacity: headerData.count + gaussianCount * threeDGSVertexBytes + metadataBytes)
-            buf.append(headerData)
-            for g in rows {
-                var px = g.x
-                var py = g.y
-                var pz = g.z
-                buf.append(Data(bytes: &px, count: 4))
-                buf.append(Data(bytes: &py, count: 4))
-                buf.append(Data(bytes: &pz, count: 4))
+        try writeClassicPLY(toURL: classicFileURL)
 
-                var nx: Float = 0
-                var ny: Float = 0
-                var nz: Float = 0
-                buf.append(Data(bytes: &nx, count: 4))
-                buf.append(Data(bytes: &ny, count: 4))
-                buf.append(Data(bytes: &nz, count: 4))
-
-                var f0 = (g.rawR - 0.5) / SH_C0
-                var f1 = (g.rawG - 0.5) / SH_C0
-                var f2 = (g.rawB - 0.5) / SH_C0
-                buf.append(Data(bytes: &f0, count: 4))
-                buf.append(Data(bytes: &f1, count: 4))
-                buf.append(Data(bytes: &f2, count: 4))
-
-                var op = g.opacity
-                buf.append(Data(bytes: &op, count: 4))
-
-                var sg0 = g.s0 + threeDGSExtraLogScale
-                var sg1 = g.s1 + threeDGSExtraLogScale
-                var sg2 = g.s2 + threeDGSExtraLogScale
-                buf.append(Data(bytes: &sg0, count: 4))
-                buf.append(Data(bytes: &sg1, count: 4))
-                buf.append(Data(bytes: &sg2, count: 4))
-
-                var r0 = g.r0
-                var r1 = g.r1
-                var r2 = g.r2
-                var r3 = g.r3
-                buf.append(Data(bytes: &r0, count: 4))
-                buf.append(Data(bytes: &r1, count: 4))
-                buf.append(Data(bytes: &r2, count: 4))
-                buf.append(Data(bytes: &r3, count: 4))
-            }
-            appendMetadataElements(
-                to: &buf,
-                focalPx: unprojectionFocalPx,
-                imageWidth: Int(sourceImageSize.width.rounded()),
-                imageHeight: Int(sourceImageSize.height.rounded()),
-                particleCount: gaussianCount,
-                disparities: disparitiesForRows(flipYZ: false)
-            )
-            try buf.write(to: url)
-        }
-
-        try writeStandardPLY(toURL: fileURL, flipYZ: false, includeMetadataElements: true)
-        // Classic PLY only: (x, -y, -z) via flipYZ — matches MetalSplatter / GaussianSplatView.
-        try writeStandardPLY(toURL: classicFileURL, flipYZ: true, includeMetadataElements: false)
-        try writeThreeDGSPly(toURL: threeDGSFileURL)
-
-        let originalAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let classicAttributes = try FileManager.default.attributesOfItem(atPath: classicFileURL.path)
-        let threeDGSAttributes = try FileManager.default.attributesOfItem(atPath: threeDGSFileURL.path)
-        let originalSize = originalAttributes[.size] as? UInt64 ?? 0
         let classicSize = classicAttributes[.size] as? UInt64 ?? 0
-        let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
-        logDebug("SHARP: PLY file saved (\(originalSize / 1024) KB)")
         logDebug("SHARP: Classic PLY saved (\(classicSize / 1024) KB) — Metal uchar RGB")
-        logDebug(
-            "SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat / export; " +
-            "σ×\(Self.threeDGSMetalViewerLinearScaleFactor) (+log). In-app Metal uses `_classic.ply`."
-        )
 
         logPlyBoundsDiagnostic(
             "SHARP classic_ply room bounds (vertex frame written to *_classic.ply; in-app Metal uses this file): " +
@@ -1676,7 +1651,7 @@ class SHARPService: ObservableObject {
                 "D=\(String(format: "%.4f", backWall.legacyDepth))"
             )
             logDebug(
-                "[GREEN][ROOM_DIMS_APP] APPROACH=FLOOR_DIAGONAL " +
+                "[GREEN][ROOM_DIMS_APP] APPROACH=PYTHAGORAS_DIAGONAL " +
                 "FLOOR_DIAG=\(String(format: "%.4f", backWall.floorDiagonal)) " +
                 "TRIMMED_X=\(String(format: "%.4f", backWall.trimmedXSpan)) " +
                 "TRIMMED_Y=\(String(format: "%.4f", backWall.trimmedYSpan)) " +
@@ -1691,7 +1666,30 @@ class SHARPService: ObservableObject {
                 "D=\(String(format: "%.4f", backWall.depth))"
             )
         } else {
-            logDebug("[RED][ROOM_DIMS_APP] APPROACH=FLOOR_DIAGONAL unavailable count=\(rows.count)")
+            logDebug("[RED][ROOM_DIMS_APP] APPROACH=PYTHAGORAS_DIAGONAL unavailable count=\(rows.count)")
+        }
+
+        if let roomDimsV3 = estimateRoomDimensionsV3() {
+            logDebug(
+                "[GREEN][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA " +
+                "FLOOR_NORMAL=(\(String(format: "%.4f", roomDimsV3.floorNormal.x))," +
+                "\(String(format: "%.4f", roomDimsV3.floorNormal.y))," +
+                "\(String(format: "%.4f", roomDimsV3.floorNormal.z))) " +
+                "TILT_DEG=\(String(format: "%.2f", roomDimsV3.tiltDegrees)) " +
+                "RANSAC_SAMPLES=\(roomDimsV3.sampleCount) " +
+                "RANSAC_ITERS=\(roomDimsV3.ransacIterations) " +
+                "RANSAC_INLIERS=\(roomDimsV3.ransacInliers) " +
+                "EPS=\(String(format: "%.4f", roomDimsV3.epsilon)) " +
+                "PCA_LAMBDA=(\(String(format: "%.4f", roomDimsV3.lambda1))," +
+                "\(String(format: "%.4f", roomDimsV3.lambda2))) " +
+                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV3.span1))," +
+                "\(String(format: "%.4f", roomDimsV3.span2))) " +
+                "W=\(String(format: "%.4f", roomDimsV3.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV3.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV3.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA unavailable count=\(rows.count)")
         }
 
         let firstRowXYZ: String = {
@@ -1713,9 +1711,7 @@ class SHARPService: ObservableObject {
         logMemorySnapshot("SHARPService.writePLY", details: "phase=after_drop_rows ply=\(classicFileName) splats=\(gaussianCount)")
 
         return (
-            original: fileURL,
             classic: classicFileURL,
-            threeDGS: threeDGSFileURL,
             aabbWidth: width,
             aabbHeight: height,
             aabbDepth: depth,

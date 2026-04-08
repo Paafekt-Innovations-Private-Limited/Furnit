@@ -386,13 +386,13 @@ class USDZModelManager: ObservableObject {
         return Float(bitPattern: UInt32(littleEndian: bits))
     }
 
-    private func measureRoomDimensions(forPly url: URL) -> MeasuredPlyRoomDimensions? {
+    private func measureRoomDimensions(forPly url: URL, treatAsClassicPly: Bool? = nil) -> MeasuredPlyRoomDimensions? {
         guard let data = try? Data(contentsOf: url),
               let layout = binaryPlyLayout(for: data) else {
             return nil
         }
 
-        let isClassicVariant = url.deletingPathExtension().lastPathComponent.hasSuffix("_classic")
+        let isClassicVariant = treatAsClassicPly ?? url.deletingPathExtension().lastPathComponent.hasSuffix("_classic")
         var normalizedXs: [Float] = []
         var normalizedYs: [Float] = []
         var normalizedDepths: [Float] = []
@@ -513,13 +513,25 @@ class USDZModelManager: ObservableObject {
         let legacyHeight = rawHeight / 1.2
         let legacyDepth = zMedian * 1.08
         let finalDepth = floorDiagonal
+        let finalWidth: Float
+        if rawHeight > rawWidth {
+            finalWidth = sqrt(max(0, rawHeight * rawHeight - rawWidth * rawWidth))
+        } else {
+            finalWidth = rawWidth
+        }
+        let finalHeight: Float
+        if trimmedYSpan > trimmedXSpan {
+            finalHeight = sqrt(max(0, trimmedYSpan * trimmedYSpan - trimmedXSpan * trimmedXSpan))
+        } else {
+            finalHeight = trimmedYSpan
+        }
 
         return MeasuredPlyRoomDimensions(
             legacyWidth: legacyWidth,
             legacyHeight: legacyHeight,
             legacyDepth: legacyDepth,
-            width: rawWidth,
-            height: rawHeight,
+            width: finalWidth,
+            height: finalHeight,
             depth: finalDepth,
             sceneWidth: maxX - minX,
             sceneHeight: maxY - minY,
@@ -1201,17 +1213,7 @@ class USDZModelManager: ObservableObject {
                 }
             }
 
-            let sourceSet = siblingPlyURLs(for: sourceURL)
-            let destinationSet = siblingPlyURLs(forBaseSavedRoomURL: destinationURL)
-
-            let canonicalSourceURL = sourceSet.original ?? sourceURL
-            try FileManager.default.copyItem(at: canonicalSourceURL, to: destinationSet.original)
-            if let sourceClassicURL = sourceSet.classic {
-                try FileManager.default.copyItem(at: sourceClassicURL, to: destinationSet.classic)
-            }
-            if let sourceThreeDGSURL = sourceSet.threeDGS {
-                try FileManager.default.copyItem(at: sourceThreeDGSURL, to: destinationSet.threeDGS)
-            }
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
             let sourceEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: sourceURL)
             let destinationEnhancedMetadataURL = enhancedMetadataURL(forRoomURL: destinationURL)
@@ -1229,13 +1231,11 @@ class USDZModelManager: ObservableObject {
             SharpCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
 
             let variantDestinations: [(label: String, url: URL, isClassic: Bool)] = [
-                ("base_ply", destinationSet.original, false),
-                ("classic_ply", destinationSet.classic, true),
-                ("3dgs_ply", destinationSet.threeDGS, false),
+                ("base_ply", destinationURL, true),
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
-                let measured = measureRoomDimensions(forPly: variant.url)
+                let measured = measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
                 let finalRoomWidth = measured?.width ?? roomWidth
                 let finalRoomHeight = measured?.height ?? roomHeight
                 let finalRoomDepth = measured?.depth ?? roomDepth
@@ -1247,7 +1247,7 @@ class USDZModelManager: ObservableObject {
                 let approachTag: String
                 if measured != nil {
                     sourceTag = "measured"
-                    approachTag = "floor_diagonal"
+                    approachTag = "pythagoras_diagonal"
                 } else if finalRoomWidth != nil || finalRoomHeight != nil || finalRoomDepth != nil {
                     sourceTag = "fallback"
                     approachTag = "preview_active_room_dimensions"
@@ -1328,7 +1328,7 @@ class USDZModelManager: ObservableObject {
                     metadata["roomSceneDepth"] = String(format: "%.4f", sd)
                 }
                 if let measured {
-                    metadata["roomDimsApproach"] = "floor_diagonal"
+                    metadata["roomDimsApproach"] = "pythagoras_diagonal"
                     metadata["roomFloorDiagonal"] = String(format: "%.4f", measured.floorDiagonal)
                     metadata["roomTrimmedXSpan"] = String(format: "%.4f", measured.trimmedXSpan)
                     metadata["roomTrimmedYSpan"] = String(format: "%.4f", measured.trimmedYSpan)
@@ -1358,12 +1358,6 @@ class USDZModelManager: ObservableObject {
 
             if debugMode {
                 logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
-                if sourceSet.classic != nil {
-                    logDebug("✅ [USDZModelManager] Classic sidecar saved to: \(destinationSet.classic.path)")
-                }
-                if sourceSet.threeDGS != nil {
-                    logDebug("✅ [USDZModelManager] 3DGS sidecar saved to: \(destinationSet.threeDGS.path)")
-                }
             }
 
             // Reload models to include the new one
