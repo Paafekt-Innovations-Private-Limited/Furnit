@@ -121,6 +121,9 @@ private struct BinaryPlyVertexLayout {
 }
 
 private struct MeasuredPlyRoomDimensions {
+    let legacyWidth: Float
+    let legacyHeight: Float
+    let legacyDepth: Float
     let width: Float
     let height: Float
     let depth: Float
@@ -129,8 +132,15 @@ private struct MeasuredPlyRoomDimensions {
     let sceneDepth: Float
     let zMode: Float
     let zMedian: Float
+    let zMean: Float
     let band: Float
     let count: Int
+    let floorDiagonal: Float
+    let trimmedXSpan: Float
+    let trimmedYSpan: Float
+    let trimmedZSpan: Float
+    let rawWidth: Float
+    let rawHeight: Float
 }
 
 class USDZModelManager: ObservableObject {
@@ -429,18 +439,39 @@ class USDZModelManager: ObservableObject {
             return nil
         }
 
+        func percentileIndex(_ p: Float, count: Int) -> Int {
+            guard count > 1 else { return 0 }
+            let raw = Int((Float(count - 1) * p).rounded(.down))
+            return min(max(raw, 0), count - 1)
+        }
+
+        let sortedAllXs = normalizedXs.sorted()
+        let sortedAllYs = normalizedYs.sorted()
         let depths = normalizedDepths.sorted()
-        guard depths.count >= 64 else { return nil }
-        let minDepth = depths.first ?? 0
-        let maxDepth = depths.last ?? 0
-        let depthSpan = maxDepth - minDepth
-        guard depthSpan.isFinite, depthSpan > 0.01 else { return nil }
+        guard sortedAllXs.count >= 64, sortedAllYs.count >= 64, depths.count >= 64 else { return nil }
+
+        let xP3 = sortedAllXs[percentileIndex(0.03, count: sortedAllXs.count)]
+        let xP97 = sortedAllXs[percentileIndex(0.97, count: sortedAllXs.count)]
+        let yP3 = sortedAllYs[percentileIndex(0.03, count: sortedAllYs.count)]
+        let yP97 = sortedAllYs[percentileIndex(0.97, count: sortedAllYs.count)]
+        let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+        let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+        let trimmedXSpan = xP97 - xP3
+        let trimmedYSpan = yP97 - yP3
+        let trimmedZSpan = zP97 - zP3
+        guard trimmedXSpan.isFinite, trimmedYSpan.isFinite, trimmedZSpan.isFinite,
+              trimmedXSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+        let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+        let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+        guard trimmedDepths.count >= 64 else { return nil }
 
         let binCount = 200
-        let binWidth = max(depthSpan / Float(binCount), 1e-4)
+        let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
         var histogram = [Int](repeating: 0, count: binCount)
-        for depth in depths {
-            var bucket = Int(((depth - minDepth) / binWidth).rounded(.down))
+        for depth in trimmedDepths {
+            var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
             bucket = min(max(bucket, 0), binCount - 1)
             histogram[bucket] += 1
         }
@@ -448,14 +479,14 @@ class USDZModelManager: ObservableObject {
             return nil
         }
 
-        let zMode = minDepth + (Float(peakIndex) + 0.5) * binWidth
-        let band = max(0.10 * abs(zMode), 0.05)
+        let zMode = zP3 + (Float(peakIndex) + 0.5) * binWidth
+        let band = max(0.10 * zMode, 1e-4)
         var backWallXs: [Float] = []
         var backWallYs: [Float] = []
         var backWallDepths: [Float] = []
-        backWallXs.reserveCapacity(depths.count / 2)
-        backWallYs.reserveCapacity(depths.count / 2)
-        backWallDepths.reserveCapacity(depths.count / 2)
+        backWallXs.reserveCapacity(trimmedDepths.count / 2)
+        backWallYs.reserveCapacity(trimmedDepths.count / 2)
+        backWallDepths.reserveCapacity(trimmedDepths.count / 2)
 
         for index in 0..<normalizedDepths.count {
             let depth = normalizedDepths[index]
@@ -470,23 +501,40 @@ class USDZModelManager: ObservableObject {
         let sortedXs = backWallXs.sorted()
         let sortedYs = backWallYs.sorted()
         let sortedZs = backWallDepths.sorted()
-        let idx5 = min(sortedXs.count - 1, max(0, Int(Float(sortedXs.count) * 0.05)))
-        let idx95 = min(sortedXs.count - 1, max(idx5, Int(Float(sortedXs.count) * 0.95)))
+        let idx5 = percentileIndex(0.05, count: sortedXs.count)
+        let idx95 = percentileIndex(0.95, count: sortedXs.count)
+        let yIdx5 = percentileIndex(0.05, count: sortedYs.count)
+        let yIdx95 = percentileIndex(0.95, count: sortedYs.count)
         let rawWidth = sortedXs[idx95] - sortedXs[idx5]
-        let rawHeight = sortedYs[idx95] - sortedYs[idx5]
+        let rawHeight = sortedYs[yIdx95] - sortedYs[yIdx5]
         let zMedian = sortedZs[sortedZs.count / 2]
+        let zMean = sortedZs.reduce(0, +) / Float(sortedZs.count)
+        let legacyWidth = rawWidth / 1.2
+        let legacyHeight = rawHeight / 1.2
+        let legacyDepth = zMedian * 1.08
+        let finalDepth = floorDiagonal
 
         return MeasuredPlyRoomDimensions(
-            width: rawWidth / 1.2,
-            height: rawHeight / 1.2,
-            depth: zMedian * 1.08,
+            legacyWidth: legacyWidth,
+            legacyHeight: legacyHeight,
+            legacyDepth: legacyDepth,
+            width: rawWidth,
+            height: rawHeight,
+            depth: finalDepth,
             sceneWidth: maxX - minX,
             sceneHeight: maxY - minY,
             sceneDepth: maxZ - minZ,
             zMode: zMode,
             zMedian: zMedian,
+            zMean: zMean,
             band: band,
-            count: backWallXs.count
+            count: backWallXs.count,
+            floorDiagonal: floorDiagonal,
+            trimmedXSpan: trimmedXSpan,
+            trimmedYSpan: trimmedYSpan,
+            trimmedZSpan: trimmedZSpan,
+            rawWidth: rawWidth,
+            rawHeight: rawHeight
         )
     }
 
@@ -1199,7 +1247,7 @@ class USDZModelManager: ObservableObject {
                 let approachTag: String
                 if measured != nil {
                     sourceTag = "measured"
-                    approachTag = "back_wall_mode_from_ply_vertices"
+                    approachTag = "floor_diagonal"
                 } else if finalRoomWidth != nil || finalRoomHeight != nil || finalRoomDepth != nil {
                     sourceTag = "fallback"
                     approachTag = "preview_active_room_dimensions"
@@ -1211,10 +1259,28 @@ class USDZModelManager: ObservableObject {
                 if let measured, debugMode {
                     logDebug(
                         "[GREEN][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
-                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
-                        "Z=\(String(format: "%.4f", measured.zMode)) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=LEGACY_BACK_WALL_PERCENTILE " +
+                        "BACK_WALL_Z=\(String(format: "%.4f", measured.zMode)) " +
                         "Z_MEDIAN=\(String(format: "%.4f", measured.zMedian)) " +
                         "BAND=\(String(format: "%.4f", measured.band)) COUNT=\(measured.count) " +
+                        "RAW_W=\(String(format: "%.4f", measured.rawWidth)) " +
+                        "RAW_H=\(String(format: "%.4f", measured.rawHeight)) " +
+                        "W=\(String(format: "%.4f", measured.legacyWidth)) " +
+                        "H=\(String(format: "%.4f", measured.legacyHeight)) " +
+                        "D=\(String(format: "%.4f", measured.legacyDepth))"
+                    )
+                    logDebug(
+                        "[GREEN][ROOM_DIMS_APP][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
+                        "FLOOR_DIAG=\(String(format: "%.4f", measured.floorDiagonal)) " +
+                        "TRIMMED_X=\(String(format: "%.4f", measured.trimmedXSpan)) " +
+                        "TRIMMED_Y=\(String(format: "%.4f", measured.trimmedYSpan)) " +
+                        "TRIMMED_Z=\(String(format: "%.4f", measured.trimmedZSpan)) " +
+                        "BACK_WALL_Z=\(String(format: "%.4f", measured.zMode)) " +
+                        "BACK_WALL_Z_MEAN=\(String(format: "%.4f", measured.zMean)) " +
+                        "BAND=\(String(format: "%.4f", measured.band)) COUNT=\(measured.count) " +
+                        "RAW_W=\(String(format: "%.4f", measured.rawWidth)) " +
+                        "RAW_H=\(String(format: "%.4f", measured.rawHeight)) " +
                         "W=\(String(format: "%.4f", measured.width)) " +
                         "H=\(String(format: "%.4f", measured.height)) " +
                         "D=\(String(format: "%.4f", measured.depth)) " +
@@ -1227,7 +1293,7 @@ class USDZModelManager: ObservableObject {
                     let sceneHeightString = finalSceneHeight.map { String(format: "%.4f", $0) } ?? "nil"
                     let sceneDepthString = finalSceneDepth.map { String(format: "%.4f", $0) } ?? "nil"
                     logDebug(
-                        "[YELLOW][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "[YELLOW][ROOM_DIMS_APP][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
                         "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
                         "W=\(String(format: "%.4f", finalRoomWidth)) " +
                         "H=\(String(format: "%.4f", finalRoomHeight)) " +
@@ -1236,7 +1302,7 @@ class USDZModelManager: ObservableObject {
                     )
                 } else if debugMode {
                     logDebug(
-                        "[RED][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "[RED][ROOM_DIMS_APP][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
                         "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) unavailable"
                     )
                 }
@@ -1260,6 +1326,21 @@ class USDZModelManager: ObservableObject {
                 }
                 if let sd = finalSceneDepth {
                     metadata["roomSceneDepth"] = String(format: "%.4f", sd)
+                }
+                if let measured {
+                    metadata["roomDimsApproach"] = "floor_diagonal"
+                    metadata["roomFloorDiagonal"] = String(format: "%.4f", measured.floorDiagonal)
+                    metadata["roomTrimmedXSpan"] = String(format: "%.4f", measured.trimmedXSpan)
+                    metadata["roomTrimmedYSpan"] = String(format: "%.4f", measured.trimmedYSpan)
+                    metadata["roomTrimmedZSpan"] = String(format: "%.4f", measured.trimmedZSpan)
+                    metadata["roomBackWallZMode"] = String(format: "%.4f", measured.zMode)
+                    metadata["roomBackWallZMean"] = String(format: "%.4f", measured.zMean)
+                    metadata["roomBackWallBand"] = String(format: "%.4f", measured.band)
+                    metadata["roomBackWallCount"] = "\(measured.count)"
+                    metadata["roomBackWallRawWidth"] = String(format: "%.4f", measured.rawWidth)
+                    metadata["roomBackWallRawHeight"] = String(format: "%.4f", measured.rawHeight)
+                } else if sourceTag == "fallback" {
+                    metadata["roomDimsApproach"] = "preview_active_room_dimensions"
                 }
                 metadata["isClassicPly"] = variant.isClassic ? "true" : "false"
 

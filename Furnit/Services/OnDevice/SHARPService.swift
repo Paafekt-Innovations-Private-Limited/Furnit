@@ -3,12 +3,12 @@ import UIKit
 import CoreML
 import simd
 
-/// App sandbox temp directory for unsaved Sharp previews (`Room_*_classic.ply`, thumbnails). Not `Documents/SavedRooms`.
+/// App sandbox temp directory for unsaved Sharp previews (`Room_*.ply`, sidecars, thumbnails). Not `Documents/SavedRooms`.
 private func sharpModelsTemporaryDirectoryURL() -> URL {
     FileManager.default.temporaryDirectory.appendingPathComponent("SHARPModels", isDirectory: true)
 }
 
-/// PLY URL plus axis-aligned bounds in **scene units** for **`_classic.ply`** (same vertex frame as in-app Metal viewer).
+/// PLY URL plus axis-aligned bounds in **scene units** for the freshly-created preview PLY.
 struct SHARPGenerationResult: Sendable {
     let plyURL: URL
     let plyAabbWidth: Float
@@ -415,7 +415,7 @@ class SHARPService: ObservableObject {
     ///   - sourceImageURL: Original photo file URL when known (library pick) — used to write `camera_exif.json` (focal + subject distance).
     ///   - photoLibraryAssetLocalId: `PHAsset.localIdentifier` when the image came from the library (EXIF when `imageURL` is nil).
     ///   - captureMediaMetadata: `UIImagePickerController.InfoKey.mediaMetadata` from in-app camera when available.
-    /// - Returns: URL of the `_classic.ply` written by `writePLY` (Metal viewer frame).
+    /// - Returns: URL of the plain base `.ply` written by `writePLY` for the fresh preview.
     func generateGaussians(
         from image: UIImage,
         sourceImageURL: URL? = nil,
@@ -491,15 +491,16 @@ class SHARPService: ObservableObject {
                 applyAspectCorrection: false,
                 sharpCamera: sharpCamera
             )
+            let plyURL = plyURLs.original
             gaussianParams?.removeAll(keepingCapacity: false)
             gaussianParams = nil
             logMemorySnapshot(
                 "SHARPService.generateGaussians",
-                details: "phase=after_write_ply ply=\(plyURLs.classic.lastPathComponent)"
+                details: "phase=after_write_ply ply=\(plyURL.lastPathComponent)"
             )
             logMemorySnapshot("SHARPService.generateGaussians", details: "phase=after_drop_gaussian_params")
             logSharpMilestone(
-                "PLY written on Swift/Core ML path (not C++): \(plyURLs.classic.lastPathComponent) — Metal viewer loads this file",
+                "PLY written on Swift/Core ML path (not C++): \(plyURL.lastPathComponent) — fresh preview loads plain base PLY",
             )
             logDebug("SHARP: Saved original PLY to \(plyURLs.original.path)")
             logDebug("SHARP: Saved classic PLY to \(plyURLs.classic.path)")
@@ -537,7 +538,6 @@ class SHARPService: ObservableObject {
                 inputSquarePx: Self.inputSize,
                 exif: exif
             )
-            let plyURL = plyURLs.classic
 
             // Complete
             progress = 1.0
@@ -1397,6 +1397,16 @@ class SHARPService: ObservableObject {
         struct BackWallDimensions {
             let zMode: Float
             let zMedian: Float
+            let zMean: Float
+            let floorDiagonal: Float
+            let trimmedXSpan: Float
+            let trimmedYSpan: Float
+            let trimmedZSpan: Float
+            let rawWidth: Float
+            let rawHeight: Float
+            let legacyWidth: Float
+            let legacyHeight: Float
+            let legacyDepth: Float
             let width: Float
             let height: Float
             let depth: Float
@@ -1407,19 +1417,39 @@ class SHARPService: ObservableObject {
         func estimateBackWallDimensions() -> BackWallDimensions? {
             guard !rows.isEmpty else { return nil }
 
-            let depths = rows.map { -$0.z }.filter { $0.isFinite && $0 > 0.01 }.sorted()
-            guard depths.count >= 64 else { return nil }
+            let xs = rows.map(\.x).filter(\.isFinite).sorted()
+            let ys = rows.map(\.y).filter(\.isFinite).sorted()
+            let depths = rows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, ys.count >= 64, depths.count >= 64 else { return nil }
 
-            let minDepth = depths.first ?? 0
-            let maxDepth = depths.last ?? 0
-            let depthSpan = maxDepth - minDepth
-            guard depthSpan.isFinite, depthSpan > 0.01 else { return nil }
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            let xP3 = xs[percentileIndex(0.03, count: xs.count)]
+            let xP97 = xs[percentileIndex(0.97, count: xs.count)]
+            let yP3 = ys[percentileIndex(0.03, count: ys.count)]
+            let yP97 = ys[percentileIndex(0.97, count: ys.count)]
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+            let trimmedXSpan = xP97 - xP3
+            let trimmedYSpan = yP97 - yP3
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedXSpan.isFinite, trimmedYSpan.isFinite, trimmedZSpan.isFinite,
+                  trimmedXSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+            let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
 
             let binCount = 200
-            let binWidth = max(depthSpan / Float(binCount), 1e-4)
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
             var histogram = [Int](repeating: 0, count: binCount)
-            for z in depths {
-                var index = Int(((z - minDepth) / binWidth).rounded(.down))
+            for z in trimmedDepths {
+                var index = Int(((z - zP3) / binWidth).rounded(.down))
                 index = min(max(index, 0), binCount - 1)
                 histogram[index] += 1
             }
@@ -1427,26 +1457,45 @@ class SHARPService: ObservableObject {
                 return nil
             }
 
-            let zMode = minDepth + (Float(peakIndex) + 0.5) * binWidth
-            let band = max(0.10 * abs(zMode), 0.05)
-            let backWallRows = rows.filter { abs((-($0.z)) - zMode) < band }
+            let zMode = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * zMode, 1e-4)
+            let backWallRows = rows.filter { abs(abs($0.z) - zMode) < band }
             guard backWallRows.count >= 64 else { return nil }
 
-            let xs = backWallRows.map(\.x).sorted()
-            let ys = backWallRows.map(\.y).sorted()
-            let zs = backWallRows.map { -$0.z }.sorted()
-            let idx5 = min(xs.count - 1, max(0, Int(Float(xs.count) * 0.05)))
-            let idx95 = min(xs.count - 1, max(idx5, Int(Float(xs.count) * 0.95)))
-            let rawWidth = xs[idx95] - xs[idx5]
-            let rawHeight = ys[idx95] - ys[idx5]
-            let zMedian = zs[zs.count / 2]
+            let backWallXs = backWallRows.map(\.x).filter(\.isFinite).sorted()
+            let backWallYs = backWallRows.map(\.y).filter(\.isFinite).sorted()
+            let backWallDepths = backWallRows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard backWallXs.count >= 64, backWallYs.count >= 64, backWallDepths.count >= 64 else { return nil }
+
+            let idx5 = percentileIndex(0.05, count: backWallXs.count)
+            let idx95 = percentileIndex(0.95, count: backWallXs.count)
+            let yIdx5 = percentileIndex(0.05, count: backWallYs.count)
+            let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
+            let rawWidth = backWallXs[idx95] - backWallXs[idx5]
+            let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+            let zMedian = backWallDepths[backWallDepths.count / 2]
+            let zMean = backWallDepths.reduce(0, +) / Float(backWallDepths.count)
+            let legacyWidth = rawWidth / 1.2
+            let legacyHeight = rawHeight / 1.2
+            let legacyDepth = zMedian * 1.08
+            let finalDepth = floorDiagonal
 
             return BackWallDimensions(
                 zMode: zMode,
                 zMedian: zMedian,
-                width: rawWidth / 1.2,
-                height: rawHeight / 1.2,
-                depth: zMedian * 1.08,
+                zMean: zMean,
+                floorDiagonal: floorDiagonal,
+                trimmedXSpan: trimmedXSpan,
+                trimmedYSpan: trimmedYSpan,
+                trimmedZSpan: trimmedZSpan,
+                rawWidth: rawWidth,
+                rawHeight: rawHeight,
+                legacyWidth: legacyWidth,
+                legacyHeight: legacyHeight,
+                legacyDepth: legacyDepth,
+                width: rawWidth,
+                height: rawHeight,
+                depth: finalDepth,
                 count: backWallRows.count,
                 band: band
             )
@@ -1616,15 +1665,33 @@ class SHARPService: ObservableObject {
         let backWallDimensions = estimateBackWallDimensions()
         if let backWall = backWallDimensions {
             logDebug(
-                "[GREEN][ROOM_DIMS] BACK_WALL_MODE Z=\(String(format: "%.4f", backWall.zMode)) " +
+                "[GREEN][ROOM_DIMS] APPROACH=LEGACY_BACK_WALL_PERCENTILE " +
+                "BACK_WALL_Z=\(String(format: "%.4f", backWall.zMode)) " +
                 "Z_MEDIAN=\(String(format: "%.4f", backWall.zMedian)) " +
                 "BAND=\(String(format: "%.4f", backWall.band)) COUNT=\(backWall.count) " +
+                "RAW_W=\(String(format: "%.4f", backWall.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", backWall.rawHeight)) " +
+                "W=\(String(format: "%.4f", backWall.legacyWidth)) " +
+                "H=\(String(format: "%.4f", backWall.legacyHeight)) " +
+                "D=\(String(format: "%.4f", backWall.legacyDepth))"
+            )
+            logDebug(
+                "[GREEN][ROOM_DIMS_APP] APPROACH=FLOOR_DIAGONAL " +
+                "FLOOR_DIAG=\(String(format: "%.4f", backWall.floorDiagonal)) " +
+                "TRIMMED_X=\(String(format: "%.4f", backWall.trimmedXSpan)) " +
+                "TRIMMED_Y=\(String(format: "%.4f", backWall.trimmedYSpan)) " +
+                "TRIMMED_Z=\(String(format: "%.4f", backWall.trimmedZSpan)) " +
+                "BACK_WALL_Z=\(String(format: "%.4f", backWall.zMode)) " +
+                "BACK_WALL_Z_MEAN=\(String(format: "%.4f", backWall.zMean)) " +
+                "BAND=\(String(format: "%.4f", backWall.band)) COUNT=\(backWall.count) " +
+                "RAW_W=\(String(format: "%.4f", backWall.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", backWall.rawHeight)) " +
                 "W=\(String(format: "%.4f", backWall.width)) " +
                 "H=\(String(format: "%.4f", backWall.height)) " +
                 "D=\(String(format: "%.4f", backWall.depth))"
             )
         } else {
-            logDebug("[RED][ROOM_DIMS] BACK_WALL_MODE unavailable count=\(rows.count)")
+            logDebug("[RED][ROOM_DIMS_APP] APPROACH=FLOOR_DIAGONAL unavailable count=\(rows.count)")
         }
 
         let firstRowXYZ: String = {

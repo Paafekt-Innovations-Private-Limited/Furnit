@@ -555,6 +555,7 @@ struct SharpRoomView: View {
             infiniteZoom: infiniteZoomEnabled,
             arReferenceOrientation: photoOrientation,
             treatAsClassicPly: viewerUsesClassicPlyBehavior,
+            initialSharpRoomYaw: initialSharpRoomYaw,
             onBoundsAvailable: { bounds in
                 DispatchQueue.main.async {
                     metalBounds = bounds
@@ -982,6 +983,16 @@ struct SharpRoomView: View {
             )
         }
         return "\(viewerPlyURL.lastPathComponent)\nROOM_DIMS unavailable"
+    }
+
+    private var initialSharpRoomYaw: Float {
+        let stem = viewerPlyURL.deletingPathExtension().lastPathComponent
+        let isSavedBasePly = !allowSave &&
+            savedRoomModel != nil &&
+            viewerPlyURL.pathExtension.lowercased() == "ply" &&
+            !stem.hasSuffix("_classic") &&
+            !stem.hasSuffix("_3dgs")
+        return isSavedBasePly ? .pi : 0
     }
 
     private var canPresentRoomDimensionsAlert: Bool {

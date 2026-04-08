@@ -47,6 +47,9 @@ struct GaussianSplatView: UIViewRepresentable {
     /// When true, apply SHARP classic camera/orientation behavior even if the file name does not include `_classic`.
     var treatAsClassicPly: Bool = false
 
+    /// Optional initial yaw offset for SHARP room framing.
+    var initialSharpRoomYaw: Float = 0
+
     /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
     var onBoundsAvailable: ((RoomBounds) -> Void)?
 
@@ -68,6 +71,7 @@ struct GaussianSplatView: UIViewRepresentable {
             infiniteZoom: infiniteZoom,
             arReferenceOrientation: arReferenceOrientation,
             treatAsClassicPly: treatAsClassicPly,
+            initialSharpRoomYaw: initialSharpRoomYaw,
             onBoundsAvailable: onBoundsAvailable
         )
     }
@@ -233,6 +237,7 @@ struct GaussianSplatView: UIViewRepresentable {
         let infiniteZoom: Bool
         let arReferenceOrientation: PhotoOrientation
         let treatAsClassicPly: Bool
+        let initialSharpRoomYaw: Float
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
@@ -257,6 +262,7 @@ struct GaussianSplatView: UIViewRepresentable {
             infiniteZoom: Bool,
             arReferenceOrientation: PhotoOrientation,
             treatAsClassicPly: Bool,
+            initialSharpRoomYaw: Float,
             onBoundsAvailable: ((RoomBounds) -> Void)?
         ) {
             _isLoading = isLoading
@@ -265,6 +271,7 @@ struct GaussianSplatView: UIViewRepresentable {
             self.infiniteZoom = infiniteZoom
             self.arReferenceOrientation = arReferenceOrientation
             self.treatAsClassicPly = treatAsClassicPly
+            self.initialSharpRoomYaw = initialSharpRoomYaw
             self.onBoundsAvailable = onBoundsAvailable
             super.init()
         }
@@ -362,7 +369,7 @@ struct GaussianSplatView: UIViewRepresentable {
             splatCompositeShadowLift = 0.05
             isSharpClassicPly = treatAsClassicPly || plyURL.lastPathComponent.contains("_classic")
             // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
-            cameraYaw = 0
+            cameraYaw = initialSharpRoomYaw
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -915,13 +922,13 @@ struct GaussianSplatView: UIViewRepresentable {
 
         /// Orbit, zoom, and scene scale back to defaults.
         func performSharpRoomRecenter() {
-            cameraYaw = 0
+            cameraYaw = initialSharpRoomYaw
             cameraPitch = 0
             cameraOffset = .zero
             appliedZoomLevel = 1.0
             zoomLevel = 1.0
             sceneScale = SIMD2(1, 1)
-            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset")
+            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset yaw=\(initialSharpRoomYaw)")
             view?.setNeedsDisplay()
         }
 
