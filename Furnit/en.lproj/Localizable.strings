@@ -381,7 +381,7 @@
 "roomViewer.brainGestureHintExplanation" = "Tap the brain to turn furniture detection on or off. When it is on, pinch the overlay to resize it.";
 "roomViewer.snapshotGestureHintExplanation" = "Tap the camera to save a picture of the room to Photos.";
 "roomViewer.arFurnitureSizingHint" = "Uses the camera to better match furniture size to your room. Works best on iPhones with LiDAR. Turn this off if the view stutters or feels unstable.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "Tap the brain icon first to check furniture.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "I place furniture in proportion to the room size. Tap the brain icon, then try me.";
 "roomViewer.arSizingEnable" = "Enable camera-assisted furniture sizing";
 "roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
 "roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";

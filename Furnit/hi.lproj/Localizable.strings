@@ -300,7 +300,7 @@
 "roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
 "roomViewer.snapshotGestureHintExplanation" = "कमरे की तस्वीर फ़ोटो में सहेजने के लिए कैमरा पर टैप करें।";
 "roomViewer.arFurnitureSizingHint" = "कैमरे से फर्नीचर का आकार कमरे के अनुसार बेहतर मिलाने में मदद करता है। LiDAR वाले iPhone पर सबसे अच्छा काम करता है। अगर दृश्य रुक-रुक कर चले या अस्थिर लगे तो इसे बंद कर दें।";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "फर्नीचर देखने के लिए पहले ब्रेन आइकन पर टैप करें।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "मैं कमरे के आकार के अनुपात में फर्नीचर रखता हूँ। पहले ब्रेन आइकन पर टैप करें, फिर मुझे आज़माएँ।";
 "roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
 "roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";
 "roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";

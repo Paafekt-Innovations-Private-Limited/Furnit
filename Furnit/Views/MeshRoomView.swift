@@ -143,6 +143,7 @@ struct MeshRoomView: View {
 
             if !isLoading {
                 cameraButtonsOverlay
+                topTrailingARSizingOverlay
             }
 
             // FurnitureFit overlay (when active) - full screen camera for furniture detection
@@ -644,6 +645,20 @@ struct MeshRoomView: View {
         }
     }
 
+    private var topTrailingARSizingOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if canOfferBrainArAssist {
+                arSizingButtonWithHintBelow
+                    .padding(.top, 52)
+                    .padding(.trailing, 16)
+            }
+        }
+        .zIndex(19)
+    }
+
     /// D-pad cluster only (same notifications as ``SharpRoomView`` / GLB viewer).
     private var cameraDPadCluster: some View {
         HStack(spacing: 8) {
@@ -767,9 +782,6 @@ struct MeshRoomView: View {
                 Spacer()
 
                 VStack(spacing: 10) {
-                    if canOfferBrainArAssist {
-                        arSizingButtonWithHintBelow
-                    }
                     snapshotButtonWithHintAbove
                 }
                     .padding(.trailing, 16)
@@ -810,9 +822,6 @@ struct MeshRoomView: View {
                 Spacer()
 
                 VStack(spacing: 10) {
-                    if canOfferBrainArAssist {
-                        arSizingButtonWithHintBelow
-                    }
                     snapshotButtonWithHintAbove
                 }
             }

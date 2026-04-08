@@ -318,7 +318,7 @@
 "roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
 "roomViewer.snapshotGestureHintExplanation" = "اضغط الكاميرا لحفظ صورة للغرفة في الصور.";
 "roomViewer.arFurnitureSizingHint" = "يستخدم الكاميرا لتحسين مطابقة حجم الأثاث مع الغرفة. يعمل أفضل على آيفون المزوّد بـ LiDAR. أوقف الميزة إذا كانت الصورة تتقطع أو تبدو غير ثابتة.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "اضغط أولاً على أيقونة الدماغ لفحص الأثاث.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "أقوم بوضع الأثاث بنسبة تتناسب مع حجم الغرفة. اضغط على أيقونة الدماغ ثم جرّبني.";
 "roomViewer.arSizingEnable" = "تفعيل قياس الأثاث بمساعدة الكاميرا";
 "roomViewer.arSizingDisable" = "إيقاف قياس الأثاث بمساعدة الكاميرا";
 "roomViewer.gestureHintToggleAccessibility" = "اضغط هذا الرمز لإظهار هذه النصيحة أو إخفائها.";

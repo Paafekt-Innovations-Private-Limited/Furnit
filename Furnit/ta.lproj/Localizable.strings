@@ -300,7 +300,7 @@
 "roomViewer.brainGestureHintExplanation" = "தளபாடக் கண்டறிதலை இயக்க அல்லது நிறுத்த மூளை ஐகானைத் தட்டவும். இயக்கத்தில் இருக்கும்போது மேலடுக்கைச் சிமிட்டி அளவை மாற்றவும்.";
 "roomViewer.snapshotGestureHintExplanation" = "அறையின் படத்தை புகைப்படங்களில் சேமிக்க கேமராவைத் தட்டவும்.";
 "roomViewer.arFurnitureSizingHint" = "அறைக்கு ஏற்றவாறு தளபாட அளவைச் சீரமைக்க கேமராவைப் பயன்படுத்துகிறது. LiDAR உள்ள ஐபோன்களில் சிறப்பாக வேலை செய்கிறது. காட்சி தடுமாறினால் அல்லது நிலையற்றதாக இருந்தால் அணைக்கவும்.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "தளபாடத்தை பார்க்க முதலில் பிரெயின் ஐகானை தட்டவும்.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "அறை அளவுக்கு ஒப்பாக தளபாடத்தை அமைக்க நான் உதவுவேன். முதலில் பிரெயின் ஐகானைத் தட்டி, பிறகு என்னை முயற்சிக்கவும்.";
 "roomViewer.arSizingEnable" = "கேமரா உதவித் தளபாட அளவை இயக்கு";
 "roomViewer.arSizingDisable" = "கேமரா உதவித் தளபாட அளவை முடக்கு";
 "roomViewer.gestureHintToggleAccessibility" = "இந்தக் குறிப்பைக் காட்ட அல்லது மறைக்க இந்த ஐகானைத் தட்டவும்.";

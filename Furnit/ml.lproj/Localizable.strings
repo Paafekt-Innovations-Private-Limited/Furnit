@@ -300,7 +300,7 @@
 "roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ കണ്ടെത്തൽ ഓൺ അല്ലെങ്കിൽ ഓഫ് ചെയ്യാൻ മസ്തിഷ്ക ഐക്കൺ തട്ടുക. ഓണായാൽ ഓവർലേ ചിമുട്ടി വലുപ്പം മാറ്റുക.";
 "roomViewer.snapshotGestureHintExplanation" = "മുറിയുടെ ചിത്രം ഫോട്ടോകളിൽ സേവ് ചെയ്യാൻ ക്യാമറ തട്ടുക.";
 "roomViewer.arFurnitureSizingHint" = "മുറിയുമായി ഫർണിച്ചർ വലുപ്പം കൂടുതൽ പൊരുത്തപ്പെടാൻ ക്യാമറ ഉപയോഗിക്കുന്നു. LiDAR ഉള്ള ഐഫോണുകളിൽ ഏറ്റവും നന്നായി പ്രവർത്തിക്കുന്നു. കാഴ്ച തടസ്സപ്പെടുകയോ അസ്ഥിരമായി തോന്നുകയോ ചെയ്താൽ ഇത് ഓഫ് ചെയ്യുക.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "ഫർണിച്ചർ പരിശോധിക്കാൻ ആദ്യം ബ്രെയിൻ ഐക്കണിൽ ടാപ്പ് ചെയ്യുക.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "മുറിയുടെ വലുപ്പത്തിന് അനുപാതമായി ഫർണിച്ചർ വയ്ക്കാൻ ഞാൻ സഹായിക്കും. ആദ്യം ബ്രെയിൻ ഐക്കണിൽ ടാപ്പ് ചെയ്യൂ, ശേഷം എന്നെ പരീക്ഷിക്കൂ.";
 "roomViewer.arSizingEnable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക";
 "roomViewer.arSizingDisable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓഫ് ചെയ്യുക";
 "roomViewer.gestureHintToggleAccessibility" = "ഈ നുറുങ്ങ് കാണിക്കാനോ മറയ്ക്കാനോ ഈ ഐക്കൺ തട്ടുക.";

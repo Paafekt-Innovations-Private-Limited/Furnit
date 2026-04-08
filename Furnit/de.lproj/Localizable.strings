@@ -330,7 +330,7 @@
 "roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Möbel-Erkennung ein- oder auszuschalten. Wenn sie an ist, kneife die Einblendung, um ihre Größe zu ändern.";
 "roomViewer.snapshotGestureHintExplanation" = "Tippe auf die Kamera, um ein Bild des Raums in „Fotos“ zu speichern.";
 "roomViewer.arFurnitureSizingHint" = "Nutzt die Kamera, damit Möbelgrößen besser zur Raumgröße passen. Am besten auf iPhones mit LiDAR. Schalte es aus, wenn die Ansicht ruckelt oder instabil wirkt.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "Tippe zuerst auf das Gehirn-Symbol, um Möbel zu prüfen.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Ich platziere Möbel proportional zur Raumgröße. Tippe auf das Gehirn-Symbol und versuche es dann erneut.";
 "roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
 "roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
 "roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";

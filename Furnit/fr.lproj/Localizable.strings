@@ -301,7 +301,7 @@
 "roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour activer ou désactiver la détection de meubles. Quand elle est active, pincez le calque pour le redimensionner.";
 "roomViewer.snapshotGestureHintExplanation" = "Touchez l’appareil photo pour enregistrer une image de la pièce dans Photos.";
 "roomViewer.arFurnitureSizingHint" = "Utilise la caméra pour mieux ajuster la taille des meubles à la pièce. Fonctionne mieux sur les iPhone avec LiDAR. Désactive si la vue saccade ou semble instable.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "Touchez d’abord l’icône cerveau pour vérifier les meubles.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Je place les meubles en proportion de la taille de la pièce. Touchez l’icône cerveau puis réessayez avec moi.";
 "roomViewer.arSizingEnable" = "Activer le dimensionnement assisté par la caméra";
 "roomViewer.arSizingDisable" = "Désactiver le dimensionnement assisté par la caméra";
 "roomViewer.gestureHintToggleAccessibility" = "Touchez cette icône pour afficher ou masquer ce conseil.";

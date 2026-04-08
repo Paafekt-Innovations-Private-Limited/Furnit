@@ -452,7 +452,7 @@ struct SharpRoomView: View {
                 .allowsHitTesting(false)
             if canOfferBrainArAssist {
                 arSizingButtonWithHintBelow
-                    .padding(.top, 64)
+                    .padding(.top, 52)
                     .padding(.trailing, 16)
             }
         }

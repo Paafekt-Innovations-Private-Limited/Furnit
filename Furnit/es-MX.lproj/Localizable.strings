@@ -301,7 +301,7 @@
 "roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
 "roomViewer.snapshotGestureHintExplanation" = "Toca la cámara para guardar una foto del cuarto en Fotos.";
 "roomViewer.arFurnitureSizingHint" = "Usa la cámara para ajustar mejor el tamaño de los muebles a la habitación. Funciona mejor en iPhone con LiDAR. Desactívalo si la vista va a tirones o se ve inestable.";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "Toca primero el ícono del cerebro para revisar los muebles.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Coloco los muebles en proporción al tamaño del cuarto. Toca el ícono del cerebro y luego inténtalo conmigo.";
 "roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
 "roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";
 "roomViewer.gestureHintToggleAccessibility" = "Toca este ícono para mostrar u ocultar este consejo.";

@@ -318,7 +318,7 @@
 "roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
 "roomViewer.snapshotGestureHintExplanation" = "ঘরের ছবি ফটোতে সেভ করতে ক্যামেরায় ট্যাপ করুন।";
 "roomViewer.arFurnitureSizingHint" = "ক্যামেরা ব্যবহার করে ফার্নিচারের আকার ঘরের সাথে ভালো মিল রাখতে সাহায্য করে। LiDAR সহ আইফোনে সবচেয়ে ভালো কাজ করে। ভিউ ঝাঁকুনি দিলে বা অস্থির মনে হলে বন্ধ করুন।";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "ফার্নিচার দেখতে আগে ব্রেন আইকনে ট্যাপ করুন।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "আমি ঘরের আকারের অনুপাতে ফার্নিচার বসাই। আগে ব্রেন আইকনে ট্যাপ করুন, তারপর আমাকে ব্যবহার করুন।";
 "roomViewer.arSizingEnable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ চালু করুন";
 "roomViewer.arSizingDisable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ বন্ধ করুন";
 "roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";

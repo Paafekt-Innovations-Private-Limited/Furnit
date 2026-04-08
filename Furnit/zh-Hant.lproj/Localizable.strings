@@ -301,7 +301,7 @@
 "roomViewer.brainGestureHintExplanation" = "點大腦圖示可開關家具偵測。開啟時，捏合疊加層可調整大小。";
 "roomViewer.snapshotGestureHintExplanation" = "點按相機可將房間畫面儲存到「照片」。";
 "roomViewer.arFurnitureSizingHint" = "使用相機協助家具尺寸更貼合房間。配備 LiDAR 的 iPhone 上效果最佳。若畫面卡頓或不穩，可關閉此功能。";
-"roomViewer.arFurnitureSizingRequiresBrainHint" = "請先點一下大腦圖示來檢查家具。";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "我會依照房間大小比例擺放家具。請先點一下大腦圖示，然後再試我。";
 "roomViewer.arSizingEnable" = "開啟相機輔助家具尺寸";
 "roomViewer.arSizingDisable" = "關閉相機輔助家具尺寸";
 "roomViewer.gestureHintToggleAccessibility" = "點此圖示可顯示或隱藏此提示。";
