@@ -57,6 +57,7 @@ struct MeshRoomView: View {
     /// AR sizing hint (under the sizing button): same behavior as pinch/brain helpers.
     @State private var arSizingHintExplanationVisible = false
     @State private var arSizingHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintRequiresBrain = false
     /// Ruler tap: show W×H×D chip below top safe area (matches Sharp room dimensions hint).
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
@@ -407,14 +408,16 @@ struct MeshRoomView: View {
         }
     }
 
-    private func restartARSizingHint() {
+    private func showARSizingHint(requiresBrain: Bool) {
         cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = requiresBrain
         arSizingHintExplanationVisible = true
         scheduleARSizingHintTextAutoHide(seconds: 3)
     }
 
     private func onARSizingHintIconTapped() {
         cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = false
         arSizingHintExplanationVisible.toggle()
         if arSizingHintExplanationVisible {
             scheduleARSizingHintTextAutoHide(seconds: 3)
@@ -488,9 +491,9 @@ struct MeshRoomView: View {
     }
 
     private var arSizingHintText: String {
-        showingFurnitureFit
-            ? L10n.RoomViewer.arFurnitureSizingHint
-            : L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+        arSizingHintRequiresBrain
+            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+            : L10n.RoomViewer.arFurnitureSizingHint
     }
 
     private var brainGestureHintColumn: some View {
@@ -573,7 +576,6 @@ struct MeshRoomView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(arSizingHintAccessibilityLabel)
         }
-        .onAppear { restartARSizingHint() }
         .onDisappear { cancelARSizingHintTasks() }
     }
 
@@ -736,8 +738,7 @@ struct MeshRoomView: View {
                                 if showingFurnitureFit {
                                     brainArAssistedSizingEnabled.toggle()
                                 } else {
-                                    arSizingHintExplanationVisible = true
-                                    scheduleARSizingHintTextAutoHide(seconds: 3)
+                                    showARSizingHint(requiresBrain: true)
                                 }
                             }) {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -752,7 +753,7 @@ struct MeshRoomView: View {
                                         )
                                     )
                             }
-                            .disabled(isLoading || !showingFurnitureFit)
+                            .disabled(isLoading)
                             .accessibilityLabel(
                                 brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
                             )
@@ -787,8 +788,7 @@ struct MeshRoomView: View {
                                 if showingFurnitureFit {
                                     brainArAssistedSizingEnabled.toggle()
                                 } else {
-                                    arSizingHintExplanationVisible = true
-                                    scheduleARSizingHintTextAutoHide(seconds: 3)
+                                    showARSizingHint(requiresBrain: true)
                                 }
                             }) {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -803,7 +803,7 @@ struct MeshRoomView: View {
                                         )
                                     )
                             }
-                            .disabled(isLoading || !showingFurnitureFit)
+                            .disabled(isLoading)
                             .accessibilityLabel(
                                 brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
                             )

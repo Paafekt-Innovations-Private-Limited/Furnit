@@ -152,7 +152,7 @@ struct USDZModel: Identifiable, Hashable {
     }
 
     /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
-    /// Manual-setup rooms append a localized “(Default Values)” label after the numbers.
+    /// Manual-setup rooms append “(Default Values)”; SHARP PLY (AI) rooms append “(Near accurate values)”.
     var roomDimensionsListLine: String? {
         let baseLine: String?
         if let w = roomWidth, let h = roomHeight, let d = roomDepth,
@@ -171,6 +171,9 @@ struct USDZModel: Identifiable, Hashable {
         guard let line = baseLine else { return nil }
         if isManualSetupRoom {
             return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsDefaultValues)
+        }
+        if fileType == .ply {
+            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsNearAccurateValues)
         }
         return line
     }

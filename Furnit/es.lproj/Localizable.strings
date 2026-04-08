@@ -309,6 +309,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "Valores predeterminados";
 "roomViewer.roomDimensionsWHDWithDefault" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "A × Al\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Valores casi exactos";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Midiendo la habitación…";
 "roomViewer.goingBack" = "Volviendo…";
 "roomViewer.savingRoomEllipsis" = "Guardando habitación…";

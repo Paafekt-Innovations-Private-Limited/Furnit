@@ -326,6 +326,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "ডিফল্ট মান";
 "roomViewer.roomDimensionsWHDWithDefault" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "প্রস্থ × উচ্চতা\n%.2f × %.2f মি (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "প্রায় সঠিক মান";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";
 "roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";

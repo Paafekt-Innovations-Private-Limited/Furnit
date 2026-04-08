@@ -308,6 +308,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "இயல்புநிலை மதிப்புகள்";
 "roomViewer.roomDimensionsWHDWithDefault" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "அகலம் × உயரம்\n%.2f × %.2f மீ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "அருகிலுள்ள துல்லிய மதிப்புகள்";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
 "roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";
 "roomViewer.savingRoomEllipsis" = "அறை சேமிக்கப்படுகிறது...";

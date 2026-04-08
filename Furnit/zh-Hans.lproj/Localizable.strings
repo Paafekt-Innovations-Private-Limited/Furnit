@@ -309,6 +309,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "默认值";
 "roomViewer.roomDimensionsWHDWithDefault" = "宽 × 高 × 深\n%.2f × %.2f × %.2f 米 (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "宽 × 高\n%.2f × %.2f 米 (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "接近准确值";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "宽 × 高 × 深\n%.2f × %.2f × %.2f 米 (%@)";
 "roomViewer.measuringRoom" = "正在测量房间…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在保存房间…";

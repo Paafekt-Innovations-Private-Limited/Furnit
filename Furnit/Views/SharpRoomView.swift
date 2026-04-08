@@ -286,6 +286,7 @@ struct SharpRoomView: View {
     /// Camera sizing hint (under the left controls): explains what the camera/viewfinder button does.
     @State private var cameraSizingHintExplanationVisible = false
     @State private var cameraSizingHintHideTextTask: Task<Void, Never>?
+    @State private var cameraSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @State private var measuredRoomDimensions: (width: Float, height: Float, depth: Float)?
@@ -395,8 +396,7 @@ struct SharpRoomView: View {
                 if showingFurnitureFit {
                     brainArAssistedSizingEnabled.toggle()
                 } else {
-                    cameraSizingHintExplanationVisible = true
-                    scheduleCameraSizingHintAutoHide(seconds: 3)
+                    showCameraSizingHint(requiresBrain: true)
                 }
             } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -440,7 +440,6 @@ struct SharpRoomView: View {
                     .transition(.opacity)
             }
         }
-        .onAppear { restartCameraSizingGestureHint() }
         .onDisappear { cancelCameraSizingHintTasks() }
     }
 
@@ -617,9 +616,6 @@ struct SharpRoomView: View {
             } else {
                 restartBrainGestureHint()
                 restartSnapshotGestureHint()
-                if canOfferBrainArAssist {
-                    restartCameraSizingGestureHint()
-                }
             }
         }
         // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
@@ -796,15 +792,16 @@ struct SharpRoomView: View {
         }
     }
 
-    /// Same 3s show/hide cycle as ``restartBrainGestureHint()`` for the AR toolbar hint.
-    private func restartCameraSizingGestureHint() {
+    private func showCameraSizingHint(requiresBrain: Bool) {
         cancelCameraSizingHintTasks()
+        cameraSizingHintRequiresBrain = requiresBrain
         cameraSizingHintExplanationVisible = true
         scheduleCameraSizingHintAutoHide(seconds: 3)
     }
 
     private func onCameraSizingHintIconTapped() {
         cancelCameraSizingHintTasks()
+        cameraSizingHintRequiresBrain = false
         cameraSizingHintExplanationVisible.toggle()
         if cameraSizingHintExplanationVisible {
             scheduleCameraSizingHintAutoHide(seconds: 3)
@@ -896,14 +893,18 @@ struct SharpRoomView: View {
     }
 
     private var cameraSizingHintText: String {
-        showingFurnitureFit
-            ? L10n.RoomViewer.arFurnitureSizingHint
-            : L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+        cameraSizingHintRequiresBrain
+            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+            : L10n.RoomViewer.arFurnitureSizingHint
     }
 
     private var roomDimensionsHintText: String {
         if let d = activeRoomMetersDimensions {
-            return String(format: "W × H × D\n%.2f × %.2f × %.2f m", d.width, d.height, d.depth)
+            return L10n.RoomViewer.roomDimensionsWHDAIChip(
+                width: d.width,
+                height: d.height,
+                depth: d.depth
+            )
         }
         return "ROOM_DIMS unavailable"
     }
@@ -999,61 +1000,6 @@ struct SharpRoomView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(pinchHintAccessibilityLabel)
-
-            if canOfferBrainArAssist {
-                VStack(alignment: .leading, spacing: 6) {
-                    Button {
-                        if showingFurnitureFit {
-                            brainArAssistedSizingEnabled.toggle()
-                        } else {
-                            cameraSizingHintExplanationVisible = true
-                            scheduleCameraSizingHintAutoHide(seconds: 3)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(
-                                Circle().fill(
-                                    brainArAssistedSizingEnabled
-                                        ? Color.green.opacity(0.9)
-                                        : Color.black.opacity(0.45)
-                                )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLoading)
-                    .accessibilityLabel(
-                        brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
-                    )
-
-                    if cameraSizingHintExplanationVisible {
-                        Text(cameraSizingHintText)
-                            .font(.caption2)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 220, alignment: .leading)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                            .transition(.opacity)
-                    }
-
-                    Button(action: onCameraSizingHintIconTapped) {
-                        Image(systemName: "hand.tap.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLoading)
-                    .accessibilityLabel(cameraSizingHintAccessibilityLabel)
-                }
-            }
         }
         .onAppear { restartPinchGestureHint() }
         .onDisappear {

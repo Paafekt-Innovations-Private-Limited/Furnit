@@ -308,6 +308,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "ಡಿಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳು";
 "roomViewer.roomDimensionsWHDWithDefault" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "ಅಗಲ × ಎತ್ತರ\n%.2f × %.2f ಮೀ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "ಸಮೀಪದ ನಿಖರವಾದ ಮೌಲ್ಯಗಳು";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
 "roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";

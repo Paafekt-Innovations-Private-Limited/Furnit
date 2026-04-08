@@ -309,6 +309,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "預設值";
 "roomViewer.roomDimensionsWHDWithDefault" = "寬 × 高 × 深\n%.2f × %.2f × %.2f 公尺 (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "寬 × 高\n%.2f × %.2f 公尺 (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "接近準確值";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "寬 × 高 × 深\n%.2f × %.2f × %.2f 公尺 (%@)";
 "roomViewer.measuringRoom" = "正在測量房間…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在儲存房間…";

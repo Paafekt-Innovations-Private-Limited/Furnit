@@ -308,6 +308,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "डिफ़ॉल्ट मान";
 "roomViewer.roomDimensionsWHDWithDefault" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "चौड़ाई × ऊँचाई\n%.2f × %.2f मी (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "लगभग सटीक मान";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
 "roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";

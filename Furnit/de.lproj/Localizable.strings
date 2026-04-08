@@ -338,6 +338,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
 "roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "B × H\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Nahezu genaue Werte";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
 "roomViewer.savingRoomEllipsis" = "Raum wird gespeichert…";

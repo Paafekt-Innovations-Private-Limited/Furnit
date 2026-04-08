@@ -352,6 +352,18 @@ enum L10n {
                 roomDimensionsDefaultValues
             )
         }
+        /// SHARP / PLY AI-derived dimensions — home list line and ruler chip.
+        static let roomDimensionsNearAccurateValues = "roomViewer.roomDimensionsNearAccurateValues".localized
+        static func roomDimensionsWHDAIChip(width: Float, height: Float, depth: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHDWithNearAccurate".localized,
+                locale: .current,
+                width,
+                height,
+                depth,
+                roomDimensionsNearAccurateValues
+            )
+        }
         static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
         static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized

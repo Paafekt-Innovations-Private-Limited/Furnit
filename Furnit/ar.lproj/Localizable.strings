@@ -326,6 +326,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "القيم الافتراضية";
 "roomViewer.roomDimensionsWHDWithDefault" = "العرض × الارتفاع × العمق\n%.2f × %.2f × %.2f م (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "العرض × الارتفاع\n%.2f × %.2f م (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "قيم شبه دقيقة";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "العرض × الارتفاع × العمق\n%.2f × %.2f × %.2f م (%@)";
 "roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";
 "roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";

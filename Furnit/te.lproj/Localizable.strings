@@ -308,6 +308,8 @@
 "roomViewer.roomDimensionsDefaultValues" = "డిఫాల్ట్ విలువలు";
 "roomViewer.roomDimensionsWHDWithDefault" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "వెడల్పు × ఎత్తు\n%.2f × %.2f మీ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "దగ్గరగా ఖచ్చితమైన విలువలు";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";
 "roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
 "roomViewer.savingRoomEllipsis" = "గది సేవ్ అవుతోంది...";
