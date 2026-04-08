@@ -554,6 +554,16 @@ struct MeshRoomView: View {
 
     private var arSizingGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
+            Button(action: onARSizingHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(arSizingHintAccessibilityLabel)
             if arSizingHintExplanationVisible {
                 Text(arSizingHintText)
                     .font(.caption2)
@@ -565,16 +575,6 @@ struct MeshRoomView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                     .transition(.opacity)
             }
-            Button(action: onARSizingHintIconTapped) {
-                Image(systemName: "hand.tap.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(arSizingHintAccessibilityLabel)
         }
         .onDisappear { cancelARSizingHintTasks() }
     }
@@ -611,6 +611,36 @@ struct MeshRoomView: View {
                     .background(Circle().fill(Color.blue).shadow(radius: 5))
             }
             .disabled(isLoading)
+        }
+    }
+
+    private var arSizingButtonWithHintBelow: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Button(action: {
+                if showingFurnitureFit {
+                    brainArAssistedSizingEnabled.toggle()
+                } else {
+                    showARSizingHint(requiresBrain: true)
+                }
+            }) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle().fill(
+                            brainArAssistedSizingEnabled
+                                ? Color.green.opacity(0.9)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+            }
+            .disabled(isLoading)
+            .accessibilityLabel(
+                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+            )
+
+            arSizingGestureHintColumn
         }
     }
 
@@ -731,41 +761,17 @@ struct MeshRoomView: View {
             HStack {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
-
-                    if canOfferBrainArAssist {
-                        VStack(spacing: 6) {
-                            Button(action: {
-                                if showingFurnitureFit {
-                                    brainArAssistedSizingEnabled.toggle()
-                                } else {
-                                    showARSizingHint(requiresBrain: true)
-                                }
-                            }) {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 40, height: 40)
-                                    .background(
-                                        Circle().fill(
-                                            brainArAssistedSizingEnabled
-                                                ? Color.green.opacity(0.9)
-                                                : Color.black.opacity(0.45)
-                                        )
-                                    )
-                            }
-                            .disabled(isLoading)
-                            .accessibilityLabel(
-                                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
-                            )
-                            arSizingGestureHintColumn
-                        }
-                    }
                 }
                 .padding(.leading, 16)
 
                 Spacer()
 
-                snapshotButtonWithHintAbove
+                VStack(spacing: 10) {
+                    if canOfferBrainArAssist {
+                        arSizingButtonWithHintBelow
+                    }
+                    snapshotButtonWithHintAbove
+                }
                     .padding(.trailing, 16)
             }
             .padding(.bottom, 20)
@@ -781,35 +787,6 @@ struct MeshRoomView: View {
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
-
-                    if canOfferBrainArAssist {
-                        VStack(spacing: 6) {
-                            Button(action: {
-                                if showingFurnitureFit {
-                                    brainArAssistedSizingEnabled.toggle()
-                                } else {
-                                    showARSizingHint(requiresBrain: true)
-                                }
-                            }) {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 40, height: 40)
-                                    .background(
-                                        Circle().fill(
-                                            brainArAssistedSizingEnabled
-                                                ? Color.green.opacity(0.9)
-                                                : Color.black.opacity(0.45)
-                                        )
-                                    )
-                            }
-                            .disabled(isLoading)
-                            .accessibilityLabel(
-                                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
-                            )
-                            arSizingGestureHintColumn
-                        }
-                    }
                 }
 
                 // Orientation label
@@ -832,7 +809,12 @@ struct MeshRoomView: View {
 
                 Spacer()
 
-                snapshotButtonWithHintAbove
+                VStack(spacing: 10) {
+                    if canOfferBrainArAssist {
+                        arSizingButtonWithHintBelow
+                    }
+                    snapshotButtonWithHintAbove
+                }
             }
             .padding(.horizontal, 30)
             .padding(.bottom, 20)
@@ -1040,19 +1022,19 @@ struct MeshWebGLView: UIViewRepresentable {
         }
 
         @objc private func nudgeMeshCameraLeft() {
-            webView?.evaluateJavaScript("if (typeof meshCameraNudge === 'function') meshCameraNudge('left');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(-8, 0);", completionHandler: nil)
         }
 
         @objc private func nudgeMeshCameraRight() {
-            webView?.evaluateJavaScript("if (typeof meshCameraNudge === 'function') meshCameraNudge('right');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(8, 0);", completionHandler: nil)
         }
 
         @objc private func nudgeMeshCameraUp() {
-            webView?.evaluateJavaScript("if (typeof meshCameraNudge === 'function') meshCameraNudge('up');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(0.2);", completionHandler: nil)
         }
 
         @objc private func nudgeMeshCameraDown() {
-            webView?.evaluateJavaScript("if (typeof meshCameraNudge === 'function') meshCameraNudge('down');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -1208,20 +1190,42 @@ struct MeshWebGLView: UIViewRepresentable {
                     console.log('[MeshViewer] Camera recentered');
                 };
 
-                window.meshCameraNudge = function(direction) {
-                    const stepH = 0.08;
-                    const stepV = 0.06;
-                    const offset = new THREE.Vector3();
-                    offset.copy(camera.position).sub(controls.target);
-                    const spherical = new THREE.Spherical();
-                    spherical.setFromVector3(offset);
-                    if (direction === 'left') spherical.theta += stepH;
-                    else if (direction === 'right') spherical.theta -= stepH;
-                    else if (direction === 'up') spherical.phi -= stepV;
-                    else if (direction === 'down') spherical.phi += stepV;
-                    spherical.phi = Math.max(controls.minPolarAngle, Math.min(controls.maxPolarAngle, spherical.phi));
-                    offset.setFromSpherical(spherical);
-                    camera.position.copy(controls.target).add(offset);
+                // D-pad: same behavior as Sharp WebGL — walk on XZ, vertical on Y (not orbit).
+                const roomBoundsForClamping = {
+                    minX: -roomWidth * 0.5,
+                    maxX: roomWidth * 0.5,
+                    minY: 0,
+                    maxY: roomHeight,
+                    minZ: -roomDepth * 0.5,
+                    maxZ: roomDepth * 0.5
+                };
+
+                window.moveCamera = function(dx, dy) {
+                    const moveSpeed = 0.03;
+                    let newX = camera.position.x + dx * moveSpeed;
+                    let newZ = camera.position.z + dy * moveSpeed;
+                    const marginSide = 0.05;
+                    const marginBack = 0.02;
+                    newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                           Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                    newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                           Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+                    const actualDx = newX - camera.position.x;
+                    const actualDz = newZ - camera.position.z;
+                    camera.position.x = newX;
+                    camera.position.z = newZ;
+                    controls.target.x += actualDx;
+                    controls.target.z += actualDz;
+                    controls.update();
+                };
+
+                window.moveCameraUp = function(dy) {
+                    if (typeof dy !== 'number' || !isFinite(dy)) return;
+                    camera.position.y += dy;
+                    controls.target.y += dy;
+                    const m = 0.05;
+                    camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                    controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
                     controls.update();
                 };
 

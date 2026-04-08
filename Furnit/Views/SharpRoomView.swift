@@ -389,9 +389,9 @@ struct SharpRoomView: View {
         .accessibilityLabel(L10n.RoomViewer.saveRoom)
     }
 
-    /// Under the share button: AR toggle, then tap tip, then optional text (top → bottom). Same 3s hint cycle as the brain row.
-    private var navigationBarARAssistBlock: some View {
-        VStack(alignment: .center, spacing: 10) {
+    /// In-room AR sizing control: button first, helper tap icon directly underneath, then optional text.
+    private var arSizingButtonWithHintBelow: some View {
+        VStack(alignment: .center, spacing: 6) {
             Button {
                 if showingFurnitureFit {
                     brainArAssistedSizingEnabled.toggle()
@@ -417,6 +417,7 @@ struct SharpRoomView: View {
             .accessibilityLabel(
                 brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
             )
+
             Button(action: onCameraSizingHintIconTapped) {
                 Image(systemName: "hand.tap.fill")
                     .symbolRenderingMode(.hierarchical)
@@ -443,6 +444,22 @@ struct SharpRoomView: View {
         .onDisappear { cancelCameraSizingHintTasks() }
     }
 
+    /// Top-right AR sizing control positioned under the recenter/share toolbar buttons.
+    private var topTrailingARSizingOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if canOfferBrainArAssist {
+                arSizingButtonWithHintBelow
+                    .padding(.top, 64)
+                    .padding(.trailing, 16)
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(19)
+    }
+
     @ToolbarContentBuilder
     private var sharpRoomToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
@@ -456,17 +473,8 @@ struct SharpRoomView: View {
         }
         if authManager.canShare {
             ToolbarItem(placement: .navigationBarTrailing) {
-                VStack(alignment: .center, spacing: 10) {
-                    navigationBarShareButton
-                        .fixedSize(horizontal: true, vertical: true)
-                    if canOfferBrainArAssist {
-                        navigationBarARAssistBlock
-                    }
-                }
-            }
-        } else if canOfferBrainArAssist {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarARAssistBlock
+                navigationBarShareButton
+                    .fixedSize(horizontal: true, vertical: true)
             }
         }
         if allowSave {
@@ -1779,7 +1787,9 @@ struct SharpRoomView: View {
                         }
                     }
                     Spacer().allowsHitTesting(false)
-                    snapshotButtonWithHintAbove
+                    VStack(alignment: .trailing, spacing: 10) {
+                        snapshotButtonWithHintAbove
+                    }
                 }
                 .padding(.horizontal, 30).padding(.bottom, 20)
             }
@@ -1829,6 +1839,7 @@ struct SharpRoomView: View {
         ZStack {
             if !isLoading {
                 cameraButtonsOverlay
+                topTrailingARSizingOverlay
                 roomDimensionsHintOverlay
             }
             if isLoading { loadingOverlayView }

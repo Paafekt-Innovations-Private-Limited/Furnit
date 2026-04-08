@@ -944,19 +944,19 @@ struct GLBWebGLView: UIViewRepresentable {
         }
 
         @objc private func nudgeGLBCameraLeft() {
-            webView?.evaluateJavaScript("if (typeof glbCameraNudge === 'function') glbCameraNudge('left');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(-8, 0);", completionHandler: nil)
         }
 
         @objc private func nudgeGLBCameraRight() {
-            webView?.evaluateJavaScript("if (typeof glbCameraNudge === 'function') glbCameraNudge('right');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(8, 0);", completionHandler: nil)
         }
 
         @objc private func nudgeGLBCameraUp() {
-            webView?.evaluateJavaScript("if (typeof glbCameraNudge === 'function') glbCameraNudge('up');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(0.2);", completionHandler: nil)
         }
 
         @objc private func nudgeGLBCameraDown() {
-            webView?.evaluateJavaScript("if (typeof glbCameraNudge === 'function') glbCameraNudge('down');", completionHandler: nil)
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -1034,6 +1034,8 @@ struct GLBWebGLView: UIViewRepresentable {
 
                 console.log('[GLBViewer] Starting...');
 
+                let roomBoundsForClamping = null;
+
                 // Scene setup
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
@@ -1059,7 +1061,41 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.minDistance = 0.5;
                 controls.maxDistance = 20;
 
-                // Listen for orbit commands from Swift
+                // D-pad / Sharp parity: walk on XZ, vertical Y (same as embedded Sharp WebGL).
+                window.moveCamera = function(dx, dy) {
+                    const moveSpeed = 0.03;
+                    let newX = camera.position.x + dx * moveSpeed;
+                    let newZ = camera.position.z + dy * moveSpeed;
+                    if (roomBoundsForClamping) {
+                        const marginSide = 0.05;
+                        const marginBack = 0.02;
+                        newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                               Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                        newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                               Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+                    }
+                    const actualDx = newX - camera.position.x;
+                    const actualDz = newZ - camera.position.z;
+                    camera.position.x = newX;
+                    camera.position.z = newZ;
+                    controls.target.x += actualDx;
+                    controls.target.z += actualDz;
+                    controls.update();
+                };
+
+                window.moveCameraUp = function(dy) {
+                    if (typeof dy !== 'number' || !isFinite(dy)) return;
+                    camera.position.y += dy;
+                    controls.target.y += dy;
+                    if (roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                    }
+                    controls.update();
+                };
+
+                // Listen for orbit commands from Swift (touch drag)
                 window.orbitCamera = function(deltaX, deltaY) {
                     const spherical = new THREE.Spherical();
                     const offset = new THREE.Vector3();
@@ -1073,15 +1109,6 @@ struct GLBWebGLView: UIViewRepresentable {
                     offset.setFromSpherical(spherical);
                     camera.position.copy(controls.target).add(offset);
                     camera.lookAt(controls.target);
-                };
-
-                window.glbCameraNudge = function(direction) {
-                    const step = 48;
-                    if (typeof window.orbitCamera !== 'function') return;
-                    if (direction === 'left') window.orbitCamera(-step, 0);
-                    else if (direction === 'right') window.orbitCamera(step, 0);
-                    else if (direction === 'up') window.orbitCamera(0, step);
-                    else if (direction === 'down') window.orbitCamera(0, -step);
                 };
 
                 // Lighting
@@ -1126,6 +1153,16 @@ struct GLBWebGLView: UIViewRepresentable {
                         model.position.z = -center.z;
                         // Adjust Y so floor is at 0
                         model.position.y = -box.min.y;
+
+                        const boxWorld = new THREE.Box3().setFromObject(model);
+                        roomBoundsForClamping = {
+                            minX: boxWorld.min.x + 0.05,
+                            maxX: boxWorld.max.x - 0.05,
+                            minY: boxWorld.min.y + 0.05,
+                            maxY: boxWorld.max.y - 0.05,
+                            minZ: boxWorld.min.z + 0.05,
+                            maxZ: boxWorld.max.z - 0.02
+                        };
 
                         // Position camera inside the room looking at front wall
                         // After centering: room spans -size/2 to +size/2 in X and Z
