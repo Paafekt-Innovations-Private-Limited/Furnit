@@ -63,6 +63,8 @@
 "home.renameRoomMessage" = "This name appears in your room list. The saved file name stays the same.";
 "home.roomNamePlaceholder" = "Room name";
 "home.roomModel" = "3D Room Model";
+"home.aiBased3DRoom" = "AI based 3D room";
+"home.manualBased3DRoom" = "Manual based 3D room";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Room Limit Reached";
@@ -377,8 +379,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
 "roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap the brain to turn furniture detection on or off. When it is on, pinch the overlay to resize it.";
+"roomViewer.snapshotGestureHintExplanation" = "Tap the camera to save a picture of the room to Photos.";
+"roomViewer.arFurnitureSizingHint" = "Uses the camera to better match furniture size to your room. Works best on iPhones with LiDAR. Turn this off if the view stutters or feels unstable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Tap the brain icon first to check furniture.";
+"roomViewer.arSizingEnable" = "Enable camera-assisted furniture sizing";
+"roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
 "roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";
 "roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.roomDimensionsDefaultValues" = "Default Values";
+"roomViewer.roomDimensionsWHDWithDefault" = "W × H × D\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "W × H\n%.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Measuring room…";
 "roomViewer.goingBack" = "Going back...";
 "roomViewer.savingRoomEllipsis" = "Saving Room...";

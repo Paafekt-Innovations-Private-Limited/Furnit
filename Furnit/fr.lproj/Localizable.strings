@@ -58,6 +58,8 @@
 "home.deleteHint" = "Supprimez d'anciennes pièces pour en créer de nouvelles";
 "home.swipeHint" = "Balayez vers la gauche pour supprimer";
 "home.roomModel" = "Modèle de pièce 3D";
+"home.aiBased3DRoom" = "Pièce 3D basée sur l’IA";
+"home.manualBased3DRoom" = "Pièce 3D basée sur le mode manuel";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Limite de pièces atteinte";
@@ -297,8 +299,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
 "roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
 "roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour activer ou désactiver la détection de meubles. Quand elle est active, pincez le calque pour le redimensionner.";
+"roomViewer.snapshotGestureHintExplanation" = "Touchez l’appareil photo pour enregistrer une image de la pièce dans Photos.";
+"roomViewer.arFurnitureSizingHint" = "Utilise la caméra pour mieux ajuster la taille des meubles à la pièce. Fonctionne mieux sur les iPhone avec LiDAR. Désactive si la vue saccade ou semble instable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Touchez d’abord l’icône cerveau pour vérifier les meubles.";
+"roomViewer.arSizingEnable" = "Activer le dimensionnement assisté par la caméra";
+"roomViewer.arSizingDisable" = "Désactiver le dimensionnement assisté par la caméra";
 "roomViewer.gestureHintToggleAccessibility" = "Touchez cette icône pour afficher ou masquer ce conseil.";
 "roomViewer.checkMeasurement" = "Vérifier la mesure";
+"roomViewer.roomDimensionsDefaultValues" = "Valeurs par défaut";
+"roomViewer.roomDimensionsWHDWithDefault" = "L × H × P\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "L × H\n%.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";
 "roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";

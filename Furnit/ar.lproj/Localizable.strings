@@ -58,6 +58,8 @@
 "home.deleteHint" = "احذف الغرف القديمة لإنشاء غرف جديدة";
 "home.swipeHint" = "اسحب لليسار للحذف";
 "home.roomModel" = "نموذج غرفة ثلاثي الأبعاد";
+"home.aiBased3DRoom" = "غرفة ثلاثية الأبعاد بالذكاء الاصطناعي";
+"home.manualBased3DRoom" = "غرفة ثلاثية الأبعاد يدوية";
 
 // MARK: - Room Limit
 "roomLimit.title" = "تم الوصول إلى حد الغرف";
@@ -314,8 +316,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
 "roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
 "roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
+"roomViewer.snapshotGestureHintExplanation" = "اضغط الكاميرا لحفظ صورة للغرفة في الصور.";
+"roomViewer.arFurnitureSizingHint" = "يستخدم الكاميرا لتحسين مطابقة حجم الأثاث مع الغرفة. يعمل أفضل على آيفون المزوّد بـ LiDAR. أوقف الميزة إذا كانت الصورة تتقطع أو تبدو غير ثابتة.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "اضغط أولاً على أيقونة الدماغ لفحص الأثاث.";
+"roomViewer.arSizingEnable" = "تفعيل قياس الأثاث بمساعدة الكاميرا";
+"roomViewer.arSizingDisable" = "إيقاف قياس الأثاث بمساعدة الكاميرا";
 "roomViewer.gestureHintToggleAccessibility" = "اضغط هذا الرمز لإظهار هذه النصيحة أو إخفائها.";
 "roomViewer.checkMeasurement" = "تحقق من القياس";
+"roomViewer.roomDimensionsDefaultValues" = "القيم الافتراضية";
+"roomViewer.roomDimensionsWHDWithDefault" = "العرض × الارتفاع × العمق\n%.2f × %.2f × %.2f م (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "العرض × الارتفاع\n%.2f × %.2f م (%@)";
 "roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";
 "roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";

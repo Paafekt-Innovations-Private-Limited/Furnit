@@ -58,6 +58,8 @@
 "home.deleteHint" = "刪除舊房間以建立新房間";
 "home.swipeHint" = "向左滑動刪除";
 "home.roomModel" = "3D房間模型";
+"home.aiBased3DRoom" = "以 AI 為基礎的 3D 房間";
+"home.manualBased3DRoom" = "以手動為基礎的 3D 房間";
 
 // MARK: - Room Limit
 "roomLimit.title" = "已達房間上限";
@@ -297,8 +299,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "雙指捏合可縮放房間。開啟家具分割時，捏合亦可放大或縮小疊加層。";
 "roomViewer.pinchGestureHintExplanation" = "雙指捏合縮放房間。開啟家具偵測後，捏合亦可縮放分割疊加層。";
 "roomViewer.brainGestureHintExplanation" = "點大腦圖示可開關家具偵測。開啟時，捏合疊加層可調整大小。";
+"roomViewer.snapshotGestureHintExplanation" = "點按相機可將房間畫面儲存到「照片」。";
+"roomViewer.arFurnitureSizingHint" = "使用相機協助家具尺寸更貼合房間。配備 LiDAR 的 iPhone 上效果最佳。若畫面卡頓或不穩，可關閉此功能。";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "請先點一下大腦圖示來檢查家具。";
+"roomViewer.arSizingEnable" = "開啟相機輔助家具尺寸";
+"roomViewer.arSizingDisable" = "關閉相機輔助家具尺寸";
 "roomViewer.gestureHintToggleAccessibility" = "點此圖示可顯示或隱藏此提示。";
 "roomViewer.checkMeasurement" = "檢查測量";
+"roomViewer.roomDimensionsDefaultValues" = "預設值";
+"roomViewer.roomDimensionsWHDWithDefault" = "寬 × 高 × 深\n%.2f × %.2f × %.2f 公尺 (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "寬 × 高\n%.2f × %.2f 公尺 (%@)";
 "roomViewer.measuringRoom" = "正在測量房間…";
 "roomViewer.goingBack" = "正在返回…";
 "roomViewer.savingRoomEllipsis" = "正在儲存房間…";

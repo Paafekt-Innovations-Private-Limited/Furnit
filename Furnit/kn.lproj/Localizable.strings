@@ -58,6 +58,8 @@
 "home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
 "home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";
 "home.roomModel" = "3D ಕೊಠಡಿ ಮಾದರಿ";
+"home.aiBased3DRoom" = "AI ಆಧಾರಿತ 3D ಕೊಠಡಿ";
+"home.manualBased3DRoom" = "ಮ್ಯಾನುವಲ್ ಆಧಾರಿತ 3D ಕೊಠಡಿ";
 
 // MARK: - Room Limit
 "roomLimit.title" = "ಕೊಠಡಿ ಮಿತಿ ತಲುಪಿದೆ";
@@ -296,8 +298,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯನ್ನು ಆನ್ ಅಥವಾ ಆಫ್ ಮಾಡಲು ಮೆದುಳು ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಆನ್‌ನಲ್ಲಿ ಓವರ್‌ಲೇಯನ್ನು ಚಿಮುಡಿಸಿ ಗಾತ್ರ ಬದಲಿಸಿ.";
+"roomViewer.snapshotGestureHintExplanation" = "ಕೊಠಡಿಯ ಚಿತ್ರವನ್ನು ಫೋಟೋಗಳಿಗೆ ಉಳಿಸಲು ಕ್ಯಾಮರಾವನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"roomViewer.arFurnitureSizingHint" = "ಕ್ಯಾಮರಾವನ್ನು ಬಳಸಿ ಪೀಠೋಪಕರಣದ ಗಾತ್ರವನ್ನು ಕೊಠಡಿಗೆ ಹೆಚ್ಚು ಹೊಂದಿಕೊಳ್ಳುವಂತೆ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. LiDAR ಇರುವ ಐಫೋನ್‌ಗಳಲ್ಲಿ ಅತ್ಯುತ್ತಮ. ನೋಟ ನಿಧಾನವಾಗಿದ್ದರೆ ಅಥವಾ ಅಸ್ಥಿರವಾಗಿದ್ದರೆ ಇದನ್ನು ಆಫ್ ಮಾಡಿ.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "ಪೀಠೋಪಕರಣವನ್ನು ಪರಿಶೀಲಿಸಲು ಮೊದಲು ಬ್ರೇನ್ ಐಕಾನ್ ಒತ್ತಿರಿ.";
+"roomViewer.arSizingEnable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ";
+"roomViewer.arSizingDisable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.gestureHintToggleAccessibility" = "ಈ ಸಲಹೆಯನ್ನು ತೋರಿಸಲು ಅಥವಾ ಮರೆಮಾಡಲು ಈ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
+"roomViewer.roomDimensionsDefaultValues" = "ಡಿಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳು";
+"roomViewer.roomDimensionsWHDWithDefault" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "ಅಗಲ × ಎತ್ತರ\n%.2f × %.2f ಮೀ (%@)";
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
 "roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";

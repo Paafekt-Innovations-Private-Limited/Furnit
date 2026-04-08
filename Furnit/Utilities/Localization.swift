@@ -87,6 +87,10 @@ enum L10n {
         static let deleteHint = "home.deleteHint".localized
         static let swipeHint = "home.swipeHint".localized
         static let roomModel = "home.roomModel".localized
+        /// Saved PLY / SHARP Gaussian room (home list subtitle under room name).
+        static let aiBased3DRoom = "home.aiBased3DRoom".localized
+        /// Saved manual mesh / GLB room (home list subtitle under room name).
+        static let manualBased3DRoom = "home.manualBased3DRoom".localized
         static let renameRoom = "home.renameRoom".localized
         static let renameRoomMessage = "home.renameRoomMessage".localized
         static let roomNamePlaceholder = "home.roomNamePlaceholder".localized
@@ -319,8 +323,35 @@ enum L10n {
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
         static let pinchGestureHintExplanation = "roomViewer.pinchGestureHintExplanation".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
+        static let snapshotGestureHintExplanation = "roomViewer.snapshotGestureHintExplanation".localized
+        /// Short tip for the AR camera-sizing control in the room toolbar (user-facing, not technical).
+        static let arFurnitureSizingHint = "roomViewer.arFurnitureSizingHint".localized
+        static let arFurnitureSizingRequiresBrainHint = "roomViewer.arFurnitureSizingRequiresBrainHint".localized
+        static let arSizingEnable = "roomViewer.arSizingEnable".localized
+        static let arSizingDisable = "roomViewer.arSizingDisable".localized
         static let gestureHintToggleAccessibility = "roomViewer.gestureHintToggleAccessibility".localized
         static let checkMeasurement = "roomViewer.checkMeasurement".localized
+        /// Shown after W×H×D numbers for manual-setup (mesh / GLB) rooms — list line and ruler chip.
+        static let roomDimensionsDefaultValues = "roomViewer.roomDimensionsDefaultValues".localized
+        static func roomDimensionsWHDManualChip(width: Float, height: Float, depth: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHDWithDefault".localized,
+                locale: .current,
+                width,
+                height,
+                depth,
+                roomDimensionsDefaultValues
+            )
+        }
+        static func roomDimensionsWHManualChip(width: Float, height: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHWithDefault".localized,
+                locale: .current,
+                width,
+                height,
+                roomDimensionsDefaultValues
+            )
+        }
         static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
         static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized

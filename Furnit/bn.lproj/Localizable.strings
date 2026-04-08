@@ -58,6 +58,8 @@
 "home.deleteHint" = "নতুন তৈরি করতে পুরানো রুম মুছুন";
 "home.swipeHint" = "মুছতে বামে সোয়াইপ করুন";
 "home.roomModel" = "3D রুম মডেল";
+"home.aiBased3DRoom" = "AI ভিত্তিক 3D রুম";
+"home.manualBased3DRoom" = "ম্যানুয়াল ভিত্তিক 3D রুম";
 
 // MARK: - Room Limit
 "roomLimit.title" = "রুম সীমা পৌঁছেছে";
@@ -314,8 +316,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
 "roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
 "roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
+"roomViewer.snapshotGestureHintExplanation" = "ঘরের ছবি ফটোতে সেভ করতে ক্যামেরায় ট্যাপ করুন।";
+"roomViewer.arFurnitureSizingHint" = "ক্যামেরা ব্যবহার করে ফার্নিচারের আকার ঘরের সাথে ভালো মিল রাখতে সাহায্য করে। LiDAR সহ আইফোনে সবচেয়ে ভালো কাজ করে। ভিউ ঝাঁকুনি দিলে বা অস্থির মনে হলে বন্ধ করুন।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "ফার্নিচার দেখতে আগে ব্রেন আইকনে ট্যাপ করুন।";
+"roomViewer.arSizingEnable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ চালু করুন";
+"roomViewer.arSizingDisable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ বন্ধ করুন";
 "roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
+"roomViewer.roomDimensionsDefaultValues" = "ডিফল্ট মান";
+"roomViewer.roomDimensionsWHDWithDefault" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "প্রস্থ × উচ্চতা\n%.2f × %.2f মি (%@)";
 "roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";

@@ -52,6 +52,7 @@ private func destinationView(for model: USDZModel) -> some View {
                 photoOrientation: model.photoOrientation,
                 roomWidth: model.roomWidth,
                 roomHeight: model.roomHeight,
+                roomDepth: model.roomDepth,
                 savedRoomModel: model
             )
         } else {
@@ -571,6 +572,7 @@ struct HomeTab: View {
                                 photoOrientation: model.photoOrientation,
                                 roomWidth: model.roomWidth,
                                 roomHeight: model.roomHeight,
+                                roomDepth: model.roomDepth,
                                 savedRoomModel: model
                             )
                         }
@@ -869,6 +871,18 @@ struct HomeViewModelRow: View {
         }
     }
 
+    /// Under the room name: SHARP PLY vs manual mesh/GLB vs bundle USDZ.
+    private var roomCreationKindSubtitle: String {
+        switch model.fileType {
+        case .ply:
+            return L10n.Home.aiBased3DRoom
+        case .meshroom, .glb:
+            return L10n.Home.manualBased3DRoom
+        case .usdz:
+            return L10n.Home.roomModel
+        }
+    }
+
     // Orientation label text
     private var orientationLabel: String {
         let title: String
@@ -898,7 +912,7 @@ struct HomeViewModelRow: View {
                     .font(.headline)
                     .foregroundColor(.primary)
 
-                Text(L10n.Home.roomModel)
+                Text(roomCreationKindSubtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
 

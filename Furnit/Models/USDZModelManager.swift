@@ -339,7 +339,7 @@ class USDZModelManager: ObservableObject {
             .appendingPathComponent("\(url.deletingPathExtension().lastPathComponent).ply.meta")
     }
 
-    private func binaryPlyLayout(for data: Data) -> BinaryPlyVertexLayout? {
+    private static func binaryPlyLayout(for data: Data) -> BinaryPlyVertexLayout? {
         let endHeaderLF = Data("end_header\n".utf8)
         let endHeaderCRLF = Data("end_header\r\n".utf8)
         let headerEnd: Int
@@ -420,7 +420,7 @@ class USDZModelManager: ObservableObject {
         )
     }
 
-    private func readFloat32(from data: Data, offset: Int) -> Float? {
+    private static func readFloat32(from data: Data, offset: Int) -> Float? {
         guard offset >= 0, offset + 4 <= data.count else { return nil }
         var bits: UInt32 = 0
         _ = withUnsafeMutableBytes(of: &bits) { rawBuffer in
@@ -429,9 +429,9 @@ class USDZModelManager: ObservableObject {
         return Float(bitPattern: UInt32(littleEndian: bits))
     }
 
-    private func measureRoomDimensions(forPly url: URL, treatAsClassicPly: Bool? = nil) -> MeasuredPlyRoomDimensions? {
+    private static func measureRoomDimensions(forPly url: URL, treatAsClassicPly: Bool? = nil) -> MeasuredPlyRoomDimensions? {
         guard let data = try? Data(contentsOf: url),
-              let layout = binaryPlyLayout(for: data) else {
+              let layout = Self.binaryPlyLayout(for: data) else {
             return nil
         }
 
@@ -452,9 +452,9 @@ class USDZModelManager: ObservableObject {
 
         for index in 0..<layout.vertexCount {
             let vertexOffset = layout.headerByteCount + index * layout.vertexStride
-            guard let storedX = readFloat32(from: data, offset: vertexOffset + layout.xOffset),
-                  let storedY = readFloat32(from: data, offset: vertexOffset + layout.yOffset),
-                  let storedZ = readFloat32(from: data, offset: vertexOffset + layout.zOffset),
+            guard let storedX = Self.readFloat32(from: data, offset: vertexOffset + layout.xOffset),
+                  let storedY = Self.readFloat32(from: data, offset: vertexOffset + layout.yOffset),
+                  let storedZ = Self.readFloat32(from: data, offset: vertexOffset + layout.zOffset),
                   storedX.isFinite, storedY.isFinite, storedZ.isFinite else {
                 continue
             }
@@ -591,6 +591,18 @@ class USDZModelManager: ObservableObject {
             rawWidth: rawWidth,
             rawHeight: rawHeight
         )
+    }
+
+    func measureRoomDimensionsAsync(
+        forPly url: URL,
+        treatAsClassicPly: Bool? = nil
+    ) async -> (width: Float, height: Float, depth: Float)? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let measured = Self.measureRoomDimensions(forPly: url, treatAsClassicPly: treatAsClassicPly)
+                continuation.resume(returning: measured.map { ($0.width, $0.height, $0.depth) })
+            }
+        }
     }
 
     private func cleanupOrphanSavedRoomArtifactsIfNeeded() {
@@ -1285,7 +1297,7 @@ class USDZModelManager: ObservableObject {
                 // (ROOM_DIMS_V7). The older on-disk remeasurement path is kept here only as
                 // fallback/reference so saved list + ruler stay consistent with the room the
                 // user saw before tapping Save.
-                let measured = measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
+                let measured = Self.measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
                 let finalRoomWidth = roomWidth ?? measured?.width
                 let finalRoomHeight = roomHeight ?? measured?.height
                 let finalRoomDepth = roomDepth ?? measured?.depth

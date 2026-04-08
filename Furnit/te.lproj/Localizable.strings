@@ -58,6 +58,8 @@
 "home.deleteHint" = "కొత్తవి సృష్టించడానికి పాత గదులను తొలగించండి";
 "home.swipeHint" = "తొలగించడానికి ఎడమకు స్వైప్ చేయండి";
 "home.roomModel" = "3D గది మోడల్";
+"home.aiBased3DRoom" = "AI ఆధారిత 3D గది";
+"home.manualBased3DRoom" = "మాన్యువల్ ఆధారిత 3D గది";
 
 // MARK: - Room Limit
 "roomLimit.title" = "గది పరిమితి చేరుకుంది";
@@ -296,8 +298,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "గదిని జూమ్ చేయడానికి రెండు వేళ్లతో పించ్ చేయండి. ఫర్నిచర్ సెగ్మెంటేషన్ ఆన్‌లో ఉన్నప్పుడు పించ్ ఓవర్లే పరిమాణాన్నీ మారుస్తుంది.";
 "roomViewer.pinchGestureHintExplanation" = "రెండు వేళ్లతో పించ్ చేసి గదిని జూమ్ చేయండి. ఫర్నిచర్ ఫిట్ ఆన్‌లో ఉన్నప్పుడు పించ్ సెగ్మెంటేషన్ ఓవర్లేను కూడా మారుస్తుంది.";
 "roomViewer.brainGestureHintExplanation" = "ఫర్నిచర్ గుర్తింపును ఆన్ లేదా ఆఫ్ చేయడానికి మెదడు ఐకాన్‌ను టాప్ చేయండి. ఆన్‌లో ఉన్నప్పుడు ఓవర్లేను పించ్ చేసి పరిమాణం మార్చండి.";
+"roomViewer.snapshotGestureHintExplanation" = "గది ఫోటోను ఫోటోలకు సేవ్ చేయడానికి కెమెరాను టాప్ చేయండి.";
+"roomViewer.arFurnitureSizingHint" = "గదితో ఫర్నిచర్ పరిమాణాన్ని మెరుగ్గా సరిపోల్చడానికి కెమెరాను ఉపయోగిస్తుంది. LiDAR ఉన్న ఐఫోన్‌లలో ఉత్తమంగా పనిచేస్తుంది. వీక్షణ విరగడంగా ఉంటే లేదా అస్థిరంగా అనిపిస్తే ఆఫ్ చేయండి.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "ఫర్నిచర్ చూడడానికి ముందు బ్రెయిన్ ఐకాన్‌ను ట్యాప్ చేయండి.";
+"roomViewer.arSizingEnable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ప్రారంభించు";
+"roomViewer.arSizingDisable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ఆపు";
 "roomViewer.gestureHintToggleAccessibility" = "ఈ చిట్కాను చూపించడానికి లేదా దాచడానికి ఈ ఐకాన్‌ను టాప్ చేయండి.";
 "roomViewer.checkMeasurement" = "కొలత తనిఖీ";
+"roomViewer.roomDimensionsDefaultValues" = "డిఫాల్ట్ విలువలు";
+"roomViewer.roomDimensionsWHDWithDefault" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "వెడల్పు × ఎత్తు\n%.2f × %.2f మీ (%@)";
 "roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
 "roomViewer.savingRoomEllipsis" = "గది సేవ్ అవుతోంది...";

@@ -730,6 +730,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         _ = preferRoomRaycastSizing
 
         let arSizingReady =
+            arAssistedSizingEnabled &&
             hasARKitAssistedSizingPayload &&
             arAssistedScaleValid &&
             normalizedARFurnitureHeightMeters() != nil &&
@@ -737,6 +738,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             autoScaleFromAR > 0
 
         guard !arSizingReady else {
+            autoScaleFromRoom = 1.0
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
+        guard arAssistedSizingEnabled, !QualitySettings.supportsLiDARSceneDepth else {
             autoScaleFromRoom = 1.0
             applyCurrentOverlayScaleTransform()
             return
@@ -835,8 +842,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Combined overlay: AR metric scale when available, else room-proportion fallback, then user pinch.
     private func applyCurrentOverlayScaleTransform() {
-        let arOn = hasARKitAssistedSizingPayload && arAssistedScaleValid
-        let roomFactor: CGFloat = arOn ? 1.0 : autoScaleFromRoom
+        let arOn = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid
+        let allowRoomProportionFallback = arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth
+        let roomFactor: CGFloat = arOn ? 1.0 : (allowRoomProportionFallback ? autoScaleFromRoom : 1.0)
         let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
         let product = roomFactor * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
@@ -853,7 +861,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         maskImageView.transform = finalTransform
 
-        let wantAR = hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
+        let wantAR = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
         let assistedLabel: String
         if arOn {
             assistedLabel = "AR"
@@ -909,7 +917,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let bboxWidthImagePx = Float(max(1, bboxMaxX - bboxMinX))
 
-        let wantAR = hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
+        let wantAR = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
 
         if wantAR, arDepthSnapshot != nil || arSession.currentFrame != nil {
             let nx = bboxCenterImageX / CGFloat(max(1, imageWidth))
@@ -2474,9 +2482,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             planeAnchorCount = 0
         }
 
-        if hasARKitAssistedSizingPayload && arAssistedScaleValid {
+        if arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid {
             arLabel = "valid(\(String(format: "%.3f", autoScaleFromAR)))"
-        } else if hasARKitAssistedSizingPayload {
+        } else if arAssistedSizingEnabled && hasARKitAssistedSizingPayload {
             arLabel = "pending"
         } else {
             arLabel = "off"

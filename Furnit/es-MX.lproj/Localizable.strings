@@ -58,6 +58,8 @@
 "home.deleteHint" = "Elimina cuartos viejos para crear nuevos";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";
 "home.roomModel" = "Modelo de cuarto 3D";
+"home.aiBased3DRoom" = "Cuarto 3D basado en IA";
+"home.manualBased3DRoom" = "Cuarto 3D manual";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Límite de cuartos alcanzado";
@@ -297,8 +299,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en el cuarto. Con los muebles segmentados, el pellizco también escala la superposición.";
 "roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en el cuarto. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
 "roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
+"roomViewer.snapshotGestureHintExplanation" = "Toca la cámara para guardar una foto del cuarto en Fotos.";
+"roomViewer.arFurnitureSizingHint" = "Usa la cámara para ajustar mejor el tamaño de los muebles a la habitación. Funciona mejor en iPhone con LiDAR. Desactívalo si la vista va a tirones o se ve inestable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Toca primero el ícono del cerebro para revisar los muebles.";
+"roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
+"roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";
 "roomViewer.gestureHintToggleAccessibility" = "Toca este ícono para mostrar u ocultar este consejo.";
 "roomViewer.checkMeasurement" = "Revisar medida";
+"roomViewer.roomDimensionsDefaultValues" = "Valores predeterminados";
+"roomViewer.roomDimensionsWHDWithDefault" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "A × Al\n%.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Midiendo el cuarto…";
 "roomViewer.goingBack" = "Regresando…";
 "roomViewer.savingRoomEllipsis" = "Guardando cuarto…";

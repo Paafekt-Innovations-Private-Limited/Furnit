@@ -238,9 +238,11 @@ struct SharpRoomView: View {
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
+    @State private var isMeasuringRoomDimensions = false
     @State private var saveProgress: Double = 0.0
     @State private var saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
     @State private var savingTimer: Timer?
+    @State private var roomMeasurementTask: Task<Void, Never>?
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
@@ -278,11 +280,15 @@ struct SharpRoomView: View {
     /// Brain hint (above brain button): text auto-hides after 3s; tap icon always stays; tap toggles text.
     @State private var brainHintExplanationVisible = false
     @State private var brainHintHideTextTask: Task<Void, Never>?
+    /// Snapshot hint (above camera button): same behavior as ``brainHintExplanationVisible``.
+    @State private var snapshotHintExplanationVisible = false
+    @State private var snapshotHintHideTextTask: Task<Void, Never>?
     /// Camera sizing hint (under the left controls): explains what the camera/viewfinder button does.
     @State private var cameraSizingHintExplanationVisible = false
     @State private var cameraSizingHintHideTextTask: Task<Void, Never>?
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    @State private var measuredRoomDimensions: (width: Float, height: Float, depth: Float)?
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -315,7 +321,11 @@ struct SharpRoomView: View {
                 logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
                 return
             }
-            onRoomDimensionsIconTapped()
+            if hasCalculatedRoomMeasurements {
+                onRoomDimensionsIconTapped()
+            } else {
+                startAsyncRoomMeasurementForRuler()
+            }
         } label: {
             Image(systemName: "ruler.fill")
                 .symbolRenderingMode(.hierarchical)
@@ -323,7 +333,7 @@ struct SharpRoomView: View {
                 .foregroundStyle(.primary)
         }
         .buttonStyle(.plain)
-        .disabled(!canPresentRoomDimensionsAlert)
+        .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
         .accessibilityLabel("Room dimensions")
     }
 
@@ -378,6 +388,62 @@ struct SharpRoomView: View {
         .accessibilityLabel(L10n.RoomViewer.saveRoom)
     }
 
+    /// Under the share button: AR toggle, then tap tip, then optional text (top → bottom). Same 3s hint cycle as the brain row.
+    private var navigationBarARAssistBlock: some View {
+        VStack(alignment: .center, spacing: 10) {
+            Button {
+                if showingFurnitureFit {
+                    brainArAssistedSizingEnabled.toggle()
+                } else {
+                    cameraSizingHintExplanationVisible = true
+                    scheduleCameraSizingHintAutoHide(seconds: 3)
+                }
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle().fill(
+                            brainArAssistedSizingEnabled
+                                ? Color.green.opacity(0.9)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel(
+                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+            )
+            Button(action: onCameraSizingHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel(cameraSizingHintAccessibilityLabel)
+            if cameraSizingHintExplanationVisible {
+                Text(cameraSizingHintText)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+        }
+        .onAppear { restartCameraSizingGestureHint() }
+        .onDisappear { cancelCameraSizingHintTasks() }
+    }
+
     @ToolbarContentBuilder
     private var sharpRoomToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
@@ -386,12 +452,26 @@ struct SharpRoomView: View {
         ToolbarItem(placement: .principal) {
             navigationBarRoomMeasurementPrincipal
         }
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
+        ToolbarItem(placement: .navigationBarTrailing) {
             navigationBarRecenterButton
-            if authManager.canShare {
-                navigationBarShareButton
+        }
+        if authManager.canShare {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                VStack(alignment: .center, spacing: 10) {
+                    navigationBarShareButton
+                        .fixedSize(horizontal: true, vertical: true)
+                    if canOfferBrainArAssist {
+                        navigationBarARAssistBlock
+                    }
+                }
             }
-            if allowSave {
+        } else if canOfferBrainArAssist {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                navigationBarARAssistBlock
+            }
+        }
+        if allowSave {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 navigationBarSaveButton
             }
         }
@@ -472,6 +552,10 @@ struct SharpRoomView: View {
         .onDisappear {
             autoEnableARTask?.cancel()
             autoEnableARTask = nil
+            roomMeasurementTask?.cancel()
+            roomMeasurementTask = nil
+            isMeasuringRoomDimensions = false
+            saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             cancelCameraSizingHintTasks()
@@ -527,9 +611,15 @@ struct SharpRoomView: View {
             if loading {
                 cancelPinchHintTasks()
                 cancelBrainHintTasks()
+                cancelSnapshotHintTasks()
+                cancelCameraSizingHintTasks()
                 cancelRoomDimensionsHintTasks()
             } else {
                 restartBrainGestureHint()
+                restartSnapshotGestureHint()
+                if canOfferBrainArAssist {
+                    restartCameraSizingGestureHint()
+                }
             }
         }
         // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
@@ -591,7 +681,7 @@ struct SharpRoomView: View {
 
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {}
 
-    // MARK: - Gesture hint chips (pinch + brain)
+    // MARK: - Gesture hint chips (pinch, brain, snapshot)
 
     private func toggleFurnitureFit() {
         if showingFurnitureFit {
@@ -669,6 +759,34 @@ struct SharpRoomView: View {
         }
     }
 
+    private func cancelSnapshotHintTasks() {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = nil
+    }
+
+    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            snapshotHintExplanationVisible = false
+        }
+    }
+
+    private func restartSnapshotGestureHint() {
+        cancelSnapshotHintTasks()
+        snapshotHintExplanationVisible = true
+        scheduleSnapshotHintTextAutoHide(seconds: 3)
+    }
+
+    private func onSnapshotHintIconTapped() {
+        cancelSnapshotHintTasks()
+        snapshotHintExplanationVisible.toggle()
+        if snapshotHintExplanationVisible {
+            scheduleSnapshotHintTextAutoHide(seconds: 3)
+        }
+    }
+
     private func scheduleCameraSizingHintAutoHide(seconds: UInt64 = 3) {
         cameraSizingHintHideTextTask?.cancel()
         cameraSizingHintHideTextTask = Task { @MainActor in
@@ -676,6 +794,13 @@ struct SharpRoomView: View {
             guard !Task.isCancelled else { return }
             cameraSizingHintExplanationVisible = false
         }
+    }
+
+    /// Same 3s show/hide cycle as ``restartBrainGestureHint()`` for the AR toolbar hint.
+    private func restartCameraSizingGestureHint() {
+        cancelCameraSizingHintTasks()
+        cameraSizingHintExplanationVisible = true
+        scheduleCameraSizingHintAutoHide(seconds: 3)
     }
 
     private func onCameraSizingHintIconTapped() {
@@ -703,6 +828,57 @@ struct SharpRoomView: View {
         }
     }
 
+    private func startAsyncRoomMeasurementForRuler() {
+        guard !isMeasuringRoomDimensions else { return }
+        roomMeasurementTask?.cancel()
+        roomMeasurementTask = Task {
+            await MainActor.run {
+                isMeasuringRoomDimensions = true
+                saveProgressStatusText = L10n.RoomViewer.measuringRoom
+            }
+            let measured = await modelManager.measureRoomDimensionsAsync(
+                forPly: viewerPlyURL,
+                treatAsClassicPly: viewerUsesClassicPlyBehavior
+            )
+            guard !Task.isCancelled else {
+                await MainActor.run {
+                    isMeasuringRoomDimensions = false
+                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+                }
+                return
+            }
+            if let measured,
+               let savedRoomModel,
+               savedRoomModel.fileType == .ply {
+                try? modelManager.mergeRoomDimensionsIntoSavedRoomMetadata(
+                    fileName: savedRoomModel.fileName,
+                    modelFileExtension: "ply",
+                    roomWidth: measured.width,
+                    roomHeight: measured.height,
+                    roomDepth: measured.depth
+                )
+            }
+            await MainActor.run {
+                if let measured {
+                    measuredRoomDimensions = measured
+                    logDebug(
+                        "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
+                        "SOURCE=ASYNC_PLY_MEASURE " +
+                        "W=\(String(format: "%.4f", measured.width)) " +
+                        "H=\(String(format: "%.4f", measured.height)) " +
+                        "D=\(String(format: "%.4f", measured.depth))"
+                    )
+                } else {
+                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=ASYNC_PLY_MEASURE unavailable")
+                }
+                isMeasuringRoomDimensions = false
+                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+                roomDimensionsHintVisible = true
+                scheduleRoomDimensionsHintAutoHide(seconds: 3)
+            }
+        }
+    }
+
     private var pinchHintAccessibilityLabel: String {
         L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
@@ -711,8 +887,18 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
+    private var snapshotHintAccessibilityLabel: String {
+        L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
     private var cameraSizingHintAccessibilityLabel: String {
-        L10n.Settings.furnitureFitARCompanionDescription + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+        cameraSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var cameraSizingHintText: String {
+        showingFurnitureFit
+            ? L10n.RoomViewer.arFurnitureSizingHint
+            : L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
     }
 
     private var roomDimensionsHintText: String {
@@ -813,10 +999,38 @@ struct SharpRoomView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(pinchHintAccessibilityLabel)
+
             if canOfferBrainArAssist {
                 VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        if showingFurnitureFit {
+                            brainArAssistedSizingEnabled.toggle()
+                        } else {
+                            cameraSizingHintExplanationVisible = true
+                            scheduleCameraSizingHintAutoHide(seconds: 3)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .symbolRenderingMode(.hierarchical)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                Circle().fill(
+                                    brainArAssistedSizingEnabled
+                                        ? Color.green.opacity(0.9)
+                                        : Color.black.opacity(0.45)
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .accessibilityLabel(
+                        brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+                    )
+
                     if cameraSizingHintExplanationVisible {
-                        Text(L10n.Settings.furnitureFitARCompanionDescription)
+                        Text(cameraSizingHintText)
                             .font(.caption2)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.leading)
@@ -826,6 +1040,7 @@ struct SharpRoomView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                             .transition(.opacity)
                     }
+
                     Button(action: onCameraSizingHintIconTapped) {
                         Image(systemName: "hand.tap.fill")
                             .symbolRenderingMode(.hierarchical)
@@ -835,25 +1050,8 @@ struct SharpRoomView: View {
                             .background(Circle().fill(Color.black.opacity(0.5)))
                     }
                     .buttonStyle(.plain)
+                    .disabled(isLoading)
                     .accessibilityLabel(cameraSizingHintAccessibilityLabel)
-                    Button {
-                        brainArAssistedSizingEnabled.toggle()
-                    } label: {
-                        Image(systemName: "camera.viewfinder")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                Circle().fill(
-                                    brainArAssistedSizingEnabled
-                                    ? Color.green.opacity(0.9)
-                                    : Color.black.opacity(0.5)
-                                )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(brainArAssistedSizingEnabled ? "Disable camera-based furniture sizing" : "Enable camera-based furniture sizing")
                 }
             }
         }
@@ -920,6 +1118,35 @@ struct SharpRoomView: View {
         .onDisappear { cancelBrainHintTasks() }
     }
 
+    /// Text + tap icon above the snapshot camera; mirrors ``brainGestureHintColumn``.
+    private var snapshotGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if snapshotHintExplanationVisible {
+                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+            Button(action: onSnapshotHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(snapshotHintAccessibilityLabel)
+        }
+        .onAppear { restartSnapshotGestureHint() }
+        .onDisappear { cancelSnapshotHintTasks() }
+    }
+
     @ViewBuilder
     private var brainButtonWithHintAbove: some View {
         VStack(alignment: .center, spacing: 6) {
@@ -930,6 +1157,21 @@ struct SharpRoomView: View {
                     .foregroundColor(.white)
                     .frame(width: 60, height: 60)
                     .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+            }
+            .disabled(isLoading)
+        }
+    }
+
+    @ViewBuilder
+    private var snapshotButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            snapshotGestureHintColumn
+            Button(action: { takeScreenshot() }) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(Color.blue).shadow(radius: 5))
             }
             .disabled(isLoading)
         }
@@ -1026,6 +1268,10 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
+    private var hasCalculatedRoomMeasurements: Bool {
+        savedRoomStrictMeters != nil || generatedRoomStrictMeters != nil || measuredRoomDimensions != nil
+    }
+
     /// Trimmed / SHARP AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
     private var plySceneExtent: (width: Float, height: Float, depth: Float)? {
         if let b = metalBounds, b.width > 0.05, b.height > 0.05, b.depth > 0.05 {
@@ -1055,6 +1301,7 @@ struct SharpRoomView: View {
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let triple = savedRoomStrictMeters { return triple }
         if let triple = generatedRoomStrictMeters { return triple }
+        if let triple = measuredRoomDimensions { return triple }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
            w > 0.05, h > 0.05, w.isFinite, h.isFinite {
@@ -1084,6 +1331,7 @@ struct SharpRoomView: View {
     private var canPresentRoomDimensionsAlert: Bool {
         !showRoomNameInput &&
             !isSavingRoom &&
+            !isMeasuringRoomDimensions &&
             !showSaveAlert &&
             !showDiscardUnsavedAlert &&
             !showCalibrationRejectAlert &&
@@ -1120,6 +1368,40 @@ struct SharpRoomView: View {
             )
         }
         return "ROOM_DIMS: pending — PLY bounds not ready"
+    }
+
+    private var measureRoomProgressOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: 100, height: 100)
+
+                    Image(systemName: "ruler.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.green)
+                }
+
+                Text(L10n.RoomViewer.measuringRoom)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+
+                Text(saveOverlayRoomDimensionsLine)
+                    .font(.system(.subheadline, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                ProgressView(value: 0.55)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                    .frame(width: 200)
+            }
+        }
     }
 
     /// Width/height/depth for nav title, FurnitureFit, and save.
@@ -1551,13 +1833,7 @@ struct SharpRoomView: View {
                         }
                     }
                     Spacer().allowsHitTesting(false)
-                    Button(action: { takeScreenshot() }) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 28)).foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(Color.blue).shadow(radius: 5))
-                    }
-                    .disabled(isLoading)
+                    snapshotButtonWithHintAbove
                 }
                 .padding(.horizontal, 30).padding(.bottom, 20)
             }
@@ -1592,13 +1868,7 @@ struct SharpRoomView: View {
                                 }
                             }
                         }
-                        Button(action: { takeScreenshot() }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28)).foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                        }
-                        .disabled(isLoading)
+                        snapshotButtonWithHintAbove
                     }
                     .padding(.trailing, 16)
                 }
@@ -1618,6 +1888,7 @@ struct SharpRoomView: View {
             if isLoading { loadingOverlayView }
             errorOverlayView
             if showingFurnitureFit { furnitureFitOverlayView }
+            if isMeasuringRoomDimensions { measureRoomProgressOverlay }
             if isSavingRoom { saveRoomProgressOverlay }
             if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
                 calibrationOverlayView

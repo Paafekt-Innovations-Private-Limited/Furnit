@@ -146,21 +146,33 @@ struct USDZModel: Identifiable, Hashable {
         return fileType.displayName
     }
 
+    /// Saved meshroom / GLB rooms use manual (default) dimension workflow, not SHARP-measured PLY.
+    var isManualSetupRoom: Bool {
+        fileType == .meshroom || fileType == .glb
+    }
+
     /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
+    /// Manual-setup rooms append a localized “(Default Values)” label after the numbers.
     var roomDimensionsListLine: String? {
+        let baseLine: String?
         if let w = roomWidth, let h = roomHeight, let d = roomDepth,
            w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
-            return String(format: "%.2f × %.2f × %.2f m", w, h, d)
-        }
-        if let w = roomWidth, let h = roomHeight,
-           w > 0.05, h > 0.05, w.isFinite, h.isFinite,
-           let sh = roomSceneHeight, sh > 1e-4,
-           let sd = roomSceneDepth, sd > 1e-4 {
+            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        } else if let w = roomWidth, let h = roomHeight,
+                  w > 0.05, h > 0.05, w.isFinite, h.isFinite,
+                  let sh = roomSceneHeight, sh > 1e-4,
+                  let sd = roomSceneDepth, sd > 1e-4 {
             let d = sd * (h / sh)
             guard d > 0.05, d.isFinite else { return nil }
-            return String(format: "%.2f × %.2f × %.2f m", w, h, d)
+            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        } else {
+            return nil
         }
-        return nil
+        guard let line = baseLine else { return nil }
+        if isManualSetupRoom {
+            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsDefaultValues)
+        }
+        return line
     }
     
     // ✅ UPDATED: Handle both bundle and saved rooms with debug-mode logging

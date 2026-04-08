@@ -58,6 +58,8 @@
 "home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
 "home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";
 "home.roomModel" = "3D कमरा मॉडल";
+"home.aiBased3DRoom" = "AI आधारित 3D कमरा";
+"home.manualBased3DRoom" = "मैनुअल आधारित 3D कमरा";
 
 // MARK: - Room Limit
 "roomLimit.title" = "कमरे की सीमा पूरी";
@@ -296,8 +298,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
 "roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
 "roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
+"roomViewer.snapshotGestureHintExplanation" = "कमरे की तस्वीर फ़ोटो में सहेजने के लिए कैमरा पर टैप करें।";
+"roomViewer.arFurnitureSizingHint" = "कैमरे से फर्नीचर का आकार कमरे के अनुसार बेहतर मिलाने में मदद करता है। LiDAR वाले iPhone पर सबसे अच्छा काम करता है। अगर दृश्य रुक-रुक कर चले या अस्थिर लगे तो इसे बंद कर दें।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "फर्नीचर देखने के लिए पहले ब्रेन आइकन पर टैप करें।";
+"roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
+"roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";
 "roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";
 "roomViewer.checkMeasurement" = "माप जाँचें";
+"roomViewer.roomDimensionsDefaultValues" = "डिफ़ॉल्ट मान";
+"roomViewer.roomDimensionsWHDWithDefault" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "चौड़ाई × ऊँचाई\n%.2f × %.2f मी (%@)";
 "roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";

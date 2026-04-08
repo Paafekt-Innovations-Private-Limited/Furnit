@@ -58,6 +58,8 @@
 "home.deleteHint" = "Alte Räume löschen, um neue zu erstellen";
 "home.swipeHint" = "Nach links wischen zum Löschen";
 "home.roomModel" = "3D-Raummodell";
+"home.aiBased3DRoom" = "KI-basiertes 3D-Zimmer";
+"home.manualBased3DRoom" = "Manuell erstelltes 3D-Zimmer";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Raumlimit erreicht";
@@ -326,8 +328,16 @@
 "roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
 "roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
 "roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Möbel-Erkennung ein- oder auszuschalten. Wenn sie an ist, kneife die Einblendung, um ihre Größe zu ändern.";
+"roomViewer.snapshotGestureHintExplanation" = "Tippe auf die Kamera, um ein Bild des Raums in „Fotos“ zu speichern.";
+"roomViewer.arFurnitureSizingHint" = "Nutzt die Kamera, damit Möbelgrößen besser zur Raumgröße passen. Am besten auf iPhones mit LiDAR. Schalte es aus, wenn die Ansicht ruckelt oder instabil wirkt.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Tippe zuerst auf das Gehirn-Symbol, um Möbel zu prüfen.";
+"roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
+"roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
 "roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";
 "roomViewer.checkMeasurement" = "Messung prüfen";
+"roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
+"roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "B × H\n%.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
 "roomViewer.savingRoomEllipsis" = "Raum wird gespeichert…";

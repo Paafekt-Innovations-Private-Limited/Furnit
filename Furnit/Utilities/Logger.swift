@@ -46,8 +46,9 @@ func logFurnitureFitOverlay(_ message: String) {
     print("[FurnitureFitOverlay] \(message)")
 }
 
-// MARK: - Always-on diagnostics (not gated by Settings debug mode)
-/// Always-on diagnostics use **only** Unified Logging (`Logger`). Using both `print` and `Logger` made Xcode show **every line twice**. `print`/stdout also often **stalls** on device during long Core ML; `Logger` keeps streaming. Filter debug console or Console.app by subsystem or `SHARP` / `WALL_MEAS`.
+// MARK: - Unified diagnostics (gated by Settings debug mode)
+/// These diagnostics use Unified Logging (`Logger`) so they stream reliably in Xcode/Console,
+/// but they are still gated by Settings → Debug mode to avoid noisy production logs.
 private enum AlwaysOnOSLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
     static let sharp = Logger(subsystem: subsystem, category: "SHARP")
@@ -59,25 +60,28 @@ private enum AlwaysOnOSLog {
 
 /// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
 func logWallMeasurement(_ message: String) {
+    guard isDebugModeEnabled() else { return }
     let line = "[WALL_MEAS] \(message)"
     AlwaysOnOSLog.wallMeas.notice("\(line, privacy: .public)")
 }
 
-/// SHARP Core ML / pipeline milestones — not gated by Settings debug mode.
-/// Filter: category `SHARP` or search `[SHARP]`.
+/// SHARP Core ML / pipeline milestones. Filter: category `SHARP` or search `[SHARP]`.
 func logSharpMilestone(_ message: String) {
+    guard isDebugModeEnabled() else { return }
     let line = "[SHARP] \(message)"
     AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
 }
 
 /// Sharp Room: SHARP-derived room W×H×D diagnostics (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
 func logARRoomMeasure(_ message: String) {
+    guard isDebugModeEnabled() else { return }
     let line = "[AR_ROOM_MEASURE] \(message)"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
 }
 
 /// Depth Pro metric-depth pipeline. Filter: `DEPTH_PRO` or `[DEPTH_PRO]`.
 func logDepthPro(_ message: String) {
+    guard isDebugModeEnabled() else { return }
     let line = "[DEPTH_PRO] \(message.uppercased())"
     AlwaysOnOSLog.depthPro.notice("\(line, privacy: .public)")
 }
@@ -123,6 +127,7 @@ private func currentAppMemorySnapshot() -> AppMemorySnapshot? {
 /// Lightweight memory diagnostics for tracing which stage caused pressure.
 /// Filter by category `MEMORY` or search `[MEMORY]`.
 func logMemorySnapshot(_ source: String, details: String? = nil) {
+    guard isDebugModeEnabled() else { return }
     guard let snapshot = currentAppMemorySnapshot() else {
         let line = "[MEMORY] source=\(source) snapshot=unavailable"
         AlwaysOnOSLog.memory.notice("\(line, privacy: .public)")
