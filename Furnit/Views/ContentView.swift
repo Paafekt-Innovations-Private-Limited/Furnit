@@ -890,6 +890,12 @@ struct HomeViewModelRow: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
+                if let dims = model.roomDimensionsListLine {
+                    Text(dims)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.green.opacity(0.9))
+                }
+
                 HStack(spacing: 6) {
                     Text(model.subtitleText)
                         .font(.caption)

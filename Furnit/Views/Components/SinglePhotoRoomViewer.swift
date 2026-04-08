@@ -828,12 +828,16 @@ private struct SplatViewerDestination: Identifiable, Hashable {
     let sharpPlyW: Float?
     let sharpPlyH: Float?
     let sharpPlyD: Float?
+    let roomWidth: Float?
+    let roomHeight: Float?
+    let roomDepth: Float?
     let sourcePhotoPxW: Int?
     let sourcePhotoPxH: Int?
 
     init(
         plyURL: URL,
         sharpPlyAabb: (Float, Float, Float)? = nil,
+        roomMeters: (Float, Float, Float)? = nil,
         sourcePhotoPixels: (Int, Int)? = nil
     ) {
         self.id = UUID()
@@ -846,6 +850,15 @@ private struct SplatViewerDestination: Identifiable, Hashable {
             self.sharpPlyW = nil
             self.sharpPlyH = nil
             self.sharpPlyD = nil
+        }
+        if let roomMeters {
+            self.roomWidth = roomMeters.0
+            self.roomHeight = roomMeters.1
+            self.roomDepth = roomMeters.2
+        } else {
+            self.roomWidth = nil
+            self.roomHeight = nil
+            self.roomDepth = nil
         }
         if let p = sourcePhotoPixels {
             self.sourcePhotoPxW = p.0
@@ -1373,17 +1386,20 @@ struct SinglePhotoRoomView: View {
             }
         }
         .navigationDestination(item: $splatViewerDestination) { dest in
-            SharpRoomView(
-                plyURL: dest.plyURL,
-                photoOrientation: selectedOrientation,
-                savedRoomWidth: nil,
-                savedRoomHeight: nil,
-                sharpPlyAabbWidth: dest.sharpPlyW,
-                sharpPlyAabbHeight: dest.sharpPlyH,
-                sharpPlyAabbDepth: dest.sharpPlyD,
-                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
-                sourcePhotoPixelHeight: dest.sourcePhotoPxH
-            )
+                            SharpRoomView(
+                                plyURL: dest.plyURL,
+                                photoOrientation: selectedOrientation,
+                                savedRoomWidth: nil,
+                                savedRoomHeight: nil,
+                                sharpPlyAabbWidth: dest.sharpPlyW,
+                                sharpPlyAabbHeight: dest.sharpPlyH,
+                                sharpPlyAabbDepth: dest.sharpPlyD,
+                                generatedRoomWidth: dest.roomWidth,
+                                generatedRoomHeight: dest.roomHeight,
+                                generatedRoomDepth: dest.roomDepth,
+                                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
+                                sourcePhotoPixelHeight: dest.sourcePhotoPxH
+                            )
             .onAppear {
                 logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
                 logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
@@ -1538,6 +1554,12 @@ struct SinglePhotoRoomView: View {
                     splatViewerDestination = SplatViewerDestination(
                         plyURL: gen.plyURL,
                         sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
+                        roomMeters: {
+                            if let width = gen.roomWidth, let height = gen.roomHeight, let depth = gen.roomDepth {
+                                return (width, height, depth)
+                            }
+                            return nil
+                        }(),
                         sourcePhotoPixels: (pxW, pxH)
                     )
                 }

@@ -65,7 +65,6 @@ import com.furnit.android.utils.FurnitureSegmentationMeanColor
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.services.FurnitureFitManager
-import com.furnit.android.services.WallMeasurementEstimator
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -2644,49 +2643,10 @@ class SharpRoomActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
             var rw = roomWidth
             var rh = roomHeight
             var rd = roomDepth
-            LogUtil.i(
-                "WALL_MEAS",
-                "saveRoom start name=$name folder=$folderPath before W×H×D=$rw×$rh×${rd} pref_measure=${prefs.getBoolean(WallMeasurementEstimator.PREF_ENABLED, true)}",
-            )
-            val measured = withContext(Dispatchers.Default) {
-                WallMeasurementEstimator.measure(
-                    this@SharpRoomActivity,
-                    File(folderPath),
-                    prefs,
-                    plyBounds = WallMeasurementEstimator.PlyBounds(rw, rh, rd),
-                    photoOrientation = photoOrientation,
-                )
-            }
-            if (measured == null) {
-                LogUtil.i("WALL_MEAS", "saveRoom measure returned null — keeping viewer dims W×H×D=$rw×$rh×$rd")
-            }
-            measured?.let { m ->
-                rw = m.widthMeters
-                rh = m.heightMeters
-                val scaleDepth = prefs.getBoolean(WallMeasurementEstimator.PREF_SCALE_DEPTH, false)
-                if (scaleDepth) {
-                    val prevW = roomWidth.coerceAtLeast(0.01f)
-                    val widthRatio = m.widthMeters / prevW
-                    // Same idea as iOS metadata: persist estimator depth when viewer depth was never set (~0).
-                    val baseDepth =
-                        if (roomDepth > 1e-3f) roomDepth else m.depthMeters
-                    rd = baseDepth * widthRatio
-                } else {
-                    rd = m.depthMeters
-                }
-                roomWidth = rw
-                roomHeight = rh
-                roomDepth = rd
-                LogUtil.i(
-                    "WALL_MEAS",
-                    "saveRoom applied mode=${m.calibrationMode} W×H×D=$rw×$rh×$rd " +
-                        "depth_m_from_measure=${m.depthMeters} depthScaled=$scaleDepth",
-                )
-            }
+            LogUtil.i("SHARP_ROOM_MEAS", "saveRoom start name=$name folder=$folderPath W×H×D=$rw×$rh×$rd")
 
             withContext(Dispatchers.Main) {
                 try {

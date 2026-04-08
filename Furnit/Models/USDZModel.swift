@@ -145,6 +145,23 @@ struct USDZModel: Identifiable, Hashable {
     var subtitleText: String {
         return fileType.displayName
     }
+
+    /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
+    var roomDimensionsListLine: String? {
+        if let w = roomWidth, let h = roomHeight, let d = roomDepth,
+           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
+            return String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        }
+        if let w = roomWidth, let h = roomHeight,
+           w > 0.05, h > 0.05, w.isFinite, h.isFinite,
+           let sh = roomSceneHeight, sh > 1e-4,
+           let sd = roomSceneDepth, sd > 1e-4 {
+            let d = sd * (h / sh)
+            guard d > 0.05, d.isFinite else { return nil }
+            return String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        }
+        return nil
+    }
     
     // ✅ UPDATED: Handle both bundle and saved rooms with debug-mode logging
     var temporaryURL: URL? {

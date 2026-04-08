@@ -139,14 +139,6 @@
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="settings_show_room_furniture_calibrate">Show room and furniture calibrate</string>
     <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
-    <string name="settings_wall_measurement_title">YOLO wall dimensions when saving</string>
-    <string name="settings_wall_measurement_description">On Save room, estimate front-wall width and height using YOLO wall detection, SHARP monodepth (saved when the room is generated), and camera EXIF. If monodepth is missing, uses an assumed camera-to-wall distance. Depth can be scaled to match the new width.</string>
-    <string name="settings_wall_measurement_scale_depth">Scale room depth with measured width</string>
-    <string name="settings_wall_measurement_scale_depth_description">Multiply depth by (measured width ÷ previous width) so the room stays proportionally consistent.</string>
-    <string name="settings_wall_measurement_calibration">Calibration priority</string>
-    <string name="settings_wall_measurement_cal_auto">Auto — try standard door (2.03 m), then ceiling height</string>
-    <string name="settings_wall_measurement_cal_door">Door height (2.03 m)</string>
-    <string name="settings_wall_measurement_cal_ceiling">Assumed ceiling height only</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>

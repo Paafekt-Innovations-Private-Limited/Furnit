@@ -112,6 +112,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
     /// Mean straight sRGB (0…1) over opaque-enough pixels of the composited segmentation cutout; throttled (~4 Hz).
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
+    /// Sharp Room uses this to opt into AR sizing explicitly instead of defaulting to it.
+    var arAssistedSizingEnabled: Bool = true
 
     private var lastSegmentationMeanColorPublishAt: CFAbsoluteTime = 0
     private let segmentationMeanColorMinPublishInterval: CFTimeInterval = 0.25
@@ -1352,13 +1354,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     /// Sharp Room already supplies splat-surface depth.
-    /// In that host, avoid spinning up a second ARKit session for Furniture Fit.
+    /// Keep Furniture Fit on the classic path there unless the viewer explicitly opts into AR sizing.
     private var shouldForceClassicCameraPath: Bool {
-        sharpRoomSplatMeasurementHost != nil
+        sharpRoomSplatMeasurementHost != nil && !arAssistedSizingEnabled
     }
 
     private func startPreferredCameraPathIfNeeded() {
-        let wantAR = !shouldForceClassicCameraPath
+        let wantAR = arAssistedSizingEnabled
+            && !shouldForceClassicCameraPath
             && AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
             && !suppressARDepthCompanionAfterCaptureFailure
         if wantAR {

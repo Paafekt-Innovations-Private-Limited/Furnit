@@ -111,6 +111,28 @@ private struct SavedRoomDiskMetadata {
     }
 }
 
+private struct BinaryPlyVertexLayout {
+    let headerByteCount: Int
+    let vertexCount: Int
+    let vertexStride: Int
+    let xOffset: Int
+    let yOffset: Int
+    let zOffset: Int
+}
+
+private struct MeasuredPlyRoomDimensions {
+    let width: Float
+    let height: Float
+    let depth: Float
+    let sceneWidth: Float
+    let sceneHeight: Float
+    let sceneDepth: Float
+    let zMode: Float
+    let zMedian: Float
+    let band: Float
+    let count: Int
+}
+
 class USDZModelManager: ObservableObject {
     @Published var models: [USDZModel] = []
     private let supportedSavedRoomExtensions = Set(["usdz", "ply", "meshroom", "glb"])
@@ -259,6 +281,215 @@ class USDZModelManager: ObservableObject {
         return nil
     }
 
+    private func metadataURL(forSavedPlyURL url: URL) -> URL {
+        url.deletingLastPathComponent()
+            .appendingPathComponent("\(url.deletingPathExtension().lastPathComponent).ply.meta")
+    }
+
+    private func binaryPlyLayout(for data: Data) -> BinaryPlyVertexLayout? {
+        let endHeaderLF = Data("end_header\n".utf8)
+        let endHeaderCRLF = Data("end_header\r\n".utf8)
+        let headerEnd: Int
+        if let range = data.range(of: endHeaderCRLF) {
+            headerEnd = range.upperBound
+        } else if let range = data.range(of: endHeaderLF) {
+            headerEnd = range.upperBound
+        } else {
+            return nil
+        }
+
+        let headerData = data.prefix(headerEnd)
+        let headerString = String(decoding: headerData, as: UTF8.self)
+        let lines = headerString.components(separatedBy: .newlines)
+
+        var inVertexElement = false
+        var vertexCount: Int?
+        var properties: [(name: String, byteWidth: Int)] = []
+
+        func byteWidth(for rawType: String) -> Int? {
+            switch rawType {
+            case "char", "uchar", "int8", "uint8":
+                return 1
+            case "short", "ushort", "int16", "uint16":
+                return 2
+            case "int", "uint", "float", "int32", "uint32", "float32":
+                return 4
+            case "double", "float64":
+                return 8
+            default:
+                return nil
+            }
+        }
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            let parts = line.split(separator: " ").map(String.init)
+            guard let keyword = parts.first else { continue }
+            if keyword == "element", parts.count >= 3 {
+                inVertexElement = (parts[1] == "vertex")
+                if inVertexElement {
+                    vertexCount = Int(parts[2])
+                    properties.removeAll(keepingCapacity: false)
+                }
+                continue
+            }
+            guard inVertexElement, keyword == "property", parts.count >= 3 else { continue }
+            if parts[1] == "list" {
+                return nil
+            }
+            guard let width = byteWidth(for: parts[1]) else { return nil }
+            properties.append((name: parts[2], byteWidth: width))
+        }
+
+        guard let count = vertexCount, count > 0 else { return nil }
+        var runningOffset = 0
+        var xOffset: Int?
+        var yOffset: Int?
+        var zOffset: Int?
+        for property in properties {
+            switch property.name {
+            case "x": xOffset = runningOffset
+            case "y": yOffset = runningOffset
+            case "z": zOffset = runningOffset
+            default: break
+            }
+            runningOffset += property.byteWidth
+        }
+        guard let xOffset, let yOffset, let zOffset, runningOffset > 0 else { return nil }
+        return BinaryPlyVertexLayout(
+            headerByteCount: headerEnd,
+            vertexCount: count,
+            vertexStride: runningOffset,
+            xOffset: xOffset,
+            yOffset: yOffset,
+            zOffset: zOffset
+        )
+    }
+
+    private func readFloat32(from data: Data, offset: Int) -> Float? {
+        guard offset >= 0, offset + 4 <= data.count else { return nil }
+        var bits: UInt32 = 0
+        withUnsafeMutableBytes(of: &bits) { rawBuffer in
+            data.copyBytes(to: rawBuffer, from: offset..<(offset + 4))
+        }
+        return Float(bitPattern: UInt32(littleEndian: bits))
+    }
+
+    private func measureRoomDimensions(forPly url: URL) -> MeasuredPlyRoomDimensions? {
+        guard let data = try? Data(contentsOf: url),
+              let layout = binaryPlyLayout(for: data) else {
+            return nil
+        }
+
+        let isClassicVariant = url.deletingPathExtension().lastPathComponent.hasSuffix("_classic")
+        var normalizedXs: [Float] = []
+        var normalizedYs: [Float] = []
+        var normalizedDepths: [Float] = []
+        normalizedXs.reserveCapacity(layout.vertexCount)
+        normalizedYs.reserveCapacity(layout.vertexCount)
+        normalizedDepths.reserveCapacity(layout.vertexCount)
+
+        var minX = Float.greatestFiniteMagnitude
+        var maxX = -Float.greatestFiniteMagnitude
+        var minY = Float.greatestFiniteMagnitude
+        var maxY = -Float.greatestFiniteMagnitude
+        var minZ = Float.greatestFiniteMagnitude
+        var maxZ = -Float.greatestFiniteMagnitude
+
+        for index in 0..<layout.vertexCount {
+            let vertexOffset = layout.headerByteCount + index * layout.vertexStride
+            guard let storedX = readFloat32(from: data, offset: vertexOffset + layout.xOffset),
+                  let storedY = readFloat32(from: data, offset: vertexOffset + layout.yOffset),
+                  let storedZ = readFloat32(from: data, offset: vertexOffset + layout.zOffset),
+                  storedX.isFinite, storedY.isFinite, storedZ.isFinite else {
+                continue
+            }
+
+            minX = min(minX, storedX)
+            maxX = max(maxX, storedX)
+            minY = min(minY, storedY)
+            maxY = max(maxY, storedY)
+            minZ = min(minZ, storedZ)
+            maxZ = max(maxZ, storedZ)
+
+            let normalizedX = storedX
+            let normalizedY = isClassicVariant ? -storedY : storedY
+            let normalizedZ = isClassicVariant ? -storedZ : storedZ
+            let depth = -normalizedZ
+            guard depth.isFinite, depth > 0.01 else { continue }
+
+            normalizedXs.append(normalizedX)
+            normalizedYs.append(normalizedY)
+            normalizedDepths.append(depth)
+        }
+
+        guard !normalizedXs.isEmpty,
+              minX.isFinite, maxX.isFinite, minY.isFinite, maxY.isFinite, minZ.isFinite, maxZ.isFinite else {
+            return nil
+        }
+
+        let depths = normalizedDepths.sorted()
+        guard depths.count >= 64 else { return nil }
+        let minDepth = depths.first ?? 0
+        let maxDepth = depths.last ?? 0
+        let depthSpan = maxDepth - minDepth
+        guard depthSpan.isFinite, depthSpan > 0.01 else { return nil }
+
+        let binCount = 200
+        let binWidth = max(depthSpan / Float(binCount), 1e-4)
+        var histogram = [Int](repeating: 0, count: binCount)
+        for depth in depths {
+            var bucket = Int(((depth - minDepth) / binWidth).rounded(.down))
+            bucket = min(max(bucket, 0), binCount - 1)
+            histogram[bucket] += 1
+        }
+        guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+            return nil
+        }
+
+        let zMode = minDepth + (Float(peakIndex) + 0.5) * binWidth
+        let band = max(0.10 * abs(zMode), 0.05)
+        var backWallXs: [Float] = []
+        var backWallYs: [Float] = []
+        var backWallDepths: [Float] = []
+        backWallXs.reserveCapacity(depths.count / 2)
+        backWallYs.reserveCapacity(depths.count / 2)
+        backWallDepths.reserveCapacity(depths.count / 2)
+
+        for index in 0..<normalizedDepths.count {
+            let depth = normalizedDepths[index]
+            guard abs(depth - zMode) < band else { continue }
+            backWallXs.append(normalizedXs[index])
+            backWallYs.append(normalizedYs[index])
+            backWallDepths.append(depth)
+        }
+
+        guard backWallXs.count >= 64 else { return nil }
+
+        let sortedXs = backWallXs.sorted()
+        let sortedYs = backWallYs.sorted()
+        let sortedZs = backWallDepths.sorted()
+        let idx5 = min(sortedXs.count - 1, max(0, Int(Float(sortedXs.count) * 0.05)))
+        let idx95 = min(sortedXs.count - 1, max(idx5, Int(Float(sortedXs.count) * 0.95)))
+        let rawWidth = sortedXs[idx95] - sortedXs[idx5]
+        let rawHeight = sortedYs[idx95] - sortedYs[idx5]
+        let zMedian = sortedZs[sortedZs.count / 2]
+
+        return MeasuredPlyRoomDimensions(
+            width: rawWidth / 1.2,
+            height: rawHeight / 1.2,
+            depth: zMedian * 1.08,
+            sceneWidth: maxX - minX,
+            sceneHeight: maxY - minY,
+            sceneDepth: maxZ - minZ,
+            zMode: zMode,
+            zMedian: zMedian,
+            band: band,
+            count: backWallXs.count
+        )
+    }
+
     private func cleanupOrphanSavedRoomArtifactsIfNeeded() {
         let fileManager = FileManager.default
         guard let directoryContents = try? fileManager.contentsOfDirectory(
@@ -391,7 +622,7 @@ class USDZModelManager: ObservableObject {
                 let metadata: SavedRoomDiskMetadata
                 switch fileType {
                 case .ply:
-                    metadata = loadPLYMetadata(for: canonicalPlyStem(for: fileName))
+                    metadata = loadPLYMetadata(for: fileName)
                 case .meshroom:
                     metadata = loadMeshRoomMetadata(for: fileName)
                 case .glb:
@@ -892,8 +1123,6 @@ class USDZModelManager: ObservableObject {
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
         let classicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
         let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_3dgs.ply")
-        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
-        let sourceIsClassicPly = sourceURL.lastPathComponent.contains("_classic")
 
         // Check if source exists
         guard FileManager.default.fileExists(atPath: sourceURL.path) else {
@@ -909,14 +1138,19 @@ class USDZModelManager: ObservableObject {
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
-            if FileManager.default.fileExists(atPath: metadataURL.path) {
-                try FileManager.default.removeItem(at: metadataURL)
-            }
             if FileManager.default.fileExists(atPath: classicSidecarURL.path) {
                 try FileManager.default.removeItem(at: classicSidecarURL)
             }
             if FileManager.default.fileExists(atPath: threeDGSSidecarURL.path) {
                 try FileManager.default.removeItem(at: threeDGSSidecarURL)
+            }
+            let baseMetadataURL = metadataURL(forSavedPlyURL: destinationURL)
+            let classicMetadataURL = metadataURL(forSavedPlyURL: classicSidecarURL)
+            let threeDGSMetadataURL = metadataURL(forSavedPlyURL: threeDGSSidecarURL)
+            for metadataURL in [baseMetadataURL, classicMetadataURL, threeDGSMetadataURL] {
+                if FileManager.default.fileExists(atPath: metadataURL.path) {
+                    try FileManager.default.removeItem(at: metadataURL)
+                }
             }
 
             let sourceSet = siblingPlyURLs(for: sourceURL)
@@ -946,29 +1180,97 @@ class USDZModelManager: ObservableObject {
             CameraExifSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
             SharpCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
 
-            // Save metadata (orientation and dimensions)
-            var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
-            if let width = roomWidth {
-                metadata["roomWidth"] = String(format: "%.2f", width)
+            let variantDestinations: [(label: String, url: URL, isClassic: Bool)] = [
+                ("base_ply", destinationSet.original, false),
+                ("classic_ply", destinationSet.classic, true),
+                ("3dgs_ply", destinationSet.threeDGS, false),
+            ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
+
+            for variant in variantDestinations {
+                let measured = measureRoomDimensions(forPly: variant.url)
+                let finalRoomWidth = measured?.width ?? roomWidth
+                let finalRoomHeight = measured?.height ?? roomHeight
+                let finalRoomDepth = measured?.depth ?? roomDepth
+                let finalSceneWidth = measured?.sceneWidth ?? roomSceneWidth
+                let finalSceneHeight = measured?.sceneHeight ?? roomSceneHeight
+                let finalSceneDepth = measured?.sceneDepth ?? roomSceneDepth
+
+                let sourceTag: String
+                let approachTag: String
+                if measured != nil {
+                    sourceTag = "measured"
+                    approachTag = "back_wall_mode_from_ply_vertices"
+                } else if finalRoomWidth != nil || finalRoomHeight != nil || finalRoomDepth != nil {
+                    sourceTag = "fallback"
+                    approachTag = "preview_active_room_dimensions"
+                } else {
+                    sourceTag = "unavailable"
+                    approachTag = "none"
+                }
+
+                if let measured, debugMode {
+                    logDebug(
+                        "[GREEN][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
+                        "Z=\(String(format: "%.4f", measured.zMode)) " +
+                        "Z_MEDIAN=\(String(format: "%.4f", measured.zMedian)) " +
+                        "BAND=\(String(format: "%.4f", measured.band)) COUNT=\(measured.count) " +
+                        "W=\(String(format: "%.4f", measured.width)) " +
+                        "H=\(String(format: "%.4f", measured.height)) " +
+                        "D=\(String(format: "%.4f", measured.depth)) " +
+                        "SCENE_WHD=(\(String(format: "%.4f", measured.sceneWidth))," +
+                        "\(String(format: "%.4f", measured.sceneHeight))," +
+                        "\(String(format: "%.4f", measured.sceneDepth)))"
+                    )
+                } else if debugMode, let finalRoomWidth, let finalRoomHeight, let finalRoomDepth {
+                    let sceneWidthString = finalSceneWidth.map { String(format: "%.4f", $0) } ?? "nil"
+                    let sceneHeightString = finalSceneHeight.map { String(format: "%.4f", $0) } ?? "nil"
+                    let sceneDepthString = finalSceneDepth.map { String(format: "%.4f", $0) } ?? "nil"
+                    logDebug(
+                        "[YELLOW][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
+                        "W=\(String(format: "%.4f", finalRoomWidth)) " +
+                        "H=\(String(format: "%.4f", finalRoomHeight)) " +
+                        "D=\(String(format: "%.4f", finalRoomDepth)) " +
+                        "SCENE_WHD=(\(sceneWidthString),\(sceneHeightString),\(sceneDepthString))"
+                    )
+                } else if debugMode {
+                    logDebug(
+                        "[RED][ROOM_DIMS][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
+                        "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) unavailable"
+                    )
+                }
+
+                var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
+
+                if let width = finalRoomWidth {
+                    metadata["roomWidth"] = String(format: "%.2f", width)
+                }
+                if let height = finalRoomHeight {
+                    metadata["roomHeight"] = String(format: "%.2f", height)
+                }
+                if let depth = finalRoomDepth {
+                    metadata["roomDepth"] = String(format: "%.2f", depth)
+                }
+                if let sw = finalSceneWidth {
+                    metadata["roomSceneWidth"] = String(format: "%.4f", sw)
+                }
+                if let sh = finalSceneHeight {
+                    metadata["roomSceneHeight"] = String(format: "%.4f", sh)
+                }
+                if let sd = finalSceneDepth {
+                    metadata["roomSceneDepth"] = String(format: "%.4f", sd)
+                }
+                metadata["isClassicPly"] = variant.isClassic ? "true" : "false"
+
+                let metadataURL = metadataURL(forSavedPlyURL: variant.url)
+                let metadataData = try JSONEncoder().encode(metadata)
+                try metadataData.write(to: metadataURL, options: [.atomic])
+
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Metadata saved to: \(metadataURL.path)")
+                }
             }
-            if let height = roomHeight {
-                metadata["roomHeight"] = String(format: "%.2f", height)
-            }
-            if let depth = roomDepth {
-                metadata["roomDepth"] = String(format: "%.2f", depth)
-            }
-            if let sw = roomSceneWidth {
-                metadata["roomSceneWidth"] = String(format: "%.4f", sw)
-            }
-            if let sh = roomSceneHeight {
-                metadata["roomSceneHeight"] = String(format: "%.4f", sh)
-            }
-            if let sd = roomSceneDepth {
-                metadata["roomSceneDepth"] = String(format: "%.4f", sd)
-            }
-            metadata["isClassicPly"] = (sourceSet.classic != nil || sourceIsClassicPly) ? "true" : "false"
-            let metadataData = try JSONEncoder().encode(metadata)
-            try metadataData.write(to: metadataURL)
 
             // Copy SHARP wall-measurement thumbnail next to saved PLY so list reload can infer capture orientation for AR/UI.
             copyThumbnailFromSHARPSessionIfPresent(sourceURL: sourceURL, savedStem: fileName)
@@ -981,7 +1283,6 @@ class USDZModelManager: ObservableObject {
                 if sourceSet.threeDGS != nil {
                     logDebug("✅ [USDZModelManager] 3DGS sidecar saved to: \(destinationSet.threeDGS.path)")
                 }
-                logDebug("✅ [USDZModelManager] Metadata saved to: \(metadataURL.path)")
             }
 
             // Reload models to include the new one
@@ -1000,7 +1301,9 @@ class USDZModelManager: ObservableObject {
     /// Load all metadata from PLY metadata file (orientation, dimensions, optional YOLO ratios)
     private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
-        let legacyClassicSidecarURL = modelsDirectory.appendingPathComponent("\(fileName)_classic.ply")
+        let canonicalStem = canonicalPlyStem(for: fileName)
+        let legacyClassicSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalStem)_classic.ply")
+        let exactIsClassicVariant = fileName.hasSuffix("_classic")
 
         let base: SavedRoomDiskMetadata
         if FileManager.default.fileExists(atPath: metadataURL.path),
@@ -1011,12 +1314,14 @@ class USDZModelManager: ObservableObject {
             base = .empty
         }
         let normalizedBase = base.replacingClassicPly(
-            base.isClassicPly || FileManager.default.fileExists(atPath: legacyClassicSidecarURL.path)
+            exactIsClassicVariant ||
+            base.isClassicPly ||
+            (!fileName.hasSuffix("_classic") && !fileName.hasSuffix("_3dgs") && FileManager.default.fileExists(atPath: legacyClassicSidecarURL.path))
         )
 
         // Opening from list: AR roll uses `photoOrientation`. Prefer EXIF from saved thumbnail (same source as SHARP)
         // when present so orientation matches creation even if `.meta` defaulted to portrait or was stale.
-        if let thumbURL = savedRoomThumbnailURL(stem: fileName),
+        if let thumbURL = savedRoomThumbnailURL(stem: fileName) ?? (canonicalStem != fileName ? savedRoomThumbnailURL(stem: canonicalStem) : nil),
            let image = UIImage(contentsOfFile: thumbURL.path) {
             let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
             if fromThumb != normalizedBase.orientation {

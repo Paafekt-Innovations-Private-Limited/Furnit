@@ -14,6 +14,9 @@ struct SHARPGenerationResult: Sendable {
     let plyAabbWidth: Float
     let plyAabbHeight: Float
     let plyAabbDepth: Float
+    let roomWidth: Float?
+    let roomHeight: Float?
+    let roomDepth: Float?
 }
 
 /// On-device 3D Gaussian generation using Apple's SHARP model
@@ -549,7 +552,10 @@ class SHARPService: ObservableObject {
                 plyURL: plyURL,
                 plyAabbWidth: plyURLs.aabbWidth,
                 plyAabbHeight: plyURLs.aabbHeight,
-                plyAabbDepth: plyURLs.aabbDepth
+                plyAabbDepth: plyURLs.aabbDepth,
+                roomWidth: plyURLs.roomWidth,
+                roomHeight: plyURLs.roomHeight,
+                roomDepth: plyURLs.roomDepth
             )
         } catch {
             // Update status on failure so UI can show error
@@ -936,7 +942,17 @@ class SHARPService: ObservableObject {
         sourceImageSize: CGSize,
         applyAspectCorrection: Bool,
         sharpCamera: SharpCameraSidecar.Info?,
-    ) async throws -> (original: URL, classic: URL, threeDGS: URL, aabbWidth: Float, aabbHeight: Float, aabbDepth: Float) {
+    ) async throws -> (
+        original: URL,
+        classic: URL,
+        threeDGS: URL,
+        aabbWidth: Float,
+        aabbHeight: Float,
+        aabbDepth: Float,
+        roomWidth: Float?,
+        roomHeight: Float?,
+        roomDepth: Float?
+    ) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
@@ -1597,7 +1613,8 @@ class SHARPService: ObservableObject {
             "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
         )
 
-        if let backWall = estimateBackWallDimensions() {
+        let backWallDimensions = estimateBackWallDimensions()
+        if let backWall = backWallDimensions {
             logDebug(
                 "[GREEN][ROOM_DIMS] BACK_WALL_MODE Z=\(String(format: "%.4f", backWall.zMode)) " +
                 "Z_MEDIAN=\(String(format: "%.4f", backWall.zMedian)) " +
@@ -1634,7 +1651,10 @@ class SHARPService: ObservableObject {
             threeDGS: threeDGSFileURL,
             aabbWidth: width,
             aabbHeight: height,
-            aabbDepth: depth
+            aabbDepth: depth,
+            roomWidth: backWallDimensions?.width,
+            roomHeight: backWallDimensions?.height,
+            roomDepth: backWallDimensions?.depth
         )
     }
 
