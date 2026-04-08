@@ -1295,6 +1295,87 @@ class SHARPService: ObservableObject {
             let depth: Float
         }
 
+        // Experimental comparison-only path based on SHARP's own scene-extension math.
+        // Kept separate so it can be removed without touching ROOM_DIMS or ROOM_DIMS_APP.
+        struct SceneExtensionDimensions {
+            let focalPx: Float
+            let imageWidth: Float
+            let imageHeight: Float
+            let fovDiagonal: Float
+            let minDepth: Float
+            let maxLateral: Float
+            let sceneExtension: Float
+            let rawWidth: Float
+            let rawHeight: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+        }
+
+        // Experimental comparison-only adaptive variant of V4.
+        // Kept fully separate so removal is trivial if the comparison is not useful.
+        struct AdaptiveSceneExtensionDimensions {
+            let focalPx: Float
+            let imageWidth: Float
+            let imageHeight: Float
+            let fovDiagonal: Float
+            let minDepth: Float
+            let backWallZ: Float
+            let maxLateral: Float
+            let sceneExtension: Float
+            let fovWidthAtBackWall: Float
+            let fovHeightAtBackWall: Float
+            let fillRatioWidth: Float
+            let fillRatioHeight: Float
+            let blendWidth: Float
+            let blendHeight: Float
+            let rawWidth: Float
+            let rawHeight: Float
+            let correctedWidth: Float
+            let correctedHeight: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+        }
+
+        // Experimental comparison-only auto-router between corner-shot and straight-on formulas.
+        // Kept separate so it can be removed without affecting the active ROOM_DIMS_APP path.
+        struct AutoShotDimensions {
+            let shotType: String
+            let isCornerShot: Bool
+            let cuboidRatio: Float
+            let tiltDegrees: Float
+            let trimmedXSpan: Float
+            let trimmedYSpan: Float
+            let trimmedZSpan: Float
+            let floorDiagonal: Float
+            let fillWidth: Float
+            let blend: Float
+            let rawWidth: Float
+            let rawHeight: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+        }
+
+        // Experimental comparison-only rhombus decomposition for corner shots.
+        // Kept fully separate so it can be deleted without touching active measurements.
+        struct RhombusShotDimensions {
+            let shotType: String
+            let isCornerShot: Bool
+            let cuboidRatio: Float
+            let tiltDegrees: Float
+            let floorDiagonal: Float
+            let shortDiagonal: Float
+            let pcaSpan1: Float
+            let pcaSpan2: Float
+            let rawWidth: Float
+            let rawHeight: Float
+            let width: Float
+            let height: Float
+            let depth: Float
+        }
+
         func estimateBackWallDimensions() -> BackWallDimensions? {
             guard !rows.isEmpty else { return nil }
 
@@ -1571,6 +1652,511 @@ class SHARPService: ObservableObject {
             )
         }
 
+        func estimateRoomDimensionsV4() -> SceneExtensionDimensions? {
+            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+
+            let xs = rows.map(\.x).filter(\.isFinite).sorted()
+            let ys = rows.map(\.y).filter(\.isFinite).sorted()
+            let depths = rows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, ys.count >= 64, depths.count >= 64 else { return nil }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            let xP3 = xs[percentileIndex(0.03, count: xs.count)]
+            let xP97 = xs[percentileIndex(0.97, count: xs.count)]
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+            let trimmedXSpan = xP97 - xP3
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedXSpan.isFinite, trimmedZSpan.isFinite,
+                  trimmedXSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+            let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
+
+            let binCount = 200
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for depth in trimmedDepths {
+                var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
+                bucket = min(max(bucket, 0), binCount - 1)
+                histogram[bucket] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+
+            let zMode = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * zMode, 1e-4)
+            let backWallRows = rows.filter { abs(abs($0.z) - zMode) < band }
+            guard backWallRows.count >= 64 else { return nil }
+
+            let backWallXs = backWallRows.map(\.x).filter(\.isFinite).sorted()
+            let backWallYs = backWallRows.map(\.y).filter(\.isFinite).sorted()
+            guard backWallXs.count >= 64, backWallYs.count >= 64 else { return nil }
+
+            let idx5 = percentileIndex(0.05, count: backWallXs.count)
+            let idx95 = percentileIndex(0.95, count: backWallXs.count)
+            let yIdx5 = percentileIndex(0.05, count: backWallYs.count)
+            let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
+            let rawWidth = backWallXs[idx95] - backWallXs[idx5]
+            let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+
+            let imageWidth = Float(sourceImageSize.width)
+            let imageHeight = Float(sourceImageSize.height)
+            let fovDiagonal = sqrt(
+                max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
+                       (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
+            )
+            let minDepth = zP3
+            let maxDisparity: Float = 0.08
+            let maxLateral = maxDisparity * fovDiagonal * minDepth
+            let sceneExtension = 2 * maxLateral
+            let correctedWidth = max(0, rawWidth - sceneExtension)
+            let correctedHeight = max(0, rawHeight - sceneExtension)
+
+            return SceneExtensionDimensions(
+                focalPx: unprojectionFocalPx,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                fovDiagonal: fovDiagonal,
+                minDepth: minDepth,
+                maxLateral: maxLateral,
+                sceneExtension: sceneExtension,
+                rawWidth: rawWidth,
+                rawHeight: rawHeight,
+                width: correctedWidth,
+                height: correctedHeight,
+                depth: floorDiagonal
+            )
+        }
+
+        func estimateRoomDimensionsV5() -> AdaptiveSceneExtensionDimensions? {
+            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+
+            let xs = rows.map(\.x).filter(\.isFinite).sorted()
+            let ys = rows.map(\.y).filter(\.isFinite).sorted()
+            let depths = rows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, ys.count >= 64, depths.count >= 64 else { return nil }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            func blendFactor(_ fillRatio: Float) -> Float {
+                let normalized = (fillRatio - 0.55) / (0.75 - 0.55)
+                return min(max(normalized, 0), 1)
+            }
+
+            let xP3 = xs[percentileIndex(0.03, count: xs.count)]
+            let xP97 = xs[percentileIndex(0.97, count: xs.count)]
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+            let trimmedXSpan = xP97 - xP3
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedXSpan.isFinite, trimmedZSpan.isFinite,
+                  trimmedXSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+            let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
+
+            let binCount = 200
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for depth in trimmedDepths {
+                var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
+                bucket = min(max(bucket, 0), binCount - 1)
+                histogram[bucket] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+
+            let backWallZ = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * backWallZ, 1e-4)
+            let backWallRows = rows.filter { abs(abs($0.z) - backWallZ) < band }
+            guard backWallRows.count >= 64 else { return nil }
+
+            let backWallXs = backWallRows.map(\.x).filter(\.isFinite).sorted()
+            let backWallYs = backWallRows.map(\.y).filter(\.isFinite).sorted()
+            guard backWallXs.count >= 64, backWallYs.count >= 64 else { return nil }
+
+            let idx5 = percentileIndex(0.05, count: backWallXs.count)
+            let idx95 = percentileIndex(0.95, count: backWallXs.count)
+            let yIdx5 = percentileIndex(0.05, count: backWallYs.count)
+            let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
+            let rawWidth = backWallXs[idx95] - backWallXs[idx5]
+            let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+
+            let imageWidth = Float(sourceImageSize.width)
+            let imageHeight = Float(sourceImageSize.height)
+            let fovDiagonal = sqrt(
+                max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
+                       (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
+            )
+            let minDepth = zP3
+            let maxDisparity: Float = 0.08
+            let maxLateral = maxDisparity * fovDiagonal * minDepth
+            let sceneExtension = 2 * maxLateral
+
+            let fovWidthAtBackWall = imageWidth * backWallZ / unprojectionFocalPx
+            let fovHeightAtBackWall = imageHeight * backWallZ / unprojectionFocalPx
+            guard fovWidthAtBackWall > 1e-6, fovHeightAtBackWall > 1e-6 else { return nil }
+
+            let fillRatioWidth = rawWidth / fovWidthAtBackWall
+            let fillRatioHeight = rawHeight / fovHeightAtBackWall
+            let blendWidth = blendFactor(fillRatioWidth)
+            let blendHeight = blendFactor(fillRatioHeight)
+
+            let correctedWidth = rawWidth - sceneExtension
+            let correctedHeight = rawHeight - sceneExtension * 0.5
+            let blendedWidth = correctedWidth + blendWidth * (rawWidth - correctedWidth)
+            let blendedHeight = correctedHeight + blendHeight * (rawHeight - correctedHeight)
+
+            return AdaptiveSceneExtensionDimensions(
+                focalPx: unprojectionFocalPx,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                fovDiagonal: fovDiagonal,
+                minDepth: minDepth,
+                backWallZ: backWallZ,
+                maxLateral: maxLateral,
+                sceneExtension: sceneExtension,
+                fovWidthAtBackWall: fovWidthAtBackWall,
+                fovHeightAtBackWall: fovHeightAtBackWall,
+                fillRatioWidth: fillRatioWidth,
+                fillRatioHeight: fillRatioHeight,
+                blendWidth: blendWidth,
+                blendHeight: blendHeight,
+                rawWidth: rawWidth,
+                rawHeight: rawHeight,
+                correctedWidth: correctedWidth,
+                correctedHeight: correctedHeight,
+                width: max(blendedWidth, 0.5),
+                height: max(blendedHeight, 0.5),
+                depth: floorDiagonal
+            )
+        }
+
+        func estimateRoomDimensionsV6() -> AutoShotDimensions? {
+            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+            let tiltDegrees = estimateRoomDimensionsV3()?.tiltDegrees ?? 0
+
+            let xs = rows.map(\.x).filter(\.isFinite).sorted()
+            let ys = rows.map(\.y).filter(\.isFinite).sorted()
+            let depths = rows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, ys.count >= 64, depths.count >= 64 else { return nil }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            let xP3 = xs[percentileIndex(0.03, count: xs.count)]
+            let xP97 = xs[percentileIndex(0.97, count: xs.count)]
+            let yP3 = ys[percentileIndex(0.03, count: ys.count)]
+            let yP97 = ys[percentileIndex(0.97, count: ys.count)]
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+            let trimmedXSpan = xP97 - xP3
+            let trimmedYSpan = yP97 - yP3
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedXSpan.isFinite, trimmedYSpan.isFinite, trimmedZSpan.isFinite,
+                  trimmedXSpan > 0.01, trimmedYSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+            let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let maxSpan = max(trimmedXSpan, max(trimmedYSpan, trimmedZSpan))
+            let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
+            guard minSpan > 1e-6 else { return nil }
+            let cuboidRatio = maxSpan / minSpan
+            let isCornerShot = cuboidRatio < 1.45
+
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
+
+            let binCount = 200
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for depth in trimmedDepths {
+                var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
+                bucket = min(max(bucket, 0), binCount - 1)
+                histogram[bucket] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+
+            let backWallZ = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * backWallZ, 1e-4)
+            let backWallRows = rows.filter { abs(abs($0.z) - backWallZ) < band }
+            guard backWallRows.count >= 64 else { return nil }
+
+            let backWallXs = backWallRows.map(\.x).filter(\.isFinite).sorted()
+            let backWallYs = backWallRows.map(\.y).filter(\.isFinite).sorted()
+            guard backWallXs.count >= 64, backWallYs.count >= 64 else { return nil }
+
+            let idx5 = percentileIndex(0.05, count: backWallXs.count)
+            let idx95 = percentileIndex(0.95, count: backWallXs.count)
+            let yIdx5 = percentileIndex(0.05, count: backWallYs.count)
+            let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
+            let rawWidth = backWallXs[idx95] - backWallXs[idx5]
+            let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+
+            let roomWidth: Float
+            let roomHeight: Float
+            let roomDepth: Float
+            let shotType: String
+            let fillWidth: Float
+            let blend: Float
+
+            if isCornerShot {
+                shotType = "CORNER"
+                roomWidth = rawWidth / 1.2
+                if tiltDegrees < 12 {
+                    roomHeight = rawHeight / 1.2
+                } else {
+                    roomHeight = rawHeight
+                }
+                let diagSquared = floorDiagonal * floorDiagonal
+                let widthSquared = roomWidth * roomWidth
+                if diagSquared > widthSquared {
+                    roomDepth = sqrt(max(0, diagSquared - widthSquared))
+                } else {
+                    roomDepth = floorDiagonal
+                }
+                fillWidth = 0
+                blend = 0
+            } else {
+                shotType = "STRAIGHT"
+                let imageWidth = Float(sourceImageSize.width)
+                let imageHeight = Float(sourceImageSize.height)
+                let fovDiagonal = sqrt(
+                    max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
+                           (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
+                )
+                let maxDisparity: Float = 0.08
+                let minDepth = zP3
+                let maxLateral = maxDisparity * fovDiagonal * minDepth
+                let sceneExtension = 2 * maxLateral
+                let fovWidthAtBackWall = imageWidth * backWallZ / unprojectionFocalPx
+                let fillRatioW = fovWidthAtBackWall > 1e-6 ? (rawWidth / fovWidthAtBackWall) : 0
+                let widthBlend = min(max((fillRatioW - 0.55) / (0.75 - 0.55), 0), 1)
+                let correctedW = rawWidth - sceneExtension
+                let correctedH = rawHeight - sceneExtension
+                roomWidth = max(correctedW + widthBlend * (rawWidth - correctedW), 0.5)
+                if tiltDegrees < 12 {
+                    roomHeight = max(correctedH + widthBlend * (rawHeight - correctedH), 0.5)
+                } else {
+                    roomHeight = rawHeight
+                }
+                roomDepth = floorDiagonal
+                fillWidth = fillRatioW
+                blend = widthBlend
+            }
+
+            return AutoShotDimensions(
+                shotType: shotType,
+                isCornerShot: isCornerShot,
+                cuboidRatio: cuboidRatio,
+                tiltDegrees: tiltDegrees,
+                trimmedXSpan: trimmedXSpan,
+                trimmedYSpan: trimmedYSpan,
+                trimmedZSpan: trimmedZSpan,
+                floorDiagonal: floorDiagonal,
+                fillWidth: fillWidth,
+                blend: blend,
+                rawWidth: rawWidth,
+                rawHeight: rawHeight,
+                width: roomWidth,
+                height: roomHeight,
+                depth: roomDepth
+            )
+        }
+
+        func estimateRoomDimensionsV7() -> RhombusShotDimensions? {
+            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+            guard let v3 = estimateRoomDimensionsV3() else { return nil }
+
+            let xs = rows.map(\.x).filter(\.isFinite).sorted()
+            let ys = rows.map(\.y).filter(\.isFinite).sorted()
+            let depths = rows.map { abs($0.z) }.filter { $0.isFinite && $0 > 0.01 }.sorted()
+            guard xs.count >= 64, ys.count >= 64, depths.count >= 64 else { return nil }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            let xP3 = xs[percentileIndex(0.03, count: xs.count)]
+            let xP97 = xs[percentileIndex(0.97, count: xs.count)]
+            let yP3 = ys[percentileIndex(0.03, count: ys.count)]
+            let yP97 = ys[percentileIndex(0.97, count: ys.count)]
+            let zP3 = depths[percentileIndex(0.03, count: depths.count)]
+            let zP97 = depths[percentileIndex(0.97, count: depths.count)]
+
+            let trimmedXSpan = xP97 - xP3
+            let trimmedYSpan = yP97 - yP3
+            let trimmedZSpan = zP97 - zP3
+            guard trimmedXSpan.isFinite, trimmedYSpan.isFinite, trimmedZSpan.isFinite,
+                  trimmedXSpan > 0.01, trimmedYSpan > 0.01, trimmedZSpan > 0.01 else { return nil }
+
+            let floorDiagonal = sqrt(max(0, trimmedXSpan * trimmedXSpan + trimmedZSpan * trimmedZSpan))
+            let maxSpan = max(trimmedXSpan, max(trimmedYSpan, trimmedZSpan))
+            let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
+            guard minSpan > 1e-6 else { return nil }
+            let cuboidRatio = maxSpan / minSpan
+            let isCornerShot = cuboidRatio < 1.45
+
+            let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
+            guard trimmedDepths.count >= 64 else { return nil }
+
+            let binCount = 200
+            let binWidth = max(trimmedZSpan / Float(binCount), 1e-4)
+            var histogram = [Int](repeating: 0, count: binCount)
+            for depth in trimmedDepths {
+                var bucket = Int(((depth - zP3) / binWidth).rounded(.down))
+                bucket = min(max(bucket, 0), binCount - 1)
+                histogram[bucket] += 1
+            }
+            guard let peakIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset else {
+                return nil
+            }
+
+            let backWallZ = zP3 + (Float(peakIndex) + 0.5) * binWidth
+            let band = max(0.10 * backWallZ, 1e-4)
+            let backWallRows = rows.filter { abs(abs($0.z) - backWallZ) < band }
+            guard backWallRows.count >= 64 else { return nil }
+
+            let backWallXs = backWallRows.map(\.x).filter(\.isFinite).sorted()
+            let backWallYs = backWallRows.map(\.y).filter(\.isFinite).sorted()
+            guard backWallXs.count >= 64, backWallYs.count >= 64 else { return nil }
+
+            let idx5 = percentileIndex(0.05, count: backWallXs.count)
+            let idx95 = percentileIndex(0.95, count: backWallXs.count)
+            let yIdx5 = percentileIndex(0.05, count: backWallYs.count)
+            let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
+            let rawWidth = backWallXs[idx95] - backWallXs[idx5]
+            let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+
+            let pcaSpan1 = v3.span1
+            let pcaSpan2 = v3.span2
+            let shortDiagonal = min(pcaSpan1, pcaSpan2)
+            let tiltDegrees = v3.tiltDegrees
+
+            let roomWidth: Float
+            let roomHeight: Float
+            let roomDepth: Float
+            let shotType: String
+
+            if isCornerShot {
+                let product = floorDiagonal * shortDiagonal / 2
+                let sumOfSquares = floorDiagonal * floorDiagonal
+                let sumSquared = sumOfSquares + 2 * product
+                let diffSquared = sumOfSquares - 2 * product
+
+                var side1: Float
+                var side2: Float
+                if diffSquared >= 0 {
+                    let sum = sqrt(max(0, sumSquared))
+                    let diff = sqrt(max(0, diffSquared))
+                    side1 = (sum + diff) / 2
+                    side2 = (sum - diff) / 2
+                } else {
+                    let side = floorDiagonal / sqrt(2)
+                    side1 = side
+                    side2 = side
+                }
+
+                let larger = max(side1, side2)
+                let smaller = min(side1, side2)
+                let aspectRatio = smaller > 1e-6 ? (larger / smaller) : .greatestFiniteMagnitude
+                let asymmetry = larger > 1e-6 ? abs(larger - smaller) / larger : .greatestFiniteMagnitude
+                let rhombusValid =
+                    side1 > 0.5 &&
+                    side2 > 0.5 &&
+                    aspectRatio < 5 &&
+                    aspectRatio > 0.2
+
+                if rhombusValid && asymmetry <= 0.6 {
+                    shotType = "CORNER_RHOMBUS"
+                    if rawWidth > rawHeight {
+                        roomWidth = side1
+                        roomDepth = side2
+                    } else {
+                        roomWidth = side2
+                        roomDepth = side1
+                    }
+                } else {
+                    shotType = "CORNER_V6_FALLBACK"
+                    roomWidth = rawWidth / 1.2
+                    let diagSquared = floorDiagonal * floorDiagonal
+                    let widthSquared = roomWidth * roomWidth
+                    if diagSquared > widthSquared {
+                        roomDepth = sqrt(max(0, diagSquared - widthSquared))
+                    } else {
+                        roomDepth = floorDiagonal
+                    }
+                }
+
+                if tiltDegrees < 12 {
+                    roomHeight = rawHeight / 1.2
+                } else {
+                    roomHeight = rawHeight
+                }
+            } else {
+                shotType = "STRAIGHT"
+                let imageWidth = Float(sourceImageSize.width)
+                let imageHeight = Float(sourceImageSize.height)
+                let fovDiagonal = sqrt(
+                    max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
+                           (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
+                )
+                let maxLateral = Float(0.08) * fovDiagonal * zP3
+                let sceneExtension = 2 * maxLateral
+                let fovWidthAtBackWall = imageWidth * backWallZ / unprojectionFocalPx
+                let fillRatioW = fovWidthAtBackWall > 1e-6 ? (rawWidth / fovWidthAtBackWall) : 0
+                let blend = min(max((fillRatioW - 0.55) / 0.20, 0), 1)
+                let correctedW = rawWidth - sceneExtension
+                let correctedH = rawHeight - sceneExtension
+                roomWidth = max(correctedW + blend * (rawWidth - correctedW), 0.5)
+                if tiltDegrees < 12 {
+                    roomHeight = max(correctedH + blend * (rawHeight - correctedH), 0.5)
+                } else {
+                    roomHeight = rawHeight
+                }
+                roomDepth = floorDiagonal
+            }
+
+            return RhombusShotDimensions(
+                shotType: shotType,
+                isCornerShot: isCornerShot,
+                cuboidRatio: cuboidRatio,
+                tiltDegrees: tiltDegrees,
+                floorDiagonal: floorDiagonal,
+                shortDiagonal: isCornerShot ? shortDiagonal : 0,
+                pcaSpan1: pcaSpan1,
+                pcaSpan2: pcaSpan2,
+                rawWidth: rawWidth,
+                rawHeight: rawHeight,
+                width: roomWidth,
+                height: roomHeight,
+                depth: roomDepth
+            )
+        }
+
         // Debug first few gaussians
         for i in 0..<min(3, rows.count) {
             let g = rows[i]
@@ -1690,6 +2276,95 @@ class SHARPService: ObservableObject {
             )
         } else {
             logDebug("[RED][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA unavailable count=\(rows.count)")
+        }
+
+        if let roomDimsV4 = estimateRoomDimensionsV4() {
+            logDebug(
+                "[GREEN][ROOM_DIMS_V4] APPROACH=SHARP_SCENE_EXTENSION " +
+                "IMAGE=\(Int(roomDimsV4.imageWidth.rounded()))X\(Int(roomDimsV4.imageHeight.rounded())) " +
+                "FOCAL_PX=\(String(format: "%.4f", roomDimsV4.focalPx)) " +
+                "FOV_DIAG=\(String(format: "%.4f", roomDimsV4.fovDiagonal)) " +
+                "MIN_DEPTH=\(String(format: "%.4f", roomDimsV4.minDepth)) " +
+                "MAX_LATERAL=\(String(format: "%.4f", roomDimsV4.maxLateral)) " +
+                "SCENE_EXT=\(String(format: "%.4f", roomDimsV4.sceneExtension)) " +
+                "RAW_W=\(String(format: "%.4f", roomDimsV4.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", roomDimsV4.rawHeight)) " +
+                "W=\(String(format: "%.4f", roomDimsV4.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV4.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV4.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS_V4] APPROACH=SHARP_SCENE_EXTENSION unavailable count=\(rows.count)")
+        }
+
+        if let roomDimsV5 = estimateRoomDimensionsV5() {
+            logDebug(
+                "[GREEN][ROOM_DIMS_V5] APPROACH=ADAPTIVE_SCENE_EXTENSION " +
+                "IMAGE=\(Int(roomDimsV5.imageWidth.rounded()))X\(Int(roomDimsV5.imageHeight.rounded())) " +
+                "FOCAL_PX=\(String(format: "%.4f", roomDimsV5.focalPx)) " +
+                "FOV_DIAG=\(String(format: "%.4f", roomDimsV5.fovDiagonal)) " +
+                "MIN_DEPTH=\(String(format: "%.4f", roomDimsV5.minDepth)) " +
+                "BACK_WALL_Z=\(String(format: "%.4f", roomDimsV5.backWallZ)) " +
+                "MAX_LATERAL=\(String(format: "%.4f", roomDimsV5.maxLateral)) " +
+                "SCENE_EXT=\(String(format: "%.4f", roomDimsV5.sceneExtension)) " +
+                "FOV_W_AT_BW=\(String(format: "%.4f", roomDimsV5.fovWidthAtBackWall)) " +
+                "FOV_H_AT_BW=\(String(format: "%.4f", roomDimsV5.fovHeightAtBackWall)) " +
+                "FILL_W=\(String(format: "%.4f", roomDimsV5.fillRatioWidth)) " +
+                "FILL_H=\(String(format: "%.4f", roomDimsV5.fillRatioHeight)) " +
+                "BLEND_W=\(String(format: "%.4f", roomDimsV5.blendWidth)) " +
+                "BLEND_H=\(String(format: "%.4f", roomDimsV5.blendHeight)) " +
+                "RAW_W=\(String(format: "%.4f", roomDimsV5.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", roomDimsV5.rawHeight)) " +
+                "CORR_W=\(String(format: "%.4f", roomDimsV5.correctedWidth)) " +
+                "CORR_H=\(String(format: "%.4f", roomDimsV5.correctedHeight)) " +
+                "W=\(String(format: "%.4f", roomDimsV5.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV5.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV5.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS_V5] APPROACH=ADAPTIVE_SCENE_EXTENSION unavailable count=\(rows.count)")
+        }
+
+        if let roomDimsV6 = estimateRoomDimensionsV6() {
+            logDebug(
+                "[GREEN][ROOM_DIMS_V6] APPROACH=AUTO_\(roomDimsV6.shotType) " +
+                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV6.cuboidRatio)) " +
+                "IS_CORNER=\(roomDimsV6.isCornerShot) " +
+                "TILT_DEG=\(String(format: "%.2f", roomDimsV6.tiltDegrees)) " +
+                "TRIMMED_X=\(String(format: "%.4f", roomDimsV6.trimmedXSpan)) " +
+                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV6.trimmedYSpan)) " +
+                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV6.trimmedZSpan)) " +
+                "FLOOR_DIAG=\(String(format: "%.4f", roomDimsV6.floorDiagonal)) " +
+                "FILL_W=\(String(format: "%.4f", roomDimsV6.fillWidth)) " +
+                "BLEND=\(String(format: "%.4f", roomDimsV6.blend)) " +
+                "RAW_W=\(String(format: "%.4f", roomDimsV6.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", roomDimsV6.rawHeight)) " +
+                "W=\(String(format: "%.4f", roomDimsV6.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV6.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV6.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS_V6] APPROACH=AUTO unavailable count=\(rows.count)")
+        }
+
+        if let roomDimsV7 = estimateRoomDimensionsV7() {
+            logDebug(
+                "[GREEN][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.shotType) " +
+                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.cuboidRatio)) " +
+                "IS_CORNER=\(roomDimsV7.isCornerShot) " +
+                "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
+                "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
+                "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
+                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV7.pcaSpan1))," +
+                "\(String(format: "%.4f", roomDimsV7.pcaSpan2))) " +
+                "RAW_W=\(String(format: "%.4f", roomDimsV7.rawWidth)) " +
+                "RAW_H=\(String(format: "%.4f", roomDimsV7.rawHeight)) " +
+                "W=\(String(format: "%.4f", roomDimsV7.width)) " +
+                "H=\(String(format: "%.4f", roomDimsV7.height)) " +
+                "D=\(String(format: "%.4f", roomDimsV7.depth))"
+            )
+        } else {
+            logDebug("[RED][ROOM_DIMS_V7] APPROACH=RHOMBUS unavailable count=\(rows.count)")
         }
 
         let firstRowXYZ: String = {
