@@ -1298,6 +1298,8 @@ class SHARPService: ObservableObject {
         // Experimental comparison-only path based on SHARP's own scene-extension math.
         // Kept separate so it can be removed without touching ROOM_DIMS or ROOM_DIMS_APP.
         struct SceneExtensionDimensions {
+            let usedFocal: Bool
+            let approach: String
             let focalPx: Float
             let imageWidth: Float
             let imageHeight: Float
@@ -1315,6 +1317,8 @@ class SHARPService: ObservableObject {
         // Experimental comparison-only adaptive variant of V4.
         // Kept fully separate so removal is trivial if the comparison is not useful.
         struct AdaptiveSceneExtensionDimensions {
+            let usedFocal: Bool
+            let approach: String
             let focalPx: Float
             let imageWidth: Float
             let imageHeight: Float
@@ -1341,9 +1345,12 @@ class SHARPService: ObservableObject {
         // Experimental comparison-only auto-router between corner-shot and straight-on formulas.
         // Kept separate so it can be removed without affecting the active ROOM_DIMS_APP path.
         struct AutoShotDimensions {
+            let usedFocal: Bool
             let shotType: String
+            let orientationLabel: String
             let isCornerShot: Bool
             let cuboidRatio: Float
+            let cuboidThreshold: Float
             let tiltDegrees: Float
             let trimmedXSpan: Float
             let trimmedYSpan: Float
@@ -1361,9 +1368,12 @@ class SHARPService: ObservableObject {
         // Experimental comparison-only rhombus decomposition for corner shots.
         // Kept fully separate so it can be deleted without touching active measurements.
         struct RhombusShotDimensions {
+            let usedFocal: Bool
             let shotType: String
+            let orientationLabel: String
             let isCornerShot: Bool
             let cuboidRatio: Float
+            let cuboidThreshold: Float
             let tiltDegrees: Float
             let floorDiagonal: Float
             let shortDiagonal: Float
@@ -1483,11 +1493,35 @@ class SHARPService: ObservableObject {
             let ransacIterations = 500
             let epsilon: Float = 0.05
 
-            var rng = SystemRandomNumberGenerator()
+            struct SeedableRNG {
+                var state: UInt64
+
+                init(seed: UInt64) {
+                    self.state = seed == 0 ? 1 : seed
+                }
+
+                mutating func next() -> UInt64 {
+                    state ^= state << 13
+                    state ^= state >> 7
+                    state ^= state << 17
+                    return state
+                }
+            }
+
+            func percentileIndex(_ p: Float, count: Int) -> Int {
+                guard count > 1 else { return 0 }
+                let raw = Int((Float(count - 1) * p).rounded(.down))
+                return min(max(raw, 0), count - 1)
+            }
+
+            let depthSeedValues = positions.map(\.z).sorted()
+            let seedDepth = depthSeedValues[percentileIndex(0.80, count: depthSeedValues.count)]
+            var rng = SeedableRNG(seed: UInt64(bitPattern: Int64((seedDepth * 1_000_000).rounded())))
+
             var sampled: [SIMD3<Float>] = []
             sampled.reserveCapacity(sampleCount)
             for _ in 0..<sampleCount {
-                let index = Int.random(in: 0..<positions.count, using: &rng)
+                let index = Int(rng.next() % UInt64(positions.count))
                 sampled.append(positions[index])
             }
             guard sampled.count >= 3 else { return nil }
@@ -1497,9 +1531,9 @@ class SHARPService: ObservableObject {
             var bestInliers = 0
 
             for _ in 0..<ransacIterations {
-                let i0 = Int.random(in: 0..<sampled.count, using: &rng)
-                let i1 = Int.random(in: 0..<sampled.count, using: &rng)
-                let i2 = Int.random(in: 0..<sampled.count, using: &rng)
+                let i0 = Int(rng.next() % UInt64(sampled.count))
+                let i1 = Int(rng.next() % UInt64(sampled.count))
+                let i2 = Int(rng.next() % UInt64(sampled.count))
                 let p0 = sampled[i0]
                 let p1 = sampled[i1]
                 let p2 = sampled[i2]
@@ -1553,12 +1587,6 @@ class SHARPService: ObservableObject {
                     SIMD3<Float>(t * ax * ay + s * az, t * ay * ay + c, t * ay * az - s * ax),
                     SIMD3<Float>(t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c)
                 )
-            }
-
-            func percentileIndex(_ p: Float, count: Int) -> Int {
-                guard count > 1 else { return 0 }
-                let raw = Int((Float(count - 1) * p).rounded(.down))
-                return min(max(raw, 0), count - 1)
             }
 
             var rotatedY: [Float] = []
@@ -1653,7 +1681,7 @@ class SHARPService: ObservableObject {
         }
 
         func estimateRoomDimensionsV4() -> SceneExtensionDimensions? {
-            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+            guard !rows.isEmpty else { return nil }
 
             let xs = rows.map(\.x).filter(\.isFinite).sorted()
             let ys = rows.map(\.y).filter(\.isFinite).sorted()
@@ -1707,6 +1735,25 @@ class SHARPService: ObservableObject {
             let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
             let rawWidth = backWallXs[idx95] - backWallXs[idx5]
             let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+            let hasFocal = unprojectionFocalPx > 0.01
+            if !hasFocal {
+                return SceneExtensionDimensions(
+                    usedFocal: false,
+                    approach: "FALLBACK_NO_FOCAL",
+                    focalPx: 0,
+                    imageWidth: Float(sourceImageSize.width),
+                    imageHeight: Float(sourceImageSize.height),
+                    fovDiagonal: 0,
+                    minDepth: zP3,
+                    maxLateral: 0,
+                    sceneExtension: 0,
+                    rawWidth: rawWidth,
+                    rawHeight: rawHeight,
+                    width: rawWidth / 1.2,
+                    height: rawHeight / 1.2,
+                    depth: floorDiagonal
+                )
+            }
 
             let imageWidth = Float(sourceImageSize.width)
             let imageHeight = Float(sourceImageSize.height)
@@ -1722,6 +1769,8 @@ class SHARPService: ObservableObject {
             let correctedHeight = max(0, rawHeight - sceneExtension)
 
             return SceneExtensionDimensions(
+                usedFocal: true,
+                approach: "SHARP_SCENE_EXTENSION",
                 focalPx: unprojectionFocalPx,
                 imageWidth: imageWidth,
                 imageHeight: imageHeight,
@@ -1738,7 +1787,7 @@ class SHARPService: ObservableObject {
         }
 
         func estimateRoomDimensionsV5() -> AdaptiveSceneExtensionDimensions? {
-            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+            guard !rows.isEmpty else { return nil }
 
             let xs = rows.map(\.x).filter(\.isFinite).sorted()
             let ys = rows.map(\.y).filter(\.isFinite).sorted()
@@ -1797,6 +1846,34 @@ class SHARPService: ObservableObject {
             let yIdx95 = percentileIndex(0.95, count: backWallYs.count)
             let rawWidth = backWallXs[idx95] - backWallXs[idx5]
             let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
+            let hasFocal = unprojectionFocalPx > 0.01
+            if !hasFocal {
+                return AdaptiveSceneExtensionDimensions(
+                    usedFocal: false,
+                    approach: "FALLBACK_NO_FOCAL",
+                    focalPx: 0,
+                    imageWidth: Float(sourceImageSize.width),
+                    imageHeight: Float(sourceImageSize.height),
+                    fovDiagonal: 0,
+                    minDepth: zP3,
+                    backWallZ: zP3,
+                    maxLateral: 0,
+                    sceneExtension: 0,
+                    fovWidthAtBackWall: 0,
+                    fovHeightAtBackWall: 0,
+                    fillRatioWidth: 0,
+                    fillRatioHeight: 0,
+                    blendWidth: 0,
+                    blendHeight: 0,
+                    rawWidth: rawWidth,
+                    rawHeight: rawHeight,
+                    correctedWidth: rawWidth / 1.2,
+                    correctedHeight: rawHeight / 1.2,
+                    width: rawWidth / 1.2,
+                    height: rawHeight / 1.2,
+                    depth: floorDiagonal
+                )
+            }
 
             let imageWidth = Float(sourceImageSize.width)
             let imageHeight = Float(sourceImageSize.height)
@@ -1824,6 +1901,8 @@ class SHARPService: ObservableObject {
             let blendedHeight = correctedHeight + blendHeight * (rawHeight - correctedHeight)
 
             return AdaptiveSceneExtensionDimensions(
+                usedFocal: true,
+                approach: "ADAPTIVE_SCENE_EXTENSION",
                 focalPx: unprojectionFocalPx,
                 imageWidth: imageWidth,
                 imageHeight: imageHeight,
@@ -1849,7 +1928,7 @@ class SHARPService: ObservableObject {
         }
 
         func estimateRoomDimensionsV6() -> AutoShotDimensions? {
-            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
+            guard !rows.isEmpty else { return nil }
             let tiltDegrees = estimateRoomDimensionsV3()?.tiltDegrees ?? 0
 
             let xs = rows.map(\.x).filter(\.isFinite).sorted()
@@ -1881,7 +1960,13 @@ class SHARPService: ObservableObject {
             let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
             guard minSpan > 1e-6 else { return nil }
             let cuboidRatio = maxSpan / minSpan
-            let isCornerShot = cuboidRatio < 1.45
+            let imageWidth = Float(sourceImageSize.width)
+            let imageHeight = Float(sourceImageSize.height)
+            let isLandscape = imageWidth > imageHeight
+            let imageAspect = imageHeight > 1e-6 ? (imageWidth / imageHeight) : 1
+            let cuboidThreshold: Float = isLandscape ? (1.45 * imageAspect) : 1.45
+            let isCornerShot = cuboidRatio < cuboidThreshold
+            let orientationLabel = isLandscape ? "LANDSCAPE" : "PORTRAIT"
 
             let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
             guard trimmedDepths.count >= 64 else { return nil }
@@ -1920,8 +2005,16 @@ class SHARPService: ObservableObject {
             let shotType: String
             let fillWidth: Float
             let blend: Float
+            let hasFocal = unprojectionFocalPx > 0.01
 
-            if isCornerShot {
+            if !hasFocal {
+                shotType = "FALLBACK_NO_FOCAL"
+                roomWidth = rawWidth / 1.2
+                roomHeight = rawHeight / 1.2
+                roomDepth = floorDiagonal
+                fillWidth = 0
+                blend = 0
+            } else if isCornerShot {
                 shotType = "CORNER"
                 roomWidth = rawWidth / 1.2
                 if tiltDegrees < 12 {
@@ -1940,8 +2033,6 @@ class SHARPService: ObservableObject {
                 blend = 0
             } else {
                 shotType = "STRAIGHT"
-                let imageWidth = Float(sourceImageSize.width)
-                let imageHeight = Float(sourceImageSize.height)
                 let fovDiagonal = sqrt(
                     max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
                            (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
@@ -1967,9 +2058,12 @@ class SHARPService: ObservableObject {
             }
 
             return AutoShotDimensions(
+                usedFocal: hasFocal,
                 shotType: shotType,
+                orientationLabel: orientationLabel,
                 isCornerShot: isCornerShot,
                 cuboidRatio: cuboidRatio,
+                cuboidThreshold: cuboidThreshold,
                 tiltDegrees: tiltDegrees,
                 trimmedXSpan: trimmedXSpan,
                 trimmedYSpan: trimmedYSpan,
@@ -1986,8 +2080,8 @@ class SHARPService: ObservableObject {
         }
 
         func estimateRoomDimensionsV7() -> RhombusShotDimensions? {
-            guard !rows.isEmpty, unprojectionFocalPx > 0.01 else { return nil }
-            guard let v3 = estimateRoomDimensionsV3() else { return nil }
+            guard !rows.isEmpty else { return nil }
+            let v3 = estimateRoomDimensionsV3()
 
             let xs = rows.map(\.x).filter(\.isFinite).sorted()
             let ys = rows.map(\.y).filter(\.isFinite).sorted()
@@ -2018,7 +2112,13 @@ class SHARPService: ObservableObject {
             let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
             guard minSpan > 1e-6 else { return nil }
             let cuboidRatio = maxSpan / minSpan
-            let isCornerShot = cuboidRatio < 1.45
+            let imageWidth = Float(sourceImageSize.width)
+            let imageHeight = Float(sourceImageSize.height)
+            let isLandscape = imageWidth > imageHeight
+            let imageAspect = imageHeight > 1e-6 ? (imageWidth / imageHeight) : 1
+            let cuboidThreshold: Float = isLandscape ? (1.45 * imageAspect) : 1.45
+            let isCornerShot = cuboidRatio < cuboidThreshold
+            let orientationLabel = isLandscape ? "LANDSCAPE" : "PORTRAIT"
 
             let trimmedDepths = depths.filter { $0 >= zP3 && $0 <= zP97 }
             guard trimmedDepths.count >= 64 else { return nil }
@@ -2051,17 +2151,23 @@ class SHARPService: ObservableObject {
             let rawWidth = backWallXs[idx95] - backWallXs[idx5]
             let rawHeight = backWallYs[yIdx95] - backWallYs[yIdx5]
 
-            let pcaSpan1 = v3.span1
-            let pcaSpan2 = v3.span2
+            let pcaSpan1 = v3?.span1 ?? 0
+            let pcaSpan2 = v3?.span2 ?? 0
             let shortDiagonal = min(pcaSpan1, pcaSpan2)
-            let tiltDegrees = v3.tiltDegrees
+            let tiltDegrees = v3?.tiltDegrees ?? 0
 
             let roomWidth: Float
             let roomHeight: Float
             let roomDepth: Float
             let shotType: String
+            let hasFocal = unprojectionFocalPx > 0.01
 
-            if isCornerShot {
+            if !hasFocal {
+                shotType = "FALLBACK_NO_FOCAL"
+                roomWidth = rawWidth / 1.2
+                roomHeight = rawHeight / 1.2
+                roomDepth = floorDiagonal
+            } else if isCornerShot {
                 let product = floorDiagonal * shortDiagonal / 2
                 let sumOfSquares = floorDiagonal * floorDiagonal
                 let sumSquared = sumOfSquares + 2 * product
@@ -2118,8 +2224,6 @@ class SHARPService: ObservableObject {
                 }
             } else {
                 shotType = "STRAIGHT"
-                let imageWidth = Float(sourceImageSize.width)
-                let imageHeight = Float(sourceImageSize.height)
                 let fovDiagonal = sqrt(
                     max(0, (imageWidth / unprojectionFocalPx) * (imageWidth / unprojectionFocalPx) +
                            (imageHeight / unprojectionFocalPx) * (imageHeight / unprojectionFocalPx))
@@ -2141,9 +2245,12 @@ class SHARPService: ObservableObject {
             }
 
             return RhombusShotDimensions(
+                usedFocal: hasFocal,
                 shotType: shotType,
+                orientationLabel: orientationLabel,
                 isCornerShot: isCornerShot,
                 cuboidRatio: cuboidRatio,
+                cuboidThreshold: cuboidThreshold,
                 tiltDegrees: tiltDegrees,
                 floorDiagonal: floorDiagonal,
                 shortDiagonal: isCornerShot ? shortDiagonal : 0,
@@ -2280,7 +2387,7 @@ class SHARPService: ObservableObject {
 
         if let roomDimsV4 = estimateRoomDimensionsV4() {
             logDebug(
-                "[GREEN][ROOM_DIMS_V4] APPROACH=SHARP_SCENE_EXTENSION " +
+                "[\(roomDimsV4.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V4] APPROACH=\(roomDimsV4.approach) " +
                 "IMAGE=\(Int(roomDimsV4.imageWidth.rounded()))X\(Int(roomDimsV4.imageHeight.rounded())) " +
                 "FOCAL_PX=\(String(format: "%.4f", roomDimsV4.focalPx)) " +
                 "FOV_DIAG=\(String(format: "%.4f", roomDimsV4.fovDiagonal)) " +
@@ -2299,7 +2406,7 @@ class SHARPService: ObservableObject {
 
         if let roomDimsV5 = estimateRoomDimensionsV5() {
             logDebug(
-                "[GREEN][ROOM_DIMS_V5] APPROACH=ADAPTIVE_SCENE_EXTENSION " +
+                "[\(roomDimsV5.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V5] APPROACH=\(roomDimsV5.approach) " +
                 "IMAGE=\(Int(roomDimsV5.imageWidth.rounded()))X\(Int(roomDimsV5.imageHeight.rounded())) " +
                 "FOCAL_PX=\(String(format: "%.4f", roomDimsV5.focalPx)) " +
                 "FOV_DIAG=\(String(format: "%.4f", roomDimsV5.fovDiagonal)) " +
@@ -2327,9 +2434,11 @@ class SHARPService: ObservableObject {
 
         if let roomDimsV6 = estimateRoomDimensionsV6() {
             logDebug(
-                "[GREEN][ROOM_DIMS_V6] APPROACH=AUTO_\(roomDimsV6.shotType) " +
+                "[\(roomDimsV6.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V6] APPROACH=\(roomDimsV6.usedFocal ? "AUTO_\(roomDimsV6.shotType)" : roomDimsV6.shotType) " +
                 "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV6.cuboidRatio)) " +
+                "THRESHOLD=\(String(format: "%.4f", roomDimsV6.cuboidThreshold)) " +
                 "IS_CORNER=\(roomDimsV6.isCornerShot) " +
+                "ORIENTATION=\(roomDimsV6.orientationLabel) " +
                 "TILT_DEG=\(String(format: "%.2f", roomDimsV6.tiltDegrees)) " +
                 "TRIMMED_X=\(String(format: "%.4f", roomDimsV6.trimmedXSpan)) " +
                 "TRIMMED_Y=\(String(format: "%.4f", roomDimsV6.trimmedYSpan)) " +
@@ -2349,9 +2458,11 @@ class SHARPService: ObservableObject {
 
         if let roomDimsV7 = estimateRoomDimensionsV7() {
             logDebug(
-                "[GREEN][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.shotType) " +
+                "[\(roomDimsV7.usedFocal ? "GREEN" : "YELLOW")][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
                 "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.cuboidRatio)) " +
+                "THRESHOLD=\(String(format: "%.4f", roomDimsV7.cuboidThreshold)) " +
                 "IS_CORNER=\(roomDimsV7.isCornerShot) " +
+                "ORIENTATION=\(roomDimsV7.orientationLabel) " +
                 "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
                 "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
                 "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
