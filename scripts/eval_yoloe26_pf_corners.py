@@ -71,8 +71,20 @@ IMAGE_GLOBS = (
     "*.HEIC",
     "*.HEIF",
 )
-DEFAULT_ONNX = REPO_ROOT / "Furnit" / "Resources" / "yoloe-26l-seg-pf_seg_o2m.onnx"
+# Prefer local export paths; iOS bundle no longer ships this ONNX (Core ML + ODR only).
+DEFAULT_ONNX_CANDIDATES = (
+    REPO_ROOT / "Furnit" / "Resources" / "yoloe-26l-seg-pf_seg_o2m.onnx",
+    REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "yoloe-26l-seg-pf_seg_o2m.onnx",
+    REPO_ROOT / ".build" / "yoloe-26l-seg-pf_seg_o2m.onnx",
+)
 DEFAULT_CLASSES = REPO_ROOT / "Furnit" / "Views" / "FurnitureFit" / "classes.json"
+
+
+def resolve_default_onnx_path() -> Path:
+    for candidate in DEFAULT_ONNX_CANDIDATES:
+        if candidate.is_file():
+            return candidate
+    return DEFAULT_ONNX_CANDIDATES[0]
 
 # PF vocabulary: exact label "corner" (not "street corner")
 CORNER_CLASS_ID = 1124
@@ -287,7 +299,12 @@ def draw_overlay(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="YOLOE-26L PF corner detection eval + overlays.")
-    parser.add_argument("--onnx", type=Path, default=DEFAULT_ONNX)
+    parser.add_argument(
+        "--onnx",
+        type=Path,
+        default=None,
+        help="YOLOE seg_o2m ONNX. Default: first existing among Furnit/Resources, android assets, .build.",
+    )
     parser.add_argument("--classes", type=Path, default=DEFAULT_CLASSES)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--room-dir", type=Path, default=None, help="Directory of room images.")
@@ -316,8 +333,13 @@ def main() -> int:
     parser.add_argument("--max-corners", type=int, default=30)
     args = parser.parse_args()
 
-    if not args.onnx.is_file():
-        raise SystemExit(f"Missing ONNX: {args.onnx}")
+    onnx_path = args.onnx if args.onnx is not None else resolve_default_onnx_path()
+    if not onnx_path.is_file():
+        raise SystemExit(
+            f"Missing ONNX: {onnx_path}\n"
+            "Place yoloe-26l-seg-pf_seg_o2m.onnx under .build/, android assets, or Furnit/Resources, "
+            "or pass --onnx explicitly."
+        )
     if not args.classes.is_file():
         raise SystemExit(f"Missing classes.json: {args.classes}")
 
@@ -384,7 +406,7 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    sess = ort.InferenceSession(str(args.onnx), providers=["CPUExecutionProvider"])
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     side = args.side
 
@@ -438,7 +460,7 @@ def main() -> int:
         by_cat.setdefault(category, []).append(len(corners))
 
     summary = {
-        "model": str(args.onnx.resolve()),
+        "model": str(onnx_path.resolve()),
         "corner_class_id": CORNER_CLASS_ID,
         "corner_label": CORNER_LABEL,
         "decode_note": (
