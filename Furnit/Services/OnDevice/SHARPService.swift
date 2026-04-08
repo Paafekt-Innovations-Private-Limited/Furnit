@@ -2364,122 +2364,7 @@ class SHARPService: ObservableObject {
             "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
         )
 
-        let backWallDimensions = estimateBackWallDimensions()
-        let roomDimsV3 = estimateRoomDimensionsV3()
-        let roomDimsV7 = estimateRoomDimensionsV7()
-        if let backWall = backWallDimensions {
-            logDebug(
-                "[GREEN][ROOM_DIMS] APPROACH=LEGACY_BACK_WALL_PERCENTILE " +
-                "BACK_WALL_Z=\(String(format: "%.4f", backWall.zMode)) " +
-                "Z_MEDIAN=\(String(format: "%.4f", backWall.zMedian)) " +
-                "BAND=\(String(format: "%.4f", backWall.band)) COUNT=\(backWall.count) " +
-                "RAW_W=\(String(format: "%.4f", backWall.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", backWall.rawHeight)) " +
-                "W=\(String(format: "%.4f", backWall.legacyWidth)) " +
-                "H=\(String(format: "%.4f", backWall.legacyHeight)) " +
-                "D=\(String(format: "%.4f", backWall.legacyDepth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS] APPROACH=LEGACY_BACK_WALL_PERCENTILE unavailable count=\(rows.count)")
-        }
-
-        if let roomDimsV3 {
-            logDebug(
-                "[GREEN][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA " +
-                "FLOOR_NORMAL=(\(String(format: "%.4f", roomDimsV3.floorNormal.x))," +
-                "\(String(format: "%.4f", roomDimsV3.floorNormal.y))," +
-                "\(String(format: "%.4f", roomDimsV3.floorNormal.z))) " +
-                "TILT_DEG=\(String(format: "%.2f", roomDimsV3.tiltDegrees)) " +
-                "TILT_RAW=\(String(format: "%.2f", roomDimsV3.tiltRawDegrees)) " +
-                "TILT_RELIABLE=\(roomDimsV3.tiltReliable) " +
-                "RANSAC_SAMPLES=\(roomDimsV3.sampleCount) " +
-                "RANSAC_ITERS=\(roomDimsV3.ransacIterations) " +
-                "RANSAC_INLIERS=\(roomDimsV3.ransacInliers) " +
-                "EPS=\(String(format: "%.4f", roomDimsV3.epsilon)) " +
-                "PCA_LAMBDA=(\(String(format: "%.4f", roomDimsV3.lambda1))," +
-                "\(String(format: "%.4f", roomDimsV3.lambda2))) " +
-                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV3.span1))," +
-                "\(String(format: "%.4f", roomDimsV3.span2))) " +
-                "W=\(String(format: "%.4f", roomDimsV3.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV3.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV3.depth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS_V3] APPROACH=FLOOR_ALIGNED_PCA unavailable count=\(rows.count)")
-        }
-
-        // Unwired comparison approaches retained for future A/B work. They stay commented
-        // out so V7 is the only non-legacy path exercised by preview/list/ruler.
-        /*
-        if let roomDimsV4 = estimateRoomDimensionsV4() { ... }
-        if let roomDimsV5 = estimateRoomDimensionsV5() { ... }
-        if let roomDimsV6 = estimateRoomDimensionsV6() { ... }
-        */
-
-        if let roomDimsV7 {
-            logDebug(
-                "[GREEN][ROOM_DIMS_APP] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
-                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.usedFocal ? roomDimsV7.cuboidRatio : 0)) " +
-                "THRESHOLD=\(roomDimsV7.usedFocal ? String(format: "%.4f", roomDimsV7.cuboidThreshold) : "N/A") " +
-                "IS_CORNER=\((roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL").contains("CORNER")) " +
-                "ORIENTATION=\(roomDimsV7.orientationLabel) " +
-                "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
-                "TILT_RELIABLE=\(roomDimsV7.tiltReliable) " +
-                "HAS_FOCAL=\(roomDimsV7.usedFocal) " +
-                "TRIMMED_X=\(String(format: "%.4f", roomDimsV7.trimmedXSpan)) " +
-                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV7.trimmedYSpan)) " +
-                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV7.trimmedZSpan)) " +
-                "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
-                "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
-                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV7.pcaSpan1))," +
-                "\(String(format: "%.4f", roomDimsV7.pcaSpan2))) " +
-                "RAW_W=\(String(format: "%.4f", roomDimsV7.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", roomDimsV7.rawHeight)) " +
-                "W=\(String(format: "%.4f", roomDimsV7.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV7.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV7.depth))"
-            )
-            logDebug(
-                "[GREEN][ROOM_DIMS_V7] APPROACH=\(roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL") " +
-                "CUBOID_RATIO=\(String(format: "%.4f", roomDimsV7.usedFocal ? roomDimsV7.cuboidRatio : 0)) " +
-                "THRESHOLD=\(roomDimsV7.usedFocal ? String(format: "%.4f", roomDimsV7.cuboidThreshold) : "N/A") " +
-                "IS_CORNER=\((roomDimsV7.usedFocal ? roomDimsV7.shotType : "FALLBACK_NO_FOCAL").contains("CORNER")) " +
-                "ORIENTATION=\(roomDimsV7.orientationLabel) " +
-                "TILT_DEG=\(String(format: "%.2f", roomDimsV7.tiltDegrees)) " +
-                "TILT_RELIABLE=\(roomDimsV7.tiltReliable) " +
-                "HAS_FOCAL=\(roomDimsV7.usedFocal) " +
-                "TRIMMED_X=\(String(format: "%.4f", roomDimsV7.trimmedXSpan)) " +
-                "TRIMMED_Y=\(String(format: "%.4f", roomDimsV7.trimmedYSpan)) " +
-                "TRIMMED_Z=\(String(format: "%.4f", roomDimsV7.trimmedZSpan)) " +
-                "D_LONG=\(String(format: "%.4f", roomDimsV7.floorDiagonal)) " +
-                "D_SHORT=\(String(format: "%.4f", roomDimsV7.shortDiagonal)) " +
-                "PCA_SPANS=(\(String(format: "%.4f", roomDimsV7.pcaSpan1))," +
-                "\(String(format: "%.4f", roomDimsV7.pcaSpan2))) " +
-                "RAW_W=\(String(format: "%.4f", roomDimsV7.rawWidth)) " +
-                "RAW_H=\(String(format: "%.4f", roomDimsV7.rawHeight)) " +
-                "W=\(String(format: "%.4f", roomDimsV7.width)) " +
-                "H=\(String(format: "%.4f", roomDimsV7.height)) " +
-                "D=\(String(format: "%.4f", roomDimsV7.depth))"
-            )
-        } else {
-            logDebug("[RED][ROOM_DIMS_APP] APPROACH=ROOM_DIMS_V7 unavailable count=\(rows.count)")
-            logDebug("[RED][ROOM_DIMS_V7] APPROACH=ROOM_DIMS_V7 unavailable count=\(rows.count)")
-        }
-
-        let firstRowXYZ: String = {
-            guard let r = rows.first else { return "n/a" }
-            return String(format: "%.6f,%.6f,%.6f", r.x, r.y, r.z)
-        }()
-        logDebug(
-            "[ROOM_CREATE_COMPARE] phase=sharp_ply_export " +
-            "inputSquare=\(Self.inputSize) sourceImage_px=\(Int(sourceImageSize.width))x\(Int(sourceImageSize.height)) " +
-            "applyAspectCorrection=\(applyAspectCorrection) " +
-            "aspect_xy=(\(String(format: "%.6f", aspectCorrection.x)),\(String(format: "%.6f", aspectCorrection.y))) " +
-            "classic_aabb_vertexFrame_su_whd=(\(String(format: "%.6f", width)),\(String(format: "%.6f", height)),\(String(format: "%.6f", depth))) " +
-            "classic_aabb_min_xyz=(\(String(format: "%.6f", clMinX)),\(String(format: "%.6f", clMinY)),\(String(format: "%.6f", clMinZ))) " +
-            "classic_aabb_max_xyz=(\(String(format: "%.6f", clMaxX)),\(String(format: "%.6f", clMaxY)),\(String(format: "%.6f", clMaxZ))) " +
-            "first_gaussian_row_xyz_pre_writePLYFlip=(\(firstRowXYZ)) splats=\(gaussianCount) file=\(classicFileName)"
-        )
+        logDebug("[ROOM_DIMS_APP] DEFERRED source=async_preview_measurement file=\(classicFileName) splats=\(gaussianCount)")
 
         rows.removeAll(keepingCapacity: false)
         logMemorySnapshot("SHARPService.writePLY", details: "phase=after_drop_rows ply=\(classicFileName) splats=\(gaussianCount)")
@@ -2489,9 +2374,9 @@ class SHARPService: ObservableObject {
             aabbWidth: width,
             aabbHeight: height,
             aabbDepth: depth,
-            roomWidth: roomDimsV7?.width ?? backWallDimensions?.width,
-            roomHeight: roomDimsV7?.height ?? backWallDimensions?.height,
-            roomDepth: roomDimsV7?.depth ?? backWallDimensions?.depth
+            roomWidth: nil,
+            roomHeight: nil,
+            roomDepth: nil
         )
     }
 

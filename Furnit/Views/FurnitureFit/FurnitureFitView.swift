@@ -262,7 +262,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var onFirstSegmentationComplete: (() -> Void)?
 
     // MARK: - Overlay scale (room × AR when enabled × user pinch)
-    /// From `FurnitureSizingCalculator` (currently neutral 1×; room meters come from SHARP / calibration).
+    /// From `FurnitureSizingCalculator`; combined with a modest default baseline so large furniture
+    /// like beds and sofas do not start too small before AR/proportion sizing kicks in.
     private var autoScaleFromRoom: CGFloat = 1.0
     /// User pinch multiplier (reset when primary class changes).
     private var userPinchScale: CGFloat = 1.0
@@ -273,6 +274,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private let minCombinedOverlayScale: CGFloat = 0.08
     private let maxCombinedOverlayScale: CGFloat = 3.0
+    private let defaultStaticOverlayScale: CGFloat = 1.28
     private enum OverlayPresentationMode {
         case deferredCentered
         case measuredPlacement
@@ -844,7 +846,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func applyCurrentOverlayScaleTransform() {
         let arOn = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid
         let allowRoomProportionFallback = arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth
-        let roomFactor: CGFloat = arOn ? 1.0 : (allowRoomProportionFallback ? autoScaleFromRoom : 1.0)
+        let roomFactor: CGFloat = arOn ? 1.0 : (allowRoomProportionFallback ? autoScaleFromRoom : defaultStaticOverlayScale)
         let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
         let product = roomFactor * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
@@ -870,7 +872,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         } else if abs(autoScaleFromRoom - 1.0) > 0.02 {
             assistedLabel = "ROOM_PROP"
         } else {
-            assistedLabel = "1x"
+            assistedLabel = "STATIC_DEFAULT"
         }
         let jump = overlayDebugLastCombined < 0 || abs(clamped - overlayDebugLastCombined) > 0.02
         let labelChange = assistedLabel != overlayDebugLastAssistedLabel

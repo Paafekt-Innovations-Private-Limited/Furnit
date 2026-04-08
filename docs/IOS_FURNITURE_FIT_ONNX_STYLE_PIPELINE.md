@@ -98,7 +98,7 @@ From here, post-processing uses the same `MLMultiArray` det/proto tensors regard
 
 ### 4) Primary selection (iOS “STAGE 4” scoring)
 
-- **`selectPrimaryIndexCoreFlow(candidates, modelSide:)`** — **not** `FurnitureFitOnnxStylePipeline.pickPrimaryIndex` (that Android-style scorer exists in the enum but is **unused** in the current ONNX-style common path).
+- **`selectPrimaryIndexCoreFlow(candidates, modelSide:)`** — primary index for the ONNX-style common path (the older Android-named `pickPrimaryIndex` scorer was removed as dead code).
 - Gates: **min confidence 0.15**, **min normalized area 0.02** (relative to model square).
 - Score: **conf^1.5 × areaNorm^0.8 × centerScore^0.5** where `centerScore` favors boxes near the frame center.
 
@@ -191,7 +191,7 @@ Steps:
 
 - **`FurnitureFitOnnxStylePipeline`** is explicitly documented as mirroring **`FurnitureFitManager`** ONNX behavior (NMS ordering concepts, supporting table, bbox-limited sigmoid mask).
 - **Differences to be aware of:**
-  - **Primary pick:** iOS ONNX-style common path uses **`selectPrimaryIndexCoreFlow`**, not **`pickPrimaryIndex`** in `FurnitureFitOnnxStylePipeline.swift` (unused).
+  - **Primary pick:** iOS ONNX-style common path uses **`selectPrimaryIndexCoreFlow`** only; the legacy **`pickPrimaryIndex`** helper was removed from `FurnitureFitOnnxStylePipeline.swift`.
   - **NMS IoU / pre-NMS cap:** iOS uses **0.5** and **100** in this path; enum has different constants for documentation/Android reference.
   - **Inference:** Android ONNX vs iOS Core ML may differ slightly in numerics; mask logic is shared in Swift after tensors are in `MLMultiArray` form.
 

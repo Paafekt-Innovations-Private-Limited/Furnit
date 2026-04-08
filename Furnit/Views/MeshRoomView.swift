@@ -66,8 +66,7 @@ struct MeshRoomView: View {
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
     private var canOfferBrainArAssist: Bool {
-        QualitySettings.supportsFurnitureFitARAssisted &&
-            AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
+        QualitySettings.supportsFurnitureFitARAssisted
     }
 
     var body: some View {

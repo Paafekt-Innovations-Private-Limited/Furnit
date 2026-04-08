@@ -243,6 +243,7 @@ struct SharpRoomView: View {
     @State private var saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
     @State private var savingTimer: Timer?
     @State private var roomMeasurementTask: Task<Void, Never>?
+    @State private var backgroundRoomMeasurementTask: Task<Void, Never>?
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
@@ -507,6 +508,7 @@ struct SharpRoomView: View {
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
             loadPersistedRoomMetadataIfNeeded()
             syncModalHeavyWorkPauseForSharpRoomUI()
+            warmRoomMeasurementInBackgroundIfNeeded()
         }
         .onChange(of: sharpRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSharpRoomUI() }
         .onChange(of: showingFurnitureFit) { _, isOn in
@@ -561,6 +563,8 @@ struct SharpRoomView: View {
             autoEnableARTask = nil
             roomMeasurementTask?.cancel()
             roomMeasurementTask = nil
+            backgroundRoomMeasurementTask?.cancel()
+            backgroundRoomMeasurementTask = nil
             isMeasuringRoomDimensions = false
             saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
             cancelPinchHintTasks()
@@ -835,6 +839,8 @@ struct SharpRoomView: View {
 
     private func startAsyncRoomMeasurementForRuler() {
         guard !isMeasuringRoomDimensions else { return }
+        backgroundRoomMeasurementTask?.cancel()
+        backgroundRoomMeasurementTask = nil
         roomMeasurementTask?.cancel()
         roomMeasurementTask = Task {
             await MainActor.run {
@@ -880,6 +886,26 @@ struct SharpRoomView: View {
                 saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
                 roomDimensionsHintVisible = true
                 scheduleRoomDimensionsHintAutoHide(seconds: 3)
+            }
+        }
+    }
+
+    private func warmRoomMeasurementInBackgroundIfNeeded() {
+        guard measuredRoomDimensions == nil,
+              savedRoomStrictMeters == nil,
+              generatedRoomStrictMeters == nil else { return }
+        backgroundRoomMeasurementTask?.cancel()
+        backgroundRoomMeasurementTask = Task {
+            let measured = await modelManager.measureRoomDimensionsAsync(
+                forPly: viewerPlyURL,
+                treatAsClassicPly: viewerUsesClassicPlyBehavior
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                if measuredRoomDimensions == nil {
+                    measuredRoomDimensions = measured
+                }
+                backgroundRoomMeasurementTask = nil
             }
         }
     }

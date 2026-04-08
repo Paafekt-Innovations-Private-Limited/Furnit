@@ -196,6 +196,7 @@ struct GLBRoomView: View {
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
     @State private var furnitureFitInitialSegmentationDone = false
+    @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
     @State private var showDiscardUnsavedAlert = false
@@ -205,11 +206,18 @@ struct GLBRoomView: View {
     @State private var brainHintHideTextTask: Task<Void, Never>?
     @State private var snapshotHintExplanationVisible = false
     @State private var snapshotHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintExplanationVisible = false
+    @State private var arSizingHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView`` / ``MeshRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
+
+    private var canOfferBrainArAssist: Bool {
+        QualitySettings.supportsFurnitureFitARAssisted
+    }
 
     var body: some View {
         ZStack {
@@ -261,6 +269,7 @@ struct GLBRoomView: View {
 
             if !isLoading {
                 cameraButtonsOverlay
+                topTrailingARSizingOverlay
             }
 
             // FurnitureFit overlay (when active) - full screen camera for furniture detection
@@ -276,7 +285,8 @@ struct GLBRoomView: View {
                     roomHeightMeters: roomHeight ?? 3.0,
                     onFurnitureSizeEstimated: { _ in },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -346,6 +356,7 @@ struct GLBRoomView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                brainArAssistedSizingEnabled = false
                 yoloeService.releaseResources()
             }
         }
@@ -353,6 +364,7 @@ struct GLBRoomView: View {
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             cancelSnapshotHintTasks()
+            cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
             OrientationLockManager.shared.unlock()
         }
@@ -457,6 +469,11 @@ struct GLBRoomView: View {
         snapshotHintHideTextTask = nil
     }
 
+    private func cancelARSizingHintTasks() {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = nil
+    }
+
     private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
         snapshotHintHideTextTask?.cancel()
         snapshotHintHideTextTask = Task { @MainActor in
@@ -477,6 +494,31 @@ struct GLBRoomView: View {
         snapshotHintExplanationVisible.toggle()
         if snapshotHintExplanationVisible {
             scheduleSnapshotHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private func scheduleARSizingHintTextAutoHide(seconds: UInt64 = 3) {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            arSizingHintExplanationVisible = false
+        }
+    }
+
+    private func showARSizingHint(requiresBrain: Bool) {
+        cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = requiresBrain
+        arSizingHintExplanationVisible = true
+        scheduleARSizingHintTextAutoHide(seconds: 3)
+    }
+
+    private func onARSizingHintIconTapped() {
+        cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = false
+        arSizingHintExplanationVisible.toggle()
+        if arSizingHintExplanationVisible {
+            scheduleARSizingHintTextAutoHide(seconds: 3)
         }
     }
 
@@ -540,6 +582,16 @@ struct GLBRoomView: View {
 
     private var snapshotHintAccessibilityLabel: String {
         L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var arSizingHintAccessibilityLabel: String {
+        arSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var arSizingHintText: String {
+        arSizingHintRequiresBrain
+            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+            : L10n.RoomViewer.arFurnitureSizingHint
     }
 
     private var brainGestureHintColumn: some View {
@@ -631,6 +683,78 @@ struct GLBRoomView: View {
             }
             .disabled(isLoading)
         }
+    }
+
+    private var arSizingGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Button(action: onARSizingHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(arSizingHintAccessibilityLabel)
+            if arSizingHintExplanationVisible {
+                Text(arSizingHintText)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+        }
+        .onDisappear { cancelARSizingHintTasks() }
+    }
+
+    private var arSizingButtonWithHintBelow: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Button {
+                if showingFurnitureFit {
+                    brainArAssistedSizingEnabled.toggle()
+                } else {
+                    showARSizingHint(requiresBrain: true)
+                }
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle().fill(
+                            brainArAssistedSizingEnabled
+                                ? Color.green.opacity(0.9)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel(
+                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+            )
+
+            arSizingGestureHintColumn
+        }
+    }
+
+    private var topTrailingARSizingOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if canOfferBrainArAssist {
+                arSizingButtonWithHintBelow
+                    .padding(.top, 52)
+                    .padding(.trailing, 16)
+            }
+        }
+        .zIndex(19)
     }
 
     private var cameraDPadCluster: some View {

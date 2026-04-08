@@ -1,0 +1,21 @@
+# Optional: run Periphery for unused Swift in the Furnit app target.
+# Trigger manually only — full Xcode build is slow and requires macOS runners.
+name: Periphery unused code
+
+on:
+  workflow_dispatch:
+
+jobs:
+  periphery:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Periphery
+        run: brew install peripheryapp/periphery/periphery
+
+      - name: Scan Furnit target
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          periphery scan --disable-update-check --project Furnit.xcodeproj --schemes Furnit --targets Furnit
