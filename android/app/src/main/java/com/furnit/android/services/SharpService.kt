@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
+import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -269,17 +270,13 @@ class SharpService private constructor(private val context: Context) {
             }
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
-            LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
-            val (sanW, sanH, sanD) = SharpRoomDimensionSanitizer.sanitizeMeters(
-                result.roomWidth,
-                result.roomHeight,
-                result.roomDepth,
-            )
-            LogUtil.i(
+            val deferredRoomWidth = 0f
+            val deferredRoomHeight = 0f
+            val deferredRoomDepth = 0f
+            DebugLogger.i(
                 "SHARP_ROOM_MEAS",
-                "[room_created] infer_done gaussians=${result.gaussianCount} " +
-                    "bbox_raw W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
-                    "bbox_san W×H×D=$sanW×$sanH×$sanD " +
+                "[ROOM_DIMS_APP] DEFERRED source=viewer_box3_async " +
+                    "gaussians=${result.gaussianCount} " +
                     "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
                     "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
             )
@@ -293,8 +290,7 @@ class SharpService private constructor(private val context: Context) {
                 TAG,
                 "[SHARP_ORIENTATION] post-infer bitmap_layout=${feedOrientation.value} " +
                     "(SHARP input pixels ${image.width}x${image.height}) " +
-                    "room_raw=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} " +
-                    "room_san=$sanW×$sanH×$sanD " +
+                    "room_dims=deferred_async " +
                     "path=${result.plyFile.parentFile?.absolutePath}",
             )
 
@@ -302,9 +298,9 @@ class SharpService private constructor(private val context: Context) {
                 roomFolder = result.plyFile.parentFile!!,
                 image = image,
                 modelType = "sharp_executorch_int8",
-                roomWidth = sanW,
-                roomHeight = sanH,
-                roomDepth = sanD,
+                roomWidth = null,
+                roomHeight = null,
+                roomDepth = null,
                 roomCenterX = result.roomCenterX,
                 roomCenterY = result.roomCenterY,
                 roomCenterZ = result.roomCenterZ,
@@ -325,9 +321,9 @@ class SharpService private constructor(private val context: Context) {
                 GenerationResult(
                     plyFile = result.plyFile,
                     classicPlyFile = result.classicPlyFile,
-                    roomWidth = sanW,
-                    roomHeight = sanH,
-                    roomDepth = sanD,
+                    roomWidth = deferredRoomWidth,
+                    roomHeight = deferredRoomHeight,
+                    roomDepth = deferredRoomDepth,
                     roomCenterX = result.roomCenterX,
                     roomCenterY = result.roomCenterY,
                     roomCenterZ = result.roomCenterZ
@@ -476,7 +472,7 @@ class SharpService private constructor(private val context: Context) {
             "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} " +
                 "dims=${roomWidth}x${roomHeight}x${roomDepth} photoOrientation=$photoOrientation wide=$viewerPhotoWideAngle",
         )
-        LogUtil.i(
+        DebugLogger.i(
             "SHARP_ROOM_MEAS",
             "[metadata_written] roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth " +
                 "center=($roomCenterX,$roomCenterY,$roomCenterZ) photoOrientation=$photoOrientation " +
@@ -541,8 +537,8 @@ class SharpService private constructor(private val context: Context) {
         try {
             val exifOut = File(roomFolder, "camera_exif.json")
             exifOut.writeText(merged.toString())
-            LogUtil.d(TAG, "Wrote camera_exif.json for wall measurement")
-            LogUtil.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${merged.keys().asSequence().toList()}")
+            DebugLogger.d(TAG, "Wrote camera_exif.json for wall measurement")
+            DebugLogger.i("WALL_MEAS", "camera_exif_json path=${exifOut.absolutePath} keys=${merged.keys().asSequence().toList()}")
         } catch (e: Exception) {
             LogUtil.w(TAG, "writeCameraExifSidecar write: ${e.message}")
         }

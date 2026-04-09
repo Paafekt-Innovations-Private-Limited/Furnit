@@ -371,15 +371,44 @@ class SharpRoomActivity : AppCompatActivity() {
         openSnapshotRoomHeight = roomHeight
         openSnapshotRoomDepth = roomDepth
 
-        DebugLogger.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
-        DebugLogger.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
+        DebugLogger.d(
+            TAG,
+            "Opening SharpRoomActivity with PLY: $plyPath, dims: " +
+                if (hasSavedDimensions) {
+                    "${roomWidth}x${roomHeight}x${roomDepth}"
+                } else {
+                    "deferred_async"
+                } +
+                ", hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle"
+        )
+        DebugLogger.d(
+            TAG,
+            if (hasSavedDimensions) {
+                "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle"
+            } else {
+                "SharpRoom intent roomDims=deferred_async isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle"
+            }
+        )
         val isPortraitReceived = photoOrientation != "landscape"
-        DebugLogger.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
-        LogUtil.i(
+        DebugLogger.d(
+            TAG,
+            if (hasSavedDimensions) {
+                "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder"
+            } else {
+                "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomDims=deferred_async path=$roomFolder"
+            }
+        )
+        DebugLogger.i(
             "SHARP_ROOM_MEAS",
-            "[viewer_open] raw W×H×D=$roomWidth×$roomHeight×$roomDepth " +
-                "center=($roomCenterX,$roomCenterY,$roomCenterZ) arDisplayScale=$arDisplayScale " +
-                "eff_front_wall=${effRoomWidth()}×${effRoomHeight()} hasSavedMeta=$hasSavedDimensions folder=$roomFolder",
+            if (hasSavedDimensions) {
+                "[viewer_open] raw W×H×D=$roomWidth×$roomHeight×$roomDepth " +
+                    "center=($roomCenterX,$roomCenterY,$roomCenterZ) arDisplayScale=$arDisplayScale " +
+                    "eff_front_wall=${effRoomWidth()}×${effRoomHeight()} hasSavedMeta=$hasSavedDimensions folder=$roomFolder"
+            } else {
+                "[viewer_open] dims=deferred_async " +
+                    "center=($roomCenterX,$roomCenterY,$roomCenterZ) arDisplayScale=$arDisplayScale " +
+                    "hasSavedMeta=$hasSavedDimensions folder=$roomFolder"
+            },
         )
 
         if (plyPath == null) {
