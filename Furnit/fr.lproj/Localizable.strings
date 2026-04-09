@@ -58,6 +58,8 @@
 "home.deleteHint" = "Supprimez d'anciennes pièces pour en créer de nouvelles";
 "home.swipeHint" = "Balayez vers la gauche pour supprimer";
 "home.roomModel" = "Modèle de pièce 3D";
+"home.aiBased3DRoom" = "Pièce 3D basée sur l’IA";
+"home.manualBased3DRoom" = "Pièce 3D basée sur le mode manuel";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Limite de pièces atteinte";
@@ -285,6 +287,10 @@
 "roomViewer.saveSuccess" = "Pièce '%@' enregistrée avec succès !";
 "roomViewer.saveFailed" = "Échec de l'enregistrement de la pièce : %@";
 "roomViewer.roomSaveTitle" = "Enregistrer la pièce";
+"roomViewer.roomSavedAlertTitle" = "Pièce enregistrée";
+"roomViewer.meshExportFailed" = "Échec de l’exportation du modèle 3D.";
+"roomViewer.meshSaveFailedGeneric" = "Échec de l’enregistrement de la pièce.";
+"roomViewer.duplicateRoomName" = "Une pièce avec ce nom existe déjà.";
 "roomPreview.unsavedTitle" = "Partir sans enregistrer ?";
 "roomPreview.unsavedMessage" = "La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.";
 "roomPreview.stay" = "Rester";
@@ -296,8 +302,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
 "roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
 "roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour activer ou désactiver la détection de meubles. Quand elle est active, pincez le calque pour le redimensionner.";
+"roomViewer.snapshotGestureHintExplanation" = "Touchez l’appareil photo pour enregistrer une image de la pièce dans Photos.";
+"roomViewer.arFurnitureSizingHint" = "Utilise la caméra pour mieux ajuster la taille des meubles à la pièce. Fonctionne mieux sur les iPhone avec LiDAR. Désactive si la vue saccade ou semble instable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Je place les meubles en proportion de la taille de la pièce. Touchez l’icône cerveau puis réessayez avec moi.";
+"roomViewer.arSizingEnable" = "Activer le dimensionnement assisté par la caméra";
+"roomViewer.arSizingDisable" = "Désactiver le dimensionnement assisté par la caméra";
 "roomViewer.gestureHintToggleAccessibility" = "Touchez cette icône pour afficher ou masquer ce conseil.";
 "roomViewer.checkMeasurement" = "Vérifier la mesure";
+"roomViewer.roomDimensionsDefaultValues" = "Valeurs par défaut";
+"roomViewer.roomDimensionsWHDWithDefault" = "L × H × P\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "L × H\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Valeurs quasi exactes";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "L × H × P\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";
 "roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";
@@ -387,6 +403,19 @@
 "photoRoom.saveSuccess" = "Votre modèle 3D a été enregistré avec succès.";
 "photoRoom.error" = "Une erreur s'est produite lors de la génération de votre modèle 3D.";
 "photoRoom.buildingRoom" = "Construction de votre pièce 3D...";
+"photoRoom.reconstructorReady" = "Prêt";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analyse de la photo…";
+"photoRoom.reconstructorExtractingDepth" = "Extraction des informations de profondeur…";
+"photoRoom.reconstructorFindingWalls" = "Recherche des murs et des coins…";
+"photoRoom.reconstructorCalculatingDimensions" = "Calcul des dimensions de la pièce…";
+"photoRoom.reconstructorBuilding3D" = "Création du modèle 3D…";
+"photoRoom.reconstructorRoomReady" = "Pièce prête !";
+"photoRoom.reconstructorDepthFailed" = "Échec de l’estimation de la profondeur";
+"photoRoom.reconstructorStarting" = "Démarrage…";
+"photoRoom.reconstructorPreparingImage" = "Préparation de l’image…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analyse des limites…";
+"photoRoom.reconstructorCreatingTextures" = "Création des textures…";
+"photoRoom.reconstructorFinalizing" = "Finalisation…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Portrait";

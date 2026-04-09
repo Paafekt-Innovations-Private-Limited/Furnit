@@ -58,6 +58,8 @@
 "home.deleteHint" = "Elimina cuartos viejos para crear nuevos";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";
 "home.roomModel" = "Modelo de cuarto 3D";
+"home.aiBased3DRoom" = "Cuarto 3D basado en IA";
+"home.manualBased3DRoom" = "Cuarto 3D manual";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Límite de cuartos alcanzado";
@@ -285,6 +287,10 @@
 "roomViewer.saveSuccess" = "¡Cuarto '%@' guardado correctamente!";
 "roomViewer.saveFailed" = "Error al guardar cuarto: %@";
 "roomViewer.roomSaveTitle" = "Guardar cuarto";
+"roomViewer.roomSavedAlertTitle" = "Cuarto guardado";
+"roomViewer.meshExportFailed" = "No se pudo exportar el modelo 3D.";
+"roomViewer.meshSaveFailedGeneric" = "No se pudo guardar el cuarto.";
+"roomViewer.duplicateRoomName" = "Ya existe un cuarto con este nombre.";
 "roomPreview.unsavedTitle" = "¿Salir sin guardar?";
 "roomPreview.unsavedMessage" = "El cuarto aún no se ha guardado. Si regresas ahora, perderás esta vista previa.";
 "roomPreview.stay" = "Quedarse";
@@ -296,8 +302,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en el cuarto. Con los muebles segmentados, el pellizco también escala la superposición.";
 "roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en el cuarto. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
 "roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
+"roomViewer.snapshotGestureHintExplanation" = "Toca la cámara para guardar una foto del cuarto en Fotos.";
+"roomViewer.arFurnitureSizingHint" = "Usa la cámara para ajustar mejor el tamaño de los muebles a la habitación. Funciona mejor en iPhone con LiDAR. Desactívalo si la vista va a tirones o se ve inestable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Coloco los muebles en proporción al tamaño del cuarto. Toca el ícono del cerebro y luego inténtalo conmigo.";
+"roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
+"roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";
 "roomViewer.gestureHintToggleAccessibility" = "Toca este ícono para mostrar u ocultar este consejo.";
 "roomViewer.checkMeasurement" = "Revisar medida";
+"roomViewer.roomDimensionsDefaultValues" = "Valores predeterminados";
+"roomViewer.roomDimensionsWHDWithDefault" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "A × Al\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Valores casi exactos";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Midiendo el cuarto…";
 "roomViewer.goingBack" = "Regresando…";
 "roomViewer.savingRoomEllipsis" = "Guardando cuarto…";
@@ -387,6 +403,19 @@
 "photoRoom.saveSuccess" = "Tu modelo 3D se guardó correctamente.";
 "photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
 "photoRoom.buildingRoom" = "Construyendo tu cuarto 3D...";
+"photoRoom.reconstructorReady" = "Listo";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analizando foto…";
+"photoRoom.reconstructorExtractingDepth" = "Extrayendo información de profundidad…";
+"photoRoom.reconstructorFindingWalls" = "Buscando paredes y esquinas…";
+"photoRoom.reconstructorCalculatingDimensions" = "Calculando dimensiones del cuarto…";
+"photoRoom.reconstructorBuilding3D" = "Creando modelo 3D…";
+"photoRoom.reconstructorRoomReady" = "¡Cuarto listo!";
+"photoRoom.reconstructorDepthFailed" = "No se pudo estimar la profundidad";
+"photoRoom.reconstructorStarting" = "Iniciando…";
+"photoRoom.reconstructorPreparingImage" = "Preparando imagen…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analizando límites…";
+"photoRoom.reconstructorCreatingTextures" = "Creando texturas…";
+"photoRoom.reconstructorFinalizing" = "Finalizando…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Vertical";

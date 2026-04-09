@@ -58,6 +58,8 @@
 "home.deleteHint" = "പുതിയവ സൃഷ്ടിക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക";
 "home.swipeHint" = "ഇല്ലാതാക്കാൻ ഇടത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക";
 "home.roomModel" = "3D റൂം മോഡൽ";
+"home.aiBased3DRoom" = "AI അടിസ്ഥാനമുള്ള 3D മുറി";
+"home.manualBased3DRoom" = "മാനുവൽ അടിസ്ഥാനമുള്ള 3D മുറി";
 
 // MARK: - Room Limit
 "roomLimit.title" = "മുറി പരിധി എത്തി";
@@ -284,6 +286,10 @@
 "roomViewer.saveSuccess" = "മുറി '%@' വിജയകരമായി സേവ് ചെയ്തു!";
 "roomViewer.saveFailed" = "മുറി സേവ് ചെയ്യൽ പരാജയപ്പെട്ടു: %@";
 "roomViewer.roomSaveTitle" = "മുറി സേവ് ചെയ്യുക";
+"roomViewer.roomSavedAlertTitle" = "മുറി സേവ് ചെയ്തു";
+"roomViewer.meshExportFailed" = "3D മോഡൽ എക്സ്പോർട്ട് ചെയ്യാൻ കഴിഞ്ഞില്ല.";
+"roomViewer.meshSaveFailedGeneric" = "മുറി സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല.";
+"roomViewer.duplicateRoomName" = "ഈ പേരിൽ ഒരു മുറി ഇതിനകം നിലവിലുണ്ട്.";
 "roomPreview.unsavedTitle" = "സേവ് ചെയ്യാതെ പിൻവാങ്ങണോ?";
 "roomPreview.unsavedMessage" = "നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.";
 "roomPreview.stay" = "നിൽക്കുക";
@@ -295,8 +301,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "മുറി സൂം ചെയ്യാൻ രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടുക. ഫർണിച്ചർ സെഗ്മെന്റേഷൻ ഓണായാൽ ചിമുട്ടൽ ഓവർലേയുടെ വലുപ്പവും മാറ്റും.";
 "roomViewer.pinchGestureHintExplanation" = "രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടി മുറി സൂം ചെയ്യുക. ഫർണിച്ചർ ഫിറ്റ് ഓണായാൽ ചിമുട്ടൽ സെഗ്മെന്റേഷൻ ഓവർലേയും മാറ്റും.";
 "roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ കണ്ടെത്തൽ ഓൺ അല്ലെങ്കിൽ ഓഫ് ചെയ്യാൻ മസ്തിഷ്ക ഐക്കൺ തട്ടുക. ഓണായാൽ ഓവർലേ ചിമുട്ടി വലുപ്പം മാറ്റുക.";
+"roomViewer.snapshotGestureHintExplanation" = "മുറിയുടെ ചിത്രം ഫോട്ടോകളിൽ സേവ് ചെയ്യാൻ ക്യാമറ തട്ടുക.";
+"roomViewer.arFurnitureSizingHint" = "മുറിയുമായി ഫർണിച്ചർ വലുപ്പം കൂടുതൽ പൊരുത്തപ്പെടാൻ ക്യാമറ ഉപയോഗിക്കുന്നു. LiDAR ഉള്ള ഐഫോണുകളിൽ ഏറ്റവും നന്നായി പ്രവർത്തിക്കുന്നു. കാഴ്ച തടസ്സപ്പെടുകയോ അസ്ഥിരമായി തോന്നുകയോ ചെയ്താൽ ഇത് ഓഫ് ചെയ്യുക.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "മുറിയുടെ വലുപ്പത്തിന് അനുപാതമായി ഫർണിച്ചർ വയ്ക്കാൻ ഞാൻ സഹായിക്കും. ആദ്യം ബ്രെയിൻ ഐക്കണിൽ ടാപ്പ് ചെയ്യൂ, ശേഷം എന്നെ പരീക്ഷിക്കൂ.";
+"roomViewer.arSizingEnable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക";
+"roomViewer.arSizingDisable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓഫ് ചെയ്യുക";
 "roomViewer.gestureHintToggleAccessibility" = "ഈ നുറുങ്ങ് കാണിക്കാനോ മറയ്ക്കാനോ ഈ ഐക്കൺ തട്ടുക.";
 "roomViewer.checkMeasurement" = "അളവ് പരിശോധിക്കുക";
+"roomViewer.roomDimensionsDefaultValues" = "ഡിഫോൾട്ട് മൂല്യങ്ങൾ";
+"roomViewer.roomDimensionsWHDWithDefault" = "വീതി × ഉയരം × ആഴം\n%.2f × %.2f × %.2f മീ (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "വീതി × ഉയരം\n%.2f × %.2f മീ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "ഏതാണ്ട് കൃത്യമായ മൂല്യങ്ങൾ";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "വീതി × ഉയരം × ആഴം\n%.2f × %.2f × %.2f മീ (%@)";
 "roomViewer.measuringRoom" = "മുറി അളക്കുന്നു...";
 "roomViewer.goingBack" = "പിൻവാങ്ങുന്നു...";
 "roomViewer.savingRoomEllipsis" = "മുറി സേവ് ചെയ്യുന്നു...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "നിങ്ങളുടെ 3D മോഡൽ വിജയകരമായി സേവ് ചെയ്തു.";
 "photoRoom.error" = "നിങ്ങളുടെ 3D മോഡൽ സൃഷ്ടിക്കുമ്പോൾ ഒരു പിശക് സംഭവിച്ചു.";
 "photoRoom.buildingRoom" = "നിങ്ങളുടെ 3D മുറി നിർമ്മിക്കുന്നു...";
+"photoRoom.reconstructorReady" = "തയ്യാർ";
+"photoRoom.reconstructorAnalyzingPhoto" = "ഫോട്ടോ വിശകലനം ചെയ്യുന്നു…";
+"photoRoom.reconstructorExtractingDepth" = "ആഴത്തിന്റെ വിവരങ്ങൾ എടുക്കുന്നു…";
+"photoRoom.reconstructorFindingWalls" = "ചുവരുകളും മൂലകളും കണ്ടെത്തുന്നു…";
+"photoRoom.reconstructorCalculatingDimensions" = "മുറിയുടെ അളവുകൾ കണക്കാക്കുന്നു…";
+"photoRoom.reconstructorBuilding3D" = "3D മോഡൽ നിർമ്മിക്കുന്നു…";
+"photoRoom.reconstructorRoomReady" = "മുറി തയ്യാർ!";
+"photoRoom.reconstructorDepthFailed" = "ആഴം കണക്കാക്കൽ പരാജയപ്പെട്ടു";
+"photoRoom.reconstructorStarting" = "ആരംഭിക്കുന്നു…";
+"photoRoom.reconstructorPreparingImage" = "ചിത്രം തയ്യാറാക്കുന്നു…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "അതിർത്തികൾ വിശകലനം ചെയ്യുന്നു…";
+"photoRoom.reconstructorCreatingTextures" = "ടെക്സ്ചറുകൾ സൃഷ്ടിക്കുന്നു…";
+"photoRoom.reconstructorFinalizing" = "പൂർത്തിയാക്കുന്നു…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "പോർട്രെയ്റ്റ്";

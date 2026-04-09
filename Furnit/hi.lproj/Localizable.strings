@@ -58,6 +58,8 @@
 "home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
 "home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";
 "home.roomModel" = "3D कमरा मॉडल";
+"home.aiBased3DRoom" = "AI आधारित 3D कमरा";
+"home.manualBased3DRoom" = "मैनुअल आधारित 3D कमरा";
 
 // MARK: - Room Limit
 "roomLimit.title" = "कमरे की सीमा पूरी";
@@ -284,6 +286,10 @@
 "roomViewer.saveSuccess" = "कमरा '%@' सफलतापूर्वक सहेजा गया!";
 "roomViewer.saveFailed" = "कमरा सहेजने में विफल: %@";
 "roomViewer.roomSaveTitle" = "कमरा सहेजें";
+"roomViewer.roomSavedAlertTitle" = "कमरा सहेजा गया";
+"roomViewer.meshExportFailed" = "3D मॉडल निर्यात विफल।";
+"roomViewer.meshSaveFailedGeneric" = "कमरा सहेजना विफल।";
+"roomViewer.duplicateRoomName" = "इस नाम से एक कमरा पहले से मौजूद है।";
 "roomPreview.unsavedTitle" = "बिना सहेजे वापस जाएँ?";
 "roomPreview.unsavedMessage" = "आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।";
 "roomPreview.stay" = "रुकें";
@@ -295,8 +301,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
 "roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
 "roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
+"roomViewer.snapshotGestureHintExplanation" = "कमरे की तस्वीर फ़ोटो में सहेजने के लिए कैमरा पर टैप करें।";
+"roomViewer.arFurnitureSizingHint" = "कैमरे से फर्नीचर का आकार कमरे के अनुसार बेहतर मिलाने में मदद करता है। LiDAR वाले iPhone पर सबसे अच्छा काम करता है। अगर दृश्य रुक-रुक कर चले या अस्थिर लगे तो इसे बंद कर दें।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "मैं कमरे के आकार के अनुपात में फर्नीचर रखता हूँ। पहले ब्रेन आइकन पर टैप करें, फिर मुझे आज़माएँ।";
+"roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
+"roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";
 "roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";
 "roomViewer.checkMeasurement" = "माप जाँचें";
+"roomViewer.roomDimensionsDefaultValues" = "डिफ़ॉल्ट मान";
+"roomViewer.roomDimensionsWHDWithDefault" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "चौड़ाई × ऊँचाई\n%.2f × %.2f मी (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "लगभग सटीक मान";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
 "roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "आपका 3D मॉडल सफलतापूर्वक सहेजा गया।";
 "photoRoom.error" = "आपका 3D मॉडल बनाते समय एक त्रुटि हुई।";
 "photoRoom.buildingRoom" = "आपका 3D कमरा बनाया जा रहा है...";
+"photoRoom.reconstructorReady" = "तैयार";
+"photoRoom.reconstructorAnalyzingPhoto" = "फ़ोटो का विश्लेषण हो रहा है…";
+"photoRoom.reconstructorExtractingDepth" = "गहराई की जानकारी निकाली जा रही है…";
+"photoRoom.reconstructorFindingWalls" = "दीवारें और कोने खोजे जा रहे हैं…";
+"photoRoom.reconstructorCalculatingDimensions" = "कमरे का आयाम निकाला जा रहा है…";
+"photoRoom.reconstructorBuilding3D" = "3D मॉडल बनाया जा रहा है…";
+"photoRoom.reconstructorRoomReady" = "कमरा तैयार है!";
+"photoRoom.reconstructorDepthFailed" = "गहराई का अनुमान विफल";
+"photoRoom.reconstructorStarting" = "शुरू हो रहा है…";
+"photoRoom.reconstructorPreparingImage" = "छवि तैयार की जा रही है…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "सीमाएँ विश्लेषित की जा रही हैं…";
+"photoRoom.reconstructorCreatingTextures" = "टेक्सचर बनाए जा रहे हैं…";
+"photoRoom.reconstructorFinalizing" = "अंतिम रूप दिया जा रहा है…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "पोर्ट्रेट";

@@ -58,6 +58,8 @@
 "home.deleteHint" = "Alte Räume löschen, um neue zu erstellen";
 "home.swipeHint" = "Nach links wischen zum Löschen";
 "home.roomModel" = "3D-Raummodell";
+"home.aiBased3DRoom" = "KI-basiertes 3D-Zimmer";
+"home.manualBased3DRoom" = "Manuell erstelltes 3D-Zimmer";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Raumlimit erreicht";
@@ -314,6 +316,10 @@
 "roomViewer.saveSuccess" = "Raum '%@' erfolgreich gespeichert!";
 "roomViewer.saveFailed" = "Raum konnte nicht gespeichert werden: %@";
 "roomViewer.roomSaveTitle" = "Raum speichern";
+"roomViewer.roomSavedAlertTitle" = "Raum gespeichert";
+"roomViewer.meshExportFailed" = "3D-Modell konnte nicht exportiert werden.";
+"roomViewer.meshSaveFailedGeneric" = "Raum konnte nicht gespeichert werden.";
+"roomViewer.duplicateRoomName" = "Ein Raum mit diesem Namen existiert bereits.";
 "roomPreview.unsavedTitle" = "Ohne Speichern verlassen?";
 "roomPreview.unsavedMessage" = "Der Raum wurde noch nicht gespeichert. Wenn Sie jetzt zurückgehen, verlieren Sie diese Vorschau.";
 "roomPreview.stay" = "Bleiben";
@@ -325,8 +331,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
 "roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
 "roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Möbel-Erkennung ein- oder auszuschalten. Wenn sie an ist, kneife die Einblendung, um ihre Größe zu ändern.";
+"roomViewer.snapshotGestureHintExplanation" = "Tippe auf die Kamera, um ein Bild des Raums in „Fotos“ zu speichern.";
+"roomViewer.arFurnitureSizingHint" = "Nutzt die Kamera, damit Möbelgrößen besser zur Raumgröße passen. Am besten auf iPhones mit LiDAR. Schalte es aus, wenn die Ansicht ruckelt oder instabil wirkt.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "Ich platziere Möbel proportional zur Raumgröße. Tippe auf das Gehirn-Symbol und versuche es dann erneut.";
+"roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
+"roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
 "roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";
 "roomViewer.checkMeasurement" = "Messung prüfen";
+"roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
+"roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "B × H\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Nahezu genaue Werte";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
 "roomViewer.savingRoomEllipsis" = "Raum wird gespeichert…";
@@ -398,6 +414,19 @@
 "photoRoom.saveSuccess" = "Ihr 3D-Modell wurde erfolgreich gespeichert.";
 "photoRoom.error" = "Bei der Erstellung Ihres 3D-Modells ist ein Fehler aufgetreten.";
 "photoRoom.buildingRoom" = "Ihr 3D-Raum wird erstellt...";
+"photoRoom.reconstructorReady" = "Bereit";
+"photoRoom.reconstructorAnalyzingPhoto" = "Foto wird analysiert …";
+"photoRoom.reconstructorExtractingDepth" = "Tiefeninformationen werden extrahiert …";
+"photoRoom.reconstructorFindingWalls" = "Wände und Ecken werden gesucht …";
+"photoRoom.reconstructorCalculatingDimensions" = "Raummaße werden berechnet …";
+"photoRoom.reconstructorBuilding3D" = "3D-Modell wird erstellt …";
+"photoRoom.reconstructorRoomReady" = "Raum fertig!";
+"photoRoom.reconstructorDepthFailed" = "Tiefenschätzung fehlgeschlagen";
+"photoRoom.reconstructorStarting" = "Wird gestartet …";
+"photoRoom.reconstructorPreparingImage" = "Bild wird vorbereitet …";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Grenzen werden analysiert …";
+"photoRoom.reconstructorCreatingTextures" = "Texturen werden erstellt …";
+"photoRoom.reconstructorFinalizing" = "Wird abgeschlossen …";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Hochformat";

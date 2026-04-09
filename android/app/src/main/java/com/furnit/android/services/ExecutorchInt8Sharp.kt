@@ -4,6 +4,7 @@ package com.furnit.android.services
 import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import com.furnit.android.BuildConfig
@@ -245,19 +246,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     private val mutex = Mutex()
     private var isInitialized = false
+    /** Resolve flavor from manifest first so runtime follows the actually installed APK, not only generated BuildConfig. */
+    private val usesVulkanAarRuntime: Boolean by lazy { resolveUsesVulkanAarRuntime() }
     /** Matches etVulkan vs etCpu APK: `files/models_cpuvulkan_hybrid` or `files/models_cpu` (+ scoped external storage). */
-    private val executorchModelsSubdir: String =
-        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) MODELS_SUBDIR_CPU_VULKAN_HYBRID else MODELS_SUBDIR_CPU
+    private val executorchModelsSubdir: String
+        get() = if (prefersHybridModelsDir()) MODELS_SUBDIR_CPU_VULKAN_HYBRID else MODELS_SUBDIR_CPU
     /** External dir for adb push: try type first, then base + subdir (some devices return null for type). */
     private val externalModelsDir: File?
         get() = context.getExternalFilesDir(executorchModelsSubdir)
             ?: context.getExternalFilesDir(null)?.let { File(it, executorchModelsSubdir).takeIf { d -> d.exists() || d.mkdirs() } }
-    private val modelsDir by lazy {
-        externalModelsDir ?: File(context.filesDir, executorchModelsSubdir)
-    }
-    private val internalModelsDir by lazy {
-        File(context.filesDir, executorchModelsSubdir).also { it.mkdirs() }
-    }
+    private val modelsDir: File
+        get() = externalModelsDir ?: File(context.filesDir, executorchModelsSubdir)
+    private val internalModelsDir: File
+        get() = File(context.filesDir, executorchModelsSubdir).also { it.mkdirs() }
 
     /** Last user-visible failure from [inferStreaming]; consumed by [SharpService] for onError. */
     @Volatile
@@ -290,6 +291,44 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             append("Or choose CPU ExecuTorch INT8 in Settings.")
         }
     }
+
+    private fun resolveUsesVulkanAarRuntime(): Boolean {
+        val fallback = BuildConfig.EXECUTORCH_USE_VULKAN_AAR
+        return try {
+            val applicationInfo = context.packageManager.getApplicationInfo(
+                context.packageName,
+                PackageManager.GET_META_DATA,
+            )
+            val metaValue = applicationInfo.metaData?.getBoolean("com.furnit.executorch.USE_VULKAN_AAR")
+            metaValue ?: fallback
+        } catch (_: Exception) {
+            fallback
+        }
+    }
+
+    private fun hasHybridModelsOnDisk(): Boolean {
+        val hybridDirs = buildList {
+            add(File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID))
+            context.getExternalFilesDir(MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let(::add)
+            context.getExternalFilesDir(null)?.let { add(File(it, MODELS_SUBDIR_CPU_VULKAN_HYBRID)) }
+        }.distinctBy { it.absolutePath }
+        return hybridDirs.any { dir ->
+            if (!dir.exists()) return@any false
+            val entries = dir.listFiles().orEmpty()
+            val hasPortablePart12 = entries.any { it.isFile && it.name == SharpExecuTorchSplitModelNames.PART1_INT8 } &&
+                entries.any { it.isFile && it.name == SharpExecuTorchSplitModelNames.PART2_INT8 }
+            val hasVulkanStack = entries.any { it.isFile && it.name.startsWith("sharp_split_part3_vulkan") } ||
+                entries.any { it.isFile && it.name.startsWith("sharp_split_part4") }
+            hasPortablePart12 && hasVulkanStack
+        }
+    }
+
+    /**
+     * Only the etVulkan runtime should ever route through the hybrid Vulkan model tree.
+     * CPU/XNNPACK builds may still have hybrid files on disk from previous installs or adb pushes,
+     * but using those with the CPU runtime causes native Part3/4 Vulkan failures.
+     */
+    private fun prefersHybridModelsDir(): Boolean = usesVulkanAarRuntime
 
     private val plyBatch = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     private val zeroSHBytes = ByteArray(45 * 4)
@@ -324,9 +363,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (NATIVE_FULL_AVAILABLE) {
                 val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
                 ExecutorchFixedSettings.syncToPrefs(prefs)
-                val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+                val useCpuStableRequested = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+                val useCpuStable = useCpuStableRequested || !usesVulkanAarRuntime
                 val preferVulkanFp16Requested = ExecutorchFixedSettings.PREFER_VULKAN_FP16
                 val preferVulkanFp16 = effectivePreferVulkanFp16(preferVulkanFp16Requested)
+                if (!usesVulkanAarRuntime && !useCpuStableRequested) {
+                    LogUtil.w(
+                        TAG,
+                        "[INIT] Forcing CPU-stable SHARP path because this APK uses the CPU ExecuTorch runtime; " +
+                            "hybrid Vulkan models on disk will be ignored."
+                    )
+                }
                 if (preferVulkanFp16Requested && !preferVulkanFp16) {
                     LogUtil.w(
                         TAG,
@@ -373,11 +420,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 }
                 LogUtil.i(
                     TAG,
-                    "BUILD_CONFIG EXECUTORCH_USE_VULKAN_AAR=${BuildConfig.EXECUTORCH_USE_VULKAN_AAR} " +
-                        "(false = etCpu flavor / XNNPACK AAR; true = etVulkan). settings_cpu_stable=$useCpuStable"
+                    "EXECUTORCH_USE_VULKAN_AAR build=${BuildConfig.EXECUTORCH_USE_VULKAN_AAR} " +
+                        "runtime=$usesVulkanAarRuntime (false = etCpu flavor / XNNPACK AAR; true = etVulkan). " +
+                        "settings_cpu_stable_requested=$useCpuStableRequested effective_cpu_stable=$useCpuStable"
                 )
                 val rootsHint =
-                    if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
+                    if (usesVulkanAarRuntime) {
                         "etVulkan: push Vulkan Part3/4 + required portable Part1+2 (INT8 or fp16/fp32) to .../files/$MODELS_SUBDIR_CPU_VULKAN_HYBRID/"
                     } else {
                         "etCpu: push portable .pte to .../files/$MODELS_SUBDIR_CPU/"
@@ -386,7 +434,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     TAG,
                     "ExecuTorch model roots: internal=${internalModelsDir.absolutePath} external=${modelsDir.absolutePath} ($rootsHint)",
                 )
-                if (!BuildConfig.EXECUTORCH_USE_VULKAN_AAR && !useCpuStable) {
+                if (!usesVulkanAarRuntime && !useCpuStableRequested && !hasHybridModelsOnDisk()) {
                     LogUtil.w(
                         TAG,
                         "APK ExecuTorch is XNNPACK-only but Settings use Vulkan model layout — Vulkan .pte may fail. " +
@@ -466,7 +514,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * delete sources when the copy matches size, remove empty legacy dirs. Safe to run every launch.
      */
     private fun migrateLegacyModelsVulkanDirectoryToHybrid() {
-        if (!BuildConfig.EXECUTORCH_USE_VULKAN_AAR) return
+        if (!prefersHybridModelsDir()) return
         val hybridName = MODELS_SUBDIR_CPU_VULKAN_HYBRID
         val pairs = LinkedHashSet<Pair<File, File>>()
         fun addPair(old: File, newDir: File) {
@@ -720,10 +768,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * **Prefer `models_cpuvulkan_hybrid`** (same folder as Vulkan Part3/4 + adb `push_sharp_cpuvulkan_hybrid_androidstudio.sh`), then `models_cpu` (legacy).
      */
     private fun findCpuSidecarFile(filename: String): File? {
-        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
-            val internalVk = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID)
-            File(internalVk, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
-            context.getExternalFilesDir(MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { dir ->
+        val internalVk = File(context.filesDir, MODELS_SUBDIR_CPU_VULKAN_HYBRID)
+        File(internalVk, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        context.getExternalFilesDir(MODELS_SUBDIR_CPU_VULKAN_HYBRID)?.let { dir ->
+            File(dir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        }
+        context.getExternalFilesDir(null)?.let { root ->
+            File(root, MODELS_SUBDIR_CPU_VULKAN_HYBRID).let { dir ->
                 File(dir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
             }
         }
@@ -746,7 +797,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 findCpuSidecarFile(SharpExecuTorchSplitModelNames.PART2_FP16) != null)
 
     private fun effectivePreferVulkanFp16(requested: Boolean): Boolean =
-        requested && !BuildConfig.EXECUTORCH_USE_VULKAN_AAR
+        requested && !usesVulkanAarRuntime
 
     /** Default order is FP32-first; low-memory Vulkan mode flips this to FP16-first when such exports exist. */
     private fun findVulkanPart1Pte(preferFp16: Boolean = false): File? =
@@ -1213,9 +1264,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
             val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
             ExecutorchFixedSettings.syncToPrefs(prefs)
-            val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+            val useCpuStableRequested = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+            val useCpuStable = useCpuStableRequested || !usesVulkanAarRuntime
             val preferVulkanFp16Requested = ExecutorchFixedSettings.PREFER_VULKAN_FP16
             val preferVulkanFp16 = effectivePreferVulkanFp16(preferVulkanFp16Requested)
+            if (!usesVulkanAarRuntime && !useCpuStableRequested) {
+                LogUtil.w(
+                    TAG,
+                    "[C++ FULL] Forcing CPU-stable path because this APK uses the CPU ExecuTorch runtime; " +
+                        "hybrid Vulkan models on disk will be ignored."
+                )
+            }
             if (preferVulkanFp16Requested && !preferVulkanFp16) {
                 LogUtil.w(
                     TAG,
@@ -1837,24 +1896,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val looksNormalized =
             roomW <= 2.5f && roomH <= 2.5f && roomD <= 2.5f &&
                 maxAbsX <= 1.5f && maxAbsY <= 1.5f && maxAbsZ <= 1.5f
-        LogUtil.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
-        LogUtil.i(
+        DebugLogger.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
+        DebugLogger.i(
             "SHARP_ROOM_MEAS",
             "[ply_bbox] gaussians=$count W=$roomW H=$roomH D=$roomD " +
                 "center=($centerX,$centerY,$centerZ) file=${plyFile.name} " +
-                "(AABB in model space; WebGL viewer is authoritative for display dims)",
-        )
-        LogUtil.i(
-            "SHARP_ROOM_MEAS",
-            "[ply_space] min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ) " +
-                "maxAbs=($maxAbsX,$maxAbsY,$maxAbsZ) looksNormalized=$looksNormalized",
-        )
-        LogUtil.i(
-            "SHARP_ROOM_MEAS",
-            "[ply_aspect] aspectCorr=(${"%.4f".format(aspectCorrX)}, ${"%.4f".format(aspectCorrY)}) " +
-                "metricScale=${"%.4f".format(metricScale)} " +
-                "final W=${"%.3f".format(roomW)} H=${"%.3f".format(roomH)} D=${"%.3f".format(roomD)} " +
-                "imgDims=${imgW}x${imgH}",
+                "aspectCorr=(${"%.4f".format(aspectCorrX)}, ${"%.4f".format(aspectCorrY)}) " +
+                "metricScale=${"%.4f".format(metricScale)} looksNormalized=$looksNormalized",
         )
         LogUtil.i(
             "SHARP_METRIC_SCALE",

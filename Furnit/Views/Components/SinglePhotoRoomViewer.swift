@@ -3,6 +3,8 @@ import SceneKit
 import Accelerate
 import CoreML
 import Photos
+import PhotosUI
+import UniformTypeIdentifiers
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -826,12 +828,16 @@ private struct SplatViewerDestination: Identifiable, Hashable {
     let sharpPlyW: Float?
     let sharpPlyH: Float?
     let sharpPlyD: Float?
+    let roomWidth: Float?
+    let roomHeight: Float?
+    let roomDepth: Float?
     let sourcePhotoPxW: Int?
     let sourcePhotoPxH: Int?
 
     init(
         plyURL: URL,
         sharpPlyAabb: (Float, Float, Float)? = nil,
+        roomMeters: (Float, Float, Float)? = nil,
         sourcePhotoPixels: (Int, Int)? = nil
     ) {
         self.id = UUID()
@@ -844,6 +850,15 @@ private struct SplatViewerDestination: Identifiable, Hashable {
             self.sharpPlyW = nil
             self.sharpPlyH = nil
             self.sharpPlyD = nil
+        }
+        if let roomMeters {
+            self.roomWidth = roomMeters.0
+            self.roomHeight = roomMeters.1
+            self.roomDepth = roomMeters.2
+        } else {
+            self.roomWidth = nil
+            self.roomHeight = nil
+            self.roomDepth = nil
         }
         if let p = sourcePhotoPixels {
             self.sourcePhotoPxW = p.0
@@ -889,6 +904,8 @@ struct SinglePhotoRoomView: View {
     @State private var sharpCaptureMediaMetadata: [AnyHashable: Any]?
     /// Library asset id for EXIF via `PHImageManager.requestImageDataAndOrientation` when `imageURL` is nil.
     @State private var sharpPhotoLibraryAssetLocalId: String?
+    /// ARKit capture intrinsics / depth flags (see ``ARRoomPhotoCaptureViewController``) merged into `camera_exif.json`.
+    @State private var sharpSupplementalCameraDoubles: [String: Double]?
 
     var body: some View {
         ZStack {
@@ -1234,6 +1251,7 @@ struct SinglePhotoRoomView: View {
                 sourceImageURL: $sharpSourceImageURL,
                 captureMediaMetadata: $sharpCaptureMediaMetadata,
                 photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
@@ -1252,6 +1270,7 @@ struct SinglePhotoRoomView: View {
                 sourceImageURL: $sharpSourceImageURL,
                 captureMediaMetadata: $sharpCaptureMediaMetadata,
                 photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
+                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📷 [View] Camera capture dismissed")
@@ -1268,6 +1287,7 @@ struct SinglePhotoRoomView: View {
                 sharpSourceImageURL = nil
                 sharpCaptureMediaMetadata = nil
                 sharpPhotoLibraryAssetLocalId = nil
+                sharpSupplementalCameraDoubles = nil
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
@@ -1371,17 +1391,20 @@ struct SinglePhotoRoomView: View {
             }
         }
         .navigationDestination(item: $splatViewerDestination) { dest in
-            SharpRoomView(
-                plyURL: dest.plyURL,
-                photoOrientation: selectedOrientation,
-                savedRoomWidth: nil,
-                savedRoomHeight: nil,
-                sharpPlyAabbWidth: dest.sharpPlyW,
-                sharpPlyAabbHeight: dest.sharpPlyH,
-                sharpPlyAabbDepth: dest.sharpPlyD,
-                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
-                sourcePhotoPixelHeight: dest.sourcePhotoPxH
-            )
+                            SharpRoomView(
+                                plyURL: dest.plyURL,
+                                photoOrientation: selectedOrientation,
+                                savedRoomWidth: nil,
+                                savedRoomHeight: nil,
+                                sharpPlyAabbWidth: dest.sharpPlyW,
+                                sharpPlyAabbHeight: dest.sharpPlyH,
+                                sharpPlyAabbDepth: dest.sharpPlyD,
+                                generatedRoomWidth: dest.roomWidth,
+                                generatedRoomHeight: dest.roomHeight,
+                                generatedRoomDepth: dest.roomDepth,
+                                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
+                                sourcePhotoPixelHeight: dest.sourcePhotoPxH
+                            )
             .onAppear {
                 logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
                 logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
@@ -1498,6 +1521,7 @@ struct SinglePhotoRoomView: View {
     private func startSHARPGeneration(image: UIImage) {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
+        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
 
         splatViewerDestination = nil
         let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
@@ -1506,6 +1530,7 @@ struct SinglePhotoRoomView: View {
         let generationSourceImageURL = sharpSourceImageURL
         let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
         let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
+        let generationSupplementalCameraDoubles = sharpSupplementalCameraDoubles
         logDebug(
             "🤖 [View] SHARP generation image prepared source=\(pxW)x\(pxH) " +
             "working=\(Int(generationImage.size.width * generationImage.scale))x\(Int(generationImage.size.height * generationImage.scale))"
@@ -1516,6 +1541,7 @@ struct SinglePhotoRoomView: View {
         URLCache.shared.removeAllCachedResponses()
         // Drop YOLOE while SHARP runs (same as sheet onAppear) so two large Core ML stacks are not resident.
         YOLOEModelService.shared.releaseResources()
+        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_yolo_release")
 
         Task {
             do {
@@ -1526,13 +1552,21 @@ struct SinglePhotoRoomView: View {
                     sourceImageURL: generationSourceImageURL,
                     captureMediaMetadata: generationCaptureMediaMetadata,
                     photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
+                    supplementalCameraDoubles: generationSupplementalCameraDoubles,
                 )
 
                 logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
+                logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_generate ply=\(gen.plyURL.lastPathComponent)")
                 await MainActor.run {
                     splatViewerDestination = SplatViewerDestination(
                         plyURL: gen.plyURL,
                         sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
+                        roomMeters: {
+                            if let width = gen.roomWidth, let height = gen.roomHeight, let depth = gen.roomDepth {
+                                return (width, height, depth)
+                            }
+                            return nil
+                        }(),
                         sourcePhotoPixels: (pxW, pxH)
                     )
                 }
@@ -1549,50 +1583,113 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        logDebug("📱 [PhotoPicker] Creating UIImagePickerController")
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        logDebug("📱 [PhotoPicker] Creating PHPickerViewController")
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
     }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
     
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: PhotoPickerView
         
         init(_ parent: PhotoPickerView) {
             self.parent = parent
             logDebug("📱 [PhotoPicker] Coordinator initialized")
         }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            logDebug("📱 [PhotoPicker] Image picked from library")
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            logDebug("📱 [PhotoPicker] PHPicker finished results=\(results.count)")
             parent.captureMediaMetadata = nil
-            parent.sourceImageURL = info[.imageURL] as? URL
-            if #available(iOS 11, *) {
-                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
-            } else {
-                parent.photoLibraryAssetLocalId = nil
+            parent.supplementalCameraDoubles = nil
+            guard let result = results.first else {
+                logDebug("❌ [PhotoPicker] No result selected")
+                parent.dismiss()
+                return
             }
-            if let image = info[.originalImage] as? UIImage {
-                logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
-                // Pass original image - EXIF needed for orientation detection
-                parent.selectedImage = image
-            } else {
-                logDebug("❌ [PhotoPicker] Failed to get UIImage")
+
+            parent.photoLibraryAssetLocalId = result.assetIdentifier
+            logDebug("📱 [PhotoPicker] assetIdentifier=\(result.assetIdentifier ?? "nil")")
+
+            copyOriginalImageFile(from: result.itemProvider)
+
+            guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
+                logDebug("❌ [PhotoPicker] Item provider cannot load UIImage")
+                parent.dismiss()
+                return
             }
-            parent.dismiss()
+
+            result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        logDebug("❌ [PhotoPicker] UIImage load failed: \(error.localizedDescription)")
+                    }
+                    if let image = object as? UIImage {
+                        logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
+                        self.parent.selectedImage = image
+                    } else {
+                        logDebug("❌ [PhotoPicker] Failed to get UIImage")
+                    }
+                    self.parent.dismiss()
+                }
+            }
         }
-        
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            logDebug("❌ [PhotoPicker] User cancelled")
-            parent.dismiss()
+
+        private func copyOriginalImageFile(from provider: NSItemProvider) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                if let url {
+                    self.copyPickedFile(at: url, source: "file_representation")
+                    return
+                }
+                if let error {
+                    logDebug("❌ [PhotoPicker] fileRepresentation failed: \(error.localizedDescription)")
+                }
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let error {
+                        logDebug("❌ [PhotoPicker] dataRepresentation failed: \(error.localizedDescription)")
+                    }
+                    guard let data else { return }
+                    let ext = provider.suggestedName?.split(separator: ".").last.map(String.init) ?? "img"
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+                    do {
+                        try data.write(to: tempURL, options: [.atomic])
+                        DispatchQueue.main.async {
+                            self.parent.sourceImageURL = tempURL
+                            logDebug("📱 [PhotoPicker] Copied original data to: \(tempURL.lastPathComponent) bytes=\(data.count)")
+                        }
+                    } catch {
+                        logDebug("❌ [PhotoPicker] temp write failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+
+        private func copyPickedFile(at url: URL, source: String) {
+            let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    try FileManager.default.removeItem(at: tempURL)
+                }
+                try FileManager.default.copyItem(at: url, to: tempURL)
+                DispatchQueue.main.async {
+                    self.parent.sourceImageURL = tempURL
+                    logDebug("📱 [PhotoPicker] Copied original \(source) to: \(tempURL.lastPathComponent)")
+                }
+            } catch {
+                logDebug("❌ [PhotoPicker] copy \(source) failed: \(error.localizedDescription)")
+            }
         }
     }
 }
@@ -1631,6 +1728,7 @@ struct CameraCaptureView: View {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     @State private var showCamera = false
@@ -1762,19 +1860,32 @@ struct CameraCaptureView: View {
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
-                CameraViewRepresentable(
-                    capturedImage: $capturedImage,
-                    sourceImageURL: $sourceImageURL,
-                    captureMediaMetadata: $captureMediaMetadata,
-                    photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
-                    orientation: selectedOrientation,
-                )
+                Group {
+                    if ARRoomPhotoCapturePolicy.useARKitForStandardRoomPhoto {
+                        ARRoomPhotoCaptureRepresentable(
+                            capturedImage: $capturedImage,
+                            sourceImageURL: $sourceImageURL,
+                            captureMediaMetadata: $captureMediaMetadata,
+                            supplementalCameraDoubles: $supplementalCameraDoubles,
+                        )
+                    } else {
+                        CameraViewRepresentable(
+                            capturedImage: $capturedImage,
+                            sourceImageURL: $sourceImageURL,
+                            captureMediaMetadata: $captureMediaMetadata,
+                            photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                            supplementalCameraDoubles: $supplementalCameraDoubles,
+                            orientation: selectedOrientation,
+                        )
+                    }
+                }
                 .ignoresSafeArea()
             }
             .fullScreenCover(isPresented: $showWideAngleCamera) {
                 WideAngleCameraView(
                     capturedImage: $capturedImage,
                     photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    supplementalCameraDoubles: $supplementalCameraDoubles,
                 )
                 .ignoresSafeArea()
             }
@@ -1784,6 +1895,7 @@ struct CameraCaptureView: View {
                     sourceImageURL: $sourceImageURL,
                     captureMediaMetadata: $captureMediaMetadata,
                     photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                    supplementalCameraDoubles: $supplementalCameraDoubles,
                 )
             }
             .onChange(of: capturedImage) { _, newImage in
@@ -1791,6 +1903,11 @@ struct CameraCaptureView: View {
                     logDebug("📷 [Camera] Photo captured: \(image.size)")
                     selectedImage = image
                     dismiss()
+                }
+            }
+            .onChange(of: showCamera) { _, isShowing in
+                if isShowing {
+                    supplementalCameraDoubles = nil
                 }
             }
         }
@@ -1803,44 +1920,105 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
-        picker.allowsEditing = false
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: PhotoLibraryPicker
 
         init(_ parent: PhotoLibraryPicker) {
             self.parent = parent
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             parent.captureMediaMetadata = nil
-            parent.sourceImageURL = info[.imageURL] as? URL
-            if #available(iOS 11, *) {
-                parent.photoLibraryAssetLocalId = (info[.phAsset] as? PHAsset)?.localIdentifier
-            } else {
-                parent.photoLibraryAssetLocalId = nil
+            parent.supplementalCameraDoubles = nil
+            guard let result = results.first else {
+                parent.dismiss()
+                return
             }
-            if let image = info[.originalImage] as? UIImage {
-                logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
-                parent.selectedImage = image
+
+            parent.photoLibraryAssetLocalId = result.assetIdentifier
+            logDebug("📷 [PhotoPicker] PHPicker assetIdentifier=\(result.assetIdentifier ?? "nil")")
+            copyOriginalImageFile(from: result.itemProvider)
+
+            guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
+                parent.dismiss()
+                return
             }
-            parent.dismiss()
+
+            result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        logDebug("❌ [PhotoPicker] UIImage load failed: \(error.localizedDescription)")
+                    }
+                    if let image = object as? UIImage {
+                        logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
+                        self.parent.selectedImage = image
+                    }
+                    self.parent.dismiss()
+                }
+            }
         }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.dismiss()
+        private func copyOriginalImageFile(from provider: NSItemProvider) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                if let url {
+                    self.copyPickedFile(at: url, source: "file_representation")
+                    return
+                }
+                if let error {
+                    logDebug("❌ [PhotoPicker] fileRepresentation failed: \(error.localizedDescription)")
+                }
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let error {
+                        logDebug("❌ [PhotoPicker] dataRepresentation failed: \(error.localizedDescription)")
+                    }
+                    guard let data else { return }
+                    let ext = provider.suggestedName?.split(separator: ".").last.map(String.init) ?? "img"
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+                    do {
+                        try data.write(to: tempURL, options: [.atomic])
+                        DispatchQueue.main.async {
+                            self.parent.sourceImageURL = tempURL
+                            logDebug("📷 [PhotoPicker] Copied original data to: \(tempURL.lastPathComponent) bytes=\(data.count)")
+                        }
+                    } catch {
+                        logDebug("❌ [PhotoPicker] temp write failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+
+        private func copyPickedFile(at url: URL, source: String) {
+            let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("picker_original_\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    try FileManager.default.removeItem(at: tempURL)
+                }
+                try FileManager.default.copyItem(at: url, to: tempURL)
+                DispatchQueue.main.async {
+                    self.parent.sourceImageURL = tempURL
+                    logDebug("📷 [PhotoPicker] Copied original \(source) to: \(tempURL.lastPathComponent)")
+                }
+            } catch {
+                logDebug("❌ [PhotoPicker] copy \(source) failed: \(error.localizedDescription)")
+            }
         }
     }
 }
@@ -1851,6 +2029,7 @@ import AVFoundation
 struct WideAngleCameraView: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> WideAngleCameraViewController {
@@ -1872,6 +2051,8 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCapture(_ image: UIImage) {
             logDebug("📷 [WideAngle] Captured image: \(image.size)")
+            CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "capturedImage")
+            parent.supplementalCameraDoubles = nil
             parent.photoLibraryAssetLocalId = nil
             parent.capturedImage = image.fixedOrientation()
             parent.dismiss()
@@ -1879,6 +2060,8 @@ struct WideAngleCameraView: UIViewControllerRepresentable {
 
         func wideAngleCameraDidCancel() {
             logDebug("📷 [WideAngle] User cancelled")
+            CameraOwnershipDiagnostics.log(owner: "WideAngleCameraView", event: "cancel")
+            parent.supplementalCameraDoubles = nil
             parent.dismiss()
         }
     }
@@ -1893,6 +2076,7 @@ class WideAngleCameraViewController: UIViewController {
     weak var delegate: WideAngleCameraDelegate?
 
     private var captureSession: AVCaptureSession?
+    private var captureSessionObserverTokens: [NSObjectProtocol] = []
     private var photoOutput: AVCapturePhotoOutput?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentDevice: AVCaptureDevice?
@@ -1928,6 +2112,12 @@ class WideAngleCameraViewController: UIViewController {
     private func setupCamera() {
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
+        if let captureSession {
+            captureSessionObserverTokens = CameraOwnershipDiagnostics.makeCaptureSessionObservers(
+                session: captureSession,
+                owner: "WideAngleCameraViewController.AVCapture"
+            )
+        }
 
         // Try to get ultra-wide camera first for wider field of view
         var device: AVCaptureDevice?
@@ -1971,6 +2161,7 @@ class WideAngleCameraViewController: UIViewController {
             }
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_startRequested")
                 self?.captureSession?.startRunning()
             }
 
@@ -2111,13 +2302,20 @@ class WideAngleCameraViewController: UIViewController {
     }
 
     @objc private func cancelCapture() {
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=cancel")
         captureSession?.stopRunning()
         delegate?.wideAngleCameraDidCancel()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=viewWillDisappear")
         captureSession?.stopRunning()
+    }
+
+    deinit {
+        CameraOwnershipDiagnostics.removeObservers(captureSessionObserverTokens)
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController", event: "deinit")
     }
 }
 
@@ -2135,6 +2333,8 @@ extension WideAngleCameraViewController: AVCapturePhotoCaptureDelegate {
         }
 
         logDebug("✅ [WideAngle] Photo captured: \(image.size)")
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController", event: "photoOutput_didFinishProcessing")
+        CameraOwnershipDiagnostics.log(owner: "WideAngleCameraViewController.AVCapture", event: "capture_stopRequested", details: "reason=photoCaptured")
         captureSession?.stopRunning()
         delegate?.wideAngleCameraDidCapture(image)
     }
@@ -2188,11 +2388,13 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
     @Binding var sourceImageURL: URL?
     @Binding var captureMediaMetadata: [AnyHashable: Any]?
     @Binding var photoLibraryAssetLocalId: String?
+    @Binding var supplementalCameraDoubles: [String: Double]?
     let orientation: CaptureOrientation
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         logDebug("📷 [Camera] Opening standard camera")
+        CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "present")
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         picker.delegate = context.coordinator
@@ -2215,6 +2417,8 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📷 [Camera] Photo captured")
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "didFinishPicking")
+            parent.supplementalCameraDoubles = nil
             parent.sourceImageURL = nil
             parent.photoLibraryAssetLocalId = nil
             if let md = info[.mediaMetadata] {
@@ -2228,11 +2432,14 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
             } else {
                 logDebug("❌ [Camera] Failed to get UIImage")
             }
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "dismiss_requested", details: "reason=didFinishPicking")
             parent.dismiss()
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             logDebug("📷 [Camera] User cancelled")
+            CameraOwnershipDiagnostics.log(owner: "CameraViewRepresentable.UIImagePickerController", event: "dismiss_requested", details: "reason=cancel")
+            parent.supplementalCameraDoubles = nil
             parent.dismiss()
         }
     }
@@ -2389,7 +2596,7 @@ struct SceneKitViewer: View {
             Button(L10n.Common.save) {
                 startSavingRoom()
             }
-            .disabled(roomName.isEmpty)
+            .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
             Text(L10n.RoomViewer.enterName)
         }
@@ -2494,7 +2701,8 @@ struct SceneKitViewer: View {
     
     // MARK: - Save Room Functions
     private func startSavingRoom() {
-        guard !roomName.isEmpty else {
+        let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomName.isEmpty else {
             return
         }
 
@@ -2502,8 +2710,15 @@ struct SceneKitViewer: View {
         if modelManager == nil {
             modelManager = USDZModelManager()
         }
+        if modelManager?.hasSavedRoomNameConflict(trimmedRoomName) == true {
+            saveAlertMessage = L10n.RoomViewer.duplicateRoomName
+            saveWasSuccessful = false
+            showSaveAlert = true
+            return
+        }
 
-        let savedName = roomName  // ✅ Capture the name BEFORE clearing
+        let savedName = trimmedRoomName  // ✅ Capture the name BEFORE clearing
+        roomName = trimmedRoomName
         logDebug("💾 [Viewer] Starting room save process: \(savedName)")
 
         withAnimation(.easeIn(duration: 0.3)) {

@@ -657,8 +657,10 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var onFirstSegmentationComplete: (() -> Void)?
     /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
-    /// Sharp Room only: splat depth for furniture sizing when Live Room (AR) is on.
+    /// Sharp Room only: splat depth for furniture sizing.
     var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
+    /// Per-view opt-in for AR-assisted sizing. Sharp Room keeps this off until the user taps the AR chip.
+    var arAssistedSizingEnabled: Bool = true
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -676,26 +678,42 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.suppressStartupProgress = suppressStartupProgress
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
         view.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
+        view.arAssistedSizingEnabled = arAssistedSizingEnabled
         return view
     }
 
     func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
-        uiView.setModel(mlModel)
-        uiView.processInterval = processInterval
-        uiView.lockedOrientation = lockedOrientation
-        uiView.roomWidthMeters = roomWidthMeters
-        uiView.roomHeightMeters = roomHeightMeters
-        uiView.roomDepthMeters = roomDepthMeters
-        uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
-        uiView.roomModel = roomModel
-        uiView.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
-        uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
-        uiView.confidenceThreshold = scoreThreshold
-        uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
-        uiView.suppressStartupProgress = suppressStartupProgress
-        uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
-        uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
-        if active { uiView.startIfNeeded() } else { uiView.stop() }
+        let needsCameraPathRestart = uiView.arAssistedSizingEnabled != arAssistedSizingEnabled
+
+        func applyConfiguration() {
+            uiView.setModel(mlModel)
+            uiView.processInterval = processInterval
+            uiView.lockedOrientation = lockedOrientation
+            uiView.roomWidthMeters = roomWidthMeters
+            uiView.roomHeightMeters = roomHeightMeters
+            uiView.roomDepthMeters = roomDepthMeters
+            uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
+            uiView.roomModel = roomModel
+            uiView.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
+            uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
+            uiView.confidenceThreshold = scoreThreshold
+            uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+            uiView.suppressStartupProgress = suppressStartupProgress
+            uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
+            uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
+            uiView.arAssistedSizingEnabled = arAssistedSizingEnabled
+        }
+
+        applyConfiguration()
+        if active {
+            if needsCameraPathRestart {
+                uiView.stop()
+                applyConfiguration()
+            }
+            uiView.startIfNeeded()
+        } else {
+            uiView.stop()
+        }
     }
 
     static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {

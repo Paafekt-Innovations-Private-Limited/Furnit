@@ -185,6 +185,7 @@ struct GLBRoomView: View {
     let photoOrientation: PhotoOrientation
     let roomWidth: Float?
     let roomHeight: Float?
+    let roomDepth: Float?
     /// When opening a saved GLB from Home (YOLO ratio calibration + FurnitureFit).
     var savedRoomModel: USDZModel? = nil
 
@@ -195,9 +196,28 @@ struct GLBRoomView: View {
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
     @State private var furnitureFitInitialSegmentationDone = false
+    @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
     @State private var showDiscardUnsavedAlert = false
+
+    /// Brain / snapshot tap helpers — same as ``MeshRoomView`` (parity for GLB opened from Home).
+    @State private var brainHintExplanationVisible = false
+    @State private var brainHintHideTextTask: Task<Void, Never>?
+    @State private var snapshotHintExplanationVisible = false
+    @State private var snapshotHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintExplanationVisible = false
+    @State private var arSizingHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintRequiresBrain = false
+    @State private var roomDimensionsHintVisible = false
+    @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView`` / ``MeshRoomView``.
+    @State private var pinchHintExplanationVisible = false
+    @State private var pinchHintHideTextTask: Task<Void, Never>?
+
+    private var canOfferBrainArAssist: Bool {
+        QualitySettings.supportsFurnitureFitARAssisted
+    }
 
     var body: some View {
         ZStack {
@@ -247,6 +267,11 @@ struct GLBRoomView: View {
                 .cornerRadius(12)
             }
 
+            if !isLoading {
+                cameraButtonsOverlay
+                topTrailingARSizingOverlay
+            }
+
             // FurnitureFit overlay (when active) - full screen camera for furniture detection
             if showingFurnitureFit {
                 FurnitureFitUIView(
@@ -260,11 +285,14 @@ struct GLBRoomView: View {
                     roomHeightMeters: roomHeight ?? 3.0,
                     onFurnitureSizeEstimated: { _ in },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
             }
+
+            roomDimensionsHintOverlay
 
             // Controls based on orientation
             if photoOrientation == .landscape {
@@ -274,7 +302,7 @@ struct GLBRoomView: View {
             }
         }
         .background(Color.gray)
-        .navigationTitle(formatDimensions())
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
@@ -290,6 +318,9 @@ struct GLBRoomView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .principal) {
+                navigationBarRoomMeasurementPrincipal
+            }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 // Recenter button
                 Button(action: {
@@ -301,7 +332,8 @@ struct GLBRoomView: View {
             }
         }
         .onAppear {
-            yoloeService.ensureModelLoaded()
+            // Do not load YOLOE eagerly here — keep saved manual-room memory low until the user enables brain mode.
+            // This mirrors SharpRoomView and prevents carrying YOLOE unless segmentation is actually requested.
             // Lock orientation based on photo orientation
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
@@ -309,14 +341,34 @@ struct GLBRoomView: View {
                 OrientationLockManager.shared.lockToPortrait()
             }
         }
+        .onChange(of: isLoading) { _, loading in
+            if loading {
+                cancelPinchHintTasks()
+                cancelBrainHintTasks()
+                cancelSnapshotHintTasks()
+                cancelRoomDimensionsHintTasks()
+            } else {
+                restartPinchGestureHint()
+                restartBrainGestureHint()
+                restartSnapshotGestureHint()
+            }
+        }
         .onChange(of: showingFurnitureFit) { _, isOn in
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                brainArAssistedSizingEnabled = false
                 yoloeService.releaseResources()
             }
         }
         .onDisappear {
+            cancelPinchHintTasks()
+            cancelBrainHintTasks()
+            cancelSnapshotHintTasks()
+            cancelARSizingHintTasks()
+            cancelRoomDimensionsHintTasks()
+            brainArAssistedSizingEnabled = false
+            yoloeService.releaseResources()
             OrientationLockManager.shared.unlock()
         }
         .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
@@ -331,11 +383,469 @@ struct GLBRoomView: View {
         .disableBackSwipeIf(savedRoomModel == nil)
     }
 
-    private func formatDimensions() -> String {
-        if let w = roomWidth, let h = roomHeight {
-            return String(format: "%.1f m × %.1f m", w, h)
+    // MARK: - Ruler + tap helpers (MeshRoomView parity for saved GLB from Home)
+
+    private var canPresentGLBRoomDimensionsAlert: Bool {
+        !showDiscardUnsavedAlert
+    }
+
+    private var glbRoomDimensionsHintText: String {
+        if let w = roomWidth, let h = roomHeight, let d = roomDepth,
+           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
+            return L10n.RoomViewer.roomDimensionsWHDManualChip(width: w, height: h, depth: d)
+        }
+        if let w = roomWidth, let h = roomHeight, w > 0.05, h > 0.05, w.isFinite, h.isFinite {
+            return L10n.RoomViewer.roomDimensionsWHManualChip(width: w, height: h)
         }
         return "3D Room"
+    }
+
+    private var navigationBarRoomMeasurementPrincipal: some View {
+        Button {
+            guard canPresentGLBRoomDimensionsAlert else { return }
+            onGLBRoomDimensionsRulerTapped()
+        } label: {
+            Image(systemName: "ruler.fill")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canPresentGLBRoomDimensionsAlert || isLoading)
+        .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+    }
+
+    private var roomDimensionsHintOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if roomDimensionsHintVisible {
+                    Text(glbRoomDimensionsHintText)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 12)
+            .onDisappear { cancelRoomDimensionsHintTasks() }
+        }
+        .zIndex(13)
+    }
+
+    private func cancelBrainHintTasks() {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = nil
+    }
+
+    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            brainHintExplanationVisible = false
+        }
+    }
+
+    private func restartBrainGestureHint() {
+        cancelBrainHintTasks()
+        brainHintExplanationVisible = true
+        scheduleBrainHintTextAutoHide(seconds: 3)
+    }
+
+    private func onBrainHintIconTapped() {
+        cancelBrainHintTasks()
+        brainHintExplanationVisible.toggle()
+        if brainHintExplanationVisible {
+            scheduleBrainHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private func cancelSnapshotHintTasks() {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = nil
+    }
+
+    private func cancelARSizingHintTasks() {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = nil
+    }
+
+    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            snapshotHintExplanationVisible = false
+        }
+    }
+
+    private func restartSnapshotGestureHint() {
+        cancelSnapshotHintTasks()
+        snapshotHintExplanationVisible = true
+        scheduleSnapshotHintTextAutoHide(seconds: 3)
+    }
+
+    private func onSnapshotHintIconTapped() {
+        cancelSnapshotHintTasks()
+        snapshotHintExplanationVisible.toggle()
+        if snapshotHintExplanationVisible {
+            scheduleSnapshotHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private func scheduleARSizingHintTextAutoHide(seconds: UInt64 = 3) {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            arSizingHintExplanationVisible = false
+        }
+    }
+
+    private func showARSizingHint(requiresBrain: Bool) {
+        cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = requiresBrain
+        arSizingHintExplanationVisible = true
+        scheduleARSizingHintTextAutoHide(seconds: 3)
+    }
+
+    private func onARSizingHintIconTapped() {
+        cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = false
+        arSizingHintExplanationVisible.toggle()
+        if arSizingHintExplanationVisible {
+            scheduleARSizingHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private func cancelRoomDimensionsHintTasks() {
+        roomDimensionsHintHideTask?.cancel()
+        roomDimensionsHintHideTask = nil
+    }
+
+    private func scheduleRoomDimensionsHintAutoHide(seconds: UInt64 = 3) {
+        roomDimensionsHintHideTask?.cancel()
+        roomDimensionsHintHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            roomDimensionsHintVisible = false
+        }
+    }
+
+    private func onGLBRoomDimensionsRulerTapped() {
+        cancelRoomDimensionsHintTasks()
+        roomDimensionsHintVisible.toggle()
+        if roomDimensionsHintVisible {
+            scheduleRoomDimensionsHintAutoHide(seconds: 3)
+        }
+    }
+
+    private func cancelPinchHintTasks() {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = nil
+    }
+
+    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 3) {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            pinchHintExplanationVisible = false
+        }
+    }
+
+    private func restartPinchGestureHint() {
+        cancelPinchHintTasks()
+        pinchHintExplanationVisible = true
+        schedulePinchHintTextAutoHide(seconds: 3)
+    }
+
+    private func onPinchHintIconTapped() {
+        cancelPinchHintTasks()
+        pinchHintExplanationVisible.toggle()
+        if pinchHintExplanationVisible {
+            schedulePinchHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private var pinchHintAccessibilityLabel: String {
+        L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var brainHintAccessibilityLabel: String {
+        L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var snapshotHintAccessibilityLabel: String {
+        L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var arSizingHintAccessibilityLabel: String {
+        arSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private var arSizingHintText: String {
+        arSizingHintRequiresBrain
+            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+            : L10n.RoomViewer.arFurnitureSizingHint
+    }
+
+    private var brainGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if brainHintExplanationVisible {
+                Text(L10n.RoomViewer.brainGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+            Button(action: onBrainHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(brainHintAccessibilityLabel)
+        }
+        .onAppear { restartBrainGestureHint() }
+        .onDisappear { cancelBrainHintTasks() }
+    }
+
+    private var snapshotGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if snapshotHintExplanationVisible {
+                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+            Button(action: onSnapshotHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(snapshotHintAccessibilityLabel)
+        }
+        .onAppear { restartSnapshotGestureHint() }
+        .onDisappear { cancelSnapshotHintTasks() }
+    }
+
+    private var brainButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            brainGestureHintColumn
+            Button(action: {
+                if showingFurnitureFit {
+                    showingFurnitureFit = false
+                } else {
+                    furnitureFitInitialSegmentationDone = false
+                    showingFurnitureFit = true
+                }
+            }) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+            }
+            .disabled(isLoading)
+        }
+    }
+
+    private var snapshotButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            snapshotGestureHintColumn
+            Button(action: { takeScreenshot() }) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(Color.blue).shadow(radius: 5))
+            }
+            .disabled(isLoading)
+        }
+    }
+
+    private var arSizingGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Button(action: onARSizingHintIconTapped) {
+                Image(systemName: "hand.tap.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(arSizingHintAccessibilityLabel)
+            if arSizingHintExplanationVisible {
+                Text(arSizingHintText)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+        }
+        .onDisappear { cancelARSizingHintTasks() }
+    }
+
+    private var arSizingButtonWithHintBelow: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Button {
+                if showingFurnitureFit {
+                    brainArAssistedSizingEnabled.toggle()
+                } else {
+                    showARSizingHint(requiresBrain: true)
+                }
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle().fill(
+                            brainArAssistedSizingEnabled
+                                ? Color.green.opacity(0.9)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel(
+                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+            )
+
+            arSizingGestureHintColumn
+        }
+    }
+
+    private var topTrailingARSizingOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if canOfferBrainArAssist {
+                arSizingButtonWithHintBelow
+                    .padding(.top, 52)
+                    .padding(.trailing, 16)
+            }
+        }
+        .zIndex(19)
+    }
+
+    private var cameraDPadCluster: some View {
+        HStack(spacing: 8) {
+            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            VStack(spacing: 8) {
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+            }
+            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var pinchGestureHintOverlay: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if pinchHintExplanationVisible {
+                Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 220, alignment: .leading)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+            Button(action: onPinchHintIconTapped) {
+                Image(systemName: "hand.pinch.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pinchHintAccessibilityLabel)
+        }
+        .onAppear { restartPinchGestureHint() }
+        .onDisappear { cancelPinchHintTasks() }
+        .zIndex(12)
+    }
+
+    private var cameraButtonsOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 10) {
+                cameraDPadCluster
+                pinchGestureHintOverlay
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 12)
+                    .padding(.top, 12)
+                if photoOrientation == .landscape {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .zIndex(18)
     }
 
     // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
@@ -364,40 +874,14 @@ struct GLBRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            // Bottom controls: Brain icon (left) and Camera (right)
             HStack {
-                // Brain button (bottom-left)
-                Button(action: {
-                    if showingFurnitureFit {
-                        showingFurnitureFit = false
-                    } else {
-                        furnitureFitInitialSegmentationDone = false
-                        showingFurnitureFit = true
-                    }
-                }) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                }
-                .disabled(isLoading)
-                .padding(.leading, 16)
+                brainButtonWithHintAbove
+                    .padding(.leading, 16)
 
                 Spacer()
 
-                // Screenshot button (bottom-right)
-                Button(action: {
-                    takeScreenshot()
-                }) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Circle().fill(Color.blue).shadow(radius: 5))
-                }
-                .disabled(isLoading)
-                .padding(.trailing, 16)
+                snapshotButtonWithHintAbove
+                    .padding(.trailing, 16)
             }
             .padding(.bottom, 20)
         }
@@ -408,24 +892,8 @@ struct GLBRoomView: View {
         VStack {
             Spacer()
 
-            // Horizontal bottom bar
             HStack(spacing: 20) {
-                // Brain button (left)
-                Button(action: {
-                    if showingFurnitureFit {
-                        showingFurnitureFit = false
-                    } else {
-                        furnitureFitInitialSegmentationDone = false
-                        showingFurnitureFit = true
-                    }
-                }) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                }
-                .disabled(isLoading)
+                brainButtonWithHintAbove
 
                 // Orientation label
                 HStack(spacing: 6) {
@@ -447,17 +915,7 @@ struct GLBRoomView: View {
 
                 Spacer()
 
-                // Screenshot button (right)
-                Button(action: {
-                    takeScreenshot()
-                }) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Circle().fill(Color.blue).shadow(radius: 5))
-                }
-                .disabled(isLoading)
+                snapshotButtonWithHintAbove
             }
             .padding(.horizontal, 30)
             .padding(.bottom, 20)
@@ -578,6 +1036,30 @@ struct GLBWebGLView: UIViewRepresentable {
                 name: NSNotification.Name("RecenterGLBCamera"),
                 object: nil
             )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(nudgeGLBCameraLeft),
+                name: NSNotification.Name("WebGLCameraMoveLeft"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(nudgeGLBCameraRight),
+                name: NSNotification.Name("WebGLCameraMoveRight"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(nudgeGLBCameraUp),
+                name: NSNotification.Name("WebGLCameraMoveUp"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(nudgeGLBCameraDown),
+                name: NSNotification.Name("WebGLCameraMoveDown"),
+                object: nil
+            )
         }
 
         deinit {
@@ -586,6 +1068,22 @@ struct GLBWebGLView: UIViewRepresentable {
 
         @objc private func recenterCamera() {
             webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
+        }
+
+        @objc private func nudgeGLBCameraLeft() {
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(-8, 0);", completionHandler: nil)
+        }
+
+        @objc private func nudgeGLBCameraRight() {
+            webView?.evaluateJavaScript("if (typeof moveCamera === 'function') moveCamera(8, 0);", completionHandler: nil)
+        }
+
+        @objc private func nudgeGLBCameraUp() {
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(0.2);", completionHandler: nil)
+        }
+
+        @objc private func nudgeGLBCameraDown() {
+            webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -663,6 +1161,8 @@ struct GLBWebGLView: UIViewRepresentable {
 
                 console.log('[GLBViewer] Starting...');
 
+                let roomBoundsForClamping = null;
+
                 // Scene setup
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
@@ -688,7 +1188,41 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.minDistance = 0.5;
                 controls.maxDistance = 20;
 
-                // Listen for orbit commands from Swift
+                // D-pad / Sharp parity: walk on XZ, vertical Y (same as embedded Sharp WebGL).
+                window.moveCamera = function(dx, dy) {
+                    const moveSpeed = 0.03;
+                    let newX = camera.position.x + dx * moveSpeed;
+                    let newZ = camera.position.z + dy * moveSpeed;
+                    if (roomBoundsForClamping) {
+                        const marginSide = 0.05;
+                        const marginBack = 0.02;
+                        newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                               Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                        newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                               Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+                    }
+                    const actualDx = newX - camera.position.x;
+                    const actualDz = newZ - camera.position.z;
+                    camera.position.x = newX;
+                    camera.position.z = newZ;
+                    controls.target.x += actualDx;
+                    controls.target.z += actualDz;
+                    controls.update();
+                };
+
+                window.moveCameraUp = function(dy) {
+                    if (typeof dy !== 'number' || !isFinite(dy)) return;
+                    camera.position.y += dy;
+                    controls.target.y += dy;
+                    if (roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                    }
+                    controls.update();
+                };
+
+                // Listen for orbit commands from Swift (touch drag)
                 window.orbitCamera = function(deltaX, deltaY) {
                     const spherical = new THREE.Spherical();
                     const offset = new THREE.Vector3();
@@ -746,6 +1280,16 @@ struct GLBWebGLView: UIViewRepresentable {
                         model.position.z = -center.z;
                         // Adjust Y so floor is at 0
                         model.position.y = -box.min.y;
+
+                        const boxWorld = new THREE.Box3().setFromObject(model);
+                        roomBoundsForClamping = {
+                            minX: boxWorld.min.x + 0.05,
+                            maxX: boxWorld.max.x - 0.05,
+                            minY: boxWorld.min.y + 0.05,
+                            maxY: boxWorld.max.y - 0.05,
+                            minZ: boxWorld.min.z + 0.05,
+                            maxZ: boxWorld.max.z - 0.02
+                        };
 
                         // Position camera inside the room looking at front wall
                         // After centering: room spans -size/2 to +size/2 in X and Z

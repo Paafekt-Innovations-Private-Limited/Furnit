@@ -30,6 +30,10 @@ struct USDZModel: Identifiable, Hashable {
     let sharpRoomHeightAtYoloCapture: Float?
     /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
     let customDisplayName: String?
+    /// Saved PLY should be treated like SHARP classic orientation/rendering even without `_classic` filename suffix.
+    let isClassicPly: Bool
+    /// Cached on-disk URL for saved rooms so SwiftUI body reevaluation does not restat the filesystem repeatedly.
+    let cachedResolvedURL: URL?
 
     // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false, customDisplayName: String? = nil) {
@@ -50,6 +54,8 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloRefImageHeightPx = nil
         self.sharpRoomHeightAtYoloCapture = nil
         self.customDisplayName = customDisplayName
+        self.isClassicPly = false
+        self.cachedResolvedURL = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
@@ -72,7 +78,9 @@ struct USDZModel: Identifiable, Hashable {
         yoloFurnitureHeightFracByClass: [String: Float]? = nil,
         yoloRefImageHeightPx: Int? = nil,
         sharpRoomHeightAtYoloCapture: Float? = nil,
-        customDisplayName: String? = nil
+        customDisplayName: String? = nil,
+        isClassicPly: Bool = false,
+        cachedResolvedURL: URL? = nil
     ) {
         self.name = name
         self.fileName = fileName
@@ -91,6 +99,8 @@ struct USDZModel: Identifiable, Hashable {
         self.yoloRefImageHeightPx = yoloRefImageHeightPx
         self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
         self.customDisplayName = customDisplayName
+        self.isClassicPly = isClassicPly
+        self.cachedResolvedURL = cachedResolvedURL
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }
@@ -135,6 +145,38 @@ struct USDZModel: Identifiable, Hashable {
     var subtitleText: String {
         return fileType.displayName
     }
+
+    /// Saved meshroom / GLB rooms use manual (default) dimension workflow, not SHARP-measured PLY.
+    var isManualSetupRoom: Bool {
+        fileType == .meshroom || fileType == .glb
+    }
+
+    /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
+    /// Manual-setup rooms append “(Default Values)”; SHARP PLY (AI) rooms append “(Near accurate values)”.
+    var roomDimensionsListLine: String? {
+        let baseLine: String?
+        if let w = roomWidth, let h = roomHeight, let d = roomDepth,
+           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
+            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        } else if let w = roomWidth, let h = roomHeight,
+                  w > 0.05, h > 0.05, w.isFinite, h.isFinite,
+                  let sh = roomSceneHeight, sh > 1e-4,
+                  let sd = roomSceneDepth, sd > 1e-4 {
+            let d = sd * (h / sh)
+            guard d > 0.05, d.isFinite else { return nil }
+            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
+        } else {
+            return nil
+        }
+        guard let line = baseLine else { return nil }
+        if isManualSetupRoom {
+            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsDefaultValues)
+        }
+        if fileType == .ply {
+            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsNearAccurateValues)
+        }
+        return line
+    }
     
     // ✅ UPDATED: Handle both bundle and saved rooms with debug-mode logging
     var temporaryURL: URL? {
@@ -148,81 +190,10 @@ struct USDZModel: Identifiable, Hashable {
         }
         
         if isSavedRoom {
-            // For saved rooms, return the actual file path
-            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            if debugMode {
-                logDebug("🔍 [USDZModel.temporaryURL] Documents directory: \(documentsDirectory.path)")
+            if debugMode, let cachedResolvedURL {
+                logDebug("✅ [USDZModel.temporaryURL] Using cached saved-room URL: \(cachedResolvedURL.lastPathComponent)")
             }
-            
-            let savedRoomsDir = documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
-            if debugMode {
-                logDebug("🔍 [USDZModel.temporaryURL] SavedRooms directory: \(savedRoomsDir.path)")
-            }
-            
-            // Use appropriate file extension based on file type
-            let fileExtension: String
-            switch fileType {
-            case .ply:
-                fileExtension = "ply"
-            case .meshroom:
-                fileExtension = "meshroom"
-            case .glb:
-                fileExtension = "glb"
-            case .usdz:
-                fileExtension = "usdz"
-            }
-            let savedURL = savedRoomsDir.appendingPathComponent("\(fileName).\(fileExtension)")
-            if debugMode {
-                logDebug("🔍 [USDZModel.temporaryURL] Looking for file at: \(savedURL.path)")
-            }
-            
-            let fileExists = FileManager.default.fileExists(atPath: savedURL.path)
-            if debugMode {
-                logDebug("🔍 [USDZModel.temporaryURL] File exists: \(fileExists)")
-            }
-            
-            if fileExists {
-                do {
-                    let attributes = try FileManager.default.attributesOfItem(atPath: savedURL.path)
-                    let fileSize = attributes[.size] as? UInt64 ?? 0
-                    if debugMode {
-                        logDebug("✅ [USDZModel.temporaryURL] Found saved room!")
-                        logDebug("   - Path: \(savedURL.path)")
-                        logDebug("   - File name: \(savedURL.lastPathComponent)")
-                        logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
-                        logDebug("   - Readable: \(FileManager.default.isReadableFile(atPath: savedURL.path))")
-                        
-                        // Try to list all files in SavedRooms to verify
-                        if let files = try? FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path) {
-                            logDebug("   - All files in SavedRooms: \(files)")
-                        }
-                    }
-                    
-                    return savedURL
-                } catch {
-                    if debugMode {
-                        logDebug("❌ [USDZModel.temporaryURL] Error getting file attributes: \(error)")
-                    }
-                    return savedURL
-                }
-            } else {
-                if debugMode {
-                    logDebug("❌ [USDZModel.temporaryURL] Saved room file NOT FOUND!")
-                    logDebug("   - Expected path: \(savedURL.path)")
-                    logDebug("   - File type: \(fileType.rawValue)")
-
-                    // List all files in SavedRooms directory for debugging
-                    do {
-                        let files = try FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path)
-                        logDebug("   - Files in SavedRooms directory: \(files)")
-                        logDebug("   - Expected file: \(fileName).\(fileExtension)")
-                    } catch {
-                        logDebug("   - Could not list SavedRooms directory: \(error)")
-                    }
-                }
-
-                return nil
-            }
+            return cachedResolvedURL
         } else {
             // For bundle rooms, use existing logic
             if debugMode {

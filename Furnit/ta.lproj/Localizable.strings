@@ -58,6 +58,8 @@
 "home.deleteHint" = "புதியவற்றை உருவாக்க பழைய அறைகளை நீக்கவும்";
 "home.swipeHint" = "நீக்க இடது பக்கம் ஸ்வைப் செய்யவும்";
 "home.roomModel" = "3D அறை மாதிரி";
+"home.aiBased3DRoom" = "AI அடிப்படையிலான 3D அறை";
+"home.manualBased3DRoom" = "கைமுறை அடிப்படையிலான 3D அறை";
 
 // MARK: - Room Limit
 "roomLimit.title" = "அறை வரம்பு எட்டியது";
@@ -284,6 +286,10 @@
 "roomViewer.saveSuccess" = "அறை '%@' வெற்றிகரமாக சேமிக்கப்பட்டது!";
 "roomViewer.saveFailed" = "அறை சேமிப்பு தோல்வி: %@";
 "roomViewer.roomSaveTitle" = "அறையைச் சேமி";
+"roomViewer.roomSavedAlertTitle" = "அறை சேமிக்கப்பட்டது";
+"roomViewer.meshExportFailed" = "3D மாதிரியை ஏற்றுமதி செய்ய முடியவில்லை.";
+"roomViewer.meshSaveFailedGeneric" = "அறையைச் சேமிக்க முடியவில்லை.";
+"roomViewer.duplicateRoomName" = "இந்த பெயருடன் ஒரு அறை ஏற்கனவே உள்ளது.";
 "roomPreview.unsavedTitle" = "சேமிக்காமல் பின்செல்லவா?";
 "roomPreview.unsavedMessage" = "உங்கள் அறை இன்னும் சேமிக்கப்படவில்லை. இப்போது பின்சென்றால் இந்த முன்னோட்டம் இழக்கப்படலாம்.";
 "roomPreview.stay" = "இருங்கள்";
@@ -295,8 +301,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "அறையை பெரிதாக்க இரண்டு விரல்களால் சிமிட்டவும். தளபாடப் பிரிப்பு இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் மேலடுக்கின் அளவையும் மாற்றும்.";
 "roomViewer.pinchGestureHintExplanation" = "இரண்டு விரல்களால் சிமிட்டி அறையை பெரிதாக்கவும். தளபாடப் பொருத்தம் இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் பிரிப்பு மேலடுக்கையும் மாற்றும்.";
 "roomViewer.brainGestureHintExplanation" = "தளபாடக் கண்டறிதலை இயக்க அல்லது நிறுத்த மூளை ஐகானைத் தட்டவும். இயக்கத்தில் இருக்கும்போது மேலடுக்கைச் சிமிட்டி அளவை மாற்றவும்.";
+"roomViewer.snapshotGestureHintExplanation" = "அறையின் படத்தை புகைப்படங்களில் சேமிக்க கேமராவைத் தட்டவும்.";
+"roomViewer.arFurnitureSizingHint" = "அறைக்கு ஏற்றவாறு தளபாட அளவைச் சீரமைக்க கேமராவைப் பயன்படுத்துகிறது. LiDAR உள்ள ஐபோன்களில் சிறப்பாக வேலை செய்கிறது. காட்சி தடுமாறினால் அல்லது நிலையற்றதாக இருந்தால் அணைக்கவும்.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "அறை அளவுக்கு ஒப்பாக தளபாடத்தை அமைக்க நான் உதவுவேன். முதலில் பிரெயின் ஐகானைத் தட்டி, பிறகு என்னை முயற்சிக்கவும்.";
+"roomViewer.arSizingEnable" = "கேமரா உதவித் தளபாட அளவை இயக்கு";
+"roomViewer.arSizingDisable" = "கேமரா உதவித் தளபாட அளவை முடக்கு";
 "roomViewer.gestureHintToggleAccessibility" = "இந்தக் குறிப்பைக் காட்ட அல்லது மறைக்க இந்த ஐகானைத் தட்டவும்.";
 "roomViewer.checkMeasurement" = "அளவைச் சரிபார்";
+"roomViewer.roomDimensionsDefaultValues" = "இயல்புநிலை மதிப்புகள்";
+"roomViewer.roomDimensionsWHDWithDefault" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "அகலம் × உயரம்\n%.2f × %.2f மீ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "அருகிலுள்ள துல்லிய மதிப்புகள்";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";
 "roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";
 "roomViewer.savingRoomEllipsis" = "அறை சேமிக்கப்படுகிறது...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "உங்கள் 3D மாதிரி வெற்றிகரமாக சேமிக்கப்பட்டது.";
 "photoRoom.error" = "உங்கள் 3D மாதிரியை உருவாக்கும்போது பிழை ஏற்பட்டது.";
 "photoRoom.buildingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
+"photoRoom.reconstructorReady" = "தயார்";
+"photoRoom.reconstructorAnalyzingPhoto" = "புகைப்படம் பகுப்பாய்வு செய்யப்படுகிறது…";
+"photoRoom.reconstructorExtractingDepth" = "ஆழத்தை தகவல் பிரித்தெடுக்கிறது…";
+"photoRoom.reconstructorFindingWalls" = "சுவர்களும் மூலைகளும் தேடப்படுகின்றன…";
+"photoRoom.reconstructorCalculatingDimensions" = "அறை அளவுகள் கணக்கிடப்படுகின்றன…";
+"photoRoom.reconstructorBuilding3D" = "3D மாதிரி உருவாக்கப்படுகிறது…";
+"photoRoom.reconstructorRoomReady" = "அறை தயார்!";
+"photoRoom.reconstructorDepthFailed" = "ஆழம் மதிப்பிடுதல் தோல்வி";
+"photoRoom.reconstructorStarting" = "தொடங்குகிறது…";
+"photoRoom.reconstructorPreparingImage" = "படம் தயாராகிறது…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "எல்லைகள் பகுப்பாய்வு செய்யப்படுகின்றன…";
+"photoRoom.reconstructorCreatingTextures" = "டெக்ஸ்சர்கள் உருவாக்கப்படுகின்றன…";
+"photoRoom.reconstructorFinalizing" = "முடிக்கப்படுகிறது…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "செங்குத்து";

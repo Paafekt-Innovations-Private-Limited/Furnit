@@ -1,0 +1,8 @@
+# Periphery — unused Swift code (https://github.com/peripheryapp/periphery)
+# Run from repo root: `periphery scan` or `./scripts/periphery-scan.sh`
+project: Furnit.xcodeproj
+schemes:
+  - Furnit
+targets:
+  - Furnit
+retain_swift_ui_previews: true

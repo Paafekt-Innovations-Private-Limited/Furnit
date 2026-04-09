@@ -58,6 +58,8 @@
 "home.deleteHint" = "নতুন তৈরি করতে পুরানো রুম মুছুন";
 "home.swipeHint" = "মুছতে বামে সোয়াইপ করুন";
 "home.roomModel" = "3D রুম মডেল";
+"home.aiBased3DRoom" = "AI ভিত্তিক 3D রুম";
+"home.manualBased3DRoom" = "ম্যানুয়াল ভিত্তিক 3D রুম";
 
 // MARK: - Room Limit
 "roomLimit.title" = "রুম সীমা পৌঁছেছে";
@@ -302,6 +304,10 @@
 "roomViewer.saveSuccess" = "রুম '%@' সফলভাবে সেভ হয়েছে!";
 "roomViewer.saveFailed" = "রুম সেভ ব্যর্থ: %@";
 "roomViewer.roomSaveTitle" = "রুম সেভ করুন";
+"roomViewer.roomSavedAlertTitle" = "রুম সংরক্ষিত";
+"roomViewer.meshExportFailed" = "৩ডি মডেল রপ্তানি ব্যর্থ।";
+"roomViewer.meshSaveFailedGeneric" = "রুম সংরক্ষণ ব্যর্থ।";
+"roomViewer.duplicateRoomName" = "এই নামে একটি রুম ইতিমধ্যে বিদ্যমান।";
 "roomPreview.unsavedTitle" = "সংরক্ষণ না করে ফিরে যাবেন?";
 "roomPreview.unsavedMessage" = "আপনার রুম এখনও সংরক্ষিত হয়নি। এখন ফিরে গেলে এই প্রিভিউ হারিয়ে যেতে পারে।";
 "roomPreview.stay" = "থাকুন";
@@ -313,8 +319,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
 "roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
 "roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
+"roomViewer.snapshotGestureHintExplanation" = "ঘরের ছবি ফটোতে সেভ করতে ক্যামেরায় ট্যাপ করুন।";
+"roomViewer.arFurnitureSizingHint" = "ক্যামেরা ব্যবহার করে ফার্নিচারের আকার ঘরের সাথে ভালো মিল রাখতে সাহায্য করে। LiDAR সহ আইফোনে সবচেয়ে ভালো কাজ করে। ভিউ ঝাঁকুনি দিলে বা অস্থির মনে হলে বন্ধ করুন।";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "আমি ঘরের আকারের অনুপাতে ফার্নিচার বসাই। আগে ব্রেন আইকনে ট্যাপ করুন, তারপর আমাকে ব্যবহার করুন।";
+"roomViewer.arSizingEnable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ চালু করুন";
+"roomViewer.arSizingDisable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ বন্ধ করুন";
 "roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
+"roomViewer.roomDimensionsDefaultValues" = "ডিফল্ট মান";
+"roomViewer.roomDimensionsWHDWithDefault" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "প্রস্থ × উচ্চতা\n%.2f × %.2f মি (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "প্রায় সঠিক মান";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";
 "roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "আপনার 3D মডেল সফলভাবে সংরক্ষিত হয়েছে।";
 "photoRoom.error" = "আপনার 3D মডেল তৈরি করতে একটি ত্রুটি ঘটেছে।";
 "photoRoom.buildingRoom" = "আপনার 3D রুম তৈরি হচ্ছে...";
+"photoRoom.reconstructorReady" = "প্রস্তুত";
+"photoRoom.reconstructorAnalyzingPhoto" = "ছবি বিশ্লেষণ করা হচ্ছে…";
+"photoRoom.reconstructorExtractingDepth" = "গভীরতার তথ্য বের করা হচ্ছে…";
+"photoRoom.reconstructorFindingWalls" = "দেয়াল ও কোণ খোঁজা হচ্ছে…";
+"photoRoom.reconstructorCalculatingDimensions" = "রুমের মাপ গণনা করা হচ্ছে…";
+"photoRoom.reconstructorBuilding3D" = "৩ডি মডেল তৈরি করা হচ্ছে…";
+"photoRoom.reconstructorRoomReady" = "রুম প্রস্তুত!";
+"photoRoom.reconstructorDepthFailed" = "গভীরতা অনুমান ব্যর্থ";
+"photoRoom.reconstructorStarting" = "শুরু হচ্ছে…";
+"photoRoom.reconstructorPreparingImage" = "ছবি প্রস্তুত করা হচ্ছে…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "সীমানা বিশ্লেষণ করা হচ্ছে…";
+"photoRoom.reconstructorCreatingTextures" = "টেক্সচার তৈরি করা হচ্ছে…";
+"photoRoom.reconstructorFinalizing" = "শেষ করা হচ্ছে…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "পোর্ট্রেট";

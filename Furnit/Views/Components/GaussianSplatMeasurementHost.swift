@@ -5,8 +5,6 @@ import simd
 /// Bridges ``GaussianSplatView.Coordinator`` so SwiftUI parents (e.g. ``SharpRoomView``) can call ``measureRoom()`` after a frame has been rendered.
 final class GaussianSplatMeasurementHost: ObservableObject {
     weak var coordinator: GaussianSplatView.Coordinator?
-    @Published var arModeEnabled: Bool = false
-    @Published var arStatusText: String = "AR camera off"
     @Published var furnitureStatusText: String = "Furniture: none"
     @Published var placedFurnitureCount: Int = 0
 
@@ -23,14 +21,14 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.requestRedrawForDepthMeasure()
     }
 
-    /// Resets orbit, zoom, scene scale, and AR motion baseline (same as Recenter toolbar / notification).
+    /// Resets orbit, zoom, and scene scale (same as Recenter toolbar / notification).
     func recenterSharpRoomCamera() {
         coordinator?.performSharpRoomRecenter()
     }
 
     /// Euclidean distance from the **splat virtual camera** to the surface hit along the view ray, in **scene units**.
     /// Point must be in **window** coordinates (same as ``UIView.convert(_:to:)`` with `nil`). Call from the main thread.
-    /// Used by Furniture Fit in Live Room so metric depth matches the rendered splat, not the floor-contact + device-pitch heuristic.
+    /// Used by Furniture Fit so metric depth matches the rendered splat, not the floor-contact + device-pitch heuristic.
     func splatCameraToSurfaceDistanceSceneUnits(atWindowPoint windowPoint: CGPoint) -> Float? {
         guard let mtkView = coordinator?.view else { return nil }
         let pointInSplat = mtkView.convert(windowPoint, from: nil)
@@ -62,12 +60,7 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator.scheduleScreenshotCapture(completion: completion)
     }
 
-    func setARModeEnabled(_ enabled: Bool) {
-        arModeEnabled = enabled
-        coordinator?.setARModeEnabled(enabled)
-    }
-
-    /// Pauses ARKit while alerts/sheets need the main thread (e.g. save-room name field).
+    /// Pauses renderer-side heavy work while alerts/sheets need the main thread.
     func setModalHeavyWorkPaused(_ paused: Bool) {
         coordinator?.setModalHeavyWorkPaused(paused)
     }
@@ -82,10 +75,6 @@ final class GaussianSplatMeasurementHost: ObservableObject {
 
     func rotateSelectedFurniture(by radians: Float) {
         coordinator?.rotateSelectedFurniture(by: radians)
-    }
-
-    func updateARStatus(_ text: String) {
-        arStatusText = text
     }
 
     func updateFurnitureStatus(_ text: String, count: Int) {

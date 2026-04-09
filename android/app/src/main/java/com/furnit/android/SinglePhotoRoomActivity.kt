@@ -1120,9 +1120,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         val intent = Intent(this, SharpRoomActivity::class.java).apply {
             putExtra(SharpRoomActivity.EXTRA_PLY_PATH, result.classicPlyFile.absolutePath)
             putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, result.plyFile.parentFile?.absolutePath)
-            putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
-            putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
-            putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
+            if (result.roomWidth > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
+            if (result.roomHeight > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
+            if (result.roomDepth > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
             result.roomCenterX?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
             result.roomCenterY?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
             result.roomCenterZ?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
@@ -1136,11 +1136,17 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, isTempPreview)
             putExtra(SharpRoomActivity.EXTRA_OPENED_FROM_SINGLE_PHOTO_ROOM, true)
         }
-        LogUtil.i(
+        DebugLogger.i(
             "SHARP_ROOM_MEAS",
-            "[open_sharp_viewer] W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
-                "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
-                "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}",
+            if (result.roomWidth > 0f && result.roomHeight > 0f && result.roomDepth > 0f) {
+                "[open_sharp_viewer] W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
+                    "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}"
+            } else {
+                "[open_sharp_viewer] dims=deferred_async " +
+                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
+                    "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}"
+            },
         )
         sharpRoomLauncher.launch(intent)
     }

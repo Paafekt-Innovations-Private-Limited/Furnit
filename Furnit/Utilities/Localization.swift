@@ -87,6 +87,10 @@ enum L10n {
         static let deleteHint = "home.deleteHint".localized
         static let swipeHint = "home.swipeHint".localized
         static let roomModel = "home.roomModel".localized
+        /// Saved PLY / SHARP Gaussian room (home list subtitle under room name).
+        static let aiBased3DRoom = "home.aiBased3DRoom".localized
+        /// Saved manual mesh / GLB room (home list subtitle under room name).
+        static let manualBased3DRoom = "home.manualBased3DRoom".localized
         static let renameRoom = "home.renameRoom".localized
         static let renameRoomMessage = "home.renameRoomMessage".localized
         static let roomNamePlaceholder = "home.roomNamePlaceholder".localized
@@ -259,6 +263,20 @@ enum L10n {
         static let quickPhoto = "photoRoom.quickPhoto".localized
         static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
         static let buildingRoom = "photoRoom.buildingRoom".localized
+        /// Manual single-photo room pipeline (`SinglePhotoRoomReconstructor`) status line on progress overlay.
+        static let reconstructorReady = "photoRoom.reconstructorReady".localized
+        static let reconstructorAnalyzingPhoto = "photoRoom.reconstructorAnalyzingPhoto".localized
+        static let reconstructorExtractingDepth = "photoRoom.reconstructorExtractingDepth".localized
+        static let reconstructorFindingWalls = "photoRoom.reconstructorFindingWalls".localized
+        static let reconstructorCalculatingDimensions = "photoRoom.reconstructorCalculatingDimensions".localized
+        static let reconstructorBuilding3D = "photoRoom.reconstructorBuilding3D".localized
+        static let reconstructorRoomReady = "photoRoom.reconstructorRoomReady".localized
+        static let reconstructorDepthFailed = "photoRoom.reconstructorDepthFailed".localized
+        static let reconstructorStarting = "photoRoom.reconstructorStarting".localized
+        static let reconstructorPreparingImage = "photoRoom.reconstructorPreparingImage".localized
+        static let reconstructorAnalyzingBoundaries = "photoRoom.reconstructorAnalyzingBoundaries".localized
+        static let reconstructorCreatingTextures = "photoRoom.reconstructorCreatingTextures".localized
+        static let reconstructorFinalizing = "photoRoom.reconstructorFinalizing".localized
         static let backAlertTitle = "photoRoom.backAlertTitle".localized
         static let backAlertMessage = "photoRoom.backAlertMessage".localized
         static let backAlertAI = "photoRoom.backAlertAI".localized
@@ -311,14 +329,61 @@ enum L10n {
             "roomViewer.saveFailed".localized(error)
         }
         static let roomSaveTitle = "roomViewer.roomSaveTitle".localized
+        /// Success alert title after mesh/GLB manual save (distinct from ``roomSaveTitle``).
+        static let roomSavedAlertTitle = "roomViewer.roomSavedAlertTitle".localized
+        /// Mesh export JS error (manual room save flow).
+        static let meshExportFailed = "roomViewer.meshExportFailed".localized
+        /// Generic save failure when no server message (manual mesh room).
+        static let meshSaveFailedGeneric = "roomViewer.meshSaveFailedGeneric".localized
+        /// Shown when saving a Sharp/ML room and the chosen name collides with an existing saved room.
+        static let duplicateRoomName = "roomViewer.duplicateRoomName".localized
         static let share = "roomViewer.share".localized
         static let calibrateWall = "roomViewer.calibrateWall".localized
         static let recenterView = "roomViewer.recenterView".localized
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
         static let pinchGestureHintExplanation = "roomViewer.pinchGestureHintExplanation".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
+        static let snapshotGestureHintExplanation = "roomViewer.snapshotGestureHintExplanation".localized
+        /// Short tip for the AR camera-sizing control in the room toolbar (user-facing, not technical).
+        static let arFurnitureSizingHint = "roomViewer.arFurnitureSizingHint".localized
+        static let arFurnitureSizingRequiresBrainHint = "roomViewer.arFurnitureSizingRequiresBrainHint".localized
+        static let arSizingEnable = "roomViewer.arSizingEnable".localized
+        static let arSizingDisable = "roomViewer.arSizingDisable".localized
         static let gestureHintToggleAccessibility = "roomViewer.gestureHintToggleAccessibility".localized
         static let checkMeasurement = "roomViewer.checkMeasurement".localized
+        /// Shown after W×H×D numbers for manual-setup (mesh / GLB) rooms — list line and ruler chip.
+        static let roomDimensionsDefaultValues = "roomViewer.roomDimensionsDefaultValues".localized
+        static func roomDimensionsWHDManualChip(width: Float, height: Float, depth: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHDWithDefault".localized,
+                locale: .current,
+                width,
+                height,
+                depth,
+                roomDimensionsDefaultValues
+            )
+        }
+        static func roomDimensionsWHManualChip(width: Float, height: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHWithDefault".localized,
+                locale: .current,
+                width,
+                height,
+                roomDimensionsDefaultValues
+            )
+        }
+        /// SHARP / PLY AI-derived dimensions — home list line and ruler chip.
+        static let roomDimensionsNearAccurateValues = "roomViewer.roomDimensionsNearAccurateValues".localized
+        static func roomDimensionsWHDAIChip(width: Float, height: Float, depth: Float) -> String {
+            String(
+                format: "roomViewer.roomDimensionsWHDWithNearAccurate".localized,
+                locale: .current,
+                width,
+                height,
+                depth,
+                roomDimensionsNearAccurateValues
+            )
+        }
         static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
         static let savingRoomEllipsis = "roomViewer.savingRoomEllipsis".localized

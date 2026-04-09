@@ -11,7 +11,7 @@ iOS; Android uses the same JSON. The PF checkpoint embeds a fixed ~4585-class he
 Examples:
   python3 scripts/list_yoloe26_pf_classes.py
   python3 scripts/list_yoloe26_pf_classes.py --format json --out /tmp/yoloe26_classes.json
-  python3 scripts/list_yoloe26_pf_classes.py --onnx Furnit/Resources/yoloe-26l-seg-pf_seg_o2m.onnx
+  python3 scripts/list_yoloe26_pf_classes.py --onnx android/app/src/main/assets/yoloe-26l-seg-pf_seg_o2m.onnx
 """
 
 from __future__ import annotations

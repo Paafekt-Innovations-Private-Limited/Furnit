@@ -39,7 +39,10 @@ class RoomLimitManager: ObservableObject {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: nil)
-            let modelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            let modelFiles = files.filter {
+                supportedExtensions.contains($0.pathExtension.lowercased()) &&
+                !$0.deletingPathExtension().lastPathComponent.hasSuffix("_classic")
+            }
             roomCount = modelFiles.count
 
             if AppStateManager.shared.qualitySettings.debugMode {

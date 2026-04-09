@@ -58,6 +58,8 @@
 "home.deleteHint" = "احذف الغرف القديمة لإنشاء غرف جديدة";
 "home.swipeHint" = "اسحب لليسار للحذف";
 "home.roomModel" = "نموذج غرفة ثلاثي الأبعاد";
+"home.aiBased3DRoom" = "غرفة ثلاثية الأبعاد بالذكاء الاصطناعي";
+"home.manualBased3DRoom" = "غرفة ثلاثية الأبعاد يدوية";
 
 // MARK: - Room Limit
 "roomLimit.title" = "تم الوصول إلى حد الغرف";
@@ -302,6 +304,10 @@
 "roomViewer.saveSuccess" = "تم حفظ الغرفة '%@' بنجاح!";
 "roomViewer.saveFailed" = "فشل حفظ الغرفة: %@";
 "roomViewer.roomSaveTitle" = "حفظ الغرفة";
+"roomViewer.roomSavedAlertTitle" = "تم حفظ الغرفة";
+"roomViewer.meshExportFailed" = "فشل تصدير النموذج ثلاثي الأبعاد.";
+"roomViewer.meshSaveFailedGeneric" = "فشل حفظ الغرفة.";
+"roomViewer.duplicateRoomName" = "توجد بالفعل غرفة بهذا الاسم.";
 "roomPreview.unsavedTitle" = "المغادرة دون حفظ؟";
 "roomPreview.unsavedMessage" = "لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.";
 "roomPreview.stay" = "البقاء";
@@ -313,8 +319,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
 "roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
 "roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
+"roomViewer.snapshotGestureHintExplanation" = "اضغط الكاميرا لحفظ صورة للغرفة في الصور.";
+"roomViewer.arFurnitureSizingHint" = "يستخدم الكاميرا لتحسين مطابقة حجم الأثاث مع الغرفة. يعمل أفضل على آيفون المزوّد بـ LiDAR. أوقف الميزة إذا كانت الصورة تتقطع أو تبدو غير ثابتة.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "أقوم بوضع الأثاث بنسبة تتناسب مع حجم الغرفة. اضغط على أيقونة الدماغ ثم جرّبني.";
+"roomViewer.arSizingEnable" = "تفعيل قياس الأثاث بمساعدة الكاميرا";
+"roomViewer.arSizingDisable" = "إيقاف قياس الأثاث بمساعدة الكاميرا";
 "roomViewer.gestureHintToggleAccessibility" = "اضغط هذا الرمز لإظهار هذه النصيحة أو إخفائها.";
 "roomViewer.checkMeasurement" = "تحقق من القياس";
+"roomViewer.roomDimensionsDefaultValues" = "القيم الافتراضية";
+"roomViewer.roomDimensionsWHDWithDefault" = "العرض × الارتفاع × العمق\n%.2f × %.2f × %.2f م (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "العرض × الارتفاع\n%.2f × %.2f م (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "قيم شبه دقيقة";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "العرض × الارتفاع × العمق\n%.2f × %.2f × %.2f م (%@)";
 "roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";
 "roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "تم حفظ النموذج ثلاثي الأبعاد بنجاح.";
 "photoRoom.error" = "حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.";
 "photoRoom.buildingRoom" = "جاري بناء غرفتك ثلاثية الأبعاد...";
+"photoRoom.reconstructorReady" = "جاهز";
+"photoRoom.reconstructorAnalyzingPhoto" = "جارٍ تحليل الصورة…";
+"photoRoom.reconstructorExtractingDepth" = "جارٍ استخراج معلومات العمق…";
+"photoRoom.reconstructorFindingWalls" = "جارٍ البحث عن الجدران والزوايا…";
+"photoRoom.reconstructorCalculatingDimensions" = "جارٍ حساب أبعاد الغرفة…";
+"photoRoom.reconstructorBuilding3D" = "جارٍ إنشاء النموذج ثلاثي الأبعاد…";
+"photoRoom.reconstructorRoomReady" = "الغرفة جاهزة!";
+"photoRoom.reconstructorDepthFailed" = "فشل تقدير العمق";
+"photoRoom.reconstructorStarting" = "جارٍ البدء…";
+"photoRoom.reconstructorPreparingImage" = "جارٍ تجهيز الصورة…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "جارٍ تحليل الحدود…";
+"photoRoom.reconstructorCreatingTextures" = "جارٍ إنشاء النسيج…";
+"photoRoom.reconstructorFinalizing" = "جارٍ الإنهاء…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "عمودي";

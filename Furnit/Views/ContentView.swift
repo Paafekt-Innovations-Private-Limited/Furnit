@@ -52,6 +52,7 @@ private func destinationView(for model: USDZModel) -> some View {
                 photoOrientation: model.photoOrientation,
                 roomWidth: model.roomWidth,
                 roomHeight: model.roomHeight,
+                roomDepth: model.roomDepth,
                 savedRoomModel: model
             )
         } else {
@@ -114,6 +115,8 @@ struct HomeTab: View {
     @State private var selectedModelForInfo: USDZModel?
     @State private var renameTarget: USDZModel?
     @State private var renameDraft = ""
+    @State private var renameErrorMessage = ""
+    @State private var showRenameErrorAlert = false
     @State private var createRoomHintExplanationVisible = false
     @State private var createRoomHintHideTextTask: Task<Void, Never>?
 
@@ -337,12 +340,22 @@ struct HomeTab: View {
                 }
                 Button(L10n.Common.save) {
                     if let room = renameTarget {
-                        try? modelManager.updateDisplayName(for: room, newName: renameDraft)
+                        do {
+                            try modelManager.updateDisplayName(for: room, newName: renameDraft)
+                        } catch {
+                            renameErrorMessage = error.localizedDescription
+                            showRenameErrorAlert = true
+                        }
                     }
                     renameTarget = nil
                 }
             } message: {
                 Text(L10n.Home.renameRoomMessage)
+            }
+            .alert("Rename Failed", isPresented: $showRenameErrorAlert) {
+                Button(L10n.Common.ok, role: .cancel) { }
+            } message: {
+                Text(renameErrorMessage)
             }
         }
         .onAppear {
@@ -559,6 +572,7 @@ struct HomeTab: View {
                                 photoOrientation: model.photoOrientation,
                                 roomWidth: model.roomWidth,
                                 roomHeight: model.roomHeight,
+                                roomDepth: model.roomDepth,
                                 savedRoomModel: model
                             )
                         }
@@ -857,6 +871,18 @@ struct HomeViewModelRow: View {
         }
     }
 
+    /// Under the room name: SHARP PLY vs manual mesh/GLB vs bundle USDZ.
+    private var roomCreationKindSubtitle: String {
+        switch model.fileType {
+        case .ply:
+            return L10n.Home.aiBased3DRoom
+        case .meshroom, .glb:
+            return L10n.Home.manualBased3DRoom
+        case .usdz:
+            return L10n.Home.roomModel
+        }
+    }
+
     // Orientation label text
     private var orientationLabel: String {
         let title: String
@@ -886,9 +912,15 @@ struct HomeViewModelRow: View {
                     .font(.headline)
                     .foregroundColor(.primary)
 
-                Text(L10n.Home.roomModel)
+                Text(roomCreationKindSubtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
+
+                if let dims = model.roomDimensionsListLine {
+                    Text(dims)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.green.opacity(0.9))
+                }
 
                 HStack(spacing: 6) {
                     Text(model.subtitleText)

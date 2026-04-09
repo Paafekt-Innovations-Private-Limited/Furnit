@@ -2,6 +2,10 @@
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
 
+## Periphery (regenerate locally)
+periphery-report.txt
+periphery-report.json
+
 ## User settings
 xcuserdata/
 
@@ -250,8 +254,7 @@ android/sharp_vulkan_only_latent0/
 *.pt
 *.ptl
 *.onnx
-!Furnit/Resources/yoloe-11l-seg-pf.onnx
-!Furnit/Resources/yoloe-26l-seg-pf_seg_o2m.onnx
+# iOS: Core ML + ODR only; do not commit large ONNX under Furnit/Resources (use local copy for scripts).
 !android/app/src/main/assets/yoloe-26l-seg-pf_seg_o2m.onnx
 *.tflite
 android/__pycache__/

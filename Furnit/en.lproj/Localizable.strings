@@ -63,6 +63,8 @@
 "home.renameRoomMessage" = "This name appears in your room list. The saved file name stays the same.";
 "home.roomNamePlaceholder" = "Room name";
 "home.roomModel" = "3D Room Model";
+"home.aiBased3DRoom" = "AI based 3D room";
+"home.manualBased3DRoom" = "Manual based 3D room";
 
 // MARK: - Room Limit
 "roomLimit.title" = "Room Limit Reached";
@@ -315,6 +317,19 @@
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
 "photoRoom.buildingRoom" = "Building your 3D room...";
+"photoRoom.reconstructorReady" = "Ready";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analyzing photo...";
+"photoRoom.reconstructorExtractingDepth" = "Extracting depth information...";
+"photoRoom.reconstructorFindingWalls" = "Finding walls and corners...";
+"photoRoom.reconstructorCalculatingDimensions" = "Calculating room dimensions...";
+"photoRoom.reconstructorBuilding3D" = "Building 3D model...";
+"photoRoom.reconstructorRoomReady" = "Room ready!";
+"photoRoom.reconstructorDepthFailed" = "Failed to estimate depth";
+"photoRoom.reconstructorStarting" = "Starting...";
+"photoRoom.reconstructorPreparingImage" = "Preparing image...";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analyzing boundaries...";
+"photoRoom.reconstructorCreatingTextures" = "Creating textures...";
+"photoRoom.reconstructorFinalizing" = "Finalizing...";
 "photoRoom.odrOneTimeDownload" = "One-time download (~1.2 GB)";
 "photoRoom.modelGeneratedTitle" = "3D Model Generated";
 "photoRoom.generationFailedTitle" = "Generation Failed";
@@ -365,6 +380,10 @@
 "roomViewer.saveSuccess" = "Room '%@' saved successfully!";
 "roomViewer.saveFailed" = "Failed to save room: %@";
 "roomViewer.roomSaveTitle" = "Room Save";
+"roomViewer.roomSavedAlertTitle" = "Room Saved";
+"roomViewer.meshExportFailed" = "Failed to export 3D model.";
+"roomViewer.meshSaveFailedGeneric" = "Failed to save room.";
+"roomViewer.duplicateRoomName" = "A room with this name already exists.";
 "roomPreview.unsavedTitle" = "Leave without saving?";
 "roomPreview.unsavedMessage" = "Your room has not been saved yet. If you go back now, you will lose this preview.";
 "roomPreview.stay" = "Stay";
@@ -376,8 +395,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
 "roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap the brain to turn furniture detection on or off. When it is on, pinch the overlay to resize it.";
+"roomViewer.snapshotGestureHintExplanation" = "Tap the camera to save a picture of the room to Photos.";
+"roomViewer.arFurnitureSizingHint" = "Uses the camera to better match furniture size to your room. Works best on iPhones with LiDAR. Turn this off if the view stutters or feels unstable.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "I place furniture in proportion to the room size. Tap the brain icon, then try me.";
+"roomViewer.arSizingEnable" = "Enable camera-assisted furniture sizing";
+"roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
 "roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";
 "roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.roomDimensionsDefaultValues" = "Default Values";
+"roomViewer.roomDimensionsWHDWithDefault" = "W × H × D\n%.2f × %.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "W × H\n%.2f × %.2f m (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "Near accurate values";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "W × H × D\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.measuringRoom" = "Measuring room…";
 "roomViewer.goingBack" = "Going back...";
 "roomViewer.savingRoomEllipsis" = "Saving Room...";
@@ -455,6 +484,7 @@
 "camera.chooseOrientationShort" = "Portrait or landscape";
 "camera.chooseMode" = "Choose Camera Mode";
 "camera.chooseModeHint" = "Select camera lens for your room";
+"camera.ar.hint" = "Point at the room, hold steady, then capture. We use AR for accurate camera intrinsics (and scene depth on LiDAR).";
 "camera.standard" = "Standard";
 "camera.wideAngle" = "Wide Angle";
 "camera.standard.desc" = "Standard 1x lens • Hold in any orientation";

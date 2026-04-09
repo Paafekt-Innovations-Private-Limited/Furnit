@@ -58,6 +58,8 @@
 "home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
 "home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";
 "home.roomModel" = "3D ಕೊಠಡಿ ಮಾದರಿ";
+"home.aiBased3DRoom" = "AI ಆಧಾರಿತ 3D ಕೊಠಡಿ";
+"home.manualBased3DRoom" = "ಮ್ಯಾನುವಲ್ ಆಧಾರಿತ 3D ಕೊಠಡಿ";
 
 // MARK: - Room Limit
 "roomLimit.title" = "ಕೊಠಡಿ ಮಿತಿ ತಲುಪಿದೆ";
@@ -284,6 +286,10 @@
 "roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
 "roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
 "roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomViewer.roomSavedAlertTitle" = "ಕೊಠಡಿ ಉಳಿಸಲಾಗಿದೆ";
+"roomViewer.meshExportFailed" = "3D ಮಾದರಿಯನ್ನು ರಫ್ತು ಮಾಡಲು ವಿಫಲವಾಗಿದೆ.";
+"roomViewer.meshSaveFailedGeneric" = "ಕೊಠಡಿಯನ್ನು ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ.";
+"roomViewer.duplicateRoomName" = "ಈ ಹೆಸರಿನೊಂದಿಗೆ ಒಂದು ಕೊಠಡಿ ಈಗಾಗಲೇ ಅಸ್ತಿತ್ವದಲ್ಲಿದೆ.";
 "roomPreview.unsavedTitle" = "ಉಳಿಸದೆಯೇ ಹಿಂದೆ ಹೋಗುವುದೇ?";
 "roomPreview.unsavedMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.";
 "roomPreview.stay" = "ಇಲ್ಲೇ ಇರಿ";
@@ -295,8 +301,18 @@
 "roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯನ್ನು ಆನ್ ಅಥವಾ ಆಫ್ ಮಾಡಲು ಮೆದುಳು ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಆನ್‌ನಲ್ಲಿ ಓವರ್‌ಲೇಯನ್ನು ಚಿಮುಡಿಸಿ ಗಾತ್ರ ಬದಲಿಸಿ.";
+"roomViewer.snapshotGestureHintExplanation" = "ಕೊಠಡಿಯ ಚಿತ್ರವನ್ನು ಫೋಟೋಗಳಿಗೆ ಉಳಿಸಲು ಕ್ಯಾಮರಾವನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"roomViewer.arFurnitureSizingHint" = "ಕ್ಯಾಮರಾವನ್ನು ಬಳಸಿ ಪೀಠೋಪಕರಣದ ಗಾತ್ರವನ್ನು ಕೊಠಡಿಗೆ ಹೆಚ್ಚು ಹೊಂದಿಕೊಳ್ಳುವಂತೆ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. LiDAR ಇರುವ ಐಫೋನ್‌ಗಳಲ್ಲಿ ಅತ್ಯುತ್ತಮ. ನೋಟ ನಿಧಾನವಾಗಿದ್ದರೆ ಅಥವಾ ಅಸ್ಥಿರವಾಗಿದ್ದರೆ ಇದನ್ನು ಆಫ್ ಮಾಡಿ.";
+"roomViewer.arFurnitureSizingRequiresBrainHint" = "ನಾನು ಕೊಠಡಿಯ ಗಾತ್ರಕ್ಕೆ ಅನುಪಾತವಾಗಿ ಪೀಠೋಪಕರಣವನ್ನು ಇಡುತ್ತೇನೆ. ಮೊದಲು ಬ್ರೇನ್ ಐಕಾನ್ ಒತ್ತಿ, ನಂತರ ನನ್ನನ್ನು ಪ್ರಯತ್ನಿಸಿ.";
+"roomViewer.arSizingEnable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ";
+"roomViewer.arSizingDisable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.gestureHintToggleAccessibility" = "ಈ ಸಲಹೆಯನ್ನು ತೋರಿಸಲು ಅಥವಾ ಮರೆಮಾಡಲು ಈ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
+"roomViewer.roomDimensionsDefaultValues" = "ಡಿಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳು";
+"roomViewer.roomDimensionsWHDWithDefault" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
+"roomViewer.roomDimensionsWHWithDefault" = "ಅಗಲ × ಎತ್ತರ\n%.2f × %.2f ಮೀ (%@)";
+"roomViewer.roomDimensionsNearAccurateValues" = "ಸಮೀಪದ ನಿಖರವಾದ ಮೌಲ್ಯಗಳು";
+"roomViewer.roomDimensionsWHDWithNearAccurate" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
 "roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";
@@ -386,6 +402,19 @@
 "photoRoom.saveSuccess" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ.";
 "photoRoom.error" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುವಾಗ ದೋಷ ಸಂಭವಿಸಿದೆ.";
 "photoRoom.buildingRoom" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ...";
+"photoRoom.reconstructorReady" = "ಸಿದ್ಧ";
+"photoRoom.reconstructorAnalyzingPhoto" = "ಫೋಟೋ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorExtractingDepth" = "ಆಳದ ಮಾಹಿತಿ ಹೊರತೆಗೆಯಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorFindingWalls" = "ಗೋಡೆಗಳು ಮತ್ತು ಮೂಲೆಗಳನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorCalculatingDimensions" = "ಕೊಠಡಿಯ ಅಳತೆಗಳನ್ನು ಲೆಕ್ಕಾಚಾರ ಮಾಡಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorBuilding3D" = "3D ಮಾದರಿ ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorRoomReady" = "ಕೊಠಡಿ ಸಿದ್ಧ!";
+"photoRoom.reconstructorDepthFailed" = "ಆಳದ ಅಂದಾಜು ವಿಫಲವಾಗಿದೆ";
+"photoRoom.reconstructorStarting" = "ಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorPreparingImage" = "ಚಿತ್ರವನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "ಎಲೆಗಳನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorCreatingTextures" = "ಟೆಕ್ಸ್ಚರ್‌ಗಳನ್ನು ರಚಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorFinalizing" = "ಪೂರ್ಣಗೊಳಿಸಲಾಗುತ್ತಿದೆ…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "ಪೋರ್ಟ್ರೇಟ್";
