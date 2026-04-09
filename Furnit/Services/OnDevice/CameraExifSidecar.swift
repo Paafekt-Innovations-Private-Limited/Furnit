@@ -62,11 +62,15 @@ enum CameraExifSidecar {
             absorb(extracted)
         }
         if let id = photoLibraryAssetLocalId, !id.isEmpty {
-            let fromAsset = await extractFromPhotoLibraryAsset(localIdentifier: id)
-            logWallMeasurement("camera_exif_sidecar write source=phasset id=\(id) keys=\(fromAsset.keys.sorted())")
-            absorb(fromAsset)
-            if fromAsset.isEmpty {
-                logWallMeasurement("camera_exif_sidecar phAsset id=\(id) extracted no fields (iCloud/network?)")
+            if imageURL != nil {
+                logWallMeasurement("camera_exif_sidecar skip phasset id=\(id) reason=image_url_already_available")
+            } else {
+                let fromAsset = await extractFromPhotoLibraryAsset(localIdentifier: id)
+                logWallMeasurement("camera_exif_sidecar write source=phasset id=\(id) keys=\(fromAsset.keys.sorted())")
+                absorb(fromAsset)
+                if fromAsset.isEmpty {
+                    logWallMeasurement("camera_exif_sidecar phAsset id=\(id) extracted no fields (iCloud/network?)")
+                }
             }
         }
         let cameraMetadata = extractFromCameraMetadata(mediaMetadata)

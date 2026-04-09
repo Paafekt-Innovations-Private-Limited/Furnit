@@ -2073,12 +2073,6 @@ struct SharpRoomView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
 
-                Text(saveOverlayRoomDimensionsLine)
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.85))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-
                 ProgressView(value: saveProgress)
                     .progressViewStyle(LinearProgressViewStyle(tint: .green))
                     .frame(width: 200)
@@ -2191,21 +2185,25 @@ struct SharpRoomView: View {
         roomName = trimmedRoomName
         logDebug("💾 [SharpRoomView] Starting room save: \(savedName)")
 
+        // Dismiss the name-entry alert before presenting the full-screen save progress overlay.
+        showRoomNameInput = false
+
         Task {
             await MainActor.run {
                 if showingFurnitureFit {
                     logDebug("💾 [SharpRoomView] Save: stopping Furniture Fit before persist")
                     showingFurnitureFit = false
                 }
-            }
-            try? await Task.sleep(nanoseconds: 180_000_000)
-
-            await MainActor.run {
-                withAnimation(.easeIn(duration: 0.3)) {
+                withAnimation(.easeIn(duration: 0.2)) {
                     isSavingRoom = true
                     saveProgress = 0.0
                     saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
                 }
+            }
+            try? await Task.sleep(nanoseconds: 220_000_000)
+
+            await MainActor.run {
+                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
             }
 
             await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }

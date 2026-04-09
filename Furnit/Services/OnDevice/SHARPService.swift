@@ -669,19 +669,32 @@ class SHARPService: ObservableObject {
             throw GenerationError.serverError("Failed to create graphics context")
         }
 
-        // Draw directly from UIImage so orientation is handled here without first allocating
-        // an upright full-resolution copy of the source photo.
+        // Normalize EXIF orientation into a 1536×1536 intermediate only. This preserves the
+        // lower-peak-memory path (no second full-resolution upright image) while keeping SHARP's
+        // input upright like the old working path.
+        let modelRect = CGRect(x: 0, y: 0, width: size, height: size)
+        guard let orientedModelCGImage = autoreleasepool(invoking: { () -> CGImage? in
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = false
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format)
+            let rendered = renderer.image { _ in
+                image.draw(in: modelRect)
+            }
+            return rendered.cgImage
+        }) else {
+            throw GenerationError.serverError("Failed to normalize image orientation for SHARP input")
+        }
+
         autoreleasepool {
             context.interpolationQuality = .high
-            UIGraphicsPushContext(context)
-            image.draw(in: CGRect(x: 0, y: 0, width: size, height: size))
-            UIGraphicsPopContext()
+            context.draw(orientedModelCGImage, in: modelRect)
         }
 
         let orientedSize = Self.orientedPixelSize(for: image)
         logDebug(
             "[GREEN][SHARP_PREPROCESS] SOURCE_DRAW=\(Int(orientedSize.width))X\(Int(orientedSize.height)) " +
-            "MODEL_INPUT=\(size)X\(size) RESIZE=DIRECT_SQUISH PAD=NONE"
+            "MODEL_INPUT=\(size)X\(size) RESIZE=DIRECT_SQUISH PAD=NONE ORIENT=RENDERED_AT_MODEL_INPUT"
         )
 
         return buffer
