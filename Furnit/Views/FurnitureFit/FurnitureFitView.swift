@@ -206,6 +206,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let maxArAssistedHoldMisses: Int = 18
     /// Latest AR-estimated furniture height in meters (UI only; does not affect segmentation).
     private var lastAREstimatedHeightMeters: Float?
+    /// Raw furniture estimate before user pinch is applied; used to republish the pill immediately on manual resize.
+    private var latestEstimatedFurnitureBaseWidthMeters: Float?
+    private var latestEstimatedFurnitureBaseHeightMeters: Float?
+    private var latestEstimatedFurnitureBaseARHeightMeters: Float?
     /// After first segmentation, publish one **refined** W×H (AR intrinsics + min depth in bbox) to parents — fixes huge first-frame numbers when YOLO boxes are loose.
     private var didPublishARRefinedFurnitureMetersEstimate = false
 
@@ -1161,6 +1165,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         overlayDebugLastAssistedLabel = ""
         overlayDebugLastCombined = -1
         lastAREstimatedHeightMeters = nil
+        latestEstimatedFurnitureBaseWidthMeters = nil
+        latestEstimatedFurnitureBaseHeightMeters = nil
+        latestEstimatedFurnitureBaseARHeightMeters = nil
         didPublishARRefinedFurnitureMetersEstimate = false
         userPinchScale = 1.0
         userLockedAssistedOverlayScale = false
@@ -3745,10 +3752,43 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             finalWidth = max(widthMeters, Self.minimumARFurnitureWidthMeters)
         }
 
+        latestEstimatedFurnitureBaseWidthMeters = finalWidth
+        latestEstimatedFurnitureBaseHeightMeters = finalHeight
+        latestEstimatedFurnitureBaseARHeightMeters = finalARHeight
+
+        if arAssistedSizingEnabled,
+           let arHeight = finalARHeight,
+           arHeight.isFinite,
+           arHeight > 0 {
+            let pinch = Float(max(userPinchScale, 0.01))
+            finalWidth *= pinch
+            finalHeight *= pinch
+            finalARHeight = arHeight * pinch
+        }
+
         return FurnitureSizeEstimate(
             widthMeters: finalWidth,
             heightMeters: finalHeight,
             arHeightMeters: finalARHeight
+        )
+    }
+
+    private func publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded() {
+        guard let callback = onFurnitureSizeEstimated,
+              let width = latestEstimatedFurnitureBaseWidthMeters,
+              let height = latestEstimatedFurnitureBaseHeightMeters,
+              width.isFinite,
+              height.isFinite,
+              width > 0,
+              height > 0 else { return }
+
+        let arHeight = latestEstimatedFurnitureBaseARHeightMeters
+        callback(
+            makeFurnitureSizeEstimate(
+                widthMeters: width,
+                heightMeters: height,
+                arHeightMeters: arHeight
+            )
         )
     }
 
@@ -3896,6 +3936,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let newPinch = userPinchScale * gesture.scale
             userPinchScale = min(max(newPinch, 0.25), 4.0)
             applyCurrentOverlayScaleTransform()
+            publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
             gesture.scale = 1.0
         case .ended, .cancelled:
             // Snap pinch back to neutral if user barely scaled (same spirit as old 0.9–1.1 total scale).
@@ -3905,6 +3946,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 UIView.animate(withDuration: 0.2) {
                     self.applyCurrentOverlayScaleTransform()
                 }
+                publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
             }
         default: break
         }
@@ -3922,6 +3964,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         UIView.animate(withDuration: 0.2) {
             self.applyCurrentOverlayScaleTransform()
         }
+        publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
     }
 
     /// Check if a point in image coordinates is on a non-transparent pixel
