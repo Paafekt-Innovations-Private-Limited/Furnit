@@ -1339,6 +1339,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    /// Switch AR-assisted sizing mode without fully tearing down the Furniture Fit container.
+    /// Full `stop()` resets segmentation UI state and can leave Sharp Room feeling frozen when the
+    /// user taps the AR sizing icon after brain mode is already active.
+    func reconfigureAssistedSizingModeIfNeeded() {
+        guard furnitureFitCameraStartupInitiated || captureSession.isRunning || isUsingARCameraPath || isARDepthCompanionSessionRunning else {
+            return
+        }
+        invalidatePendingAssistedMeasurement()
+        if !arAssistedSizingEnabled {
+            autoScaleFromAR = 1.0
+            smoothedArOverlayScale = 1.0
+            arAssistedScaleValid = false
+            lastAREstimatedHeightMeters = nil
+        }
+        startPreferredCameraPathIfNeeded()
+    }
+
     private func startDeviceMotionPitchUpdatesIfNeeded() {
         guard deviceMotionManager.isDeviceMotionAvailable else { return }
         guard !deviceMotionManager.isDeviceMotionActive else { return }

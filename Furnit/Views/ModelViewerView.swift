@@ -707,8 +707,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         applyConfiguration()
         if active {
             if needsCameraPathRestart {
-                uiView.stop()
-                applyConfiguration()
+                uiView.reconfigureAssistedSizingModeIfNeeded()
             }
             uiView.startIfNeeded()
         } else {
