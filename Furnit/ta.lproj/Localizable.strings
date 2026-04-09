@@ -479,3 +479,14 @@
 "generationProgress.complete" = "முடிந்தது!";
 "generationProgress.preparing" = "தயாராகி வருகிறது...";
 "generationProgress.mayTakeFewMinutes" = "இதற்கு சில நிமிடங்கள் ஆகலாம்";
+
+// FAQ overrides
+"help.measurementAccuracyTitle" = "அளவீட்டு குறிப்பு";
+"help.measurementAccuracyBody" = "AR depth ஆதரவு இல்லாத போன்களிலும் அறை மற்றும் பொருட்களின் முன்னோட்டம் காணலாம், ஆனால் அறை அளவுகளும் குறிப்பாக பொருட்களின் அளவுகளும் சுமார் கணிப்பாக மட்டுமே இருக்கும்.";
+"faq.whatIsBrainIconAnswer" = "மூளை ஐகான் SmartyPants மரச்சாமான் கண்டறிதலை தொடங்குகிறது. இது நேரடி கேமரா காட்சியில் மரச்சாமான்களை கண்டுபிடித்து segmentation overlay-ஐ காட்டும். அறைக்கு ஏற்ற அளவில் மாற்ற விரும்பினால், மூளை ஐகான் இயங்கிய பிறகு size icon-ஐ தட்டவும்.";
+"faq.howToSegmentAnswer" = "அறை viewer-ல் மூளை ஐகானை தட்டி மரச்சாமான் கண்டறிதலைத் தொடங்குங்கள். segmentation இயங்கிய பிறகு, app மரச்சாமான் overlay-ஐ அறைக்கு ஏற்றபடி அளவிட size icon-ஐ தட்டலாம்.";
+"faq.accuracyAnswer" = "3D அறை ஒரு புகைப்படத்தை அடிப்படையாகக் கொண்ட கணிப்பு. அறை அளவுகள் வழிகாட்டுதலுக்கு உதவலாம், ஆனால் அவை survey அளவிலான துல்லியம் அல்ல. மரச்சாமான் அளவீடு AR அல்லது depth ஆதரவு உள்ள போன்களில் அதிகம் நம்பகமானது.";
+"faq.adjustDimensionsAnswer" = "AI-generated SHARP அறைகளில் நேரடியாக முடியாது. தற்போதைய கணிக்கப்பட்ட அகலம், உயரம், ஆழம் ஆகியவற்றைப் பார்க்க room viewer-இல் உள்ள ruler-ஐ பயன்படுத்துங்கள். நல்ல முடிவிற்கு மூலைகள் தெளிவாகத் தெரியும் அறை புகைப்படம் எடுக்கவும்; manual rooms நீங்கள் அமைக்கும் boundary-ஐப் பின்பற்றும்.";
+"faq.arAssistedSizingAnswer" = "முதலில் segmentation தொடங்க brain icon-ஐ தட்டுங்கள், பிறகு size icon-ஐ தட்டுங்கள். AR அல்லது depth ஆதரவு உள்ள போன்களில் app நேரடி camera depth-ஐ பயன்படுத்தி மரச்சாமானின் அளவை இன்னும் நிஜமாகக் காட்டும். AR depth இல்லாத போன்களில் இது சுமார் proportion-based கணிப்புக்குத் திரும்பும்; அதனால் மரச்சாமான் அளவுகள் துல்லியமாக இருக்காது.";
+"faq.measurementPillAnswer" = "furniture size pill என்பது sizing mode ஆன் ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தோன்றும். ruler button தற்போதைய அறையின் அகலம், உயரம், ஆழத்தை ஒரு சிறிய card-ல் காட்டும். non-AR போன்களில் இந்த மதிப்புகள், குறிப்பாக மரச்சாமான்களுக்கு, குறைவாக நம்பகமானவை.";
+"faq.resetOverlayScaleAnswer" = "இப்போது overflow menu இல்லை. overlay தவறாகத் தோன்றினால் brain icon-ஐ off செய்து மீண்டும் on செய்யுங்கள், அல்லது pinch செய்து மரச்சாமானின் அளவை கையால் சரிசெய்யுங்கள்.";

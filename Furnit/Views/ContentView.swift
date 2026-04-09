@@ -1295,6 +1295,19 @@ struct SupportView: View {
 
     var body: some View {
         List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(L10n.Help.measurementAccuracyTitle, systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundColor(.orange)
+
+                    Text(L10n.Help.measurementAccuracyBody)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 8)
+            }
+
             // FAQ Sections
             ForEach(faqSections) { section in
                 Section {

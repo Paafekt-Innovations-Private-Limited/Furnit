@@ -491,3 +491,16 @@
 "generationProgress.complete" = "Fertig!";
 "generationProgress.preparing" = "Wird vorbereitet...";
 "generationProgress.mayTakeFewMinutes" = "Dies kann einige Minuten dauern";
+
+// FAQ overrides
+"help.measurementAccuracyTitle" = "Hinweis zur Messung";
+"help.measurementAccuracyBody" = "Auf Telefonen ohne AR-Tiefensensor können Räume und Möbel weiterhin angezeigt werden, aber Raummaße und besonders Möbelmaße sind nur Näherungen.";
+"faq.aiFeatures" = "KI-Funktionen";
+"faq.whatIsBrainIcon" = "Was macht das Gehirn-Symbol?";
+"faq.whatIsBrainIconAnswer" = "Das Gehirn-Symbol startet die SmartyPants-Möbelerkennung. Es erkennt Möbel im Live-Kamerabild und zeigt die Segmentierungsüberlagerung an. Für eine größenmäßige Anpassung an den Raum tippen Sie danach auf das Größen-Symbol.";
+"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol, um die Möbelerkennung zu starten. Sobald die Segmentierung aktiv ist, können Sie auf das Größen-Symbol tippen, damit die App die Möbelüberlagerung an den Raum anpasst.";
+"faq.accuracyAnswer" = "Der 3D-Raum ist eine Schätzung aus nur einem Foto. Die Raummaße können als Orientierung dienen, sind aber keine exakten Vermessungsdaten. Möbelmaße sind auf Telefonen mit AR-/Tiefenunterstützung am zuverlässigsten.";
+"faq.adjustDimensionsAnswer" = "Nicht direkt bei KI-erzeugten SHARP-Räumen. Verwenden Sie das Lineal im Raum-Viewer, um die aktuell geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen den von Ihnen gesetzten Grenzen.";
+"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, um die Segmentierung zu starten, und danach auf das Größen-Symbol. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen. Ohne AR-Tiefe greift sie auf eine grobe Proportionsschätzung zurück, daher sind Möbelmaße nicht exakt.";
+"faq.measurementPillAnswer" = "Die kleine Möbelgrößenanzeige erscheint nur, wenn der Größenmodus aktiv ist und die App eine brauchbare Live-Höhenschätzung hat. Die Lineal-Schaltfläche zeigt die aktuelle Raum-Breite, -Höhe und -Tiefe in einer kleinen Karte an. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, besonders bei Möbeln.";
+"faq.resetOverlayScaleAnswer" = "Es gibt jetzt kein Überlaufmenü mehr. Wenn die Überlagerung nicht richtig aussieht, schalten Sie das Gehirn-Symbol aus und wieder ein oder passen Sie die Möbelgröße per Pinch-Geste manuell an.";

@@ -480,3 +480,14 @@
 "generationProgress.complete" = "完成！";
 "generationProgress.preparing" = "准备中...";
 "generationProgress.mayTakeFewMinutes" = "这可能需要几分钟";
+
+// FAQ overrides
+"help.measurementAccuracyTitle" = "测量提示";
+"help.measurementAccuracyBody" = "没有 AR 深度支持的手机仍然可以预览房间和家具，但房间尺寸，尤其是家具尺寸，只能作为近似参考。";
+"faq.whatIsBrainIconAnswer" = "大脑图标会启动 SmartyPants 家具检测。它会在实时相机画面中寻找家具并显示分割叠层。若想让家具按房间比例缩放，请先开启大脑图标，再点击尺寸图标。";
+"faq.howToSegmentAnswer" = "在房间查看器中，点击大脑图标开始家具检测。分割激活后，你可以点击尺寸图标，让应用尝试把家具叠层按房间比例缩放。";
+"faq.accuracyAnswer" = "3D 房间是基于一张照片生成的估计结果。房间尺寸可以作为参考，但不是专业测绘级精度。家具测量在支持 AR 或深度的手机上最可靠。";
+"faq.adjustDimensionsAnswer" = "AI 生成的 SHARP 房间目前不能直接手动调整。请使用房间查看器中的尺子查看当前估计的宽度、高度和深度。想获得更好的结果，请拍摄角落清晰可见的房间照片；手动房间则会遵循你设置的边界。";
+"faq.arAssistedSizingAnswer" = "先点击大脑图标开始分割，再点击尺寸图标。在支持 AR 或深度的手机上，应用会使用实时相机深度来给出更真实的家具大小。在没有 AR 深度的手机上，它会退回到较粗略的比例估计，因此家具尺寸并不精确。";
+"faq.measurementPillAnswer" = "家具尺寸小标签只会在尺寸模式开启且应用拿到可用的实时高度估计时出现。尺子按钮会以小卡片形式显示当前房间的宽度、高度和深度。在不支持 AR 的手机上，这些读数会更不可靠，尤其是家具尺寸。";
+"faq.resetOverlayScaleAnswer" = "现在已经没有更多菜单了。如果叠层看起来不对，请先关闭再重新打开大脑图标，或者手动双指缩放家具来微调大小。";

@@ -215,6 +215,8 @@ enum L10n {
     enum Help {
         static let title = "help.title".localized
         static let cantFind = "help.cantFind".localized
+        static let measurementAccuracyTitle = "help.measurementAccuracyTitle".localized
+        static let measurementAccuracyBody = "help.measurementAccuracyBody".localized
         static let contactDescription = "help.contactDescription".localized
         static let contactSupport = "help.contactSupport".localized
         static let emailSupport = "help.emailSupport".localized
