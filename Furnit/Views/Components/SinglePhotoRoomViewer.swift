@@ -1399,9 +1399,6 @@ struct SinglePhotoRoomView: View {
                                 sharpPlyAabbWidth: dest.sharpPlyW,
                                 sharpPlyAabbHeight: dest.sharpPlyH,
                                 sharpPlyAabbDepth: dest.sharpPlyD,
-                                generatedRoomWidth: dest.roomWidth,
-                                generatedRoomHeight: dest.roomHeight,
-                                generatedRoomDepth: dest.roomDepth,
                                 sourcePhotoPixelWidth: dest.sourcePhotoPxW,
                                 sourcePhotoPixelHeight: dest.sourcePhotoPxH
                             )

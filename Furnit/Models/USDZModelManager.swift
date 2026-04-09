@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import SceneKit
+import simd
 
 // MARK: - Saved room .meta JSON (room dims + optional YOLO ratios)
 
@@ -120,7 +121,17 @@ private struct BinaryPlyVertexLayout {
     let zOffset: Int
 }
 
-private struct MeasuredPlyRoomDimensions {
+struct MeasuredPlyRoomDimensions {
+    let approach: String
+    let shotType: String
+    let orientationLabel: String
+    let usedFocal: Bool
+    let tiltDegrees: Float
+    let tiltReliable: Bool
+    let cuboidRatio: Float
+    let cuboidThreshold: Float
+    let fillWidth: Float
+    let blend: Float
     let legacyWidth: Float
     let legacyHeight: Float
     let legacyDepth: Float
@@ -439,9 +450,11 @@ class USDZModelManager: ObservableObject {
         var normalizedXs: [Float] = []
         var normalizedYs: [Float] = []
         var normalizedDepths: [Float] = []
+        var positions: [SIMD3<Float>] = []
         normalizedXs.reserveCapacity(layout.vertexCount)
         normalizedYs.reserveCapacity(layout.vertexCount)
         normalizedDepths.reserveCapacity(layout.vertexCount)
+        positions.reserveCapacity(layout.vertexCount)
 
         var minX = Float.greatestFiniteMagnitude
         var maxX = -Float.greatestFiniteMagnitude
@@ -475,6 +488,7 @@ class USDZModelManager: ObservableObject {
             normalizedXs.append(normalizedX)
             normalizedYs.append(normalizedY)
             normalizedDepths.append(depth)
+            positions.append(SIMD3<Float>(normalizedX, normalizedY, depth))
         }
 
         guard !normalizedXs.isEmpty,
@@ -555,21 +569,246 @@ class USDZModelManager: ObservableObject {
         let legacyWidth = rawWidth / 1.2
         let legacyHeight = rawHeight / 1.2
         let legacyDepth = zMedian * 1.08
-        let finalDepth = floorDiagonal
-        let finalWidth: Float
-        if rawHeight > rawWidth {
-            finalWidth = sqrt(max(0, rawHeight * rawHeight - rawWidth * rawWidth))
-        } else {
-            finalWidth = rawWidth
+
+        struct FloorAlignedPCAResult {
+            let tiltDegrees: Float
+            let tiltReliable: Bool
+            let span1: Float
+            let span2: Float
         }
+
+        struct SeedableRNG {
+            var state: UInt64
+
+            init(seed: UInt64) {
+                self.state = seed == 0 ? 1 : seed
+            }
+
+            mutating func next() -> UInt64 {
+                state ^= state << 13
+                state ^= state >> 7
+                state ^= state << 17
+                return state
+            }
+        }
+
+        func estimateFloorAlignedPCA(seed: UInt64) -> FloorAlignedPCAResult? {
+            guard positions.count >= 128 else { return nil }
+
+            let sampleCount = min(50_000, positions.count)
+            let ransacIterations = 500
+            let epsilon: Float = 0.05
+
+            var rng = SeedableRNG(seed: seed)
+            var sampled: [SIMD3<Float>] = []
+            sampled.reserveCapacity(sampleCount)
+            for _ in 0..<sampleCount {
+                let index = Int(rng.next() % UInt64(positions.count))
+                sampled.append(positions[index])
+            }
+
+            var bestNormal = SIMD3<Float>(0, 1, 0)
+            var bestInliers = 0
+
+            for _ in 0..<ransacIterations {
+                let idx0 = Int(rng.next() % UInt64(sampled.count))
+                let idx1 = Int(rng.next() % UInt64(sampled.count))
+                let idx2 = Int(rng.next() % UInt64(sampled.count))
+                if idx0 == idx1 || idx1 == idx2 || idx0 == idx2 { continue }
+
+                let p0 = sampled[idx0]
+                let p1 = sampled[idx1]
+                let p2 = sampled[idx2]
+                let crossValue = simd_cross(p1 - p0, p2 - p0)
+                let crossLength = simd_length(crossValue)
+                guard crossLength > 1e-6 else { continue }
+
+                var normal = crossValue / crossLength
+                guard abs(normal.y) > 0.8 else { continue }
+                if normal.y < 0 { normal = -normal }
+                let d = -simd_dot(normal, p0)
+
+                var inliers = 0
+                for point in sampled {
+                    if abs(simd_dot(normal, point) + d) < epsilon {
+                        inliers += 1
+                    }
+                }
+                if inliers > bestInliers {
+                    bestInliers = inliers
+                    bestNormal = normal
+                }
+            }
+
+            let floorNormalLength = simd_length(bestNormal)
+            guard floorNormalLength > 1e-6 else { return nil }
+            let floorNormal = bestNormal / floorNormalLength
+            let target = SIMD3<Float>(0, 1, 0)
+            let crossValue = simd_cross(floorNormal, target)
+            let sinTheta = simd_length(crossValue)
+            let cosTheta = max(-1 as Float, min(1 as Float, simd_dot(floorNormal, target)))
+
+            func rotate(_ point: SIMD3<Float>) -> SIMD3<Float> {
+                guard sinTheta > 1e-6 else { return point }
+                let axis = crossValue / sinTheta
+                let term1 = point * cosTheta
+                let term2 = simd_cross(axis, point) * sinTheta
+                let term3 = axis * simd_dot(axis, point) * (1 - cosTheta)
+                return term1 + term2 + term3
+            }
+
+            var rotatedY: [Float] = []
+            rotatedY.reserveCapacity(positions.count)
+            var floorPoints: [SIMD2<Float>] = []
+            floorPoints.reserveCapacity(positions.count)
+            for point in positions {
+                let rotated = rotate(point)
+                rotatedY.append(rotated.y)
+                floorPoints.append(SIMD2<Float>(rotated.x, rotated.z))
+            }
+
+            let sortedRotatedY = rotatedY.sorted()
+            guard sortedRotatedY.count >= 64 else { return nil }
+            let yP3 = sortedRotatedY[percentileIndex(0.03, count: sortedRotatedY.count)]
+            let yP97 = sortedRotatedY[percentileIndex(0.97, count: sortedRotatedY.count)]
+            let roomHeight = yP97 - yP3
+            guard roomHeight.isFinite, roomHeight > 0.01 else { return nil }
+
+            let count = Float(floorPoints.count)
+            let meanX = floorPoints.reduce(0 as Float) { $0 + $1.x } / count
+            let meanZ = floorPoints.reduce(0 as Float) { $0 + $1.y } / count
+
+            var cxx: Float = 0
+            var cxz: Float = 0
+            var czz: Float = 0
+            for point in floorPoints {
+                let dx = point.x - meanX
+                let dz = point.y - meanZ
+                cxx += dx * dx
+                cxz += dx * dz
+                czz += dz * dz
+            }
+            cxx /= count
+            cxz /= count
+            czz /= count
+
+            let trace = cxx + czz
+            let det = cxx * czz - cxz * cxz
+            let discriminant = sqrt(max(0, trace * trace / 4 - det))
+            let lambda1 = trace / 2 + discriminant
+            let lambda2 = trace / 2 - discriminant
+
+            let e1: SIMD2<Float>
+            if abs(cxz) > 1e-6 {
+                e1 = simd_normalize(SIMD2<Float>(lambda1 - czz, cxz))
+            } else {
+                e1 = SIMD2<Float>(1, 0)
+            }
+            let e2 = SIMD2<Float>(-e1.y, e1.x)
+
+            var uValues: [Float] = []
+            var vValues: [Float] = []
+            uValues.reserveCapacity(floorPoints.count)
+            vValues.reserveCapacity(floorPoints.count)
+            for point in floorPoints {
+                let centered = SIMD2<Float>(point.x - meanX, point.y - meanZ)
+                uValues.append(simd_dot(centered, e1))
+                vValues.append(simd_dot(centered, e2))
+            }
+            uValues.sort()
+            vValues.sort()
+
+            let uP3 = uValues[percentileIndex(0.03, count: uValues.count)]
+            let uP97 = uValues[percentileIndex(0.97, count: uValues.count)]
+            let vP3 = vValues[percentileIndex(0.03, count: vValues.count)]
+            let vP97 = vValues[percentileIndex(0.97, count: vValues.count)]
+            let span1 = uP97 - uP3
+            let span2 = vP97 - vP3
+
+            let originalTiltDegrees = acos(max(-1 as Float, min(1 as Float, abs(floorNormal.y)))) * 180 / .pi
+            let tiltReliable = originalTiltDegrees < 25 && bestInliers > 3000
+            let tiltDegrees: Float = tiltReliable ? originalTiltDegrees : 8.0
+
+            return FloorAlignedPCAResult(
+                tiltDegrees: tiltDegrees,
+                tiltReliable: tiltReliable,
+                span1: span1,
+                span2: span2
+            )
+        }
+
+        let sharpCamera = SharpCameraSidecar.load(roomURL: url)
+        let imageWidth = Float(sharpCamera?.sourceImageWidthPx ?? 0)
+        let imageHeight = Float(sharpCamera?.sourceImageHeightPx ?? 0)
+        let focalPx = sharpCamera?.sourceFocalPx ?? 0
+        let hasFocal = focalPx > 0.01
+        let orientationLabel = imageWidth > imageHeight ? "LANDSCAPE" : "PORTRAIT"
+        let maxSpan = max(trimmedXSpan, max(trimmedYSpan, trimmedZSpan))
+        let minSpan = min(trimmedXSpan, min(trimmedYSpan, trimmedZSpan))
+        let cuboidRatio = maxSpan / max(minSpan, 1e-6)
+        let imageAspect = (imageWidth > 0.01 && imageHeight > 0.01) ? (max(imageWidth, imageHeight) / min(imageWidth, imageHeight)) : 1
+        let cuboidThreshold: Float = imageWidth > imageHeight ? 1.50 * imageAspect : 1.45
+        let isCornerShot = cuboidRatio < cuboidThreshold
+
+        let seedValue = UInt64(bitPattern: Int64((zMode * 1_000_000 + rawWidth * 1_000).rounded(.toNearestOrAwayFromZero)))
+        let v3 = estimateFloorAlignedPCA(seed: seedValue)
+        let tiltDegrees = v3?.tiltDegrees ?? 8.0
+        let tiltReliable = v3?.tiltReliable ?? false
+
+        let finalWidth: Float
         let finalHeight: Float
-        if trimmedYSpan > trimmedXSpan {
-            finalHeight = sqrt(max(0, trimmedYSpan * trimmedYSpan - trimmedXSpan * trimmedXSpan))
+        let finalDepth: Float
+        let shotType: String
+        let fillWidth: Float
+        let blend: Float
+
+        if !hasFocal {
+            shotType = "FALLBACK_NO_FOCAL"
+            fillWidth = 0
+            blend = 0
+            finalWidth = legacyWidth
+            finalHeight = legacyHeight
+            finalDepth = floorDiagonal
+        } else if isCornerShot {
+            shotType = "CORNER"
+            fillWidth = 0
+            blend = 0
+            finalWidth = legacyWidth
+            finalHeight = tiltDegrees < 12 ? legacyHeight : rawHeight
+            let diagSquared = floorDiagonal * floorDiagonal
+            let widthSquared = finalWidth * finalWidth
+            finalDepth = diagSquared > widthSquared ? sqrt(max(0, diagSquared - widthSquared)) : floorDiagonal
         } else {
-            finalHeight = trimmedYSpan
+            shotType = "STRAIGHT"
+            let fovDiagonal = sqrt(
+                max(0, (imageWidth / focalPx) * (imageWidth / focalPx) +
+                       (imageHeight / focalPx) * (imageHeight / focalPx))
+            )
+            let maxLateral = Float(0.08) * fovDiagonal * zP3
+            let sceneExtension = 2 * maxLateral
+            let fovWidthAtBackWall = imageWidth * zMode / focalPx
+            fillWidth = fovWidthAtBackWall > 1e-6 ? rawWidth / fovWidthAtBackWall : 0
+            blend = min(max((fillWidth - 0.55) / 0.20, 0), 1)
+            let correctedWidth = rawWidth - sceneExtension
+            let correctedHeight = rawHeight - sceneExtension
+            finalWidth = max(correctedWidth + blend * (rawWidth - correctedWidth), 0.5)
+            finalHeight = tiltDegrees < 12
+                ? max(correctedHeight + blend * (rawHeight - correctedHeight), 0.5)
+                : rawHeight
+            finalDepth = floorDiagonal
         }
 
         return MeasuredPlyRoomDimensions(
+            approach: "room_dims_v7_async",
+            shotType: shotType,
+            orientationLabel: orientationLabel,
+            usedFocal: hasFocal,
+            tiltDegrees: tiltDegrees,
+            tiltReliable: tiltReliable,
+            cuboidRatio: cuboidRatio,
+            cuboidThreshold: cuboidThreshold,
+            fillWidth: fillWidth,
+            blend: blend,
             legacyWidth: legacyWidth,
             legacyHeight: legacyHeight,
             legacyDepth: legacyDepth,
@@ -596,11 +835,11 @@ class USDZModelManager: ObservableObject {
     func measureRoomDimensionsAsync(
         forPly url: URL,
         treatAsClassicPly: Bool? = nil
-    ) async -> (width: Float, height: Float, depth: Float)? {
+    ) async -> MeasuredPlyRoomDimensions? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let measured = Self.measureRoomDimensions(forPly: url, treatAsClassicPly: treatAsClassicPly)
-                continuation.resume(returning: measured.map { ($0.width, $0.height, $0.depth) })
+                continuation.resume(returning: measured)
             }
         }
     }
@@ -1226,6 +1465,7 @@ class USDZModelManager: ObservableObject {
         roomWidth: Float? = nil,
         roomHeight: Float? = nil,
         roomDepth: Float? = nil,
+        roomDimsApproach: String? = nil,
         roomSceneWidth: Float? = nil,
         roomSceneHeight: Float? = nil,
         roomSceneDepth: Float? = nil,
@@ -1307,12 +1547,13 @@ class USDZModelManager: ObservableObject {
 
                 let sourceTag: String
                 let approachTag: String
-                if roomWidth != nil || roomHeight != nil || roomDepth != nil {
-                    sourceTag = "preview_v7"
-                    approachTag = "room_dims_v7_preview"
-                } else if measured != nil {
+                if let roomDimsApproach,
+                   roomWidth != nil || roomHeight != nil || roomDepth != nil {
+                    sourceTag = "passed_in"
+                    approachTag = roomDimsApproach
+                } else if let measured {
                     sourceTag = "measured"
-                    approachTag = "pythagoras_diagonal"
+                    approachTag = measured.approach
                 } else if finalRoomWidth != nil || finalRoomHeight != nil || finalRoomDepth != nil {
                     sourceTag = "fallback"
                     approachTag = "preview_active_room_dimensions"
@@ -1321,7 +1562,7 @@ class USDZModelManager: ObservableObject {
                     approachTag = "none"
                 }
 
-                if debugMode, sourceTag == "preview_v7",
+                if debugMode, sourceTag == "passed_in",
                    let finalRoomWidth, let finalRoomHeight, let finalRoomDepth {
                     let sceneWidthString = finalSceneWidth.map { String(format: "%.4f", $0) } ?? "nil"
                     let sceneHeightString = finalSceneHeight.map { String(format: "%.4f", $0) } ?? "nil"
@@ -1350,6 +1591,11 @@ class USDZModelManager: ObservableObject {
                     logDebug(
                         "[GREEN][ROOM_DIMS_APP][\(variant.label)] FILE=\(variant.url.lastPathComponent) " +
                         "SOURCE=\(sourceTag.uppercased()) APPROACH=\(approachTag.uppercased()) " +
+                        "SHOT=\(measured.shotType) ORIENTATION=\(measured.orientationLabel) " +
+                        "HAS_FOCAL=\(measured.usedFocal) TILT_DEG=\(String(format: "%.2f", measured.tiltDegrees)) " +
+                        "TILT_RELIABLE=\(measured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", measured.cuboidRatio)) " +
+                        "THRESHOLD=\(String(format: "%.4f", measured.cuboidThreshold)) " +
+                        "FILL_W=\(String(format: "%.4f", measured.fillWidth)) BLEND=\(String(format: "%.4f", measured.blend)) " +
                         "FLOOR_DIAG=\(String(format: "%.4f", measured.floorDiagonal)) " +
                         "TRIMMED_X=\(String(format: "%.4f", measured.trimmedXSpan)) " +
                         "TRIMMED_Y=\(String(format: "%.4f", measured.trimmedYSpan)) " +
@@ -1405,10 +1651,10 @@ class USDZModelManager: ObservableObject {
                 if let sd = finalSceneDepth {
                     metadata["roomSceneDepth"] = String(format: "%.4f", sd)
                 }
-                if sourceTag == "preview_v7" {
-                    metadata["roomDimsApproach"] = "room_dims_v7_preview"
+                if sourceTag == "passed_in" {
+                    metadata["roomDimsApproach"] = approachTag
                 } else if let measured {
-                    metadata["roomDimsApproach"] = "pythagoras_diagonal"
+                    metadata["roomDimsApproach"] = measured.approach
                     metadata["roomFloorDiagonal"] = String(format: "%.4f", measured.floorDiagonal)
                     metadata["roomTrimmedXSpan"] = String(format: "%.4f", measured.trimmedXSpan)
                     metadata["roomTrimmedYSpan"] = String(format: "%.4f", measured.trimmedYSpan)
@@ -1419,6 +1665,15 @@ class USDZModelManager: ObservableObject {
                     metadata["roomBackWallCount"] = "\(measured.count)"
                     metadata["roomBackWallRawWidth"] = String(format: "%.4f", measured.rawWidth)
                     metadata["roomBackWallRawHeight"] = String(format: "%.4f", measured.rawHeight)
+                    metadata["roomDimsShotType"] = measured.shotType
+                    metadata["roomDimsOrientation"] = measured.orientationLabel
+                    metadata["roomDimsUsedFocal"] = measured.usedFocal ? "true" : "false"
+                    metadata["roomDimsTiltDegrees"] = String(format: "%.4f", measured.tiltDegrees)
+                    metadata["roomDimsTiltReliable"] = measured.tiltReliable ? "true" : "false"
+                    metadata["roomDimsCuboidRatio"] = String(format: "%.4f", measured.cuboidRatio)
+                    metadata["roomDimsCuboidThreshold"] = String(format: "%.4f", measured.cuboidThreshold)
+                    metadata["roomDimsFillWidth"] = String(format: "%.4f", measured.fillWidth)
+                    metadata["roomDimsBlend"] = String(format: "%.4f", measured.blend)
                 } else if sourceTag == "fallback" {
                     metadata["roomDimsApproach"] = "preview_active_room_dimensions"
                 }

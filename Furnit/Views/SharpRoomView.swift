@@ -101,10 +101,6 @@ struct SharpRoomView: View {
     private let sharpPlyAabbW: Float?
     private let sharpPlyAabbH: Float?
     private let sharpPlyAabbD: Float?
-    /// Fresh SHARP preview metric dimensions from `[GREEN][ROOM_DIMS] BACK_WALL_MODE` before the room is saved.
-    private let generatedRoomWidth: Float?
-    private let generatedRoomHeight: Float?
-    private let generatedRoomDepth: Float?
     /// Oriented source photo pixel size (for proportion-style compare); nil when not from fresh generation.
     private let sourcePhotoPixelWidth: Int?
     private let sourcePhotoPixelHeight: Int?
@@ -119,9 +115,6 @@ struct SharpRoomView: View {
         sharpPlyAabbWidth: Float? = nil,
         sharpPlyAabbHeight: Float? = nil,
         sharpPlyAabbDepth: Float? = nil,
-        generatedRoomWidth: Float? = nil,
-        generatedRoomHeight: Float? = nil,
-        generatedRoomDepth: Float? = nil,
         sourcePhotoPixelWidth: Int? = nil,
         sourcePhotoPixelHeight: Int? = nil
     ) {
@@ -134,9 +127,6 @@ struct SharpRoomView: View {
         self.sharpPlyAabbW = sharpPlyAabbWidth
         self.sharpPlyAabbH = sharpPlyAabbHeight
         self.sharpPlyAabbD = sharpPlyAabbDepth
-        self.generatedRoomWidth = generatedRoomWidth
-        self.generatedRoomHeight = generatedRoomHeight
-        self.generatedRoomDepth = generatedRoomDepth
         self.sourcePhotoPixelWidth = sourcePhotoPixelWidth
         self.sourcePhotoPixelHeight = sourcePhotoPixelHeight
 
@@ -290,7 +280,7 @@ struct SharpRoomView: View {
     @State private var cameraSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @State private var measuredRoomDimensions: (width: Float, height: Float, depth: Float)?
+    @State private var measuredRoomDimensions: MeasuredPlyRoomDimensions?
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
@@ -312,20 +302,23 @@ struct SharpRoomView: View {
             if let d = activeRoomMetersDimensions {
                 logDebug(
                     "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
+                    "SOURCE=\(activeRoomMetersDimensionsSource) " +
                     "W=\(String(format: "%.4f", d.width)) " +
                     "H=\(String(format: "%.4f", d.height)) " +
                     "D=\(String(format: "%.4f", d.depth))"
                 )
             } else {
-                logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) unavailable")
+                logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
             }
             guard canPresentRoomDimensionsAlert else {
                 logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
                 return
             }
             if hasCalculatedRoomMeasurements {
+                logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
                 onRoomDimensionsIconTapped()
             } else {
+                logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
                 startAsyncRoomMeasurementForRuler()
             }
         } label: {
@@ -843,6 +836,8 @@ struct SharpRoomView: View {
         backgroundRoomMeasurementTask = nil
         roomMeasurementTask?.cancel()
         roomMeasurementTask = Task {
+            let sourceBefore = activeRoomMetersDimensionsSource
+            logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) START source_before=\(sourceBefore)")
             await MainActor.run {
                 isMeasuringRoomDimensions = true
                 saveProgressStatusText = L10n.RoomViewer.measuringRoom
@@ -874,13 +869,19 @@ struct SharpRoomView: View {
                     measuredRoomDimensions = measured
                     logDebug(
                         "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
-                        "SOURCE=ASYNC_PLY_MEASURE " +
+                        "SOURCE=ASYNC_V7_PLY_MEASURE " +
+                        "APPROACH=\(measured.approach.uppercased()) SHOT=\(measured.shotType) " +
+                        "HAS_FOCAL=\(measured.usedFocal) TILT_DEG=\(String(format: "%.2f", measured.tiltDegrees)) " +
+                        "TILT_RELIABLE=\(measured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", measured.cuboidRatio)) " +
+                        "THRESHOLD=\(String(format: "%.4f", measured.cuboidThreshold)) " +
+                        "FILL_W=\(String(format: "%.4f", measured.fillWidth)) BLEND=\(String(format: "%.4f", measured.blend)) " +
+                        "source_after=\(activeRoomMetersDimensionsSource) " +
                         "W=\(String(format: "%.4f", measured.width)) " +
                         "H=\(String(format: "%.4f", measured.height)) " +
                         "D=\(String(format: "%.4f", measured.depth))"
                     )
                 } else {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=ASYNC_PLY_MEASURE unavailable")
+                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=ASYNC_V7_PLY_MEASURE source_after=\(activeRoomMetersDimensionsSource) unavailable")
                 }
                 isMeasuringRoomDimensions = false
                 saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
@@ -891,11 +892,17 @@ struct SharpRoomView: View {
     }
 
     private func warmRoomMeasurementInBackgroundIfNeeded() {
-        guard measuredRoomDimensions == nil,
-              savedRoomStrictMeters == nil,
-              generatedRoomStrictMeters == nil else { return }
+        guard measuredRoomDimensions == nil else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=measured_already_available source=\(activeRoomMetersDimensionsSource)")
+            return
+        }
+        guard savedRoomStrictMeters == nil else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=saved_meta_strict_available source=\(activeRoomMetersDimensionsSource)")
+            return
+        }
         backgroundRoomMeasurementTask?.cancel()
         backgroundRoomMeasurementTask = Task {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) START source_before=\(activeRoomMetersDimensionsSource)")
             let measured = await modelManager.measureRoomDimensionsAsync(
                 forPly: viewerPlyURL,
                 treatAsClassicPly: viewerUsesClassicPlyBehavior
@@ -904,6 +911,22 @@ struct SharpRoomView: View {
             await MainActor.run {
                 if measuredRoomDimensions == nil {
                     measuredRoomDimensions = measured
+                }
+                if let measured {
+                    logDebug(
+                        "[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) " +
+                        "APPROACH=\(measured.approach.uppercased()) SHOT=\(measured.shotType) " +
+                        "HAS_FOCAL=\(measured.usedFocal) TILT_DEG=\(String(format: "%.2f", measured.tiltDegrees)) " +
+                        "TILT_RELIABLE=\(measured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", measured.cuboidRatio)) " +
+                        "THRESHOLD=\(String(format: "%.4f", measured.cuboidThreshold)) " +
+                        "FILL_W=\(String(format: "%.4f", measured.fillWidth)) BLEND=\(String(format: "%.4f", measured.blend)) " +
+                        "DONE source_after=\(activeRoomMetersDimensionsSource) " +
+                        "W=\(String(format: "%.4f", measured.width)) " +
+                        "H=\(String(format: "%.4f", measured.height)) " +
+                        "D=\(String(format: "%.4f", measured.depth))"
+                    )
+                } else {
+                    logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) DONE source_after=\(activeRoomMetersDimensionsSource) unavailable")
                 }
                 backgroundRoomMeasurementTask = nil
             }
@@ -1236,20 +1259,29 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
-    private var generatedRoomStrictMeters: (width: Float, height: Float, depth: Float)? {
-        guard savedRoomModel == nil,
-              let width = generatedRoomWidth,
-              let height = generatedRoomHeight,
-              let depth = generatedRoomDepth,
-              width.isFinite, height.isFinite, depth.isFinite,
-              width > 0.05, height > 0.05, depth > 0.05 else {
-            return nil
+    private var activeRoomMetersDimensionsSource: String {
+        if savedRoomStrictMeters != nil { return "SAVED_META_STRICT" }
+        if measuredRoomDimensions != nil { return "ASYNC_V7_PLY_MEASURE" }
+        if let s = savedRoomModel,
+           let w = s.roomWidth, let h = s.roomHeight,
+           w > 0.05, h > 0.05, w.isFinite, h.isFinite {
+            if let sh = s.roomSceneHeight, sh > 1e-4,
+               let sd = s.roomSceneDepth, sd > 1e-4 {
+                let depthM = sd * (h / sh)
+                if depthM > 0.05, depthM.isFinite {
+                    return "SAVED_META_PARTIAL_PLUS_SCENE_DEPTH"
+                }
+            }
+            if let inf = inferredMetersFromPlyScene, inf.depth > 0.05 {
+                return "SAVED_META_PARTIAL_PLUS_PLY_INFERRED_DEPTH"
+            }
         }
-        return (width, height, depth)
+        if inferredMetersFromPlyScene != nil { return "PLY_INFERRED_REFERENCE_HEIGHT" }
+        return "UNAVAILABLE"
     }
 
     private var hasCalculatedRoomMeasurements: Bool {
-        savedRoomStrictMeters != nil || generatedRoomStrictMeters != nil || measuredRoomDimensions != nil
+        savedRoomStrictMeters != nil || measuredRoomDimensions != nil
     }
 
     /// Trimmed / SHARP AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
@@ -1280,8 +1312,7 @@ struct SharpRoomView: View {
     /// Nav, Furniture Fit, save, and overlay: saved meta → partial meta + scene depth → PLY-inferred metres.
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let triple = savedRoomStrictMeters { return triple }
-        if let triple = generatedRoomStrictMeters { return triple }
-        if let triple = measuredRoomDimensions { return triple }
+        if let measured = measuredRoomDimensions { return (measured.width, measured.height, measured.depth) }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
            w > 0.05, h > 0.05, w.isFinite, h.isFinite {
@@ -2208,12 +2239,42 @@ struct SharpRoomView: View {
 
             await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }
 
+            if savedRoomStrictMeters == nil && measuredRoomDimensions == nil {
+                backgroundRoomMeasurementTask?.cancel()
+                backgroundRoomMeasurementTask = nil
+                let saveMeasured = await modelManager.measureRoomDimensionsAsync(
+                    forPly: viewerPlyURL,
+                    treatAsClassicPly: viewerUsesClassicPlyBehavior
+                )
+                await MainActor.run {
+                    if let saveMeasured {
+                        measuredRoomDimensions = saveMeasured
+                        logDebug(
+                            "[ROOM_DIMS][SAVE] FILE=\(viewerPlyURL.lastPathComponent) " +
+                            "APPROACH=\(saveMeasured.approach.uppercased()) SHOT=\(saveMeasured.shotType) " +
+                            "HAS_FOCAL=\(saveMeasured.usedFocal) TILT_DEG=\(String(format: "%.2f", saveMeasured.tiltDegrees)) " +
+                            "TILT_RELIABLE=\(saveMeasured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", saveMeasured.cuboidRatio)) " +
+                            "THRESHOLD=\(String(format: "%.4f", saveMeasured.cuboidThreshold)) " +
+                            "FILL_W=\(String(format: "%.4f", saveMeasured.fillWidth)) BLEND=\(String(format: "%.4f", saveMeasured.blend)) " +
+                            "W=\(String(format: "%.4f", saveMeasured.width)) " +
+                            "H=\(String(format: "%.4f", saveMeasured.height)) " +
+                            "D=\(String(format: "%.4f", saveMeasured.depth))"
+                        )
+                    } else {
+                        logDebug("[ROOM_DIMS][SAVE] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=ASYNC_V7_UNAVAILABLE")
+                    }
+                }
+            }
+
             let (fallbackDimensions, sceneExtentForMeta) = await MainActor.run {
                 (activeRoomMetersDimensions, plySceneExtent)
             }
             let roomW = fallbackDimensions?.width
             let roomH = fallbackDimensions?.height
             let roomD = fallbackDimensions?.depth
+            let roomDimsApproachForSave = await MainActor.run {
+                measuredRoomDimensions != nil ? "room_dims_v7_async" : nil
+            }
             if let roomW, let roomH, let roomD {
                 logDebug(
                     "🟢 [SharpRoomView] Save: ROOM_DIMS W×H×D=" +
@@ -2242,6 +2303,7 @@ struct SharpRoomView: View {
                     roomWidth: roomW,
                     roomHeight: roomH,
                     roomDepth: roomD,
+                    roomDimsApproach: roomDimsApproachForSave,
                     roomSceneWidth: sceneExtentForMeta?.width,
                     roomSceneHeight: sceneExtentForMeta?.height,
                     roomSceneDepth: sceneExtentForMeta?.depth

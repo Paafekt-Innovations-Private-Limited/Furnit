@@ -1287,12 +1287,12 @@ class SHARPService: ObservableObject {
 
         // Measurement approach guide:
         // - ROOM_DIMS: legacy back-wall percentile baseline kept for comparison logs only.
-        // - ROOM_DIMS_APP: active app-bound path; now wired to V7 output.
+        // - ROOM_DIMS_APP: deferred app-bound path; V7 is now consumed asynchronously in SharpRoomView.
         // - ROOM_DIMS_V3: floor-plane RANSAC + PCA diagnostics used by V7 tilt / PCA inputs.
         // - ROOM_DIMS_V4: scene-extension correction reference, not wired to UI.
         // - ROOM_DIMS_V5: adaptive scene-extension reference, not wired to UI.
         // - ROOM_DIMS_V6: auto corner/straight reference, not wired to UI.
-        // - ROOM_DIMS_V7: active production candidate used for preview + saved-room metadata.
+        // - ROOM_DIMS_V7: active production candidate used by the async preview/save measurement path.
         //
         // Non-active approaches are intentionally left isolated below so they can be deleted
         // later without touching the app-bound measurement path.
