@@ -311,6 +311,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
+    /// Stored reference so `hitTest` can check whether a pinch is already in flight.
+    private weak var overlayPinchGesture: UIPinchGestureRecognizer?
     /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
     private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
     private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
@@ -616,6 +618,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         panGesture.maximumNumberOfTouches = 1
         
         addGestureRecognizer(pinchGesture)
+        overlayPinchGesture = pinchGesture
         maskImageView.addGestureRecognizer(panGesture)
 
         // Listen for reset notification from SharpRoomView toolbar ("reset size" button).
@@ -836,14 +839,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        // No usable AR metric: fall back to room-proportion scaling, but pinch/pan must still work.
-        // `handlePinch` / `handlePan` are gated on `.measuredPlacement` only.
-        stableOverlayMeasurementFrameCount += 1
-        if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
-            overlayPresentationMode = .measuredPlacement
-        } else {
-            overlayPresentationMode = .deferredCentered
-        }
+        // No usable AR metric: never enter AR-style measured placement.
+        // Non-AR stays on deferred/segmentation placement; pinch/pan are allowed separately.
+        overlayPresentationMode = .deferredCentered
     }
 
     /// Combined overlay: AR metric scale when available, else room-proportion fallback, then user pinch.
@@ -857,11 +855,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let finalTransform: CGAffineTransform
         switch overlayPresentationMode {
         case .deferredCentered:
+            // Scale around the maskImageView center, then translate so the
+            // primary bbox center aligns with the view center. Both
+            // room-proportion / static-default scaling AND user pinch are
+            // included via `clamped`.
             let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
             let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
             let translationX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
             let translationY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
-            finalTransform = CGAffineTransform(translationX: translationX, y: translationY)
+            finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
+                .concatenating(CGAffineTransform(translationX: translationX, y: translationY))
         case .measuredPlacement:
             finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
         }
@@ -3925,12 +3928,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        guard maskImageView.image != nil else { return }
-        guard overlayPresentationMode == .measuredPlacement else { return }
+        guard maskImageView.image != nil else {
+            logDebug("📐 [PINCH] ignored – no mask image")
+            return
+        }
 
         switch gesture.state {
         case .began:
             userLockedAssistedOverlayScale = true
+            logDebug("📐 [PINCH] began  mode=\(overlayPresentationMode) pinchScale=\(String(format: "%.3f", userPinchScale))")
         case .changed:
             userLockedAssistedOverlayScale = true
             let newPinch = userPinchScale * gesture.scale
@@ -3939,7 +3945,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
             gesture.scale = 1.0
         case .ended, .cancelled:
-            // Snap pinch back to neutral if user barely scaled (same spirit as old 0.9–1.1 total scale).
+            logDebug("📐 [PINCH] ended  pinchScale=\(String(format: "%.3f", userPinchScale))")
             if userPinchScale > 0.92 && userPinchScale < 1.08 {
                 userPinchScale = 1.0
                 userLockedAssistedOverlayScale = false
@@ -3998,7 +4004,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
-        guard overlayPresentationMode == .measuredPlacement else { return }
+        guard arAssistedSizingEnabled || overlayPresentationMode == .measuredPlacement else { return }
 
         let translation = gesture.translation(in: self)
         switch gesture.state {
@@ -4019,7 +4025,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Only recognize gestures if touch is within the primary furniture bounding box
+        // Pinch should be easy to start anywhere over the active segmented overlay.
+        // Don't over-filter it touch-by-touch or the second finger frequently gets rejected.
+        if gestureRecognizer is UIPinchGestureRecognizer {
+            guard maskImageView.image != nil else {
+                logDebug("👆 [shouldReceive pinch] No mask image")
+                return false
+            }
+            guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
+                logDebug("👆 [shouldReceive pinch] No valid bbox")
+                return false
+            }
+            return true
+        }
+
+        // Pan still stays limited to the primary furniture bounding box.
         guard maskImageView.image != nil else {
             logDebug("👆 [shouldReceive] No mask image")
             return false
@@ -4044,8 +4064,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: - Hit Testing
+
+    /// Extra padding around `primaryBboxInView` so that the second pinch finger
+    /// (which typically lands outside the tight detection box) still hit-tests to
+    /// this view, allowing `UIPinchGestureRecognizer` to receive both touches.
+    private static let pinchHitTestPadding: CGFloat = 100
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        // If no mask or no valid bbox, pass through all touches
         guard maskImageView.image != nil else {
             logDebug("👆 [hitTest] No mask image, passing through")
             return nil
@@ -4056,19 +4081,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
-        // Convert point to maskImageView coordinates
         let pointInMask = convert(point, to: maskImageView)
 
         logDebug("👆 [hitTest] point=\(point) pointInMask=\(pointInMask) bbox=\(primaryBboxInView)")
 
-        // Only handle touches inside the primary bbox
+        // If a pinch is already in flight, accept touches anywhere so the
+        // gesture isn't interrupted when a finger drifts outside the box.
+        if let pinch = overlayPinchGesture,
+           pinch.state == .began || pinch.state == .changed {
+            logDebug("👆 [hitTest] Pinch in progress – accepting")
+            return super.hitTest(point, with: event)
+        }
+
+        // Tight bbox: pan and tap
         if primaryBboxInView.contains(pointInMask) {
             logDebug("👆 [hitTest] INSIDE bbox - handling touch")
             return super.hitTest(point, with: event)
         }
 
-        // Pass through touches outside bbox to underlying room view
-        logDebug("👆 [hitTest] OUTSIDE bbox - passing through")
+        // Expanded bbox: allow pinch initiation when fingers straddle the edge
+        let expanded = primaryBboxInView.insetBy(
+            dx: -Self.pinchHitTestPadding,
+            dy: -Self.pinchHitTestPadding
+        )
+        if expanded.contains(pointInMask) {
+            logDebug("👆 [hitTest] INSIDE expanded bbox (pinch margin) - handling touch")
+            return super.hitTest(point, with: event)
+        }
+
+        logDebug("👆 [hitTest] OUTSIDE expanded bbox - passing through")
         return nil
     }
 }

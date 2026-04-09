@@ -696,8 +696,6 @@ class USDZModelManager: ObservableObject {
             let det = cxx * czz - cxz * cxz
             let discriminant = sqrt(max(0, trace * trace / 4 - det))
             let lambda1 = trace / 2 + discriminant
-            let lambda2 = trace / 2 - discriminant
-
             let e1: SIMD2<Float>
             if abs(cxz) > 1e-6 {
                 e1 = simd_normalize(SIMD2<Float>(lambda1 - czz, cxz))
