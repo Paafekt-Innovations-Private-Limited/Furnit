@@ -974,35 +974,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
                     if distM != nil { distSource = "scene_depth_snapshot_miss_fallback" }
                 }
-                // No plane raycast here: that would use `arSession.currentFrame` and desync from the YOLO frame.
+                // Depth snapshot present but all depth lookups failed (non-LiDAR):
+                // fall through to plane-raycast below.
             } else if let frame = arSession.currentFrame {
                 let norm = CGPoint(x: nx, y: ny)
                 distM = FurnitureFitARSupport.sceneDepthMeters(frame: frame, normalizedImagePoint: norm)
                 if distM != nil {
                     distSource = "scene_depth"
-                } else if #available(iOS 14.0, *) {
-                    let sp = CGPoint(
-                        x: nx * bounds.width,
-                        y: ny * bounds.height
-                    )
-                    // Try any-plane raycast first (horizontal + vertical), fall back to horizontal only.
-                    if let anyHit = FurnitureFitARSupport.distanceToAnyPlaneMeters(
-                        session: arSession, frame: frame, screenPoint: sp, in: bounds
-                    ) {
-                        distM = anyHit.distance
-                        let alignLabel: String
-                        switch anyHit.alignment {
-                        case .horizontal: alignLabel = "horiz"
-                        case .vertical: alignLabel = "vert"
-                        case .any: alignLabel = "any"
-                        @unknown default: alignLabel = "unknown"
-                        }
-                        distSource = "plane_raycast_\(alignLabel)"
-                    } else {
-                        distSource = "no_metric_distance"
-                    }
-                } else {
-                    distSource = "no_metric_distance"
                 }
                 let cap = frame.capturedImage
                 let cw = CVPixelBufferGetWidth(cap)
@@ -1023,7 +1001,36 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 distSource = "no_ar_frame"
             }
 
-            // If we have a valid distance + focal length, update AR-assisted scale for this frame.
+            // Plane raycast fallback when no depth source has produced a distance yet
+            // (non-LiDAR devices with snapshot but no depth map, or no scene depth).
+            if distM == nil, #available(iOS 14.0, *), let frame = arSession.currentFrame {
+                let sp = CGPoint(
+                    x: nx * bounds.width,
+                    y: ny * bounds.height
+                )
+                if let anyHit = FurnitureFitARSupport.distanceToAnyPlaneMeters(
+                    session: arSession, frame: frame, screenPoint: sp, in: bounds
+                ) {
+                    distM = anyHit.distance
+                    let alignLabel: String
+                    switch anyHit.alignment {
+                    case .horizontal: alignLabel = "horiz"
+                    case .vertical: alignLabel = "vert"
+                    case .any: alignLabel = "any"
+                    @unknown default: alignLabel = "unknown"
+                    }
+                    distSource = "plane_raycast_\(alignLabel)"
+                } else if distSource == "no_metric_distance" || distSource == "depth_snapshot_miss" || distSource.isEmpty {
+                    distSource = "no_metric_distance"
+                }
+            }
+
+            logFurnitureFitSize(
+                "phase=ar_depth_resolve distSource=\(distSource) distM=\(distM.map { String(format: "%.3f", $0) } ?? "nil") " +
+                "fx=\(String(format: "%.1f", fx)) fy=\(String(format: "%.1f", fy)) tracking=\(trackingName) " +
+                "hasSnap=\(arDepthSnapshot != nil) snapDepth=\(arDepthSnapshot?.depthMap != nil) wantAR=\(wantAR)"
+            )
+
             if let d = distM,
                let estH = FurnitureFitARSupport.estimatedPhysicalHeightMeters(
                 bboxHeightPixels: bboxHeightImagePx,
@@ -3829,26 +3836,37 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bboxWidthPx: bboxWidthPx,
             bboxHeightPx: bboxHeightPx
         )
-        if hadSegmentationBeforeThisCommit, let p = primaryMetricResult {
+        if hadSegmentationBeforeThisCommit {
             let arHeight = normalizedARFurnitureHeightMeters()
             let propH = proportionalFurnitureHeightMeters(bboxHeightPx: bboxHeightPx, imageHeight: imageHeight)
-            let heightMeters = arHeight ?? propH ?? p.size.height
-            if arHeight == nil {
+
+            if let p = primaryMetricResult {
+                let heightMeters = arHeight ?? propH ?? p.size.height
+                if arHeight == nil {
+                    logFurnitureFitSize(
+                        "phase=height_fallback source=\(p.pipeline) width_m=\(String(format: "%.3f", p.size.width)) " +
+                        "height_m=\(String(format: "%.3f", heightMeters)) (prop_h=\(propH.map { String(format: "%.3f", $0) } ?? "—"))"
+                    )
+                }
+                onFurnitureSizeEstimated?(makeFurnitureSizeEstimate(
+                    widthMeters: p.size.width,
+                    heightMeters: heightMeters,
+                    arHeightMeters: arHeight
+                ))
+            } else if arHeight != nil || propH != nil {
+                let bboxWRatio = Float(bboxWidthPx) / Float(max(1, imageWidth))
+                let estimatedWidth = bboxWRatio * roomWidthMeters
+                let heightMeters = arHeight ?? propH ?? 0
                 logFurnitureFitSize(
-                    "phase=height_fallback source=\(p.pipeline) width_m=\(String(format: "%.3f", p.size.width)) " +
-                    "height_m=\(String(format: "%.3f", heightMeters)) (prop_h=\(propH.map { String(format: "%.3f", $0) } ?? "—"))"
+                    "phase=commit_ar_publish arH=\(arHeight.map { String(format: "%.3f", $0) } ?? "nil") " +
+                    "propH=\(propH.map { String(format: "%.3f", $0) } ?? "nil") estW=\(String(format: "%.3f", estimatedWidth))"
                 )
+                onFurnitureSizeEstimated?(makeFurnitureSizeEstimate(
+                    widthMeters: estimatedWidth > 0.01 ? estimatedWidth : (latestEstimatedFurnitureBaseWidthMeters ?? 0.3),
+                    heightMeters: heightMeters,
+                    arHeightMeters: arHeight
+                ))
             }
-            let est = FurnitureSizeEstimate(
-                widthMeters: p.size.width,
-                heightMeters: heightMeters,
-                arHeightMeters: arHeight
-            )
-            onFurnitureSizeEstimated?(makeFurnitureSizeEstimate(
-                widthMeters: est.widthMeters,
-                heightMeters: est.heightMeters,
-                arHeightMeters: est.arHeightMeters
-            ))
         }
     }
 

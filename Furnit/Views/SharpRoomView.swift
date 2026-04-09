@@ -439,6 +439,7 @@ struct SharpRoomView: View {
     }
 
     /// Top-right AR sizing control positioned under the recenter/share toolbar buttons.
+    /// zIndex must sit above FurnitureFit overlay (100) so the button stays tappable.
     private var topTrailingARSizingOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
@@ -451,7 +452,7 @@ struct SharpRoomView: View {
             }
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(19)
+        .zIndex(101)
     }
 
     @ToolbarContentBuilder
@@ -1030,7 +1031,7 @@ struct SharpRoomView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(18)
+        .zIndex(102)
     }
 
     /// Pinch/AR hint cluster shown with the left-side camera arrows.
@@ -1064,7 +1065,7 @@ struct SharpRoomView: View {
             cancelCameraSizingHintTasks()
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(12)
+        .zIndex(103)
     }
 
     private var roomDimensionsHintOverlay: some View {
@@ -1089,7 +1090,7 @@ struct SharpRoomView: View {
             .onDisappear { cancelRoomDimensionsHintTasks() }
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(13)
+        .zIndex(104)
     }
 
     /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
@@ -1684,7 +1685,6 @@ struct SharpRoomView: View {
     private var shouldShowArFurnitureMeasurementPill: Bool {
         showingFurnitureFit &&
             brainArAssistedSizingEnabled &&
-            supportsMetricFurnitureMeasurementUI &&
             (detectedFurnitureHeightAR?.isFinite == true) &&
             ((detectedFurnitureHeightAR ?? 0) > 0.05)
     }

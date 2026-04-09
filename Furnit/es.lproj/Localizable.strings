@@ -482,3 +482,6 @@
 "generationProgress.complete" = "¡Completo!";
 "generationProgress.preparing" = "Preparando...";
 "generationProgress.mayTakeFewMinutes" = "Esto puede tardar unos minutos";
+
+"faq.pinchOverlaySize" = "¿Qué pasa cuando pellizco el mueble segmentado?";
+"faq.pinchOverlaySizeAnswer" = "El gesto de pellizco hace que la superposición del mueble sea más grande o más pequeña. Si el modo de tamaño está activado y la pastilla Furni está visible, esa pastilla se actualiza con la estimación redimensionada actual del mueble para la habitación. Si el modo de tamaño está desactivado, el pellizco solo cambia visualmente la superposición en pantalla.";

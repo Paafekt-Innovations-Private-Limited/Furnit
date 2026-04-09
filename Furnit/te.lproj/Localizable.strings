@@ -490,3 +490,6 @@
 "faq.arAssistedSizingAnswer" = "ముందుగా segmentation ప్రారంభించడానికి బ్రెయిన్ ఐకాన్ పై ట్యాప్ చేసి, తరువాత size icon ను ట్యాప్ చేయండి. AR లేదా depth మద్దతు ఉన్న ఫోన్లలో యాప్ లైవ్ కెమెరా depth ను ఉపయోగించి ఫర్నిచర్ పరిమాణాన్ని మరింత వాస్తవంగా చూపిస్తుంది. AR depth లేని ఫోన్లలో ఇది సుమారు proportion-based అంచనాకు వెళ్తుంది, అందువల్ల ఫర్నిచర్ కొలతలు ఖచ్చితంగా ఉండవు.";
 "faq.measurementPillAnswer" = "furniture size pill అనేది sizing mode ఆన్ అయ్యి, యాప్‌కు ఉపయోగపడే live height estimate ఉన్నప్పుడే కనిపిస్తుంది. ruler button ప్రస్తుత గది వెడల్పు, ఎత్తు, లోతును ఒక చిన్న card లో చూపిస్తుంది. non-AR ఫోన్లలో ఈ రీడింగులు, ముఖ్యంగా ఫర్నిచర్‌కు, తక్కువ నమ్మదగినవి.";
 "faq.resetOverlayScaleAnswer" = "ఇప్పుడు overflow menu లేదు. overlay తప్పుగా కనిపిస్తే బ్రెయిన్ ఐకాన్ ఆఫ్ చేసి మళ్లీ ఆన్ చేయండి, లేదా pinch చేసి ఫర్నిచర్ పరిమాణాన్ని చేతితో సరిచేయండి.";
+
+"faq.pinchOverlaySize" = "segmentation అయిన furniture ను pinch చేస్తే ఏమవుతుంది?";
+"faq.pinchOverlaySizeAnswer" = "pinch చేస్తే furniture overlay పెద్దది లేదా చిన్నది అవుతుంది. sizing mode ఆన్ అయి Furni pill కనిపిస్తే, ఆ pill గదికి సరిపోయే ప్రస్తుత resized furniture అంచనాకు అప్డేట్ అవుతుంది. sizing mode ఆఫ్‌లో ఉంటే, pinch స్క్రీన్ మీద overlay రూప పరిమాణాన్నే మాత్రమే మార్చుతుంది.";

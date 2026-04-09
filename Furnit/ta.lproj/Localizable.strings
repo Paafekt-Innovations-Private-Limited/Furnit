@@ -490,3 +490,6 @@
 "faq.arAssistedSizingAnswer" = "முதலில் segmentation தொடங்க brain icon-ஐ தட்டுங்கள், பிறகு size icon-ஐ தட்டுங்கள். AR அல்லது depth ஆதரவு உள்ள போன்களில் app நேரடி camera depth-ஐ பயன்படுத்தி மரச்சாமானின் அளவை இன்னும் நிஜமாகக் காட்டும். AR depth இல்லாத போன்களில் இது சுமார் proportion-based கணிப்புக்குத் திரும்பும்; அதனால் மரச்சாமான் அளவுகள் துல்லியமாக இருக்காது.";
 "faq.measurementPillAnswer" = "furniture size pill என்பது sizing mode ஆன் ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தோன்றும். ruler button தற்போதைய அறையின் அகலம், உயரம், ஆழத்தை ஒரு சிறிய card-ல் காட்டும். non-AR போன்களில் இந்த மதிப்புகள், குறிப்பாக மரச்சாமான்களுக்கு, குறைவாக நம்பகமானவை.";
 "faq.resetOverlayScaleAnswer" = "இப்போது overflow menu இல்லை. overlay தவறாகத் தோன்றினால் brain icon-ஐ off செய்து மீண்டும் on செய்யுங்கள், அல்லது pinch செய்து மரச்சாமானின் அளவை கையால் சரிசெய்யுங்கள்.";
+
+"faq.pinchOverlaySize" = "பிரிக்கப்பட்ட furniture-ஐ pinch செய்தால் என்ன ஆகும்?";
+"faq.pinchOverlaySizeAnswer" = "pinch செய்தால் furniture overlay பெரியதாகவும் சிறியதாகவும் மாறும். sizing mode on ஆகி Furni pill தெரிந்தால், அந்த pill அறைக்கு பொருந்தும் தற்போதைய resized furniture மதிப்பீட்டுக்கு புதுப்பிக்கும். sizing mode off ஆக இருந்தால், pinch திரையில் overlay-யின் தோற்ற அளவை மட்டும் மாற்றும்.";
