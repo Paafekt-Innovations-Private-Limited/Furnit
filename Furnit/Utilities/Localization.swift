@@ -423,6 +423,8 @@ enum L10n {
             )
         }
         static let placementMetricUnavailableNote = "roomViewer.placementMetricUnavailableNote".localized
+        static let placementFitsRoom = "roomViewer.placementFitsRoom".localized
+        static let placementExceedsRoom = "roomViewer.placementExceedsRoom".localized
         static func placementHarmonySummary(
             harmonyScore: Float,
             harmonyTypeName: String,

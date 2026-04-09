@@ -272,7 +272,7 @@
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "Placement intelligence & aesthetic";
 "faq.whatIsPlacementIntelligence" = "What is Placement Intelligence?";
-"faq.whatIsPlacementIntelligenceAnswer" = "While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card summarizes whether the detected object's size fits your room bounds, shows floor-fit hints and corner suggestions when available, and notes when depth is estimated. Tap the header to expand full details, or leave it collapsed to save space.";
+"faq.whatIsPlacementIntelligenceAnswer" = "While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.";
 "faq.furnitureColorAesthetic" = "How does the app pick a color for aesthetic scoring?";
 "faq.furnitureColorAestheticAnswer" = "The app averages the RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared to colors sampled from your room's floor, walls, and ceiling. If the cutout is not ready yet, a fallback color is taken from the room palette until segmentation supplies a real sample.";
 "faq.whatDoHarmonyContrastMean" = "What do harmony, contrast, and style fit mean?";
@@ -430,6 +430,8 @@
 "roomViewer.placementFitCount" = "%d fit";
 "roomViewer.placementDetectedSize" = "Detected %.2f × %.2f × %.2f m";
 "roomViewer.placementMetricUnavailableNote" = "Full room-fit sizing works best on iPhones with depth sensing. Color harmony below still applies.";
+"roomViewer.placementFitsRoom" = "Furniture fits within the room dimensions.";
+"roomViewer.placementExceedsRoom" = "Furniture exceeds the detected room dimensions.";
 "roomViewer.placementHarmonySummary" = "Harmony %.2f (%@) · contrast %.2f · style fit %.2f";
 "roomViewer.harmonyTypeAnalogous" = "Analogous";
 "roomViewer.harmonyTypeComplementary" = "Complementary";

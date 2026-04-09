@@ -352,6 +352,8 @@
 "roomViewer.placementFitCount" = "%d মানানো";
 "roomViewer.placementDetectedSize" = "সনাক্ত %.2f × %.2f × %.2f মি";
 "roomViewer.placementMetricUnavailableNote" = "সম্পূর্ণ আকার মিলিয়ে নেওয়া গভীরতা-সেন্সিং সহ iPhone-এ ভালো কাজ করে। নিচের রঙের সামঞ্জস্য এখনও কাজে লাগে।";
+"roomViewer.placementFitsRoom" = "আসবাব ঘরের মাপের মধ্যে ফিট করে।";
+"roomViewer.placementExceedsRoom" = "আসবাব শনাক্ত করা ঘরের মাপ ছাড়িয়ে গেছে।";
 "roomViewer.placementHarmonySummary" = "সুর %.2f (%@) · বৈপরীত্য %.2f · স্টাইল মিল %.2f";
 "roomViewer.harmonyTypeAnalogous" = "সদৃশ";
 "roomViewer.harmonyTypeComplementary" = "পরিপূরক";

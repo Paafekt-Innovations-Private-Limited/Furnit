@@ -352,6 +352,8 @@
 "roomViewer.placementFitCount" = "%d مناسب";
 "roomViewer.placementDetectedSize" = "مُكتشف %.2f × %.2f × %.2f م";
 "roomViewer.placementMetricUnavailableNote" = "قياس المقاس الكامل يعمل أفضل مع أجهزة iPhone ذات عمق. تناسق الألوان أدناه ما يزال مفيدًا.";
+"roomViewer.placementFitsRoom" = "الأثاث يتسع ضمن أبعاد الغرفة.";
+"roomViewer.placementExceedsRoom" = "الأثاث يتجاوز أبعاد الغرفة المكتشفة.";
 "roomViewer.placementHarmonySummary" = "انسجام %.2f (%@) · تباين %.2f · تناسق الأسلوب %.2f";
 "roomViewer.harmonyTypeAnalogous" = "مماثل";
 "roomViewer.harmonyTypeComplementary" = "تكميلي";

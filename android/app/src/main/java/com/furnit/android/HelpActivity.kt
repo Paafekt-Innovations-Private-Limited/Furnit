@@ -77,6 +77,7 @@ class HelpActivity : AppCompatActivity() {
                     FAQItem(R.string.faq_ar_assisted_sizing, R.string.faq_ar_assisted_sizing_answer),
                     FAQItem(R.string.faq_measurement_pill, R.string.faq_measurement_pill_answer),
                     FAQItem(R.string.faq_reset_overlay_scale, R.string.faq_reset_overlay_scale_answer),
+                    FAQItem(R.string.faq_pinch_overlay_size, R.string.faq_pinch_overlay_size_answer),
                     FAQItem(R.string.faq_how_to_place, R.string.faq_how_to_place_answer),
                     FAQItem(R.string.faq_multiple_pieces, R.string.faq_multiple_pieces_answer),
                     FAQItem(R.string.faq_room_fitment, R.string.faq_room_fitment_answer),
@@ -151,6 +152,25 @@ class HelpActivity : AppCompatActivity() {
             setPadding(32, 0, 32, 24)
         }
         mainLayout.addView(title)
+
+        val measurementWarning = TextView(this).apply {
+            text = getString(R.string.help_measurement_warning)
+            textSize = 14f
+            setTextColor(Color.parseColor("#5C3B00"))
+            setTypeface(null, Typeface.BOLD)
+            setPadding(24, 20, 24, 20)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 18f
+                setColor(Color.parseColor("#FFF4CC"))
+                setStroke(2, Color.parseColor("#F0C96A"))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(24, 0, 24, 20) }
+        }
+        mainLayout.addView(measurementWarning)
 
         // FAQ Sections
         for (section in faqSections) {

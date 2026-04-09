@@ -271,6 +271,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var autoScaleFromRoom: CGFloat = 1.0
     /// User pinch multiplier (reset when primary class changes).
     private var userPinchScale: CGFloat = 1.0
+    /// User pan translation in view points (reset when primary class changes).
+    private var userPanOffset: CGPoint = .zero
     /// After user pinches, stop updating AR-assisted auto-scale until primary class changes.
     private var userLockedAssistedOverlayScale: Bool = false
     /// Last primary class used for overlay / pinch reset.
@@ -313,6 +315,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var primaryBboxInView: CGRect = .zero
     /// Stored reference so `hitTest` can check whether a pinch is already in flight.
     private weak var overlayPinchGesture: UIPinchGestureRecognizer?
+    /// Stored reference so `hitTest` can check whether a pan is already in flight.
+    private weak var overlayPanGesture: UIPanGestureRecognizer?
     /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
     private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
     private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
@@ -620,6 +624,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         addGestureRecognizer(pinchGesture)
         overlayPinchGesture = pinchGesture
         maskImageView.addGestureRecognizer(panGesture)
+        overlayPanGesture = panGesture
 
         // Listen for reset notification from SharpRoomView toolbar ("reset size" button).
         NotificationCenter.default.addObserver(
@@ -856,17 +861,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         switch overlayPresentationMode {
         case .deferredCentered:
             // Scale around the maskImageView center, then translate so the
-            // primary bbox center aligns with the view center. Both
-            // room-proportion / static-default scaling AND user pinch are
-            // included via `clamped`.
+            // primary bbox center aligns with the view center (plus user pan
+            // offset). Both room-proportion / static-default scaling AND user
+            // pinch are included via `clamped`.
             let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
             let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-            let translationX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
-            let translationY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
+            let autoTX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
+            let autoTY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
             finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
-                .concatenating(CGAffineTransform(translationX: translationX, y: translationY))
+                .concatenating(CGAffineTransform(translationX: autoTX + userPanOffset.x,
+                                                 y: autoTY + userPanOffset.y))
         case .measuredPlacement:
             finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
+                .concatenating(CGAffineTransform(translationX: userPanOffset.x,
+                                                 y: userPanOffset.y))
         }
         maskImageView.transform = finalTransform
 
@@ -909,6 +917,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if primaryClassIdx != lastOverlayPrimaryClassIdx {
             lastOverlayPrimaryClassIdx = primaryClassIdx
             userPinchScale = 1.0
+            userPanOffset = .zero
             userLockedAssistedOverlayScale = false
             smoothedArOverlayScale = 1.0
             autoScaleFromAR = 1.0
@@ -1180,6 +1189,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestEstimatedFurnitureBaseARHeightMeters = nil
         didPublishARRefinedFurnitureMetersEstimate = false
         userPinchScale = 1.0
+        userPanOffset = .zero
         userLockedAssistedOverlayScale = false
         lastOverlayPrimaryClassIdx = -1
         overlayPresentationMode = .deferredCentered
@@ -3981,9 +3991,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     @objc private func handleResetScaleTapped() {
         guard maskImageView.image != nil else { return }
         userPinchScale = 1.0
+        userPanOffset = .zero
         userLockedAssistedOverlayScale = false
         if debugMode {
-            logDebug("📐 [RESET] overlay scale reset to default (pinch=1.0)")
+            logDebug("📐 [RESET] overlay scale reset to default (pinch=1.0, pan=zero)")
         }
         UIView.animate(withDuration: 0.2) {
             self.applyCurrentOverlayScaleTransform()
@@ -4022,13 +4033,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
-        guard arAssistedSizingEnabled || overlayPresentationMode == .measuredPlacement else { return }
 
         let translation = gesture.translation(in: self)
         switch gesture.state {
-        case .began, .changed:
-            maskImageView.center = CGPoint(x: maskImageView.center.x + translation.x, y: maskImageView.center.y + translation.y)
+        case .began:
+            logDebug("📐 [PAN] began  mode=\(overlayPresentationMode) offset=(\(String(format: "%.1f", userPanOffset.x)), \(String(format: "%.1f", userPanOffset.y)))")
+        case .changed:
+            userPanOffset.x += translation.x
+            userPanOffset.y += translation.y
+            applyCurrentOverlayScaleTransform()
             gesture.setTranslation(.zero, in: self)
+        case .ended, .cancelled:
+            logDebug("📐 [PAN] ended  offset=(\(String(format: "%.1f", userPanOffset.x)), \(String(format: "%.1f", userPanOffset.y)))")
         default: break
         }
     }
@@ -4057,22 +4073,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return true
         }
 
-        // Pan still stays limited to the primary furniture bounding box.
+        // Pan: accept touches inside or near the primary bbox so the overlay is easy to grab.
         guard maskImageView.image != nil else {
-            logDebug("👆 [shouldReceive] No mask image")
+            logDebug("👆 [shouldReceive pan] No mask image")
             return false
         }
         guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
-            logDebug("👆 [shouldReceive] No valid bbox")
+            logDebug("👆 [shouldReceive pan] No valid bbox")
             return false
         }
 
         let touchPoint = touch.location(in: maskImageView)
-        let contains = primaryBboxInView.contains(touchPoint)
+        let expandedBbox = primaryBboxInView.insetBy(dx: -Self.pinchHitTestPadding,
+                                                     dy: -Self.pinchHitTestPadding)
+        let contains = expandedBbox.contains(touchPoint)
 
-        logDebug("👆 [shouldReceive] touchPoint=\(touchPoint) bbox=\(primaryBboxInView) contains=\(contains)")
-
-        // Check if touch is within the primary bbox
+        logDebug("👆 [shouldReceive pan] touchPoint=\(touchPoint) bbox=\(primaryBboxInView) expanded=\(expandedBbox) contains=\(contains)")
         return contains
     }
 
@@ -4103,11 +4119,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         logDebug("👆 [hitTest] point=\(point) pointInMask=\(pointInMask) bbox=\(primaryBboxInView)")
 
-        // If a pinch is already in flight, accept touches anywhere so the
+        // If a pinch or pan is already in flight, accept touches anywhere so the
         // gesture isn't interrupted when a finger drifts outside the box.
         if let pinch = overlayPinchGesture,
            pinch.state == .began || pinch.state == .changed {
             logDebug("👆 [hitTest] Pinch in progress – accepting")
+            return super.hitTest(point, with: event)
+        }
+        if let pan = overlayPanGesture,
+           pan.state == .began || pan.state == .changed {
+            logDebug("👆 [hitTest] Pan in progress – accepting")
             return super.hitTest(point, with: event)
         }
 

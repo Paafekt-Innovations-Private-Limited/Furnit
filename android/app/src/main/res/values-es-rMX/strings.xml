@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com se ha copiado al portapapeles.</string>
     <string name="help_email_subject">Soporte de la app Paafekt</string>
     <string name="help_email_body">Hola equipo de soporte Paafekt,\n\nNecesito ayuda con:\n\n</string>
+    <string name="help_measurement_warning">Los teléfonos sin profundidad AR solo dan medidas aproximadas, especialmente para muebles.</string>
     <string name="faq_room_creation">Creación de cuartos</string>
     <string name="faq_how_to_create">¿Cómo creo un cuarto 3D?</string>
     <string name="faq_how_to_create_answer">Toca el ícono de foto en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu cuarto. Verás dos opciones para elegir cómo crear tu cuarto 3D.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
     <string name="faq_what_is_segmentation_answer">La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza quedaría en tu cuarto 3D.</string>
     <string name="faq_how_to_segment">¿Cómo segmento muebles de una foto?</string>
-    <string name="faq_how_to_segment_answer">Al ver tu cuarto 3D, toca el icono de muebles para acceder a la función de segmentación. Selecciona una foto con muebles y la app detectará y extraerá automáticamente los elementos de mobiliario.</string>
+    <string name="faq_how_to_segment_answer">Al ver tu cuarto 3D, toca el icono del cerebro para iniciar la segmentación. Luego apunta la cámara hacia los muebles para ver la detección en vivo y la superposición extraída.</string>
     <string name="faq_not_detected">¿Por qué no se detectan mis muebles?</string>
     <string name="faq_not_detected_answer">La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.</string>
     <string name="faq_multiple_pieces">¿Puedo segmentar múltiples muebles?</string>
@@ -176,11 +177,13 @@
     <string name="faq_adjust_dimensions_answer">Sí, ve a Configuración y busca las opciones de Dimensiones de cuarto donde puedes afinar el tamaño y proporciones de tu cuarto generado.</string>
     <string name="faq_furniture_measurements">Muebles y medidas</string>
     <string name="faq_ar_assisted_sizing">¿Qué es el tamaño de muebles asistido por AR?</string>
-    <string name="faq_ar_assisted_sizing_answer">Si está activado en Configuración, la app combina profundidad de cámara y detección de objetos para escalar la superposición con más realismo al acercarte o alejarte. Mejor con buena luz y el objeto bien visible.</string>
+    <string name="faq_ar_assisted_sizing_answer">Primero toca el icono del cerebro para iniciar la segmentación y luego usa el control de tamaño. En teléfonos con profundidad ARCore, la app usa profundidad real de la cámara para mostrar un tamaño de mueble más realista. En teléfonos sin profundidad AR, vuelve a una estimación aproximada basada en proporciones, así que las medidas del mueble no son exactas.</string>
     <string name="faq_measurement_pill">¿Qué es la pequeña lectura de medidas?</string>
-    <string name="faq_measurement_pill_answer">Con SmartyPants activo puede mostrarse la altura estimada del mueble y del cuarto. Toca para introducir medidas reales. Si la foto es con gran angular (0,5×), indícalo para un encuadre coherente.</string>
+    <string name="faq_measurement_pill_answer">La pastilla Furni solo aparece cuando el modo de tamaño está activado y la app tiene una estimación útil de altura en vivo. En el visor también pueden aparecer medidas del cuarto. En teléfonos sin AR, estas lecturas son menos confiables, especialmente para muebles.</string>
     <string name="faq_reset_overlay_scale">La máscara se ve mal ampliada — ¿qué hago?</string>
-    <string name="faq_reset_overlay_scale_answer">En el cuarto 3D abre el menú (⋮) y elige Restablecer escala de superposición. Quita el zoom automático de la máscara para que se estabilice al moverte.</string>
+    <string name="faq_reset_overlay_scale_answer">Ya no hay restablecimiento en menú extra. Si la superposición se ve mal, apaga y vuelve a encender el icono del cerebro o ajusta el tamaño del mueble manualmente con el gesto de pellizco.</string>
+    <string name="faq_pinch_overlay_size">¿Qué pasa cuando hago zoom con pellizco sobre el mueble segmentado?</string>
+    <string name="faq_pinch_overlay_size_answer">El gesto de pellizco hace que la superposición del mueble sea más grande o más pequeña. Si el modo de tamaño está activado y la pastilla Furni está visible, esa pastilla se actualiza con la estimación redimensionada actual del mueble para el cuarto. Si el modo de tamaño está desactivado, el pellizco solo cambia visualmente la superposición en pantalla.</string>
     <string name="faq_depth_aware_room_photo">¿Ayuda tomar la foto en la app?</string>
     <string name="faq_depth_aware_room_photo_answer">Sí. En dispositivos compatibles, «Tomar una foto» usa la cámara de la app con profundidad si está disponible, lo que puede mejorar el cuarto 3D.</string>
     <string name="faq_placement_intelligence">Inteligencia de colocación y estética</string>
@@ -279,7 +282,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Inicializando…</string>
-    <string name="smartypants_drag_hint">Arrastra el mueble para mover • Arrastra fuera para desplazar la habitación</string>
+    <string name="smartypants_drag_hint">Arrastra el mueble para mover • Pellizca para cambiar el tamaño • Arrastra fuera para desplazar la habitación</string>
     <string name="smartypants_tap_calibrate">Toca para calibrar</string>
     <string name="smartypants_scanning">Escaneando…</string>
     <string name="smartypants_camera_error">Error de cámara: %s</string>

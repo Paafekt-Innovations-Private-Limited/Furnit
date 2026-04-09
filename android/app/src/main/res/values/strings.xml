@@ -189,6 +189,7 @@
     <string name="help_email_copied_message">support@paafekt.com has been copied to your clipboard.</string>
     <string name="help_email_subject">Paafekt App Support</string>
     <string name="help_email_body">Hi Paafekt Support Team,\n\nI need help with:\n\n</string>
+    <string name="help_measurement_warning">Phones without AR depth support only get approximate measurements, especially for furniture.</string>
 
     <!-- FAQ - Room Creation -->
     <string name="faq_room_creation">Room Creation</string>
@@ -222,7 +223,7 @@
     <string name="faq_what_is_segmentation">What is furniture segmentation?</string>
     <string name="faq_what_is_segmentation_answer">Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.</string>
     <string name="faq_how_to_segment">How do I segment furniture from a photo?</string>
-    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap on the brain icon to activate SmartyPants. Point your camera at furniture to see real-time detection with labels.</string>
+    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap the brain icon to start segmentation. Then point your camera at furniture to see live detection and the extracted furniture overlay.</string>
     <string name="faq_not_detected">Why isn\'t my furniture being detected?</string>
     <string name="faq_not_detected_answer">Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn\'t partially hidden or too far from the camera.</string>
 
@@ -248,11 +249,13 @@
     <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">How is furniture overlay size estimated?</string>
-    <string name="faq_ar_assisted_sizing_answer">On devices with ARCore, the app uses depth and camera intrinsics so the overlay scales in real-world meters as you move. Without ARCore, sizing uses your 3D room; you can still pinch to adjust the overlay.</string>
+    <string name="faq_ar_assisted_sizing_answer">First tap the brain icon to start segmentation, then use the sizing control. On phones with ARCore depth support, the app uses live camera depth for a more realistic furniture size. On phones without AR depth, it falls back to a rough proportion-based estimate, so furniture measurements are not exact.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
-    <string name="faq_measurement_pill_answer">While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.</string>
+    <string name="faq_measurement_pill_answer">The Furni size pill appears only when sizing mode is on and the app has a usable live height estimate. Room measurements may also appear in the room viewer. On phones without AR, these readings are less reliable, especially for furniture.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
-    <string name="faq_reset_overlay_scale_answer">Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.</string>
+    <string name="faq_reset_overlay_scale_answer">There is no overflow reset now. If the overlay looks off, turn the brain icon off and on again, or pinch the furniture manually to fine-tune its size.</string>
+    <string name="faq_pinch_overlay_size">What happens when I pinch the segmented furniture?</string>
+    <string name="faq_pinch_overlay_size_answer">Pinching makes the furniture overlay larger or smaller. If sizing mode is on and the Furni pill is visible, that pill updates to the current resized furniture estimate for the room. If sizing mode is off, pinch only changes the overlay visually on screen.</string>
     <string name="faq_depth_aware_room_photo">Does taking a photo in the app help room quality?</string>
     <string name="faq_depth_aware_room_photo_answer">Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.</string>
 
@@ -417,7 +420,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>
-    <string name="smartypants_drag_hint">Drag furniture to move • Drag outside to pan room</string>
+    <string name="smartypants_drag_hint">Drag furniture to move • Pinch to resize • Drag outside to pan room</string>
     <string name="smartypants_tap_calibrate">Tap to calibrate</string>
     <string name="smartypants_scanning">Scanning…</string>
     <string name="smartypants_camera_error">Camera error: %s</string>

@@ -335,6 +335,8 @@
 "roomViewer.placementFitCount" = "%d 處可放";
 "roomViewer.placementDetectedSize" = "測得 %.2f × %.2f × %.2f 公尺";
 "roomViewer.placementMetricUnavailableNote" = "完整尺寸適配在具備深度感測的 iPhone 上更準確。下方的色彩和諧度仍有參考價值。";
+"roomViewer.placementFitsRoom" = "家具可放入房間尺寸內。";
+"roomViewer.placementExceedsRoom" = "家具超出偵測到的房間尺寸。";
 "roomViewer.placementHarmonySummary" = "協調度 %.2f（%@）· 對比度 %.2f · 風格契合 %.2f";
 "roomViewer.harmonyTypeAnalogous" = "類似色";
 "roomViewer.harmonyTypeComplementary" = "互補色";

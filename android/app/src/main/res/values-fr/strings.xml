@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com a été copié dans votre presse-papiers.</string>
     <string name="help_email_subject">Support appli Paafekt</string>
     <string name="help_email_body">Bonjour l\'équipe Paafekt,\n\nJ\'ai besoin d\'aide concernant :\n\n</string>
+    <string name="help_measurement_warning">Les téléphones sans profondeur AR ne donnent que des mesures approximatives, surtout pour les meubles.</string>
     <string name="faq_room_creation">Création de pièce</string>
     <string name="faq_how_to_create">Comment créer une pièce 3D ?</string>
     <string name="faq_how_to_create_answer">Appuyez sur l\'icône photo dans le coin supérieur gauche de l\'écran d\'accueil, puis prenez ou sélectionnez une photo de votre pièce. Vous verrez deux options pour créer votre pièce 3D.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">Qu\'est-ce que la segmentation de meubles ?</string>
     <string name="faq_what_is_segmentation_answer">La segmentation de meubles utilise l\'IA pour identifier et séparer les meubles dans vos photos, vous permettant de voir comment chaque pièce s\'intégrerait dans votre pièce 3D.</string>
     <string name="faq_how_to_segment">Comment segmenter des meubles à partir d\'une photo ?</string>
-    <string name="faq_how_to_segment_answer">En visualisant votre pièce 3D, appuyez sur l\'icône meuble pour accéder à la fonction de segmentation. Sélectionnez une photo contenant des meubles, et l\'application détectera et extraira automatiquement les éléments de mobilier.</string>
+    <string name="faq_how_to_segment_answer">En visualisant votre pièce 3D, appuyez sur l’icône cerveau pour démarrer la segmentation. Orientez ensuite la caméra vers les meubles pour voir la détection en direct et le calque de meuble extrait.</string>
     <string name="faq_not_detected">Pourquoi mes meubles ne sont-ils pas détectés ?</string>
     <string name="faq_not_detected_answer">La détection de meubles fonctionne mieux avec des photos claires et bien éclairées où les meubles sont clairement visibles. Assurez-vous que les meubles ne sont pas partiellement cachés ou ne se confondent pas avec l\'arrière-plan.</string>
     <string name="faq_multiple_pieces">Puis-je segmenter plusieurs meubles ?</string>
@@ -176,11 +177,13 @@
     <string name="faq_adjust_dimensions_answer">Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.</string>
     <string name="faq_furniture_measurements">Meubles &amp; mesures</string>
     <string name="faq_ar_assisted_sizing">Qu\'est-ce que le dimensionnement des meubles assisté par RA ?</string>
-    <string name="faq_ar_assisted_sizing_answer">Lorsque cette option est activée dans Réglages, l\'app combine la profondeur caméra et la détection d\'objets pour ajuster la taille du calque meuble de façon plus réaliste quand vous vous rapprochez ou vous éloignez. Fonctionne mieux avec un bon éclairage et un objet bien visible.</string>
+    <string name="faq_ar_assisted_sizing_answer">Touchez d’abord l’icône cerveau pour lancer la segmentation, puis utilisez le contrôle de taille. Sur les téléphones avec profondeur ARCore, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste. Sans profondeur AR, elle revient à une estimation approximative basée sur les proportions, donc les mesures du meuble ne sont pas exactes.</string>
     <string name="faq_measurement_pill">À quoi sert le petit bandeau de mesure ?</string>
-    <string name="faq_measurement_pill_answer">Quand SmartyPants est actif, un bandeau peut afficher la hauteur estimée du meuble et de la pièce. Touchez-le pour saisir des mesures réelles. Si la photo de la pièce est en grand-angle (0,5×), indiquez-le pour un cadrage cohérent.</string>
+    <string name="faq_measurement_pill_answer">La pastille Furni n’apparaît que lorsque le mode de taille est activé et que l’app dispose d’une estimation de hauteur en direct exploitable. Des mesures de la pièce peuvent aussi apparaître dans le visualiseur. Sur les téléphones sans AR, ces valeurs sont moins fiables, surtout pour les meubles.</string>
     <string name="faq_reset_overlay_scale">Le masque semble mal zoomé — que faire ?</string>
-    <string name="faq_reset_overlay_scale_answer">Dans la pièce 3D, ouvrez le menu (⋮) et choisissez Réinitialiser l\'échelle du calque. Cela efface le zoom automatique appliqué au masque de détection pour qu\'il se stabilise à nouveau.</string>
+    <string name="faq_reset_overlay_scale_answer">Il n’y a plus de réinitialisation dans un menu supplémentaire. Si le calque semble incorrect, désactivez puis réactivez l’icône cerveau, ou ajustez manuellement la taille du meuble avec le geste de pincement.</string>
+    <string name="faq_pinch_overlay_size">Que se passe-t-il quand je pince le meuble segmenté ?</string>
+    <string name="faq_pinch_overlay_size_answer">Le pincement rend la surcouche du meuble plus grande ou plus petite. Si le mode de taille est activé et que la pastille Furni est visible, cette pastille se met à jour avec l’estimation redimensionnée actuelle du meuble pour la pièce. Si le mode de taille est désactivé, le pincement ne change que l’apparence de la surcouche à l’écran.</string>
     <string name="faq_depth_aware_room_photo">Prendre une photo dans l\'app améliore-t-il la qualité ?</string>
     <string name="faq_depth_aware_room_photo_answer">Oui. Sur les appareils compatibles, « Prendre une photo » (plutôt que la galerie) utilise la caméra intégrée avec profondeur si disponible, ce qui peut améliorer la reconstruction et l\'échelle de la pièce 3D.</string>
     <string name="faq_placement_intelligence">Placement et esthétique</string>
@@ -279,7 +282,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initialisation…</string>
-    <string name="smartypants_drag_hint">Faites glisser le meuble pour déplacer • Glissez à l\'extérieur pour déplacer la pièce</string>
+    <string name="smartypants_drag_hint">Faites glisser le meuble pour déplacer • Pincez pour redimensionner • Glissez à l’extérieur pour déplacer la pièce</string>
     <string name="smartypants_tap_calibrate">Appuyez pour calibrer</string>
     <string name="smartypants_scanning">Analyse…</string>
     <string name="smartypants_camera_error">Erreur caméra : %s</string>

@@ -106,6 +106,7 @@ class FurnitureFitFragment : Fragment() {
     private var selectedRoomHeight: Float = 3f
     private var selectedRoomDepth: Float = 4.5f
     private var selectedPhotoOrientation: String = "portrait"
+    private var selectedArAssistedSizingRequested: Boolean = false
     private var usePlyBackground: Boolean = false  // True when background is PLY (WebView), false when GLB (SceneView) or none
     private var roomPlyWebView: WebView? = null
 
@@ -141,7 +142,12 @@ class FurnitureFitFragment : Fragment() {
         selectedRoomHeight = arguments?.getFloat("ROOM_HEIGHT") ?: 3f
         selectedRoomDepth = arguments?.getFloat("ROOM_DEPTH") ?: 4.5f
         selectedPhotoOrientation = if (arguments?.getString("PHOTO_ORIENTATION")?.trim()?.lowercase() == "landscape") "landscape" else "portrait"
-        LogUtil.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation")
+        selectedArAssistedSizingRequested =
+            arguments?.getBoolean(FurnitureFitActivity.EXTRA_ENABLE_AR_ASSISTED_SIZING, false) ?: false
+        LogUtil.d(
+            "FurnitureFit",
+            "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation arAssist=$selectedArAssistedSizingRequested",
+        )
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = FurnitureFitManager(requireContext())
         // Initialize the ONNX segmentation backend.
@@ -353,8 +359,7 @@ class FurnitureFitFragment : Fragment() {
 
     private fun useArAssistedCameraPath(): Boolean {
         val ctx = context ?: return false
-        return FurnitureFitManager.isArAssistedFurnitureSizingEnabled(ctx) &&
-            ArSupportChecker.isArCoreSupported(ctx)
+        return selectedArAssistedSizingRequested && ArSupportChecker.isArCoreSupported(ctx)
     }
 
     private fun startArCameraPath(container: FrameLayout) {
@@ -512,8 +517,7 @@ class FurnitureFitFragment : Fragment() {
         modelInputSize: Int,
         targetHeightMeters: Float?,
     ): Float {
-        val ctx = context ?: return 1f
-        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(ctx)) return 1f
+        if (!selectedArAssistedSizingRequested) return 1f
         val directArScale = arCameraController
             ?.takeIf { it.isArOverlayScaleValid() }
             ?.getSmoothedArOverlayScale()

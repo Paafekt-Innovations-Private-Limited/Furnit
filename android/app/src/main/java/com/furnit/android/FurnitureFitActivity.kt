@@ -15,6 +15,7 @@ class FurnitureFitActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "FurnitureFitActivity"
+        const val EXTRA_ENABLE_AR_ASSISTED_SIZING = "enable_ar_assisted_sizing"
     }
 
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -70,13 +71,17 @@ class FurnitureFitActivity : AppCompatActivity() {
         val roomHeight = intent.getFloatExtra("ROOM_HEIGHT", 3f)
         val roomDepth = intent.getFloatExtra("ROOM_DEPTH", 4.5f)
         val photoOrientation = intent.getStringExtra("PHOTO_ORIENTATION") ?: "portrait"
+        val enableArAssistedSizing = intent.getBooleanExtra(EXTRA_ENABLE_AR_ASSISTED_SIZING, false)
         if (roomFolder != null && roomFolder.isNotBlank()) {
             val f = File(roomFolder)
             if (!f.isAbsolute) {
                 roomFolder = File(filesDir, roomFolder).absolutePath
             }
         }
-        LogUtil.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_FOLDER=$roomFolder dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
+        LogUtil.d(
+            TAG,
+            "Brain opened with ROOM_ID=$roomId ROOM_FOLDER=$roomFolder dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation arAssist=$enableArAssistedSizing",
+        )
 
         fragment.arguments = Bundle().apply {
             roomId?.let { putString("ROOM_ID", it) }
@@ -86,6 +91,7 @@ class FurnitureFitActivity : AppCompatActivity() {
             putFloat("ROOM_HEIGHT", roomHeight)
             putFloat("ROOM_DEPTH", roomDepth)
             putString("PHOTO_ORIENTATION", photoOrientation)
+            putBoolean(EXTRA_ENABLE_AR_ASSISTED_SIZING, enableArAssistedSizing)
         }
 
         supportFragmentManager.beginTransaction()

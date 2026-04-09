@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com आपके क्लिपबोर्ड पर कॉपी हो गया है।</string>
     <string name="help_email_subject">Paafekt ऐप सहायता</string>
     <string name="help_email_body">नमस्ते Paafekt सहायता टीम,\n\nमुझे इनके बारे में मदद चाहिए:\n\n</string>
+    <string name="help_measurement_warning">जिन फ़ोनों में AR depth सपोर्ट नहीं है, उनमें माप केवल अनुमानित होंगे, खासकर फर्नीचर के लिए।</string>
     <string name="faq_room_creation">कमरा निर्माण</string>
     <string name="faq_how_to_create">3D कमरा कैसे बनाएं?</string>
     <string name="faq_how_to_create_answer">होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। आपको अपना 3D कमरा बनाने के लिए दो विकल्प दिखाई देंगे।</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">फर्नीचर सेगमेंटेशन क्या है?</string>
     <string name="faq_what_is_segmentation_answer">फर्नीचर सेगमेंटेशन AI का उपयोग करके आपकी फोटो में फर्नीचर आइटम की पहचान करता है और उन्हें अलग करता है, जिससे आप देख सकते हैं कि प्रत्येक टुकड़ा आपके 3D कमरे में कैसे फिट होगा।</string>
     <string name="faq_how_to_segment">फोटो से फर्नीचर कैसे सेगमेंट करें?</string>
-    <string name="faq_how_to_segment_answer">अपना 3D कमरा देखते समय, सेगमेंटेशन फीचर एक्सेस करने के लिए फर्नीचर आइकन टैप करें। फर्नीचर वाली फोटो चुनें, और ऐप स्वचालित रूप से फर्नीचर आइटम का पता लगाएगा और निकालेगा।</string>
+    <string name="faq_how_to_segment_answer">अपना 3D कमरा देखते समय segmentation शुरू करने के लिए brain icon पर टैप करें। फिर फर्नीचर की ओर कैमरा करें ताकि live detection और extracted furniture overlay दिखे।</string>
     <string name="faq_not_detected">मेरा फर्नीचर क्यों नहीं पहचाना जा रहा?</string>
     <string name="faq_not_detected_answer">फर्नीचर पहचान स्पष्ट, अच्छी रोशनी वाली फोटो में सबसे अच्छा काम करती है जहां फर्नीचर स्पष्ट रूप से दिखाई देता है। सुनिश्चित करें कि फर्नीचर आंशिक रूप से छिपा नहीं है या पृष्ठभूमि के साथ मिश्रित नहीं है।</string>
     <string name="faq_multiple_pieces">क्या मैं एक से अधिक फर्नीचर पीस सेगमेंट कर सकता हूं?</string>
@@ -177,11 +178,13 @@
     <string name="faq_adjust_dimensions_answer">हां, सेटिंग्स पर जाएं और कमरे के आयाम विकल्प खोजें जहां आप अपने जनरेटेड रूम के आकार और अनुपात को फाइन-ट्यून कर सकते हैं।</string>
     <string name="faq_furniture_measurements">फर्नीचर और माप</string>
     <string name="faq_ar_assisted_sizing">AR-सहायता वाला फर्नीचर साइज़िंग क्या है?</string>
-    <string name="faq_ar_assisted_sizing_answer">सेटिंग्स में चालू होने पर ऐप कैमरा की गहराई और ऑब्जेक्ट डिटेक्शन मिलाकर जैसे ही आप पास या दूर जाते हैं ओवरले को यथार्थवादी स्केल देता है। अच्छी रोशनी और साफ दृश्य में सबसे अच्छा काम करता है।</string>
+    <string name="faq_ar_assisted_sizing_answer">पहले segmentation शुरू करने के लिए brain icon पर टैप करें, फिर sizing control का इस्तेमाल करें। ARCore depth वाले फ़ोनों पर ऐप live camera depth का उपयोग करके अधिक वास्तविक furniture size दिखाती है। AR depth न होने पर यह एक मोटे proportion-based estimate पर लौटती है, इसलिए furniture measurement बिल्कुल exact नहीं होती।</string>
     <string name="faq_measurement_pill">छोटा माप रीडआउट क्या है?</string>
-    <string name="faq_measurement_pill_answer">SmartyPants चालू होने पर अनुमानित फर्नीचर और कमरे की ऊँचाई दिख सकती है। सटीकता के लिए टैप करके वास्तविक माप दर्ज करें। अगर कमरे की फोटो वाइड-एंगल (0.5×) से ली गई हो तो उसे चिह्नित करें।</string>
+    <string name="faq_measurement_pill_answer">Furni size pill तभी दिखाई देती है जब sizing mode चालू हो और ऐप के पास उपयोगी live height estimate हो। room viewer में room measurement भी दिख सकती है। non-AR फ़ोनों पर ये रीडिंग, खासकर furniture के लिए, कम भरोसेमंद होती हैं।</string>
     <string name="faq_reset_overlay_scale">मास्क गलत ज़ूम लग रहा है—क्या करें?</string>
-    <string name="faq_reset_overlay_scale_answer">3D कमरे में ओवरफ़्लो मेनू (⋮) खोलकर Reset overlay scale चुनें। डिटेक्शन मास्क पर लगा ऑटो ज़ूम हट जाएगा।</string>
+    <string name="faq_reset_overlay_scale_answer">अब overflow reset नहीं है। अगर overlay गलत लगे, तो brain icon को बंद करके फिर चालू करें, या pinch से furniture का size हाथ से ठीक करें।</string>
+    <string name="faq_pinch_overlay_size">सेगमेंट किए गए फर्नीचर को पिंच करने पर क्या होता है?</string>
+    <string name="faq_pinch_overlay_size_answer">पिंच करने पर फर्नीचर ओवरले बड़ा या छोटा होता है। अगर sizing mode चालू है और Furni pill दिख रही है, तो वही pill कमरे के हिसाब से बदले हुए फर्नीचर आकार के अनुमान पर अपडेट हो जाती है। अगर sizing mode बंद है, तो पिंच केवल स्क्रीन पर ओवरले का दृश्य आकार बदलता है।</string>
     <string name="faq_depth_aware_room_photo">क्या ऐप में फोटो लेने से कमरे की गुणवत्ता बेहतर होती है?</string>
     <string name="faq_depth_aware_room_photo_answer">हाँ। समर्थित डिवाइसों पर गैलरी के बजाय Take a photo इन-ऐप कैमरा और उपलब्ध होने पर गहराई का उपयोग करता है, जिससे 3D कमरा बेहतर बन सकता है।</string>
     <string name="faq_placement_intelligence">प्लेसमेंट इंटेलिजेंस और सौंदर्य</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">इनिशियलाइज़ हो रहा है…</string>
-    <string name="smartypants_drag_hint">फर्नीचर खिसकाने के लिए खींचें • रूम पैन करने के लिए बाहर खींचें</string>
+    <string name="smartypants_drag_hint">फर्नीचर खिसकाने के लिए खींचें • आकार बदलने के लिए पिंच करें • रूम पैन करने के लिए बाहर खींचें</string>
     <string name="smartypants_tap_calibrate">कैलिब्रेट करने के लिए टैप करें</string>
     <string name="smartypants_scanning">स्कैन हो रहा है…</string>
     <string name="smartypants_camera_error">कैमरा त्रुटि: %s</string>

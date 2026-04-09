@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">تم نسخ support@paafekt.com إلى الحافظة.</string>
     <string name="help_email_subject">دعم تطبيق Paafekt</string>
     <string name="help_email_body">مرحباً فريق دعم Paafekt،\n\nأحتاج مساعدة بخصوص:\n\n</string>
+    <string name="help_measurement_warning">الهواتف التي لا تدعم عمق الواقع المعزز تعطي قياسات تقريبية فقط، وخاصةً للأثاث.</string>
     <string name="faq_room_creation">إنشاء الغرفة</string>
     <string name="faq_how_to_create">كيف أنشئ غرفة ثلاثية الأبعاد؟</string>
     <string name="faq_how_to_create_answer">اضغط على أيقونة الصورة في الزاوية العلوية اليسرى من الشاشة الرئيسية، ثم التقط أو اختر صورة لغرفتك. سترى خيارين للاختيار من بينهما لإنشاء غرفتك ثلاثية الأبعاد.</string>
@@ -165,7 +166,7 @@
     <string name="faq_what_is_segmentation">ما هي تجزئة الأثاث؟</string>
     <string name="faq_what_is_segmentation_answer">تستخدم تجزئة الأثاث الذكاء الاصطناعي لتحديد وفصل الأثاث في صورك، مما يتيح لك رؤية كيف ستتناسب كل قطعة في غرفتك ثلاثية الأبعاد.</string>
     <string name="faq_how_to_segment">كيف أجزئ الأثاث من صورة؟</string>
-    <string name="faq_how_to_segment_answer">عند عرض غرفتك ثلاثية الأبعاد، اضغط على أيقونة الأثاث للوصول إلى ميزة التجزئة. اختر صورة تحتوي على أثاث، وسيقوم التطبيق تلقائياً باكتشاف واستخراج قطع الأثاث.</string>
+    <string name="faq_how_to_segment_answer">عند عرض غرفتك ثلاثية الأبعاد، اضغط على أيقونة الدماغ لبدء التجزئة. ثم وجّه الكاميرا نحو الأثاث لرؤية الاكتشاف المباشر وطبقة الأثاث المستخرجة.</string>
     <string name="faq_not_detected">لماذا لم يتم اكتشاف أثاثي؟</string>
     <string name="faq_not_detected_answer">يعمل اكتشاف الأثاث بشكل أفضل مع الصور الواضحة والمضاءة جيداً حيث يكون الأثاث مرئياً بوضوح. تأكد من أن الأثاث غير مخفي جزئياً أو متمازج مع الخلفية.</string>
     <string name="faq_multiple_pieces">هل يمكنني تجزئة قطع أثاث متعددة؟</string>
@@ -191,11 +192,13 @@
     <string name="faq_adjust_dimensions_answer">نعم، انتقل إلى الإعدادات وابحث عن خيارات أبعاد الغرفة حيث يمكنك ضبط حجم ونسب الغرفة المنشأة بدقة.</string>
     <string name="faq_furniture_measurements">الأثاث والقياسات</string>
     <string name="faq_ar_assisted_sizing">ما هو تحديد حجم الأثاث بمساعدة الواقع المعزز؟</string>
-    <string name="faq_ar_assisted_sizing_answer">عند تفعيله في الإعدادات، يجمع التطبيق بين عمق الكاميرا واكتشاف الأجسام ليضبط حجم طبقة الأثاث بشكل أوضح عند اقترابك أو ابتعادك. يعمل أفضل مع إضاءة جيدة ورؤية واضحة للقطعة.</string>
+    <string name="faq_ar_assisted_sizing_answer">اضغط أولاً على أيقونة الدماغ لبدء التجزئة، ثم استخدم أداة تحديد الحجم. على الهواتف التي تدعم عمق ARCore يستخدم التطبيق عمق الكاميرا المباشر ليعرض حجم أثاث أكثر واقعية. وعلى الهواتف التي لا تدعم عمق الواقع المعزز يعود إلى تقدير تقريبي قائم على النسبة، لذلك لا تكون قياسات الأثاث دقيقة تماماً.</string>
     <string name="faq_measurement_pill">ما هي القراءة الصغيرة للقياسات؟</string>
-    <string name="faq_measurement_pill_answer">عندما يكون SmartyPants نشطاً، قد تظهر تقديرات لارتفاع الأثاث والغرفة. اضغط لإدخال قياسات فعلية لدقة أفضل. إذا كانت صورة الغرفة بالزاوية الواسعة (0.5×)، حدد ذلك.</string>
+    <string name="faq_measurement_pill_answer">تظهر شارة Furni فقط عندما يكون وضع تحديد الحجم مفعلاً ويملك التطبيق تقديراً مباشراً صالحاً للارتفاع. وقد تظهر أيضاً قياسات الغرفة داخل عارض الغرفة. على الهواتف التي لا تدعم الواقع المعزز تكون هذه القراءات أقل موثوقية، خاصةً للأثاث.</string>
     <string name="faq_reset_overlay_scale">تبدو القناع مكبراً بشكل خاطئ—ماذا أفعل؟</string>
-    <string name="faq_reset_overlay_scale_answer">في الغرفة ثلاثية الأبعاد افتح القائمة (⋮) واختر إعادة ضبط مقياس الطبقة. يزيل التكبير التلقائي المطبق على قناع الكشف.</string>
+    <string name="faq_reset_overlay_scale_answer">لم تعد هناك إعادة ضبط داخل قائمة إضافية. إذا بدت الطبقة غير صحيحة، فأوقف أيقونة الدماغ ثم أعد تشغيلها، أو قرّب وباعِد الأثاث يدوياً لضبط حجمه.</string>
+    <string name="faq_pinch_overlay_size">ماذا يحدث عندما أقرّب أو أبعّد الأثاث المُقسَّم بإصبعيّ؟</string>
+    <string name="faq_pinch_overlay_size_answer">التقريب أو الإبعاد يجعل طبقة الأثاث أكبر أو أصغر. إذا كان وضع تحديد الحجم مفعلاً وكانت شارة Furni ظاهرة، فستتحدّث هذه الشارة إلى التقدير الحالي لحجم الأثاث بعد تغييره بالنسبة إلى الغرفة. وإذا كان وضع تحديد الحجم متوقفاً، فسيغيّر التقريب شكل الطبقة على الشاشة فقط.</string>
     <string name="faq_depth_aware_room_photo">هل يساعد التقاط الصورة داخل التطبيق على جودة الغرفة؟</string>
     <string name="faq_depth_aware_room_photo_answer">نعم. على الأجهزة المدعومة، خيار «التقاط صورة» بدلاً من المعرض يستخدم كاميرا التطبيق مع العمق عند توفره، مما قد يحسن بناء الغرفة ثلاثية الأبعاد وحجمها.</string>
     <string name="faq_placement_intelligence">ذكاء الموضع والجمالية</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">جاري التهيئة…</string>
-    <string name="smartypants_drag_hint">اسحب الأثاث للتحريك • اسحب خارجاً لتحريك الغرفة</string>
+    <string name="smartypants_drag_hint">اسحب الأثاث للتحريك • قرّب أو أبعِد لتغيير الحجم • اسحب خارجاً لتحريك الغرفة</string>
     <string name="smartypants_tap_calibrate">انقر للمعايرة</string>
     <string name="smartypants_scanning">جاري المسح…</string>
     <string name="smartypants_camera_error">خطأ في الكاميرا: %s</string>

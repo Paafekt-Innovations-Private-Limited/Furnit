@@ -337,6 +337,8 @@
 "roomViewer.placementFitCount" = "%d compatible";
 "roomViewer.placementDetectedSize" = "Détecté %.2f × %.2f × %.2f m";
 "roomViewer.placementMetricUnavailableNote" = "Le dimensionnement complet fonctionne mieux avec la profondeur. L’harmonie des couleurs ci-dessous reste utile.";
+"roomViewer.placementFitsRoom" = "Le meuble rentre dans les dimensions de la pièce.";
+"roomViewer.placementExceedsRoom" = "Le meuble dépasse les dimensions détectées de la pièce.";
 "roomViewer.placementHarmonySummary" = "Harmonie %.2f (%@) · contraste %.2f · accord de style %.2f";
 "roomViewer.harmonyTypeAnalogous" = "Analogue";
 "roomViewer.harmonyTypeComplementary" = "Complémentaire";

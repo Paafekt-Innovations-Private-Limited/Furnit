@@ -101,6 +101,10 @@ struct SharpRoomView: View {
     private let sharpPlyAabbW: Float?
     private let sharpPlyAabbH: Float?
     private let sharpPlyAabbD: Float?
+    /// ROOM_DIMS_V7 pre-computed room dimensions in **metres** from SHARP generation (no PLY re-measurement needed).
+    private let sharpRoomMetersW: Float?
+    private let sharpRoomMetersH: Float?
+    private let sharpRoomMetersD: Float?
     /// Oriented source photo pixel size (for proportion-style compare); nil when not from fresh generation.
     private let sourcePhotoPixelWidth: Int?
     private let sourcePhotoPixelHeight: Int?
@@ -115,6 +119,9 @@ struct SharpRoomView: View {
         sharpPlyAabbWidth: Float? = nil,
         sharpPlyAabbHeight: Float? = nil,
         sharpPlyAabbDepth: Float? = nil,
+        sharpRoomWidth: Float? = nil,
+        sharpRoomHeight: Float? = nil,
+        sharpRoomDepth: Float? = nil,
         sourcePhotoPixelWidth: Int? = nil,
         sourcePhotoPixelHeight: Int? = nil
     ) {
@@ -127,6 +134,9 @@ struct SharpRoomView: View {
         self.sharpPlyAabbW = sharpPlyAabbWidth
         self.sharpPlyAabbH = sharpPlyAabbHeight
         self.sharpPlyAabbD = sharpPlyAabbDepth
+        self.sharpRoomMetersW = sharpRoomWidth
+        self.sharpRoomMetersH = sharpRoomHeight
+        self.sharpRoomMetersD = sharpRoomDepth
         self.sourcePhotoPixelWidth = sourcePhotoPixelWidth
         self.sourcePhotoPixelHeight = sourcePhotoPixelHeight
 
@@ -531,6 +541,7 @@ struct SharpRoomView: View {
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: enhancedRoomMetadata) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: brainArAssistedSizingEnabled) { _, enabled in
             if !enabled {
                 detectedFurnitureHeightAR = nil
@@ -868,6 +879,7 @@ struct SharpRoomView: View {
             await MainActor.run {
                 if let measured {
                     measuredRoomDimensions = measured
+                    updateRoomPlacementIntelligence()
                     logDebug(
                         "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
                         "SOURCE=ASYNC_V7_PLY_MEASURE " +
@@ -901,6 +913,10 @@ struct SharpRoomView: View {
             logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=saved_meta_strict_available source=\(activeRoomMetersDimensionsSource)")
             return
         }
+        guard sharpGenerationRoomMeters == nil else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=sharp_v7_dims_available source=\(activeRoomMetersDimensionsSource)")
+            return
+        }
         backgroundRoomMeasurementTask?.cancel()
         backgroundRoomMeasurementTask = Task {
             logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) START source_before=\(activeRoomMetersDimensionsSource)")
@@ -912,6 +928,7 @@ struct SharpRoomView: View {
             await MainActor.run {
                 if measuredRoomDimensions == nil {
                     measuredRoomDimensions = measured
+                    updateRoomPlacementIntelligence()
                 }
                 if let measured {
                     logDebug(
@@ -1260,8 +1277,19 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
+    /// ROOM_DIMS_V7 pre-computed metres from SHARP generation — avoids PLY re-measurement.
+    private var sharpGenerationRoomMeters: (width: Float, height: Float, depth: Float)? {
+        guard let w = sharpRoomMetersW, let h = sharpRoomMetersH, let d = sharpRoomMetersD,
+              w.isFinite, h.isFinite, d.isFinite,
+              w > 0.05, h > 0.05, d > 0.05 else {
+            return nil
+        }
+        return (w, h, d)
+    }
+
     private var activeRoomMetersDimensionsSource: String {
         if savedRoomStrictMeters != nil { return "SAVED_META_STRICT" }
+        if sharpGenerationRoomMeters != nil { return "SHARP_ROOM_DIMS_V7" }
         if measuredRoomDimensions != nil { return "ASYNC_V7_PLY_MEASURE" }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
@@ -1282,7 +1310,7 @@ struct SharpRoomView: View {
     }
 
     private var hasCalculatedRoomMeasurements: Bool {
-        savedRoomStrictMeters != nil || measuredRoomDimensions != nil
+        savedRoomStrictMeters != nil || sharpGenerationRoomMeters != nil || measuredRoomDimensions != nil
     }
 
     /// Trimmed / SHARP AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
@@ -1310,9 +1338,10 @@ struct SharpRoomView: View {
         return (w, h, d)
     }
 
-    /// Nav, Furniture Fit, save, and overlay: saved meta → partial meta + scene depth → PLY-inferred metres.
+    /// Nav, Furniture Fit, save, and overlay: saved meta → SHARP V7 → partial meta + scene depth → PLY-inferred metres.
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let triple = savedRoomStrictMeters { return triple }
+        if let triple = sharpGenerationRoomMeters { return triple }
         if let measured = measuredRoomDimensions { return (measured.width, measured.height, measured.depth) }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
@@ -1692,7 +1721,7 @@ struct SharpRoomView: View {
     @ViewBuilder
     private var roomIntelligencePlacementCard: some View {
         if showingFurnitureFit,
-           roomModel != nil,
+           authoritativeRoomModelForMetrics != nil,
            placementIntelligenceHasFurnitureSignal,
            latestAestheticScore != nil {
             let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
@@ -1747,37 +1776,13 @@ struct SharpRoomView: View {
                     }
                     if let fit {
                         if fit.fitsInRoom {
-                            Text(
-                                fit.fitLocations.isEmpty
-                                    ? "Fits room bounds. No clear free-floor region yet."
-                                    : "Fits room. \(fit.fitLocations.count) candidate floor region(s)."
-                            )
-                            .font(.caption2)
-                            .foregroundColor(.green)
+                            Text(L10n.RoomViewer.placementFitsRoom)
+                                .font(.caption2)
+                                .foregroundColor(.green)
                         } else {
-                            Text("Current furniture footprint exceeds the detected room extents.")
+                            Text(L10n.RoomViewer.placementExceedsRoom)
                                 .font(.caption2)
                                 .foregroundColor(.red)
-                        }
-                        if let bestCorner = latestCornerPlacementSuggestions.first {
-                            Text(
-                                String(
-                                    format: "Best corner score %.2f, rot %.0f°",
-                                    bestCorner.score,
-                                    bestCorner.yRotationRad * 180 / .pi
-                                )
-                            )
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                        }
-                        if let firstWarning = fit.warnings.first {
-                            Text(firstWarning)
-                                .font(.caption2)
-                                .foregroundColor(.yellow)
-                        } else if latestEstimatedFurnitureDepthMeters != nil {
-                            Text("Depth is estimated until catalog or semantic data is available.")
-                                .font(.caption2)
-                                .foregroundColor(.gray)
                         }
                     }
                     if let aesthetic = latestAestheticScore {
@@ -2239,7 +2244,7 @@ struct SharpRoomView: View {
 
             await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }
 
-            if savedRoomStrictMeters == nil && measuredRoomDimensions == nil {
+            if savedRoomStrictMeters == nil && sharpGenerationRoomMeters == nil && measuredRoomDimensions == nil {
                 backgroundRoomMeasurementTask?.cancel()
                 backgroundRoomMeasurementTask = nil
                 let saveMeasured = await modelManager.measureRoomDimensionsAsync(
@@ -2249,6 +2254,7 @@ struct SharpRoomView: View {
                 await MainActor.run {
                     if let saveMeasured {
                         measuredRoomDimensions = saveMeasured
+                        updateRoomPlacementIntelligence()
                         logDebug(
                             "[ROOM_DIMS][SAVE] FILE=\(viewerPlyURL.lastPathComponent) " +
                             "APPROACH=\(saveMeasured.approach.uppercased()) SHOT=\(saveMeasured.shotType) " +
@@ -2272,8 +2278,10 @@ struct SharpRoomView: View {
             let roomW = fallbackDimensions?.width
             let roomH = fallbackDimensions?.height
             let roomD = fallbackDimensions?.depth
-            let roomDimsApproachForSave = await MainActor.run {
-                measuredRoomDimensions != nil ? "room_dims_v7_async" : nil
+            let roomDimsApproachForSave: String? = await MainActor.run {
+                if sharpGenerationRoomMeters != nil { return "room_dims_v7_sharp" }
+                if measuredRoomDimensions != nil { return "room_dims_v7_async" }
+                return nil
             }
             if let roomW, let roomH, let roomD {
                 logDebug(
@@ -2417,8 +2425,22 @@ struct SharpRoomView: View {
         return RoomFurnitureDimensions(widthM: width, heightM: height, depthM: estimatedDepth)
     }
 
+    /// Room geometry for placement intelligence: live RANSAC model, persisted enhanced metadata, or a stub box from
+    /// ``activeRoomMetersDimensions`` when full extraction is disabled (matches nav / Furniture Fit room dims).
     private var authoritativeRoomModelForMetrics: RoomModel? {
-        nil
+        if let roomModel { return roomModel }
+        if let metadata = enhancedRoomMetadata {
+            return metadata.roomModel()
+        }
+        guard let dims = activeRoomMetersDimensions,
+              dims.width > 0.05, dims.height > 0.05, dims.depth > 0.05 else {
+            return nil
+        }
+        return PlacementIntelligenceRoomStub.axisAlignedBoxMeters(
+            width: dims.width,
+            height: dims.height,
+            depth: dims.depth
+        )
     }
 
     /// Width, segmentation color, or full W×H×D — enough to show style hints without LiDAR height.
@@ -2554,6 +2576,55 @@ struct SharpRoomView: View {
         }
     }
 
+}
+
+// MARK: - Placement intelligence fallback room
+
+/// Minimal axis-aligned room used when ``RoomGeometryEngine`` output is unavailable but nav / Furniture Fit
+/// already have W×H×D metres (same source as ``activeRoomMetersDimensions``).
+private enum PlacementIntelligenceRoomStub {
+    static func axisAlignedBoxMeters(width: Float, height: Float, depth: Float) -> RoomModel {
+        let w = max(width, 0.2)
+        let h = max(height, 0.2)
+        let d = max(depth, 0.2)
+        let wHalf = w * 0.5
+        let dHalf = d * 0.5
+        let aabb = AABB3(
+            min: SIMD3<Float>(-wHalf, 0, -dHalf),
+            max: SIMD3<Float>(wHalf, h, dHalf)
+        )
+        let floor = DetectedPlane(type: .floor, normal: SIMD3<Float>(0, 1, 0), pointOnPlane: .zero)
+        let ceiling = DetectedPlane(type: .ceiling, normal: SIMD3<Float>(0, -1, 0), pointOnPlane: SIMD3<Float>(0, h, 0))
+        let walls: [DetectedPlane] = [
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(1, 0, 0), pointOnPlane: SIMD3<Float>(-wHalf, 0, 0)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(-1, 0, 0), pointOnPlane: SIMD3<Float>(wHalf, 0, 0)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(0, 0, 1), pointOnPlane: SIMD3<Float>(0, 0, -dHalf)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(0, 0, -1), pointOnPlane: SIMD3<Float>(0, 0, dHalf))
+        ]
+        let uvMin = SIMD2<Float>(-wHalf, -dHalf)
+        let uvMax = SIMD2<Float>(wHalf, dHalf)
+        let freeFloor = FreeFloorRegion(
+            polygon: [
+                uvMin,
+                SIMD2<Float>(wHalf, -dHalf),
+                uvMax,
+                SIMD2<Float>(-wHalf, dHalf)
+            ],
+            areaSqM: w * d,
+            uvBounds: FloorUVBounds(min: uvMin, max: uvMax)
+        )
+        return RoomModel(
+            aabb: aabb,
+            floor: floor,
+            ceiling: ceiling,
+            walls: walls,
+            corners: [],
+            freeFloorRegions: [freeFloor],
+            surfacePalette: .empty,
+            cameraInfo: nil,
+            sceneToMeters: 1.0
+        )
+    }
 }
 
 // MARK: - Antimatter15 WebGL Splat View (removed)

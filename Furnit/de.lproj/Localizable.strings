@@ -364,6 +364,8 @@
 "roomViewer.placementFitCount" = "%d passend";
 "roomViewer.placementDetectedSize" = "Erkannt %.2f × %.2f × %.2f m";
 "roomViewer.placementMetricUnavailableNote" = "Größenprüfung funktioniert am besten mit Tiefenmessung. Die Farbharmonie unten gilt trotzdem.";
+"roomViewer.placementFitsRoom" = "Das Möbelstück passt in die Raummaße.";
+"roomViewer.placementExceedsRoom" = "Das Möbelstück überschreitet die erkannten Raummaße.";
 "roomViewer.placementHarmonySummary" = "Harmonie %.2f (%@) · Kontrast %.2f · Stilpassung %.2f";
 "roomViewer.harmonyTypeAnalogous" = "Analog";
 "roomViewer.harmonyTypeComplementary" = "Komplementär";

@@ -334,6 +334,8 @@
 "roomViewer.placementFitCount" = "%d பொருத்தம்";
 "roomViewer.placementDetectedSize" = "கண்டறியப்பட்டது %.2f × %.2f × %.2f மீ";
 "roomViewer.placementMetricUnavailableNote" = "முழு அளவு சரிபார்ப்பு ஆழம் உணரும் iPhone-களில் சிறப்பாக வேலை செய்கிறது. கீழுள்ள நிற இசைவு இன்னும் உதவுகிறது.";
+"roomViewer.placementFitsRoom" = "மரச்சாமான் அறை அளவுகளுக்குள் பொருந்துகிறது.";
+"roomViewer.placementExceedsRoom" = "மரச்சாமான் கண்டறிந்த அறை அளவுகளை மீறுகிறது.";
 "roomViewer.placementHarmonySummary" = "இசைவு %.2f (%@) · வேறுபாடு %.2f · பாணி பொருத்தம் %.2f";
 "roomViewer.harmonyTypeAnalogous" = "ஒத்த";
 "roomViewer.harmonyTypeComplementary" = "நிறைவுபடுத்தும்";

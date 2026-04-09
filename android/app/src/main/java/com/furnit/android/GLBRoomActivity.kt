@@ -268,6 +268,32 @@ class GLBRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
+
+            val arBtn = TextView(this@GLBRoomActivity).apply {
+                text = getString(R.string.model_viewer_ar)
+                textSize = 13f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(16).toFloat()
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
+                setOnClickListener { openFurnitureFit(enableArAssistedSizing = true) }
+            }
+            addView(
+                arBtn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.END or Gravity.TOP
+                    topMargin = dpToPx(68)
+                },
+            )
         }
     }
 
@@ -290,17 +316,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     gravity = Gravity.START or Gravity.BOTTOM
                     bottomMargin = dpToPx(20)
                 }
-                setOnClickListener {
-                    // Launch FurnitureFitActivity with this room as background (pass folder so it uses opened room)
-                    val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> java.io.File(path).parent }
-                    LogUtil.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
-                    val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
-                    intent.putExtra("ROOM_ID", roomId)
-                    intent.putExtra("ROOM_NAME", roomName)
-                    roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
-                    intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
-                    startActivity(intent)
-                }
+                setOnClickListener { openFurnitureFit(enableArAssistedSizing = false) }
             }
             addView(brainBtn)
 
@@ -362,6 +378,23 @@ class GLBRoomActivity : AppCompatActivity() {
             }
             addView(cameraBtn)
         }
+    }
+
+    private fun openFurnitureFit(enableArAssistedSizing: Boolean) {
+        val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> File(path).parent }
+        LogUtil.d(
+            TAG,
+            "FurnitureFit launch: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder arAssist=$enableArAssistedSizing",
+        )
+        val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
+        intent.putExtra("ROOM_ID", roomId)
+        intent.putExtra("ROOM_NAME", roomName)
+        roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
+        intent.putExtra("ROOM_WIDTH", roomWidth)
+        intent.putExtra("ROOM_HEIGHT", roomHeight)
+        intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+        intent.putExtra(FurnitureFitActivity.EXTRA_ENABLE_AR_ASSISTED_SIZING, enableArAssistedSizing)
+        startActivity(intent)
     }
 
     private fun createLoadingOverlay(): FrameLayout {

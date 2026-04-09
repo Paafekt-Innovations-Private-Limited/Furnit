@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com உங்கள் கிளிப்போர்டில் நகலெடுக்கப்பட்டது.</string>
     <string name="help_email_subject">Paafekt பயன்பாடு உதவி</string>
     <string name="help_email_body">வணக்கம் Paafekt உதவி குழு,\n\nஎனக்கு உதவி தேவை:\n\n</string>
+    <string name="help_measurement_warning">AR depth ஆதரவு இல்லாத போன்களில் அளவீடுகள் கணிப்பானவையாக மட்டுமே இருக்கும், குறிப்பாக furniture-க்கு.</string>
     <string name="faq_room_creation">அறை உருவாக்கம்</string>
     <string name="faq_how_to_create">3D அறையை எப்படி உருவாக்குவது?</string>
     <string name="faq_how_to_create_answer">முகப்பு திரையின் மேல்-இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். உங்கள் 3D அறையை உருவாக்க இரண்டு விருப்பங்களைக் காண்பீர்கள்.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">தளபாட பிரிப்பு என்றால் என்ன?</string>
     <string name="faq_what_is_segmentation_answer">தளபாட பிரிப்பு AI ஐப் பயன்படுத்தி உங்கள் புகைப்படங்களில் தளபாடங்களை அடையாளம் கண்டு பிரிக்கிறது, ஒவ்வொரு பொருளும் உங்கள் 3D அறையில் எப்படி பொருந்தும் என்பதைக் காண அனுமதிக்கிறது.</string>
     <string name="faq_how_to_segment">புகைப்படத்திலிருந்து தளபாடங்களை எப்படி பிரிப்பது?</string>
-    <string name="faq_how_to_segment_answer">உங்கள் 3D அறையைப் பார்க்கும்போது, பிரிப்பு அம்சத்தை அணுக தளபாட ஐகானைத் தட்டவும். தளபாடங்கள் உள்ள புகைப்படத்தைத் தேர்ந்தெடுக்கவும், பயன்பாடு தானாகவே தளபாட பொருட்களைக் கண்டறிந்து பிரிக்கும்.</string>
+    <string name="faq_how_to_segment_answer">உங்கள் 3D அறையைப் பார்க்கும் போது segmentation தொடங்க brain icon-ஐ தட்டவும். அதன் பிறகு furniture-ஐ நோக்கி camera-ஐ திருப்பி live detection மற்றும் extracted furniture overlay-ஐ பார்க்கலாம்.</string>
     <string name="faq_not_detected">என் தளபாடங்கள் ஏன் கண்டறியப்படவில்லை?</string>
     <string name="faq_not_detected_answer">தளபாட கண்டறிதல் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படங்களில் தளபாடங்கள் தெளிவாகத் தெரியும்போது சிறப்பாக செயல்படுகிறது. தளபாடங்கள் பகுதியளவு மறைக்கப்படவில்லை அல்லது பின்னணியுடன் கலக்கவில்லை என்பதை உறுதிப்படுத்தவும்.</string>
     <string name="faq_multiple_pieces">பல தளபாடங்களை பிரிக்க முடியுமா?</string>
@@ -177,11 +178,13 @@
     <string name="faq_adjust_dimensions_answer">ஆம், அமைப்புகளுக்குச் சென்று அறை பரிமாண விருப்பங்களைக் கண்டறியவும், அங்கு உருவாக்கப்பட்ட அறையின் அளவு மற்றும் விகிதாச்சாரங்களை நுணுக்கமாக சரிசெய்யலாம்.</string>
     <string name="faq_furniture_measurements">தளபாடம் &amp; அளவீடுகள்</string>
     <string name="faq_ar_assisted_sizing">AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?</string>
-    <string name="faq_ar_assisted_sizing_answer">அமைப்புகளில் இயக்கப்பட்டால், பயன்பாடு கேமரா ஆழம் மற்றும் பொருள் கண்டறிதலை இணைத்து நீங்கள் அருகில் அல்லது தொலைவில் நகரும்போது மேலடுக்கு அளவை யதார்த்தமாக மாற்றும். நல்ல வெளிச்சம் மற்றும் தெளிவான பார்வையில் சிறப்பாக வேலை செய்கிறது.</string>
+    <string name="faq_ar_assisted_sizing_answer">முதலில் segmentation தொடங்க brain icon-ஐ தட்டவும், பிறகு sizing control-ஐ பயன்படுத்தவும். ARCore depth ஆதரவு உள்ள போன்களில் app live camera depth பயன்படுத்தி இன்னும் இயல்பான furniture size-ஐ காட்டும். AR depth இல்லாத போன்களில் இது ஒரு பொதுவான proportion-based estimate-க்கு மாறும்; ஆகவே furniture அளவீடுகள் துல்லியமாக இருக்காது.</string>
     <string name="faq_measurement_pill">சிறிய அளவீட்டுக் குறிப்பு என்ன?</string>
-    <string name="faq_measurement_pill_answer">SmartyPants செயலில் இருக்கும்போது, மதிப்பிடப்பட்ட தளபாடம் மற்றும் அறை உயரம் காட்டப்படலாம். துல்லியத்திற்கு உண்மையான அளவுகளை உள்ளிட தட்டவும். அறைப் படம் வைட்-ஆங்கிள் (0.5×) என்றால் அதைக் குறிக்கவும்.</string>
+    <string name="faq_measurement_pill_answer">Furni size pill என்பது sizing mode on ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தெரியும். room viewer-ல் room measurement-களும் தோன்றலாம். non-AR போன்களில் இந்த reading-கள், குறிப்பாக furniture-க்கு, குறைவாக நம்பகமானவை.</string>
     <string name="faq_reset_overlay_scale">முகமூடி தவறாக பெரிதாக்கப்பட்டது போல் தெரிகிறது — என்ன செய்வது?</string>
-    <string name="faq_reset_overlay_scale_answer">3D அறையில் மேலதிக மெனுவை (⋮) திறந்து Reset overlay scale ஐத் தேர்ந்தெடுக்கவும். கண்டறிதல் முகமூடிக்கு பயன்பட்ட தானியங்கு பெரிதாக்கம் அழிக்கப்படும்.</string>
+    <string name="faq_reset_overlay_scale_answer">இப்போது overflow reset இல்லை. overlay தவறாகத் தெரிந்தால் brain icon-ஐ off செய்து மீண்டும் on செய்யவும், அல்லது pinch மூலம் furniture அளவை கைமுறையாகச் சரிசெய்யவும்.</string>
+    <string name="faq_pinch_overlay_size">பிரிக்கப்பட்ட furniture-ஐ pinch செய்தால் என்ன ஆகும்?</string>
+    <string name="faq_pinch_overlay_size_answer">pinch செய்தால் furniture overlay பெரியதாகவும் சிறியதாகவும் மாறும். sizing mode on ஆகி Furni pill தெரிந்தால், அந்த pill அறைக்கு பொருந்தும் தற்போதைய resized furniture மதிப்பீட்டுக்கு புதுப்பிக்கும். sizing mode off ஆக இருந்தால், pinch திரையில் overlay-யின் தோற்ற அளவை மட்டும் மாற்றும்.</string>
     <string name="faq_depth_aware_room_photo">பயன்பாட்டில் புகைப்படம் எடுப்பது உதவுமா?</string>
     <string name="faq_depth_aware_room_photo_answer">ஆம். ஆதரவுள்ள சாதனங்களில், கேலரிக்கு பதிலாக Take a photo ஆழம்-விழிப்புணர்வு கேமராவைப் பயன்படுத்துகிறது (கிடைத்தால்), இது 3D அறையை மேம்படுத்த உதவும்.</string>
     <string name="faq_placement_intelligence">இடமமைவு நுண்ணறிவும் அழகியலும்</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">துவக்கப்படுகிறது…</string>
-    <string name="smartypants_drag_hint">தளபாடங்களை நகர்த்த இழுக்கவும் • அறையை பான் செய்ய வெளியே இழுக்கவும்</string>
+    <string name="smartypants_drag_hint">தளபாடங்களை நகர்த்த இழுக்கவும் • அளவு மாற்ற pinch செய்யவும் • அறையை பான் செய்ய வெளியே இழுக்கவும்</string>
     <string name="smartypants_tap_calibrate">அளவீடு செய்ய தட்டவும்</string>
     <string name="smartypants_scanning">ஸ்கேன் செய்யப்படுகிறது…</string>
     <string name="smartypants_camera_error">கேமரா பிழை: %s</string>

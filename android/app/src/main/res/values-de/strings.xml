@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com wurde in Ihre Zwischenablage kopiert.</string>
     <string name="help_email_subject">Paafekt-App-Support</string>
     <string name="help_email_body">Hallo Paafekt-Support-Team,\n\nich benötige Hilfe bei:\n\n</string>
+    <string name="help_measurement_warning">Telefone ohne AR-Tiefenunterstützung liefern nur ungefähre Messwerte, besonders bei Möbeln.</string>
     <string name="faq_room_creation">Raumerstellung</string>
     <string name="faq_how_to_create">Wie erstelle ich einen 3D-Raum?</string>
     <string name="faq_how_to_create_answer">Tippen Sie auf das Foto-Symbol in der oberen linken Ecke des Startbildschirms und nehmen Sie dann ein Foto Ihres Raums auf oder wählen Sie eines aus. Sie sehen zwei Optionen zur Auswahl für die Erstellung Ihres 3D-Raums.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">Was ist Möbel-Segmentierung?</string>
     <string name="faq_what_is_segmentation_answer">Die Möbel-Segmentierung verwendet KI, um Möbelstücke in Ihren Fotos zu identifizieren und zu trennen, sodass Sie sehen können, wie jedes Stück in Ihren 3D-Raum passen würde.</string>
     <string name="faq_how_to_segment">Wie segmentiere ich Möbel aus einem Foto?</string>
-    <string name="faq_how_to_segment_answer">Wenn Sie Ihren 3D-Raum betrachten, tippen Sie auf das Möbel-Symbol, um auf die Segmentierungsfunktion zuzugreifen. Wählen Sie ein Foto mit Möbeln aus, und die App erkennt und extrahiert automatisch die Möbelstücke.</string>
+    <string name="faq_how_to_segment_answer">Wenn Sie Ihren 3D-Raum betrachten, tippen Sie auf das Gehirn-Symbol, um die Segmentierung zu starten. Richten Sie dann die Kamera auf Möbel, um die Live-Erkennung und das extrahierte Möbel-Overlay zu sehen.</string>
     <string name="faq_not_detected">Warum werden meine Möbel nicht erkannt?</string>
     <string name="faq_not_detected_answer">Die Möbelerkennung funktioniert am besten mit klaren, gut beleuchteten Fotos, auf denen die Möbel deutlich sichtbar sind. Stellen Sie sicher, dass die Möbel nicht teilweise verdeckt sind oder mit dem Hintergrund verschmelzen.</string>
     <string name="faq_multiple_pieces">Kann ich mehrere Möbelstücke segmentieren?</string>
@@ -182,11 +183,13 @@
     <string name="faq_adjust_dimensions_answer">Ja, gehen Sie zu Einstellungen und suchen Sie nach Raummaße-Optionen, wo Sie die Größe und Proportionen Ihres generierten Raums feinabstimmen können.</string>
     <string name="faq_furniture_measurements">Möbel &amp; Maße</string>
     <string name="faq_ar_assisted_sizing">Was ist AR-gestützte Möbelgröße?</string>
-    <string name="faq_ar_assisted_sizing_answer">Wenn diese Option in den Einstellungen aktiviert ist, kombiniert die App Tiefendaten mit Objekterkennung, damit sich die Möbel-Overlay-Skala beim Näherkommen oder Weggehen realistischer anpasst. Am besten bei guter Beleuchtung und klar sichtbarem Objekt.</string>
+    <string name="faq_ar_assisted_sizing_answer">Tippen Sie zuerst auf das Gehirn-Symbol, um die Segmentierung zu starten, und verwenden Sie danach die Größensteuerung. Auf Telefonen mit ARCore-Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen. Ohne AR-Tiefe greift sie auf eine grobe Proportionsschätzung zurück, daher sind Möbelmaße nicht exakt.</string>
     <string name="faq_measurement_pill">Was bedeutet die kleine Maßanzeige?</string>
-    <string name="faq_measurement_pill_answer">Während SmartyPants aktiv ist, kann eine kleine Anzeige geschätzte Möbel- und Raumhöhe zeigen. Tippen Sie darauf, um reale Maße einzugeben. War das Raumfoto mit Weitwinkel (0,5×) aufgenommen, markieren Sie das, damit die Einordnung stimmt.</string>
+    <string name="faq_measurement_pill_answer">Die Furni-Anzeige erscheint nur, wenn der Größenmodus aktiv ist und die App eine brauchbare Live-Höhenschätzung hat. Im Raum-Viewer können zusätzlich Raummaße erscheinen. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, besonders bei Möbeln.</string>
     <string name="faq_reset_overlay_scale">Die Maske wirkt falsch gezoomt – was tun?</string>
-    <string name="faq_reset_overlay_scale_answer">Öffnen Sie im 3D-Raum das Überlaufmenü (⋮) und wählen Sie „Overlay-Zoom zurücksetzen“. Damit wird die automatische Skalierung der Erkennungsmaske gelöscht und kann sich beim Bewegen neu einpendeln.</string>
+    <string name="faq_reset_overlay_scale_answer">Es gibt jetzt kein Überlauf-Reset mehr. Wenn die Überlagerung nicht richtig aussieht, schalten Sie das Gehirn-Symbol aus und wieder ein oder passen Sie die Möbelgröße per Pinch-Geste manuell an.</string>
+    <string name="faq_pinch_overlay_size">Was passiert, wenn ich die segmentierten Möbel per Pinch vergrößere oder verkleinere?</string>
+    <string name="faq_pinch_overlay_size_answer">Durch die Pinch-Geste wird die Möbelüberlagerung größer oder kleiner. Wenn der Größenmodus aktiv ist und die Furni-Anzeige sichtbar ist, wird diese Anzeige auf die aktuell angepasste Möbelschätzung für den Raum aktualisiert. Ist der Größenmodus aus, ändert Pinch nur die sichtbare Overlay-Größe auf dem Bildschirm.</string>
     <string name="faq_depth_aware_room_photo">Hilft ein Foto in der App der Raumqualität?</string>
     <string name="faq_depth_aware_room_photo_answer">Ja. Auf unterstützten Geräten nutzt „Foto aufnehmen“ (statt Galerie) die In-App-Kamera mit Tiefendaten, sofern verfügbar – das kann Aufbau und Maßstab des 3D-Raums verbessern.</string>
     <string name="faq_placement_intelligence">Platzierung &amp; Ästhetik</string>
@@ -271,7 +274,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initialisierung…</string>
-    <string name="smartypants_drag_hint">Möbel ziehen zum Verschieben • Außen ziehen zum Schwenken</string>
+    <string name="smartypants_drag_hint">Möbel ziehen zum Verschieben • Pinch zum Größenändern • Außen ziehen zum Schwenken</string>
     <string name="smartypants_tap_calibrate">Tippen zum Kalibrieren</string>
     <string name="smartypants_scanning">Scannen…</string>
     <string name="smartypants_camera_error">Kamerafehler: %s</string>

@@ -334,6 +334,8 @@
 "roomViewer.placementFitCount" = "%d फिट";
 "roomViewer.placementDetectedSize" = "पता चला %.2f × %.2f × %.2f मी";
 "roomViewer.placementMetricUnavailableNote" = "पूर्ण आकार जाँच गहराई वाले iPhone पर सबसे अच्छी है। नीचे रंग सामंजस्य अभी भी मदद करता है।";
+"roomViewer.placementFitsRoom" = "फ़र्नीचर कमरे के आयामों में फ़िट है।";
+"roomViewer.placementExceedsRoom" = "फ़र्नीचर पहचाने गए कमरे के आयामों से बड़ा है।";
 "roomViewer.placementHarmonySummary" = "सामंजस्य %.2f (%@) · कंट्रास्ट %.2f · स्टाइल मिलान %.2f";
 "roomViewer.harmonyTypeAnalogous" = "समान";
 "roomViewer.harmonyTypeComplementary" = "पूरक";

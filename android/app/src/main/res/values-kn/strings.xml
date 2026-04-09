@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com ನಿಮ್ಮ ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ಗೆ ನಕಲಿಸಲಾಗಿದೆ.</string>
     <string name="help_email_subject">Paafekt ಅಪ್ಲಿಕೇಶನ್ ಬೆಂಬಲ</string>
     <string name="help_email_body">ನಮಸ್ಕಾರ Paafekt ಬೆಂಬಲ ತಂಡ,\n\nನನಗೆ ಇದರ ಬಗ್ಗೆ ಸಹಾಯ ಬೇಕು:\n\n</string>
+    <string name="help_measurement_warning">AR depth ಬೆಂಬಲವಿಲ್ಲದ ಫೋನ್‌ಗಳಲ್ಲಿ ಅಳತೆಗಳು ಅಂದಾಜು ಮಟ್ಟದಲ್ಲೇ ಇರುತ್ತವೆ, ವಿಶೇಷವಾಗಿ ಫರ್ನಿಚರ್‌ಗೆ.</string>
     <string name="faq_room_creation">ಕೊಠಡಿ ರಚನೆ</string>
     <string name="faq_how_to_create">3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?</string>
     <string name="faq_how_to_create_answer">ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.</string>
@@ -169,7 +170,7 @@
     <string name="faq_what_is_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?</string>
     <string name="faq_what_is_segmentation_answer">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ AI ಬಳಸಿ ನಿಮ್ಮ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣಗಳನ್ನು ಗುರುತಿಸುತ್ತದೆ ಮತ್ತು ಬೇರ್ಪಡಿಸುತ್ತದೆ, ಪ್ರತಿ ತುಂಡು ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂಬುದನ್ನು ನೋಡಲು ಅನುಮತಿಸುತ್ತದೆ.</string>
     <string name="faq_how_to_segment">ಫೋಟೋದಿಂದ ಪೀಠೋಪಕರಣಗಳನ್ನು ಹೇಗೆ ವಿಭಜಿಸುವುದು?</string>
-    <string name="faq_how_to_segment_answer">ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ವೀಕ್ಷಿಸುವಾಗ, ವಿಭಜನೆ ವೈಶಿಷ್ಟ್ಯವನ್ನು ಪ್ರವೇಶಿಸಲು ಪೀಠೋಪಕರಣ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಪೀಠೋಪಕರಣ ಹೊಂದಿರುವ ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ, ಮತ್ತು ಅಪ್ಲಿಕೇಶನ್ ಪೀಠೋಪಕರಣ ವಸ್ತುಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪತ್ತೆಹಚ್ಚಿ ಹೊರತೆಗೆಯುತ್ತದೆ.</string>
+    <string name="faq_how_to_segment_answer">ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನೋಡುತ್ತಿರುವಾಗ segmentation ಆರಂಭಿಸಲು brain icon ಅನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಂತರ ಫರ್ನಿಚರ್ ಕಡೆ ಕ್ಯಾಮೆರಾವನ್ನು ತೋರಿಸಿ live detection ಮತ್ತು extracted furniture overlay ನೋಡಿ.</string>
     <string name="faq_not_detected">ನನ್ನ ಪೀಠೋಪಕರಣ ಏಕೆ ಪತ್ತೆಯಾಗುತ್ತಿಲ್ಲ?</string>
     <string name="faq_not_detected_answer">ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.</string>
     <string name="faq_multiple_pieces">ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?</string>
@@ -188,11 +189,13 @@
     <string name="faq_adjust_dimensions_answer">ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.</string>
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?</string>
-    <string name="faq_ar_assisted_sizing_answer">ARCore ಬೆಂಬಲವಿರುವ ಸಾಧನಗಳಲ್ಲಿ, ಅಪ್ಲಿಕೇಶನ್ ಆಳ ಮತ್ತು ಕ್ಯಾಮೆರಾ ಇಂಟ್ರಿನ್ಸಿಕ್ಸ್ ಬಳಸಿ ನೀವು ಚಲಿಸಿದಂತೆ ಓವರ್ಲೇಯನ್ನು ನೈಜ ಮೀಟರ್‌ಗಳಲ್ಲಿ ಸ್ಕೇಲ್ ಮಾಡುತ್ತದೆ. ARCore ಇಲ್ಲದಿದ್ದರೆ, ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ಬಳಸಲಾಗುತ್ತದೆ; ನೀವು ಇನ್ನೂ ಪಿಂಚ್ ಮಾಡಿ ಓವರ್ಲೇ ಹೊಂದಿಸಬಹುದು.</string>
+    <string name="faq_ar_assisted_sizing_answer">ಮೊದಲು segmentation ಆರಂಭಿಸಲು brain icon ಅನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ sizing control ಅನ್ನು ಬಳಸಿ. ARCore depth ಬೆಂಬಲ ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ app live camera depth ಬಳಸಿ ಹೆಚ್ಚು ವಾಸ್ತವಿಕ furniture size ತೋರಿಸುತ್ತದೆ. AR depth ಇಲ್ಲದ ಫೋನ್‌ಗಳಲ್ಲಿ ಇದು ಅಂದಾಜಿನ proportion-based estimate ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ, ಆದ್ದರಿಂದ furniture ಅಳತೆಗಳು exact ಆಗಿರುವುದಿಲ್ಲ.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
-    <string name="faq_measurement_pill_answer">While SmartyPants is active, a pill may show estimated furniture height and room height. Tap it to enter real measurements for better accuracy. If your room photo was taken with a wide-angle (0.5×) lens, mark that option so framing stays consistent.</string>
+    <string name="faq_measurement_pill_answer">Furni size pill sizing mode ಆನ್ ಆಗಿ, app ಗೆ ಬಳಸಬಹುದಾದ live height estimate ಸಿಕ್ಕಾಗ ಮಾತ್ರ ಕಾಣಿಸುತ್ತದೆ. room viewer ನಲ್ಲಿ room measurement ಕೂಡ ಕಾಣಿಸಬಹುದು. non-AR ಫೋನ್‌ಗಳಲ್ಲಿ ಈ ಓದುಗಳು, ವಿಶೇಷವಾಗಿ furniture ಗೆ, ಕಡಿಮೆ ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
-    <string name="faq_reset_overlay_scale_answer">Open the overflow menu (⋮) in the 3D room and choose Reset overlay scale. That clears the automatic zoom applied to the detection overlay so it can settle again as you move.</string>
+    <string name="faq_reset_overlay_scale_answer">ಈಗ overflow reset ಇಲ್ಲ. overlay ತಪ್ಪಾಗಿ ಕಾಣಿಸಿದರೆ brain icon ಆಫ್ ಮಾಡಿ ಮತ್ತೆ ಆನ್ ಮಾಡಿ, ಅಥವಾ pinch ಬಳಸಿ furniture ಗಾತ್ರವನ್ನು ಕೈಯಾರೆ ಸರಿಪಡಿಸಿ.</string>
+    <string name="faq_pinch_overlay_size">ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿದ ಫರ್ನಿಚರ್ ಅನ್ನು pinch ಮಾಡಿದರೆ ಏನಾಗುತ್ತದೆ?</string>
+    <string name="faq_pinch_overlay_size_answer">pinch ಮಾಡಿದರೆ ಫರ್ನಿಚರ್ ಓವರ್‌ಲೆ ದೊಡ್ಡದಾಗಬಹುದು ಅಥವಾ ಚಿಕ್ಕದಾಗಬಹುದು. sizing mode ಆನ್ ಆಗಿ Furni pill ಕಾಣುತ್ತಿದ್ದರೆ, ಆ pill ಕೊಠಡಿಗೆ ಹೊಂದುವಂತೆ ಈಗಿನ resized ಫರ್ನಿಚರ್ ಅಂದಾಜಿಗೆ ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತದೆ. sizing mode ಆಫ್ ಆಗಿದ್ದರೆ, pinch ಸ್ಕ್ರೀನ್ ಮೇಲಿನ ಓವರ್‌ಲೆ ಗಾತ್ರವನ್ನೇ ಮಾತ್ರ ಬದಲಾಯಿಸುತ್ತದೆ.</string>
     <string name="boundary_title">ಕೊಠಡಿ ಗಡಿಗಳು</string>
     <string name="boundary_instructions">ಗಡಿಗಳನ್ನು ಹೊಂದಿಸಲು ವೃತ್ತಗಳನ್ನು ಎಳೆಯಿರಿ</string>
     <string name="boundary_floor">ನೆಲ</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">ಪ್ರಾರಂಭಿಸುತ್ತಿದೆ…</string>
-    <string name="smartypants_drag_hint">ಫರ್ನಿಚರ್ ಚಲಿಸಲು ಎಳೆಯಿರಿ • ಕೊಠಡಿ ಪ್ಯಾನ್ ಮಾಡಲು ಹೊರಗೆ ಎಳೆಯಿರಿ</string>
+    <string name="smartypants_drag_hint">ಫರ್ನಿಚರ್ ಚಲಿಸಲು ಎಳೆಯಿರಿ • ಗಾತ್ರ ಬದಲಿಸಲು pinch ಮಾಡಿ • ಕೊಠಡಿ ಪ್ಯಾನ್ ಮಾಡಲು ಹೊರಗೆ ಎಳೆಯಿರಿ</string>
     <string name="smartypants_tap_calibrate">ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ</string>
     <string name="smartypants_scanning">ಸ್ಕ್ಯಾನ್ ಆಗುತ್ತಿದೆ…</string>
     <string name="smartypants_camera_error">ಕ್ಯಾಮೆರಾ ದೋಷ: %s</string>

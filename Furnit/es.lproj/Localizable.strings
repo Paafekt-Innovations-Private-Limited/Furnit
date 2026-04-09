@@ -337,6 +337,8 @@
 "roomViewer.placementFitCount" = "%d encaja";
 "roomViewer.placementDetectedSize" = "Detectado %.2f × %.2f × %.2f m";
 "roomViewer.placementMetricUnavailableNote" = "El ajuste de tamaño completo funciona mejor con profundidad. La armonía de color de abajo sigue aplicando.";
+"roomViewer.placementFitsRoom" = "El mueble cabe en las dimensiones de la habitación.";
+"roomViewer.placementExceedsRoom" = "El mueble supera las dimensiones detectadas de la habitación.";
 "roomViewer.placementHarmonySummary" = "Armonía %.2f (%@) · contraste %.2f · encaje de estilo %.2f";
 "roomViewer.harmonyTypeAnalogous" = "Análoga";
 "roomViewer.harmonyTypeComplementary" = "Complementaria";

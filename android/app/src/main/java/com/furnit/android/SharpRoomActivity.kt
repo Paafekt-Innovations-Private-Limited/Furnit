@@ -182,6 +182,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     /** Bottom-left brain control; blue when idle, green while live segmentation is active. */
     private lateinit var brainModeButton: TextView
+    /** Top-right AR sizing control; active when the current brain session requested AR-assisted sizing. */
+    private var brainArAssistButton: TextView? = null
     private lateinit var titleView: TextView
     private var plyPath: String? = null
     private var roomFolder: String? = null
@@ -259,6 +261,10 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainSegmentationCompletedOnceThisSession: Boolean = false
     /** Used so we can fall back from ARCore brain path to CameraX if no result arrives. */
     private var disableArBrainThisSession: Boolean = false
+    /** True when the current brain session was explicitly started from the AR button. */
+    private var brainArAssistRequested: Boolean = false
+    /** Preserves the requested mode across a camera permission prompt. */
+    private var pendingBrainStartArAssist: Boolean = false
     private val brainTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var brainTimeoutRunnable: Runnable? = null
     /** Progress bar inside the brain progress overlay (used only for simple animated feedback). */
@@ -281,8 +287,9 @@ class SharpRoomActivity : AppCompatActivity() {
         DebugLogger.d(TAG, "Brain: camera permission result isGranted=$isGranted")
         if (isGranted) {
             showBrainProgressOverlayIfNeeded()
-            startBrainDetection()
+            startBrainDetection(pendingBrainStartArAssist)
         } else {
+            pendingBrainStartArAssist = false
             DebugLogger.d(TAG, "Brain: camera permission denied")
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
         }
@@ -690,6 +697,35 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
+
+            val arBtn = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.model_viewer_ar)
+                textSize = 13f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                contentDescription = getString(R.string.model_viewer_ar)
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(16).toFloat()
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
+                setOnClickListener { launchBrainMode(arAssistedRequested = true) }
+            }
+            brainArAssistButton = arBtn
+            setBrainArAssistButtonActive(false)
+            addView(
+                arBtn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.END or Gravity.TOP
+                    topMargin = dpToPx(68)
+                },
+            )
         }
     }
 
@@ -768,7 +804,7 @@ class SharpRoomActivity : AppCompatActivity() {
         modelInputSize: Int,
         targetHeightMeters: Float?,
     ): Float {
-        if (!FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this)) return 1f
+        if (!brainArAssistRequested) return 1f
         val detection = det ?: return 1f
         if (modelInputSize <= 0) return 1f
         val roomHeightMeters = effRoomHeight()
@@ -1233,22 +1269,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 val size = dpToPx(56)
                 layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener {
-                    if (brainDetectionOverlay.visibility == View.VISIBLE) {
-                        DebugLogger.d(TAG, "Brain: tap while segmenting — stopping")
-                        hideBrainDetectionOverlay()
-                        return@setOnClickListener
-                    }
                     val roomId = roomFolder?.let { File(it).name }
                     DebugLogger.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
-                    if (ContextCompat.checkSelfPermission(this@SharpRoomActivity, Manifest.permission.CAMERA)
-                        != PackageManager.PERMISSION_GRANTED) {
-                        DebugLogger.d(TAG, "Brain: requesting CAMERA permission")
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    } else {
-                        DebugLogger.d(TAG, "Brain: permission OK, starting detection (show progress on every brain tap)")
-                        showBrainProgressOverlayIfNeeded()
-                        startBrainDetection()
-                    }
+                    launchBrainMode(arAssistedRequested = false)
                 }
             }
             brainModeButton = brainBtn
@@ -1588,9 +1611,37 @@ class SharpRoomActivity : AppCompatActivity() {
         (brainModeButton.background as? GradientDrawable)?.setColor(Color.parseColor(color))
     }
 
+    private fun setBrainArAssistButtonActive(active: Boolean) {
+        val color = if (active) BRAIN_BUTTON_COLOR_SEGMENTING else "#3A3A3C"
+        (brainArAssistButton?.background as? GradientDrawable)?.setColor(Color.parseColor(color))
+    }
+
+    private fun launchBrainMode(arAssistedRequested: Boolean) {
+        pendingBrainStartArAssist = arAssistedRequested
+        if (brainDetectionOverlay.visibility == View.VISIBLE) {
+            if (brainArAssistRequested == arAssistedRequested) {
+                DebugLogger.d(TAG, "Brain: tap while same mode active — stopping")
+                hideBrainDetectionOverlay()
+                return
+            }
+            DebugLogger.d(TAG, "Brain: switching live mode arAssist=$arAssistedRequested")
+            hideBrainDetectionOverlay()
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            DebugLogger.d(TAG, "Brain: requesting CAMERA permission arAssist=$arAssistedRequested")
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            DebugLogger.d(TAG, "Brain: permission OK, starting detection arAssist=$arAssistedRequested")
+            showBrainProgressOverlayIfNeeded()
+            startBrainDetection(arAssistedRequested)
+        }
+    }
+
     private fun hideBrainDetectionOverlay() {
         DebugLogger.d(TAG, "Brain: hideBrainDetectionOverlay() - user stopped or Back, stopping camera")
         setBrainSegmentationButtonActive(false)
+        setBrainArAssistButtonActive(false)
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
@@ -1618,14 +1669,17 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun startBrainDetection() {
-        DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+    private fun startBrainDetection(arAssistedRequested: Boolean = false) {
+        DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread arAssist=$arAssistedRequested")
         val sessionGeneration = brainSessionGeneration.incrementAndGet()
         // Reset per-session state and any pending timeout from a previous brain run.
         brainFirstResultReceived = false
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
         disableArBrainThisSession = false
+        brainArAssistRequested = arAssistedRequested
+        pendingBrainStartArAssist = arAssistedRequested
+        setBrainArAssistButtonActive(arAssistedRequested)
         prewarmBrainSegmentationIfNeeded()
         lifecycleScope.launch {
             val warmedManager = furnitureFitManager ?: brainModelWarmupJob?.await()
@@ -1673,8 +1727,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun shouldUseArBrainCamera(): Boolean {
         if (disableArBrainThisSession) return false
-        return FurnitureFitManager.isArAssistedFurnitureSizingEnabled(this) &&
-            ArSupportChecker.isArCoreSupported(this)
+        return brainArAssistRequested && ArSupportChecker.isArCoreSupported(this)
     }
 
     /** Single teardown path for brain ARCore controller (GL session close + view removal). */
@@ -1898,6 +1951,9 @@ class SharpRoomActivity : AppCompatActivity() {
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
         disableArBrainThisSession = false
+        pendingBrainStartArAssist = false
+        brainArAssistRequested = false
+        setBrainArAssistButtonActive(false)
         brainArController?.clearBboxHint()
         teardownBrainArCoreController()
         brainLockedFurnitureWidthMeters = null

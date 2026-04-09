@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com మీ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది.</string>
     <string name="help_email_subject">Paafekt యాప్ మద్దతు</string>
     <string name="help_email_body">నమస్కారం Paafekt మద్దతు టీం,\n\nనాకు సహాయం కావాలి:\n\n</string>
+    <string name="help_measurement_warning">AR depth మద్దతు లేని ఫోన్లలో కొలతలు కేవలం అంచనాలే ఉంటాయి, ముఖ్యంగా furniture కోసం.</string>
     <string name="faq_room_creation">గది సృష్టి</string>
     <string name="faq_how_to_create">3D గదిని ఎలా సృష్టించాలి?</string>
     <string name="faq_how_to_create_answer">హోమ్ స్క్రీన్ ఎగువ-ఎడమ మూలలో ఫోటో ఐకాన్ ట్యాప్ చేయండి, తర్వాత మీ గది ఫోటో తీయండి లేదా ఎంచుకోండి. మీ 3D గది సృష్టించడానికి రెండు ఆప్షన్లు మీకు కనిపిస్తాయి.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?</string>
     <string name="faq_what_is_segmentation_answer">ఫర్నిచర్ సెగ్మెంటేషన్ AI ఉపయోగించి మీ ఫోటోలలో ఫర్నిచర్‌ను గుర్తించి వేరు చేస్తుంది, ప్రతి ముక్క మీ 3D గదిలో ఎలా సరిపోతుందో చూడటానికి అనుమతిస్తుంది.</string>
     <string name="faq_how_to_segment">ఫోటో నుండి ఫర్నిచర్‌ను ఎలా సెగ్మెంట్ చేయాలి?</string>
-    <string name="faq_how_to_segment_answer">మీ 3D గదిని చూస్తున్నప్పుడు, సెగ్మెంటేషన్ ఫీచర్‌ను యాక్సెస్ చేయడానికి ఫర్నిచర్ ఐకాన్ ట్యాప్ చేయండి. ఫర్నిచర్ ఉన్న ఫోటో ఎంచుకోండి, మరియు యాప్ స్వయంచాలకంగా ఫర్నిచర్ ఐటెమ్‌లను గుర్తించి ఎక్స్‌ట్రాక్ట్ చేస్తుంది.</string>
+    <string name="faq_how_to_segment_answer">మీ 3D గదిని చూస్తున్నప్పుడు segmentation ప్రారంభించడానికి brain icon పై ట్యాప్ చేయండి. ఆ తర్వాత furniture వైపు camera చూపించి live detection మరియు extracted furniture overlay చూడండి.</string>
     <string name="faq_not_detected">నా ఫర్నిచర్ ఎందుకు గుర్తించబడలేదు?</string>
     <string name="faq_not_detected_answer">ఫర్నిచర్ డిటెక్షన్ స్పష్టమైన, మంచి వెలుతురు ఫోటోలలో ఫర్నిచర్ స్పష్టంగా కనిపించినప్పుడు బాగా పని చేస్తుంది. ఫర్నిచర్ పాక్షికంగా కప్పబడలేదని లేదా బ్యాక్‌గ్రౌండ్‌తో కలిసిపోలేదని నిర్ధారించుకోండి.</string>
     <string name="faq_multiple_pieces">అనేక ఫర్నిచర్ ముక్కలను సెగ్మెంట్ చేయవచ్చా?</string>
@@ -177,11 +178,13 @@
     <string name="faq_adjust_dimensions_answer">అవును, సెట్టింగ్‌లకు వెళ్ళి గది కొలత ఆప్షన్లు కనుగొనండి అక్కడ మీరు సృష్టించిన గది సైజు మరియు నిష్పత్తులను ఫైన్-ట్యూన్ చేయవచ్చు.</string>
     <string name="faq_furniture_measurements">ఫర్నిచర్ &amp; కొలతలు</string>
     <string name="faq_ar_assisted_sizing">AR-సహాయ ఫర్నిచర్ సైజింగ్ అంటే ఏమిటి?</string>
-    <string name="faq_ar_assisted_sizing_answer">సెట్టింగ్‌లలో ప్రారంభించినప్పుడు, యాప్ కెమెరా లోతు మరియు వస్తు గుర్తింపును కలిపి మీరు దగ్గరకు లేదా దూరంగా వెళ్లినప్పుడు ఫర్నిచర్ ఓవర్‌లేను మరింత వాస్తవికంగా స్కేల్ చేస్తుంది. మంచి వెలుతురు మరియు స్పష్టమైన దృశ్యంలో ఉత్తమంగా పనిచేస్తుంది.</string>
+    <string name="faq_ar_assisted_sizing_answer">ముందుగా segmentation ప్రారంభించడానికి brain icon పై ట్యాప్ చేసి, తరువాత sizing control ఉపయోగించండి. ARCore depth మద్దతు ఉన్న ఫోన్లలో app live camera depth ఉపయోగించి మరింత నిజమైన furniture size చూపిస్తుంది. AR depth లేని ఫోన్లలో ఇది సుమారు proportion-based estimate కు వెళ్తుంది, అందువల్ల furniture కొలతలు exact కావు.</string>
     <string name="faq_measurement_pill">చిన్న కొలత చూపు ఏమిటి?</string>
-    <string name="faq_measurement_pill_answer">SmartyPants సక్రియంగా ఉన్నప్పుడు, అంచనా వేసిన ఫర్నిచర్ మరియు గది ఎత్తు చూపబడవచ్చు. ఖచ్చితత్వం కోసం నిజమైన కొలతలను నమోదు చేయడానికి ట్యాప్ చేయండి. గది ఫోటో వైడ్-ఆంగిల్ (0.5×) తో తీస్తే దాన్ని గుర్తించండి.</string>
+    <string name="faq_measurement_pill_answer">Furni size pill అనేది sizing mode ఆన్ అయ్యి, app కు ఉపయోగపడే live height estimate ఉన్నప్పుడే కనిపిస్తుంది. room viewer లో room measurement కూడా కనిపించవచ్చు. non-AR ఫోన్లలో ఈ రీడింగులు, ముఖ్యంగా furniture కోసం, తక్కువ నమ్మదగినవి.</string>
     <string name="faq_reset_overlay_scale">మాస్క్ తప్పుగా జూమ్ అయినట్లు అనిపిస్తే?</string>
-    <string name="faq_reset_overlay_scale_answer">3D గదిలో ఓవర్‌ఫ్లో మెనూ (⋮) తెరిచి Reset overlay scale ఎంచుకోండి. గుర్తింపు మాస్క్‌కు వర్తించిన ఆటో జూమ్ క్లియర్ అవుతుంది.</string>
+    <string name="faq_reset_overlay_scale_answer">ఇప్పుడు overflow reset లేదు. overlay తప్పుగా కనిపిస్తే brain icon ఆఫ్ చేసి మళ్లీ ఆన్ చేయండి, లేదా pinch చేసి furniture size ను చేతితో సరిచేయండి.</string>
+    <string name="faq_pinch_overlay_size">segmentation అయిన furniture ను pinch చేస్తే ఏమవుతుంది?</string>
+    <string name="faq_pinch_overlay_size_answer">pinch చేస్తే furniture overlay పెద్దది లేదా చిన్నది అవుతుంది. sizing mode ఆన్ అయి Furni pill కనిపిస్తే, ఆ pill గదికి సరిపోయే ప్రస్తుత resized furniture అంచనాకు అప్డేట్ అవుతుంది. sizing mode ఆఫ్‌లో ఉంటే, pinch స్క్రీన్ మీద overlay రూప పరిమాణాన్నే మాత్రమే మార్చుతుంది.</string>
     <string name="faq_depth_aware_room_photo">యాప్‌లో ఫోటో తీయడం గది నాణ్యతకు సహాయపడుతుందా?</string>
     <string name="faq_depth_aware_room_photo_answer">అవును. మద్దతు ఉన్న పరికరాల్లో, గ్యాలరీకి బదులుగా Take a photo లోతు-అవగాహన కెమెరాను ఉపయోగిస్తుంది (అందుబాటులో ఉంటే), ఇది 3D గది నిర్మాణాన్ని మెరుగుపరచవచ్చు.</string>
     <string name="faq_placement_intelligence">ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ &amp; సౌందర్యం</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">ప్రారంభిస్తోంది…</string>
-    <string name="smartypants_drag_hint">ఫర్నిచర్ కదిలించడానికి లాగండి • గదిని పాన్ చేయడానికి బయట లాగండి</string>
+    <string name="smartypants_drag_hint">ఫర్నిచర్ కదిలించడానికి లాగండి • సైజ్ మార్చడానికి pinch చేయండి • గదిని పాన్ చేయడానికి బయట లాగండి</string>
     <string name="smartypants_tap_calibrate">క్యాలిబ్రేట్ చేయడానికి ట్యాప్ చేయండి</string>
     <string name="smartypants_scanning">స్కాన్ చేస్తోంది…</string>
     <string name="smartypants_camera_error">కెమెరా లోపం: %s</string>

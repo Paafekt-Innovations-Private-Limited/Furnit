@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com 已複制到剪贴簿。</string>
     <string name="help_email_subject">Paafekt 应用支持</string>
     <string name="help_email_body">您好 Paafekt 支持团队，\n\n我需要帮助：\n\n</string>
+    <string name="help_measurement_warning">不支持 AR 深度的手机只能得到近似测量值，尤其是家具尺寸。</string>
     <string name="faq_room_creation">房间建立</string>
     <string name="faq_how_to_create">如何建立3D房间？</string>
     <string name="faq_how_to_create_answer">点击主屏幕左上角的照片图标，然后拍摄或选择房间的照片。您将看到两个选项来创建您的3D房间。</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">什么是家具分割？</string>
     <string name="faq_what_is_segmentation_answer">家具分割使用AI识别和分离照片中的家具，让你看到每件家具在3D房间中的效果。</string>
     <string name="faq_how_to_segment">如何从照片中分割家具？</string>
-    <string name="faq_how_to_segment_answer">检视3D房间时，点擊家具图示存取分割功能。选择包含家具的照片，应用程式将自动侦测并撷取家具。</string>
+    <string name="faq_how_to_segment_answer">查看 3D 房间时，先点击大脑图标开始分割。然后把相机对准家具，就能看到实时检测和提取出来的家具叠层。</string>
     <string name="faq_not_detected">为什么我的家具没有被侦测到？</string>
     <string name="faq_not_detected_answer">家具侦测在清晰、光线充足且家具明显可见的照片中效果最佳。确保家具没有被部分遮挡或与背景融合。</string>
     <string name="faq_multiple_pieces">我可以分割多件家具嗎？</string>
@@ -177,11 +178,13 @@
     <string name="faq_adjust_dimensions_answer">可以，进入设定并找到房间尺寸选項，你可以微调产生房间的大小和比例。</string>
     <string name="faq_furniture_measurements">家具与测量</string>
     <string name="faq_ar_assisted_sizing">什么是 AR 辅助家具尺寸？</string>
-    <string name="faq_ar_assisted_sizing_answer">在设置中开启后，应用会结合相机深度与物体检测，在你靠近或远离时更合理地缩放家具叠加层。光线充足、物品清晰时效果最佳。</string>
+    <string name="faq_ar_assisted_sizing_answer">先点击大脑图标开始分割，再使用尺寸控制。在支持 ARCore 深度的手机上，应用会使用实时相机深度来给出更真实的家具大小。在没有 AR 深度的手机上，它会退回到较粗略的比例估计，因此家具尺寸并不精确。</string>
     <string name="faq_measurement_pill">画面上小小的测量提示是什么？</string>
-    <string name="faq_measurement_pill_answer">SmartyPants 开启时，可能会显示预估的家具高度和房间高度。点击可输入实际尺寸以提高准确度。若房间照片用广角（0.5×）拍摄，请一并标记，画面构图才会一致。</string>
+    <string name="faq_measurement_pill_answer">Furni 尺寸小标签只会在尺寸模式开启且应用拿到可用的实时高度估计时出现。房间查看器里也可能显示房间尺寸。在不支持 AR 的手机上，这些读数会更不可靠，尤其是家具尺寸。</string>
     <string name="faq_reset_overlay_scale">检测遮罩缩放看起来不对怎么办？</string>
-    <string name="faq_reset_overlay_scale_answer">在 3D 房间打开右上角菜单（⋮），选择「重置叠加缩放」，可清除套在检测遮罩上的自动缩放，便于移动后重新稳定。</string>
+    <string name="faq_reset_overlay_scale_answer">现在已经没有额外菜单里的重置了。如果叠层看起来不对，请先关闭再重新打开大脑图标，或者手动双指缩放家具来微调大小。</string>
+    <string name="faq_pinch_overlay_size">双指缩放已分割的家具时会发生什么？</string>
+    <string name="faq_pinch_overlay_size_answer">双指缩放会让家具叠层变大或变小。如果尺寸模式已开启且 Furni 小标签可见，这个小标签会更新为当前按房间比例调整后的家具估计尺寸。如果尺寸模式未开启，双指缩放只会改变屏幕上叠层的视觉大小。</string>
     <string name="faq_depth_aware_room_photo">用应用内相机拍照会更好吗？</string>
     <string name="faq_depth_aware_room_photo_answer">会。在支持的设备上，创建房间时选择「拍照」而非从相册选取，可使用内置相机与深度信息（若设备提供），有助于构建与比例。</string>
     <string name="faq_placement_intelligence">摆放智能与美学</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">正在初始化…</string>
-    <string name="smartypants_drag_hint">拖动家具移动 · 向外拖动平移房间</string>
+    <string name="smartypants_drag_hint">拖动家具移动 • 双指缩放改大小 • 向外拖动平移房间</string>
     <string name="smartypants_tap_calibrate">点击校准</string>
     <string name="smartypants_scanning">正在扫描…</string>
     <string name="smartypants_camera_error">相机错误：%s</string>

@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com আপনার ক্লিপবোর্ডে কপি করা হয়েছে।</string>
     <string name="help_email_subject">Paafekt অ্যাপ সহায়তা</string>
     <string name="help_email_body">প্রিয় Paafekt সহায়তা দল,\n\nআমার সাহায্য দরকার:\n\n</string>
+    <string name="help_measurement_warning">যেসব ফোনে AR depth সাপোর্ট নেই, সেগুলোতে মাপ কেবল আনুমানিক হবে, বিশেষ করে ফার্নিচারের ক্ষেত্রে।</string>
     <string name="faq_room_creation">রুম তৈরি</string>
     <string name="faq_how_to_create">কিভাবে 3D রুম তৈরি করবেন?</string>
     <string name="faq_how_to_create_answer">হোম স্ক্রিনের উপরের-বামে ফোটো আইকনে ট্যাপ করুন, তারপর আপনার রুমের ছবি তুলুন বা সিলেক্ট করুন। আপনার 3D রুম তৈরির জন্য দুটি বিকল্প দেখতে পাবেন।</string>
@@ -165,7 +166,7 @@
     <string name="faq_what_is_segmentation">ফার্নিচার সেগমেন্টেশন কী?</string>
     <string name="faq_what_is_segmentation_answer">ফার্নিচার সেগমেন্টেশন AI ব্যবহার করে আপনার ছবিতে ফার্নিচার শনাক্ত এবং আলাদা করে, প্রতিটি টুকরো আপনার 3D রুমে কিভাবে মানাবে তা দেখতে দেয়।</string>
     <string name="faq_how_to_segment">ছবি থেকে ফার্নিচার কিভাবে সেগমেন্ট করবেন?</string>
-    <string name="faq_how_to_segment_answer">আপনার 3D রুম দেখার সময়, সেগমেন্টেশন ফিচার অ্যাক্সেস করতে ফার্নিচার আইকনে ট্যাপ করুন। ফার্নিচার সম্বলিত ছবি নির্বাচন করুন, এবং অ্যাপ স্বয়ংক্রিয়ভাবে ফার্নিচার আইটেম শনাক্ত ও এক্সট্র্যাক্ট করবে।</string>
+    <string name="faq_how_to_segment_answer">আপনার 3D রুম দেখার সময় segmentation শুরু করতে brain icon-এ ট্যাপ করুন। তারপর ক্যামেরা ফার্নিচারের দিকে ধরলে live detection এবং extracted furniture overlay দেখতে পাবেন।</string>
     <string name="faq_not_detected">আমার ফার্নিচার কেন শনাক্ত হচ্ছে না?</string>
     <string name="faq_not_detected_answer">ফার্নিচার শনাক্তকরণ পরিষ্কার, ভালো আলোযুক্ত ছবিতে ফার্নিচার স্পষ্ট দেখা গেলে সবচেয়ে ভালো কাজ করে। নিশ্চিত করুন ফার্নিচার আংশিকভাবে ঢাকা নেই বা ব্যাকগ্রাউন্ডে মিশে যায়নি।</string>
     <string name="faq_multiple_pieces">একাধিক ফার্নিচার সেগমেন্ট করতে পারি?</string>
@@ -191,11 +192,13 @@
     <string name="faq_adjust_dimensions_answer">হ্যাঁ, সেটিংসে যান এবং রুম মাত্রা অপশন খুঁজুন যেখানে আপনি তৈরি রুমের আকার ও অনুপাত সূক্ষ্ম-সুর করতে পারেন।</string>
     <string name="faq_furniture_measurements">ফার্নিচার ও মাপ</string>
     <string name="faq_ar_assisted_sizing">AR-সহায়িত ফার্নিচার সাইজিং কী?</string>
-    <string name="faq_ar_assisted_sizing_answer">সেটিংসে চালু থাকলে অ্যাপ ক্যামেরার গভীরতা ও অবজেক্ট শনাক্তকরণ মিলিয়ে আপনি কাছে বা দূরে গেলে ওভারলেকে আরও বাস্তবসম্মত স্কেল দেয়। ভালো আলো ও পরিষ্কার দৃশ্যে সেরা কাজ করে।</string>
+    <string name="faq_ar_assisted_sizing_answer">আগে segmentation শুরু করতে brain icon-এ ট্যাপ করুন, তারপর sizing control ব্যবহার করুন। ARCore depth সাপোর্ট থাকা ফোনে অ্যাপ live camera depth ব্যবহার করে আরও বাস্তবসম্মত furniture size দেখায়। AR depth না থাকলে এটি আনুমানিক proportion-based estimate-এ ফিরে যায়, তাই furniture measurement একদম exact হয় না।</string>
     <string name="faq_measurement_pill">ছোট মাপের রিডআউট কী?</string>
-    <string name="faq_measurement_pill_answer">SmartyPants সক্রিয় থাকলে আনুমানিক ফার্নিচার ও রুমের উচ্চতা দেখাতে পারে। সঠিকতার জন্য ট্যাপ করে আসল মাপ লিখুন। রুমের ছবি ওয়াইড-অ্যাঙ্গেল (0.5×) হলে তা চিহ্নিত করুন।</string>
+    <string name="faq_measurement_pill_answer">Furni size pill শুধু তখনই দেখা যায় যখন sizing mode চালু থাকে এবং অ্যাপের কাছে ব্যবহারযোগ্য live height estimate থাকে। রুম viewer-এ room measurement-ও দেখা যেতে পারে। non-AR ফোনে এই রিডিংগুলো, বিশেষ করে furniture-এর জন্য, কম নির্ভরযোগ্য।</string>
     <string name="faq_reset_overlay_scale">মাস্ক ভুল জুম লাগছে—কী করব?</string>
-    <string name="faq_reset_overlay_scale_answer">3D রুমে ওভারফ্লো মেনু (⋮) খুলে Reset overlay scale বেছে নিন। শনাক্তকরণ মাস্কের স্বয়ংক্রিয় জুম মুছে যাবে।</string>
+    <string name="faq_reset_overlay_scale_answer">এখন আর overflow reset নেই। overlay ভুল দেখালে brain icon বন্ধ করে আবার চালু করুন, বা pinch করে furniture-এর size হাতে ঠিক করুন।</string>
+    <string name="faq_pinch_overlay_size">সেগমেন্ট করা ফার্নিচারকে পিঞ্চ করলে কী হয়?</string>
+    <string name="faq_pinch_overlay_size_answer">পিঞ্চ করলে ফার্নিচার ওভারলে বড় বা ছোট হয়। যদি sizing mode চালু থাকে এবং Furni pill দেখা যায়, তাহলে সেই pill-এ রুম অনুযায়ী বর্তমান resized ফার্নিচারের মাপ আপডেট হবে। sizing mode বন্ধ থাকলে, পিঞ্চ শুধু স্ক্রিনে ওভারলের দৃশ্যমান আকার বদলাবে।</string>
     <string name="faq_depth_aware_room_photo">অ্যাপে ছবি তোলা রুমের মান উন্নত করে?</string>
     <string name="faq_depth_aware_room_photo_answer">হ্যাঁ। সমর্থিত ডিভাইসে গ্যালারির বদলে Take a photo ইন-অ্যাপ ক্যামেরা ও উপলব্ধ হলে গভীরতা ব্যবহার করে, যা 3D রুম তৈরি উন্নত করতে পারে।</string>
     <string name="faq_placement_intelligence">প্লেসমেন্ট বুদ্ধিমত্তা ও নান্দনিকতা</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">শুরু হচ্ছে…</string>
-    <string name="smartypants_drag_hint">ফার্নিচার সরাতে টেনে আনুন • রুম প্যান করতে বাইরে টেনে আনুন</string>
+    <string name="smartypants_drag_hint">ফার্নিচার সরাতে টেনে আনুন • পিঞ্চ করে সাইজ বদলান • রুম প্যান করতে বাইরে টেনে আনুন</string>
     <string name="smartypants_tap_calibrate">ক্যালিব্রেট করতে ট্যাপ করুন</string>
     <string name="smartypants_scanning">স্ক্যান করা হচ্ছে…</string>
     <string name="smartypants_camera_error">ক্যামেরা ত্রুটি: %s</string>

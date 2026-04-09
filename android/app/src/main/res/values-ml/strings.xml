@@ -135,6 +135,7 @@
     <string name="help_email_copied_message">support@paafekt.com നിങ്ങളുടെ ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി.</string>
     <string name="help_email_subject">Paafekt ആപ്പ് പിന്തുണ</string>
     <string name="help_email_body">പ്രിയ Paafekt പിന്തുണ ടീം,\n\nഎനിക്ക് സഹായം ആവശ്യമുള്ളത്:\n\n</string>
+    <string name="help_measurement_warning">AR depth പിന്തുണയില്ലാത്ത ഫോണുകളിൽ അളവുകൾ ഏകദേശമായിരിക്കും, പ്രത്യേകിച്ച് ഫർണിച്ചറിനായി.</string>
     <string name="faq_room_creation">മുറി സൃഷ്ടി</string>
     <string name="faq_how_to_create">3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?</string>
     <string name="faq_how_to_create_answer">ഹോം സ്ക്രീനിന്റെ മുകളിൽ-ഇടതുവശത്തെ ഫോട്ടോ ഐക്കൺ ടാപ്പ് ചെയ്യുക, തുടർന്ന് നിങ്ങളുടെ മുറിയുടെ ഫോട്ടോ എടുക്കുക അല്ലെങ്കിൽ തിരഞ്ഞെടുക്കുക. നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കാൻ രണ്ട് ഓപ്ഷനുകൾ നിങ്ങൾ കാണും.</string>
@@ -158,7 +159,7 @@
     <string name="faq_what_is_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?</string>
     <string name="faq_what_is_segmentation_answer">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ AI ഉപയോഗിച്ച് നിങ്ങളുടെ ഫോട്ടോകളിലെ ഫർണിച്ചർ തിരിച്ചറിയുകയും വേർതിരിക്കുകയും ചെയ്യുന്നു, ഓരോ കഷണവും നിങ്ങളുടെ 3D മുറിയിൽ എങ്ങനെ ചേരുമെന്ന് കാണാൻ അനുവദിക്കുന്നു.</string>
     <string name="faq_how_to_segment">ഫോട്ടോയിൽ നിന്ന് ഫർണിച്ചർ എങ്ങനെ സെഗ്മെന്റ് ചെയ്യാം?</string>
-    <string name="faq_how_to_segment_answer">നിങ്ങളുടെ 3D മുറി കാണുമ്പോൾ, സെഗ്മെന്റേഷൻ ഫീച്ചർ ആക്സസ് ചെയ്യാൻ ഫർണിച്ചർ ഐക്കൺ ടാപ്പ് ചെയ്യുക. ഫർണിച്ചർ അടങ്ങിയ ഫോട്ടോ തിരഞ്ഞെടുക്കുക, ആപ്പ് സ്വയമേവ ഫർണിച്ചർ ഇനങ്ങൾ കണ്ടെത്തി വേർതിരിക്കും.</string>
+    <string name="faq_how_to_segment_answer">നിങ്ങളുടെ 3D മുറി കാണുമ്പോൾ segmentation ആരംഭിക്കാൻ brain icon ടാപ്പ് ചെയ്യുക. തുടർന്ന് ഫർണിച്ചറിലേക്ക് ക്യാമറ തിരിച്ച് live detection ഉം extracted furniture overlay ഉം കാണുക.</string>
     <string name="faq_not_detected">എന്റെ ഫർണിച്ചർ എന്തുകൊണ്ട് കണ്ടെത്തിയില്ല?</string>
     <string name="faq_not_detected_answer">ഫർണിച്ചർ കണ്ടെത്തൽ വ്യക്തമായ, നല്ല വെളിച്ചമുള്ള ഫോട്ടോകളിൽ ഫർണിച്ചർ വ്യക്തമായി കാണുമ്പോൾ നന്നായി പ്രവർത്തിക്കുന്നു. ഫർണിച്ചർ ഭാഗികമായി മൂടപ്പെട്ടിട്ടില്ലെന്നോ പശ്ചാത്തലവുമായി കലർന്നിട്ടില്ലെന്നോ ഉറപ്പാക്കുക.</string>
     <string name="faq_multiple_pieces">ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ സെഗ്മെന്റ് ചെയ്യാമോ?</string>
@@ -177,11 +178,13 @@
     <string name="faq_adjust_dimensions_answer">അതെ, ക്രമീകരണങ്ങളിലേക്ക് പോയി മുറി അളവ് ഓപ്ഷനുകൾ കണ്ടെത്തുക അവിടെ നിങ്ങൾക്ക് സൃഷ്ടിച്ച മുറിയുടെ വലുപ്പവും അനുപാതങ്ങളും ഫൈൻ-ട്യൂൺ ചെയ്യാം.</string>
     <string name="faq_furniture_measurements">ഫർണിച്ചറും അളവുകളും</string>
     <string name="faq_ar_assisted_sizing">AR-സഹായിത ഫർണിച്ചർ സൈസിംഗ് എന്താണ്?</string>
-    <string name="faq_ar_assisted_sizing_answer">ക്രമീകരണങ്ങളിൽ ഓണായാൽ, ആപ്പ് ക്യാമറാ ആഴവും വസ്തു കണ്ടെത്തലും സംയോജിപ്പിച്ച് നിങ്ങൾ അടുക്കുകയോ അകലുകയോ ചെയ്യുമ്പോൾ ഓവർലേ യഥാർത്ഥമായി സ്കേൽ ചെയ്യുന്നു. നല്ല വെളിച്ചവും വ്യക്തമായ ദൃശ്യവും മികച്ചതാണ്.</string>
+    <string name="faq_ar_assisted_sizing_answer">ആദ്യം segmentation ആരംഭിക്കാൻ brain icon ടാപ്പ് ചെയ്യുക, പിന്നെ sizing control ഉപയോഗിക്കുക. ARCore depth പിന്തുണയുള്ള ഫോണുകളിൽ app live camera depth ഉപയോഗിച്ച് കൂടുതൽ യാഥാർത്ഥ്യസഹിതമായ furniture size കാണിക്കും. AR depth ഇല്ലാത്ത ഫോണുകളിൽ ഇത് ഏകദേശ proportion-based estimate ലേക്ക് മടങ്ങും; അതിനാൽ furniture അളവുകൾ കൃത്യമല്ല.</string>
     <string name="faq_measurement_pill">ചെറിയ അളവ് വായന എന്താണ്?</string>
-    <string name="faq_measurement_pill_answer">SmartyPants സജീവമാകുമ്പോൾ അനുമാനിച്ച ഫർണിച്ചർ, മുറി ഉയരം കാണാം. ടാപ്പ് ചെയ്ത് യഥാർത്ഥ അളവുകൾ നൽകുക. മുറി ഫോട്ടോ വൈഡ്-ആംഗിൾ (0.5×) ആണെങ്കിൽ അടയാളപ്പെടുത്തുക.</string>
+    <string name="faq_measurement_pill_answer">Furni size pill sizing mode ഓണായിരിക്കുമ്പോഴും app ന് ഉപയോഗിക്കാവുന്ന live height estimate ലഭിക്കുമ്പോഴും മാത്രമേ പ്രത്യക്ഷപ്പെടൂ. room viewer ൽ room measurement കൂടി കാണാം. non-AR ഫോണുകളിൽ ഈ റീഡിംഗുകൾ, പ്രത്യേകിച്ച് furniture ന്, കുറച്ച് കുറവായി വിശ്വസനീയമാണ്.</string>
     <string name="faq_reset_overlay_scale">മാസ്ക് തെറ്റായി സൂം ചെയ്തതായി തോന്നുന്നുവോ?</string>
-    <string name="faq_reset_overlay_scale_answer">3D മുറിയിൽ ഓവർഫ്ലോ മെനു (⋮) തുറന്ന് Reset overlay scale തിരഞ്ഞെടുക്കുക. കണ്ടെത്തൽ മാസ്ക്കിന് ബാധകമായ ഓട്ടോ സൂം മായ്ക്കും.</string>
+    <string name="faq_reset_overlay_scale_answer">ഇപ്പോൾ overflow reset ഇല്ല. overlay തെറ്റായി തോന്നിയാൽ brain icon ഓഫ് ചെയ്ത് വീണ്ടും ഓൺ ചെയ്യുക, അല്ലെങ്കിൽ pinch ഉപയോഗിച്ച് furniture size കൈയോടെ ക്രമപ്പെടുത്തുക.</string>
+    <string name="faq_pinch_overlay_size">സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചർ pinch ചെയ്യുമ്പോൾ എന്ത് സംഭവിക്കും?</string>
+    <string name="faq_pinch_overlay_size_answer">pinch ചെയ്‌താൽ ഫർണിച്ചർ ഓവർലേ വലുതാകുകയോ ചെറുതാകുകയോ ചെയ്യും. sizing mode ഓണായിരിക്കുമ്പോഴും Furni pill കാണുമ്പോഴും ആ pill മുറിക്ക് അനുസരിച്ചുള്ള ഇപ്പോഴത്തെ resized ഫർണിച്ചർ അളവിലേക്ക് അപ്‌ഡേറ്റ് ചെയ്യും. sizing mode ഓഫ് ആണെങ്കിൽ pinch സ്ക്രീനിലെ ഓവർലേയുടെ ദൃശ്യ വലിപ്പം മാത്രം മാറ്റും.</string>
     <string name="faq_depth_aware_room_photo">ആപ്പിൽ ഫോട്ടോ എടുക്കുന്നത് ഗുണനിലവാരത്തിന് സഹായിക്കുമോ?</string>
     <string name="faq_depth_aware_room_photo_answer">അതെ. പിന്തുണയുള്ള ഉപകരണങ്ങളിൽ, ഗാലറിക്ക് പകരം Take a photo ആഴം-അവബോധ ക്യാമറ ഉപയോഗിക്കുന്നു (ലഭ്യമെങ്കിൽ), ഇത് 3D മുറി മെച്ചപ്പെടുത്താം.</string>
     <string name="faq_placement_intelligence">പ്ലേസ്മെന്റ് ബുദ്ധിയും സൗന്ദര്യവും</string>
@@ -280,7 +283,7 @@
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">ആരംഭിക്കുന്നു…</string>
-    <string name="smartypants_drag_hint">ഫർണിച്ചർ നീക്കാൻ വലിക്കുക • മുറി പാൻ ചെയ്യാൻ പുറത്ത് വലിക്കുക</string>
+    <string name="smartypants_drag_hint">ഫർണിച്ചർ നീക്കാൻ വലിക്കുക • വലിപ്പം മാറ്റാൻ pinch ചെയ്യുക • മുറി പാൻ ചെയ്യാൻ പുറത്ത് വലിക്കുക</string>
     <string name="smartypants_tap_calibrate">കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക</string>
     <string name="smartypants_scanning">സ്കാൻ ചെയ്യുന്നു…</string>
     <string name="smartypants_camera_error">ക്യാമറ പിശക്: %s</string>

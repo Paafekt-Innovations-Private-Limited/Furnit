@@ -334,6 +334,8 @@
 "roomViewer.placementFitCount" = "%d പൊരുത്തം";
 "roomViewer.placementDetectedSize" = "കണ്ടെത്തി %.2f × %.2f × %.2f മീ";
 "roomViewer.placementMetricUnavailableNote" = "പൂർണ്ണ വലുപ്പ പരിശോധന ആഴം-സെൻസിംഗ് ഉള്ള iPhone-കളിൽ മികച്ചത്. താഴെയുള്ള നിറ സാമ്യം ഇപ്പോഴും പ്രയോജനകരമാണ്.";
+"roomViewer.placementFitsRoom" = "ഫർണിച്ചർ മുറിയുടെ അളവുകൾക്കുള്ളിൽ ചേരുന്നു.";
+"roomViewer.placementExceedsRoom" = "ഫർണിച്ചർ കണ്ടെത്തിയ മുറിയുടെ അളവുകൾ കവിയുന്നു.";
 "roomViewer.placementHarmonySummary" = "സമന്വയം %.2f (%@) · വ്യത്യാസം %.2f · ശൈലി പൊരുത്തം %.2f";
 "roomViewer.harmonyTypeAnalogous" = "സമാന";
 "roomViewer.harmonyTypeComplementary" = "പൂരക";

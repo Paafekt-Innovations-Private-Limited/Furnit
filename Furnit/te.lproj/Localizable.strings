@@ -334,6 +334,8 @@
 "roomViewer.placementFitCount" = "%d సరిపోలు";
 "roomViewer.placementDetectedSize" = "కనుగొనబడింది %.2f × %.2f × %.2f మీ";
 "roomViewer.placementMetricUnavailableNote" = "పూర్తి పరిమాణ తనిఖీ లోతు-సెన్సింగ్ ఉన్న iPhoneలలో మంచిది. క్రింది రంగు సామరస్యం ఇంకా ఉపయోగపడుతుంది.";
+"roomViewer.placementFitsRoom" = "ఫర్నిచర్ గది కొలతలలో సరిపోతుంది.";
+"roomViewer.placementExceedsRoom" = "ఫర్నిచర్ గుర్తించిన గది కొలతలను మించిపోయింది.";
 "roomViewer.placementHarmonySummary" = "సామరస్యం %.2f (%@) · కాంట్రాస్ట్ %.2f · శైలి సరిపోలిక %.2f";
 "roomViewer.harmonyTypeAnalogous" = "సమాన";
 "roomViewer.harmonyTypeComplementary" = "పూరక";

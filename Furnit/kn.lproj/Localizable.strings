@@ -334,6 +334,8 @@
 "roomViewer.placementFitCount" = "%d ಹೊಂದಿಕೆ";
 "roomViewer.placementDetectedSize" = "ಗುರುತಿಸಲಾಗಿದೆ %.2f × %.2f × %.2f ಮೀ";
 "roomViewer.placementMetricUnavailableNote" = "ಪೂರ್ಣ ಗಾತ್ರ ಪರಿಶೀಲನೆ ಆಳ-ಸಂವೇದನೆಯ iPhone ನಲ್ಲಿ ಉತ್ತಮ. ಕೆಳಗಿನ ಬಣ್ಣ ಸಾಮರಸ್ಯ ಇನ್ನೂ ಸಹಾಯಕವಾಗಿದೆ.";
+"roomViewer.placementFitsRoom" = "ಪೀಠೋಪಕರಣ ಕೊಠಡಿ ಅಳತೆಗಳಲ್ಲಿ ಹೊಂದುತ್ತದೆ.";
+"roomViewer.placementExceedsRoom" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯಾದ ಕೊಠಡಿ ಅಳತೆಗಳನ್ನು ಮೀರಿದೆ.";
 "roomViewer.placementHarmonySummary" = "ಸಾಮರಸ್ಯ %.2f (%@) · ವ್ಯತ್ಯಾಸ %.2f · ಶೈಲಿ ಹೊಂದಾಣಿಕೆ %.2f";
 "roomViewer.harmonyTypeAnalogous" = "ಸಮಾನ";
 "roomViewer.harmonyTypeComplementary" = "ಪೂರಕ";
