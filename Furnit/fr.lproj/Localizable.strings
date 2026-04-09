@@ -287,6 +287,9 @@
 "roomViewer.saveSuccess" = "Pièce '%@' enregistrée avec succès !";
 "roomViewer.saveFailed" = "Échec de l'enregistrement de la pièce : %@";
 "roomViewer.roomSaveTitle" = "Enregistrer la pièce";
+"roomViewer.roomSavedAlertTitle" = "Pièce enregistrée";
+"roomViewer.meshExportFailed" = "Échec de l’exportation du modèle 3D.";
+"roomViewer.meshSaveFailedGeneric" = "Échec de l’enregistrement de la pièce.";
 "roomViewer.duplicateRoomName" = "Une pièce avec ce nom existe déjà.";
 "roomPreview.unsavedTitle" = "Partir sans enregistrer ?";
 "roomPreview.unsavedMessage" = "La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.";
@@ -400,6 +403,19 @@
 "photoRoom.saveSuccess" = "Votre modèle 3D a été enregistré avec succès.";
 "photoRoom.error" = "Une erreur s'est produite lors de la génération de votre modèle 3D.";
 "photoRoom.buildingRoom" = "Construction de votre pièce 3D...";
+"photoRoom.reconstructorReady" = "Prêt";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analyse de la photo…";
+"photoRoom.reconstructorExtractingDepth" = "Extraction des informations de profondeur…";
+"photoRoom.reconstructorFindingWalls" = "Recherche des murs et des coins…";
+"photoRoom.reconstructorCalculatingDimensions" = "Calcul des dimensions de la pièce…";
+"photoRoom.reconstructorBuilding3D" = "Création du modèle 3D…";
+"photoRoom.reconstructorRoomReady" = "Pièce prête !";
+"photoRoom.reconstructorDepthFailed" = "Échec de l’estimation de la profondeur";
+"photoRoom.reconstructorStarting" = "Démarrage…";
+"photoRoom.reconstructorPreparingImage" = "Préparation de l’image…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analyse des limites…";
+"photoRoom.reconstructorCreatingTextures" = "Création des textures…";
+"photoRoom.reconstructorFinalizing" = "Finalisation…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Portrait";

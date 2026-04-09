@@ -286,6 +286,9 @@
 "roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
 "roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
 "roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomViewer.roomSavedAlertTitle" = "ಕೊಠಡಿ ಉಳಿಸಲಾಗಿದೆ";
+"roomViewer.meshExportFailed" = "3D ಮಾದರಿಯನ್ನು ರಫ್ತು ಮಾಡಲು ವಿಫಲವಾಗಿದೆ.";
+"roomViewer.meshSaveFailedGeneric" = "ಕೊಠಡಿಯನ್ನು ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ.";
 "roomViewer.duplicateRoomName" = "ಈ ಹೆಸರಿನೊಂದಿಗೆ ಒಂದು ಕೊಠಡಿ ಈಗಾಗಲೇ ಅಸ್ತಿತ್ವದಲ್ಲಿದೆ.";
 "roomPreview.unsavedTitle" = "ಉಳಿಸದೆಯೇ ಹಿಂದೆ ಹೋಗುವುದೇ?";
 "roomPreview.unsavedMessage" = "ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ.";
 "photoRoom.error" = "ನಿಮ್ಮ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುವಾಗ ದೋಷ ಸಂಭವಿಸಿದೆ.";
 "photoRoom.buildingRoom" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ...";
+"photoRoom.reconstructorReady" = "ಸಿದ್ಧ";
+"photoRoom.reconstructorAnalyzingPhoto" = "ಫೋಟೋ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorExtractingDepth" = "ಆಳದ ಮಾಹಿತಿ ಹೊರತೆಗೆಯಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorFindingWalls" = "ಗೋಡೆಗಳು ಮತ್ತು ಮೂಲೆಗಳನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorCalculatingDimensions" = "ಕೊಠಡಿಯ ಅಳತೆಗಳನ್ನು ಲೆಕ್ಕಾಚಾರ ಮಾಡಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorBuilding3D" = "3D ಮಾದರಿ ನಿರ್ಮಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorRoomReady" = "ಕೊಠಡಿ ಸಿದ್ಧ!";
+"photoRoom.reconstructorDepthFailed" = "ಆಳದ ಅಂದಾಜು ವಿಫಲವಾಗಿದೆ";
+"photoRoom.reconstructorStarting" = "ಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorPreparingImage" = "ಚಿತ್ರವನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "ಎಲೆಗಳನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorCreatingTextures" = "ಟೆಕ್ಸ್ಚರ್‌ಗಳನ್ನು ರಚಿಸಲಾಗುತ್ತಿದೆ…";
+"photoRoom.reconstructorFinalizing" = "ಪೂರ್ಣಗೊಳಿಸಲಾಗುತ್ತಿದೆ…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "ಪೋರ್ಟ್ರೇಟ್";

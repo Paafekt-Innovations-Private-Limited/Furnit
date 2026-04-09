@@ -9,7 +9,7 @@ import Accelerate
 class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var isProcessing = false
     @Published var progress: Float = 0.0
-    @Published var statusMessage = "Ready"
+    @Published var statusMessage = L10n.PhotoRoom.reconstructorReady
     @Published var estimatedDimensions: RoomDimensions?
     @Published var generatedRoomScene: SCNScene? // ✅ CHANGED: from URL to SCNScene
     
@@ -100,7 +100,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         await MainActor.run {
             isProcessing = true
             progress = 0.0
-            statusMessage = "Analyzing photo..."
+            statusMessage = L10n.PhotoRoom.reconstructorAnalyzingPhoto
         }
         
         // ✅ Fix image orientation FIRST
@@ -111,17 +111,17 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let fixedImage = downscaleIfNeeded(orientedImage)
 
         // Step 1: Generate depth map
-        await updateProgress(0.2, "Extracting depth information...")
+        await updateProgress(0.2, L10n.PhotoRoom.reconstructorExtractingDepth)
         logDebug("🔍 [Reconstructor] Step 1: Starting depth estimation")
         
         guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else{
-            await setError("Failed to estimate depth")
+            await setError(L10n.PhotoRoom.reconstructorDepthFailed)
             return
         }
         logDebug("✅ [Reconstructor] Step 1: Depth map created - extent: \(depthMap.extent)")
         
         // Step 2: Detect room structure
-        await updateProgress(0.4, "Finding walls and corners...")
+        await updateProgress(0.4, L10n.PhotoRoom.reconstructorFindingWalls)
         logDebug("🔍 [Reconstructor] Step 2: Starting room structure analysis")
         let roomStructure = await roomAnalyzer.analyzeRoom(image: fixedImage, depthMap: depthMap)
         logDebug("✅ [Reconstructor] Step 2: Room structure analyzed")
@@ -130,7 +130,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         logDebug("   - Ceiling region: \(roomStructure.ceilingRegion?.debugDescription ?? "nil")")
         
         // Step 3: Estimate dimensions
-        await updateProgress(0.6, "Calculating room dimensions...")
+        await updateProgress(0.6, L10n.PhotoRoom.reconstructorCalculatingDimensions)
         logDebug("🔍 [Reconstructor] Step 3: Starting dimension estimation")
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
         logDebug("✅ [Reconstructor] Step 3: Dimensions estimated")
@@ -144,7 +144,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         }
         
         // Step 4: Build 3D room
-        await updateProgress(0.8, "Building 3D model...")
+        await updateProgress(0.8, L10n.PhotoRoom.reconstructorBuilding3D)
         logDebug("🔍 [Reconstructor] Step 4: Starting 3D room construction")
         let roomScene = await build3DRoom(
             dimensions: dimensions,
@@ -164,7 +164,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             self.generatedRoomScene = roomScene // ✅ CHANGED
             self.isProcessing = false
             self.progress = 1.0
-            self.statusMessage = "Room ready!"
+            self.statusMessage = L10n.PhotoRoom.reconstructorRoomReady
         }
         
         logDebug("🎉 [Reconstructor] ========== PHOTO PROCESSING COMPLETE ==========")
@@ -181,13 +181,13 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         await MainActor.run {
             isProcessing = true
             progress = 0.0
-            statusMessage = "Starting..."
+            statusMessage = L10n.PhotoRoom.reconstructorStarting
         }
 
         // Small delay for UI feedback
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.1, "Preparing image...")
+        await updateProgress(0.1, L10n.PhotoRoom.reconstructorPreparingImage)
 
         // Fix image orientation FIRST
         let orientedImage = image.fixedOrientation()
@@ -198,15 +198,15 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.25, "Extracting depth information...")
+        await updateProgress(0.25, L10n.PhotoRoom.reconstructorExtractingDepth)
         guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else {
-            await setError("Failed to estimate depth")
+            await setError(L10n.PhotoRoom.reconstructorDepthFailed)
             return
         }
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.4, "Analyzing boundaries...")
+        await updateProgress(0.4, L10n.PhotoRoom.reconstructorAnalyzingBoundaries)
 
         // Use the adjusted boundaries instead of detecting new ones
         var roomStructure = boundaries
@@ -220,7 +220,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.55, "Calculating room dimensions...")
+        await updateProgress(0.55, L10n.PhotoRoom.reconstructorCalculatingDimensions)
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
 
         await MainActor.run {
@@ -229,11 +229,11 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.7, "Creating textures...")
+        await updateProgress(0.7, L10n.PhotoRoom.reconstructorCreatingTextures)
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.85, "Building 3D model...")
+        await updateProgress(0.85, L10n.PhotoRoom.reconstructorBuilding3D)
         let roomScene = await build3DRoom(
             dimensions: dimensions,
             structure: roomStructure,
@@ -243,7 +243,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
 
-        await updateProgress(0.95, "Finalizing...")
+        await updateProgress(0.95, L10n.PhotoRoom.reconstructorFinalizing)
 
         try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 sec
 
@@ -251,7 +251,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             self.generatedRoomScene = roomScene
             self.isProcessing = false
             self.progress = 1.0
-            self.statusMessage = "Room ready!"
+            self.statusMessage = L10n.PhotoRoom.reconstructorRoomReady
         }
 
         logDebug("🎉 [Reconstructor] ========== BOUNDARY PROCESSING COMPLETE ==========")

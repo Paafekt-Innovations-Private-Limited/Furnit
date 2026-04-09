@@ -263,6 +263,20 @@ enum L10n {
         static let quickPhoto = "photoRoom.quickPhoto".localized
         static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
         static let buildingRoom = "photoRoom.buildingRoom".localized
+        /// Manual single-photo room pipeline (`SinglePhotoRoomReconstructor`) status line on progress overlay.
+        static let reconstructorReady = "photoRoom.reconstructorReady".localized
+        static let reconstructorAnalyzingPhoto = "photoRoom.reconstructorAnalyzingPhoto".localized
+        static let reconstructorExtractingDepth = "photoRoom.reconstructorExtractingDepth".localized
+        static let reconstructorFindingWalls = "photoRoom.reconstructorFindingWalls".localized
+        static let reconstructorCalculatingDimensions = "photoRoom.reconstructorCalculatingDimensions".localized
+        static let reconstructorBuilding3D = "photoRoom.reconstructorBuilding3D".localized
+        static let reconstructorRoomReady = "photoRoom.reconstructorRoomReady".localized
+        static let reconstructorDepthFailed = "photoRoom.reconstructorDepthFailed".localized
+        static let reconstructorStarting = "photoRoom.reconstructorStarting".localized
+        static let reconstructorPreparingImage = "photoRoom.reconstructorPreparingImage".localized
+        static let reconstructorAnalyzingBoundaries = "photoRoom.reconstructorAnalyzingBoundaries".localized
+        static let reconstructorCreatingTextures = "photoRoom.reconstructorCreatingTextures".localized
+        static let reconstructorFinalizing = "photoRoom.reconstructorFinalizing".localized
         static let backAlertTitle = "photoRoom.backAlertTitle".localized
         static let backAlertMessage = "photoRoom.backAlertMessage".localized
         static let backAlertAI = "photoRoom.backAlertAI".localized
@@ -315,6 +329,12 @@ enum L10n {
             "roomViewer.saveFailed".localized(error)
         }
         static let roomSaveTitle = "roomViewer.roomSaveTitle".localized
+        /// Success alert title after mesh/GLB manual save (distinct from ``roomSaveTitle``).
+        static let roomSavedAlertTitle = "roomViewer.roomSavedAlertTitle".localized
+        /// Mesh export JS error (manual room save flow).
+        static let meshExportFailed = "roomViewer.meshExportFailed".localized
+        /// Generic save failure when no server message (manual mesh room).
+        static let meshSaveFailedGeneric = "roomViewer.meshSaveFailedGeneric".localized
         /// Shown when saving a Sharp/ML room and the chosen name collides with an existing saved room.
         static let duplicateRoomName = "roomViewer.duplicateRoomName".localized
         static let share = "roomViewer.share".localized

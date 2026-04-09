@@ -316,6 +316,9 @@
 "roomViewer.saveSuccess" = "Raum '%@' erfolgreich gespeichert!";
 "roomViewer.saveFailed" = "Raum konnte nicht gespeichert werden: %@";
 "roomViewer.roomSaveTitle" = "Raum speichern";
+"roomViewer.roomSavedAlertTitle" = "Raum gespeichert";
+"roomViewer.meshExportFailed" = "3D-Modell konnte nicht exportiert werden.";
+"roomViewer.meshSaveFailedGeneric" = "Raum konnte nicht gespeichert werden.";
 "roomViewer.duplicateRoomName" = "Ein Raum mit diesem Namen existiert bereits.";
 "roomPreview.unsavedTitle" = "Ohne Speichern verlassen?";
 "roomPreview.unsavedMessage" = "Der Raum wurde noch nicht gespeichert. Wenn Sie jetzt zurückgehen, verlieren Sie diese Vorschau.";
@@ -411,6 +414,19 @@
 "photoRoom.saveSuccess" = "Ihr 3D-Modell wurde erfolgreich gespeichert.";
 "photoRoom.error" = "Bei der Erstellung Ihres 3D-Modells ist ein Fehler aufgetreten.";
 "photoRoom.buildingRoom" = "Ihr 3D-Raum wird erstellt...";
+"photoRoom.reconstructorReady" = "Bereit";
+"photoRoom.reconstructorAnalyzingPhoto" = "Foto wird analysiert …";
+"photoRoom.reconstructorExtractingDepth" = "Tiefeninformationen werden extrahiert …";
+"photoRoom.reconstructorFindingWalls" = "Wände und Ecken werden gesucht …";
+"photoRoom.reconstructorCalculatingDimensions" = "Raummaße werden berechnet …";
+"photoRoom.reconstructorBuilding3D" = "3D-Modell wird erstellt …";
+"photoRoom.reconstructorRoomReady" = "Raum fertig!";
+"photoRoom.reconstructorDepthFailed" = "Tiefenschätzung fehlgeschlagen";
+"photoRoom.reconstructorStarting" = "Wird gestartet …";
+"photoRoom.reconstructorPreparingImage" = "Bild wird vorbereitet …";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Grenzen werden analysiert …";
+"photoRoom.reconstructorCreatingTextures" = "Texturen werden erstellt …";
+"photoRoom.reconstructorFinalizing" = "Wird abgeschlossen …";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Hochformat";

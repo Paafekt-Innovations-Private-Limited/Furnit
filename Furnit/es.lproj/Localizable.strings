@@ -287,6 +287,9 @@
 "roomViewer.saveSuccess" = "¡Habitación '%@' guardada correctamente!";
 "roomViewer.saveFailed" = "Error al guardar habitación: %@";
 "roomViewer.roomSaveTitle" = "Guardar habitación";
+"roomViewer.roomSavedAlertTitle" = "Habitación guardada";
+"roomViewer.meshExportFailed" = "No se pudo exportar el modelo 3D.";
+"roomViewer.meshSaveFailedGeneric" = "No se pudo guardar la habitación.";
 "roomViewer.duplicateRoomName" = "Ya existe una habitación con este nombre.";
 "roomPreview.unsavedTitle" = "¿Salir sin guardar?";
 "roomPreview.unsavedMessage" = "La habitación aún no se ha guardado. Si vuelves ahora, perderás esta vista previa.";
@@ -400,6 +403,19 @@
 "photoRoom.saveSuccess" = "Tu modelo 3D se ha guardado correctamente.";
 "photoRoom.error" = "Ocurrió un error al generar tu modelo 3D.";
 "photoRoom.buildingRoom" = "Construyendo tu habitación 3D...";
+"photoRoom.reconstructorReady" = "Listo";
+"photoRoom.reconstructorAnalyzingPhoto" = "Analizando foto…";
+"photoRoom.reconstructorExtractingDepth" = "Extrayendo información de profundidad…";
+"photoRoom.reconstructorFindingWalls" = "Buscando paredes y esquinas…";
+"photoRoom.reconstructorCalculatingDimensions" = "Calculando dimensiones de la habitación…";
+"photoRoom.reconstructorBuilding3D" = "Creando modelo 3D…";
+"photoRoom.reconstructorRoomReady" = "¡Habitación lista!";
+"photoRoom.reconstructorDepthFailed" = "No se pudo estimar la profundidad";
+"photoRoom.reconstructorStarting" = "Iniciando…";
+"photoRoom.reconstructorPreparingImage" = "Preparando imagen…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "Analizando límites…";
+"photoRoom.reconstructorCreatingTextures" = "Creando texturas…";
+"photoRoom.reconstructorFinalizing" = "Finalizando…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Vertical";

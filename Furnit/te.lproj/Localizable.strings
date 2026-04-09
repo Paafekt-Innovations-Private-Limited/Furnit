@@ -286,6 +286,9 @@
 "roomViewer.saveSuccess" = "గది '%@' విజయవంతంగా సేవ్ అయింది!";
 "roomViewer.saveFailed" = "గది సేవ్ చేయడం విఫలమైంది: %@";
 "roomViewer.roomSaveTitle" = "గది సేవ్ చేయి";
+"roomViewer.roomSavedAlertTitle" = "గది సేవ్ అయింది";
+"roomViewer.meshExportFailed" = "3D నమూనాను ఎగుమతి చేయడం విఫలమైంది.";
+"roomViewer.meshSaveFailedGeneric" = "గదిని సేవ్ చేయడం విఫలమైంది.";
 "roomViewer.duplicateRoomName" = "ఈ పేరుతో ఇప్పటికే ఒక గది ఉంది.";
 "roomPreview.unsavedTitle" = "సేవ్ చేయకుండా వెనక్కి వెళ్లాలా?";
 "roomPreview.unsavedMessage" = "మీ గది ఇంకా సేవ్ కాలేదు. ఇప్పుడు వెనక్కి వెళితే ఈ ప్రివ్యూ పోవచ్చు.";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "మీ 3D మోడల్ విజయవంతంగా సేవ్ అయింది.";
 "photoRoom.error" = "మీ 3D మోడల్‌ను రూపొందించేటప్పుడు లోపం సంభవించింది.";
 "photoRoom.buildingRoom" = "మీ 3D గది నిర్మించబడుతోంది...";
+"photoRoom.reconstructorReady" = "సిద్ధం";
+"photoRoom.reconstructorAnalyzingPhoto" = "ఫోటో విశ్లేషించబడుతోంది…";
+"photoRoom.reconstructorExtractingDepth" = "లోతు సమాచారం వెలికితీయబడుతోంది…";
+"photoRoom.reconstructorFindingWalls" = "గోడలు మరియు మూలలు కనుగొనబడుతున్నాయి…";
+"photoRoom.reconstructorCalculatingDimensions" = "గది కొలతలు లెక్కించబడుతున్నాయి…";
+"photoRoom.reconstructorBuilding3D" = "3D నమూనా నిర్మించబడుతోంది…";
+"photoRoom.reconstructorRoomReady" = "గది సిద్ధం!";
+"photoRoom.reconstructorDepthFailed" = "లోతు అంచనా విఫలమైంది";
+"photoRoom.reconstructorStarting" = "ప్రారంభమవుతోంది…";
+"photoRoom.reconstructorPreparingImage" = "చిత్రం సిద్ధం చేయబడుతోంది…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "సరిహద్దులు విశ్లేషించబడుతున్నాయి…";
+"photoRoom.reconstructorCreatingTextures" = "టెక్స్చర్లు సృష్టించబడుతున్నాయి…";
+"photoRoom.reconstructorFinalizing" = "పూర్తి చేయబడుతోంది…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "పోర్ట్రెయిట్";

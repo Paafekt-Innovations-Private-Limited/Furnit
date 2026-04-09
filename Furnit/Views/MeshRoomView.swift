@@ -218,7 +218,8 @@ struct MeshRoomView: View {
             }
         }
         .onAppear {
-            yoloeService.ensureModelLoaded()
+            // Do not load YOLOE eagerly here — keep manual room memory low until the user enables brain mode.
+            // This matches SharpRoomView and avoids holding YOLOE alongside the room viewer by default.
             // Lock orientation based on photo orientation
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
@@ -253,20 +254,22 @@ struct MeshRoomView: View {
             cancelSnapshotHintTasks()
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
+            brainArAssistedSizingEnabled = false
+            yoloeService.releaseResources()
             OrientationLockManager.shared.unlock()
         }
-        .alert("Save Room", isPresented: $showRoomNameInput) {
-            TextField("Room name", text: $roomName)
-            Button("Cancel", role: .cancel) {
+        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+            TextField("", text: $roomName, prompt: Text(L10n.RoomViewer.roomName))
+            Button(L10n.Common.cancel, role: .cancel) {
                 roomName = ""
             }
-            Button("Save") {
+            Button(L10n.Common.save) {
                 requestGLBExport()
             }
             .disabled(roomName.isEmpty)
         }
-        .alert("Room Saved", isPresented: $showSaveAlert) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.RoomViewer.roomSavedAlertTitle, isPresented: $showSaveAlert) {
+            Button(L10n.Common.ok, role: .cancel) {}
         } message: {
             Text(saveAlertMessage)
         }
@@ -837,7 +840,7 @@ struct MeshRoomView: View {
                 logDebug("❌ [MeshRoomView] Error requesting GLB export: \(error)")
                 DispatchQueue.main.async {
                     isSavingRoom = false
-                    saveAlertMessage = "Failed to export 3D model"
+                    saveAlertMessage = L10n.RoomViewer.meshExportFailed
                     showSaveAlert = true
                 }
             }
@@ -859,11 +862,11 @@ struct MeshRoomView: View {
             saveWasSuccessful = success
 
             if success {
-                saveAlertMessage = "Room '\(roomName)' saved successfully!"
+                saveAlertMessage = L10n.RoomViewer.saveSuccess(roomName)
                 // Post notification to dismiss the sheet and refresh home view
                 NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
             } else {
-                saveAlertMessage = errorMessage ?? "Failed to save room"
+                saveAlertMessage = errorMessage ?? L10n.RoomViewer.meshSaveFailedGeneric
             }
             showSaveAlert = true
             roomName = ""

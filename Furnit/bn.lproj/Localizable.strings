@@ -304,6 +304,9 @@
 "roomViewer.saveSuccess" = "রুম '%@' সফলভাবে সেভ হয়েছে!";
 "roomViewer.saveFailed" = "রুম সেভ ব্যর্থ: %@";
 "roomViewer.roomSaveTitle" = "রুম সেভ করুন";
+"roomViewer.roomSavedAlertTitle" = "রুম সংরক্ষিত";
+"roomViewer.meshExportFailed" = "৩ডি মডেল রপ্তানি ব্যর্থ।";
+"roomViewer.meshSaveFailedGeneric" = "রুম সংরক্ষণ ব্যর্থ।";
 "roomViewer.duplicateRoomName" = "এই নামে একটি রুম ইতিমধ্যে বিদ্যমান।";
 "roomPreview.unsavedTitle" = "সংরক্ষণ না করে ফিরে যাবেন?";
 "roomPreview.unsavedMessage" = "আপনার রুম এখনও সংরক্ষিত হয়নি। এখন ফিরে গেলে এই প্রিভিউ হারিয়ে যেতে পারে।";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "আপনার 3D মডেল সফলভাবে সংরক্ষিত হয়েছে।";
 "photoRoom.error" = "আপনার 3D মডেল তৈরি করতে একটি ত্রুটি ঘটেছে।";
 "photoRoom.buildingRoom" = "আপনার 3D রুম তৈরি হচ্ছে...";
+"photoRoom.reconstructorReady" = "প্রস্তুত";
+"photoRoom.reconstructorAnalyzingPhoto" = "ছবি বিশ্লেষণ করা হচ্ছে…";
+"photoRoom.reconstructorExtractingDepth" = "গভীরতার তথ্য বের করা হচ্ছে…";
+"photoRoom.reconstructorFindingWalls" = "দেয়াল ও কোণ খোঁজা হচ্ছে…";
+"photoRoom.reconstructorCalculatingDimensions" = "রুমের মাপ গণনা করা হচ্ছে…";
+"photoRoom.reconstructorBuilding3D" = "৩ডি মডেল তৈরি করা হচ্ছে…";
+"photoRoom.reconstructorRoomReady" = "রুম প্রস্তুত!";
+"photoRoom.reconstructorDepthFailed" = "গভীরতা অনুমান ব্যর্থ";
+"photoRoom.reconstructorStarting" = "শুরু হচ্ছে…";
+"photoRoom.reconstructorPreparingImage" = "ছবি প্রস্তুত করা হচ্ছে…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "সীমানা বিশ্লেষণ করা হচ্ছে…";
+"photoRoom.reconstructorCreatingTextures" = "টেক্সচার তৈরি করা হচ্ছে…";
+"photoRoom.reconstructorFinalizing" = "শেষ করা হচ্ছে…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "পোর্ট্রেট";

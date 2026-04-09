@@ -286,6 +286,9 @@
 "roomViewer.saveSuccess" = "മുറി '%@' വിജയകരമായി സേവ് ചെയ്തു!";
 "roomViewer.saveFailed" = "മുറി സേവ് ചെയ്യൽ പരാജയപ്പെട്ടു: %@";
 "roomViewer.roomSaveTitle" = "മുറി സേവ് ചെയ്യുക";
+"roomViewer.roomSavedAlertTitle" = "മുറി സേവ് ചെയ്തു";
+"roomViewer.meshExportFailed" = "3D മോഡൽ എക്സ്പോർട്ട് ചെയ്യാൻ കഴിഞ്ഞില്ല.";
+"roomViewer.meshSaveFailedGeneric" = "മുറി സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല.";
 "roomViewer.duplicateRoomName" = "ഈ പേരിൽ ഒരു മുറി ഇതിനകം നിലവിലുണ്ട്.";
 "roomPreview.unsavedTitle" = "സേവ് ചെയ്യാതെ പിൻവാങ്ങണോ?";
 "roomPreview.unsavedMessage" = "നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "നിങ്ങളുടെ 3D മോഡൽ വിജയകരമായി സേവ് ചെയ്തു.";
 "photoRoom.error" = "നിങ്ങളുടെ 3D മോഡൽ സൃഷ്ടിക്കുമ്പോൾ ഒരു പിശക് സംഭവിച്ചു.";
 "photoRoom.buildingRoom" = "നിങ്ങളുടെ 3D മുറി നിർമ്മിക്കുന്നു...";
+"photoRoom.reconstructorReady" = "തയ്യാർ";
+"photoRoom.reconstructorAnalyzingPhoto" = "ഫോട്ടോ വിശകലനം ചെയ്യുന്നു…";
+"photoRoom.reconstructorExtractingDepth" = "ആഴത്തിന്റെ വിവരങ്ങൾ എടുക്കുന്നു…";
+"photoRoom.reconstructorFindingWalls" = "ചുവരുകളും മൂലകളും കണ്ടെത്തുന്നു…";
+"photoRoom.reconstructorCalculatingDimensions" = "മുറിയുടെ അളവുകൾ കണക്കാക്കുന്നു…";
+"photoRoom.reconstructorBuilding3D" = "3D മോഡൽ നിർമ്മിക്കുന്നു…";
+"photoRoom.reconstructorRoomReady" = "മുറി തയ്യാർ!";
+"photoRoom.reconstructorDepthFailed" = "ആഴം കണക്കാക്കൽ പരാജയപ്പെട്ടു";
+"photoRoom.reconstructorStarting" = "ആരംഭിക്കുന്നു…";
+"photoRoom.reconstructorPreparingImage" = "ചിത്രം തയ്യാറാക്കുന്നു…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "അതിർത്തികൾ വിശകലനം ചെയ്യുന്നു…";
+"photoRoom.reconstructorCreatingTextures" = "ടെക്സ്ചറുകൾ സൃഷ്ടിക്കുന്നു…";
+"photoRoom.reconstructorFinalizing" = "പൂർത്തിയാക്കുന്നു…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "പോർട്രെയ്റ്റ്";

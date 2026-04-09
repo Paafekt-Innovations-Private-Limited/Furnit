@@ -287,6 +287,9 @@
 "roomViewer.saveSuccess" = "房间「%@」保存成功！";
 "roomViewer.saveFailed" = "保存房间失败：%@";
 "roomViewer.roomSaveTitle" = "保存房间";
+"roomViewer.roomSavedAlertTitle" = "房间已保存";
+"roomViewer.meshExportFailed" = "无法导出 3D 模型。";
+"roomViewer.meshSaveFailedGeneric" = "保存房间失败。";
 "roomViewer.duplicateRoomName" = "已存在同名房间。";
 "roomPreview.unsavedTitle" = "不保存就返回？";
 "roomPreview.unsavedMessage" = "房间尚未保存。若现在返回，将丢失此预览。";
@@ -400,6 +403,19 @@
 "photoRoom.saveSuccess" = "您的3D模型已成功保存。";
 "photoRoom.error" = "生成3D模型时发生错误。";
 "photoRoom.buildingRoom" = "正在构建您的3D房间...";
+"photoRoom.reconstructorReady" = "就绪";
+"photoRoom.reconstructorAnalyzingPhoto" = "正在分析照片…";
+"photoRoom.reconstructorExtractingDepth" = "正在提取深度信息…";
+"photoRoom.reconstructorFindingWalls" = "正在查找墙壁和角落…";
+"photoRoom.reconstructorCalculatingDimensions" = "正在计算房间尺寸…";
+"photoRoom.reconstructorBuilding3D" = "正在构建 3D 模型…";
+"photoRoom.reconstructorRoomReady" = "房间已就绪！";
+"photoRoom.reconstructorDepthFailed" = "深度估计失败";
+"photoRoom.reconstructorStarting" = "正在开始…";
+"photoRoom.reconstructorPreparingImage" = "正在准备图像…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "正在分析边界…";
+"photoRoom.reconstructorCreatingTextures" = "正在创建纹理…";
+"photoRoom.reconstructorFinalizing" = "正在完成…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "竖屏";

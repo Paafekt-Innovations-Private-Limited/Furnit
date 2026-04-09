@@ -304,6 +304,9 @@
 "roomViewer.saveSuccess" = "تم حفظ الغرفة '%@' بنجاح!";
 "roomViewer.saveFailed" = "فشل حفظ الغرفة: %@";
 "roomViewer.roomSaveTitle" = "حفظ الغرفة";
+"roomViewer.roomSavedAlertTitle" = "تم حفظ الغرفة";
+"roomViewer.meshExportFailed" = "فشل تصدير النموذج ثلاثي الأبعاد.";
+"roomViewer.meshSaveFailedGeneric" = "فشل حفظ الغرفة.";
 "roomViewer.duplicateRoomName" = "توجد بالفعل غرفة بهذا الاسم.";
 "roomPreview.unsavedTitle" = "المغادرة دون حفظ؟";
 "roomPreview.unsavedMessage" = "لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "تم حفظ النموذج ثلاثي الأبعاد بنجاح.";
 "photoRoom.error" = "حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.";
 "photoRoom.buildingRoom" = "جاري بناء غرفتك ثلاثية الأبعاد...";
+"photoRoom.reconstructorReady" = "جاهز";
+"photoRoom.reconstructorAnalyzingPhoto" = "جارٍ تحليل الصورة…";
+"photoRoom.reconstructorExtractingDepth" = "جارٍ استخراج معلومات العمق…";
+"photoRoom.reconstructorFindingWalls" = "جارٍ البحث عن الجدران والزوايا…";
+"photoRoom.reconstructorCalculatingDimensions" = "جارٍ حساب أبعاد الغرفة…";
+"photoRoom.reconstructorBuilding3D" = "جارٍ إنشاء النموذج ثلاثي الأبعاد…";
+"photoRoom.reconstructorRoomReady" = "الغرفة جاهزة!";
+"photoRoom.reconstructorDepthFailed" = "فشل تقدير العمق";
+"photoRoom.reconstructorStarting" = "جارٍ البدء…";
+"photoRoom.reconstructorPreparingImage" = "جارٍ تجهيز الصورة…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "جارٍ تحليل الحدود…";
+"photoRoom.reconstructorCreatingTextures" = "جارٍ إنشاء النسيج…";
+"photoRoom.reconstructorFinalizing" = "جارٍ الإنهاء…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "عمودي";

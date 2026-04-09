@@ -286,6 +286,9 @@
 "roomViewer.saveSuccess" = "அறை '%@' வெற்றிகரமாக சேமிக்கப்பட்டது!";
 "roomViewer.saveFailed" = "அறை சேமிப்பு தோல்வி: %@";
 "roomViewer.roomSaveTitle" = "அறையைச் சேமி";
+"roomViewer.roomSavedAlertTitle" = "அறை சேமிக்கப்பட்டது";
+"roomViewer.meshExportFailed" = "3D மாதிரியை ஏற்றுமதி செய்ய முடியவில்லை.";
+"roomViewer.meshSaveFailedGeneric" = "அறையைச் சேமிக்க முடியவில்லை.";
 "roomViewer.duplicateRoomName" = "இந்த பெயருடன் ஒரு அறை ஏற்கனவே உள்ளது.";
 "roomPreview.unsavedTitle" = "சேமிக்காமல் பின்செல்லவா?";
 "roomPreview.unsavedMessage" = "உங்கள் அறை இன்னும் சேமிக்கப்படவில்லை. இப்போது பின்சென்றால் இந்த முன்னோட்டம் இழக்கப்படலாம்.";
@@ -399,6 +402,19 @@
 "photoRoom.saveSuccess" = "உங்கள் 3D மாதிரி வெற்றிகரமாக சேமிக்கப்பட்டது.";
 "photoRoom.error" = "உங்கள் 3D மாதிரியை உருவாக்கும்போது பிழை ஏற்பட்டது.";
 "photoRoom.buildingRoom" = "உங்கள் 3D அறை உருவாக்கப்படுகிறது...";
+"photoRoom.reconstructorReady" = "தயார்";
+"photoRoom.reconstructorAnalyzingPhoto" = "புகைப்படம் பகுப்பாய்வு செய்யப்படுகிறது…";
+"photoRoom.reconstructorExtractingDepth" = "ஆழத்தை தகவல் பிரித்தெடுக்கிறது…";
+"photoRoom.reconstructorFindingWalls" = "சுவர்களும் மூலைகளும் தேடப்படுகின்றன…";
+"photoRoom.reconstructorCalculatingDimensions" = "அறை அளவுகள் கணக்கிடப்படுகின்றன…";
+"photoRoom.reconstructorBuilding3D" = "3D மாதிரி உருவாக்கப்படுகிறது…";
+"photoRoom.reconstructorRoomReady" = "அறை தயார்!";
+"photoRoom.reconstructorDepthFailed" = "ஆழம் மதிப்பிடுதல் தோல்வி";
+"photoRoom.reconstructorStarting" = "தொடங்குகிறது…";
+"photoRoom.reconstructorPreparingImage" = "படம் தயாராகிறது…";
+"photoRoom.reconstructorAnalyzingBoundaries" = "எல்லைகள் பகுப்பாய்வு செய்யப்படுகின்றன…";
+"photoRoom.reconstructorCreatingTextures" = "டெக்ஸ்சர்கள் உருவாக்கப்படுகின்றன…";
+"photoRoom.reconstructorFinalizing" = "முடிக்கப்படுகிறது…";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "செங்குத்து";

@@ -69,32 +69,21 @@ class SHARPService: ObservableObject {
     /// Gaussian parameter count per splat: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14
     private static let paramsPerGaussian: Int = 14
 
-    /// Creates an upright working image for SHARP without the older pre-downscale step.
-    /// Python SHARP resizes the full oriented image directly to 1536×1536, so we only
-    /// normalize orientation here and leave the final squish to `preprocessImage`.
+    /// Returns the original image for SHARP. We no longer materialize a second full-resolution
+    /// upright copy here because that extra 4K/5K allocation is enough to tip 4 GB devices
+    /// into jetsam during the long Core ML prediction. Orientation is applied directly while
+    /// drawing into the 1536×1536 model input buffer inside `preprocessImage`.
     static func prepareImageForSharp(_ image: UIImage) -> UIImage {
         let orientedSize = orientedPixelSize(for: image)
         let w = orientedSize.width
         let h = orientedSize.height
         guard w > 1, h > 1 else { return image }
 
-        let needsOrientationFix = image.imageOrientation != .up
-        guard needsOrientationFix else { return image }
-
-        let newW = max(1, Int(w.rounded(.down)))
-        let newH = max(1, Int(h.rounded(.down)))
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH), format: format)
-        let rendered = renderer.image { _ in
-            image.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
-        }
         logDebug(
             "[GREEN][SHARP_PREPROCESS] SOURCE=\(Int(w))X\(Int(h)) ORIENT=\(image.imageOrientation.rawValue) " +
-            "PREPARED=\(newW)X\(newH) MODE=ORIENT_ONLY"
+            "PREPARED=\(Int(w))X\(Int(h)) MODE=DEFER_ORIENTATION_TO_MODEL_INPUT"
         )
-        return rendered
+        return image
     }
 
     /// Pixel size after applying UIImage orientation semantics.
@@ -349,14 +338,16 @@ class SHARPService: ObservableObject {
         statusMessage = L10n.Sharp.gettingReady
         progress = 0.1
 
-        // Check physical memory. FP32 SHARP at 1536² is heavy on low-memory devices; below 2 GB we bail out.
+        // Check physical memory. Keep only a very low-end guard here so devices that previously
+        // worked (for example 4 GB-class phones) are not blocked from testing. The real fix for
+        // memory pressure is reducing peak allocations, not an aggressive RAM gate.
         let physicalMemory = ProcessInfo.processInfo.physicalMemory
-        let twoGB: UInt64 = 2 * 1024 * 1024 * 1024
+        let minimumSupportedRam: UInt64 = 2 * 1024 * 1024 * 1024
 
         logDebug("SHARP: Device RAM: \(physicalMemory / 1024 / 1024)MB")
 
-        if physicalMemory < twoGB {
-            logDebug("SHARP: Device has <2GB RAM — skipping on-device SHARP")
+        if physicalMemory < minimumSupportedRam {
+            logDebug("SHARP: Device has <2GB RAM — skipping on-device SHARP to avoid memory termination during inference")
             isLoadingModel = false
             statusMessage = L10n.Sharp.notEnoughSpace
             return
@@ -640,10 +631,6 @@ class SHARPService: ObservableObject {
     /// - Parameter image: Source UIImage
     /// - Returns: CVPixelBuffer sized to 1536x1536 (model expects Image type)
     private func preprocessImage(_ image: UIImage) async throws -> CVPixelBuffer {
-        guard let cgImage = image.cgImage else {
-            throw GenerationError.invalidImage
-        }
-
         let size = Self.inputSize
 
         // Create CVPixelBuffer for CoreML Image input
@@ -682,14 +669,18 @@ class SHARPService: ObservableObject {
             throw GenerationError.serverError("Failed to create graphics context")
         }
 
-        // Draw resized image into pixel buffer (pool releases transient decode pressure from Core Graphics)
+        // Draw directly from UIImage so orientation is handled here without first allocating
+        // an upright full-resolution copy of the source photo.
         autoreleasepool {
             context.interpolationQuality = .high
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+            UIGraphicsPushContext(context)
+            image.draw(in: CGRect(x: 0, y: 0, width: size, height: size))
+            UIGraphicsPopContext()
         }
 
+        let orientedSize = Self.orientedPixelSize(for: image)
         logDebug(
-            "[GREEN][SHARP_PREPROCESS] SOURCE_DRAW=\(cgImage.width)X\(cgImage.height) " +
+            "[GREEN][SHARP_PREPROCESS] SOURCE_DRAW=\(Int(orientedSize.width))X\(Int(orientedSize.height)) " +
             "MODEL_INPUT=\(size)X\(size) RESIZE=DIRECT_SQUISH PAD=NONE"
         )
 
