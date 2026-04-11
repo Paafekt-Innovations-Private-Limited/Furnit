@@ -34,8 +34,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
@@ -64,6 +66,8 @@ import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.FurnitureSegmentationMeanColor
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
+import com.furnit.android.utils.SplatLoadHint
+import com.furnit.android.utils.SplatLoadHintVector3
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +92,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * Uses THREE.js and SparkJS to render PLY files in a WebView
  */
 class SharpRoomActivity : AppCompatActivity() {
+    private enum class BrainSegmentationMode {
+        IDENTIFY_ONLY,
+        SEGMENT_SELECTED,
+    }
 
     companion object {
         private const val TAG = "SharpRoomActivity"
@@ -175,13 +183,63 @@ class SharpRoomActivity : AppCompatActivity() {
         sparkBoxPersistHandler.postDelayed(runnable, 1500L)
     }
 
+    private fun logSharpLoadTiming(stage: String, detail: String = "") {
+        val elapsedMs = SystemClock.elapsedRealtime() - sharpLoadStartMs
+        val suffix = if (detail.isBlank()) "" else " $detail"
+        LogUtil.i("SPLAT_LOAD", "[android_open] stage=$stage elapsed_ms=$elapsedMs$suffix")
+    }
+
+    private fun loadPersistedSplatLoadHint(roomPlyFile: File): SplatLoadHint? {
+        val sidecarFile = SplatLoadHint.sidecarFileFor(roomPlyFile)
+        val hint = SplatLoadHint.readFrom(sidecarFile)
+        if (hint == null) {
+            logSharpLoadTiming("hint_miss", "reason=missing sidecar=${sidecarFile.name}")
+            return null
+        }
+        if (!hint.matches(roomPlyFile)) {
+            logSharpLoadTiming("hint_stale", "sidecar=${sidecarFile.name}")
+            return null
+        }
+        logSharpLoadTiming("hint_hit", "sidecar=${sidecarFile.name} splats=${hint.splatCount}")
+        return hint
+    }
+
+    private fun persistSplatLoadHintFromBounds(
+        fullBoundsMin: SplatLoadHintVector3,
+        fullBoundsMax: SplatLoadHintVector3,
+        framingBoundsMin: SplatLoadHintVector3,
+        framingBoundsMax: SplatLoadHintVector3,
+        centroid: SplatLoadHintVector3,
+        source: String,
+    ) {
+        val originalPlyFile = plyPath?.let { File(it) } ?: return
+        val nextHint = SplatLoadHint.createForFile(
+            roomPlyFile = originalPlyFile,
+            splatCount = persistedSplatLoadHint?.splatCount ?: 0,
+            fullBoundsMin = fullBoundsMin,
+            fullBoundsMax = fullBoundsMax,
+            framingBoundsMin = framingBoundsMin,
+            framingBoundsMax = framingBoundsMax,
+            centroid = centroid,
+        ) ?: return
+        persistedSplatLoadHint = nextHint
+        try {
+            SplatLoadHint.writeTo(SplatLoadHint.sidecarFileFor(originalPlyFile), nextHint)
+            logSharpLoadTiming("hint_saved", "source=$source sidecar=${SplatLoadHint.sidecarFileFor(originalPlyFile).name}")
+        } catch (exception: Exception) {
+            DebugLogger.eDebugMode(TAG, "Failed to save splat load hint", exception)
+        }
+    }
+
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var brainProgressOverlay: FrameLayout
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
+    private lateinit var brainCameraPreviewView: PreviewView
     /** Bottom-left brain control; blue when idle, green while live segmentation is active. */
     private lateinit var brainModeButton: TextView
+    private var brainActionButton: TextView? = null
     /** Top-right AR sizing control; active when the current brain session requested AR-assisted sizing. */
     private var brainArAssistButton: TextView? = null
     private lateinit var titleView: TextView
@@ -243,6 +301,16 @@ class SharpRoomActivity : AppCompatActivity() {
     private var latestEstimatedFurnitureDepthMeters: Float? = null
     private var segmentedFurnitureMeanSrgb: Vec3f? = null
     private var latestBrainPrimaryDetection: DetectionResult? = null
+    private var latestBrainDetections: List<DetectionResult> = emptyList()
+    private var latestBrainMask: Bitmap? = null
+    private var latestBrainInputSize: Int = 640
+    private var latestBrainOverlayScale: Float = 1f
+    private var brainSegmentationMode: BrainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+    private val selectedBrainClassIds = linkedSetOf<Int>()
+    private val selectedBrainLabels = linkedSetOf<String>()
+    private var showIdentifyLivePreview: Boolean = true
+    private var showFullVideoWithIdentifications: Boolean = true
+    private var cameraPreviewUseCase: Preview? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
@@ -281,11 +349,15 @@ class SharpRoomActivity : AppCompatActivity() {
     private var openedFromSinglePhotoRoom: Boolean = false
     /** Set to true once the user explicitly saves the room from this viewer. */
     private var hasSavedRoom: Boolean = false
+    private var internalPlyFile: File? = null
+    private var persistedSplatLoadHint: SplatLoadHint? = null
+    private var sharpLoadStartMs: Long = 0L
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         DebugLogger.d(TAG, "Brain: camera permission result isGranted=$isGranted")
         if (isGranted) {
+            resetBrainSessionUiState()
             showBrainProgressOverlayIfNeeded()
             startBrainDetection(pendingBrainStartArAssist)
         } else {
@@ -298,6 +370,8 @@ class SharpRoomActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sharpLoadStartMs = SystemClock.elapsedRealtime()
+        showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
 
         // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -417,12 +491,17 @@ class SharpRoomActivity : AppCompatActivity() {
                     "hasSavedMeta=$hasSavedDimensions folder=$roomFolder"
             },
         )
+        logSharpLoadTiming(
+            stage = "metadata_ready",
+            detail = "savedDims=$hasSavedDimensions orientation=$photoOrientation wide=$photoWideAngle",
+        )
 
         if (plyPath == null) {
             Toast.makeText(this, getString(R.string.sharp_room_no_ply), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
+        persistedSplatLoadHint = loadPersistedSplatLoadHint(File(plyPath!!))
         val rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#808080"))
 
@@ -431,9 +510,11 @@ class SharpRoomActivity : AppCompatActivity() {
         val internalPlyDir = File(filesDir, "webview_assets")
         internalPlyDir.mkdirs()
         val internalPlyFile = File(internalPlyDir, "room.ply")
+        this.internalPlyFile = internalPlyFile
         if (plyFile.exists()) {
             plyFile.copyTo(internalPlyFile, overwrite = true)
             DebugLogger.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
+            logSharpLoadTiming("ply_copied", "bytes=${plyFile.length()}")
         }
 
         // WebViewAssetLoader serves files from internal storage via https:// URL
@@ -458,6 +539,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     DebugLogger.d(TAG, "WebView page loaded")
+                    logSharpLoadTiming("webview_page_finished")
                     // Hide loading after a delay for splat rendering
                     postDelayed({
                         loadingOverlay.visibility = View.GONE
@@ -497,6 +579,19 @@ class SharpRoomActivity : AppCompatActivity() {
             addJavascriptInterface(WebAppInterface(), "Android")
         }
         rootLayout.addView(webView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        brainCameraPreviewView = PreviewView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+        }
+        rootLayout.addView(brainCameraPreviewView, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
@@ -550,6 +645,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             onTouchOutsideFurniture = { ev -> webView.dispatchTouchEvent(ev) }
+            onDetectionTapped = { detection -> handleBrainDetectionTapped(detection) }
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
         rootLayout.addView(brainDetectionOverlay)
@@ -1310,6 +1406,35 @@ class SharpRoomActivity : AppCompatActivity() {
 
             // No joystick - use OrbitControls touch gestures for navigation (matching iOS)
 
+            val segmentActionBtn = TextView(this@SharpRoomActivity).apply {
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                gravity = Gravity.CENTER
+                visibility = View.GONE
+                setPadding(dpToPx(18), dpToPx(10), dpToPx(18), dpToPx(10))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(20).toFloat()
+                    setColor(Color.parseColor("#E6333333"))
+                }
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                    bottomMargin = dpToPx(20)
+                }
+                setOnClickListener {
+                    if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+                        stopBrainSegmentationOnly()
+                    } else {
+                        activateSelectedBrainSegmentation()
+                    }
+                }
+            }
+            brainActionButton = segmentActionBtn
+            addView(segmentActionBtn)
+
             // Right: Camera/Screenshot button
             val cameraBtn = TextView(this@SharpRoomActivity).apply {
                 text = "\uD83D\uDCF7" // Camera emoji
@@ -1606,6 +1731,9 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun showBrainProgressOverlay() {
         brainOverlayVisible = true
         brainProgressOverlay.visibility = View.VISIBLE
+        setBrainSegmentationButtonActive(true)
+        updateBrainActionButton()
+        updateBrainLivePreviewVisibility()
         setBrainCalibrationPillVisible(true)
         updateBrainCalibrationPill()
         updatePlacementIntelligenceCard()
@@ -1620,11 +1748,194 @@ class SharpRoomActivity : AppCompatActivity() {
         brainProgressOverlay.visibility = View.GONE
     }
 
-    private fun showBrainDetectionOverlay(mask: Bitmap?, detections: List<DetectionResult>, inputSize: Int) {
-        brainDetectionOverlayView.setMaskAndDetections(mask, detections, inputSize)
-        brainDetectionOverlay.visibility = View.VISIBLE
-        setBrainSegmentationButtonActive(true)
+    private fun updateBrainActionButton() {
+        val actionButton = brainActionButton ?: return
+        if (!brainOverlayVisible) {
+            actionButton.visibility = View.GONE
+            return
+        }
+        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+            actionButton.text = getString(R.string.segment_stop_action)
+            actionButton.visibility = View.VISIBLE
+            return
+        }
+        if (selectedBrainClassIds.isNotEmpty()) {
+            actionButton.text = getString(R.string.segment_furniture_action)
+            actionButton.visibility = View.VISIBLE
+            return
+        }
+        actionButton.visibility = View.GONE
+    }
+
+    private fun shouldShowIdentifyLivePreview(): Boolean {
+        return showFullVideoWithIdentifications &&
+            showIdentifyLivePreview &&
+            brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY
+    }
+
+    private fun updateBrainLivePreviewVisibility() {
+        val shouldShowLivePreview = shouldShowIdentifyLivePreview()
+        if (::brainCameraPreviewView.isInitialized) {
+            brainCameraPreviewView.visibility =
+                if (shouldShowLivePreview && brainArController == null) View.VISIBLE else View.GONE
+        }
+        brainArController?.let { controller ->
+            val layoutParams = controller.glSurfaceView.layoutParams as? FrameLayout.LayoutParams
+                ?: FrameLayout.LayoutParams(1, 1)
+            if (shouldShowLivePreview) {
+                layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+                controller.glSurfaceView.layoutParams = layoutParams
+                controller.glSurfaceView.alpha = 1f
+                controller.glSurfaceView.visibility = View.VISIBLE
+            } else {
+                layoutParams.width = 1
+                layoutParams.height = 1
+                controller.glSurfaceView.layoutParams = layoutParams
+                controller.glSurfaceView.alpha = 0.01f
+                controller.glSurfaceView.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun showBrainDetectionOverlay() {
+        val detectionsForOverlay =
+            if (brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY) {
+                latestBrainDetections
+            } else {
+                emptyList()
+            }
+        val maskForOverlay =
+            if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+                latestBrainMask
+            } else {
+                null
+            }
+        brainDetectionOverlayView.setMaskAndDetections(
+            maskForOverlay,
+            detectionsForOverlay,
+            latestBrainInputSize,
+            latestBrainOverlayScale,
+            effectiveBrainFurnitureHeightDisplayMeters(),
+            effRoomHeight(),
+        )
+        brainDetectionOverlayView.setDetectionBoxVisibility(brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY)
+        brainDetectionOverlayView.setIdentifySelectionState(
+            enabled = brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY,
+            selectedClassIds = selectedBrainClassIds,
+        )
+        brainDetectionOverlay.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
+        updateBrainLivePreviewVisibility()
+        setBrainSegmentationButtonActive(brainOverlayVisible)
+        updateBrainActionButton()
         updatePlacementIntelligenceCard()
+    }
+
+    private fun clearBrainSelection() {
+        selectedBrainClassIds.clear()
+        selectedBrainLabels.clear()
+        updateBrainActionButton()
+        brainDetectionOverlayView.setIdentifySelectionState(
+            enabled = brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY,
+            selectedClassIds = selectedBrainClassIds,
+        )
+    }
+
+    private fun resetBrainSessionUiState() {
+        brainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+        showIdentifyLivePreview = true
+        latestBrainDetections = emptyList()
+        latestBrainMask = null
+        latestBrainInputSize = 640
+        latestBrainOverlayScale = 1f
+        latestBrainPrimaryDetection = null
+        segmentedFurnitureMeanSrgb = null
+        clearBrainSelection()
+    }
+
+    private fun handleBrainDetectionTapped(detection: DetectionResult) {
+        if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY) return
+        if (selectedBrainClassIds.contains(detection.classId)) {
+            selectedBrainClassIds.remove(detection.classId)
+            selectedBrainLabels.remove(detection.label)
+        } else {
+            selectedBrainClassIds.add(detection.classId)
+            selectedBrainLabels.add(detection.label)
+        }
+        brainDetectionOverlayView.setIdentifySelectionState(true, selectedBrainClassIds)
+        updateBrainActionButton()
+    }
+
+    private fun activateSelectedBrainSegmentation() {
+        if (selectedBrainClassIds.isEmpty()) return
+        brainSegmentationMode = BrainSegmentationMode.SEGMENT_SELECTED
+        showIdentifyLivePreview = false
+        latestBrainMask = null
+        segmentedFurnitureMeanSrgb = null
+        showBrainDetectionOverlay()
+    }
+
+    private fun stopBrainSegmentationOnly() {
+        brainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+        showIdentifyLivePreview = true
+        latestBrainMask = null
+        segmentedFurnitureMeanSrgb = null
+        showBrainDetectionOverlay()
+    }
+
+    private fun requestBrainInference(
+        manager: FurnitureFitManager,
+        bitmap: Bitmap,
+        callback: (com.furnit.android.services.SegmentationResult?) -> Unit,
+    ) {
+        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED && selectedBrainClassIds.isNotEmpty()) {
+            manager.segmentSelectedClassesAsync(bitmap, selectedBrainClassIds.toSet(), callback)
+        } else {
+            manager.detectWithDetectionsAsync(bitmap, callback)
+        }
+    }
+
+    private fun applyBrainInferenceResult(
+        result: com.furnit.android.services.SegmentationResult?,
+        firstResultCallback: () -> Unit,
+        sourceBitmap: Bitmap? = null,
+    ) {
+        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+            segmentedFurnitureMeanSrgb = result?.mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
+        } else {
+            segmentedFurnitureMeanSrgb = null
+        }
+        latestBrainDetections = result?.detections ?: emptyList()
+        latestBrainMask = if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) result?.mask else null
+        latestBrainInputSize = result?.inputSize ?: 640
+        latestBrainPrimaryDetection = result?.primaryDetection ?: latestBrainDetections.firstOrNull()
+        val currentHeightMeters =
+            brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+                ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+        lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
+        latestBrainOverlayScale = brainOverlayScaleForDetection(
+            latestBrainPrimaryDetection,
+            latestBrainInputSize,
+            effectiveBrainFurnitureHeightDisplayMeters(),
+        )
+        firstResultCallback()
+        showBrainDetectionOverlay()
+        if (sourceBitmap != null && latestBrainPrimaryDetection != null && latestBrainInputSize > 0) {
+            val det = latestBrainPrimaryDetection ?: return
+            val inp = latestBrainInputSize.coerceAtLeast(1).toFloat()
+            val scaleX = sourceBitmap.width / inp
+            val scaleY = sourceBitmap.height / inp
+            brainArController?.setBboxHint(
+                det.x * scaleX,
+                det.y * scaleY,
+                det.h * scaleY,
+                det.label,
+            )
+        } else if (latestBrainPrimaryDetection == null) {
+            brainArController?.clearBboxHint()
+        }
+        updateBrainCalibrationPill()
+        updateRoomPlacementIntelligence()
     }
 
     private fun setBrainSegmentationButtonActive(active: Boolean) {
@@ -1639,6 +1950,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun launchBrainMode(arAssistedRequested: Boolean) {
+        showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
         pendingBrainStartArAssist = arAssistedRequested
         if (brainDetectionOverlay.visibility == View.VISIBLE) {
             if (brainArAssistRequested == arAssistedRequested) {
@@ -1655,6 +1967,7 @@ class SharpRoomActivity : AppCompatActivity() {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         } else {
             DebugLogger.d(TAG, "Brain: permission OK, starting detection arAssist=$arAssistedRequested")
+            resetBrainSessionUiState()
             showBrainProgressOverlayIfNeeded()
             startBrainDetection(arAssistedRequested)
         }
@@ -1667,10 +1980,14 @@ class SharpRoomActivity : AppCompatActivity() {
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        brainDetectionOverlayView.setDetectionBoxVisibility(false)
+        brainDetectionOverlayView.setIdentifySelectionState(false, emptySet())
+        updateBrainLivePreviewVisibility()
         hideBrainProgressOverlay()
         stopBrainDetection()
         setBrainCalibrationPillVisible(false)
         setPlacementIntelligenceVisible(false)
+        updateBrainActionButton()
     }
 
     private fun createInitializedFurnitureFitManager(): FurnitureFitManager? {
@@ -1695,6 +2012,7 @@ class SharpRoomActivity : AppCompatActivity() {
         DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread arAssist=$arAssistedRequested")
         val sessionGeneration = brainSessionGeneration.incrementAndGet()
         // Reset per-session state and any pending timeout from a previous brain run.
+        resetBrainSessionUiState()
         brainFirstResultReceived = false
         brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
         brainTimeoutRunnable = null
@@ -1798,6 +2116,12 @@ class SharpRoomActivity : AppCompatActivity() {
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
+            val preview = Preview.Builder()
+                .setTargetResolution(brainAnalysisSize)
+                .setTargetRotation(displayRotationForCameraX())
+                .build()
+            cameraPreviewUseCase = preview
+            preview.setSurfaceProvider(brainCameraPreviewView.surfaceProvider)
             var frameCount = 0
             val hasFirstResult = BooleanArray(1) { false }
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -1813,38 +2137,24 @@ class SharpRoomActivity : AppCompatActivity() {
                     if (frameCount == 1 || frameCount % 30 == 0) {
                         DebugLogger.d(TAG, "Brain: analysis frame $frameCount (camera active)")
                     }
-                    manager.segmentWithDetectionsAsync(bitmap) { result ->
+                    requestBrainInference(manager, bitmap) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!brainSegmentationAcceptingUpdates || brainSessionGeneration.get() != sessionGeneration) return@runOnUiThread
-                            if (!hasFirstResult[0]) {
-                                hasFirstResult[0] = true
-                                brainFirstResultReceived = true
-                                brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
-                                brainTimeoutRunnable = null
-                                DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
-                                brainSegmentationCompletedOnceThisSession = true
-                                hideBrainProgressOverlay()
-                                brainDetectionOverlay.visibility = View.VISIBLE
-                                setBrainSegmentationButtonActive(true)
-                            }
-                            val mask = result?.mask
-                            val dets = result?.detections ?: emptyList()
-                            val size = result?.inputSize ?: 640
-                            val currentHeightMeters =
-                                brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-                                    ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-                            lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
-                            latestBrainPrimaryDetection = dets.firstOrNull()
-                            segmentedFurnitureMeanSrgb = mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
-                            brainDetectionOverlayView.setMaskAndDetections(
-                                mask,
-                                dets,
-                                size,
-                                brainOverlayScaleForDetection(dets.firstOrNull(), size, effectiveBrainFurnitureHeightDisplayMeters()),
+                            applyBrainInferenceResult(
+                                result = result,
+                                firstResultCallback = {
+                                    if (!hasFirstResult[0]) {
+                                        hasFirstResult[0] = true
+                                        brainFirstResultReceived = true
+                                        brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+                                        brainTimeoutRunnable = null
+                                        DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
+                                        brainSegmentationCompletedOnceThisSession = true
+                                        hideBrainProgressOverlay()
+                                    }
+                                },
                             )
-                            updateBrainCalibrationPill()
-                            updateRoomPlacementIntelligence()
                         }
                     }
                 } finally {
@@ -1853,10 +2163,12 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 brainSegmentationAcceptingUpdates = true
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                updateBrainLivePreviewVisibility()
                 DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
                 brainSegmentationAcceptingUpdates = false
+                cameraPreviewUseCase = null
                 DebugLogger.eDebugMode(TAG, "Brain camera bind failed", e)
                 runOnUiThread {
                     hideBrainProgressOverlay()
@@ -1896,21 +2208,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 return@arBitmap
             }
             isBrainInferenceRunning.set(true)
-            manager.segmentWithDetectionsAsync(bitmap) { result ->
+            requestBrainInference(manager, bitmap) { result ->
                 runOnUiThread {
                     isBrainInferenceRunning.set(false)
                     if (!brainSegmentationAcceptingUpdates || brainSessionGeneration.get() != sessionGeneration) return@runOnUiThread
-                    if (!hasFirstResult[0]) {
-                        hasFirstResult[0] = true
-                        brainFirstResultReceived = true
-                        brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
-                        brainTimeoutRunnable = null
-                        DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
-                        brainSegmentationCompletedOnceThisSession = true
-                        hideBrainProgressOverlay()
-                        brainDetectionOverlay.visibility = View.VISIBLE
-                        setBrainSegmentationButtonActive(true)
-                    }
                     val mask = result?.mask
                     val dets = result?.detections ?: emptyList()
                     val size = result?.inputSize ?: 640
@@ -1926,39 +2227,27 @@ class SharpRoomActivity : AppCompatActivity() {
                                 "bboxModelH=${firstDet?.h?.let { String.format(Locale.US, "%.1f", it) } ?: "null"}",
                         )
                     }
-                    val currentHeightMeters =
-                        brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-                            ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
-                    lockBrainFurnitureSizeIfNeeded(null, currentHeightMeters)
-                    latestBrainPrimaryDetection = dets.firstOrNull()
-                    segmentedFurnitureMeanSrgb = mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
-                    brainDetectionOverlayView.setMaskAndDetections(
-                        mask,
-                        dets,
-                        size,
-                        brainOverlayScaleForDetection(dets.firstOrNull(), size, effectiveBrainFurnitureHeightDisplayMeters()),
+                    applyBrainInferenceResult(
+                        result = result,
+                        firstResultCallback = {
+                            if (!hasFirstResult[0]) {
+                                hasFirstResult[0] = true
+                                brainFirstResultReceived = true
+                                brainTimeoutRunnable?.let { brainTimeoutHandler.removeCallbacks(it) }
+                                brainTimeoutRunnable = null
+                                DebugLogger.d(TAG, "Brain: first result (ARCore) - hiding progress, showing detection overlay")
+                                brainSegmentationCompletedOnceThisSession = true
+                                hideBrainProgressOverlay()
+                            }
+                        },
+                        sourceBitmap = bitmap,
                     )
-                    if (dets.isNotEmpty()) {
-                        val det = dets.first()
-                        val inp = size.coerceAtLeast(1).toFloat()
-                        val scaleX = bitmap.width / inp
-                        val scaleY = bitmap.height / inp
-                        brainArController?.setBboxHint(
-                            det.x * scaleX,
-                            det.y * scaleY,
-                            det.h * scaleY,
-                            det.label,
-                        )
-                    } else {
-                        brainArController?.clearBboxHint()
-                    }
                     brainArController?.onInferenceFinished()
-                    updateBrainCalibrationPill()
-                    updateRoomPlacementIntelligence()
                 }
             }
         }
         brainSegmentationAcceptingUpdates = true
+        updateBrainLivePreviewVisibility()
         controller.onHostResume()
     }
 
@@ -1976,14 +2265,17 @@ class SharpRoomActivity : AppCompatActivity() {
         pendingBrainStartArAssist = false
         brainArAssistRequested = false
         setBrainArAssistButtonActive(false)
+        cameraPreviewUseCase = null
+        if (::brainCameraPreviewView.isInitialized) {
+            brainCameraPreviewView.visibility = View.GONE
+        }
         brainArController?.clearBboxHint()
         teardownBrainArCoreController()
         brainLockedFurnitureWidthMeters = null
         brainLockedFurnitureHeightMeters = null
         brainRealFurnitureHeightMeters = null
         brainCalibrationScaleFactor = 1.0f
-        latestBrainPrimaryDetection = null
-        segmentedFurnitureMeanSrgb = null
+        resetBrainSessionUiState()
         latestFitCheckResult = null
         latestCornerPlacementSuggestions = emptyList()
         latestAestheticScore = null
@@ -2006,6 +2298,7 @@ class SharpRoomActivity : AppCompatActivity() {
         }
 
         DebugLogger.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
+        logSharpLoadTiming("webview_load_start", "file=${plyFile.name} bytes=${plyFile.length()}")
 
         // Load HTML using WebViewAssetLoader base URL
         // SparkJS will fetch PLY from https://appassets.androidplatform.net/files/room.ply
@@ -2041,6 +2334,23 @@ class SharpRoomActivity : AppCompatActivity() {
         val fallbackCx = effRoomCenterX().toDouble()
         val fallbackCy = effRoomCenterY().toDouble()
         val fallbackCz = effRoomCenterZ().toDouble()
+        val hint = persistedSplatLoadHint
+        val hasSplatLoadHint = hint != null
+        val hintFullMinX = hint?.fullBoundsMin?.x?.toDouble() ?: 0.0
+        val hintFullMinY = hint?.fullBoundsMin?.y?.toDouble() ?: 0.0
+        val hintFullMinZ = hint?.fullBoundsMin?.z?.toDouble() ?: 0.0
+        val hintFullMaxX = hint?.fullBoundsMax?.x?.toDouble() ?: 0.0
+        val hintFullMaxY = hint?.fullBoundsMax?.y?.toDouble() ?: 0.0
+        val hintFullMaxZ = hint?.fullBoundsMax?.z?.toDouble() ?: 0.0
+        val hintFramingMinX = hint?.framingBoundsMin?.x?.toDouble() ?: hintFullMinX
+        val hintFramingMinY = hint?.framingBoundsMin?.y?.toDouble() ?: hintFullMinY
+        val hintFramingMinZ = hint?.framingBoundsMin?.z?.toDouble() ?: hintFullMinZ
+        val hintFramingMaxX = hint?.framingBoundsMax?.x?.toDouble() ?: hintFullMaxX
+        val hintFramingMaxY = hint?.framingBoundsMax?.y?.toDouble() ?: hintFullMaxY
+        val hintFramingMaxZ = hint?.framingBoundsMax?.z?.toDouble() ?: hintFullMaxZ
+        val hintCenterX = hint?.centroid?.x?.toDouble() ?: 0.0
+        val hintCenterY = hint?.centroid?.y?.toDouble() ?: 0.0
+        val hintCenterZ = hint?.centroid?.z?.toDouble() ?: 0.0
         val usedWideLens = photoWideAngle
 
         // SparkJS implementation matching iOS exactly
@@ -2091,8 +2401,14 @@ class SharpRoomActivity : AppCompatActivity() {
         function sharpAndroidLog(msg) {
             if (SHARP_ROOM_DEBUG && window.Android && window.Android.log) window.Android.log(msg);
         }
+        function reportStage(stage, detail) {
+            if (window.Android && window.Android.onSplatLoadStage) {
+                window.Android.onSplatLoadStage(stage, detail || '');
+            }
+        }
 
         console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
+        reportStage('html_init', '');
         // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
         const isPortrait = $isPortrait;
         const entranceUseMinZ = $webglEntranceMinZ;
@@ -2103,6 +2419,22 @@ class SharpRoomActivity : AppCompatActivity() {
         const fallbackRoomCenterX = $fallbackCx;
         const fallbackRoomCenterY = $fallbackCy;
         const fallbackRoomCenterZ = $fallbackCz;
+        const hasSplatLoadHint = $hasSplatLoadHint;
+        const hintFullMinX = $hintFullMinX;
+        const hintFullMinY = $hintFullMinY;
+        const hintFullMinZ = $hintFullMinZ;
+        const hintFullMaxX = $hintFullMaxX;
+        const hintFullMaxY = $hintFullMaxY;
+        const hintFullMaxZ = $hintFullMaxZ;
+        const hintFramingMinX = $hintFramingMinX;
+        const hintFramingMinY = $hintFramingMinY;
+        const hintFramingMinZ = $hintFramingMinZ;
+        const hintFramingMaxX = $hintFramingMaxX;
+        const hintFramingMaxY = $hintFramingMaxY;
+        const hintFramingMaxZ = $hintFramingMaxZ;
+        const hintCenterX = $hintCenterX;
+        const hintCenterY = $hintCenterY;
+        const hintCenterZ = $hintCenterZ;
         const reasonableDefaultW = $defaultDisplayW;
         const reasonableDefaultH = $defaultDisplayH;
         const reasonableDefaultD = $defaultDisplayD;
@@ -2332,6 +2664,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 maxSh: 0,
                 onLoad: function(mesh) {
                     console.log('[WebGL] SplatMesh onLoad — scheduling autoFrameRoom');
+                    reportStage('spark_mesh_loaded', '');
                     setTimeout(autoFrameRoom, 600);
                 }
             });
@@ -2344,6 +2677,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 splatMesh.rotation.set(0, Math.PI, 0);
             }
             console.log('[WebGL] SplatMesh: portrait identity; landscape Ry=π only');
+            if (!trySplatLoadHintBox()) {
+                reportStage('hint_unavailable', '');
+            }
             setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
@@ -2355,7 +2691,19 @@ class SharpRoomActivity : AppCompatActivity() {
             controls.target.set(0, 0, 0);
             controls.update();
             needsRender = true;
+            reportStage('default_camera_fallback', '');
             if (window.Android) window.Android.onLoaded();
+        }
+
+        function trySplatLoadHintBox() {
+            if (!hasSplatLoadHint) return false;
+            const framingBox = new THREE.Box3(
+                new THREE.Vector3(hintFramingMinX, hintFramingMinY, hintFramingMinZ),
+                new THREE.Vector3(hintFramingMaxX, hintFramingMaxY, hintFramingMaxZ)
+            );
+            reportStage('hint_frame_requested', 'centroid=' + hintCenterX.toFixed(3) + ',' + hintCenterY.toFixed(3) + ',' + hintCenterZ.toFixed(3));
+            frameFromWorldBox(framingBox, 'splat_load_hint');
+            return true;
         }
 
         function tryMetadataFallbackBox() {
@@ -2371,6 +2719,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 new THREE.Vector3(cx - hw, cy - hh, cz - hd),
                 new THREE.Vector3(cx + hw, cy + hh, cz + hd)
             );
+            reportStage('metadata_fallback_box', '');
             frameFromWorldBox(b, 'metadata_fallback');
             return true;
         }
@@ -2551,6 +2900,18 @@ class SharpRoomActivity : AppCompatActivity() {
             setTimeout(sendDimensionsToAndroid, 1500);
             setTimeout(sendDimensionsToAndroid, 3000);
 
+            if (window.Android && window.Android.onSplatLoadHintMeasured) {
+                window.Android.onSplatLoadHintMeasured(
+                    rawMinX, rawMinY, rawMinZ,
+                    rawMaxX, rawMaxY, rawMaxZ,
+                    minX, minY, minZ,
+                    maxX, maxY, maxZ,
+                    innerCenterX, innerCenterY, innerCenterZ,
+                    frameSource
+                );
+            }
+
+            reportStage('frame_complete', frameSource);
             if (window.Android) window.Android.onLoaded();
         }
 
@@ -2618,6 +2979,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 return;
             }
 
+            reportStage('spark_box_ready', size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3));
             frameFromWorldBox(box, 'spark_getBoundingBox');
         }
 
@@ -2910,6 +3272,43 @@ class SharpRoomActivity : AppCompatActivity() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
                 DebugLogger.d(TAG, "WebGL viewer reported loaded")
+                logSharpLoadTiming("interactive_ready")
+            }
+        }
+
+        @JavascriptInterface
+        fun onSplatLoadStage(stage: String?, detail: String?) {
+            logSharpLoadTiming(stage ?: "unknown_stage", detail ?: "")
+        }
+
+        @JavascriptInterface
+        fun onSplatLoadHintMeasured(
+            fullMinX: Float,
+            fullMinY: Float,
+            fullMinZ: Float,
+            fullMaxX: Float,
+            fullMaxY: Float,
+            fullMaxZ: Float,
+            framingMinX: Float,
+            framingMinY: Float,
+            framingMinZ: Float,
+            framingMaxX: Float,
+            framingMaxY: Float,
+            framingMaxZ: Float,
+            centerX: Float,
+            centerY: Float,
+            centerZ: Float,
+            source: String?,
+        ) {
+            runOnUiThread {
+                persistSplatLoadHintFromBounds(
+                    fullBoundsMin = SplatLoadHintVector3(fullMinX, fullMinY, fullMinZ),
+                    fullBoundsMax = SplatLoadHintVector3(fullMaxX, fullMaxY, fullMaxZ),
+                    framingBoundsMin = SplatLoadHintVector3(framingMinX, framingMinY, framingMinZ),
+                    framingBoundsMax = SplatLoadHintVector3(framingMaxX, framingMaxY, framingMaxZ),
+                    centroid = SplatLoadHintVector3(centerX, centerY, centerZ),
+                    source = source ?: "unknown",
+                )
             }
         }
 

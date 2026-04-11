@@ -29,6 +29,7 @@ data class SegmentationResult(
     val mask: Bitmap?,
     val detections: List<DetectionResult>,
     val inputSize: Int = 640,
+    val primaryDetection: DetectionResult? = null,
 )
 
 /**
@@ -55,6 +56,7 @@ class FurnitureFitManager(private val context: Context) {
          * Default false — same as iOS @AppStorage default.
          */
         const val KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI = "show_room_furniture_calibrate"
+        const val KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS = "show_full_video_with_identifications"
 
         /**
          * Metric overlay sizing uses ARCore depth/planes when the device supports ARCore; otherwise non-metric fallback.
@@ -65,6 +67,11 @@ class FurnitureFitManager(private val context: Context) {
         fun isRoomFurnitureCalibrateUiEnabled(context: Context): Boolean {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
                 .getBoolean(KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, false)
+        }
+
+        fun isFullVideoWithIdentificationsEnabled(context: Context): Boolean {
+            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                .getBoolean(KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, true)
         }
     }
     private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -138,6 +145,30 @@ class FurnitureFitManager(private val context: Context) {
         frame: Bitmap?,
         callback: (SegmentationResult?) -> Unit,
     ) {
+        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = emptySet(), callback = callback)
+    }
+
+    fun detectWithDetectionsAsync(
+        frame: Bitmap?,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(frame, includeMask = false, selectedClassIds = emptySet(), callback = callback)
+    }
+
+    fun segmentSelectedClassesAsync(
+        frame: Bitmap?,
+        selectedClassIds: Set<Int>,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = selectedClassIds, callback = callback)
+    }
+
+    private fun analyzeFrameAsync(
+        frame: Bitmap?,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
         if (frame == null) {
             mainHandler.postDelayed({ callback(null) }, 200)
             return
@@ -146,7 +177,7 @@ class FurnitureFitManager(private val context: Context) {
         inferenceExecutor.execute {
             try {
                 if (ortSession != null) {
-                    runOnnxInferenceWithDetections(frame, callback)
+                    runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, callback)
                     return@execute
                 }
 
@@ -632,10 +663,12 @@ class FurnitureFitManager(private val context: Context) {
 
     private fun runOnnxInferenceWithDetections(
         frame: Bitmap,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
         callback: (SegmentationResult?) -> Unit,
     ) {
         try {
-            val base = runOnnxSegmentationOnce(frame) ?: run {
+            val base = runOnnxSegmentationOnce(frame, includeMask, selectedClassIds) ?: run {
                 mainHandler.post { callback(null) }
                 return
             }
@@ -647,7 +680,11 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /** Single ONNX forward + mask; no main-thread hop. */
-    private fun runOnnxSegmentationOnce(frame: Bitmap): SegmentationResult? {
+    private fun runOnnxSegmentationOnce(
+        frame: Bitmap,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
+    ): SegmentationResult? {
         var tensor: OnnxTensor? = null
         return try {
             val session = ortSession ?: return null
@@ -761,7 +798,7 @@ class FurnitureFitManager(private val context: Context) {
             }
 
             if (detections.isEmpty()) {
-                return SegmentationResult(null, emptyList(), inputW)
+                return SegmentationResult(null, emptyList(), inputW, null)
             }
 
             val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
@@ -779,17 +816,34 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
+            val primaryCandidates = if (selectedClassIds.isEmpty()) {
+                keepDets
+            } else {
+                keepDets.filter { it.classId in selectedClassIds }
+            }
             val primaryDet = pickPrimaryOnnxDetection(
-                detections = keepDets,
+                detections = primaryCandidates,
                 frameWidth = inputW.toFloat(),
                 frameHeight = inputH.toFloat(),
             )
-            val maskDetections = if (primaryDet != null) {
-                collectMaskDetections(primaryDet, keepDets)
+            val maskSourceDetections = if (selectedClassIds.isEmpty()) {
+                if (primaryDet != null) {
+                    collectMaskDetections(primaryDet, keepDets)
+                } else {
+                    emptyList()
+                }
             } else {
-                emptyList()
+                primaryCandidates
             }
-            val maskDetectionsForBuild = if (primaryDet != null) {
+            val maskDetectionsForBuild = if (selectedClassIds.isNotEmpty()) {
+                maskSourceDetections.map { detection ->
+                    expandedPrimaryForMaskBuild(
+                        primaryDetection = detection,
+                        frameWidth = inputW.toFloat(),
+                        frameHeight = inputH.toFloat(),
+                    )
+                }
+            } else if (primaryDet != null) {
                 val expandedPrimary = expandedPrimaryForMaskBuild(
                     primaryDetection = primaryDet,
                     frameWidth = inputW.toFloat(),
@@ -797,7 +851,7 @@ class FurnitureFitManager(private val context: Context) {
                 )
                 buildList {
                     add(expandedPrimary)
-                    for (detection in maskDetections) {
+                    for (detection in maskSourceDetections) {
                         if (calculateIoUForMaskSelection(detection, primaryDet) < 0.999f) {
                             add(detection)
                         }
@@ -807,19 +861,28 @@ class FurnitureFitManager(private val context: Context) {
                 emptyList()
             }
 
-            val detectionResults = if (primaryDet != null) {
-                listOf(
-                    DetectionResult(
-                        x = primaryDet.x,
-                        y = primaryDet.y,
-                        w = primaryDet.w,
-                        h = primaryDet.h,
-                        confidence = primaryDet.confidence,
-                        label = labelForClassId(primaryDet.classId),
-                    ),
-                )
+            val orderedDisplayDetections = if (primaryDet != null) {
+                buildList {
+                    add(primaryDet)
+                    for (detection in keepDets) {
+                        if (detection.anchorIdx != primaryDet.anchorIdx) {
+                            add(detection)
+                        }
+                    }
+                }
             } else {
-                emptyList()
+                keepDets
+            }
+            val detectionResults = orderedDisplayDetections.map { detection ->
+                DetectionResult(
+                    x = detection.x,
+                    y = detection.y,
+                    w = detection.w,
+                    h = detection.h,
+                    confidence = detection.confidence,
+                    label = labelForClassId(detection.classId),
+                    classId = detection.classId,
+                )
             }
             if (primaryDet != null) {
                 val topLabels = keepDets
@@ -829,6 +892,15 @@ class FurnitureFitManager(private val context: Context) {
                     "FurnitureFitManager",
                     "Primary=${labelForClassId(primaryDet.classId)} conf=${String.format("%.2f", primaryDet.confidence)} " +
                         "maskBuildDets=${maskDetectionsForBuild.size} keepDets=${keepDets.size} top=[$topLabels]",
+                )
+            }
+
+            if (!includeMask) {
+                return SegmentationResult(
+                    mask = null,
+                    detections = detectionResults,
+                    inputSize = inputW,
+                    primaryDetection = detectionResults.firstOrNull(),
                 )
             }
 
@@ -872,10 +944,15 @@ class FurnitureFitManager(private val context: Context) {
                         threshold = 0.5f,
                     )
                 }
-                val protoClipLeft = floor(((primaryDet.x - primaryDet.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
-                val protoClipTop = floor(((primaryDet.y - primaryDet.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
-                val protoClipRight = ceil(((primaryDet.x + primaryDet.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
-                val protoClipBottom = ceil(((primaryDet.y + primaryDet.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
+                val clipCandidates = if (selectedClassIds.isEmpty()) maskDetectionsForBuild else primaryCandidates
+                val clipLeftModel = clipCandidates.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
+                val clipTopModel = clipCandidates.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
+                val clipRightModel = clipCandidates.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
+                val clipBottomModel = clipCandidates.maxOfOrNull { it.y + it.h / 2f } ?: (primaryDet.y + primaryDet.h / 2f)
+                val protoClipLeft = floor((clipLeftModel / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
+                val protoClipTop = floor((clipTopModel / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
+                val protoClipRight = ceil((clipRightModel / protoScaleX).toDouble()).toInt().coerceIn(0, protoW)
+                val protoClipBottom = ceil((clipBottomModel / protoScaleY).toDouble()).toInt().coerceIn(0, protoH)
                 clipProtoMaskOutsideRect(
                     mask = maskProto,
                     protoW = protoW,
@@ -890,10 +967,10 @@ class FurnitureFitManager(private val context: Context) {
                 val frameH = frame.height
                 val sxf = frameW.toFloat() / inputW.toFloat()
                 val syf = frameH.toFloat() / inputH.toFloat()
-                val tightFx0 = (primaryDet.x - primaryDet.w / 2f) * sxf
-                val tightFx1 = (primaryDet.x + primaryDet.w / 2f) * sxf
-                val tightFy0 = (primaryDet.y - primaryDet.h / 2f) * syf
-                val tightFy1 = (primaryDet.y + primaryDet.h / 2f) * syf
+                val tightFx0 = clipLeftModel * sxf
+                val tightFx1 = clipRightModel * sxf
+                val tightFy0 = clipTopModel * syf
+                val tightFy1 = clipBottomModel * syf
                 val bandMarginW = max(1f, tightFx1 - tightFx0) * bboxExpandMargin
                 val bandMarginH = max(1f, tightFy1 - tightFy0) * bboxExpandMargin
                 val bandX0 = floor((tightFx0 - bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
@@ -924,7 +1001,7 @@ class FurnitureFitManager(private val context: Context) {
                 maskResult = maskBmp
             }
 
-            SegmentationResult(maskResult, detectionResults, inputW)
+            SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
         } catch (e: Exception) {
             LogUtil.e("FurnitureFitManager", "ONNX segmentation once failed", e)
             null

@@ -390,4 +390,8 @@
     <string name="otp_resend_code">కోడ్ మళ్లీ పంపండి</string>
     <string name="otp_code_sent">కోడ్ పంపబడింది!</string>
     <string name="login_continue">కొనసాగించండి</string>
+    <string name="settings_full_video_with_identifications">Full video with identifications</string>
+    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="segment_furniture_action">Segment</string>
+    <string name="segment_stop_action">Stop</string>
 </resources>

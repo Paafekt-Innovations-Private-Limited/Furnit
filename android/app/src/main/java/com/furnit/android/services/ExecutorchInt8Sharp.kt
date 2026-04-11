@@ -13,6 +13,8 @@ import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.DeviceHeuristics
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.Part1OnlyTest
+import com.furnit.android.utils.SplatLoadHint
+import com.furnit.android.utils.SplatLoadHintVector3
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -1910,6 +1912,25 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 "afterAabb=${"%.3f".format(roomW)}x${"%.3f".format(roomH)}x${"%.3f".format(roomD)} " +
                 "metricScale=${"%.4f".format(metricScale)}",
         )
+        SplatLoadHint.createForFile(
+            roomPlyFile = plyFile,
+            splatCount = count,
+            fullBoundsMin = SplatLoadHintVector3(minX, minY, minZ),
+            fullBoundsMax = SplatLoadHintVector3(maxX, maxY, maxZ),
+            framingBoundsMin = SplatLoadHintVector3(minX, minY, minZ),
+            framingBoundsMax = SplatLoadHintVector3(maxX, maxY, maxZ),
+            centroid = SplatLoadHintVector3(centerX, centerY, centerZ),
+        )?.let { hint ->
+            try {
+                SplatLoadHint.writeTo(SplatLoadHint.sidecarFileFor(plyFile), hint)
+                LogUtil.i(
+                    "SPLAT_LOAD",
+                    "[hint_saved] room=${plyFile.parentFile?.name ?: "unknown"} splats=$count sidecar=${SplatLoadHint.sidecarFileFor(plyFile).name}",
+                )
+            } catch (exception: Exception) {
+                LogUtil.w(TAG, "Failed to persist splat load hint for ${plyFile.absolutePath}", exception)
+            }
+        }
         if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
             LogUtil.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
         }

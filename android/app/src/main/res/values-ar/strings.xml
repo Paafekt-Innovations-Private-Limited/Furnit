@@ -390,4 +390,8 @@
     <string name="otp_resend_code">إعادة إرسال الرمز</string>
     <string name="otp_code_sent">تم إرسال الرمز!</string>
     <string name="login_continue">متابعة</string>
+    <string name="settings_full_video_with_identifications">Full video with identifications</string>
+    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="segment_furniture_action">Segment</string>
+    <string name="segment_stop_action">Stop</string>
 </resources>

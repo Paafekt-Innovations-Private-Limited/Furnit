@@ -139,6 +139,8 @@
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
     <string name="settings_show_room_furniture_calibrate">Show room and furniture calibrate</string>
     <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
+    <string name="settings_full_video_with_identifications">Full video with identifications</string>
+    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
@@ -223,7 +225,7 @@
     <string name="faq_what_is_segmentation">What is furniture segmentation?</string>
     <string name="faq_what_is_segmentation_answer">Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.</string>
     <string name="faq_how_to_segment">How do I segment furniture from a photo?</string>
-    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap the brain icon to start segmentation. Then point your camera at furniture to see live detection and the extracted furniture overlay.</string>
+    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap the brain icon to start identify mode. Tap one or more furniture labels to select them, then tap Segment. Tap Stop to return to live identifications.</string>
     <string name="faq_not_detected">Why isn\'t my furniture being detected?</string>
     <string name="faq_not_detected_answer">Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn\'t partially hidden or too far from the camera.</string>
 
@@ -431,6 +433,8 @@
     <string name="smartypants_enter_positive_number">Enter a positive number</string>
     <string name="smartypants_room_scaled">Room scaled by %sx</string>
     <string name="smartypants_detected">Detected</string>
+    <string name="segment_furniture_action">Segment</string>
+    <string name="segment_stop_action">Stop</string>
     <string name="smartypants_camera_ready">Camera ready - detecting furniture…</string>
     <string name="smartypants_scanning_for_furniture">Scanning for furniture…</string>
     <string name="smartypants_calibrate_title">Calibrate Room</string>

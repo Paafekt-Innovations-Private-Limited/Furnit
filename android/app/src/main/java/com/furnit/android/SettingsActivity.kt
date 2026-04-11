@@ -182,6 +182,38 @@ class SettingsActivity : AppCompatActivity() {
         calibrateUiRow.addView(calibrateUiSwitch)
         furnitureFitSection.addView(calibrateUiRow)
 
+        val fullVideoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 8)
+        }
+        val fullVideoLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        fullVideoLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_full_video_with_identifications)
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+            },
+        )
+        fullVideoLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_full_video_with_identifications_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        val fullVideoSwitch = createStyledSwitch(
+            prefs.getBoolean(FurnitureFitManager.KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, true),
+        ) { isChecked ->
+            prefs.edit().putBoolean(FurnitureFitManager.KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, isChecked).apply()
+        }
+        fullVideoRow.addView(fullVideoLabel)
+        fullVideoRow.addView(fullVideoSwitch)
+        furnitureFitSection.addView(fullVideoRow)
+
         layout.addView(furnitureFitSection)
 
         // Room Viewer settings section

@@ -217,6 +217,7 @@ object YoloRatioCalibration {
             h = heightPx * s,
             confidence = confidence,
             label = label,
+            classId = -1,
         )
     }
 
