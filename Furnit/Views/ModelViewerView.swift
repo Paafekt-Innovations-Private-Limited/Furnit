@@ -30,6 +30,9 @@ struct ModelViewerView: View {
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
     @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
+    @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    @State private var furnitureFitShowIdentifyLivePreview = true
+    @State private var selectedFurnitureFitLabels: [String] = []
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var furnitureFitEstimatedHeightM: Float?
     @State private var capturedImage: UIImage? = nil
@@ -45,6 +48,10 @@ struct ModelViewerView: View {
 
     init(model: USDZModel) {
         self.model = model
+    }
+
+    private var canSegmentSelectedFurniture: Bool {
+        showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
     }
 
     var body: some View {
@@ -78,7 +85,12 @@ struct ModelViewerView: View {
                                 furnitureFitEstimatedHeightM = estimate.heightMeters
                             },
                             suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true }
+                            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                            segmentationMode: furnitureFitSegmentationMode,
+                            onSelectedClassLabelsChanged: { labels in
+                                selectedFurnitureFitLabels = labels
+                            },
+                            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .zIndex(9000)
@@ -157,6 +169,9 @@ struct ModelViewerView: View {
                                 } else {
                                     logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
                                     yoloeService.ensureModelLoaded()
+                                    furnitureFitSegmentationMode = .identifyOnly
+                                    furnitureFitShowIdentifyLivePreview = true
+                                    selectedFurnitureFitLabels = []
 
                                     // Hide other overlays
                                     showingCameraPreview = false
@@ -180,6 +195,38 @@ struct ModelViewerView: View {
                             }
                             .contentShape(Circle())
                             .frame(width: 76, height: 76)
+
+                            if showingFurnitureFit {
+                                Button(action: {
+                                    if furnitureFitSegmentationMode == .segmentSelected {
+                                        furnitureFitSegmentationMode = .identifyOnly
+                                        furnitureFitShowIdentifyLivePreview = true
+                                    } else {
+                                        guard canSegmentSelectedFurniture else { return }
+                                        furnitureFitSegmentationMode = .segmentSelected
+                                    }
+                                }) {
+                                    Text(
+                                        furnitureFitSegmentationMode == .segmentSelected
+                                            ? L10n.RoomViewer.stopSegmentationAction
+                                            : L10n.RoomViewer.segmentFurnitureAction
+                                    )
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 16)
+                                        .frame(height: 44)
+                                        .background(
+                                            Capsule().fill(
+                                                canSegmentSelectedFurniture
+                                                    ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                                    : Color.black.opacity(0.45)
+                                            )
+                                        )
+                                        .shadow(radius: 4)
+                                }
+                                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
+                                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
+                            }
                         }
                         .padding(.leading, 16)
                         .padding(.bottom, 20)
@@ -229,6 +276,9 @@ struct ModelViewerView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+                selectedFurnitureFitLabels = []
                 roomSnapshot = nil
                 capturedImage = nil
                 furnitureFitEstimatedHeightM = nil
@@ -634,6 +684,11 @@ struct ModelViewerView: View {
 struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
+    /// Synced with Settings → Furniture segmentation → primary detection confidence.
+    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.75
+    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+
     var roomImage: UIImage?
     var mlModel: MLModel?  // yoloe-26l-seg-pf (640) via YOLOEModelService
     var processInterval: Double = 0.07
@@ -661,6 +716,10 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
     /// Per-view opt-in for AR-assisted sizing. Sharp Room keeps this off until the user taps the AR chip.
     var arAssistedSizingEnabled: Bool = true
+    /// Brain now starts in identify-only mode; Segment enables selected-class masking.
+    var segmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    var onSelectedClassLabelsChanged: (([String]) -> Void)? = nil
+    var showIdentifyLivePreview: Bool = true
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -674,11 +733,17 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
         view.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
         view.confidenceThreshold = scoreThreshold
+        view.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
+        view.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
+        view.showFullVideoWithIdentifications = showFullVideoWithIdentifications
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
         view.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         view.arAssistedSizingEnabled = arAssistedSizingEnabled
+        view.segmentationMode = segmentationMode
+        view.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
+        view.showIdentifyLivePreview = showIdentifyLivePreview
         return view
     }
 
@@ -697,11 +762,17 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
             uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
             uiView.confidenceThreshold = scoreThreshold
+            uiView.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
+            uiView.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
+            uiView.showFullVideoWithIdentifications = showFullVideoWithIdentifications
             uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
             uiView.suppressStartupProgress = suppressStartupProgress
             uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
             uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
             uiView.arAssistedSizingEnabled = arAssistedSizingEnabled
+            uiView.segmentationMode = segmentationMode
+            uiView.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
+            uiView.showIdentifyLivePreview = showIdentifyLivePreview
         }
 
         applyConfiguration()
@@ -719,5 +790,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.setModel(nil)
         uiView.sharpRoomSplatMeasurementHost = nil
         uiView.stop()
+    }
+
+    private static func clampPrimaryDetectionConfidence(_ raw: Double) -> Float {
+        Float(min(max(raw, 0.05), 0.99))
     }
 }

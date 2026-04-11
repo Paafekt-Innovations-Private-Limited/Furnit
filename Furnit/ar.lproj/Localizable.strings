@@ -318,7 +318,10 @@
 "roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
 "roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
 "roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
-"roomViewer.brainGestureHintExplanation" = "اضغط رمز الدماغ لتشغيل كشف الأثاث أو إيقافه. عند التشغيل، قرّص الطبقة الفوقية لتغيير حجمها.";
+"roomViewer.brainGestureHintExplanation" = "اضغط الدماغ لبدء تحديد الأثاث المباشر. اضغط على عنصر أو أكثر من العناصر المكتشفة، ثم اضغط «تجزئة» لإظهار القناع لتلك الاختيارات فقط.";
+"roomViewer.segmentFurnitureAction" = "تجزئة";
+"roomViewer.stopSegmentationAction" = "إيقاف";
+"roomViewer.segmentFurnitureAccessibility" = "تجزئة الأثاث المحدد";
 "roomViewer.snapshotGestureHintExplanation" = "اضغط الكاميرا لحفظ صورة للغرفة في الصور.";
 "roomViewer.arFurnitureSizingHint" = "يستخدم الكاميرا لتحسين مطابقة حجم الأثاث مع الغرفة. يعمل أفضل على آيفون المزوّد بـ LiDAR. أوقف الميزة إذا كانت الصورة تتقطع أو تبدو غير ثابتة.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "أقوم بوضع الأثاث بنسبة تتناسب مع حجم الغرفة. اضغط على أيقونة الدماغ ثم جرّبني.";
@@ -440,6 +443,16 @@
 "settings.furnitureFitARCompanion" = "قياس الأثاث بمساعدة AR";
 "settings.furnitureFitARCompanionDescription" = "يشغّل عمق المشهد من ARKit بجانب الكاميرا في Furniture Fit (LiDAR). قد يتعارض مع التقاط الفيديو. أعد فتح الغرفة بعد التغيير.";
 "settings.furnitureFitARCompanionUnavailable" = "عمق المشهد غير متاح على هذا الجهاز.";
+"settings.fullVideoWithIdentifications" = "فيديو كامل مع التعريفات";
+"settings.fullVideoWithIdentificationsDescription" = "عرض بث الكاميرا المباشر مع مربعات الكشف والتسميات بدلاً من توسيط طبقة الأثاث المجزأة تلقائياً.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "قياس الغرفة";
 "settings.yoloWallDimensionsOnSave" = "أبعاد الجدار YOLO عند الحفظ";
 "settings.yoloWallDimensionsOnSaveDescription" = "عند تسمية وحفظ غرفة SHARP، يُقدَّر عرض وارتفاع الجدار الأمامي باستخدام YOLO (فئة جدار أو صندوق شبيه)، وعمق SHARP أحادي المحفوظ مع الغرفة، وبيانات EXIF للكاميرا. يتطلب thumbnail.png ويفضّل sharp_monodepth.bin.";

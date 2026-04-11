@@ -254,8 +254,8 @@ android/sharp_vulkan_only_latent0/
 *.pt
 *.ptl
 *.onnx
-# iOS: Core ML + ODR only; do not commit large ONNX under Furnit/Resources (use local copy for scripts).
-!android/app/src/main/assets/yoloe-26l-seg-pf_seg_o2m.onnx
+# YOLO-E ONNX in assets (~100MB+); copy locally for Android builds — do not commit
+android/app/src/main/assets/yoloe-26l-seg-pf_seg_o2m.onnx
 *.tflite
 android/__pycache__/
 **/__pycache__/
@@ -293,3 +293,15 @@ android/logcat_vulkan*.txt
 # Local Gradle home under repo (do not commit)
 android/.gradle-local/
 *.bak
+
+# Local Python venvs (ONNX / LiteRT tooling; very large)
+android/.venv_onnx2mlpkg/
+
+# ONNX Runtime calibration tensors (large)
+android/calibration_image_sample_data_*.npy
+
+# Local CoreSimulator / disk helper scripts (machine-specific)
+scripts/cleanup_stuck_simulator_runtime.sh
+scripts/move_core_simulator_to_lacie.sh
+scripts/restore_coresimulator_internal.sh
+scripts/symlink_coresimulator_lacie_quick.sh

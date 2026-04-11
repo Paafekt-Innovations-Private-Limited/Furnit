@@ -452,6 +452,7 @@ class SharpRoomActivity : AppCompatActivity() {
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             settings.mediaPlaybackRequiresUserGesture = false
             setBackgroundColor(Color.TRANSPARENT)
+            configureSharpRoomGpuWebView(this)
 
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -595,6 +596,27 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
     private fun hasPlausibleOpenSnapshotRoomDims(): Boolean =
         hasSavedDimensions && openSnapshotRoomWidth >= 2f && openSnapshotRoomHeight >= 2f && openSnapshotRoomDepth >= 1f
+
+    private fun configureSharpRoomGpuWebView(target: WebView) {
+        target.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            target.settings.offscreenPreRaster = true
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            target.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
+        }
+
+        val hasVulkan = packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION)
+        val webViewPackage = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            WebView.getCurrentWebViewPackage()?.packageName ?: "unknown"
+        } else {
+            "unknown"
+        }
+        LogUtil.i(
+            TAG,
+            "SharpRoom GPU WebView configured: hardwareLayer=true, optionalVulkanFeature=$hasVulkan, webViewPackage=$webViewPackage"
+        )
+    }
 
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
         val top = statusBarInsetTop + topBar.height
@@ -2096,11 +2118,62 @@ class SharpRoomActivity : AppCompatActivity() {
         camera.position.set(0, 0, 5);
         camera.up.set(0, 1, 0);
 
-        // THREE.js Renderer (antialias: false per SparkJS docs)
-        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        // THREE.js Renderer. Android cannot force WebView's Chromium backend to Vulkan from app code, but
+        // powerPreference + hardware WebView composition lets ANGLE/WebView choose its fastest GPU path.
+        const renderer = new THREE.WebGLRenderer({
+            antialias: false,
+            alpha: false,
+            depth: true,
+            stencil: false,
+            preserveDrawingBuffer: false,
+            failIfMajorPerformanceCaveat: false,
+            powerPreference: 'high-performance'
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
+
+        function reportWebGlBackend() {
+            try {
+                const gl = renderer.getContext();
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+                const rendererName = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+                const version = gl.getParameter(gl.VERSION);
+                const shadingLanguage = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+                const webglKind = (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) ? 'WebGL2' : 'WebGL1';
+                const line = '[SharpRoom_GPU] kind=' + webglKind +
+                    ' vendor=' + vendor +
+                    ' renderer=' + rendererName +
+                    ' version=' + version +
+                    ' shading=' + shadingLanguage +
+                    ' dpr=' + window.devicePixelRatio;
+                _sharpConsoleLog(line);
+                sharpAndroidLog(line);
+                if (window.Android && window.Android.onGpuRendererInfo) {
+                    window.Android.onGpuRendererInfo(line);
+                }
+            } catch (e) {
+                const line = '[SharpRoom_GPU] renderer probe failed: ' + e;
+                _sharpConsoleLog(line);
+                sharpAndroidLog(line);
+            }
+        }
+        renderer.domElement.addEventListener('webglcontextlost', function(ev) {
+            ev.preventDefault();
+            const line = '[SharpRoom_GPU] WebGL context lost';
+            _sharpConsoleLog(line);
+            sharpAndroidLog(line);
+            if (window.Android && window.Android.onGpuRendererInfo) window.Android.onGpuRendererInfo(line);
+        }, false);
+        renderer.domElement.addEventListener('webglcontextrestored', function() {
+            const line = '[SharpRoom_GPU] WebGL context restored';
+            _sharpConsoleLog(line);
+            sharpAndroidLog(line);
+            if (window.Android && window.Android.onGpuRendererInfo) window.Android.onGpuRendererInfo(line);
+            needsRender = true;
+        }, false);
+        reportWebGlBackend();
 
         // SparkRenderer with settings matching iOS exactly
         const spark = new SparkRenderer({
@@ -2976,6 +3049,11 @@ class SharpRoomActivity : AppCompatActivity() {
         @JavascriptInterface
         fun log(message: String) {
             DebugLogger.d(TAG, "WebGL: $message")
+        }
+
+        @JavascriptInterface
+        fun onGpuRendererInfo(message: String) {
+            LogUtil.i(TAG, message)
         }
     }
 

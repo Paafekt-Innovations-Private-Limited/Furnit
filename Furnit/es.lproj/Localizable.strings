@@ -303,7 +303,10 @@
 "roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
 "roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en la habitación. Con los muebles segmentados, el pellizco también escala la superposición.";
 "roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en la habitación. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
-"roomViewer.brainGestureHintExplanation" = "Toca el cerebro para activar o desactivar la detección de muebles. Cuando está activa, pellizca la superposición para cambiar su tamaño.";
+"roomViewer.brainGestureHintExplanation" = "Toca el cerebro para iniciar la identificación de muebles en vivo. Toca uno o más objetos detectados y luego Segmentar para enmascarar solo esas selecciones.";
+"roomViewer.segmentFurnitureAction" = "Segmentar";
+"roomViewer.stopSegmentationAction" = "Detener";
+"roomViewer.segmentFurnitureAccessibility" = "Segmentar muebles seleccionados";
 "roomViewer.snapshotGestureHintExplanation" = "Toca la cámara para guardar una foto de la habitación en Fotos.";
 "roomViewer.arFurnitureSizingHint" = "Usa la cámara para ajustar mejor el tamaño de los muebles a la habitación. Funciona mejor en iPhone con LiDAR. Desactívalo si la vista va a tirones o se ve inestable.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Coloco los muebles en proporción al tamaño de la habitación. Toca el icono del cerebro y luego inténtalo conmigo.";
@@ -443,6 +446,16 @@
 "settings.furnitureFitARCompanion" = "Tamaño de muebles asistido por RA";
 "settings.furnitureFitARCompanionDescription" = "Ejecuta profundidad de escena de ARKit junto a la cámara en Furniture Fit (LiDAR). Puede entrar en conflicto con la captura de vídeo. Vuelve a abrir la habitación tras cambiar esto.";
 "settings.furnitureFitARCompanionUnavailable" = "La profundidad de escena no está disponible en este dispositivo.";
+"settings.fullVideoWithIdentifications" = "Vídeo completo con identificaciones";
+"settings.fullVideoWithIdentificationsDescription" = "Muestra la cámara en vivo con cuadros y etiquetas de detección en lugar de centrar automáticamente la superposición de muebles segmentados.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "Medidas de la habitación";
 "settings.yoloWallDimensionsOnSave" = "Dimensiones YOLO del muro al guardar";
 "settings.yoloWallDimensionsOnSaveDescription" = "Al poner nombre y guardar una habitación SHARP, estima ancho y alto del muro frontal con YOLO (clase pared o caja similar), monoprofundidad SHARP guardada con la habitación y EXIF de la cámara. Requiere thumbnail.png y, para mejores resultados, sharp_monodepth.bin.";

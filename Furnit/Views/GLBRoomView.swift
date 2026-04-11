@@ -195,6 +195,9 @@ struct GLBRoomView: View {
     @State private var isLoading = true
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    @State private var furnitureFitShowIdentifyLivePreview = true
+    @State private var selectedFurnitureFitLabels: [String] = []
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
@@ -217,6 +220,10 @@ struct GLBRoomView: View {
 
     private var canOfferBrainArAssist: Bool {
         QualitySettings.supportsFurnitureFitARAssisted
+    }
+
+    private var canSegmentSelectedFurniture: Bool {
+        showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
     }
 
     var body: some View {
@@ -286,7 +293,12 @@ struct GLBRoomView: View {
                     onFurnitureSizeEstimated: { _ in },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
                     onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
-                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist
+                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                    segmentationMode: furnitureFitSegmentationMode,
+                    onSelectedClassLabelsChanged: { labels in
+                        selectedFurnitureFitLabels = labels
+                    },
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -358,6 +370,9 @@ struct GLBRoomView: View {
                 yoloeService.ensureModelLoaded()
             } else {
                 brainArAssistedSizingEnabled = false
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+                selectedFurnitureFitLabels = []
                 yoloeService.releaseResources()
             }
         }
@@ -661,6 +676,9 @@ struct GLBRoomView: View {
                     showingFurnitureFit = false
                 } else {
                     furnitureFitInitialSegmentationDone = false
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                    selectedFurnitureFitLabels = []
                     showingFurnitureFit = true
                 }
             }) {
@@ -674,6 +692,16 @@ struct GLBRoomView: View {
         }
     }
 
+    private func activateSelectedFurnitureSegmentation() {
+        if furnitureFitSegmentationMode == .segmentSelected {
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            return
+        }
+        guard canSegmentSelectedFurniture else { return }
+        furnitureFitSegmentationMode = .segmentSelected
+    }
+
     private var snapshotButtonWithHintAbove: some View {
         VStack(alignment: .center, spacing: 6) {
             snapshotGestureHintColumn
@@ -685,6 +713,34 @@ struct GLBRoomView: View {
                     .background(Circle().fill(Color.blue).shadow(radius: 5))
             }
             .disabled(isLoading)
+        }
+    }
+
+    @ViewBuilder
+    private var segmentButton: some View {
+        if showingFurnitureFit {
+            Button(action: activateSelectedFurnitureSegmentation) {
+                Text(
+                    furnitureFitSegmentationMode == .segmentSelected
+                        ? L10n.RoomViewer.stopSegmentationAction
+                        : L10n.RoomViewer.segmentFurnitureAction
+                )
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .background(
+                        Capsule().fill(
+                            canSegmentSelectedFurniture
+                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+                    .shadow(radius: 4)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
+            .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
     }
 
@@ -877,6 +933,10 @@ struct GLBRoomView: View {
             HStack {
                 brainButtonWithHintAbove
                     .padding(.leading, 16)
+                if showingFurnitureFit {
+                    segmentButton
+                        .padding(.leading, 10)
+                }
 
                 Spacer()
 
@@ -894,6 +954,7 @@ struct GLBRoomView: View {
 
             HStack(spacing: 20) {
                 brainButtonWithHintAbove
+                segmentButton
 
                 // Orientation label
                 HStack(spacing: 6) {

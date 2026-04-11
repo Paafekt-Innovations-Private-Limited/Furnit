@@ -300,7 +300,10 @@
 "roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
 "roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
-"roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯನ್ನು ಆನ್ ಅಥವಾ ಆಫ್ ಮಾಡಲು ಮೆದುಳು ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಆನ್‌ನಲ್ಲಿ ಓವರ್‌ಲೇಯನ್ನು ಚಿಮುಡಿಸಿ ಗಾತ್ರ ಬದಲಿಸಿ.";
+"roomViewer.brainGestureHintExplanation" = "ಲೈವ್ ಫರ್ಣಿಚರ್ ಪತ್ತೆಗಾಗಿ ಮೆದುಳನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಒಂದು ಅಥವಾ ಹೆಚ್ಚು ಪತ್ತೆಯಾದ ವಸ್ತುಗಳ ಮೇಲೆ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ಆಯ್ಕೆಗಳನ್ನು ಮಾತ್ರ ಮಾಸ್ಕ್ ಮಾಡಲು «ಸೆಗ್ಮೆಂಟ್» ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"roomViewer.segmentFurnitureAction" = "ಸೆಗ್ಮೆಂಟ್";
+"roomViewer.stopSegmentationAction" = "ನಿಲ್ಲಿಸಿ";
+"roomViewer.segmentFurnitureAccessibility" = "ಆಯ್ಕೆಮಾಡಿದ ಫರ್ಣಿಚರ್ ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿ";
 "roomViewer.snapshotGestureHintExplanation" = "ಕೊಠಡಿಯ ಚಿತ್ರವನ್ನು ಫೋಟೋಗಳಿಗೆ ಉಳಿಸಲು ಕ್ಯಾಮರಾವನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.arFurnitureSizingHint" = "ಕ್ಯಾಮರಾವನ್ನು ಬಳಸಿ ಪೀಠೋಪಕರಣದ ಗಾತ್ರವನ್ನು ಕೊಠಡಿಗೆ ಹೆಚ್ಚು ಹೊಂದಿಕೊಳ್ಳುವಂತೆ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. LiDAR ಇರುವ ಐಫೋನ್‌ಗಳಲ್ಲಿ ಅತ್ಯುತ್ತಮ. ನೋಟ ನಿಧಾನವಾಗಿದ್ದರೆ ಅಥವಾ ಅಸ್ಥಿರವಾಗಿದ್ದರೆ ಇದನ್ನು ಆಫ್ ಮಾಡಿ.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "ನಾನು ಕೊಠಡಿಯ ಗಾತ್ರಕ್ಕೆ ಅನುಪಾತವಾಗಿ ಪೀಠೋಪಕರಣವನ್ನು ಇಡುತ್ತೇನೆ. ಮೊದಲು ಬ್ರೇನ್ ಐಕಾನ್ ಒತ್ತಿ, ನಂತರ ನನ್ನನ್ನು ಪ್ರಯತ್ನಿಸಿ.";
@@ -440,6 +443,16 @@
 "settings.furnitureFitARCompanion" = "AR-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರ";
 "settings.furnitureFitARCompanionDescription" = "Furniture Fit ನಲ್ಲಿ ಕ್ಯಾಮರಾವೊಂದಿಗೆ ARKit ದೃಶ್ಯಾಂತರ ಚಲಾಯಿಸುತ್ತದೆ (LiDAR). ವೀಡಿಯೊ ಕ್ಯಾಪ್ಚರ್‌ನೊಂದಿಗೆ ಸಂಘರ್ಷವಾಗಬಹುದು. ಬದಲಾಯಿಸಿದ ನಂತರ ಕೊಠಡಿಯನ್ನು ಮತ್ತೆ ತೆರೆಯಿರಿ.";
 "settings.furnitureFitARCompanionUnavailable" = "ಈ ಸಾಧನದಲ್ಲಿ ದೃಶ್ಯಾಂತರ ಲಭ್ಯವಿಲ್ಲ.";
+"settings.fullVideoWithIdentifications" = "ಗುರುತಿಸುವಿಕೆಗಳೊಂದಿಗೆ ಪೂರ್ಣ ವೀಡಿಯೊ";
+"settings.fullVideoWithIdentificationsDescription" = "ವಿಭಜಿತ ಫರ್ಣಿಚರ್ ಓವರ್‌ಲೇಯನ್ನು ಸ್ವಯಂ ಕೇಂದ್ರೀಕರಿಸುವ ಬದಲು ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಲೇಬಲ್‌ಗಳೊಂದಿಗೆ ಲೈವ್ ಕ್ಯಾಮರಾ ಫೀಡ್ ತೋರಿಸಿ.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
 "settings.yoloWallDimensionsOnSave" = "ಉಳಿಸುವಾಗ YOLO ಗೋಡೆ ಆಯಾಮಗಳು";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP ಕೊಠಡಿಗೆ ಹೆಸರು ನೀಡಿ ಉಳಿಸುವಾಗ, YOLO (ಗೋಡೆ ವರ್ಗ ಅಥವಾ ಗೋಡೆಯಂತಹ ಬಾಕ್ಸ್), ಉಳಿಸಿದ SHARP ಮೊನೊಡೆಪ್ತ್ ಮತ್ತು ಕ್ಯಾಮೆರಾ EXIF ಬಳಸಿ ಮುಂಭಾಗದ ಗೋಡೆಯ ಅಗಲ ಮತ್ತು ಎತ್ತರ ಅಂದಾಜು ಮಾಡುತ್ತದೆ. thumbnail.png ಅಗತ್ಯ; ಉತ್ತಮ ಫಲಿತಾಂಶಕ್ಕೆ sharp_monodepth.bin.";

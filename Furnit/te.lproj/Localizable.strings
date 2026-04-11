@@ -300,7 +300,10 @@
 "roomViewer.resetOverlayScale" = "ఓవర్లే స్కేల్ రీసెట్";
 "roomViewer.pinchGestureHintAccessibility" = "గదిని జూమ్ చేయడానికి రెండు వేళ్లతో పించ్ చేయండి. ఫర్నిచర్ సెగ్మెంటేషన్ ఆన్‌లో ఉన్నప్పుడు పించ్ ఓవర్లే పరిమాణాన్నీ మారుస్తుంది.";
 "roomViewer.pinchGestureHintExplanation" = "రెండు వేళ్లతో పించ్ చేసి గదిని జూమ్ చేయండి. ఫర్నిచర్ ఫిట్ ఆన్‌లో ఉన్నప్పుడు పించ్ సెగ్మెంటేషన్ ఓవర్లేను కూడా మారుస్తుంది.";
-"roomViewer.brainGestureHintExplanation" = "ఫర్నిచర్ గుర్తింపును ఆన్ లేదా ఆఫ్ చేయడానికి మెదడు ఐకాన్‌ను టాప్ చేయండి. ఆన్‌లో ఉన్నప్పుడు ఓవర్లేను పించ్ చేసి పరిమాణం మార్చండి.";
+"roomViewer.brainGestureHintExplanation" = "ప్రత్యక్ష ఫర్నిచర్ గుర్తింపు ప్రారంభించడానికి మెదడును టాప్ చేయండి. గుర్తించబడిన ఒకటి లేదా అనేక అంశాలపై టాప్ చేయండి, తర్వాత ఆ ఎంపికలను మాత్రమే మాస్క్ చేయడానికి «సెగ్మెంట్» టాప్ చేయండి.";
+"roomViewer.segmentFurnitureAction" = "సెగ్మెంట్";
+"roomViewer.stopSegmentationAction" = "ఆపు";
+"roomViewer.segmentFurnitureAccessibility" = "ఎంచుకున్న ఫర్నిచర్‌ను సెగ్మెంట్ చేయి";
 "roomViewer.snapshotGestureHintExplanation" = "గది ఫోటోను ఫోటోలకు సేవ్ చేయడానికి కెమెరాను టాప్ చేయండి.";
 "roomViewer.arFurnitureSizingHint" = "గదితో ఫర్నిచర్ పరిమాణాన్ని మెరుగ్గా సరిపోల్చడానికి కెమెరాను ఉపయోగిస్తుంది. LiDAR ఉన్న ఐఫోన్‌లలో ఉత్తమంగా పనిచేస్తుంది. వీక్షణ విరగడంగా ఉంటే లేదా అస్థిరంగా అనిపిస్తే ఆఫ్ చేయండి.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "నేను గది పరిమాణానికి తగిన నిష్పత్తిలో ఫర్నిచర్‌ను ఉంచేందుకు సహాయపడుతాను. ముందుగా బ్రెయిన్ ఐకాన్‌ను ట్యాప్ చేసి, తర్వాత నన్ను ప్రయత్నించండి.";
@@ -440,6 +443,16 @@
 "settings.furnitureFitARCompanion" = "AR-సహాయిత ఫర్నిచర్ కొలత";
 "settings.furnitureFitARCompanionDescription" = "Furniture Fit లో కెమెరాతో పాటు ARKit దృశ్య లోతును నడుపుతుంది (LiDAR). వీడియో క్యాప్చర్‌తో ఘర్షణ కావచ్చు. మార్చిన తర్వాత గదిని మళ్లీ తెరవండి.";
 "settings.furnitureFitARCompanionUnavailable" = "ఈ పరికరంలో దృశ్య లోతు అందుబాటులో లేదు.";
+"settings.fullVideoWithIdentifications" = "గుర్తింపులతో పూర్తి వీడియో";
+"settings.fullVideoWithIdentificationsDescription" = "విభజించిన ఫర్నిచర్ ఓవర్‌లేను స్వయంచాలకంగా కేంద్రీకరించడానికి బదులుగా గుర్తింపు పెట్టెలు మరియు లేబుల్‌లతో ప్రత్యక్ష కెమెరా ఫీడ్‌ను చూపించు.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "గది కొలతలు";
 "settings.yoloWallDimensionsOnSave" = "సేవ్ చేసేటప్పుడు YOLO గోడ కొలతలు";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP గదికి పేరు పెట్టి సేవ్ చేసినప్పుడు, YOLO (గోడ తరగతి లేదా గోడ లాంటి బాక్స్), గదితో సేవ్ చేసిన SHARP మోనోడెప్త్, కెమెరా EXIF తో ముందు గోడ వెడల్పు మరియు ఎత్తు అంచనా. thumbnail.png అవసరం; ఉత్తమ ఫలితానికి sharp_monodepth.bin.";

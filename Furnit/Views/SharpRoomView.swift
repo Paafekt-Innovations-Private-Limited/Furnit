@@ -190,6 +190,9 @@ struct SharpRoomView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    @State private var furnitureFitShowIdentifyLivePreview = true
+    @State private var selectedFurnitureFitLabels: [String] = []
     @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     // JS-measured front wall dimensions (from actual splat bounds)
@@ -273,7 +276,7 @@ struct SharpRoomView: View {
     @State private var brainArAssistedSizingEnabled = false
     /// Mean sRGB (0…1) from composited YOLOE cutout pixels; drives ``FurnitureProfile.primaryColor`` when set.
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
-    /// Collapsed shows only the header row; expanded shows dimensions, corners, depth note, harmony, and tips.
+    /// Collapsed: round pill icon; expanded: detail card above the pill.
     @State private var isPlacementIntelligenceExpanded = false
     /// Pinch hint (top-trailing): icon always visible; text shows on load and when tapped, auto-hides after 3s.
     @State private var pinchHintExplanationVisible = false
@@ -525,6 +528,9 @@ struct SharpRoomView: View {
                 updateRoomPlacementIntelligence()
             } else {
                 brainArAssistedSizingEnabled = false
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+                selectedFurnitureFitLabels = []
                 detectedFurnitureWidth = nil
                 detectedFurnitureHeightAR = nil
                 furnitureProportionalHeightMeters = nil
@@ -587,6 +593,7 @@ struct SharpRoomView: View {
         sharpRoomSheetAndLifecycleView
         .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
             TextField(L10n.RoomViewer.roomName, text: $roomName)
+                .autocorrectionDisabled(true)
             Button(L10n.Common.cancel, role: .cancel) { }
             Button(L10n.Common.save) { startSavingRoom() }
                 .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -701,9 +708,22 @@ struct SharpRoomView: View {
             showingFurnitureFit = false
         } else {
             furnitureFitInitialSegmentationDone = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
             SHARPService.shared.releaseResources()
             showingFurnitureFit = true
         }
+    }
+
+    private func activateSelectedFurnitureSegmentation() {
+        if furnitureFitSegmentationMode == .segmentSelected {
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            return
+        }
+        guard canSegmentSelectedFurniture else { return }
+        furnitureFitSegmentationMode = .segmentSelected
     }
 
     private func cancelPinchHintTasks() {
@@ -959,6 +979,10 @@ struct SharpRoomView: View {
         L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
+    private var canSegmentSelectedFurniture: Bool {
+        showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
+    }
+
     private var snapshotHintAccessibilityLabel: String {
         L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
@@ -1195,6 +1219,34 @@ struct SharpRoomView: View {
                     .background(Circle().fill(Color.blue).shadow(radius: 5))
             }
             .disabled(isLoading)
+        }
+    }
+
+    @ViewBuilder
+    private var segmentButton: some View {
+        if showingFurnitureFit {
+            Button(action: activateSelectedFurnitureSegmentation) {
+                Text(
+                    furnitureFitSegmentationMode == .segmentSelected
+                        ? L10n.RoomViewer.stopSegmentationAction
+                        : L10n.RoomViewer.segmentFurnitureAction
+                )
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .background(
+                        Capsule().fill(
+                            canSegmentSelectedFurniture
+                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+                    .shadow(radius: 4)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
+            .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
     }
 
@@ -1520,7 +1572,12 @@ struct SharpRoomView: View {
                 segmentedFurnitureMeanSRGB = meanSRGB
             },
             sharpRoomSplatMeasurementHost: splatMeasurementHost,
-            arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist
+            arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+            segmentationMode: furnitureFitSegmentationMode,
+            onSelectedClassLabelsChanged: { labels in
+                selectedFurnitureFitLabels = labels
+            },
+            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
         )
         .ignoresSafeArea()
         .zIndex(100)
@@ -1718,96 +1775,133 @@ struct SharpRoomView: View {
             ((detectedFurnitureHeightAR ?? 0) > 0.05)
     }
 
+    private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {
+        guard let fit else { return .cyan }
+        return fit.fitsInRoom ? .green : .red
+    }
+
+    @ViewBuilder
+    private func placementIntelligenceExpandedContent(
+        dimensions: RoomFurnitureDimensions?,
+        fit: FitCheckResult?,
+        aesthetic: AestheticScore
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.RoomViewer.placementIntelligenceTitle)
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                Spacer(minLength: 4)
+                if let fit {
+                    Text(
+                        fit.fitsInRoom
+                            ? L10n.RoomViewer.placementFitCount(max(fit.fitLocations.count, 1))
+                            : L10n.RoomViewer.placementNoFit
+                    )
+                    .font(.caption2.bold())
+                    .foregroundColor(fit.fitsInRoom ? .green : .red)
+                } else {
+                    Text(L10n.RoomViewer.placementBadgeStyleOnly)
+                        .font(.caption2.bold())
+                        .foregroundColor(.cyan.opacity(0.95))
+                }
+            }
+            if dimensions == nil {
+                Text(L10n.RoomViewer.placementMetricUnavailableNote)
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+            if let dimensions {
+                Text(
+                    L10n.RoomViewer.placementDetectedSizeMeters(
+                        width: Double(dimensions.widthM),
+                        height: Double(dimensions.heightM),
+                        depth: Double(dimensions.depthM)
+                    )
+                )
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.92))
+            }
+            if let fit {
+                if fit.fitsInRoom {
+                    Text(L10n.RoomViewer.placementFitsRoom)
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                } else {
+                    Text(L10n.RoomViewer.placementExceedsRoom)
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                }
+            }
+            Text(
+                L10n.RoomViewer.placementHarmonySummary(
+                    harmonyScore: aesthetic.harmonyScore,
+                    harmonyTypeName: aesthetic.harmonyType.localizedDisplayName,
+                    contrastScore: aesthetic.contrastScore,
+                    styleFit: aesthetic.styleCompatibilityScore
+                )
+            )
+            .font(.caption2)
+            .foregroundColor(.white.opacity(0.88))
+            ForEach(Array(aesthetic.recommendations.prefix(4).enumerated()), id: \.offset) { _, line in
+                Text("• \(line)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.86))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(Color.black.opacity(0.88))
+        .cornerRadius(14)
+        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 4)
+    }
+
+    /// Small round pill between brain and snapshot; grid icon = spatial placement; ring = fit (green/red) or style-only (cyan).
     @ViewBuilder
     private var roomIntelligencePlacementCard: some View {
         if showingFurnitureFit,
            authoritativeRoomModelForMetrics != nil,
            placementIntelligenceHasFurnitureSignal,
-           latestAestheticScore != nil {
+           let aesthetic = latestAestheticScore {
             let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
             let fit = latestFitCheckResult
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(spacing: 10) {
+                if isPlacementIntelligenceExpanded {
+                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isPlacementIntelligenceExpanded.toggle()
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Text(L10n.RoomViewer.placementIntelligenceTitle)
-                            .font(.caption.bold())
-                            .foregroundColor(.white)
-                        Spacer(minLength: 8)
-                        if let fit {
-                            Text(
-                                fit.fitsInRoom
-                                    ? L10n.RoomViewer.placementFitCount(max(fit.fitLocations.count, 1))
-                                    : L10n.RoomViewer.placementNoFit
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(white: 0.22), Color(white: 0.12)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                            .font(.caption2.bold())
-                            .foregroundColor(fit.fitsInRoom ? .green : .red)
-                        } else {
-                            Text(L10n.RoomViewer.placementBadgeStyleOnly)
-                                .font(.caption2.bold())
-                                .foregroundColor(.cyan.opacity(0.95))
-                        }
-                        Image(systemName: isPlacementIntelligenceExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.bold())
-                            .foregroundColor(.white.opacity(0.85))
+                            .frame(width: 46, height: 46)
+                            .overlay(
+                                Circle()
+                                    .stroke(placementIntelligenceRingColor(fit: fit), lineWidth: 2.5)
+                            )
+                            .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                        Image(systemName: "square.split.2x2.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .symbolRenderingMode(.hierarchical)
+                            .accessibilityHidden(true)
                     }
                 }
                 .buttonStyle(.plain)
-
-                if isPlacementIntelligenceExpanded {
-                    if dimensions == nil {
-                        Text(L10n.RoomViewer.placementMetricUnavailableNote)
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                    }
-                    if let dimensions {
-                        Text(
-                            L10n.RoomViewer.placementDetectedSizeMeters(
-                                width: Double(dimensions.widthM),
-                                height: Double(dimensions.heightM),
-                                depth: Double(dimensions.depthM)
-                            )
-                        )
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.92))
-                    }
-                    if let fit {
-                        if fit.fitsInRoom {
-                            Text(L10n.RoomViewer.placementFitsRoom)
-                                .font(.caption2)
-                                .foregroundColor(.green)
-                        } else {
-                            Text(L10n.RoomViewer.placementExceedsRoom)
-                                .font(.caption2)
-                                .foregroundColor(.red)
-                        }
-                    }
-                    if let aesthetic = latestAestheticScore {
-                        Text(
-                            L10n.RoomViewer.placementHarmonySummary(
-                                harmonyScore: aesthetic.harmonyScore,
-                                harmonyTypeName: aesthetic.harmonyType.localizedDisplayName,
-                                contrastScore: aesthetic.contrastScore,
-                                styleFit: aesthetic.styleCompatibilityScore
-                            )
-                        )
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.88))
-                        ForEach(Array(aesthetic.recommendations.prefix(4).enumerated()), id: \.offset) { _, line in
-                            Text("• \(line)")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.86))
-                        }
-                    }
-                }
+                .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
+                .accessibilityAddTraits(.isButton)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.72))
-            .cornerRadius(8)
         }
     }
 
@@ -1832,24 +1926,23 @@ struct SharpRoomView: View {
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
-                HStack(spacing: 20) {
+                HStack(alignment: .bottom, spacing: 16) {
                     brainButtonWithHintAbove
+                    segmentButton
                     if showingFurnitureFit {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            roomIntelligencePlacementCardResetOnExit
-                            if shouldShowArFurnitureMeasurementPill {
-                                if showRoomFurnitureCalibrate {
-                                    Button(action: { showFurnitureDimensionsInput = true }) {
-                                        furnitureMeasurementPillContent(showTapHint: true)
-                                    }
-                                } else {
-                                    furnitureMeasurementPillContent(showTapHint: false)
-                                }
-                            }
-                        }
+                        roomIntelligencePlacementCardResetOnExit
                     }
                     Spacer().allowsHitTesting(false)
                     VStack(alignment: .trailing, spacing: 10) {
+                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                            if showRoomFurnitureCalibrate {
+                                Button(action: { showFurnitureDimensionsInput = true }) {
+                                    furnitureMeasurementPillContent(showTapHint: true)
+                                }
+                            } else {
+                                furnitureMeasurementPillContent(showTapHint: false)
+                            }
+                        }
                         snapshotButtonWithHintAbove
                     }
                 }
@@ -1869,21 +1962,26 @@ struct SharpRoomView: View {
                 .background(Color.black.opacity(0.4)).cornerRadius(6)
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
-                HStack {
+                HStack(alignment: .bottom, spacing: 0) {
                     brainButtonWithHintAbove
                         .padding(.leading, 16)
-                    Spacer().allowsHitTesting(false)
+                    if showingFurnitureFit {
+                        segmentButton
+                            .padding(.leading, 10)
+                    }
+                    Spacer(minLength: 4)
+                    if showingFurnitureFit {
+                        roomIntelligencePlacementCardResetOnExit
+                    }
+                    Spacer(minLength: 4)
                     VStack(spacing: 8) {
-                        if showingFurnitureFit {
-                            roomIntelligencePlacementCardResetOnExit
-                            if shouldShowArFurnitureMeasurementPill {
-                                if showRoomFurnitureCalibrate {
-                                    Button(action: { showFurnitureDimensionsInput = true }) {
-                                        furnitureMeasurementPillContent(showTapHint: true)
-                                    }
-                                } else {
-                                    furnitureMeasurementPillContent(showTapHint: false)
+                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                            if showRoomFurnitureCalibrate {
+                                Button(action: { showFurnitureDimensionsInput = true }) {
+                                    furnitureMeasurementPillContent(showTapHint: true)
                                 }
+                            } else {
+                                furnitureMeasurementPillContent(showTapHint: false)
                             }
                         }
                         snapshotButtonWithHintAbove

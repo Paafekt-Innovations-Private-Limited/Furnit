@@ -300,7 +300,10 @@
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
 "roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
 "roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
-"roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचान चालू या बंद करने के लिए मस्तिष्क आइकन पर टैप करें। चालू होने पर ओवरले का आकार चुटकी से बदलें।";
+"roomViewer.brainGestureHintExplanation" = "लाइव फर्नीचर पहचान शुरू करने के लिए मस्तिष्क पर टैप करें। एक या अधिक पहचाने गए आइटम पर टैप करें, फिर केवल उन्हीं चयनों को मास्क करने के लिए «सेगमेंट» पर टैप करें।";
+"roomViewer.segmentFurnitureAction" = "सेगमेंट";
+"roomViewer.stopSegmentationAction" = "रोकें";
+"roomViewer.segmentFurnitureAccessibility" = "चयनित फर्नीचर सेगमेंट करें";
 "roomViewer.snapshotGestureHintExplanation" = "कमरे की तस्वीर फ़ोटो में सहेजने के लिए कैमरा पर टैप करें।";
 "roomViewer.arFurnitureSizingHint" = "कैमरे से फर्नीचर का आकार कमरे के अनुसार बेहतर मिलाने में मदद करता है। LiDAR वाले iPhone पर सबसे अच्छा काम करता है। अगर दृश्य रुक-रुक कर चले या अस्थिर लगे तो इसे बंद कर दें।";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "मैं कमरे के आकार के अनुपात में फर्नीचर रखता हूँ। पहले ब्रेन आइकन पर टैप करें, फिर मुझे आज़माएँ।";
@@ -440,6 +443,16 @@
 "settings.furnitureFitARCompanion" = "AR-सहायित फर्नीचर आकार";
 "settings.furnitureFitARCompanionDescription" = "Furniture Fit में कैमरे के साथ ARKit दृश्य गहराई चलाता है (LiDAR)। कुछ डिवाइस पर वीडियो कैप्चर से टकराव हो सकता है। बदलने के बाद कमरा फिर खोलें।";
 "settings.furnitureFitARCompanionUnavailable" = "इस डिवाइस पर दृश्य गहराई उपलब्ध नहीं है।";
+"settings.fullVideoWithIdentifications" = "पहचान के साथ पूर्ण वीडियो";
+"settings.fullVideoWithIdentificationsDescription" = "खंडित फर्नीचर ओवरले को स्वतः केंद्रित करने के बजाय पहचान बॉक्स और लेबल के साथ लाइव कैमरा फ़ीड दिखाएँ।";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "कमरे का माप";
 "settings.yoloWallDimensionsOnSave" = "सहेजते समय YOLO दीवार माप";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP कमरे को नाम देकर सहेजने पर, YOLO (दीवार वर्ग या दीवार जैसा बॉक्स), कमरे के साथ सहेजी SHARP मोनोडेप्थ और कैमरा EXIF से सामने की दीवार की चौड़ाई और ऊँचाई अनुमान। thumbnail.png ज़रूरी; सर्वोत्तम परिणाम के लिए sharp_monodepth.bin।";

@@ -301,7 +301,10 @@
 "roomViewer.resetOverlayScale" = "重置叠加比例";
 "roomViewer.pinchGestureHintAccessibility" = "双指捏合可缩放房间。开启家具分割时，捏合还可放大或缩小叠加层。";
 "roomViewer.pinchGestureHintExplanation" = "双指捏合缩放房间。开启家具适配后，捏合还可缩放分割叠加层。";
-"roomViewer.brainGestureHintExplanation" = "点按大脑图标可开关家具检测。开启后，捏合叠加层可调整大小。";
+"roomViewer.brainGestureHintExplanation" = "点按大脑开始实时家具识别。点按一个或多个检测到的物品，再点「分割」以仅对这些选择应用蒙版。";
+"roomViewer.segmentFurnitureAction" = "分割";
+"roomViewer.stopSegmentationAction" = "停止";
+"roomViewer.segmentFurnitureAccessibility" = "分割所选家具";
 "roomViewer.snapshotGestureHintExplanation" = "点按相机可将房间画面保存到“照片”。";
 "roomViewer.arFurnitureSizingHint" = "使用相机帮助家具尺寸更贴合房间。配备 LiDAR 的 iPhone 上效果最佳。若画面卡顿或不稳，可关闭此功能。";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "我会按房间大小比例摆放家具。请先点按大脑图标，然后再试我。";
@@ -441,6 +444,16 @@
 "settings.furnitureFitARCompanion" = "AR 辅助家具尺寸";
 "settings.furnitureFitARCompanionDescription" = "在 Furniture Fit 中与摄像头并行运行 ARKit 场景深度（LiDAR）。可能与视频采集冲突。更改后请重新进入房间。";
 "settings.furnitureFitARCompanionUnavailable" = "此设备不支持场景深度。";
+"settings.fullVideoWithIdentifications" = "全屏视频与识别";
+"settings.fullVideoWithIdentificationsDescription" = "显示实时相机画面及检测框和标签，而不是自动居中分割后的家具叠加层。";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "房间测量";
 "settings.yoloWallDimensionsOnSave" = "保存时用 YOLO 估计墙尺寸";
 "settings.yoloWallDimensionsOnSaveDescription" = "为 SHARP 房间命名并保存时，使用 YOLO（墙类别或类墙框）、随房间保存的 SHARP 单目深度与相机 EXIF 估计前墙宽高。需要 thumbnail.png，最佳效果需要 sharp_monodepth.bin。";

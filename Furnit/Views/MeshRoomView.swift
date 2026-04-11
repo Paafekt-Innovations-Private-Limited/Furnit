@@ -38,6 +38,9 @@ struct MeshRoomView: View {
 
     // Brain mode (furniture detection)
     @State private var showingFurnitureFit = false
+    @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    @State private var furnitureFitShowIdentifyLivePreview = true
+    @State private var selectedFurnitureFitLabels: [String] = []
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
@@ -67,6 +70,10 @@ struct MeshRoomView: View {
 
     private var canOfferBrainArAssist: Bool {
         QualitySettings.supportsFurnitureFitARAssisted
+    }
+
+    private var canSegmentSelectedFurniture: Bool {
+        showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
     }
 
     var body: some View {
@@ -159,7 +166,12 @@ struct MeshRoomView: View {
                     onFurnitureSizeEstimated: { _ in },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
                     onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
-                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist
+                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                    segmentationMode: furnitureFitSegmentationMode,
+                    onSelectedClassLabelsChanged: { labels in
+                        selectedFurnitureFitLabels = labels
+                    },
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -245,6 +257,9 @@ struct MeshRoomView: View {
                 yoloeService.ensureModelLoaded()
             } else {
                 brainArAssistedSizingEnabled = false
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+                selectedFurnitureFitLabels = []
                 yoloeService.releaseResources()
             }
         }
@@ -260,6 +275,7 @@ struct MeshRoomView: View {
         }
         .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
             TextField("", text: $roomName, prompt: Text(L10n.RoomViewer.roomName))
+                .autocorrectionDisabled(true)
             Button(L10n.Common.cancel, role: .cancel) {
                 roomName = ""
             }
@@ -590,6 +606,9 @@ struct MeshRoomView: View {
                     showingFurnitureFit = false
                 } else {
                     furnitureFitInitialSegmentationDone = false
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                    selectedFurnitureFitLabels = []
                     showingFurnitureFit = true
                 }
             }) {
@@ -603,6 +622,16 @@ struct MeshRoomView: View {
         }
     }
 
+    private func activateSelectedFurnitureSegmentation() {
+        if furnitureFitSegmentationMode == .segmentSelected {
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            return
+        }
+        guard canSegmentSelectedFurniture else { return }
+        furnitureFitSegmentationMode = .segmentSelected
+    }
+
     private var snapshotButtonWithHintAbove: some View {
         VStack(alignment: .center, spacing: 6) {
             snapshotGestureHintColumn
@@ -614,6 +643,34 @@ struct MeshRoomView: View {
                     .background(Circle().fill(Color.blue).shadow(radius: 5))
             }
             .disabled(isLoading)
+        }
+    }
+
+    @ViewBuilder
+    private var segmentButton: some View {
+        if showingFurnitureFit {
+            Button(action: activateSelectedFurnitureSegmentation) {
+                Text(
+                    furnitureFitSegmentationMode == .segmentSelected
+                        ? L10n.RoomViewer.stopSegmentationAction
+                        : L10n.RoomViewer.segmentFurnitureAction
+                )
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .background(
+                        Capsule().fill(
+                            canSegmentSelectedFurniture
+                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+                    .shadow(radius: 4)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
+            .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
     }
 
@@ -778,6 +835,7 @@ struct MeshRoomView: View {
             HStack {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
+                    segmentButton
                 }
                 .padding(.leading, 16)
 
@@ -801,6 +859,7 @@ struct MeshRoomView: View {
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
+                    segmentButton
                 }
 
                 // Orientation label

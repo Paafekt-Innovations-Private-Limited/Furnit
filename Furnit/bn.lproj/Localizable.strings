@@ -318,7 +318,10 @@
 "roomViewer.resetOverlayScale" = "ওভারলে স্কেল রিসেট";
 "roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
 "roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
-"roomViewer.brainGestureHintExplanation" = "মস্তিষ্ক আইকনে ট্যাপ করে ফার্নিচার শনাক্তকরণ চালু বা বন্ধ করুন। চালু থাকলে ওভারলে চিমটি দিয়ে আকার বদলান।";
+"roomViewer.brainGestureHintExplanation" = "লাইভ ফার্নিচার শনাক্তকরণ শুরুতে মস্তিষ্কে ট্যাপ করুন। এক বা একাধিক সনাক্ত আইটেমে ট্যাপ করুন, তারপর শুধু সেই বাছাইগুলো মাস্ক করতে «সেগমেন্ট»-এ ট্যাপ করুন।";
+"roomViewer.segmentFurnitureAction" = "সেগমেন্ট";
+"roomViewer.stopSegmentationAction" = "থামুন";
+"roomViewer.segmentFurnitureAccessibility" = "নির্বাচিত ফার্নিচার সেগমেন্ট করুন";
 "roomViewer.snapshotGestureHintExplanation" = "ঘরের ছবি ফটোতে সেভ করতে ক্যামেরায় ট্যাপ করুন।";
 "roomViewer.arFurnitureSizingHint" = "ক্যামেরা ব্যবহার করে ফার্নিচারের আকার ঘরের সাথে ভালো মিল রাখতে সাহায্য করে। LiDAR সহ আইফোনে সবচেয়ে ভালো কাজ করে। ভিউ ঝাঁকুনি দিলে বা অস্থির মনে হলে বন্ধ করুন।";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "আমি ঘরের আকারের অনুপাতে ফার্নিচার বসাই। আগে ব্রেন আইকনে ট্যাপ করুন, তারপর আমাকে ব্যবহার করুন।";
@@ -440,6 +443,16 @@
 "settings.furnitureFitARCompanion" = "AR-সহায়িত ফার্নিচার মাপ";
 "settings.furnitureFitARCompanionDescription" = "Furniture Fit-এ ক্যামেরার পাশাপাশি ARKit দৃশ্যের গভীরতা চালায় (LiDAR)। ভিডিও ক্যাপচারের সঙ্গে দ্বন্দ্ব হতে পারে। পরিবর্তনের পর রুম আবার খুলুন।";
 "settings.furnitureFitARCompanionUnavailable" = "এই ডিভাইসে দৃশ্যের গভীরতা নেই।";
+"settings.fullVideoWithIdentifications" = "সনাক্তকরণসহ পূর্ণ ভিডিও";
+"settings.fullVideoWithIdentificationsDescription" = "স্বয়ংক্রিয়ভাবে বিভাজিত ফার্নিচার ওভারলে কেন্দ্রীভূত করার পরিবর্তে সরাসরি ক্যামেরা ফিডে সনাক্তকরণ বক্স ও লেবেল দেখান।";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "রুম মাপ";
 "settings.yoloWallDimensionsOnSave" = "সংরক্ষণে YOLO দেয়ালের মাপ";
 "settings.yoloWallDimensionsOnSaveDescription" = "SHARP রুম নাম দিয়ে সংরক্ষণ করলে, YOLO (দেয়াল ক্লাস বা দেয়ালসদৃশ বক্স), রুমের সাথে সংরক্ষিত SHARP মোনোডেপথ ও ক্যামেরা EXIF দিয়ে সামনের দেয়ালের প্রস্থ ও উচ্চতা আনুমান। thumbnail.png দরকার; সেরা ফলের জন্য sharp_monodepth.bin।";

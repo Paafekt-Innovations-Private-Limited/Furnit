@@ -155,6 +155,16 @@ enum L10n {
         static let furnitureFitARCompanion = "settings.furnitureFitARCompanion".localized
         static let furnitureFitARCompanionDescription = "settings.furnitureFitARCompanionDescription".localized
         static let furnitureFitARCompanionUnavailable = "settings.furnitureFitARCompanionUnavailable".localized
+        static let fullVideoWithIdentifications = "settings.fullVideoWithIdentifications".localized
+        static let fullVideoWithIdentificationsDescription = "settings.fullVideoWithIdentificationsDescription".localized
+        static let primaryDetectionConfidence = "settings.primaryDetectionConfidence".localized
+        static let primaryDetectionConfidenceFooter = "settings.primaryDetectionConfidenceFooter".localized
+        static func primaryDetectionConfidencePercent(_ value: Int) -> String {
+            String(format: "settings.primaryDetectionConfidencePercent".localized, locale: .current, value)
+        }
+        static let primarySelectionByHighestConfidence = "settings.primarySelectionByHighestConfidence".localized
+        static let primarySelectionByHighestConfidenceDescription = "settings.primarySelectionByHighestConfidenceDescription".localized
+        static let primarySelectionByHighestConfidenceFooter = "settings.primarySelectionByHighestConfidenceFooter".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
         static let roomMeasurementSection = "settings.roomMeasurementSection".localized
@@ -345,6 +355,9 @@ enum L10n {
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
         static let pinchGestureHintExplanation = "roomViewer.pinchGestureHintExplanation".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
+        static let segmentFurnitureAction = "roomViewer.segmentFurnitureAction".localized
+        static let stopSegmentationAction = "roomViewer.stopSegmentationAction".localized
+        static let segmentFurnitureAccessibility = "roomViewer.segmentFurnitureAccessibility".localized
         static let snapshotGestureHintExplanation = "roomViewer.snapshotGestureHintExplanation".localized
         /// Short tip for the AR camera-sizing control in the room toolbar (user-facing, not technical).
         static let arFurnitureSizingHint = "roomViewer.arFurnitureSizingHint".localized

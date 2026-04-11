@@ -330,7 +330,10 @@
 "roomViewer.resetOverlayScale" = "Overlay-Maßstab zurücksetzen";
 "roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
 "roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
-"roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Möbel-Erkennung ein- oder auszuschalten. Wenn sie an ist, kneife die Einblendung, um ihre Größe zu ändern.";
+"roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Live-Möbelerkennung zu starten. Tippe auf ein oder mehrere erkannte Objekte, dann auf Segmentieren, um nur diese Auswahl zu maskieren.";
+"roomViewer.segmentFurnitureAction" = "Segmentieren";
+"roomViewer.stopSegmentationAction" = "Stopp";
+"roomViewer.segmentFurnitureAccessibility" = "Ausgewählte Möbel segmentieren";
 "roomViewer.snapshotGestureHintExplanation" = "Tippe auf die Kamera, um ein Bild des Raums in „Fotos“ zu speichern.";
 "roomViewer.arFurnitureSizingHint" = "Nutzt die Kamera, damit Möbelgrößen besser zur Raumgröße passen. Am besten auf iPhones mit LiDAR. Schalte es aus, wenn die Ansicht ruckelt oder instabil wirkt.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Ich platziere Möbel proportional zur Raumgröße. Tippe auf das Gehirn-Symbol und versuche es dann erneut.";
@@ -452,6 +455,16 @@
 "settings.furnitureFitARCompanion" = "AR-unterstützte Möbelgröße";
 "settings.furnitureFitARCompanionDescription" = "Startet ARKit-Szenentiefe parallel zur Kamera in Furniture Fit (LiDAR). Kann auf manchen Geräten mit der Videoaufnahme kollidieren. Raum nach Änderung erneut öffnen.";
 "settings.furnitureFitARCompanionUnavailable" = "Szenentiefe ist auf diesem Gerät nicht verfügbar.";
+"settings.fullVideoWithIdentifications" = "Vollbild-Video mit Erkennungen";
+"settings.fullVideoWithIdentificationsDescription" = "Live-Kamerabild mit Erkennungsrahmen und Beschriftungen anzeigen statt die segmentierte Möbel-Einblendung automatisch zu zentrieren.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+
 "settings.roomMeasurementSection" = "Raummaße";
 "settings.yoloWallDimensionsOnSave" = "YOLO-Wandmaße beim Speichern";
 "settings.yoloWallDimensionsOnSaveDescription" = "Wenn Sie einen SHARP-Raum benennen und speichern, werden Breite und Höhe der Vorderwand per YOLO (Wandklasse oder wandähnliche Box), gespeicherter SHARP-Monotiefe des Raums und Kamera-EXIF geschätzt. Benötigt thumbnail.png und idealerweise sharp_monodepth.bin.";

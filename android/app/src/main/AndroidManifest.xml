@@ -5,11 +5,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
 
     <application
         android:name=".FurnitApplication"
         android:allowBackup="true"
         android:extractNativeLibs="true"
+        android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:label="Furnit"
         android:supportsRtl="true"
@@ -60,6 +62,7 @@
         <activity
             android:name=".SharpRoomActivity"
             android:exported="false"
+            android:hardwareAccelerated="true"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".ArMeasureActivity"

@@ -148,6 +148,14 @@
 "settings.furnitureFitARCompanion" = "AR-assisted furniture sizing";
 "settings.furnitureFitARCompanionDescription" = "LiDAR iPhones only: runs ARKit scene depth parallel to the camera for true pinhole range. Without LiDAR we do not start this session (parallel AR + capture causes Fig -17281 errors). Reopen the room after changing this.";
 "settings.furnitureFitARCompanionUnavailable" = "Scene depth is not available on this device.";
+"settings.fullVideoWithIdentifications" = "Full video with identifications";
+"settings.fullVideoWithIdentificationsDescription" = "Show the live camera feed with detection boxes and labels instead of auto-centering the segmented furniture overlay.";
+"settings.primaryDetectionConfidence" = "Primary detection confidence";
+"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidencePercent" = "%d%%";
+"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
+"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
 "settings.roomMeasurementSection" = "Room measurement";
 "settings.yoloWallDimensionsOnSave" = "YOLO wall dimensions when saving";
 "settings.yoloWallDimensionsOnSaveDescription" = "When you name and save a SHARP room, estimate front-wall width and height using YOLO (wall class or wall-like box), SHARP monodepth saved with the room, and camera EXIF. Requires thumbnail.png and (for best results) sharp_monodepth.bin from generation.";
@@ -396,7 +404,10 @@
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
 "roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
 "roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
-"roomViewer.brainGestureHintExplanation" = "Tap the brain to turn furniture detection on or off. When it is on, pinch the overlay to resize it.";
+"roomViewer.brainGestureHintExplanation" = "Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.";
+"roomViewer.segmentFurnitureAction" = "Segment";
+"roomViewer.stopSegmentationAction" = "Stop";
+"roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";
 "roomViewer.snapshotGestureHintExplanation" = "Tap the camera to save a picture of the room to Photos.";
 "roomViewer.arFurnitureSizingHint" = "Uses the camera to better match furniture size to your room. Works best on iPhones with LiDAR. Turn this off if the view stutters or feels unstable.";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "I place furniture in proportion to the room size. Tap the brain icon, then try me.";

@@ -30,13 +30,20 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     var confidenceThreshold: Float = 0.15
     var useBilinearUpscaling: Bool = true
     var active: Bool = false
-    
+
+    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.75
+    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+
     @ObservedObject private var appState = AppStateManager.shared
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let v = FurnitureFitContainerView()
         v.processInterval = processInterval
         v.confidenceThreshold = confidenceThreshold
+        v.primaryDetectionMinConfidence = clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
+        v.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
+        v.showFullVideoWithIdentifications = showFullVideoWithIdentifications
         v.useBilinearUpscaling = useBilinearUpscaling
         v.setModel(mlModel)
         if active { v.startIfNeeded() }
@@ -47,8 +54,15 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.confidenceThreshold = confidenceThreshold
+        uiView.primaryDetectionMinConfidence = clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
+        uiView.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
+        uiView.showFullVideoWithIdentifications = showFullVideoWithIdentifications
         uiView.useBilinearUpscaling = useBilinearUpscaling
         if active { uiView.startIfNeeded() } else { uiView.stop() }
+    }
+
+    private func clampPrimaryDetectionConfidence(_ raw: Double) -> Float {
+        Float(min(max(raw, 0.05), 0.99))
     }
 
     static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
@@ -71,14 +85,108 @@ struct FurnitureSizeEstimate {
     let arHeightMeters: Float?
 }
 
+enum FurnitureFitSegmentationMode: Equatable {
+    case identifyOnly
+    case segmentSelected
+}
+
+private struct DetectionOverlayItem {
+    let rectInView: CGRect
+    let label: String
+    let confidence: Float
+    let isSelected: Bool
+}
+
+private final class DetectionBBoxOverlayView: UIView {
+    var items: [DetectionOverlayItem] = [] {
+        didSet { setNeedsDisplay() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        backgroundColor = .clear
+        isOpaque = false
+        isUserInteractionEnabled = false
+        contentMode = .redraw
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        ctx.clear(rect)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingTail
+        for item in items {
+            let strokeColor: UIColor = item.isSelected ? .systemYellow : UIColor.white.withAlphaComponent(0.88)
+            let fillColor = UIColor.black.withAlphaComponent(item.isSelected ? 0.55 : 0.38)
+            let lineWidth: CGFloat = item.isSelected ? 2.5 : 1.2
+            let boxPath = UIBezierPath(roundedRect: item.rectInView, cornerRadius: 6)
+            fillColor.setFill()
+            strokeColor.setStroke()
+            boxPath.lineWidth = lineWidth
+            boxPath.stroke()
+
+            let scoreText = String(format: "%.2f", item.confidence)
+            let text = "\(item.label) \(scoreText)"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: item.isSelected ? 11 : 10, weight: item.isSelected ? .semibold : .medium),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraphStyle
+            ]
+            let maxLabelWidth = min(max(item.rectInView.width, 56), 140)
+            let textSize = (text as NSString).size(withAttributes: attributes)
+            let labelRect = CGRect(
+                x: item.rectInView.minX,
+                y: max(0, item.rectInView.minY - textSize.height - 8),
+                width: min(maxLabelWidth, textSize.width + 10),
+                height: textSize.height + 6
+            )
+            let labelPath = UIBezierPath(roundedRect: labelRect, cornerRadius: 6)
+            fillColor.setFill()
+            labelPath.fill()
+            (text as NSString).draw(
+                in: labelRect.insetBy(dx: 5, dy: 3),
+                withAttributes: attributes
+            )
+        }
+    }
+}
+
+private extension UIButton.Configuration {
+    static func furnitureSelectionChip() -> UIButton.Configuration {
+        var config = UIButton.Configuration.plain()
+        config.baseForegroundColor = .white
+        config.background.backgroundColor = UIColor.black.withAlphaComponent(0.72)
+        config.background.cornerRadius = 18
+        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
+        config.image = UIImage(systemName: "xmark.circle.fill")
+        config.imagePlacement = .trailing
+        config.imagePadding = 8
+        return config
+    }
+}
+
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
+    private static let fullVideoWithIdentificationsKey = "furnitureFit.showFullVideoWithIdentifications"
     private static let minimumARFurnitureHeightMeters: Float = 0.25
     private static let minimumARFurnitureWidthMeters: Float = 0.25
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
+    /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
+    var primaryDetectionMinConfidence: Float = 0.75
+    /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
+    var primarySelectionByHighestConfidence: Bool = false
     /// After bbox clip, optional 3×3 morphological close on prototype mask before upscale; uses mask-texture composite path (not fused) when enabled.
     private let furnitureFitUseMorphologicalCloseMask: Bool = true
     var useBilinearUpscaling: Bool = true
@@ -225,6 +333,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         iv.layer.magnificationFilter = .linear
         return iv
     }()
+    private let detectionBBoxOverlayView = DetectionBBoxOverlayView()
+    private let selectedObjectChipButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = .furnitureSelectionChip()
+        button.isHidden = true
+        button.alpha = 0
+        return button
+    }()
     
     // MARK: Progress UI
     private let progressContainer: UIView = {
@@ -264,6 +381,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var suppressStartupProgress = false
     /// Called once when the first valid segmentation mask is ready (parent can persist “no progress next time”).
     var onFirstSegmentationComplete: (() -> Void)?
+    /// Reports the currently selected classes for multi-tap segmentation.
+    var onSelectedClassLabelsChanged: (([String]) -> Void)?
+    /// Controls whether identify-only mode should show the full live preview layer.
+    var showIdentifyLivePreview: Bool = true
 
     // MARK: - Overlay scale (room × AR when enabled × user pinch)
     /// From `FurnitureSizingCalculator`; combined with a modest default baseline so large furniture
@@ -281,6 +402,33 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let minCombinedOverlayScale: CGFloat = 0.08
     private let maxCombinedOverlayScale: CGFloat = 3.0
     private let defaultStaticOverlayScale: CGFloat = 1.28
+    var showFullVideoWithIdentifications: Bool = {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey) != nil {
+            return defaults.bool(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey)
+        }
+        return true
+    }() {
+        didSet {
+            guard oldValue != showFullVideoWithIdentifications else { return }
+            updateVideoIdentificationPresentation()
+        }
+    }
+    var segmentationMode: FurnitureFitSegmentationMode = .identifyOnly {
+        didSet {
+            guard oldValue != segmentationMode else { return }
+            if segmentationMode == .identifyOnly {
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                    self.applyCurrentOverlayScaleTransform()
+                }
+            }
+            updateVideoIdentificationPresentation()
+        }
+    }
+    private var isShowingLiveVideoIdentifications: Bool {
+        showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
+    }
     private enum OverlayPresentationMode {
         case deferredCentered
         case measuredPlacement
@@ -294,11 +442,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let maxStableOverlayScaleDrift: CGFloat = 0.18
     private let arOverlayResyncJumpFraction: CGFloat = 0.22
     private let arOverlayResyncHeightDriftFraction: Float = 0.22
-    /// Primary scoring: penalize YOLO boxes that fill most of the model frame (desk / table / wrapping paper).
-    /// Those steal `selectPrimary` from cup/glass and make AR overlay scale swing wildly when the camera moves.
-    private let primarySelectionSoftAreaNormPivot: Float = 0.30
-    private let primarySelectionLargeBoxPenaltyK: Float = 5.2
-
     /// Throttled logging for oscillation diagnosis (when `debugMode` is on).
     private var overlayDebugLastAssistedLabel: String = ""
     private var overlayDebugLastCombined: CGFloat = -1
@@ -313,10 +456,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
+    /// All current candidate bboxes in pre-transform overlay coordinates. Used for drawing and tap-selection.
+    private var candidateBboxesInView: [CGRect] = []
+    /// Latest displayed candidates aligned with ``candidateBboxesInView``. Main-thread only for tap-selection.
+    private var latestDisplayedCandidates: [FurnitureFitDetection] = []
+    private var latestDisplayedSelectedCandidateIndex: Int?
+    private let selectedClassStateLock = NSLock()
+    private var selectedClassIDs: Set<Int> = []
+    private var selectedClassDisplayLabels: [Int: String] = [:]
     /// Stored reference so `hitTest` can check whether a pinch is already in flight.
     private weak var overlayPinchGesture: UIPinchGestureRecognizer?
     /// Stored reference so `hitTest` can check whether a pan is already in flight.
     private weak var overlayPanGesture: UIPanGestureRecognizer?
+    /// Stored reference so bbox taps can coexist with pan/pinch.
+    private weak var overlayTapGesture: UITapGestureRecognizer?
     /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
     private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
     private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
@@ -517,6 +670,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return "\u{001B}[1m::\(name) (id:\(id))\u{001B}[0m"
     }
 
+    private func displayClassName(_ id: Int) -> String {
+        classNames[id] ?? "unknown"
+    }
+
     private func supportSurfaceHint(
         from candidates: [FurnitureFitDetection],
         imageWidth: Int,
@@ -569,14 +726,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         
         previewLayer.session = captureSession
         previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.isHidden = true
+        previewLayer.isHidden = !isShowingLiveVideoIdentifications
         layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
         addSubview(arSCNView)
         addSubview(maskImageView)
+        addSubview(detectionBBoxOverlayView)
+        addSubview(selectedObjectChipButton)
         arSCNView.session = arSession
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
+        detectionBBoxOverlayView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             arSCNView.topAnchor.constraint(equalTo: topAnchor),
             arSCNView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -585,7 +745,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             maskImageView.topAnchor.constraint(equalTo: topAnchor),
             maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor),
             maskImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            maskImageView.trailingAnchor.constraint(equalTo: trailingAnchor)
+            maskImageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detectionBBoxOverlayView.topAnchor.constraint(equalTo: topAnchor),
+            detectionBBoxOverlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            detectionBBoxOverlayView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            detectionBBoxOverlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            selectedObjectChipButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            selectedObjectChipButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 10)
         ])
         
         // Progress container holds both progress bar and label, rotates with device orientation
@@ -620,11 +786,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         panGesture.cancelsTouchesInView = false
         panGesture.minimumNumberOfTouches = 1
         panGesture.maximumNumberOfTouches = 1
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleBoundingBoxTap(_:)))
+        tapGesture.delegate = self
+        tapGesture.cancelsTouchesInView = false
+        tapGesture.numberOfTapsRequired = 1
         
         addGestureRecognizer(pinchGesture)
+        addGestureRecognizer(tapGesture)
         overlayPinchGesture = pinchGesture
+        overlayTapGesture = tapGesture
         maskImageView.addGestureRecognizer(panGesture)
         overlayPanGesture = panGesture
+        tapGesture.require(toFail: panGesture)
+        selectedObjectChipButton.addTarget(self, action: #selector(handleClearSelectedObjectTapped), for: .touchUpInside)
 
         // Listen for reset notification from SharpRoomView toolbar ("reset size" button).
         NotificationCenter.default.addObserver(
@@ -858,25 +1033,30 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let product = roomFactor * assistedScale * userPinchScale
         let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
         let finalTransform: CGAffineTransform
-        switch overlayPresentationMode {
-        case .deferredCentered:
-            // Scale around the maskImageView center, then translate so the
-            // primary bbox center aligns with the view center (plus user pan
-            // offset). Both room-proportion / static-default scaling AND user
-            // pinch are included via `clamped`.
-            let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
-            let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-            let autoTX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
-            let autoTY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
-            finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
-                .concatenating(CGAffineTransform(translationX: autoTX + userPanOffset.x,
-                                                 y: autoTY + userPanOffset.y))
-        case .measuredPlacement:
-            finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
-                .concatenating(CGAffineTransform(translationX: userPanOffset.x,
-                                                 y: userPanOffset.y))
+        if isShowingLiveVideoIdentifications {
+            finalTransform = .identity
+        } else {
+            switch overlayPresentationMode {
+            case .deferredCentered:
+                // Scale around the maskImageView center, then translate so the
+                // primary bbox center aligns with the view center (plus user pan
+                // offset). Both room-proportion / static-default scaling AND user
+                // pinch are included via `clamped`.
+                let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
+                let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+                let autoTX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
+                let autoTY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
+                finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
+                    .concatenating(CGAffineTransform(translationX: autoTX + userPanOffset.x,
+                                                     y: autoTY + userPanOffset.y))
+            case .measuredPlacement:
+                finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
+                    .concatenating(CGAffineTransform(translationX: userPanOffset.x,
+                                                     y: userPanOffset.y))
+            }
         }
         maskImageView.transform = finalTransform
+        detectionBBoxOverlayView.transform = finalTransform
 
         let wantAR = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
         let assistedLabel: String
@@ -892,12 +1072,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let jump = overlayDebugLastCombined < 0 || abs(clamped - overlayDebugLastCombined) > 0.02
         let labelChange = assistedLabel != overlayDebugLastAssistedLabel
         if jump || labelChange {
+            let loggedOverlayScale = isShowingLiveVideoIdentifications ? CGFloat(1.0) : clamped
             overlayDebugLastAssistedLabel = assistedLabel
-            overlayDebugLastCombined = clamped
-            let modeLabel = overlayPresentationMode == .deferredCentered ? "centered_pending" : "measured"
+            overlayDebugLastCombined = loggedOverlayScale
+            let modeLabel: String
+            if isShowingLiveVideoIdentifications {
+                modeLabel = "full_video_identifications"
+            } else {
+                modeLabel = overlayPresentationMode == .deferredCentered ? "centered_pending" : "measured"
+            }
             logFurnitureFitOverlay(
-                "mode=\(modeLabel) assist=\(assistedLabel) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomFactor)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) → overlay=\(String(format: "%.3f", clamped)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid)"
+                "mode=\(modeLabel) assist=\(assistedLabel) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomFactor)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) → overlay=\(String(format: "%.3f", loggedOverlayScale)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid)"
             )
+        }
+    }
+
+    private func updateVideoIdentificationPresentation() {
+        DispatchQueue.main.async {
+            self.previewLayer.isHidden = !self.isShowingLiveVideoIdentifications
+            self.applyCurrentOverlayScaleTransform()
         }
     }
 
@@ -1174,7 +1367,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         applyCurrentOverlayScaleTransform()
     }
 
-    private func resetOverlayScalesForEmptyMask() {
+    private func resetOverlayScalesForEmptyMask(clearDetectedCandidates: Bool = true, clearSelections: Bool = false) {
         invalidatePendingAssistedMeasurement()
         autoScaleFromRoom = 1.0
         autoScaleFromAR = 1.0
@@ -1197,8 +1390,204 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         lastStableOverlayHeightMeters = nil
         lastStableOverlayScale = nil
         smoothedTightPrimaryBbox = nil
+        primaryBboxInView = .zero
+        if clearDetectedCandidates {
+            candidateBboxesInView = []
+            latestDisplayedCandidates = []
+            detectionBBoxOverlayView.items = []
+        }
+        latestDisplayedSelectedCandidateIndex = nil
+        maskImageView.image = nil
         maskImageView.center = CGPoint(x: bounds.midX, y: bounds.midY)
         maskImageView.transform = .identity
+        detectionBBoxOverlayView.transform = .identity
+        if clearSelections {
+            clearSelectedClassSelections()
+        }
+    }
+
+    private func selectedClassIDsSnapshot() -> Set<Int> {
+        selectedClassStateLock.lock()
+        defer { selectedClassStateLock.unlock() }
+        return selectedClassIDs
+    }
+
+    private func hasSelectedClasses() -> Bool {
+        !selectedClassIDsSnapshot().isEmpty
+    }
+
+    private func selectedClassLabelsSnapshot() -> [String] {
+        selectedClassStateLock.lock()
+        defer { selectedClassStateLock.unlock() }
+        return selectedClassDisplayLabels
+            .sorted { lhs, rhs in lhs.value.localizedCaseInsensitiveCompare(rhs.value) == .orderedAscending }
+            .map(\.value)
+    }
+
+    private func selectedClassChipTitle(from labels: [String]) -> String? {
+        guard !labels.isEmpty else { return nil }
+        if labels.count == 1 {
+            return labels[0]
+        }
+        if labels.count == 2 {
+            return "\(labels[0]), \(labels[1])"
+        }
+        return "\(labels.count) selected"
+    }
+
+    private func publishSelectedClassState() {
+        let labels = selectedClassLabelsSnapshot()
+        updateSelectedObjectChip(title: selectedClassChipTitle(from: labels))
+        DispatchQueue.main.async {
+            self.onSelectedClassLabelsChanged?(labels)
+        }
+    }
+
+    private func updateSelectedObjectChip(title: String?) {
+        DispatchQueue.main.async {
+            guard let title, !title.isEmpty else {
+                self.selectedObjectChipButton.isHidden = true
+                self.selectedObjectChipButton.alpha = 0
+                return
+            }
+            self.selectedObjectChipButton.configuration?.title = title
+            self.selectedObjectChipButton.isHidden = false
+            self.selectedObjectChipButton.alpha = 1
+        }
+    }
+
+    private func updateDetectionOverlaySelectionHighlights() {
+        let selectedClassIDs = selectedClassIDsSnapshot()
+        detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
+            DetectionOverlayItem(
+                rectInView: item.rectInView,
+                label: item.label,
+                confidence: item.confidence,
+                isSelected: index < latestDisplayedCandidates.count &&
+                    selectedClassIDs.contains(latestDisplayedCandidates[index].classIdx)
+            )
+        }
+    }
+
+    private func clearSelectedClassSelections() {
+        selectedClassStateLock.lock()
+        selectedClassIDs.removeAll()
+        selectedClassDisplayLabels.removeAll()
+        selectedClassStateLock.unlock()
+        publishSelectedClassState()
+    }
+
+    private func toggleSelectedClass(_ detection: FurnitureFitDetection) {
+        let displayLabel = displayClassName(detection.classIdx)
+        selectedClassStateLock.lock()
+        if selectedClassIDs.contains(detection.classIdx) {
+            selectedClassIDs.remove(detection.classIdx)
+            selectedClassDisplayLabels.removeValue(forKey: detection.classIdx)
+        } else {
+            selectedClassIDs.insert(detection.classIdx)
+            selectedClassDisplayLabels[detection.classIdx] = displayLabel
+        }
+        selectedClassStateLock.unlock()
+        publishSelectedClassState()
+    }
+
+    private func bufferRect(
+        for detection: FurnitureFitDetection,
+        imageWidth: Int,
+        imageHeight: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGRect {
+        let fx1 = (detection.x - detection.w * 0.5) * scaleX
+        let fy1 = (detection.y - detection.h * 0.5) * scaleY
+        let fx2 = (detection.x + detection.w * 0.5) * scaleX
+        let fy2 = (detection.y + detection.h * 0.5) * scaleY
+        let bx1 = max(0, Int(fx1))
+        let by1 = max(0, Int(fy1))
+        let bx2 = min(imageWidth, Int(fx2))
+        let by2 = min(imageHeight, Int(fy2))
+        return CGRect(
+            x: bx1,
+            y: by1,
+            width: max(1, bx2 - bx1),
+            height: max(1, by2 - by1)
+        )
+    }
+
+    private func viewRect(
+        for detection: FurnitureFitDetection,
+        imageWidth: Int,
+        imageHeight: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGRect {
+        let bufferRect = bufferRect(
+            for: detection,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            scaleX: scaleX,
+            scaleY: scaleY
+        )
+        guard imageWidth > 0, imageHeight > 0 else { return .zero }
+        let viewWidth = maskImageView.bounds.width
+        let viewHeight = maskImageView.bounds.height
+        return CGRect(
+            x: bufferRect.minX / CGFloat(imageWidth) * viewWidth,
+            y: bufferRect.minY / CGFloat(imageHeight) * viewHeight,
+            width: bufferRect.width / CGFloat(imageWidth) * viewWidth,
+            height: bufferRect.height / CGFloat(imageHeight) * viewHeight
+        )
+    }
+
+    private func updateDetectionOverlay(
+        candidates: [FurnitureFitDetection],
+        selectedIndex: Int?,
+        imageWidth: Int,
+        imageHeight: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) {
+        let rects = candidates.map {
+            viewRect(
+                for: $0,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+        }
+        let selectedClassIDs = selectedClassIDsSnapshot()
+        candidateBboxesInView = rects
+        latestDisplayedCandidates = candidates
+        latestDisplayedSelectedCandidateIndex = selectedIndex
+        detectionBBoxOverlayView.items = candidates.enumerated().map { index, detection in
+            DetectionOverlayItem(
+                rectInView: rects[index],
+                label: displayClassName(detection.classIdx),
+                confidence: detection.confidence,
+                isSelected: selectedClassIDs.contains(detection.classIdx)
+            )
+        }
+    }
+
+    private func candidateIndexForTap(_ pointInMaskView: CGPoint) -> Int? {
+        guard !candidateBboxesInView.isEmpty, candidateBboxesInView.count == latestDisplayedCandidates.count else {
+            return nil
+        }
+        let paddedMatches = candidateBboxesInView.enumerated().filter { _, rect in
+            rect.insetBy(dx: -10, dy: -10).contains(pointInMaskView)
+        }
+        guard !paddedMatches.isEmpty else { return nil }
+        return paddedMatches.min { lhs, rhs in
+            let leftRect = lhs.element
+            let rightRect = rhs.element
+            let leftArea = leftRect.width * leftRect.height
+            let rightArea = rightRect.width * rightRect.height
+            if abs(leftArea - rightArea) > 1 {
+                return leftArea < rightArea
+            }
+            return latestDisplayedCandidates[lhs.offset].confidence > latestDisplayedCandidates[rhs.offset].confidence
+        }?.offset
     }
     
     override func didMoveToSuperview() {
@@ -1339,7 +1728,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         segmentationCompletedOnceThisSession = false
         lastSegmentationMeanColorPublishAt = 0
         maskImageView.image = nil
-        resetOverlayScalesForEmptyMask()
+        resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: true)
         logFurnitureFitSize(
             "phase=session_stop cleared isProcessing + segmentation UI flags (fixes stuck frames + stale first-mask after brain off/on)"
         )
@@ -2304,36 +2693,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
-    /// Primary index: conf^1.5 × areaNorm^0.8 × center^0.5 with min conf/area gates.
-    private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide: Int) -> Int? {
+    /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence or largest bbox area (see ``primarySelectionByHighestConfidence``).
+    /// (`modelSide` unused; kept for call-site stability with the ONNX-style pipeline.)
+    private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide _: Int) -> Int? {
+        let minConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
+        if primarySelectionByHighestConfidence {
+            var bestIdx: Int?
+            var bestConfidence: Float = -1
+            var bestAreaAtBestConfidence: Float = 0
+            for (i, d) in candidates.enumerated() {
+                guard d.confidence >= minConfidence else { continue }
+                let area = d.w * d.h
+                if d.confidence > bestConfidence {
+                    bestConfidence = d.confidence
+                    bestAreaAtBestConfidence = area
+                    bestIdx = i
+                } else if abs(d.confidence - bestConfidence) <= 1e-6, area > bestAreaAtBestConfidence {
+                    bestAreaAtBestConfidence = area
+                    bestIdx = i
+                }
+            }
+            return bestIdx
+        }
         var bestIdx: Int?
-        var maxScore: Float = -1
-        let minConf: Float = 0.15
-        let minAreaNorm: Float = 0.02
-        let frameArea = Float(modelSide * modelSide)
-        let frameW = Float(modelSide)
-        let frameH = Float(modelSide)
-        let frameCx = frameW / 2
-        let frameCy = frameH / 2
-
+        var maxArea: Float = 0
         for (i, d) in candidates.enumerated() {
-            let areaNorm = (d.w * d.h) / frameArea
-            guard d.confidence >= minConf, areaNorm >= minAreaNorm else { continue }
-
-            let dx = (d.x - frameCx) / frameCx
-            let dy = (d.y - frameCy) / frameCy
-            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
-            let centerScore = 1.0 - centerDist
-
-            let confTerm = pow(d.confidence, 1.5)
-            let areaTerm = pow(areaNorm, 0.8)
-            let centerTerm = pow(max(0, centerScore), 0.5)
-            let oversized = max(0, areaNorm - primarySelectionSoftAreaNormPivot)
-            let largeBoxPenalty = exp(-primarySelectionLargeBoxPenaltyK * oversized)
-
-            let score = confTerm * areaTerm * centerTerm * largeBoxPenalty
-            if score > maxScore {
-                maxScore = score
+            guard d.confidence >= minConfidence else { continue }
+            let area = d.w * d.h
+            if area > maxArea {
+                maxArea = area
                 bestIdx = i
             }
         }
@@ -2354,6 +2742,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let bufH = CVPixelBufferGetHeight(processBuffer)
         let isLandscape = bufW > bufH
         let onnxSide = modelSide
+        let scaleX = Float(bufW) / Float(onnxSide)
+        let scaleY = Float(bufH) / Float(onnxSide)
 
         let t3 = Date()
         guard let protoInfo = parsePrototypes(protoArray) else {
@@ -2377,8 +2767,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if rawDetections.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
             DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.resetOverlayScalesForEmptyMask()
+                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
             }
             resetProcessingFlag()
             return
@@ -2404,8 +2793,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if candidates.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
             DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.resetOverlayScalesForEmptyMask()
+                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
             }
             resetProcessingFlag()
             return
@@ -2418,23 +2806,74 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        guard let primaryIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate (Core ML STAGE 4 gates)") }
+        DispatchQueue.main.async {
+            self.updateDetectionOverlay(
+                candidates: candidates,
+                selectedIndex: nil,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+        }
+
+        if segmentationMode == .identifyOnly {
             DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.resetOverlayScalesForEmptyMask()
+                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: nil,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
             }
             resetProcessingFlag()
             return
         }
-        let primary = candidates[primaryIdx]
-        let maskDetections = FurnitureFitOnnxStylePipeline.collectMaskDetections(primaryIndex: primaryIdx, detections: candidates)
 
-        // Proto mask logits are only evaluated inside each detection bbox; expand **primary** only (explicit `primary`,
-        // not positional `[0]`) so legs/wheels get logits. Drop the unexpanded primary from the fusion list via IoU.
-        let expandedPrimaryForMask = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
-        let maskDetectionsForBuild = [expandedPrimaryForMask] + maskDetections.filter {
-            FurnitureFitIoU.calculate($0, primary) < 0.999 && !clsToIgnore.contains($0.classIdx)
+        let selectedClassIDs = selectedClassIDsSnapshot()
+        let selectedCandidatePairs = candidates.enumerated().filter { selectedClassIDs.contains($0.element.classIdx) }
+        guard !selectedCandidatePairs.isEmpty else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected classes are visible") }
+            DispatchQueue.main.async {
+                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: nil,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
+            }
+            resetProcessingFlag()
+            return
+        }
+
+        let selectedCandidates = selectedCandidatePairs.map(\.element)
+        guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: selectedCandidates, modelSide: onnxSide) else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among selected classes") }
+            DispatchQueue.main.async {
+                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: nil,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
+            }
+            resetProcessingFlag()
+            return
+        }
+        let primaryIdx = selectedCandidatePairs[selectedPrimaryRelativeIndex].offset
+        let primary = candidates[primaryIdx]
+
+        let maskDetectionsForBuild = selectedCandidates.map {
+            onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
         }
 
         var maskSmall = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMask(
@@ -2448,14 +2887,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
 
-        // Core ML parity: clear proto mask outside **tight** primary rect (model space). Stops secondary-instance
-        // fusion from painting into the expanded compositing band beyond the primary box.
+        // Limit the proto mask to the union of all selected detections so multi-tap segmentation
+        // can keep multiple objects while still avoiding spill into the rest of the frame.
         let protoScaleX = Float(pW) / Float(onnxSide)
         let protoScaleY = Float(pH) / Float(onnxSide)
-        let protoPx1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScaleX)))
-        let protoPy1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScaleY)))
-        let protoPx2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScaleX)))
-        let protoPy2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScaleY)))
+        let unionMinX = selectedCandidates.map { $0.x - $0.w * 0.5 }.min() ?? (primary.x - primary.w * 0.5)
+        let unionMinY = selectedCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
+        let unionMaxX = selectedCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
+        let unionMaxY = selectedCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
+        let protoPx1 = max(0, Int(floor(unionMinX * protoScaleX)))
+        let protoPy1 = max(0, Int(floor(unionMinY * protoScaleY)))
+        let protoPx2 = min(pW, Int(ceil(unionMaxX * protoScaleX)))
+        let protoPy2 = min(pH, Int(ceil(unionMaxY * protoScaleY)))
         clipProtoPlanarMaskOutsideRect(
             mask: &maskSmall,
             protoW: pW,
@@ -2466,8 +2909,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             clipPy2: protoPy2
         )
 
-        let scaleX = Float(bufW) / Float(onnxSide)
-        let scaleY = Float(bufH) / Float(onnxSide)
         let tightFx1 = (primary.x - primary.w * 0.5) * scaleX
         let tightFy1 = (primary.y - primary.h * 0.5) * scaleY
         let tightFx2 = (primary.x + primary.w * 0.5) * scaleX
@@ -2479,26 +2920,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
         // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
-        let bw = max(1, tightFx2 - tightFx1)
-        let bh = max(1, tightFy2 - tightFy1)
+        let unionTightFx1 = unionMinX * scaleX
+        let unionTightFy1 = unionMinY * scaleY
+        let unionTightFx2 = unionMaxX * scaleX
+        let unionTightFy2 = unionMaxY * scaleY
+        let bw = max(1, unionTightFx2 - unionTightFx1)
+        let bh = max(1, unionTightFy2 - unionTightFy1)
         let compMarginW = bw * bboxExpandMargin
         let compMarginH = bh * bboxExpandMargin
-        let compBx1 = max(0, Int(floor(tightFx1 - compMarginW)))
-        let compBy1 = max(0, Int(floor(tightFy1 - compMarginH)))
-        let compBx2 = min(bufW, Int(ceil(tightFx2 + compMarginW)))
-        let compBy2 = min(bufH, Int(ceil(tightFy2 + compMarginH)))
+        let compBx1 = max(0, Int(floor(unionTightFx1 - compMarginW)))
+        let compBy1 = max(0, Int(floor(unionTightFy1 - compMarginH)))
+        let compBx2 = min(bufW, Int(ceil(unionTightFx2 + compMarginW)))
+        let compBy2 = min(bufH, Int(ceil(unionTightFy2 + compMarginH)))
 
         if debugMode {
             logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
-            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] mask dets=\(maskDetections.count)")
+            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] mask dets=\(maskDetectionsForBuild.count) manual=true")
             logDebug("   🖼️ composite band (expanded): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
-            logDebug("   ✂️ proto mask clip (tight primary): [\(protoPx1),\(protoPy1)]→[\(protoPx2),\(protoPy2)] (proto \(pW)×\(pH))")
+            logDebug("   ✂️ proto mask clip (selected union): [\(protoPx1),\(protoPy1)]→[\(protoPx2),\(protoPy2)] (proto \(pW)×\(pH))")
         }
 
-        let normX1 = CGFloat(primaryBx1) / CGFloat(bufW)
-        let normY1 = CGFloat(primaryBy1) / CGFloat(bufH)
-        let normX2 = CGFloat(primaryBx2) / CGFloat(bufW)
-        let normY2 = CGFloat(primaryBy2) / CGFloat(bufH)
         let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
         let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
         let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
@@ -2588,13 +3029,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         DispatchQueue.main.async {
-            let viewW = self.maskImageView.bounds.width
-            let viewH = self.maskImageView.bounds.height
-            self.primaryBboxInView = CGRect(
-                x: normX1 * viewW,
-                y: normY1 * viewH,
-                width: (normX2 - normX1) * viewW,
-                height: (normY2 - normY1) * viewH
+            self.primaryBboxInView = self.viewRect(
+                for: primary,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+            self.updateDetectionOverlay(
+                candidates: candidates,
+                selectedIndex: primaryIdx,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
             )
             self.updateAutoScaleFromRoom(
                 primaryBx1: primaryBx1,
@@ -3960,6 +4408,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("📐 [PINCH] ignored – no mask image")
             return
         }
+        guard !isShowingLiveVideoIdentifications else { return }
 
         switch gesture.state {
         case .began:
@@ -4033,6 +4482,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
+        guard !isShowingLiveVideoIdentifications else { return }
 
         let translation = gesture.translation(in: self)
         switch gesture.state {
@@ -4048,6 +4498,37 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         default: break
         }
     }
+
+    @objc private func handleBoundingBoxTap(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let pointInMask = gesture.location(in: maskImageView)
+        guard let tappedIndex = candidateIndexForTap(pointInMask) else { return }
+        guard tappedIndex < latestDisplayedCandidates.count else { return }
+        let tappedDetection = latestDisplayedCandidates[tappedIndex]
+        toggleSelectedClass(tappedDetection)
+        latestDisplayedSelectedCandidateIndex = tappedIndex
+        let selectedClassIDs = selectedClassIDsSnapshot()
+        detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
+            DetectionOverlayItem(
+                rectInView: item.rectInView,
+                label: item.label,
+                confidence: item.confidence,
+                isSelected: selectedClassIDs.contains(latestDisplayedCandidates[index].classIdx)
+            )
+        }
+        logDebug(
+            "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex)"
+        )
+    }
+
+    @objc private func handleClearSelectedObjectTapped() {
+        clearSelectedClassSelections()
+        if segmentationMode == .segmentSelected {
+            resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+        }
+        updateDetectionOverlaySelectionHighlights()
+        logDebug("👆 [TAP_SELECT] cleared selected classes; returning to live identification feed")
+    }
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         // Allow pinch and pan to work together
@@ -4059,6 +4540,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer {
+            let touchPoint = touch.location(in: maskImageView)
+            return candidateIndexForTap(touchPoint) != nil
+        }
+
+        if isShowingLiveVideoIdentifications &&
+            (gestureRecognizer is UIPinchGestureRecognizer || gestureRecognizer is UIPanGestureRecognizer) {
+            return false
+        }
+
         // Pinch should be easy to start anywhere over the active segmented overlay.
         // Don't over-filter it touch-by-touch or the second finger frequently gets rejected.
         if gestureRecognizer is UIPinchGestureRecognizer {
@@ -4105,17 +4596,34 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private static let pinchHitTestPadding: CGFloat = 100
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if !selectedObjectChipButton.isHidden {
+            let pointInChip = convert(point, to: selectedObjectChipButton)
+            if selectedObjectChipButton.point(inside: pointInChip, with: event) {
+                return selectedObjectChipButton
+            }
+        }
+        let pointInMask = convert(point, to: maskImageView)
+        let candidateContains = candidateBboxesInView.contains { $0.insetBy(dx: -10, dy: -10).contains(pointInMask) }
+
+        if candidateContains && maskImageView.image == nil {
+            return super.hitTest(point, with: event)
+        }
+
+        if isShowingLiveVideoIdentifications {
+            return candidateContains ? super.hitTest(point, with: event) : nil
+        }
+
         guard maskImageView.image != nil else {
             logDebug("👆 [hitTest] No mask image, passing through")
             return nil
         }
 
-        guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
-            logDebug("👆 [hitTest] No valid bbox (\(primaryBboxInView)), passing through")
+        let hasActivePrimary = primaryBboxInView.width > 0 && primaryBboxInView.height > 0
+
+        guard hasActivePrimary || candidateContains else {
+            logDebug("👆 [hitTest] No valid bbox / candidate at point, passing through")
             return nil
         }
-
-        let pointInMask = convert(point, to: maskImageView)
 
         logDebug("👆 [hitTest] point=\(point) pointInMask=\(pointInMask) bbox=\(primaryBboxInView)")
 
@@ -4133,17 +4641,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         // Tight bbox: pan and tap
-        if primaryBboxInView.contains(pointInMask) {
+        if hasActivePrimary && primaryBboxInView.contains(pointInMask) {
             logDebug("👆 [hitTest] INSIDE bbox - handling touch")
             return super.hitTest(point, with: event)
         }
 
+        if candidateContains {
+            logDebug("👆 [hitTest] INSIDE candidate bbox - handling touch")
+            return super.hitTest(point, with: event)
+        }
+
         // Expanded bbox: allow pinch initiation when fingers straddle the edge
-        let expanded = primaryBboxInView.insetBy(
-            dx: -Self.pinchHitTestPadding,
-            dy: -Self.pinchHitTestPadding
-        )
-        if expanded.contains(pointInMask) {
+        let expanded = primaryBboxInView.insetBy(dx: -Self.pinchHitTestPadding, dy: -Self.pinchHitTestPadding)
+        if hasActivePrimary && expanded.contains(pointInMask) {
             logDebug("👆 [hitTest] INSIDE expanded bbox (pinch margin) - handling touch")
             return super.hitTest(point, with: event)
         }

@@ -2590,6 +2590,7 @@ struct SceneKitViewer: View {
         // Room name input alert
         .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
             TextField(L10n.RoomViewer.roomName, text: $roomName)
+                .autocorrectionDisabled(true)
             Button(L10n.Common.cancel, role: .cancel) {
                 roomName = ""
             }
