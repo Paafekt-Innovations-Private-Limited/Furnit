@@ -184,6 +184,101 @@ public struct CodableSourceCameraInfo: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - SplatLoadHint
+
+public struct SplatLoadHint: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public static let currentSchemaVersion = 1
+
+    public let fileByteCount: Int64
+    public let fileModificationTimeIntervalSince1970: TimeInterval
+    public let splatCount: Int
+    public let fullBoundsMin: CodableSIMD3
+    public let fullBoundsMax: CodableSIMD3
+    public let framingBoundsMin: CodableSIMD3
+    public let framingBoundsMax: CodableSIMD3
+    public let centroid: CodableSIMD3
+
+    public init(
+        fileByteCount: Int64,
+        fileModificationTimeIntervalSince1970: TimeInterval,
+        splatCount: Int,
+        fullBoundsMin: SIMD3<Float>,
+        fullBoundsMax: SIMD3<Float>,
+        framingBoundsMin: SIMD3<Float>,
+        framingBoundsMax: SIMD3<Float>,
+        centroid: SIMD3<Float>
+    ) {
+        self.schemaVersion = Self.currentSchemaVersion
+        self.fileByteCount = fileByteCount
+        self.fileModificationTimeIntervalSince1970 = fileModificationTimeIntervalSince1970
+        self.splatCount = splatCount
+        self.fullBoundsMin = CodableSIMD3(fullBoundsMin)
+        self.fullBoundsMax = CodableSIMD3(fullBoundsMax)
+        self.framingBoundsMin = CodableSIMD3(framingBoundsMin)
+        self.framingBoundsMax = CodableSIMD3(framingBoundsMax)
+        self.centroid = CodableSIMD3(centroid)
+    }
+
+    var fullRoomBounds: RoomBounds {
+        RoomBounds(
+            minX: fullBoundsMin.x,
+            maxX: fullBoundsMax.x,
+            minY: fullBoundsMin.y,
+            maxY: fullBoundsMax.y,
+            minZ: fullBoundsMin.z,
+            maxZ: fullBoundsMax.z
+        )
+    }
+
+    var framingRoomBounds: RoomBounds {
+        RoomBounds(
+            minX: framingBoundsMin.x,
+            maxX: framingBoundsMax.x,
+            minY: framingBoundsMin.y,
+            maxY: framingBoundsMax.y,
+            minZ: framingBoundsMin.z,
+            maxZ: framingBoundsMax.z
+        )
+    }
+
+    public var centroidValue: SIMD3<Float> { centroid.value }
+
+    public static func sidecarURL(forRoomURL roomURL: URL) -> URL {
+        let stem = roomURL.deletingPathExtension().lastPathComponent
+        return roomURL.deletingLastPathComponent().appendingPathComponent("\(stem).splat_load_hint.json")
+    }
+
+    public static func fileIdentity(for fileURL: URL) -> (byteCount: Int64, modificationTime: TimeInterval)? {
+        guard let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let fileSize = values.fileSize,
+              let modificationDate = values.contentModificationDate else {
+            return nil
+        }
+        return (Int64(fileSize), modificationDate.timeIntervalSince1970)
+    }
+
+    public func matches(fileURL: URL) -> Bool {
+        guard let identity = Self.fileIdentity(for: fileURL) else { return false }
+        return fileByteCount == identity.byteCount &&
+            abs(fileModificationTimeIntervalSince1970 - identity.modificationTime) < 0.001
+    }
+
+    public func refreshedForFile(_ fileURL: URL) -> SplatLoadHint? {
+        guard let identity = Self.fileIdentity(for: fileURL) else { return nil }
+        return SplatLoadHint(
+            fileByteCount: identity.byteCount,
+            fileModificationTimeIntervalSince1970: identity.modificationTime,
+            splatCount: splatCount,
+            fullBoundsMin: fullBoundsMin.value,
+            fullBoundsMax: fullBoundsMax.value,
+            framingBoundsMin: framingBoundsMin.value,
+            framingBoundsMax: framingBoundsMax.value,
+            centroid: centroid.value
+        )
+    }
+}
+
 // MARK: - EnhancedRoomMetadata
 
 public struct EnhancedRoomMetadata: Codable, Equatable, Sendable {

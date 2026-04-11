@@ -323,6 +323,9 @@ class USDZModelManager: ObservableObject {
         if fileName.hasSuffix(".room_metadata.json") {
             return String(fileName.dropLast(".room_metadata.json".count))
         }
+        if fileName.hasSuffix(".splat_load_hint.json") {
+            return String(fileName.dropLast(".splat_load_hint.json".count))
+        }
         if fileName.hasSuffix(".meta") {
             let withoutMeta = fileURL.deletingPathExtension().lastPathComponent
             return URL(fileURLWithPath: withoutMeta).deletingPathExtension().lastPathComponent
@@ -1210,6 +1213,7 @@ class USDZModelManager: ObservableObject {
             let threeDGSSidecarURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_3dgs.ply")
             let metadataURL = modelsDirectory.appendingPathComponent("\(canonicalFileName).\(fileExtension).meta")
             let enhancedMetadataSidecarURL = enhancedMetadataURL(forRoomURL: fileURL)
+            let splatLoadHintSidecarURL = SplatLoadHint.sidecarURL(forRoomURL: fileURL)
             let thumbnailJPGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.jpg")
             let thumbnailPNGURL = modelsDirectory.appendingPathComponent("\(canonicalFileName)_thumbnail.png")
             
@@ -1247,6 +1251,12 @@ class USDZModelManager: ObservableObject {
                     try FileManager.default.removeItem(at: enhancedMetadataSidecarURL)
                     if debugMode {
                         logDebug("✅ [USDZModelManager] Enhanced metadata deleted: \(enhancedMetadataSidecarURL.lastPathComponent)")
+                    }
+                }
+                if FileManager.default.fileExists(atPath: splatLoadHintSidecarURL.path) {
+                    try FileManager.default.removeItem(at: splatLoadHintSidecarURL)
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] Splat load hint deleted: \(splatLoadHintSidecarURL.lastPathComponent)")
                     }
                 }
                 if FileManager.default.fileExists(atPath: thumbnailJPGURL.path) {
@@ -1395,6 +1405,30 @@ class USDZModelManager: ObservableObject {
         return roomURL.deletingLastPathComponent().appendingPathComponent("\(stem).room_metadata.json")
     }
 
+    func loadSplatLoadHint(forRoomURL roomURL: URL) -> SplatLoadHint? {
+        let hintURL = SplatLoadHint.sidecarURL(forRoomURL: roomURL)
+        guard let data = try? Data(contentsOf: hintURL) else { return nil }
+        do {
+            return try JSONDecoder().decode(SplatLoadHint.self, from: data)
+        } catch {
+            logDebug("❌ [USDZModelManager] Failed to decode splat load hint at \(hintURL.lastPathComponent): \(error)")
+            return nil
+        }
+    }
+
+    func saveSplatLoadHint(_ hint: SplatLoadHint, nextTo roomURL: URL) throws {
+        guard let refreshedHint = hint.refreshedForFile(roomURL) else {
+            logDebug("⚠️ [USDZModelManager] Splat load hint save skipped: file identity unavailable for \(roomURL.lastPathComponent)")
+            return
+        }
+        let hintURL = SplatLoadHint.sidecarURL(forRoomURL: roomURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(refreshedHint)
+        try data.write(to: hintURL, options: [.atomic])
+        logDebug("✅ [USDZModelManager] Splat load hint saved: \(hintURL.lastPathComponent)")
+    }
+
     func loadEnhancedMetadata(forRoomURL roomURL: URL) -> EnhancedRoomMetadata? {
         let url = enhancedMetadataURL(forRoomURL: roomURL)
         if let data = try? Data(contentsOf: url) {
@@ -1508,6 +1542,10 @@ class USDZModelManager: ObservableObject {
                     try FileManager.default.removeItem(at: metadataURL)
                 }
             }
+            let destinationSplatLoadHintURL = SplatLoadHint.sidecarURL(forRoomURL: destinationURL)
+            if FileManager.default.fileExists(atPath: destinationSplatLoadHintURL.path) {
+                try FileManager.default.removeItem(at: destinationSplatLoadHintURL)
+            }
 
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
@@ -1525,6 +1563,14 @@ class USDZModelManager: ObservableObject {
 
             CameraExifSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
             SharpCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
+            if let sourceHint = loadSplatLoadHint(forRoomURL: sourceURL) {
+                try saveSplatLoadHint(sourceHint, nextTo: destinationURL)
+                if debugMode {
+                    logDebug("⏱️ [SplatLoad] metadata_copy source=\(sourceURL.lastPathComponent) dest=\(destinationURL.lastPathComponent) type=hint")
+                }
+            } else if debugMode {
+                logDebug("⏱️ [SplatLoad] metadata_copy source=\(sourceURL.lastPathComponent) dest=\(destinationURL.lastPathComponent) type=hint miss")
+            }
 
             let variantDestinations: [(label: String, url: URL, isClassic: Bool)] = [
                 ("base_ply", destinationURL, true),

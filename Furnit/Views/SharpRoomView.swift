@@ -265,6 +265,7 @@ struct SharpRoomView: View {
     @StateObject private var splatMeasurementHost = GaussianSplatMeasurementHost()
     @State private var didEnableDefaultARCamera = false
     @State private var autoEnableARTask: Task<Void, Never>?
+    @State private var persistedSplatLoadHint: SplatLoadHint?
     @State private var roomModel: RoomModel?
     @State private var enhancedRoomMetadata: EnhancedRoomMetadata?
     @State private var isExtractingRoomGeometry = false
@@ -662,6 +663,7 @@ struct SharpRoomView: View {
             arReferenceOrientation: photoOrientation,
             treatAsClassicPly: viewerUsesClassicPlyBehavior,
             initialSharpRoomYaw: initialSharpRoomYaw,
+            cachedSplatLoadHint: persistedSplatLoadHint,
             onBoundsAvailable: { bounds in
                 DispatchQueue.main.async {
                     metalBounds = bounds
@@ -675,6 +677,20 @@ struct SharpRoomView: View {
                         "Z[\(String(format: "%.3f", bounds.minZ)),\(String(format: "%.3f", bounds.maxZ))]"
                     )
                     logSharpRoomDimensionApproaches(metalBounds: bounds)
+                }
+            },
+            onSplatLoadHintAvailable: { hint in
+                DispatchQueue.main.async {
+                    persistedSplatLoadHint = hint
+                    if metalBounds == nil {
+                        metalBounds = hint.fullRoomBounds
+                    }
+                    do {
+                        try modelManager.saveSplatLoadHint(hint, nextTo: viewerPlyURL)
+                        logDebug("⏱️ [SplatLoad] metadata_persisted source=SharpRoomView file=\(viewerPlyURL.lastPathComponent) type=hint")
+                    } catch {
+                        logDebug("❌ [SharpRoomView] Failed to persist splat load hint: \(error.localizedDescription)")
+                    }
                 }
             },
             measurementHost: splatMeasurementHost
@@ -935,6 +951,10 @@ struct SharpRoomView: View {
         }
         guard sharpGenerationRoomMeters == nil else {
             logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=sharp_v7_dims_available source=\(activeRoomMetersDimensionsSource)")
+            return
+        }
+        guard persistedEnhancedRoomMeters == nil else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=enhanced_metadata_room_model_available source=\(activeRoomMetersDimensionsSource)")
             return
         }
         backgroundRoomMeasurementTask?.cancel()
@@ -1339,9 +1359,24 @@ struct SharpRoomView: View {
         return (w, h, d)
     }
 
+    /// Metric room dimensions recovered from persisted enhanced metadata / room model.
+    private var persistedEnhancedRoomMeters: (width: Float, height: Float, depth: Float)? {
+        guard let metadata = enhancedRoomMetadata else { return nil }
+        let roomModel = metadata.roomModel()
+        let width = roomModel.widthMeters
+        let height = roomModel.heightMeters
+        let depth = roomModel.depthMeters
+        guard width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
+        }
+        return (width, height, depth)
+    }
+
     private var activeRoomMetersDimensionsSource: String {
         if savedRoomStrictMeters != nil { return "SAVED_META_STRICT" }
         if sharpGenerationRoomMeters != nil { return "SHARP_ROOM_DIMS_V7" }
+        if persistedEnhancedRoomMeters != nil { return "ENHANCED_METADATA_ROOM_MODEL" }
         if measuredRoomDimensions != nil { return "ASYNC_V7_PLY_MEASURE" }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
@@ -1362,7 +1397,10 @@ struct SharpRoomView: View {
     }
 
     private var hasCalculatedRoomMeasurements: Bool {
-        savedRoomStrictMeters != nil || sharpGenerationRoomMeters != nil || measuredRoomDimensions != nil
+        savedRoomStrictMeters != nil ||
+            sharpGenerationRoomMeters != nil ||
+            persistedEnhancedRoomMeters != nil ||
+            measuredRoomDimensions != nil
     }
 
     /// Trimmed / SHARP AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
@@ -1394,6 +1432,7 @@ struct SharpRoomView: View {
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let triple = savedRoomStrictMeters { return triple }
         if let triple = sharpGenerationRoomMeters { return triple }
+        if let triple = persistedEnhancedRoomMeters { return triple }
         if let measured = measuredRoomDimensions { return (measured.width, measured.height, measured.depth) }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
@@ -2473,6 +2512,23 @@ struct SharpRoomView: View {
         guard !didLoadPersistedRoomMetadata else { return }
         didLoadPersistedRoomMetadata = true
 
+        if let hint = modelManager.loadSplatLoadHint(forRoomURL: viewerPlyURL) {
+            if hint.matches(fileURL: viewerPlyURL) {
+                persistedSplatLoadHint = hint
+                if metalBounds == nil {
+                    metalBounds = hint.fullRoomBounds
+                }
+                logDebug(
+                    "⏱️ [SplatLoad] metadata_hit file=\(viewerPlyURL.lastPathComponent) type=hint " +
+                    "splats=\(hint.splatCount) source=sidecar"
+                )
+            } else {
+                logDebug("⏱️ [SplatLoad] metadata_stale file=\(viewerPlyURL.lastPathComponent) type=hint reason=file_identity_mismatch")
+            }
+        } else {
+            logDebug("⏱️ [SplatLoad] metadata_miss file=\(viewerPlyURL.lastPathComponent) type=hint")
+        }
+
         if let savedRoomModel {
             if let metadata = modelManager.loadEnhancedMetadata(
                 forSavedRoomNamed: savedRoomModel.fileName,
@@ -2480,7 +2536,17 @@ struct SharpRoomView: View {
             ) {
                 enhancedRoomMetadata = metadata
                 roomModel = nil
-                logDebug("📐 [SharpRoomView] Ignored saved room geometry metadata")
+                if metalBounds == nil {
+                    metalBounds = RoomBounds(
+                        minX: metadata.aabbMin.x,
+                        maxX: metadata.aabbMax.x,
+                        minY: metadata.aabbMin.y,
+                        maxY: metadata.aabbMax.y,
+                        minZ: metadata.aabbMin.z,
+                        maxZ: metadata.aabbMax.z
+                    )
+                }
+                logDebug("📐 [SharpRoomView] Loaded saved room geometry metadata")
                 return
             }
         }
@@ -2488,7 +2554,17 @@ struct SharpRoomView: View {
         if let metadata = modelManager.loadEnhancedMetadata(forRoomURL: viewerPlyURL) {
             enhancedRoomMetadata = metadata
             roomModel = nil
-            logDebug("📐 [SharpRoomView] Ignored fresh room geometry metadata")
+            if metalBounds == nil {
+                metalBounds = RoomBounds(
+                    minX: metadata.aabbMin.x,
+                    maxX: metadata.aabbMax.x,
+                    minY: metadata.aabbMin.y,
+                    maxY: metadata.aabbMax.y,
+                    minZ: metadata.aabbMin.z,
+                    maxZ: metadata.aabbMax.z
+                )
+            }
+            logDebug("📐 [SharpRoomView] Loaded fresh room geometry metadata")
         }
     }
 

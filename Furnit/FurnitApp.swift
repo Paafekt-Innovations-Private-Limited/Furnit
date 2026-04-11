@@ -188,7 +188,11 @@ struct FurnitApp: App {
     @StateObject private var appStateManager = AppStateManager.shared
 
     init() {
-        // AuthenticationManager will wait for Firebase to be configured
+        // SwiftUI runs `App.init()` before `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
+        // Firebase Core logs I-COR000003 if anything touches Firebase first; configure here so the default app exists immediately.
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
         _authManager = StateObject(wrappedValue: AuthenticationManager())
     }
 

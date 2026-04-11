@@ -16,6 +16,13 @@ private enum GaussianSplatLoadError: LocalizedError {
     }
 }
 
+/// Cumulative milliseconds from one `setup` origin (Metal splat load pipeline).
+private func logSplatLoadTiming(phase: String, t0: CFAbsoluteTime, note: String = "") {
+    let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+    let suffix = note.isEmpty ? "" : " — \(note)"
+    logDebug("⏱️ [SplatLoad] \(phase): \(String(format: "%.1f", ms))ms\(suffix)")
+}
+
 // MARK: - GaussianSplatView
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
@@ -50,8 +57,14 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Optional initial yaw offset for SHARP room framing.
     var initialSharpRoomYaw: Float = 0
 
+    /// Cached bounds / framing for this exact PLY file (used to avoid repeated CPU framing work).
+    var cachedSplatLoadHint: SplatLoadHint?
+
     /// Called once after a successful load with bounds derived from MetalSplatter’s AABB.
     var onBoundsAvailable: ((RoomBounds) -> Void)?
+
+    /// Called after load when we have a validated / refreshed hint for future room opens.
+    var onSplatLoadHintAvailable: ((SplatLoadHint) -> Void)?
 
     /// Optional bridge so parents (e.g. ``SharpRoomView``) can call ``GaussianSplatMeasurementHost/measureRoom()`` after frames have rendered.
     var measurementHost: GaussianSplatMeasurementHost? = nil
@@ -72,7 +85,9 @@ struct GaussianSplatView: UIViewRepresentable {
             arReferenceOrientation: arReferenceOrientation,
             treatAsClassicPly: treatAsClassicPly,
             initialSharpRoomYaw: initialSharpRoomYaw,
-            onBoundsAvailable: onBoundsAvailable
+            cachedSplatLoadHint: cachedSplatLoadHint,
+            onBoundsAvailable: onBoundsAvailable,
+            onSplatLoadHintAvailable: onSplatLoadHintAvailable
         )
     }
 
@@ -151,6 +166,7 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Zoom used for projection (updated from parent in `updateUIView` without writing the binding).
         var appliedZoomLevel: Float = 1.0
         var onBoundsAvailable: ((RoomBounds) -> Void)?
+        var onSplatLoadHintAvailable: ((SplatLoadHint) -> Void)?
         weak var measurementHost: GaussianSplatMeasurementHost?
         var supportsColorReadback: Bool { false }
 
@@ -238,6 +254,7 @@ struct GaussianSplatView: UIViewRepresentable {
         let arReferenceOrientation: PhotoOrientation
         let treatAsClassicPly: Bool
         let initialSharpRoomYaw: Float
+        let cachedSplatLoadHint: SplatLoadHint?
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
         /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
@@ -263,7 +280,9 @@ struct GaussianSplatView: UIViewRepresentable {
             arReferenceOrientation: PhotoOrientation,
             treatAsClassicPly: Bool,
             initialSharpRoomYaw: Float,
-            onBoundsAvailable: ((RoomBounds) -> Void)?
+            cachedSplatLoadHint: SplatLoadHint?,
+            onBoundsAvailable: ((RoomBounds) -> Void)?,
+            onSplatLoadHintAvailable: ((SplatLoadHint) -> Void)?
         ) {
             _isLoading = isLoading
             _loadError = loadError
@@ -272,7 +291,9 @@ struct GaussianSplatView: UIViewRepresentable {
             self.arReferenceOrientation = arReferenceOrientation
             self.treatAsClassicPly = treatAsClassicPly
             self.initialSharpRoomYaw = initialSharpRoomYaw
+            self.cachedSplatLoadHint = cachedSplatLoadHint
             self.onBoundsAvailable = onBoundsAvailable
+            self.onSplatLoadHintAvailable = onSplatLoadHintAvailable
             super.init()
         }
 
@@ -348,6 +369,8 @@ struct GaussianSplatView: UIViewRepresentable {
         func setup(view mtkView: MTKView, plyURL: URL) {
             setupGeneration += 1
             let thisGeneration = setupGeneration
+            let loadT0 = CFAbsoluteTimeGetCurrent()
+            logSplatLoadTiming(phase: "1_setup_start", t0: loadT0, note: plyURL.lastPathComponent)
 
             // ── Reset camera ─────────────────────────────────────────────────
             cameraPitch  = 0
@@ -370,6 +393,22 @@ struct GaussianSplatView: UIViewRepresentable {
             isSharpClassicPly = treatAsClassicPly || plyURL.lastPathComponent.contains("_classic")
             // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
             cameraYaw = initialSharpRoomYaw
+            let validatedCachedHint = cachedSplatLoadHint.flatMap { hint in
+                hint.matches(fileURL: plyURL) ? hint : nil
+            }
+            if let validatedCachedHint {
+                sceneBoundsMin = validatedCachedHint.framingBoundsMin.value
+                sceneBoundsMax = validatedCachedHint.framingBoundsMax.value
+                sceneCentroid = validatedCachedHint.centroidValue
+                logDebug(
+                    "⏱️ [SplatLoad] metadata_fast_path file=\(plyURL.lastPathComponent) " +
+                    "type=hint splats=\(validatedCachedHint.splatCount)"
+                )
+            } else if cachedSplatLoadHint != nil {
+                logDebug("⏱️ [SplatLoad] metadata_fast_path_stale file=\(plyURL.lastPathComponent) type=hint")
+            } else {
+                logDebug("⏱️ [SplatLoad] metadata_fast_path_miss file=\(plyURL.lastPathComponent) type=hint")
+            }
 
             // ── Composite pipeline ────────────────────────────────────────────
             if let library = device.makeDefaultLibrary(),
@@ -392,6 +431,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 compositePipeline = try? device.makeRenderPipelineState(descriptor: desc)
             }
             logDebug("🔧 [GaussianSplatView] composite pipeline=\(compositePipeline != nil)")
+            logSplatLoadTiming(phase: "2_metal_composite", t0: loadT0, note: "pipeline=\(compositePipeline != nil)")
 
             if overlayView == nil {
                 let overlay = UIView(frame: mtkView.bounds)
@@ -420,9 +460,11 @@ struct GaussianSplatView: UIViewRepresentable {
             let sampleCount  = mtkView.sampleCount
 
             splatRenderer = nil
-            sceneBoundsMin = nil
-            sceneBoundsMax = nil
-            sceneCentroid = nil
+            if validatedCachedHint == nil {
+                sceneBoundsMin = nil
+                sceneBoundsMax = nil
+                sceneCentroid = nil
+            }
             warmupEndTime = nil
 
             scheduleSwiftUIBindingUpdates {
@@ -431,9 +473,11 @@ struct GaussianSplatView: UIViewRepresentable {
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.setupGeneration == thisGeneration else { return }
+                    logSplatLoadTiming(phase: "3_async_load_begin", t0: loadT0, note: "generation=\(thisGeneration)")
                     do {
                     var points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
+                    logSplatLoadTiming(phase: "4_ply_read", t0: loadT0, note: "splats=\(points.count)")
                     logMemorySnapshot(
                         "GaussianSplatView.setup",
                         details: "phase=after_read_all ply=\(plyURL.lastPathComponent) splats=\(points.count)"
@@ -446,41 +490,83 @@ struct GaussianSplatView: UIViewRepresentable {
                     let splatCount = points.count
                     let maxTrimmedSampleCount = 60_000
                     let trimSampleStride = max(1, splatCount / maxTrimmedSampleCount)
-                    var sampledPositions: [SIMD3<Float>] = []
-                    sampledPositions.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+                    let fullMin: SIMD3<Float>
+                    let fullMax: SIMD3<Float>
+                    let centroid: SIMD3<Float>
+                    let sampledPositions: [SIMD3<Float>]
+                    let trimmedSampleCount: Int
+                    let cameraBoundsMin: SIMD3<Float>
+                    let cameraBoundsMax: SIMD3<Float>
+                    let cameraCentroid: SIMD3<Float>
 
-                    var fullMin = points[0].position
-                    var fullMax = points[0].position
-                    var positionSum = SIMD3<Float>.zero
-                    for (index, point) in points.enumerated() {
-                        let position = point.position
-                        fullMin = simd_min(fullMin, position)
-                        fullMax = simd_max(fullMax, position)
-                        positionSum += position
-                        if index % trimSampleStride == 0 {
-                            sampledPositions.append(position)
+                    if let validatedCachedHint {
+                        fullMin = validatedCachedHint.fullBoundsMin.value
+                        fullMax = validatedCachedHint.fullBoundsMax.value
+                        centroid = validatedCachedHint.centroidValue
+                        cameraBoundsMin = validatedCachedHint.framingBoundsMin.value
+                        cameraBoundsMax = validatedCachedHint.framingBoundsMax.value
+                        cameraCentroid = validatedCachedHint.centroidValue
+
+                        var sampled = [SIMD3<Float>]()
+                        sampled.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+                        for index in stride(from: 0, to: splatCount, by: trimSampleStride) {
+                            sampled.append(points[index].position)
                         }
+                        if sampled.isEmpty {
+                            sampled.append(points[0].position)
+                        }
+                        sampledPositions = sampled
+                        trimmedSampleCount = sampled.count
+                        logSplatLoadTiming(
+                            phase: "5_bounds_trim_p397",
+                            t0: loadT0,
+                            note: "cached_hint sampled=\(trimmedSampleCount)/\(splatCount)"
+                        )
+                    } else {
+                        var sampled = [SIMD3<Float>]()
+                        sampled.reserveCapacity(min(splatCount, maxTrimmedSampleCount))
+
+                        var computedFullMin = points[0].position
+                        var computedFullMax = points[0].position
+                        var positionSum = SIMD3<Float>.zero
+                        for (index, point) in points.enumerated() {
+                            let position = point.position
+                            computedFullMin = simd_min(computedFullMin, position)
+                            computedFullMax = simd_max(computedFullMax, position)
+                            positionSum += position
+                            if index % trimSampleStride == 0 {
+                                sampled.append(position)
+                            }
+                        }
+                        let computedCentroid = positionSum / Float(points.count)
+
+                        if sampled.isEmpty {
+                            sampled.append(points[0].position)
+                        }
+
+                        // P3–P97 per axis on the **same** subsample (independent marginal percentiles).
+                        // Sorting X/Y/Z separately then indexing with the same i was incorrect (mixed unrelated samples).
+                        let xs = sampled.map(\.x).sorted()
+                        let ys = sampled.map(\.y).sorted()
+                        let zs = sampled.map(\.z).sorted()
+                        let sampleCount = sampled.count
+                        let lo = min(sampleCount - 1, max(0, Int(Float(sampleCount) * 0.03)))
+                        let hi = min(sampleCount - 1, max(lo, Int(Float(sampleCount) * 0.97)))
+
+                        fullMin = computedFullMin
+                        fullMax = computedFullMax
+                        centroid = computedCentroid
+                        sampledPositions = sampled
+                        trimmedSampleCount = sampleCount
+                        cameraBoundsMin = SIMD3<Float>(xs[lo], ys[lo], zs[lo])
+                        cameraBoundsMax = SIMD3<Float>(xs[hi], ys[hi], zs[hi])
+                        cameraCentroid = computedCentroid
+                        logSplatLoadTiming(
+                            phase: "5_bounds_trim_p397",
+                            t0: loadT0,
+                            note: "recomputed sampled=\(trimmedSampleCount)/\(splatCount)"
+                        )
                     }
-                    let centroid = positionSum / Float(points.count)
-
-                    if sampledPositions.isEmpty {
-                        sampledPositions.append(points[0].position)
-                    }
-
-                    // P3–P97 per axis on the **same** subsample (independent marginal percentiles).
-                    // Sorting X/Y/Z separately then indexing with the same i was incorrect (mixed unrelated samples).
-                    let xs = sampledPositions.map(\.x).sorted()
-                    let ys = sampledPositions.map(\.y).sorted()
-                    let zs = sampledPositions.map(\.z).sorted()
-                    let trimmedSampleCount = sampledPositions.count
-                    let lo = min(trimmedSampleCount - 1, max(0, Int(Float(trimmedSampleCount) * 0.03)))
-                    let hi = min(trimmedSampleCount - 1, max(lo, Int(Float(trimmedSampleCount) * 0.97)))
-                    let trimmedMin = SIMD3<Float>(xs[lo], ys[lo], zs[lo])
-                    let trimmedMax = SIMD3<Float>(xs[hi], ys[hi], zs[hi])
-
-                    let cameraBoundsMin = trimmedMin
-                    let cameraBoundsMax = trimmedMax
-                    let cameraCentroid  = centroid
 
                     #if DEBUG
                     if !isSharpClassicPly {
@@ -503,6 +589,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     let chunk = try SplatChunk(device: device, from: points)
                     _ = await renderer.addChunk(chunk)
                     points.removeAll(keepingCapacity: false)
+                    logSplatLoadTiming(phase: "6_gpu_chunk_upload", t0: loadT0, note: "rendererSplats=\(renderer.splatCount)")
                     logMemorySnapshot(
                         "GaussianSplatView.setup",
                         details: "phase=after_renderer_add_chunk ply=\(plyURL.lastPathComponent) splats=\(renderer.splatCount)"
@@ -514,10 +601,22 @@ struct GaussianSplatView: UIViewRepresentable {
                         minZ: fullMin.z, maxZ: fullMax.z
                     )
                     let loadedSplatCount = renderer.splatCount
+                    let refreshedHint = SplatLoadHint.fileIdentity(for: plyURL).map { identity in
+                        SplatLoadHint(
+                            fileByteCount: identity.byteCount,
+                            fileModificationTimeIntervalSince1970: identity.modificationTime,
+                            splatCount: loadedSplatCount,
+                            fullBoundsMin: fullMin,
+                            fullBoundsMax: fullMax,
+                            framingBoundsMin: cameraBoundsMin,
+                            framingBoundsMax: cameraBoundsMax,
+                            centroid: cameraCentroid
+                        )
+                    }
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
                         guard let self, self.setupGeneration == thisGeneration else { return }
                         logDebug("📐 [GaussianSplatView] Full bounds: X[\(fullMin.x),\(fullMax.x)] Y[\(fullMin.y),\(fullMax.y)] Z[\(fullMin.z),\(fullMax.z)]")
-                        logDebug("📐 [GaussianSplatView] Trimmed P3–P97 sample=\(trimmedSampleCount)/\(splatCount): X[\(trimmedMin.x),\(trimmedMax.x)] Y[\(trimmedMin.y),\(trimmedMax.y)] Z[\(trimmedMin.z),\(trimmedMax.z)]")
+                        logDebug("📐 [GaussianSplatView] Trimmed P3–P97 sample=\(trimmedSampleCount)/\(splatCount): X[\(cameraBoundsMin.x),\(cameraBoundsMax.x)] Y[\(cameraBoundsMin.y),\(cameraBoundsMax.y)] Z[\(cameraBoundsMin.z),\(cameraBoundsMax.z)]")
                         logDebug("📐 [GaussianSplatView] Camera framing AABB: X[\(cameraBoundsMin.x),\(cameraBoundsMax.x)] Y[\(cameraBoundsMin.y),\(cameraBoundsMax.y)] Z[\(cameraBoundsMin.z),\(cameraBoundsMax.z)]")
                         logDebug("✅ [GaussianSplatView] Loaded \(loadedSplatCount) splats centroid=\(centroid) cameraCentroid=\(cameraCentroid) (framing uses camera bounds)")
                         logMemorySnapshot(
@@ -530,11 +629,16 @@ struct GaussianSplatView: UIViewRepresentable {
                         self.sceneCentroid = cameraCentroid
                         self.trimmedSplatPositions = sampledPositions
                         self.splatRenderer = renderer
+                        if let refreshedHint {
+                            self.onSplatLoadHintAvailable?(refreshedHint)
+                        }
+                        logSplatLoadTiming(phase: "7_interactive_ready", t0: loadT0, note: "isLoading=false firstDraw")
                         self.isLoading = false
                         self.warmupEndTime = CFAbsoluteTimeGetCurrent() + 3.0
                         mtkView.setNeedsDisplay()
                     }
                 } catch {
+                    logSplatLoadTiming(phase: "failed", t0: loadT0, note: String(describing: error))
                     self.scheduleSwiftUIBindingUpdates { [weak self] in
                         guard let self, self.setupGeneration == thisGeneration else { return }
                         logDebug("❌ [GaussianSplatView] Failed to load PLY: \(error)")

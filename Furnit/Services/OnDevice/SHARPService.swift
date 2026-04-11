@@ -2368,6 +2368,53 @@ class SHARPService: ObservableObject {
             "Z[\(String(format: "%.3f", clMinZ)),\(String(format: "%.3f", clMaxZ))] splats=\(gaussianCount)"
         )
 
+        if let identity = SplatLoadHint.fileIdentity(for: classicFileURL) {
+            let trimSampleStride = max(1, rows.count / 60_000)
+            var sampledPositions: [SIMD3<Float>] = []
+            sampledPositions.reserveCapacity(min(rows.count, 60_000))
+            var classicPositionSum = SIMD3<Float>.zero
+            for (index, row) in rows.enumerated() {
+                let classicPosition = SIMD3<Float>(row.x, -row.y, -row.z)
+                classicPositionSum += classicPosition
+                if index % trimSampleStride == 0 {
+                    sampledPositions.append(classicPosition)
+                }
+            }
+            if sampledPositions.isEmpty, let firstRow = rows.first {
+                sampledPositions.append(SIMD3<Float>(firstRow.x, -firstRow.y, -firstRow.z))
+            }
+
+            let xs = sampledPositions.map(\.x).sorted()
+            let ys = sampledPositions.map(\.y).sorted()
+            let zs = sampledPositions.map(\.z).sorted()
+            let hi = min(sampledPositions.count - 1, max(0, Int(Float(sampledPositions.count) * 0.97)))
+            let lo = min(sampledPositions.count - 1, max(0, Int(Float(sampledPositions.count) * 0.03)))
+            let framingMin = SIMD3<Float>(xs[lo], ys[lo], zs[lo])
+            let framingMax = SIMD3<Float>(xs[hi], ys[hi], zs[hi])
+            let centroid = classicPositionSum / Float(max(rows.count, 1))
+            let hint = SplatLoadHint(
+                fileByteCount: identity.byteCount,
+                fileModificationTimeIntervalSince1970: identity.modificationTime,
+                splatCount: gaussianCount,
+                fullBoundsMin: SIMD3<Float>(clMinX, clMinY, clMinZ),
+                fullBoundsMax: SIMD3<Float>(clMaxX, clMaxY, clMaxZ),
+                framingBoundsMin: framingMin,
+                framingBoundsMax: framingMax,
+                centroid: centroid
+            )
+            let hintURL = SplatLoadHint.sidecarURL(forRoomURL: classicFileURL)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let hintData = try encoder.encode(hint)
+            try hintData.write(to: hintURL, options: [.atomic])
+            logDebug(
+                "⏱️ [SplatLoad] hint_saved source=SHARPService file=\(classicFileURL.lastPathComponent) " +
+                "sampled=\(sampledPositions.count)/\(rows.count) sidecar=\(hintURL.lastPathComponent)"
+            )
+        } else {
+            logDebug("⏱️ [SplatLoad] hint_save_skipped source=SHARPService file=\(classicFileURL.lastPathComponent) reason=file_identity_unavailable")
+        }
+
         logDebug("[ROOM_DIMS_APP] DEFERRED source=async_preview_measurement file=\(classicFileName) splats=\(gaussianCount)")
 
         rows.removeAll(keepingCapacity: false)
