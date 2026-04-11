@@ -422,6 +422,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
                     self.applyCurrentOverlayScaleTransform()
                 }
+            } else if segmentationMode == .segmentSelected {
+                // Hide detection boxes immediately; mask-only presentation while segmenting.
+                DispatchQueue.main.async {
+                    self.detectionBBoxOverlayView.items = []
+                    self.candidateBboxesInView = []
+                }
             }
             updateVideoIdentificationPresentation()
         }
@@ -1547,6 +1553,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         scaleX: Float,
         scaleY: Float
     ) {
+        latestDisplayedCandidates = candidates
+        latestDisplayedSelectedCandidateIndex = selectedIndex
+
+        if segmentationMode == .segmentSelected {
+            candidateBboxesInView = []
+            detectionBBoxOverlayView.items = []
+            return
+        }
+
         let rects = candidates.map {
             viewRect(
                 for: $0,
@@ -1558,8 +1573,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         let selectedClassIDs = selectedClassIDsSnapshot()
         candidateBboxesInView = rects
-        latestDisplayedCandidates = candidates
-        latestDisplayedSelectedCandidateIndex = selectedIndex
         detectionBBoxOverlayView.items = candidates.enumerated().map { index, detection in
             DetectionOverlayItem(
                 rectInView: rects[index],
