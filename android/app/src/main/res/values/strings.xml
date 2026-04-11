@@ -419,6 +419,12 @@
     <string name="sharp_room_menu_recenter">Recenter view</string>
     <string name="sharp_room_menu_reset_overlay">Reset overlay scale</string>
     <string name="sharp_room_menu_help">Help</string>
+    <!-- Gesture hints (parity with iOS SharpRoomView) -->
+    <string name="sharp_room_pinch_gesture_hint">Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.</string>
+    <string name="sharp_room_brain_gesture_hint">Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.</string>
+    <string name="sharp_room_snapshot_gesture_hint">Tap the camera to save a picture of the room to Photos.</string>
+    <string name="sharp_room_ruler_content_description">Room dimensions</string>
+    <string name="sharp_room_dimensions_chip">W × H × D\n%.2f × %.2f × %.2f m</string>
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>

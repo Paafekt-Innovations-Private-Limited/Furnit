@@ -1,0 +1,23 @@
+---
+description: iOS xcodebuild — iphoneos compile; Sonnet only for running xcodebuild
+alwaysApply: true
+---
+
+# iOS Build Preference
+
+- Running **`xcodebuild`** and iOS compile/build verification: **Claude Sonnet only** per [.cursor/rules/model-usage-preference.mdc](model-usage-preference.mdc). Logic and code decisions stay on **the model the user selected** in Cursor (same split as Android `./gradlew`).
+- **Do not** use Simulator destinations (`platform=iOS Simulator`, named Simulators, `xcrun simctl boot`, etc.) for verification unless the user explicitly asks. That includes any `-destination` that targets a simulator device or OS.
+- **Preferred verification** is a **minimal compile to iphoneos** (no Simulator app run, no tests that boot Simulator):
+
+```bash
+xcodebuild -project "Furnit.xcodeproj" -scheme "Furnit" -configuration Debug \
+  -sdk iphoneos -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO ENABLE_PREVIEWS=NO \
+  -jobs 2 build
+```
+
+- **`COMPILER_INDEX_STORE_ENABLE=NO`** — skips index-store emission during compile (less memory and disk vs default).
+- **`ENABLE_PREVIEWS=NO`** — avoids extra SwiftUI preview compilation work when applicable.
+- **`-jobs 2`** — caps parallel compile jobs to reduce peak memory (raise locally if you have headroom; use `-jobs 1` if still tight).
+- Do **not** pass `-derivedDataPath` into the repo unless the user explicitly asks — use Xcode’s default DerivedData (typically `~/Library/Developer/Xcode/DerivedData`), or skip the build in sandboxed agent environments if DerivedData is not writable.
+- **Note:** Even with `generic/platform=iOS`, Xcode may still probe CoreSimulator on the host; this command does **not** run the app in Simulator.

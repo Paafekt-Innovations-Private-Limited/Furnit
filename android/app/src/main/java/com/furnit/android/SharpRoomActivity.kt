@@ -4,11 +4,14 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.widget.ImageView
+import android.widget.Space
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -32,6 +35,7 @@ import com.furnit.android.ar.FurnitureFitArCameraController
 import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatImageButton
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -46,6 +50,7 @@ import kotlin.math.max
 import kotlin.math.min
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.models.roomintelligence.AestheticAdvisor
@@ -238,11 +243,13 @@ class SharpRoomActivity : AppCompatActivity() {
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     private lateinit var brainCameraPreviewView: PreviewView
     /** Bottom-left brain control; blue when idle, green while live segmentation is active. */
-    private lateinit var brainModeButton: TextView
+    private lateinit var brainModeButton: AppCompatImageButton
     private var brainActionButton: TextView? = null
     /** Top-right AR sizing control; active when the current brain session requested AR-assisted sizing. */
     private var brainArAssistButton: TextView? = null
-    private lateinit var titleView: TextView
+    private lateinit var roomRulerButton: AppCompatImageButton
+    /** Top chrome (back pill + ruler); used to position the room-dimensions hint below the bar. */
+    private lateinit var sharpRoomTopBar: FrameLayout
     private var plyPath: String? = null
     private var roomFolder: String? = null
     private var allowSave: Boolean = true
@@ -289,8 +296,19 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainCalibrationPillLine1: TextView? = null
     private var brainCalibrationPillLine2: TextView? = null
     private var placementIntelligenceCard: View? = null
+    private var placementIntelligenceExpandedPanel: LinearLayout? = null
+    private var placementIntelligenceToggleRing: GradientDrawable? = null
     private var placementIntelligenceStatusView: TextView? = null
     private var placementIntelligenceBodyView: TextView? = null
+    private var roomDimensionsHintView: TextView? = null
+    private var pinchHintExplanationView: TextView? = null
+    private var brainHintExplanationView: TextView? = null
+    private var snapshotHintExplanationView: TextView? = null
+    private val gestureHintHideHandler = Handler(Looper.getMainLooper())
+    private val hidePinchHintRunnable = Runnable { pinchHintExplanationView?.visibility = View.GONE }
+    private val hideBrainHintRunnable = Runnable { brainHintExplanationView?.visibility = View.GONE }
+    private val hideSnapshotHintRunnable = Runnable { snapshotHintExplanationView?.visibility = View.GONE }
+    private val hideRoomDimensionsHintRunnable = Runnable { roomDimensionsHintView?.visibility = View.GONE }
     private var isPlacementIntelligenceExpanded = false
     private var lastBrainOverlayScaleLogMs: Long = 0L
     private var lastBrainArBridgeLogMs: Long = 0L
@@ -601,10 +619,20 @@ class SharpRoomActivity : AppCompatActivity() {
 
         // Top bar
         val topBar = createTopBar()
+        sharpRoomTopBar = topBar
         rootLayout.addView(topBar, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.TOP })
+
+        roomDimensionsHintView = buildRoomDimensionsHintView()
+        rootLayout.addView(
+            roomDimensionsHintView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
+        )
 
         // Bottom controls
         val bottomControls = createBottomControls()
@@ -652,6 +680,8 @@ class SharpRoomActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
         sharpRoomContentRoot = rootLayout
+        refreshRoomDimensionsDisplay()
+        rootLayout.post { restartTransientGestureHints() }
         reloadPlacementRoomModel()
         prewarmBrainSegmentationIfNeeded()
 
@@ -666,10 +696,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 topBar.paddingBottom
             )
             updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+            updateRoomDimensionsHintPosition()
             cameraArrowOverlay.post { updateCameraArrowOverlayTop(topBar, cameraArrowOverlay) }
+            cameraArrowOverlay.post { updateRoomDimensionsHintPosition() }
             topBar.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+                    updateRoomDimensionsHintPosition()
                 }
             })
             insets
@@ -717,6 +750,159 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
         val top = statusBarInsetTop + topBar.height
         arrowOverlay.setPadding(0, top, 0, 0)
+    }
+
+    private fun buildGestureHintBubble(): TextView {
+        return TextView(this).apply {
+            visibility = View.GONE
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            maxWidth = dpToPx(220)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(8).toFloat()
+                setColor(Color.argb((255 * 0.78f).toInt(), 0, 0, 0))
+            }
+        }
+    }
+
+    private fun buildHintIconButton(iconRes: Int, onClick: () -> Unit): AppCompatImageButton {
+        val hintSize = dpToPx(40)
+        val hintBg = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(128, 0, 0, 0))
+        }
+        return AppCompatImageButton(this).apply {
+            setImageResource(iconRes)
+            ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+            background = hintBg
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = LinearLayout.LayoutParams(hintSize, hintSize).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun buildRoomDimensionsHintView(): TextView {
+        return TextView(this).apply {
+            visibility = View.GONE
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            maxWidth = dpToPx(220)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(8).toFloat()
+                setColor(Color.argb((255 * 0.78f).toInt(), 0, 0, 0))
+            }
+            elevation = dpToPx(4).toFloat()
+        }
+    }
+
+    private fun updateRoomDimensionsHintPosition() {
+        val hint = roomDimensionsHintView ?: return
+        if (!::sharpRoomTopBar.isInitialized) return
+        val lp = hint.layoutParams as FrameLayout.LayoutParams
+        lp.topMargin = sharpRoomTopBar.bottom + dpToPx(12)
+        hint.layoutParams = lp
+    }
+
+    private fun updateRoomDimensionsHintText() {
+        roomDimensionsHintView?.text = getString(
+            R.string.sharp_room_dimensions_chip,
+            effRoomWidth().toDouble(),
+            effRoomHeight().toDouble(),
+            effRoomDepth().toDouble(),
+        )
+    }
+
+    private fun refreshRoomDimensionsDisplay() {
+        updateRoomDimensionsHintText()
+    }
+
+    private fun onRoomRulerTapped() {
+        val hint = roomDimensionsHintView ?: return
+        if (hint.visibility == View.VISIBLE) {
+            hint.visibility = View.GONE
+            gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
+        } else {
+            updateRoomDimensionsHintText()
+            hint.visibility = View.VISIBLE
+            updateRoomDimensionsHintPosition()
+            gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
+            gestureHintHideHandler.postDelayed(hideRoomDimensionsHintRunnable, 3000L)
+        }
+    }
+
+    private fun onPinchHintIconTapped() {
+        val v = pinchHintExplanationView ?: return
+        if (v.visibility == View.VISIBLE) {
+            v.visibility = View.GONE
+            gestureHintHideHandler.removeCallbacks(hidePinchHintRunnable)
+        } else {
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hidePinchHintRunnable)
+            gestureHintHideHandler.postDelayed(hidePinchHintRunnable, 3000L)
+        }
+    }
+
+    private fun onBrainHintIconTapped() {
+        val v = brainHintExplanationView ?: return
+        if (v.visibility == View.VISIBLE) {
+            v.visibility = View.GONE
+            gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
+        } else {
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
+            gestureHintHideHandler.postDelayed(hideBrainHintRunnable, 3000L)
+        }
+    }
+
+    private fun onSnapshotHintIconTapped() {
+        val v = snapshotHintExplanationView ?: return
+        if (v.visibility == View.VISIBLE) {
+            v.visibility = View.GONE
+            gestureHintHideHandler.removeCallbacks(hideSnapshotHintRunnable)
+        } else {
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hideSnapshotHintRunnable)
+            gestureHintHideHandler.postDelayed(hideSnapshotHintRunnable, 3000L)
+        }
+    }
+
+    private fun restartPinchGestureHint() {
+        pinchHintExplanationView?.let { v ->
+            v.text = getString(R.string.sharp_room_pinch_gesture_hint)
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hidePinchHintRunnable)
+            gestureHintHideHandler.postDelayed(hidePinchHintRunnable, 3000L)
+        }
+    }
+
+    private fun restartBrainGestureHint() {
+        brainHintExplanationView?.let { v ->
+            v.text = getString(R.string.sharp_room_brain_gesture_hint)
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
+            gestureHintHideHandler.postDelayed(hideBrainHintRunnable, 3000L)
+        }
+    }
+
+    private fun restartSnapshotGestureHint() {
+        snapshotHintExplanationView?.let { v ->
+            v.text = getString(R.string.sharp_room_snapshot_gesture_hint)
+            v.visibility = View.VISIBLE
+            gestureHintHideHandler.removeCallbacks(hideSnapshotHintRunnable)
+            gestureHintHideHandler.postDelayed(hideSnapshotHintRunnable, 3000L)
+        }
+    }
+
+    private fun restartTransientGestureHints() {
+        restartPinchGestureHint()
+        restartBrainGestureHint()
+        restartSnapshotGestureHint()
     }
 
     private fun createTopBar(): FrameLayout {
@@ -792,21 +978,22 @@ class SharpRoomActivity : AppCompatActivity() {
                 },
             )
 
-            titleView = TextView(this@SharpRoomActivity).apply {
-                text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
-                textSize = 17f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dpToPx(6), 0, dpToPx(6), 0)
+            roomRulerButton = AppCompatImageButton(this@SharpRoomActivity).apply {
+                setImageResource(R.drawable.ic_ruler)
+                ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+                val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
+                val ripple = typedArray.getDrawable(0)
+                typedArray.recycle()
+                background = ripple
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                contentDescription = getString(R.string.sharp_room_ruler_content_description)
+                setOnClickListener { onRoomRulerTapped() }
             }
             barContainer.addView(
-                titleView,
+                roomRulerButton,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dpToPx(44),
+                    dpToPx(44),
                     Gravity.CENTER,
                 ),
             )
@@ -1229,7 +1416,14 @@ class SharpRoomActivity : AppCompatActivity() {
                 it.recommendations.take(4).forEach { reco -> lines += "\u2022 $reco" }
             }
             bodyView.text = lines.joinToString("\n")
-            bodyView.visibility = if (isPlacementIntelligenceExpanded) View.VISIBLE else View.GONE
+            placementIntelligenceExpandedPanel?.visibility =
+                if (isPlacementIntelligenceExpanded) View.VISIBLE else View.GONE
+            val ringColor = when {
+                fit == null -> Color.parseColor("#00BCD4")
+                fit.fitsInRoom -> Color.parseColor("#4CAF50")
+                else -> Color.parseColor("#FF6B6B")
+            }
+            placementIntelligenceToggleRing?.setStroke(dpToPx(3), ringColor)
         }
     }
 
@@ -1345,7 +1539,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 roomHeight *= factor
                 roomDepth *= factor
                 // Update title to show calibrated dimensions.
-                titleView.text = String.format(Locale.US, "%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+                refreshRoomDimensionsDisplay()
                 DebugLogger.d(TAG, "Room calibration applied: factor=$factor newDims=${effRoomWidth()}x${effRoomHeight()} (real=$real)")
                 LogUtil.i(
                     "SHARP_ROOM_MEAS",
@@ -1361,31 +1555,80 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun createBottomControls(): FrameLayout {
         return FrameLayout(this).apply {
-            setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
+            val horizontalPad = if (photoOrientation == "landscape") dpToPx(30) else dpToPx(16)
+            setPadding(horizontalPad, 0, horizontalPad, dpToPx(20))
 
-            // Left: Brain/AI button + orientation helper text (like Swift)
-            val leftBottomRow = LinearLayout(this@SharpRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+            val mainColumn = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
                 layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    gravity = Gravity.START or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
+                    gravity = Gravity.BOTTOM
                 }
             }
-            val brainBtn = TextView(this@SharpRoomActivity).apply {
-                text = "\uD83E\uDDE0" // Brain emoji
-                textSize = 24f
-                gravity = Gravity.CENTER
+
+            if (photoOrientation != "landscape") {
+                val orientationLabel = TextView(this@SharpRoomActivity).apply {
+                    text = getString(R.string.orientation_held_vertically)
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    textSize = 11f
+                    alpha = 0.85f
+                    setPadding(0, 0, 0, dpToPx(4))
+                }
+                mainColumn.addView(
+                    orientationLabel,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+
+            val bottomRow = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.BOTTOM
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            }
+
+            brainHintExplanationView = buildGestureHintBubble().apply {
+                text = getString(R.string.sharp_room_brain_gesture_hint)
+            }
+            snapshotHintExplanationView = buildGestureHintBubble().apply {
+                text = getString(R.string.sharp_room_snapshot_gesture_hint)
+            }
+
+            val brainHintColumn = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            brainHintColumn.addView(
+                brainHintExplanationView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(6) },
+            )
+            brainHintColumn.addView(buildHintIconButton(R.drawable.ic_gesture_tap) { onBrainHintIconTapped() })
+
+            val brainSize = dpToPx(60)
+            val brainBtn = AppCompatImageButton(this@SharpRoomActivity).apply {
+                setImageResource(R.drawable.ic_brain)
+                ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.parseColor(BRAIN_BUTTON_COLOR_IDLE))
                 }
                 background = bg
-                val size = dpToPx(56)
-                layoutParams = LinearLayout.LayoutParams(size, size)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+                layoutParams = LinearLayout.LayoutParams(brainSize, brainSize).apply {
+                    topMargin = dpToPx(6)
+                }
                 setOnClickListener {
                     val roomId = roomFolder?.let { File(it).name }
                     DebugLogger.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
@@ -1393,18 +1636,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             brainModeButton = brainBtn
-            leftBottomRow.addView(brainBtn)
-            val orientationLabel = TextView(this@SharpRoomActivity).apply {
-                text = if (photoOrientation == "landscape") getString(R.string.orientation_held_horizontally) else getString(R.string.orientation_held_vertically)
-                setTextColor(Color.WHITE)
-                setPadding(dpToPx(12), 0, 0, 0)
-                textSize = 14f
-                alpha = 0.9f
+            val brainStack = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
             }
-            leftBottomRow.addView(orientationLabel)
-            addView(leftBottomRow)
-
-            // No joystick - use OrbitControls touch gestures for navigation (matching iOS)
+            brainStack.addView(brainHintColumn)
+            brainStack.addView(brainBtn)
+            bottomRow.addView(brainStack)
 
             val segmentActionBtn = TextView(this@SharpRoomActivity).apply {
                 setTextColor(Color.WHITE)
@@ -1417,12 +1655,12 @@ class SharpRoomActivity : AppCompatActivity() {
                     cornerRadius = dpToPx(20).toFloat()
                     setColor(Color.parseColor("#E6333333"))
                 }
-                layoutParams = FrameLayout.LayoutParams(
+                layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
+                    marginStart = dpToPx(10)
+                    gravity = Gravity.BOTTOM
                 }
                 setOnClickListener {
                     if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
@@ -1433,30 +1671,104 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             }
             brainActionButton = segmentActionBtn
-            addView(segmentActionBtn)
+            bottomRow.addView(segmentActionBtn)
 
-            // Right: Camera/Screenshot button
-            val cameraBtn = TextView(this@SharpRoomActivity).apply {
-                text = "\uD83D\uDCF7" // Camera emoji
-                textSize = 24f
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#007AFF"))
+            bottomRow.addView(
+                Space(this@SharpRoomActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                },
+            )
+
+            val placementExpandedPanelLocal = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(14).toFloat()
+                    setColor(Color.parseColor("#D91C1C1E"))
                 }
-                background = bg
-                val size = dpToPx(56)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.END or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
-                }
-                setOnClickListener {
-                    takeScreenshot()
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
                 }
             }
-            addView(cameraBtn)
+            val placementTitle = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.placement_title)
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                setTypeface(null, Typeface.BOLD)
+            }
+            val placementStatusView = TextView(this@SharpRoomActivity).apply {
+                text = getString(R.string.placement_badge_style_only)
+                setTextColor(Color.parseColor("#7FDBFF"))
+                textSize = 12f
+                setTypeface(null, Typeface.BOLD)
+            }
+            placementIntelligenceStatusView = placementStatusView
+            val placementBodyView = TextView(this@SharpRoomActivity).apply {
+                setTextColor(Color.WHITE)
+                textSize = 12f
+            }
+            placementIntelligenceBodyView = placementBodyView
+            placementExpandedPanelLocal.addView(placementTitle)
+            placementExpandedPanelLocal.addView(placementStatusView)
+            placementExpandedPanelLocal.addView(placementBodyView)
+            placementIntelligenceExpandedPanel = placementExpandedPanelLocal
 
-            // Brain calibration pill (bottom-center): shows detected furniture height and a Tap to calibrate affordance.
+            val placementRing = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(56, 56, 56), Color.rgb(31, 31, 31)),
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dpToPx(3), Color.parseColor("#00BCD4"))
+            }
+            placementIntelligenceToggleRing = placementRing
+
+            val placementToggleButton = FrameLayout(this@SharpRoomActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    topMargin = dpToPx(10)
+                }
+                background = placementRing
+                isClickable = true
+                setOnClickListener {
+                    isPlacementIntelligenceExpanded = !isPlacementIntelligenceExpanded
+                    updatePlacementIntelligenceCard()
+                }
+                addView(
+                    ImageView(this@SharpRoomActivity).apply {
+                        setImageResource(R.drawable.ic_square_split_2x2)
+                        ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    },
+                    FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER),
+                )
+            }
+
+            val placementOuter = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                visibility = View.GONE
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { gravity = Gravity.BOTTOM }
+            }
+            placementOuter.addView(placementExpandedPanelLocal)
+            placementOuter.addView(placementToggleButton)
+            placementIntelligenceCard = placementOuter
+            bottomRow.addView(placementOuter)
+
+            bottomRow.addView(
+                Space(this@SharpRoomActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                },
+            )
+
             val pillContent = LinearLayout(this@SharpRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -1482,70 +1794,56 @@ class SharpRoomActivity : AppCompatActivity() {
             pillContent.addView(brainCalibrationPillLine1)
             pillContent.addView(brainCalibrationPillLine2)
             val pillContainer = FrameLayout(this@SharpRoomActivity).apply {
-                layoutParams = FrameLayout.LayoutParams(
+                layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(52)
-                }
-                // Shown only while a brain session is active (tap brain → progress/detection); not on plain room view.
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dpToPx(8) }
                 visibility = View.GONE
                 isClickable = false
                 addView(pillContent)
-                // Tap / “Tap to calibrate” line: [updateBrainCalibrationPill] (respects calibrate UI pref).
             }
             brainCalibrationPillContainer = pillContainer
-            addView(pillContainer)
 
-            val placementCardContent = LinearLayout(this@SharpRoomActivity).apply {
+            val snapshotHintColumn = LinearLayout(this@SharpRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(14).toFloat()
-                    setColor(Color.parseColor("#D91C1C1E"))
-                }
+                gravity = Gravity.CENTER_HORIZONTAL
             }
-            val placementTitle = TextView(this@SharpRoomActivity).apply {
-                text = getString(R.string.placement_title)
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                setTypeface(null, Typeface.BOLD)
-            }
-            val placementStatusView = TextView(this@SharpRoomActivity).apply {
-                text = getString(R.string.placement_badge_style_only)
-                setTextColor(Color.parseColor("#7FDBFF"))
-                textSize = 12f
-                setTypeface(null, Typeface.BOLD)
-            }
-            placementIntelligenceStatusView = placementStatusView
-            val placementBodyView = TextView(this@SharpRoomActivity).apply {
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                visibility = View.GONE
-            }
-            placementIntelligenceBodyView = placementBodyView
-            placementCardContent.addView(placementTitle)
-            placementCardContent.addView(placementStatusView)
-            placementCardContent.addView(placementBodyView)
-            val placementContainer = FrameLayout(this@SharpRoomActivity).apply {
-                layoutParams = FrameLayout.LayoutParams(
+            snapshotHintColumn.addView(
+                snapshotHintExplanationView,
+                LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(132)
+                ).apply { bottomMargin = dpToPx(6) },
+            )
+            snapshotHintColumn.addView(buildHintIconButton(R.drawable.ic_gesture_tap) { onSnapshotHintIconTapped() })
+
+            val cameraBtn = AppCompatImageButton(this@SharpRoomActivity).apply {
+                setImageResource(R.drawable.ic_camera)
+                ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#007AFF"))
                 }
-                visibility = View.GONE
-                addView(placementCardContent)
-                setOnClickListener {
-                    isPlacementIntelligenceExpanded = !isPlacementIntelligenceExpanded
-                    updatePlacementIntelligenceCard()
+                background = bg
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+                layoutParams = LinearLayout.LayoutParams(brainSize, brainSize).apply {
+                    topMargin = dpToPx(6)
                 }
+                setOnClickListener { takeScreenshot() }
             }
-            placementIntelligenceCard = placementContainer
-            addView(placementContainer)
+
+            val rightColumn = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.END or Gravity.BOTTOM
+            }
+            rightColumn.addView(pillContainer)
+            rightColumn.addView(snapshotHintColumn)
+            rightColumn.addView(cameraBtn)
+            bottomRow.addView(rightColumn)
+
+            mainColumn.addView(bottomRow)
+            addView(mainColumn)
         }
     }
 
@@ -1591,12 +1889,45 @@ class SharpRoomActivity : AppCompatActivity() {
         container.addView(upDownColumn)
         container.addView(makeArrowButton("\u2192") { runMoveCamera(8.0, 0.0) })
 
+        pinchHintExplanationView = buildGestureHintBubble().apply {
+            text = getString(R.string.sharp_room_pinch_gesture_hint)
+        }
+        val pinchColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+        }
+        pinchColumn.addView(
+            pinchHintExplanationView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dpToPx(6) },
+        )
+        pinchColumn.addView(
+            buildHintIconButton(R.drawable.ic_gesture_pinch) { onPinchHintIconTapped() },
+        )
+        val rootColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+        }
+        rootColumn.addView(container)
+        val pinchWrap = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        pinchWrap.topMargin = dpToPx(10)
+        pinchWrap.marginStart = dpToPx(12)
+        rootColumn.addView(pinchColumn, pinchWrap)
+
         return FrameLayout(this).apply {
             isClickable = false
-            addView(container, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.TOP or Gravity.START })
+            addView(
+                rootColumn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { gravity = Gravity.TOP or Gravity.START },
+            )
         }
     }
 
@@ -1737,6 +2068,7 @@ class SharpRoomActivity : AppCompatActivity() {
         setBrainCalibrationPillVisible(true)
         updateBrainCalibrationPill()
         updatePlacementIntelligenceCard()
+        restartBrainGestureHint()
     }
 
     /** Every brain tap should show progress until the first result for that tap arrives. */
@@ -3359,7 +3691,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
                 roomWidth = finalW
                 roomHeight = finalH
-                titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+                refreshRoomDimensionsDisplay()
                 DebugLogger.d(TAG, "WebGL dimensions applied: ${roomWidth}x${roomHeight} (will persist)")
                 LogUtil.i(
                     "SHARP_ROOM_MEAS",
@@ -3431,7 +3763,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 roomWidth = sanitized.first
                 roomHeight = sanitized.second
                 roomDepth = sanitized.third
-                titleView.text = String.format("%.1f × %.1f m", effRoomWidth(), effRoomHeight())
+                refreshRoomDimensionsDisplay()
                 DebugLogger.d(
                     TAG,
                     "WebGL box metrics applied: ${roomWidth}x${roomHeight}x${roomDepth} raw=${rawSpanX}x${rawSpanY}x${rawSpanZ} thinZ=$thinZ source=${source ?: "unknown"}"
@@ -3459,6 +3791,7 @@ class SharpRoomActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         brainArController?.onHostResume()
+        sharpRoomContentRoot.post { restartTransientGestureHints() }
         val mgr = furnitureFitManager
         if (mgr != null && brainDetectionOverlay.visibility == View.VISIBLE) {
             val wantAr = shouldUseArBrainCamera()

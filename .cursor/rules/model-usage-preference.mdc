@@ -1,0 +1,12 @@
+---
+description: Sonnet only for builds/compiles/mechanical execution; user-selected model for all logic
+alwaysApply: true
+---
+
+# Model Usage Preference
+
+- **Claude Sonnet only** (not “Sonnet-style,” not optional when Sonnet is available) for **mechanical / execution** work: builds, compiles, **`./gradlew`**, **`xcodebuild`**, test runs driven as shell jobs, git as pure command execution, GitHub Actions runs, and similar toolchain steps across Swift, Android, Python, etc.
+- **The model the user selected in Cursor** for **everything else**: debugging, diagnosis, architecture, logic, tradeoffs, implementation planning, code reasoning, refactors design, and any non-mechanical analysis.
+- Do **not** use the selected model to substitute for Sonnet on those execution steps when Sonnet can be used for that step; do **not** use Sonnet to replace the user’s chosen model for logic and reasoning.
+- When practical, split work into two phases: **plan and reason with the user’s selected model** → **run builds, compiles, tests, git mechanics with Sonnet only**.
+- If only one model is available in a session, continue with that model for the step at hand.

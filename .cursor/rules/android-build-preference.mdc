@@ -1,0 +1,19 @@
+---
+description: Android Gradle — dual-flavor compile; Sonnet only for running Gradle
+alwaysApply: true
+---
+
+# Android Build Preference
+
+- Running **`./gradlew`** and Android compile/build verification: **Claude Sonnet only** per [.cursor/rules/model-usage-preference.mdc](model-usage-preference.mdc). Logic and code decisions stay on **the model the user selected** in Cursor.
+- **Default Kotlin compile check** for this repo is **both** ExecuTorch debug flavors — do **not** use plain `compileDebugKotlin` (ambiguous / wrong default for multi-flavor app).
+
+**Preferred command** (from repo root or `android/`; single invocation compiles both flavors):
+
+```bash
+cd android && ./gradlew :app:compileEtCpuDebugKotlin :app:compileEtVulkanDebugKotlin --no-daemon
+```
+
+- Use **`--no-daemon`** in agent/automation when helpful for clean, bounded runs; omit locally if you rely on a warm daemon.
+- If you need a full APK step after Kotlin compile, use the matching assemble tasks (e.g. `assembleEtCpuDebug`, `assembleEtVulkanDebug`) rather than a generic `assembleDebug` unless you know the variant.
+- In sandboxed environments, Gradle may need **`all`** permissions (network for deps, full filesystem for wrapper/caches) — same as other agent Gradle runs.

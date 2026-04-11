@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Material-style ruler / straightedge (matches iOS ruler.fill affordance) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20.41,8.41l-7.41,7.41l-1.41,-1.41l7.41,-7.41L20.41,8.41zM7.59,16.59L2,22v-4.59l9.59,-9.59l4.59,4.59L7.59,16.59zM5.83,19.17l1.41,-1.41l1.41,1.41l-1.41,1.41L5.83,19.17zM9.17,15.83l1.41,-1.41l1.41,1.41l-1.41,1.41L9.17,15.83zM12.5,12.5l1.41,-1.41l1.41,1.41l-1.41,1.41L12.5,12.5zM15.83,9.17l1.41,-1.41l1.41,1.41l-1.41,1.41L15.83,9.17z"/>
+</vector>

@@ -1,2 +1,4 @@
 - Always use descriptive variable names
-- compile before concluding the changes every time
+- Compile before concluding changes every time:
+  - **Android:** from `android/`, run `./gradlew :app:compileEtCpuDebugKotlin :app:compileEtVulkanDebugKotlin` (both flavors; do not use plain `compileDebugKotlin` as the default). **Claude Sonnet only** for running Gradle; reasoning on the model selected in Cursor (see `.cursor/rules/model-usage-preference.mdc`).
+  - **iOS:** see `.cursor/rules/ios-build-preference.mdc` — **Claude Sonnet only** for `xcodebuild`; reasoning on the model selected in Cursor.
