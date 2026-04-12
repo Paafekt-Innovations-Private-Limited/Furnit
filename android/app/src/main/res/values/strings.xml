@@ -425,6 +425,8 @@
     <string name="sharp_room_snapshot_gesture_hint">Tap the camera to save a picture of the room to Photos.</string>
     <string name="sharp_room_ruler_content_description">Room dimensions</string>
     <string name="sharp_room_dimensions_chip">W × H × D\n%.2f × %.2f × %.2f m</string>
+    <string name="sharp_room_dimensions_unavailable">Room dimensions unavailable</string>
+    <string name="sharp_room_measuring">Measuring room…</string>
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>

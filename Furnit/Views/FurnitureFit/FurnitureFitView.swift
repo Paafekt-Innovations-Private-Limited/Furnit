@@ -890,6 +890,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = bounds
+        if isShowingLiveVideoIdentifications {
+            applyLockedOrientationVideoRotation()
+        }
         cachedARViewportSize = bounds.size
         updateSizingCalculator()
     }
@@ -1096,6 +1099,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func updateVideoIdentificationPresentation() {
         DispatchQueue.main.async {
             self.previewLayer.isHidden = !self.isShowingLiveVideoIdentifications
+            self.applyLockedOrientationVideoRotation()
             self.applyCurrentOverlayScaleTransform()
         }
     }
@@ -1716,16 +1720,32 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
-        guard !isUsingARCameraPath, let conn = videoOutput.connection(with: .video) else { return }
+        applyLockedOrientationVideoRotation()
+    }
 
-        // Keep rotation fixed based on locked orientation to ensure consistent buffer dimensions
-        // This prevents segmentation misalignment when device rotates
-        if lockedOrientation == .landscape {
-            // Landscape room: always 0° for consistent 1280x720 landscape buffers
-            conn.videoRotationAngle = 0
+    /// Applies the same `videoRotationAngle` to ``AVCaptureVideoDataOutput`` and ``AVCaptureVideoPreviewLayer``
+    /// so the live identify-mode feed matches the pixel buffers used for segmentation. Without syncing the
+    /// preview layer, landscape-locked Sharp rooms could show a skewed or misaligned camera feed vs overlays.
+    private func applyLockedOrientationVideoRotation() {
+        guard !isUsingARCameraPath else { return }
+        let angle: CGFloat = lockedOrientation == .landscape ? 0 : 90
+
+        let applyVideoOutput: () -> Void = { [weak self] in
+            guard let self else { return }
+            guard let conn = self.videoOutput.connection(with: .video), conn.isVideoRotationAngleSupported(angle) else { return }
+            conn.videoRotationAngle = angle
+        }
+        let applyPreview: () -> Void = { [weak self] in
+            guard let self else { return }
+            guard let previewConn = self.previewLayer.connection, previewConn.isVideoRotationAngleSupported(angle) else { return }
+            previewConn.videoRotationAngle = angle
+        }
+
+        applyVideoOutput()
+        if Thread.isMainThread {
+            applyPreview()
         } else {
-            // Portrait room: always 90° for consistent 720x1280 portrait buffers
-            conn.videoRotationAngle = 90
+            DispatchQueue.main.async(execute: applyPreview)
         }
     }
 
@@ -1840,19 +1860,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
         }
-        // Set video rotation based on locked orientation
-        // For landscape rooms: use 0° (native landscape frames)
-        // For portrait rooms: use 90° (rotated to portrait frames)
-        if let conn = videoOutput.connection(with: .video) {
-            if lockedOrientation == .landscape {
-                conn.videoRotationAngle = 0
-                logDebug("📷 [Camera] Landscape room: using 0° rotation (1280x720)")
-            } else {
-                conn.videoRotationAngle = 90
-                logDebug("📷 [Camera] Portrait room: using 90° rotation (720x1280)")
-            }
-        }
         captureSession.commitConfiguration()
+        if lockedOrientation == .landscape {
+            logDebug("📷 [Camera] Landscape room: using 0° rotation (1280x720)")
+        } else {
+            logDebug("📷 [Camera] Portrait room: using 90° rotation (720x1280)")
+        }
+        applyLockedOrientationVideoRotation()
     }
 
     private func requestCameraPermissionAndStart() {

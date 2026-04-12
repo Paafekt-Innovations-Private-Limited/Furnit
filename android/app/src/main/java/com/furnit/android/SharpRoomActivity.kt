@@ -274,6 +274,10 @@ class SharpRoomActivity : AppCompatActivity() {
     private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room (logging / open path)
     /** When the user applies tape (wall) calibration, do not let WebGL Box3 callbacks overwrite those numbers until recenter. */
     private var roomDimensionsLockedByTapeCalibration: Boolean = false
+    /** True once at least one `onBoxMetricsMeasured` or `onDimensionsMeasured` callback arrives from WebGL. */
+    private var roomDimensionsReceivedFromWebGL: Boolean = false
+    /** True while we are waiting for WebGL to report box3 dimensions (ruler tap before WebGL ready). */
+    private var isMeasuringRoomDimensions: Boolean = false
     /**
      * W×H copied from intent + room_meta right after load (streaming AABB / saved metadata).
      * Used when WebGL Box3 reports a degenerate footprint for this viewer rotation but pipeline dims are sane.
@@ -810,16 +814,31 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun updateRoomDimensionsHintText() {
-        roomDimensionsHintView?.text = getString(
-            R.string.sharp_room_dimensions_chip,
-            effRoomWidth().toDouble(),
-            effRoomHeight().toDouble(),
-            effRoomDepth().toDouble(),
-        )
+        val w = effRoomWidth()
+        val h = effRoomHeight()
+        val d = effRoomDepth()
+        roomDimensionsHintView?.text = if (w > 0.05f && h > 0.05f && d > 0.05f) {
+            String.format(
+                Locale.US,
+                "W × H × D\n%.2f × %.2f × %.2f m",
+                w, h, d,
+            )
+        } else if (w > 0.05f && h > 0.05f) {
+            String.format(Locale.US, "W × H\n%.2f × %.2f m", w, h)
+        } else {
+            getString(R.string.sharp_room_dimensions_unavailable)
+        }
     }
 
     private fun refreshRoomDimensionsDisplay() {
         updateRoomDimensionsHintText()
+        val hint = roomDimensionsHintView ?: return
+        if (effRoomWidth() > 0.05f && effRoomHeight() > 0.05f) {
+            hint.visibility = View.VISIBLE
+            updateRoomDimensionsHintPosition()
+            gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
+            gestureHintHideHandler.postDelayed(hideRoomDimensionsHintRunnable, 3000L)
+        }
     }
 
     private fun onRoomRulerTapped() {
@@ -827,13 +846,42 @@ class SharpRoomActivity : AppCompatActivity() {
         if (hint.visibility == View.VISIBLE) {
             hint.visibility = View.GONE
             gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
-        } else {
+            return
+        }
+        if (roomDimensionsReceivedFromWebGL || hasSavedDimensions) {
+            DebugLogger.d(TAG, "[ROOM_DIMS][RULER] USING_EXISTING webgl=$roomDimensionsReceivedFromWebGL saved=$hasSavedDimensions")
             updateRoomDimensionsHintText()
             hint.visibility = View.VISIBLE
             updateRoomDimensionsHintPosition()
             gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
             gestureHintHideHandler.postDelayed(hideRoomDimensionsHintRunnable, 3000L)
+        } else {
+            DebugLogger.d(TAG, "[ROOM_DIMS][RULER] FALLBACK=START_ASYNC_MEASURE")
+            startAsyncRoomMeasurementFromJS()
         }
+    }
+
+    private fun startAsyncRoomMeasurementFromJS() {
+        if (isMeasuringRoomDimensions) return
+        isMeasuringRoomDimensions = true
+        val hint = roomDimensionsHintView ?: return
+        hint.text = getString(R.string.sharp_room_measuring)
+        hint.visibility = View.VISIBLE
+        updateRoomDimensionsHintPosition()
+        webView.evaluateJavascript(
+            "if(typeof sendDimensionsToAndroid==='function'){sendDimensionsToAndroid();}",
+            null,
+        )
+        gestureHintHideHandler.postDelayed({
+            if (isMeasuringRoomDimensions) {
+                isMeasuringRoomDimensions = false
+                if (!roomDimensionsReceivedFromWebGL) {
+                    updateRoomDimensionsHintText()
+                }
+                gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
+                gestureHintHideHandler.postDelayed(hideRoomDimensionsHintRunnable, 3000L)
+            }
+        }, 5000L)
     }
 
     private fun onPinchHintIconTapped() {
@@ -1847,26 +1895,24 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Camera move arrows (up/down/left/right) — on-screen only, not in overflow menu. */
+    /** Camera move arrows (up/down/left/right) — on-screen only, not in overflow menu. Matches iOS cameraDPadCluster. */
     private fun createCameraArrowOverlay(): FrameLayout {
         val paddingPx = dpToPx(12)
         val buttonSizePx = dpToPx(44)
-        val arrowColor = Color.WHITE
-        val circleBg = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.argb(128, 0, 0, 0))
-        }
 
-        fun makeArrowButton(arrowChar: String, onClick: () -> Unit): TextView {
+        fun makeArrowButton(arrowText: String, onClick: () -> Unit): TextView {
             return TextView(this).apply {
-                text = arrowChar
-                setTextColor(arrowColor)
+                layoutParams = LinearLayout.LayoutParams(buttonSizePx, buttonSizePx)
+                text = arrowText
+                gravity = Gravity.CENTER
                 textSize = 20f
                 setTypeface(null, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                background = circleBg
-                setPadding(0, 0, 0, 0)
-                layoutParams = FrameLayout.LayoutParams(buttonSizePx, buttonSizePx)
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(160, 0, 0, 0))
+                }
+                elevation = 2f
                 setOnClickListener { onClick() }
             }
         }
@@ -1906,27 +1952,32 @@ class SharpRoomActivity : AppCompatActivity() {
         pinchColumn.addView(
             buildHintIconButton(R.drawable.ic_gesture_pinch) { onPinchHintIconTapped() },
         )
-        val rootColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-        }
-        rootColumn.addView(container)
-        val pinchWrap = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        pinchWrap.topMargin = dpToPx(10)
-        pinchWrap.marginStart = dpToPx(12)
-        rootColumn.addView(pinchColumn, pinchWrap)
-
         return FrameLayout(this).apply {
             isClickable = false
+            elevation = 18f
+            clipChildren = false
+            clipToPadding = false
             addView(
-                rootColumn,
+                container,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { gravity = Gravity.TOP or Gravity.START },
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    leftMargin = dpToPx(12)
+                    topMargin = dpToPx(12)
+                },
+            )
+            addView(
+                pinchColumn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    leftMargin = dpToPx(12)
+                    topMargin = dpToPx(12 + 44 + 44 + 18)
+                },
             )
         }
     }
@@ -2652,11 +2703,8 @@ class SharpRoomActivity : AppCompatActivity() {
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
         DebugLogger.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
-        // Which end of the room slab we place the camera on Z for **landscape** (portrait overrides in JS — see below).
-        // true = min-Z rail (camera at minZ - dist, target minZ). Needed for landscape: mesh uses Rx=0/Rz=0 (WebView
-        // upside-down fix) so "front" maps to this side; matches current good landscape behavior.
-        // Portrait uses the same Rx+Rz as iOS; frameFromWorldBox uses Swift SharpRoomView rule (front at maxZ).
-        val webglEntranceMinZ = true
+        // JS framing matches iOS SharpRoomView WebGL: camera starts outside the front wall at maxZ (+dist), target at maxZ.
+        // (Legacy Android min-Z rail for landscape misaligned “start inside the room” vs iOS.)
         val defaultDisplayW = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_WIDTH_M.toDouble()
         val defaultDisplayH = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_HEIGHT_M.toDouble()
         val defaultDisplayD = SharpRoomDimensionSanitizer.DEFAULT_DISPLAY_DEPTH_M.toDouble()
@@ -2743,7 +2791,6 @@ class SharpRoomActivity : AppCompatActivity() {
         reportStage('html_init', '');
         // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
         const isPortrait = $isPortrait;
-        const entranceUseMinZ = $webglEntranceMinZ;
         const usedWideLens = $usedWideLens;
         const fallbackRoomWidth = $fallbackW;
         const fallbackRoomHeight = $fallbackH;
@@ -3058,7 +3105,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         /**
          * ROOM: splatMesh position stays (0,0,0) + load-time rotation only — we do NOT slide the room for framing.
-         * CAMERA: portrait → SharpRoomView.swift (outside maxZ, target maxZ). landscape → min-Z rail (WebView/identity mesh).
+         * CAMERA: same as iOS SharpRoomView WebGL — outside maxZ (+dist), target maxZ (front wall), portrait and landscape.
          * Zoom / step back along view: change distInFront (metres). Smaller = closer to wall; larger = farther in front.
          */
         function frameFromWorldBox(box, frameSource) {
@@ -3128,43 +3175,22 @@ class SharpRoomActivity : AppCompatActivity() {
             let wallSide;
             let distInFront;
             if (thinZSlab) {
-                if (isPortrait) {
-                    // Match SharpRoomView.swift when Z span is tiny: still put camera outside maxZ (front wall).
-                    wallSide = 'thinZ_portrait_maxZ_swift';
-                    const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
-                    distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
-                    const frontWallZ = maxZ;
-                    entranceZ = frontWallZ;
-                    cameraZ = frontWallZ + distInFront;
-                } else {
-                    // Landscape: keep center-rail (look +Z); works with identity mesh rotation + minZ convention.
-                    wallSide = 'thinZ_centerRail';
-                    const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
-                    distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
-                    const targetZ = innerCenterZ + Math.min(0.12, Math.max(zSpanRaw, 0.02));
-                    entranceZ = targetZ;
-                    cameraZ = targetZ - distInFront;
-                }
+                // Match SharpRoomView.swift when Z span is tiny: still put camera outside maxZ (front wall), any orientation.
+                wallSide = isPortrait ? 'thinZ_portrait_maxZ_swift' : 'thinZ_landscape_maxZ_swift';
+                const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
+                distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                const frontWallZ = maxZ;
+                entranceZ = frontWallZ;
+                cameraZ = frontWallZ + distInFront;
             } else {
                 const FRONT_DIST_K = 0.28;
                 const FRONT_DIST_CAP = 1.2;
                 const depthForStandoff = Math.max(roomDepth, fallbackRoomDepth, zSpanRaw, 0.15);
                 const depthProduct = depthForStandoff * FRONT_DIST_K;
                 distInFront = Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP));
-                if (isPortrait) {
-                    // SharpRoomView.swift: frontWallZ = maxZ, camera at maxZ+dist, target maxZ (look into room -Z).
-                    wallSide = 'maxZ_front_swift_portrait';
-                    entranceZ = maxZ;
-                    cameraZ = maxZ + distInFront;
-                } else if (entranceUseMinZ) {
-                    wallSide = 'minZ';
-                    entranceZ = minZ;
-                    cameraZ = minZ - distInFront;
-                } else {
-                    wallSide = 'maxZ';
-                    entranceZ = maxZ;
-                    cameraZ = maxZ + distInFront;
-                }
+                wallSide = isPortrait ? 'maxZ_front_swift_portrait' : 'maxZ_front_swift_landscape';
+                entranceZ = maxZ;
+                cameraZ = maxZ + distInFront;
             }
             const distDbg = '[SharpRoom_DIST] src=' + frameSource + ' thinZ=' + (thinZSlab ? 1 : 0) + ' sizeXYZ=' + size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3) + ' zSpanRaw=' + zSpanRaw.toFixed(4) + ' distInFront=' + distInFront.toFixed(4) + ' minZ=' + minZ.toFixed(4) + ' maxZ=' + maxZ.toFixed(4) + ' innerZ=' + innerCenterZ.toFixed(4) + ' wallSide=' + wallSide + ' targetZ=' + entranceZ.toFixed(4) + ' cameraZ=' + cameraZ.toFixed(4);
             console.log(distDbg);
@@ -3209,6 +3235,7 @@ class SharpRoomActivity : AppCompatActivity() {
             cameraFramedAt = performance.now();
             needsRender = true;
 
+            window.sendDimensionsToAndroid = sendDimensionsToAndroid;
             function sendDimensionsToAndroid() {
                 if (window.Android && window.Android.onBoxMetricsMeasured) {
                     window.Android.onBoxMetricsMeasured(
@@ -3343,8 +3370,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 const marginBack = 0.02;
                 newX = Math.max(roomBoundsForClamping.minX + marginSide,
                     Math.min(roomBoundsForClamping.maxX - marginSide, newX));
-                // Portrait starts outside maxZ (Swift front-wall view); do not clamp Z down to maxZ (SharpRoomView.swift).
-                if (isPortrait && camera.position.z > roomBoundsForClamping.maxZ) {
+                // Start outside maxZ (front-wall view, portrait and landscape); do not clamp Z down to maxZ.
+                if (camera.position.z > roomBoundsForClamping.maxZ) {
                     newZ = Math.max(roomBoundsForClamping.minZ + marginSide, newZ);
                 } else {
                     newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
@@ -3652,6 +3679,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 if (hasPlausibleOpenSnapshotRoomDims() && !roomDimensionsLockedByTapeCalibration) {
+                    roomDimensionsReceivedFromWebGL = true
+                    isMeasuringRoomDimensions = false
                     LogUtil.i(
                         "SHARP_ROOM_MEAS",
                         "[box3_measured] ignoring legacy Spark width/height; keeping saved SHARP/export dims ${openSnapshotRoomWidth}×${openSnapshotRoomHeight}×${openSnapshotRoomDepth}",
@@ -3659,6 +3688,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 if (roomDimensionsLockedByTapeCalibration) {
+                    roomDimensionsReceivedFromWebGL = true
+                    isMeasuringRoomDimensions = false
                     LogUtil.i(
                         "SHARP_ROOM_MEAS",
                         "[box3_measured] skip overwrite (tape calibration lock); WebGL offered ${width}×${height}, keeping $roomWidth×$roomHeight",
@@ -3691,6 +3722,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
                 roomWidth = finalW
                 roomHeight = finalH
+                roomDimensionsReceivedFromWebGL = true
+                isMeasuringRoomDimensions = false
                 refreshRoomDimensionsDisplay()
                 DebugLogger.d(TAG, "WebGL dimensions applied: ${roomWidth}x${roomHeight} (will persist)")
                 LogUtil.i(
@@ -3720,6 +3753,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 if (hasPlausibleOpenSnapshotRoomDims() && !roomDimensionsLockedByTapeCalibration) {
+                    roomDimensionsReceivedFromWebGL = true
+                    isMeasuringRoomDimensions = false
                     LogUtil.i(
                         "SHARP_ROOM_MEAS",
                         "[box3_metrics] ignoring Spark metrics; keeping saved SHARP/export dims ${openSnapshotRoomWidth}×${openSnapshotRoomHeight}×${openSnapshotRoomDepth} raw=${rawSpanX}×${rawSpanY}×${rawSpanZ}",
@@ -3727,6 +3762,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 if (roomDimensionsLockedByTapeCalibration) {
+                    roomDimensionsReceivedFromWebGL = true
+                    isMeasuringRoomDimensions = false
                     LogUtil.i(
                         "SHARP_ROOM_MEAS",
                         "[box3_metrics] skip overwrite (tape calibration lock); WebGL offered ${width}×${height}×${depth}, keeping $roomWidth×$roomHeight×$roomDepth",
@@ -3763,6 +3800,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 roomWidth = sanitized.first
                 roomHeight = sanitized.second
                 roomDepth = sanitized.third
+                roomDimensionsReceivedFromWebGL = true
+                isMeasuringRoomDimensions = false
                 refreshRoomDimensionsDisplay()
                 DebugLogger.d(
                     TAG,
