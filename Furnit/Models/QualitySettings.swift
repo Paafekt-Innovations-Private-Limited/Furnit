@@ -220,8 +220,12 @@ class QualitySettings: ObservableObject {
             self.selectedMovementSpeed = .normal
         }
 
-        // Load debug mode setting, default to false
+        #if DEBUG
         self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
+        #else
+        self.debugMode = false
+        UserDefaults.standard.set(false, forKey: debugModeKey)
+        #endif
 
         // Load bbox-in-mask threshold setting, default to 0.30
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)

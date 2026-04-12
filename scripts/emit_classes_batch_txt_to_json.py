@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Convert Furnit/Localization/classes_batches_source/batchN/<lang>.txt
+Convert Localization/classes_batches_source/batchN/<lang>.txt
 (100 lines, line i = label for key (N*100 + i)) into
-Furnit/Localization/classes_batches/<lang>/<NNN>.json where NNN == N (zero-padded).
+Localization/classes_batches/<lang>/<NNN>.json where NNN == N (zero-padded).
 
 Batch 0: keys "0".."99"  -> 000.json
 Batch 1: keys "100".."199" -> 001.json
@@ -26,8 +26,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SOURCE_ROOT = REPO / "Furnit" / "Localization" / "classes_batches_source"
-DEST_ROOT = REPO / "Furnit" / "Localization" / "classes_batches"
+SOURCE_ROOT = REPO / "Localization" / "classes_batches_source"
+DEST_ROOT = REPO / "Localization" / "classes_batches"
 
 LOCALES = [
     "ar",

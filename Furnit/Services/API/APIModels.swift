@@ -120,6 +120,7 @@ enum GenerationStatus: Equatable {
 /// Errors that can occur during the 3D generation process
 enum GenerationError: LocalizedError {
     case invalidImage
+    case misconfiguredService
     case uploadFailed(underlying: Error?)
     case networkUnavailable
     case serverError(String)
@@ -133,6 +134,8 @@ enum GenerationError: LocalizedError {
         switch self {
         case .invalidImage:
             return "Could not process the selected image"
+        case .misconfiguredService:
+            return "Room generation is not configured correctly in this build"
         case .uploadFailed(let error):
             if let error = error {
                 return "Upload failed: \(error.localizedDescription)"
@@ -165,6 +168,8 @@ enum GenerationError: LocalizedError {
         switch self {
         case .invalidImage:
             return "Try selecting a different image"
+        case .misconfiguredService:
+            return "Please contact support or install an updated build"
         case .uploadFailed, .downloadFailed:
             return "Check your internet connection and try again"
         case .networkUnavailable:

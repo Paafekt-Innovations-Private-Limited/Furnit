@@ -5,6 +5,11 @@ struct SettingsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) private var dismiss
     @State private var showLogoutConfirmation = false
+    @State private var showDeleteConfirmation = false
+    @State private var showDeleteError = false
+    @State private var showDeleteSuccess = false
+    @State private var deleteErrorMessage = ""
+    @State private var isDeletingAccount = false
     
     // Single Photo Room Dimensions
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
@@ -280,6 +285,7 @@ struct SettingsView: View {
                     .font(.footnote)
                 }
 
+                #if DEBUG
                 // Developer Settings Section
                 Section {
                     Toggle(isOn: $appState.qualitySettings.debugMode) {
@@ -302,6 +308,7 @@ struct SettingsView: View {
                     Text(L10n.Settings.developerFooter)
                         .font(.footnote)
                 }
+                #endif
 
                 // Legal Section
                 Section {
@@ -361,6 +368,13 @@ struct SettingsView: View {
                             Text(user.name)
                                 .foregroundColor(.secondary)
                         }
+
+                        HStack {
+                            Text(L10n.Login.phoneNumber)
+                            Spacer()
+                            Text(user.phoneNumber)
+                                .foregroundColor(.secondary)
+                        }
                     }
 
                     Button(action: {
@@ -373,8 +387,28 @@ struct SettingsView: View {
                                 .foregroundColor(.red)
                         }
                     }
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            if isDeletingAccount {
+                                ProgressView()
+                                    .tint(.red)
+                            } else {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                            }
+                            Text(L10n.Profile.deleteAccount)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .disabled(isDeletingAccount || authManager.isLoading)
                 } header: {
                     Text(L10n.Settings.account)
+                } footer: {
+                    Text("Delete Account removes your sign-in account and local account data from this device.")
+                        .font(.footnote)
                 }
             }
             .navigationTitle(L10n.Settings.title)
@@ -387,6 +421,26 @@ struct SettingsView: View {
             } message: {
                 Text(L10n.Profile.logoutConfirmMessage)
             }
+            .alert(L10n.Profile.deleteAccountConfirmTitle, isPresented: $showDeleteConfirmation) {
+                Button(L10n.Common.cancel, role: .cancel) { }
+                Button(L10n.Common.delete, role: .destructive) {
+                    deleteAccount()
+                }
+            } message: {
+                Text(L10n.Profile.deleteAccountConfirmMessage)
+            }
+            .alert(L10n.Common.error, isPresented: $showDeleteError) {
+                Button(L10n.Common.ok, role: .cancel) { }
+            } message: {
+                Text(deleteErrorMessage)
+            }
+            .alert(L10n.Profile.deleteAccountSuccessTitle, isPresented: $showDeleteSuccess) {
+                Button(L10n.Common.ok) {
+                    dismiss()
+                }
+            } message: {
+                Text(L10n.Profile.deleteAccountSuccessMessage)
+            }
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
             .toolbar {
@@ -395,6 +449,23 @@ struct SettingsView: View {
                         dismiss()
                     }
                 }
+            }
+        }
+    }
+
+    private func deleteAccount() {
+        guard !isDeletingAccount else { return }
+
+        isDeletingAccount = true
+        Task {
+            do {
+                try await authManager.deleteCurrentAccount()
+                isDeletingAccount = false
+                showDeleteSuccess = true
+            } catch {
+                isDeletingAccount = false
+                deleteErrorMessage = error.localizedDescription
+                showDeleteError = true
             }
         }
     }
@@ -508,4 +579,5 @@ struct MovementSpeedOptionView: View {
 #Preview {
     SettingsView()
         .environment(\.appState, AppStateManager.shared)
+        .environmentObject(AuthenticationManager())
 }

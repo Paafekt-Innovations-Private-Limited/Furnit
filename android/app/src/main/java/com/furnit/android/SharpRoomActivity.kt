@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
@@ -70,6 +71,8 @@ import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.FurnitureSegmentationMeanColor
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.SharpRoomDimensionsV7
+import com.furnit.android.utils.SharpRoomDimensionsV7Result
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import com.furnit.android.utils.SplatLoadHint
 import com.furnit.android.utils.SplatLoadHintVector3
@@ -274,6 +277,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room (logging / open path)
     /** When the user applies tape (wall) calibration, do not let WebGL Box3 callbacks overwrite those numbers until recenter. */
     private var roomDimensionsLockedByTapeCalibration: Boolean = false
+    /** True when dimensions came from the shared iOS/Android room_dims_v7 measurement path. */
+    private var roomDimensionsFromRoomDimsV7: Boolean = false
     /** True once at least one `onBoxMetricsMeasured` or `onDimensionsMeasured` callback arrives from WebGL. */
     private var roomDimensionsReceivedFromWebGL: Boolean = false
     /** True while we are waiting for WebGL to report box3 dimensions (ruler tap before WebGL ready). */
@@ -440,9 +445,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 rawOrientation = disk.normalizedOrientation()
                 photoWideAngle = disk.photoWideAngle
                 disk.arDisplayScale?.takeIf { it > 0f }?.let { arDisplayScale = it }
+                roomDimensionsFromRoomDimsV7 = disk.roomDimsApproach?.startsWith("room_dims_v7") == true
                 DebugLogger.d(
                     TAG,
-                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle arDisplayScale=$arDisplayScale"
+                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle arDisplayScale=$arDisplayScale roomDimsApproach=${disk.roomDimsApproach ?: "none"}"
                 )
             }
         }
@@ -715,6 +721,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         // Load the WebGL viewer
         loadWebGLViewer()
+        scheduleRoomDimsV7BackfillIfNeeded()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -728,7 +735,126 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun effRoomCenterY(): Float = roomCenterY * arDisplayScale
     private fun effRoomCenterZ(): Float = roomCenterZ * arDisplayScale
     private fun hasPlausibleOpenSnapshotRoomDims(): Boolean =
-        hasSavedDimensions && openSnapshotRoomWidth >= 2f && openSnapshotRoomHeight >= 2f && openSnapshotRoomDepth >= 1f
+        hasSavedDimensions &&
+            if (roomDimensionsFromRoomDimsV7) {
+                openSnapshotRoomWidth > 0.05f && openSnapshotRoomHeight > 0.05f && openSnapshotRoomDepth > 0.05f
+            } else {
+                openSnapshotRoomWidth >= 2f && openSnapshotRoomHeight >= 2f && openSnapshotRoomDepth >= 1f
+            }
+
+    private fun scheduleRoomDimsV7BackfillIfNeeded() {
+        if (roomDimensionsFromRoomDimsV7) return
+        val folder = roomFolder?.let { File(it) }?.takeIf { it.isDirectory } ?: return
+        val plyFile = plyPath?.let { File(it) }?.takeIf { it.isFile } ?: return
+        lifecycleScope.launch {
+            val measured = withContext(Dispatchers.Default) {
+                val imageSize = readReferenceImageSize(folder)
+                SharpRoomDimensionsV7.measureBest(
+                    plyFile = plyFile,
+                    sourceImageWidthPx = imageSize?.first ?: 0,
+                    sourceImageHeightPx = imageSize?.second ?: 0,
+                    cameraExifFile = File(folder, "camera_exif.json").takeIf { it.isFile },
+                )
+            }
+            if (measured == null) {
+                LogUtil.w(
+                    "SHARP_ROOM_MEAS",
+                    "[ROOM_DIMS_APP] viewer_backfill room_dims_v7 unavailable; keeping current dims $roomWidth×$roomHeight×$roomDepth folder=${folder.absolutePath}",
+                )
+                return@launch
+            }
+
+            val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(
+                measured.width,
+                measured.height,
+                measured.depth,
+            )
+            if (roomDimensionsLockedByTapeCalibration) {
+                LogUtil.i(
+                    "SHARP_ROOM_MEAS",
+                    "[ROOM_DIMS_APP] viewer_backfill skipped; tape calibration lock keeps $roomWidth×$roomHeight×$roomDepth",
+                )
+                return@launch
+            }
+
+            roomWidth = sanitized.first
+            roomHeight = sanitized.second
+            roomDepth = sanitized.third
+            hasSavedDimensions = true
+            roomDimensionsFromRoomDimsV7 = true
+            openSnapshotRoomWidth = roomWidth
+            openSnapshotRoomHeight = roomHeight
+            openSnapshotRoomDepth = roomDepth
+            isMeasuringRoomDimensions = false
+            refreshRoomDimensionsDisplay()
+            reloadPlacementRoomModel()
+
+            withContext(Dispatchers.IO) {
+                persistRoomDimsV7Backfill(folder, measured, sanitized)
+            }
+            LogUtil.i(
+                "SHARP_ROOM_MEAS",
+                "[ROOM_DIMS_APP] viewer_backfill SOURCE=ROOM_DIMS_V7 W=$roomWidth H=$roomHeight D=$roomDepth " +
+                    "approach=${measured.approach} shot=${measured.shotType} folder=${folder.absolutePath}",
+            )
+        }
+    }
+
+    private fun readReferenceImageSize(folder: File): Pair<Int, Int>? {
+        val imageFile = listOf("thumbnail.png", "front_wall.png")
+            .map { File(folder, it) }
+            .firstOrNull { it.isFile } ?: return null
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(imageFile.absolutePath, options)
+        val width = options.outWidth
+        val height = options.outHeight
+        return if (width > 0 && height > 0) width to height else null
+    }
+
+    private fun persistRoomDimsV7Backfill(
+        folder: File,
+        measured: SharpRoomDimensionsV7Result,
+        sanitizedDimensions: Triple<Float, Float, Float>,
+    ) {
+        val previous = RoomFolderMetadata.readFromFolder(folder)
+        val base = previous ?: RoomFolderMetadata.Snapshot(
+            createdAt = folder.lastModified(),
+            type = "sharp",
+            photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+            photoWideAngle = photoWideAngle,
+            previewOnly = isTempSharpRoom,
+        )
+        val next = base.copy(
+            roomWidth = sanitizedDimensions.first,
+            roomHeight = sanitizedDimensions.second,
+            roomDepth = sanitizedDimensions.third,
+            roomDimsApproach = measured.approach,
+            roomSceneWidth = measured.sceneWidth,
+            roomSceneHeight = measured.sceneHeight,
+            roomSceneDepth = measured.sceneDepth,
+        )
+        RoomFolderMetadata.writeToFolder(
+            folder,
+            RoomFolderMetadata.snapshotPreservingYoloFields(folder, next),
+        )
+
+        val metadataFile = File(folder, "metadata.txt")
+        val lines = linkedMapOf<String, String>()
+        if (metadataFile.isFile) {
+            metadataFile.readLines().forEach { line ->
+                val idx = line.indexOf('=')
+                if (idx > 0) lines[line.substring(0, idx).trim()] = line.substring(idx + 1).trim()
+            }
+        }
+        lines["roomWidth"] = sanitizedDimensions.first.toString()
+        lines["roomHeight"] = sanitizedDimensions.second.toString()
+        lines["roomDepth"] = sanitizedDimensions.third.toString()
+        lines["roomDimsApproach"] = measured.approach
+        lines["roomSceneWidth"] = measured.sceneWidth.toString()
+        lines["roomSceneHeight"] = measured.sceneHeight.toString()
+        lines["roomSceneDepth"] = measured.sceneDepth.toString()
+        metadataFile.writeText(lines.entries.joinToString(separator = "\n", postfix = "\n") { (key, value) -> "$key=$value" })
+    }
 
     private fun configureSharpRoomGpuWebView(target: WebView) {
         target.setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -3075,12 +3201,12 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // Keep the SHARP PLY upright in both orientations. Ry=π made landscape read mirrored;
-            // Rx=π fixed that mirror but flipped the room upside down.
+            // Keep landscape upright while correcting the sensor/viewer left-right flip.
+            // Ry=π also flipped depth and Rx=π turned the room upside down, so use X scale only.
             scene.add(splatMesh);
-            splatMesh.scale.set(1, 1, 1);
+            splatMesh.scale.set(isPortrait ? 1 : -1, 1, 1);
             splatMesh.rotation.set(0, 0, 0);
-            console.log('[WebGL] SplatMesh: identity rotation for portrait and landscape');
+            console.log('[WebGL] SplatMesh: identity rotation; landscape scaleX=-1');
             if (!trySplatLoadHintBox()) {
                 reportStage('hint_unavailable', '');
             }

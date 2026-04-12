@@ -2946,6 +2946,7 @@ struct AntimatterSplatView: UIViewRepresentable {
             schemeHandler.plyURL = plyURL
             schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
             config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
+            config.setURLSchemeHandler(BundledWebViewAssetSchemeHandler(), forURLScheme: BundledWebViewAsset.scheme)
 
             // Add message handlers for communication from JS
             config.userContentController.add(context.coordinator, name: "splatLoaded")
@@ -3000,6 +3001,9 @@ struct AntimatterSplatView: UIViewRepresentable {
     private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool, infiniteZoom: Bool) -> String {
         // Camera and framing come from Box3 in the viewer only. No Swift bounds injection.
         logDebug("📐 [WebGL] Framing from Box3 only (no Swift bounds)")
+        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
+        let threeAddonsBaseURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/")
+        let sparkModuleURL = BundledWebViewAsset.assetURLString(for: "spark/spark.module.js")
 
         // SparkJS + THREE.js based Gaussian Splat viewer
         return """
@@ -3030,9 +3034,9 @@ struct AntimatterSplatView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
-                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-                    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
+                    "three": "\(threeModuleURL)",
+                    "three/addons/": "\(threeAddonsBaseURL)",
+                    "@sparkjsdev/spark": "\(sparkModuleURL)"
                 }
             }
             </script>

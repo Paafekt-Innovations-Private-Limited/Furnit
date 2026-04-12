@@ -22,8 +22,14 @@ class Room3DGenerationService: NSObject, ObservableObject {
 
     // MARK: - Configuration
 
-    /// Base URL for the API
-    private let baseURL = "https://cf45ae3674750.notebooks.jarvislabs.net/proxy/8000"
+    /// Base URL for the API, configured in Info.plist for release builds.
+    private lazy var baseURL: URL? = {
+        guard let configuredBaseURL = Bundle.main.object(forInfoDictionaryKey: "Room3DAPIBaseURL") as? String,
+              !configuredBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return URL(string: configuredBaseURL)
+    }()
 
     /// Polling interval for status checks (in seconds)
     private let pollingInterval: TimeInterval = 2.5
@@ -137,9 +143,7 @@ class Room3DGenerationService: NSObject, ObservableObject {
         logDebug("📤 [Room3DGenerationService] Image size: \(imageData.count / 1024) KB")
 
         // Create the request
-        guard let url = URL(string: "\(baseURL)/api/v1/generate") else {
-            throw GenerationError.uploadFailed(underlying: nil)
-        }
+        let url = try apiURL(path: "/api/v1/generate")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -246,9 +250,7 @@ class Room3DGenerationService: NSObject, ObservableObject {
     /// - Parameter jobId: The job ID to check
     /// - Returns: The status response
     private func checkStatus(jobId: String) async throws -> StatusResponse {
-        guard let url = URL(string: "\(baseURL)/api/v1/status/\(jobId)") else {
-            throw GenerationError.statusCheckFailed
-        }
+        let url = try apiURL(path: "/api/v1/status/\(jobId)")
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
@@ -279,9 +281,7 @@ class Room3DGenerationService: NSObject, ObservableObject {
         statusMessage = "Downloading 3D model..."
         downloadProgress = 0.0
 
-        guard let url = URL(string: "\(baseURL)/api/v1/download/\(jobId)") else {
-            throw GenerationError.downloadFailed(underlying: nil)
-        }
+        let url = try apiURL(path: "/api/v1/download/\(jobId)")
 
         // Use download task for large file streaming
         return try await withCheckedThrowingContinuation { continuation in
@@ -350,6 +350,16 @@ class Room3DGenerationService: NSObject, ObservableObject {
         currentUploadTask = nil
         currentDownloadTask = nil
         currentGenerationTask = nil
+    }
+
+    private func apiURL(path: String) throws -> URL {
+        guard let baseURL else {
+            throw GenerationError.misconfiguredService
+        }
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw GenerationError.misconfiguredService
+        }
+        return url
     }
 }
 

@@ -36,6 +36,23 @@ class AuthenticationManager: ObservableObject {
         let phoneNumber: String
     }
 
+    enum AccountDeletionError: LocalizedError {
+        case notAuthenticated
+        case requiresRecentLogin
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "You are already signed out."
+            case .requiresRecentLogin:
+                return "For your security, please sign in again and then try deleting your account once more."
+            case .failed(let message):
+                return message
+            }
+        }
+    }
+
     init() {
         // Delay auth check to ensure Firebase is configured
         DispatchQueue.main.async { [weak self] in
@@ -57,23 +74,25 @@ class AuthenticationManager: ObservableObject {
 
         // Check Firebase auth state first
         if let firebaseUser = Auth.auth().currentUser {
-            // User is signed in with Firebase
-            if let name = userDefaults.string(forKey: userNameKey),
-               let phone = userDefaults.string(forKey: userPhoneKey) {
-                currentUser = User(id: firebaseUser.uid, name: name, phoneNumber: phone)
+            let storedName = userDefaults.string(forKey: userNameKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let storedPhone = userDefaults.string(forKey: userPhoneKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedName = (storedName?.isEmpty == false ? storedName : nil)
+                ?? firebaseUser.displayName
+                ?? "User"
+            let resolvedPhone = (storedPhone?.isEmpty == false ? storedPhone : nil)
+                ?? firebaseUser.phoneNumber
+
+            if let resolvedPhone, !resolvedPhone.isEmpty {
+                currentUser = User(id: firebaseUser.uid, name: resolvedName, phoneNumber: resolvedPhone)
                 isAuthenticated = true
+                persistAuthenticatedUser(currentUser)
                 return
             }
         }
 
-        // Fallback to UserDefaults (for migration or demo)
-        if userDefaults.bool(forKey: authKey),
-           let name = userDefaults.string(forKey: userNameKey),
-           let phone = userDefaults.string(forKey: userPhoneKey) {
-            let userId = userDefaults.string(forKey: userIdKey) ?? UUID().uuidString
-            currentUser = User(id: userId, name: name, phoneNumber: phone)
-            isAuthenticated = true
-        }
+        clearPersistedAuthState(resetSecurityState: false)
+        currentUser = nil
+        isAuthenticated = false
     }
 
     // MARK: - Send OTP
@@ -242,25 +261,16 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Login/Logout
 
     private func loginUser(name: String, phoneNumber: String, userId: String) {
-        // Save to UserDefaults
-        userDefaults.set(true, forKey: authKey)
-        userDefaults.set(name, forKey: userNameKey)
-        userDefaults.set(phoneNumber, forKey: userPhoneKey)
-        userDefaults.set(userId, forKey: userIdKey)
-
         // Update state
         currentUser = User(id: userId, name: name, phoneNumber: phoneNumber)
         isAuthenticated = true
+        persistAuthenticatedUser(currentUser)
 
         AppLogger.authDebug("User logged in: \(name)")
     }
 
     func logout() {
-        // Clear UserDefaults
-        userDefaults.set(false, forKey: authKey)
-        userDefaults.removeObject(forKey: userNameKey)
-        userDefaults.removeObject(forKey: userPhoneKey)
-        userDefaults.removeObject(forKey: userIdKey)
+        clearPersistedAuthState(resetSecurityState: true)
 
         // Sign out from Firebase
         do {
@@ -276,6 +286,42 @@ class AuthenticationManager: ObservableObject {
         verificationID = nil
 
         AppLogger.authDebug("User logged out")
+    }
+
+    @MainActor
+    func deleteCurrentAccount() async throws {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        guard let firebaseUser = Auth.auth().currentUser else {
+            clearPersistedAuthState(resetSecurityState: true)
+            currentUser = nil
+            isAuthenticated = false
+            verificationID = nil
+            throw AccountDeletionError.notAuthenticated
+        }
+
+        do {
+            try await deleteFirebaseUser(firebaseUser)
+        } catch {
+            let deletionError = mapAccountDeletionError(error)
+            errorMessage = deletionError.errorDescription
+            AppLogger.authError("Account deletion failed: \(deletionError.localizedDescription)")
+            throw deletionError
+        }
+
+        clearPersistedAuthState(resetSecurityState: true)
+        do {
+            try Auth.auth().signOut()
+        } catch {
+            AppLogger.authError("Firebase sign out after delete failed: \(error.localizedDescription)")
+        }
+
+        currentUser = nil
+        isAuthenticated = false
+        verificationID = nil
+        AppLogger.authDebug("User account deleted")
     }
 
     // MARK: - Anti-Bot Protection
@@ -388,29 +434,51 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Feature Access Control
 
     /// Check if current user has access to share functionality.
-    /// Only specific phone numbers are allowed to share.
-    /// Note: SwiftUI reads this from toolbar/body on **every** layout pass — do not `print` here except rare deny cases.
+    /// Sharing should be consistent for all authenticated users during review and production use.
     var canShare: Bool {
-        guard let phone = currentUser?.phoneNumber else {
-            return false
+        isAuthenticated && currentUser != nil
+    }
+
+    private func persistAuthenticatedUser(_ user: User?) {
+        guard let user else { return }
+        userDefaults.set(true, forKey: authKey)
+        userDefaults.set(user.name, forKey: userNameKey)
+        userDefaults.set(user.phoneNumber, forKey: userPhoneKey)
+        userDefaults.set(user.id, forKey: userIdKey)
+    }
+
+    private func clearPersistedAuthState(resetSecurityState: Bool) {
+        userDefaults.set(false, forKey: authKey)
+        userDefaults.removeObject(forKey: userNameKey)
+        userDefaults.removeObject(forKey: userPhoneKey)
+        userDefaults.removeObject(forKey: userIdKey)
+
+        if resetSecurityState {
+            userDefaults.removeObject(forKey: otpAttemptsKey)
+            userDefaults.removeObject(forKey: otpLockoutKey)
+            userDefaults.removeObject(forKey: otpRequestCountKey)
+            userDefaults.removeObject(forKey: otpRequestWindowKey)
         }
+    }
 
-        // Normalize phone number for comparison (remove spaces, dashes)
-        let normalizedPhone = phone.filter { $0.isNumber || $0 == "+" }
-
-        // Allowed phone numbers
-        let allowedPhones: Set<String> = [
-            "+917795002599",   // India
-            "+18588595200"     // USA
-        ]
-
-        let allowed = allowedPhones.contains(normalizedPhone)
-
-        // Avoid log spam: only print denials in debug (allowed path is hit constantly from SwiftUI).
-        if AppStateManager.shared.qualitySettings.debugMode, !allowed {
-            print("🔐 [Share] canShare DENIED raw=\(phone) normalized=\(normalizedPhone) allowed=\(allowedPhones)")
+    private func deleteFirebaseUser(_ user: FirebaseAuth.User) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            user.delete { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
         }
+    }
 
-        return allowed
+    private func mapAccountDeletionError(_ error: Error) -> AccountDeletionError {
+        let nsError = error as NSError
+        if nsError.domain == AuthErrorDomain,
+           nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
+            return .requiresRecentLogin
+        }
+        return .failed(nsError.localizedDescription)
     }
 }

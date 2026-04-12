@@ -779,7 +779,7 @@ struct ProfileTab: View {
                 
                 // Account Section
                 Section(L10n.Profile.sectionAccount) {
-                    NavigationLink(destination: EditProfileView()) {
+                    NavigationLink(destination: EditProfileView(user: authManager.currentUser)) {
                         Label(L10n.Profile.editProfile, systemImage: "person.fill")
                     }
                     
@@ -794,7 +794,7 @@ struct ProfileTab: View {
                 
                 // App Settings
                 Section(L10n.Profile.sectionSettings) {
-                    NavigationLink(destination: GeneralSettingsView()) {
+                    NavigationLink(destination: SettingsView().environmentObject(authManager)) {
                         Label(L10n.Profile.general, systemImage: "gearshape.fill")
                     }
                     
@@ -831,22 +831,22 @@ struct ProfileTab: View {
                     }) {
                         HStack {
                             Spacer()
-                            Label("Logout", systemImage: "arrow.right.square")
+                            Label(L10n.Profile.logout, systemImage: "arrow.right.square")
                                 .foregroundColor(.red)
                             Spacer()
                         }
                     }
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle(L10n.Profile.title)
             .navigationBarTitleDisplayMode(.large)
-            .alert("Logout", isPresented: $showLogoutConfirmation) {
-                Button("Cancel", role: .cancel) { }
-                Button("Logout", role: .destructive) {
+            .alert(L10n.Profile.logoutConfirmTitle, isPresented: $showLogoutConfirmation) {
+                Button(L10n.Common.cancel, role: .cancel) { }
+                Button(L10n.Profile.logout, role: .destructive) {
                     authManager.logout()
                 }
             } message: {
-                Text("Are you sure you want to logout?")
+                Text(L10n.Profile.logoutConfirmMessage)
             }
         }
     }
@@ -1010,32 +1010,78 @@ struct CategoryButton: View {
 
 // MARK: - Placeholder Views
 struct EditProfileView: View {
+    let user: AuthenticationManager.User?
+
     var body: some View {
-        Text("Edit Profile")
-            .navigationTitle("Edit Profile")
-            .navigationBarTitleDisplayMode(.inline)
+        Form {
+            Section("Verified Account") {
+                HStack {
+                    Text("Name")
+                    Spacer()
+                    Text(user?.name ?? "Not available")
+                        .foregroundColor(.secondary)
+                }
+
+                HStack {
+                    Text("Phone Number")
+                    Spacer()
+                    Text(user?.phoneNumber ?? "Not available")
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Section("How to update details") {
+                Text("Your account uses verified phone login. If you need help updating account details, contact support from the Help & Support screen.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .navigationTitle(L10n.Profile.editProfile)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct NotificationSettingsView: View {
     var body: some View {
-        Text(L10n.Profile.notificationSettings)
-            .navigationTitle(L10n.Profile.notifications)
-            .navigationBarTitleDisplayMode(.inline)
+        Form {
+            Section("Notifications") {
+                Text("Paafekt does not use marketing push notifications in this build. Important account or support updates are shown in-app during the flows where they matter.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Need help?") {
+                Link("Contact Support", destination: URL(string: "https://paafekt.com/support")!)
+            }
+        }
+        .navigationTitle(L10n.Profile.notifications)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct PrivacySettingsView: View {
     var body: some View {
-        Text(L10n.Profile.privacySettings)
-            .navigationTitle(L10n.Profile.privacy)
-            .navigationBarTitleDisplayMode(.inline)
+        Form {
+            Section("Privacy") {
+                Text("Paafekt uses your verified phone number for sign-in, stores basic account details on-device, and may upload room photos when you request server-based room generation.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Learn more") {
+                Link("Privacy Policy", destination: URL(string: "https://paafekt.com/privacy")!)
+                Link("Terms of Service", destination: URL(string: "https://paafekt.com/terms")!)
+                Link("Support", destination: URL(string: "https://paafekt.com/support")!)
+            }
+        }
+        .navigationTitle(L10n.Profile.privacy)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct GeneralSettingsView: View {
     var body: some View {
-        Text(L10n.Profile.generalSettings)
+        SettingsView()
             .navigationTitle(L10n.Profile.general)
             .navigationBarTitleDisplayMode(.inline)
     }

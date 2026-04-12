@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Merge Furnit/Localization/classes_batches/<lang>/<NNN>.json fragments into
+Merge Localization/classes_batches/<lang>/<NNN>.json fragments into
 Furnit/<lang>.lproj/classes.json.
 
 - English source: Furnit/en.lproj/classes.json (defines full key set).
@@ -20,7 +20,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 FURNIT = REPO / "Furnit"
 EN_PATH = FURNIT / "en.lproj" / "classes.json"
-BATCH_ROOT = FURNIT / "Localization" / "classes_batches"
+BATCH_ROOT = REPO / "Localization" / "classes_batches"
 
 LOCALES = [
     "ar",

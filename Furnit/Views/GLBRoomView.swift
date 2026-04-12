@@ -1020,6 +1020,7 @@ struct GLBWebGLView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.setURLSchemeHandler(BundledWebViewAssetSchemeHandler(), forURLScheme: BundledWebViewAsset.scheme)
 
         // Add message handler for JS -> Swift communication
         config.userContentController.add(context.coordinator, name: "glbViewer")
@@ -1180,6 +1181,8 @@ struct GLBWebGLView: UIViewRepresentable {
     private func generateGLBViewerHTML(glbData: Data) -> String {
         let base64GLB = glbData.base64EncodedString()
         let isPortrait = photoOrientation == .portrait
+        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
+        let threeAddonsBaseURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/")
 
         return """
         <!DOCTYPE html>
@@ -1208,8 +1211,8 @@ struct GLBWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+                    "three": "\(threeModuleURL)",
+                    "three/addons/": "\(threeAddonsBaseURL)"
                 }
             }
             </script>

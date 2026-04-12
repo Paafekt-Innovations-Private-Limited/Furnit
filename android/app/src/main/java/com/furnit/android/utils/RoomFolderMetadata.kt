@@ -32,6 +32,10 @@ object RoomFolderMetadata {
         val roomCenterX: Float? = null,
         val roomCenterY: Float? = null,
         val roomCenterZ: Float? = null,
+        val roomDimsApproach: String? = null,
+        val roomSceneWidth: Float? = null,
+        val roomSceneHeight: Float? = null,
+        val roomSceneDepth: Float? = null,
         /** Isotropic display scale vs raw SHARP bbox (e.g. from ARCore calibration). 1 = unchanged. */
         val arDisplayScale: Float? = null,
         /**
@@ -90,8 +94,14 @@ object RoomFolderMetadata {
         val hadYoloWork = prev.yoloRefImageHeightPx != null ||
             prev.yoloWallHeightFrac != null ||
             prev.yoloFurnitureHeightFracByClass.isNotEmpty()
-        if (!hadYoloWork) return newSnapshot
-        return newSnapshot.copy(
+        val withAdditiveRoomFields = newSnapshot.copy(
+            roomDimsApproach = newSnapshot.roomDimsApproach ?: prev.roomDimsApproach,
+            roomSceneWidth = newSnapshot.roomSceneWidth ?: prev.roomSceneWidth,
+            roomSceneHeight = newSnapshot.roomSceneHeight ?: prev.roomSceneHeight,
+            roomSceneDepth = newSnapshot.roomSceneDepth ?: prev.roomSceneDepth,
+        )
+        if (!hadYoloWork) return withAdditiveRoomFields
+        return withAdditiveRoomFields.copy(
             yoloWallHeightFrac = prev.yoloWallHeightFrac,
             yoloFurnitureHeightFracByClass = prev.yoloFurnitureHeightFracByClass,
             yoloRefImageHeightPx = prev.yoloRefImageHeightPx,
@@ -114,6 +124,10 @@ object RoomFolderMetadata {
         snapshot.roomCenterX?.let { jo.put("roomCenterX", it.toDouble()) }
         snapshot.roomCenterY?.let { jo.put("roomCenterY", it.toDouble()) }
         snapshot.roomCenterZ?.let { jo.put("roomCenterZ", it.toDouble()) }
+        snapshot.roomDimsApproach?.takeIf { it.isNotBlank() }?.let { jo.put("roomDimsApproach", it) }
+        snapshot.roomSceneWidth?.let { if (it > 0f) jo.put("roomSceneWidth", it.toDouble()) }
+        snapshot.roomSceneHeight?.let { if (it > 0f) jo.put("roomSceneHeight", it.toDouble()) }
+        snapshot.roomSceneDepth?.let { if (it > 0f) jo.put("roomSceneDepth", it.toDouble()) }
         snapshot.arDisplayScale?.takeIf { it > 0f }?.let { jo.put("arDisplayScale", it.toDouble()) }
         snapshot.yoloWallHeightFrac?.let { jo.put("yoloWallHeightFrac", it.toDouble()) }
         if (snapshot.yoloFurnitureHeightFracByClass.isNotEmpty()) {
@@ -156,6 +170,10 @@ object RoomFolderMetadata {
             roomCenterX = optFloat("roomCenterX"),
             roomCenterY = optFloat("roomCenterY"),
             roomCenterZ = optFloat("roomCenterZ"),
+            roomDimsApproach = jo.optString("roomDimsApproach", "").takeIf { it.isNotBlank() },
+            roomSceneWidth = optFloat("roomSceneWidth"),
+            roomSceneHeight = optFloat("roomSceneHeight"),
+            roomSceneDepth = optFloat("roomSceneDepth"),
             arDisplayScale = optFloat("arDisplayScale"),
             yoloWallHeightFrac = optFloat("yoloWallHeightFrac"),
             yoloFurnitureHeightFracByClass = furnitureFracs,
@@ -211,6 +229,10 @@ object RoomFolderMetadata {
             roomCenterX = map["roomCenterX"]?.toFloatOrNull(),
             roomCenterY = map["roomCenterY"]?.toFloatOrNull(),
             roomCenterZ = map["roomCenterZ"]?.toFloatOrNull(),
+            roomDimsApproach = map["roomDimsApproach"],
+            roomSceneWidth = map["roomSceneWidth"]?.toFloatOrNull(),
+            roomSceneHeight = map["roomSceneHeight"]?.toFloatOrNull(),
+            roomSceneDepth = map["roomSceneDepth"]?.toFloatOrNull(),
             arDisplayScale = map["arDisplayScale"]?.toFloatOrNull(),
             yoloWallHeightFrac = map["yoloWallHeightFrac"]?.toFloatOrNull(),
             yoloFurnitureHeightFracByClass = emptyMap(),

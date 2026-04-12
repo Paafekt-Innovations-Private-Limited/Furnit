@@ -251,6 +251,11 @@ enum L10n {
         static let logout = "profile.logout".localized
         static let logoutConfirmTitle = "profile.logoutConfirmTitle".localized
         static let logoutConfirmMessage = "profile.logoutConfirmMessage".localized
+        static let deleteAccount = "profile.deleteAccount".localized
+        static let deleteAccountConfirmTitle = "profile.deleteAccountConfirmTitle".localized
+        static let deleteAccountConfirmMessage = "profile.deleteAccountConfirmMessage".localized
+        static let deleteAccountSuccessTitle = "profile.deleteAccountSuccessTitle".localized
+        static let deleteAccountSuccessMessage = "profile.deleteAccountSuccessMessage".localized
         static let sectionAccount = "profile.sectionAccount".localized
         static let sectionSettings = "profile.sectionSettings".localized
         static let sectionAbout = "profile.sectionAbout".localized

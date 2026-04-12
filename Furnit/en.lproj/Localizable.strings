@@ -103,6 +103,11 @@
 "profile.logout" = "Logout";
 "profile.logoutConfirmTitle" = "Logout";
 "profile.logoutConfirmMessage" = "Are you sure you want to logout?";
+"profile.deleteAccount" = "Delete Account";
+"profile.deleteAccountConfirmTitle" = "Delete Account";
+"profile.deleteAccountConfirmMessage" = "Delete your account and remove its local data from this device? This action cannot be undone.";
+"profile.deleteAccountSuccessTitle" = "Account Deleted";
+"profile.deleteAccountSuccessMessage" = "Your account was deleted and you have been signed out.";
 "profile.sectionAccount" = "Account";
 "profile.sectionSettings" = "Settings";
 "profile.sectionAbout" = "About";

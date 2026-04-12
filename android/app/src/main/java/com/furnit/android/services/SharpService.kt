@@ -10,6 +10,8 @@ import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
+import com.furnit.android.utils.SharpRoomDimensionsV7
+import com.furnit.android.utils.SharpRoomDimensionsV7Result
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -270,12 +272,12 @@ class SharpService private constructor(private val context: Context) {
             }
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
-            val deferredRoomWidth = 0f
-            val deferredRoomHeight = 0f
-            val deferredRoomDepth = 0f
+            var resolvedRoomWidth = 0f
+            var resolvedRoomHeight = 0f
+            var resolvedRoomDepth = 0f
             DebugLogger.i(
                 "SHARP_ROOM_MEAS",
-                "[ROOM_DIMS_APP] DEFERRED source=viewer_box3_async " +
+                "[ROOM_DIMS_APP] PENDING source=room_dims_v7_android " +
                     "gaussians=${result.gaussianCount} " +
                     "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
                     "folder=${result.plyFile.parentFile?.absolutePath} classicPly=${result.classicPlyFile.name}",
@@ -290,7 +292,7 @@ class SharpService private constructor(private val context: Context) {
                 TAG,
                 "[SHARP_ORIENTATION] post-infer bitmap_layout=${feedOrientation.value} " +
                     "(SHARP input pixels ${image.width}x${image.height}) " +
-                    "room_dims=deferred_async " +
+                    "room_dims=pending_room_dims_v7 " +
                     "path=${result.plyFile.parentFile?.absolutePath}",
             )
 
@@ -311,6 +313,36 @@ class SharpService private constructor(private val context: Context) {
                 sourcePhotoPath = sourcePhotoPath,
             )
 
+            SharpRoomDimensionsV7.measureBest(
+                plyFile = result.classicPlyFile,
+                sourceImageWidthPx = image.width,
+                sourceImageHeightPx = image.height,
+                cameraExifFile = File(result.plyFile.parentFile!!, "camera_exif.json"),
+            )?.let { roomDimsV7 ->
+                val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(
+                    roomDimsV7.width,
+                    roomDimsV7.height,
+                    roomDimsV7.depth,
+                )
+                resolvedRoomWidth = sanitized.first
+                resolvedRoomHeight = sanitized.second
+                resolvedRoomDepth = sanitized.third
+                persistRoomDimensionsV7(result.plyFile.parentFile!!, roomDimsV7, sanitized)
+                DebugLogger.i(
+                    "SHARP_ROOM_MEAS",
+                    "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 APPROACH=${roomDimsV7.approach} " +
+                        "SHOT=${roomDimsV7.shotType} HAS_FOCAL=${roomDimsV7.usedFocal} " +
+                        "W=${resolvedRoomWidth} H=${resolvedRoomHeight} D=${resolvedRoomDepth} " +
+                        "SCENE_WHD=(${roomDimsV7.sceneWidth},${roomDimsV7.sceneHeight},${roomDimsV7.sceneDepth}) " +
+                        "RAW_WH=(${roomDimsV7.rawWidth},${roomDimsV7.rawHeight}) " +
+                        "folder=${result.plyFile.parentFile?.absolutePath}",
+                )
+            } ?: DebugLogger.i(
+                "SHARP_ROOM_MEAS",
+                "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 unavailable; viewer will keep deferred Box3 fallback " +
+                    "folder=${result.plyFile.parentFile?.absolutePath}",
+            )
+
             if (isCancelled()) {
                 callback.onError("SHARP_CANCELLED")
                 return
@@ -321,9 +353,9 @@ class SharpService private constructor(private val context: Context) {
                 GenerationResult(
                     plyFile = result.plyFile,
                     classicPlyFile = result.classicPlyFile,
-                    roomWidth = deferredRoomWidth,
-                    roomHeight = deferredRoomHeight,
-                    roomDepth = deferredRoomDepth,
+                    roomWidth = resolvedRoomWidth,
+                    roomHeight = resolvedRoomHeight,
+                    roomDepth = resolvedRoomDepth,
                     roomCenterX = result.roomCenterX,
                     roomCenterY = result.roomCenterY,
                     roomCenterZ = result.roomCenterZ
@@ -352,6 +384,50 @@ class SharpService private constructor(private val context: Context) {
      * **0.5× ultra-wide:** When [viewerPhotoWideAngle] is true and orientation was **not** locked by the user,
      * [PhotoOrientation.coercePortraitForUltraWide] maps automatic landscape → portrait (sensor buffer quirk).
      */
+    private fun persistRoomDimensionsV7(
+        roomFolder: File,
+        measured: SharpRoomDimensionsV7Result,
+        sanitizedDimensions: Triple<Float, Float, Float>,
+    ) {
+        val previous = RoomFolderMetadata.readFromFolder(roomFolder)
+        val base = previous ?: RoomFolderMetadata.Snapshot(
+            name = RoomDisplayName.aiRoomWithTimestamp(),
+            createdAt = System.currentTimeMillis(),
+            type = "sharp_executorch_int8",
+            previewOnly = true,
+        )
+        val next = base.copy(
+            roomWidth = sanitizedDimensions.first,
+            roomHeight = sanitizedDimensions.second,
+            roomDepth = sanitizedDimensions.third,
+            roomDimsApproach = measured.approach,
+            roomSceneWidth = measured.sceneWidth,
+            roomSceneHeight = measured.sceneHeight,
+            roomSceneDepth = measured.sceneDepth,
+        )
+        RoomFolderMetadata.writeToFolder(
+            roomFolder,
+            RoomFolderMetadata.snapshotPreservingYoloFields(roomFolder, next),
+        )
+
+        val metadataFile = File(roomFolder, "metadata.txt")
+        val lines = linkedMapOf<String, String>()
+        if (metadataFile.isFile) {
+            metadataFile.readLines().forEach { line ->
+                val idx = line.indexOf('=')
+                if (idx > 0) lines[line.substring(0, idx).trim()] = line.substring(idx + 1).trim()
+            }
+        }
+        lines["roomWidth"] = sanitizedDimensions.first.toString()
+        lines["roomHeight"] = sanitizedDimensions.second.toString()
+        lines["roomDepth"] = sanitizedDimensions.third.toString()
+        lines["roomDimsApproach"] = measured.approach
+        lines["roomSceneWidth"] = measured.sceneWidth.toString()
+        lines["roomSceneHeight"] = measured.sceneHeight.toString()
+        lines["roomSceneDepth"] = measured.sceneDepth.toString()
+        metadataFile.writeText(lines.entries.joinToString(separator = "\n", postfix = "\n") { (key, value) -> "$key=$value" })
+    }
+
     private fun saveMetadata(
         roomFolder: File,
         image: Bitmap,
