@@ -64,6 +64,8 @@ struct MeshRoomView: View {
     /// Ruler tap: show W×H×D chip below top safe area (matches Sharp room dimensions hint).
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @State private var fullVideoFurnitureTapHintVisible = false
     /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
@@ -179,6 +181,7 @@ struct MeshRoomView: View {
 
             // Room dimensions chip (ruler) — same placement idea as ``SharpRoomView``.
             roomDimensionsHintOverlay
+            fullVideoFurnitureTapHintOverlay
 
             // Controls based on orientation
             if photoOrientation == .landscape {
@@ -256,6 +259,7 @@ struct MeshRoomView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                dismissFullVideoFurnitureTapHint()
                 brainArAssistedSizingEnabled = false
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
@@ -269,6 +273,7 @@ struct MeshRoomView: View {
             cancelSnapshotHintTasks()
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
+            dismissFullVideoFurnitureTapHint()
             brainArAssistedSizingEnabled = false
             yoloeService.releaseResources()
             OrientationLockManager.shared.unlock()
@@ -355,6 +360,38 @@ struct MeshRoomView: View {
             .onDisappear { cancelRoomDimensionsHintTasks() }
         }
         .zIndex(13)
+    }
+
+    private var fullVideoFurnitureTapHintOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if fullVideoFurnitureTapHintVisible {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 280)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 12)
+        }
+        .zIndex(105)
+    }
+
+    private func dismissFullVideoFurnitureTapHint() {
+        fullVideoFurnitureTapHintVisible = false
+    }
+
+    private func presentFullVideoFurnitureTapHintIfNeeded() {
+        guard showFullVideoWithIdentifications else { return }
+        fullVideoFurnitureTapHintVisible = true
     }
 
     private func cancelBrainHintTasks() {
@@ -603,6 +640,7 @@ struct MeshRoomView: View {
             brainGestureHintColumn
             Button(action: {
                 if showingFurnitureFit {
+                    dismissFullVideoFurnitureTapHint()
                     showingFurnitureFit = false
                 } else {
                     furnitureFitInitialSegmentationDone = false
@@ -610,6 +648,7 @@ struct MeshRoomView: View {
                     furnitureFitShowIdentifyLivePreview = true
                     selectedFurnitureFitLabels = []
                     showingFurnitureFit = true
+                    presentFullVideoFurnitureTapHintIfNeeded()
                 }
             }) {
                 Image(systemName: "brain.head.profile")
@@ -630,6 +669,7 @@ struct MeshRoomView: View {
         }
         guard canSegmentSelectedFurniture else { return }
         furnitureFitSegmentationMode = .segmentSelected
+        dismissFullVideoFurnitureTapHint()
     }
 
     private var snapshotButtonWithHintAbove: some View {
@@ -648,7 +688,7 @@ struct MeshRoomView: View {
 
     @ViewBuilder
     private var segmentButton: some View {
-        if showingFurnitureFit {
+        if showingFurnitureFit && showFullVideoWithIdentifications {
             Button(action: activateSelectedFurnitureSegmentation) {
                 Text(
                     furnitureFitSegmentationMode == .segmentSelected

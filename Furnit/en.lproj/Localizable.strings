@@ -410,6 +410,7 @@
 "roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
 "roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.";
+"roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
 "roomViewer.segmentFurnitureAction" = "Segment";
 "roomViewer.stopSegmentationAction" = "Stop";
 "roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";

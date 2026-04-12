@@ -398,6 +398,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var userPanOffset: CGPoint = .zero
     /// After user pinches, stop updating AR-assisted auto-scale until primary class changes.
     private var userLockedAssistedOverlayScale: Bool = false
+    /// When true, skip per-frame AR/room/default overlay sizing so manual pinch/min–max is preserved across frames.
+    private var shouldFreezeAutomaticOverlaySizing: Bool {
+        userLockedAssistedOverlayScale || userPinchScale < 0.92 || userPinchScale > 1.08
+    }
     /// Last primary class used for overlay / pinch reset.
     private var lastOverlayPrimaryClassIdx: Int = -1
 
@@ -931,6 +935,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         _ = arDepthSnapshot
         _ = preferRoomRaycastSizing
 
+        if shouldFreezeAutomaticOverlaySizing {
+            applyCurrentOverlayScaleTransform()
+            return
+        }
+
         let arSizingReady =
             arAssistedSizingEnabled &&
             hasARKitAssistedSizingPayload &&
@@ -994,6 +1003,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         metric: PrimaryBboxMetersResult?
     ) {
         _ = metric
+        if shouldFreezeAutomaticOverlaySizing {
+            return
+        }
         if primaryClassIdx != lastOverlayPrimaryClassIdx {
             overlayPresentationMode = .deferredCentered
             stableOverlayMeasurementFrameCount = 0
@@ -1138,6 +1150,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             stableOverlayMeasurementFrameCount = 0
             lastStableOverlayHeightMeters = nil
             lastStableOverlayScale = nil
+        }
+
+        if shouldFreezeAutomaticOverlaySizing {
+            applyCurrentOverlayScaleTransform()
+            return
         }
 
         let bboxWidthImagePx = Float(max(1, bboxMaxX - bboxMinX))
@@ -1381,7 +1398,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         applyCurrentOverlayScaleTransform()
     }
 
-    private func resetOverlayScalesForEmptyMask(clearDetectedCandidates: Bool = true, clearSelections: Bool = false) {
+    private func resetOverlayScalesForEmptyMask(
+        clearDetectedCandidates: Bool = true,
+        clearSelections: Bool = false,
+        resetUserOverlayScale: Bool = true
+    ) {
         invalidatePendingAssistedMeasurement()
         autoScaleFromRoom = 1.0
         autoScaleFromAR = 1.0
@@ -1395,14 +1416,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestEstimatedFurnitureBaseHeightMeters = nil
         latestEstimatedFurnitureBaseARHeightMeters = nil
         didPublishARRefinedFurnitureMetersEstimate = false
-        userPinchScale = 1.0
-        userPanOffset = .zero
-        userLockedAssistedOverlayScale = false
-        lastOverlayPrimaryClassIdx = -1
-        overlayPresentationMode = .deferredCentered
-        stableOverlayMeasurementFrameCount = 0
-        lastStableOverlayHeightMeters = nil
-        lastStableOverlayScale = nil
+        if resetUserOverlayScale {
+            userPinchScale = 1.0
+            userPanOffset = .zero
+            userLockedAssistedOverlayScale = false
+            lastOverlayPrimaryClassIdx = -1
+            overlayPresentationMode = .deferredCentered
+            stableOverlayMeasurementFrameCount = 0
+            lastStableOverlayHeightMeters = nil
+            lastStableOverlayScale = nil
+        }
         smoothedTightPrimaryBbox = nil
         primaryBboxInView = .zero
         if clearDetectedCandidates {
@@ -1583,7 +1606,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestDisplayedCandidates = candidates
         latestDisplayedSelectedCandidateIndex = selectedIndex
 
-        if segmentationMode == .segmentSelected {
+        if segmentationMode == .segmentSelected || !showFullVideoWithIdentifications {
             candidateBboxesInView = []
             detectionBBoxOverlayView.items = []
             return
@@ -2861,57 +2884,72 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        DispatchQueue.main.async {
-            self.updateDetectionOverlay(
-                candidates: candidates,
-                selectedIndex: nil,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-        }
-
-        if segmentationMode == .identifyOnly {
+        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications {
+            // Full-video identifications ON: show bbox overlays only, no mask compositing.
+            let primaryIdxOpt = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide)
             DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                self.resetOverlayScalesForEmptyMask(
+                    clearDetectedCandidates: false,
+                    clearSelections: false,
+                    resetUserOverlayScale: false
+                )
                 self.updateDetectionOverlay(
                     candidates: candidates,
-                    selectedIndex: nil,
+                    selectedIndex: primaryIdxOpt,
                     imageWidth: bufW,
                     imageHeight: bufH,
                     scaleX: scaleX,
                     scaleY: scaleY
                 )
+                if let p = primaryIdxOpt {
+                    self.primaryBboxInView = self.viewRect(
+                        for: candidates[p],
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: scaleX,
+                        scaleY: scaleY
+                    )
+                } else {
+                    self.primaryBboxInView = .zero
+                }
+                self.applyCurrentOverlayScaleTransform()
                 self.finishStartupProgressIfNeeded()
             }
             resetProcessingFlag()
             return
         }
 
-        let pins = selectedPinsSnapshot()
-        let selectedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
-        guard !selectedCandidates.isEmpty else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected instances match current frame (IoU≥\(pinMatchIoUThreshold))") }
-            DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
-                self.updateDetectionOverlay(
-                    candidates: candidates,
-                    selectedIndex: nil,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-            }
-            resetProcessingFlag()
-            return
-        }
+        // Determine selected candidates + primary for mask compositing.
+        let selectedCandidates: [FurnitureFitDetection]
+        let primary: FurnitureFitDetection
+        let primaryIdx: Int
 
-        guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: selectedCandidates, modelSide: onnxSide) else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
+        if segmentationMode == .identifyOnly {
+            // Full-video OFF: auto-select single primary by confidence/area (old behavior).
+            guard let autoIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
+                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no auto-primary among candidates") }
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false, resetUserOverlayScale: false)
+                }
+                resetProcessingFlag()
+                return
+            }
+            primary = candidates[autoIdx]
+            primaryIdx = autoIdx
+            selectedCandidates = [primary]
             DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: autoIdx,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
+            }
+        } else {
+            // segmentSelected: user-pinned selections.
+            DispatchQueue.main.async {
                 self.updateDetectionOverlay(
                     candidates: candidates,
                     selectedIndex: nil,
@@ -2921,14 +2959,59 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     scaleY: scaleY
                 )
             }
-            resetProcessingFlag()
-            return
-        }
-        let primary = selectedCandidates[selectedPrimaryRelativeIndex]
-        guard let primaryIdx = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, primary) >= 0.99 }) else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): primary not found in full candidate list") }
-            resetProcessingFlag()
-            return
+
+            let pins = selectedPinsSnapshot()
+            let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
+            guard !matchedCandidates.isEmpty else {
+                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected instances match current frame (IoU≥\(pinMatchIoUThreshold))") }
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(
+                        clearDetectedCandidates: false,
+                        clearSelections: false,
+                        resetUserOverlayScale: false
+                    )
+                    self.updateDetectionOverlay(
+                        candidates: candidates,
+                        selectedIndex: nil,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: scaleX,
+                        scaleY: scaleY
+                    )
+                }
+                resetProcessingFlag()
+                return
+            }
+
+            guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: matchedCandidates, modelSide: onnxSide) else {
+                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(
+                        clearDetectedCandidates: false,
+                        clearSelections: false,
+                        resetUserOverlayScale: false
+                    )
+                    self.updateDetectionOverlay(
+                        candidates: candidates,
+                        selectedIndex: nil,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: scaleX,
+                        scaleY: scaleY
+                    )
+                }
+                resetProcessingFlag()
+                return
+            }
+            let matched = matchedCandidates[selectedPrimaryRelativeIndex]
+            guard let pIdx = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 }) else {
+                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): primary not found in full candidate list") }
+                resetProcessingFlag()
+                return
+            }
+            primary = matched
+            primaryIdx = pIdx
+            selectedCandidates = matchedCandidates
         }
 
         let maskDetectionsForBuild = selectedCandidates.map {
@@ -4504,6 +4587,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             if userPinchScale > 0.92 && userPinchScale < 1.08 {
                 userPinchScale = 1.0
                 userLockedAssistedOverlayScale = false
+                UIView.animate(withDuration: 0.2) {
+                    self.applyCurrentOverlayScaleTransform()
+                }
+                publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
+            } else {
+                userLockedAssistedOverlayScale = true
                 UIView.animate(withDuration: 0.2) {
                     self.applyCurrentOverlayScaleTransform()
                 }

@@ -45,27 +45,33 @@ enum PhotoOrientation: String, Codable, Hashable {
 
     /// For **saved** SHARP thumbnails and other upright JPEGs: orientation is usually baked to `.up`, so
     /// ``detect(from:)`` would wrongly return `.landscape` for portrait rooms (AR roll then stays landscape-native).
-    /// Uses EXIF 90° tags when present; otherwise infers from pixel aspect of the stored bitmap.
+    ///
+    /// Prefer **logical** width/height from ``UIImage/size`` (orientation is applied by UIKit) so landscape
+    /// captures stay landscape even when on-disk EXIF still says `.left`/`.right` from the capture pipeline.
+    /// Only for ~square images do we fall back to EXIF hints.
     static func detectFromStoredRoomThumbnail(_ image: UIImage) -> PhotoOrientation {
         let exif = image.imageOrientation
         let w = Float(image.size.width * image.scale)
         let h = Float(image.size.height * image.scale)
 
+        guard w > 1, h > 1 else { return .portrait }
+
+        if h > w * 1.05 {
+            logDebug("📐 [Orientation] thumbnail logical \(w)×\(h) exif=\(exif) → portrait")
+            return .portrait
+        }
+        if w > h * 1.05 {
+            logDebug("📐 [Orientation] thumbnail logical \(w)×\(h) exif=\(exif) → landscape")
+            return .landscape
+        }
+
+        // ~square: disambiguate with EXIF (legacy portrait phone storage quirks).
         switch exif {
         case .left, .leftMirrored, .right, .rightMirrored:
-            logDebug("📐 [Orientation] thumbnail EXIF .left/.right → portrait")
+            logDebug("📐 [Orientation] thumbnail ~square exif .left/.right → portrait")
             return .portrait
         case .up, .upMirrored, .down, .downMirrored:
-            guard w > 1, h > 1 else { return .portrait }
-            if h > w * 1.05 {
-                logDebug("📐 [Orientation] thumbnail upright bitmap \(w)×\(h) → portrait")
-                return .portrait
-            }
-            if w > h * 1.05 {
-                logDebug("📐 [Orientation] thumbnail upright bitmap \(w)×\(h) → landscape")
-                return .landscape
-            }
-            logDebug("📐 [Orientation] thumbnail ~square \(w)×\(h) → square")
+            logDebug("📐 [Orientation] thumbnail ~square exif .up/.down → square")
             return .square
         @unknown default:
             return .portrait

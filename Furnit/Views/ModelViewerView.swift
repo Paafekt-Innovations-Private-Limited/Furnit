@@ -43,6 +43,8 @@ struct ModelViewerView: View {
     
     // Furniture hint
     @State private var showFurnitureHint = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @State private var fullVideoFurnitureTapHintVisible = false
 
     @State private var isCapturingSnapshot = false
 
@@ -118,6 +120,25 @@ struct ModelViewerView: View {
                         portraitControls
                     }
                 }
+
+                if fullVideoFurnitureTapHintVisible {
+                    VStack {
+                        Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 280)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                            .padding(.top, 12)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+                    .opacity(isCapturingSnapshot ? 0 : 1)
+                    .zIndex(9002)
+                }
                 
                 // TOPMOST BACK BUTTON - ALWAYS ON TOP
                 VStack {
@@ -165,6 +186,7 @@ struct ModelViewerView: View {
                                 showFurnitureHint = false
                                 
                                 if showingFurnitureFit {
+                                    dismissFullVideoFurnitureTapHint()
                                     showingFurnitureFit = false
                                 } else {
                                     logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
@@ -184,6 +206,7 @@ struct ModelViewerView: View {
                                         logDebug("BRAIN FLOW: showing FurnitureFit overlay")
                                         self.furnitureFitInitialSegmentationDone = false
                                         self.showingFurnitureFit = true
+                                        self.presentFullVideoFurnitureTapHintIfNeeded()
                                     }
                                 }
                             }) {
@@ -196,7 +219,7 @@ struct ModelViewerView: View {
                             .contentShape(Circle())
                             .frame(width: 76, height: 76)
 
-                            if showingFurnitureFit {
+                            if showingFurnitureFit && showFullVideoWithIdentifications {
                                 Button(action: {
                                     if furnitureFitSegmentationMode == .segmentSelected {
                                         furnitureFitSegmentationMode = .identifyOnly
@@ -204,6 +227,7 @@ struct ModelViewerView: View {
                                     } else {
                                         guard canSegmentSelectedFurniture else { return }
                                         furnitureFitSegmentationMode = .segmentSelected
+                                        dismissFullVideoFurnitureTapHint()
                                     }
                                 }) {
                                     Text(
@@ -276,6 +300,7 @@ struct ModelViewerView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
             } else {
+                dismissFullVideoFurnitureTapHint()
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
                 selectedFurnitureFitLabels = []
@@ -300,8 +325,18 @@ struct ModelViewerView: View {
             }
         }
         .onDisappear {
+            dismissFullVideoFurnitureTapHint()
             OrientationLockManager.shared.unlock()
         }
+    }
+
+    private func dismissFullVideoFurnitureTapHint() {
+        fullVideoFurnitureTapHintVisible = false
+    }
+
+    private func presentFullVideoFurnitureTapHintIfNeeded() {
+        guard showFullVideoWithIdentifications else { return }
+        fullVideoFurnitureTapHintVisible = true
     }
 
     // MARK: - Overlays & Controls
@@ -483,6 +518,7 @@ struct ModelViewerView: View {
                 showFurnitureHint = false
                 
                 if showingFurnitureFit {
+                    dismissFullVideoFurnitureTapHint()
                     showingFurnitureFit = false
                     furnitureFitEstimatedHeightM = nil
                 } else {
@@ -498,6 +534,7 @@ struct ModelViewerView: View {
                     // Wait briefly for snapshot to complete
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         self.showingFurnitureFit = true
+                        self.presentFullVideoFurnitureTapHintIfNeeded()
                     }
                 }
             }) {

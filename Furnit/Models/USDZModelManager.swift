@@ -1773,27 +1773,37 @@ class USDZModelManager: ObservableObject {
             (!fileName.hasSuffix("_classic") && !fileName.hasSuffix("_3dgs") && FileManager.default.fileExists(atPath: legacyClassicSidecarURL.path))
         )
 
-        // Opening from list: AR roll uses `photoOrientation`. Prefer EXIF from saved thumbnail (same source as SHARP)
-        // when present so orientation matches creation even if `.meta` defaulted to portrait or was stale.
+        // Opening from list: AR roll uses `photoOrientation`. Prefer thumbnail inference when present so orientation
+        // matches creation if `.meta` defaulted to portrait or was stale — but do **not** overwrite an explicit
+        // saved `landscape` with a mistaken `portrait` from a thumbnail EXIF/layout quirk.
         if let thumbURL = savedRoomThumbnailURL(stem: fileName) ?? (canonicalStem != fileName ? savedRoomThumbnailURL(stem: canonicalStem) : nil),
            let image = UIImage(contentsOfFile: thumbURL.path) {
             let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
-            if fromThumb != normalizedBase.orientation {
+            let reconciled: PhotoOrientation
+            if normalizedBase.orientation == .landscape && fromThumb == .portrait {
+                reconciled = .landscape
                 if AppStateManager.shared.qualitySettings.debugMode {
-                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) → thumbnail=\(fromThumb.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
+                    logDebug("📐 [USDZModelManager] PLY list orientation: keep meta landscape over thumbnail portrait (\(thumbURL.lastPathComponent))")
+                }
+            } else {
+                reconciled = fromThumb
+            }
+            if reconciled != normalizedBase.orientation {
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) → \(reconciled.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
                 }
                 try? mergePhotoOrientationIntoSavedRoomMetadata(
                     fileName: fileName,
                     modelFileExtension: "ply",
-                    photoOrientation: fromThumb
+                    photoOrientation: reconciled
                 )
                 DispatchQueue.main.async { [weak self] in
                     self?.refreshModels()
                 }
             } else if AppStateManager.shared.qualitySettings.debugMode {
-                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) matches thumbnail (\(thumbURL.lastPathComponent))")
+                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) matches reconciled thumbnail (\(thumbURL.lastPathComponent))")
             }
-            return normalizedBase.replacingOrientation(fromThumb)
+            return normalizedBase.replacingOrientation(reconciled)
         }
 
         return normalizedBase

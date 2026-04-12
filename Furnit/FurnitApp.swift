@@ -119,6 +119,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("🔥 [AppDelegate] didFinishLaunching END")
         }
 
+        application.registerForRemoteNotifications()
+        if debugMode {
+            print("🔥 [AppDelegate] Requested APNs registration for Firebase Phone Auth")
+        }
+
         return true
     }
 
@@ -188,11 +193,8 @@ struct FurnitApp: App {
     @StateObject private var appStateManager = AppStateManager.shared
 
     init() {
-        // SwiftUI runs `App.init()` before `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
-        // Firebase Core logs I-COR000003 if anything touches Firebase first; configure here so the default app exists immediately.
-        if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
-        }
+        // Firebase is configured in AppDelegate so Phone Auth swizzling and APNs forwarding
+        // are attached to the standard UIApplication lifecycle before OTP starts.
         _authManager = StateObject(wrappedValue: AuthenticationManager())
     }
 

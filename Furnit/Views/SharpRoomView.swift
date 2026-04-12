@@ -294,6 +294,8 @@ struct SharpRoomView: View {
     @State private var cameraSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @State private var fullVideoFurnitureTapHintVisible = false
     @State private var measuredRoomDimensions: MeasuredPlyRoomDimensions?
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -528,6 +530,7 @@ struct SharpRoomView: View {
                 yoloeService.ensureModelLoaded()
                 updateRoomPlacementIntelligence()
             } else {
+                dismissFullVideoFurnitureTapHint()
                 brainArAssistedSizingEnabled = false
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
@@ -583,6 +586,7 @@ struct SharpRoomView: View {
             cancelBrainHintTasks()
             cancelCameraSizingHintTasks()
             cancelRoomDimensionsHintTasks()
+            dismissFullVideoFurnitureTapHint()
             OrientationLockManager.shared.unlock()
             splatMeasurementHost.setModalHeavyWorkPaused(false)
             SHARPService.shared.releaseResources()
@@ -721,6 +725,7 @@ struct SharpRoomView: View {
 
     private func toggleFurnitureFit() {
         if showingFurnitureFit {
+            dismissFullVideoFurnitureTapHint()
             showingFurnitureFit = false
         } else {
             furnitureFitInitialSegmentationDone = false
@@ -729,7 +734,17 @@ struct SharpRoomView: View {
             selectedFurnitureFitLabels = []
             SHARPService.shared.releaseResources()
             showingFurnitureFit = true
+            presentFullVideoFurnitureTapHintIfNeeded()
         }
+    }
+
+    private func dismissFullVideoFurnitureTapHint() {
+        fullVideoFurnitureTapHintVisible = false
+    }
+
+    private func presentFullVideoFurnitureTapHintIfNeeded() {
+        guard showFullVideoWithIdentifications else { return }
+        fullVideoFurnitureTapHintVisible = true
     }
 
     private func activateSelectedFurnitureSegmentation() {
@@ -740,6 +755,7 @@ struct SharpRoomView: View {
         }
         guard canSegmentSelectedFurniture else { return }
         furnitureFitSegmentationMode = .segmentSelected
+        dismissFullVideoFurnitureTapHint()
     }
 
     private func cancelPinchHintTasks() {
@@ -1154,6 +1170,30 @@ struct SharpRoomView: View {
         .zIndex(104)
     }
 
+    private var fullVideoFurnitureTapHintOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if fullVideoFurnitureTapHintVisible {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 280)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 12)
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(105)
+    }
+
     /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
@@ -1244,7 +1284,7 @@ struct SharpRoomView: View {
 
     @ViewBuilder
     private var segmentButton: some View {
-        if showingFurnitureFit {
+        if showingFurnitureFit && showFullVideoWithIdentifications {
             Button(action: activateSelectedFurnitureSegmentation) {
                 Text(
                     furnitureFitSegmentationMode == .segmentSelected
@@ -2040,6 +2080,7 @@ struct SharpRoomView: View {
                 cameraButtonsOverlay
                 topTrailingARSizingOverlay
                 roomDimensionsHintOverlay
+                fullVideoFurnitureTapHintOverlay
             }
             if isLoading { loadingOverlayView }
             errorOverlayView
