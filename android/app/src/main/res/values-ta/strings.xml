@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">நீங்கள் 1000 அறைகள் வரை உருவாக்கலாம். புதியவற்றுக்கு இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை மற்றும் பயன்படுத்திய சேமிப்பு முகப்புத் திரையின் மேலே காட்டப்படும்.</string>
     <string name="faq_furniture_segmentation">தளபாட பிரிப்பு</string>
     <string name="faq_what_is_segmentation">தளபாட பிரிப்பு என்றால் என்ன?</string>
-    <string name="faq_what_is_segmentation_answer">தளபாட பிரிப்பு AI ஐப் பயன்படுத்தி உங்கள் புகைப்படங்களில் தளபாடங்களை அடையாளம் கண்டு பிரிக்கிறது, ஒவ்வொரு பொருளும் உங்கள் 3D அறையில் எப்படி பொருந்தும் என்பதைக் காண அனுமதிக்கிறது.</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation இப்போது live room viewer-இலிருந்தே செயல்படுகிறது. முதலில் detected labels-ஐ தேர்வு செய்யுங்கள்; பிறகு Segment தேர்ந்தெடுத்த furniture items-க்கு மட்டும் cut-out overlay உருவாக்கும், 3D அறையில் பொருத்தத்தை பார்க்க.</string>
     <string name="faq_how_to_segment">புகைப்படத்திலிருந்து தளபாடங்களை எப்படி பிரிப்பது?</string>
-    <string name="faq_how_to_segment_answer">உங்கள் 3D அறையைப் பார்க்கும் போது segmentation தொடங்க brain icon-ஐ தட்டவும். அதன் பிறகு furniture-ஐ நோக்கி camera-ஐ திருப்பி live detection மற்றும் extracted furniture overlay-ஐ பார்க்கலாம்.</string>
+    <string name="faq_how_to_segment_answer">Room viewer-ல் brain icon-ஐ தட்டவும், camera-ஐ furniture-க்கு நோக்கி வைத்துக் கொள்ளவும், ஒரு அல்லது பல detected labels-ஐ தேர்வு செய்து Segment தட்டவும். Live identifications-க்கு திரும்ப Stop தட்டவும்.</string>
     <string name="faq_not_detected">என் தளபாடங்கள் ஏன் கண்டறியப்படவில்லை?</string>
     <string name="faq_not_detected_answer">தளபாட கண்டறிதல் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படங்களில் தளபாடங்கள் தெளிவாகத் தெரியும்போது சிறப்பாக செயல்படுகிறது. தளபாடங்கள் பகுதியளவு மறைக்கப்படவில்லை அல்லது பின்னணியுடன் கலக்கவில்லை என்பதை உறுதிப்படுத்தவும்.</string>
     <string name="faq_multiple_pieces">பல தளபாடங்களை பிரிக்க முடியுமா?</string>
@@ -169,7 +169,7 @@
     <string name="faq_how_to_view">என் 3D அறையை எப்படி பார்ப்பது?</string>
     <string name="faq_how_to_view_answer">3D பார்வையாளரைத் திறக்க முகப்பு திரையில் எந்த அறையையும் தட்டவும். தொடு சைகைகளைப் பயன்படுத்தி அறையை சுழற்றலாம், பெரிதாக்கலாம் மற்றும் நகர்த்தலாம்.</string>
     <string name="faq_how_to_place">என் அறையில் தளபாடங்களை எப்படி வைப்பது?</string>
-    <string name="faq_how_to_place_answer">தளபாடங்களைப் பிரித்த பிறகு, உங்கள் அறையில் சேர்க்க ஒரு பொருளைத் தட்டவும். நிலைநிறுத்த இழுக்கலாம், அளவை மாற்ற பிஞ்ச் செய்யலாம், திசையை சரிசெய்ய சுழற்றலாம்.</string>
+    <string name="faq_how_to_place_answer">Segment தட்டிய பிறகு தேர்ந்தெடுத்த furniture அறையில் overlay ஆகத் தெரியும். இடமாற்ற drag செய்யவும், அளவை மாற்ற pinch செய்யவும், திசை மாற்ற rotate செய்யவும்.</string>
     <string name="faq_sample_room">என்னுடையதற்கு பதிலாக மாதிரி அறையைப் பயன்படுத்த முடியுமா?</string>
     <string name="faq_sample_room_answer">ஆம்! பயன்பாடு பரிசோதிக்க மாதிரி அறைகளை வழங்குகிறது. முதலில் உங்கள் சொந்த அறையை உருவாக்காமல் தளபாட வைப்பை முயற்சிக்க ஆராய் பிரிவிலிருந்து அவற்றை அணுகவும்.</string>
     <string name="faq_accuracy">3D மாதிரி எவ்வளவு துல்லியமானது?</string>
@@ -178,7 +178,7 @@
     <string name="faq_adjust_dimensions_answer">ஆம், அமைப்புகளுக்குச் சென்று அறை பரிமாண விருப்பங்களைக் கண்டறியவும், அங்கு உருவாக்கப்பட்ட அறையின் அளவு மற்றும் விகிதாச்சாரங்களை நுணுக்கமாக சரிசெய்யலாம்.</string>
     <string name="faq_furniture_measurements">தளபாடம் &amp; அளவீடுகள்</string>
     <string name="faq_ar_assisted_sizing">AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?</string>
-    <string name="faq_ar_assisted_sizing_answer">முதலில் segmentation தொடங்க brain icon-ஐ தட்டவும், பிறகு sizing control-ஐ பயன்படுத்தவும். ARCore depth ஆதரவு உள்ள போன்களில் app live camera depth பயன்படுத்தி இன்னும் இயல்பான furniture size-ஐ காட்டும். AR depth இல்லாத போன்களில் இது ஒரு பொதுவான proportion-based estimate-க்கு மாறும்; ஆகவே furniture அளவீடுகள் துல்லியமாக இருக்காது.</string>
+    <string name="faq_ar_assisted_sizing_answer">முதலில் brain icon-ஐ தட்டி detected items-ஐ தேர்வு செய்யுங்கள், பிறகு Segment தட்டுங்கள். Room-relative scale வேண்டும் என்றால் sizing control பயன்படுத்துங்கள். AR/depth support உள்ள போன்களில் app live camera depth மூலம் இன்னும் realistic furniture size தரும்; depth இல்லையெனில் furniture measurements approximate ஆகும்.</string>
     <string name="faq_measurement_pill">சிறிய அளவீட்டுக் குறிப்பு என்ன?</string>
     <string name="faq_measurement_pill_answer">Furni size pill என்பது sizing mode on ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தெரியும். room viewer-ல் room measurement-களும் தோன்றலாம். non-AR போன்களில் இந்த reading-கள், குறிப்பாக furniture-க்கு, குறைவாக நம்பகமானவை.</string>
     <string name="faq_reset_overlay_scale">முகமூடி தவறாக பெரிதாக்கப்பட்டது போல் தெரிகிறது — என்ன செய்வது?</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">புகைப்படத்திலிருந்து அறை உருவாக்கு</string>
     <string name="faq_ai_features">AI அம்சங்கள்</string>
     <string name="faq_what_is_brain_icon">மூளை ஐகான் என்ன செய்கிறது?</string>
-    <string name="faq_what_is_brain_icon_answer">மூளை ஐகான் SmartyPants-ஐ செயல்படுத்துகிறது - AI-இயக்கும் பொருள் கண்டறிதல் அம்சம். இது நிகழ்நேரத்தில் தளபாடங்கள் மற்றும் பொருட்களை அடையாளம் காண உங்கள் கேமராவைப் பயன்படுத்துகிறது, கண்டறியப்பட்ட உருப்படிகளைச் சுற்றி லேபிள்கள் மற்றும் பவுண்டிங் பாக்ஸ்களைக் காட்டுகிறது.</string>
+    <string name="faq_what_is_brain_icon_answer">மூளை ஐகான் SmartyPants identify mode-ஐ தொடங்குகிறது. இது live camera மூலம் furniture மற்றும் objects-ஐ கண்டுபிடித்து labels மற்றும் boxes காட்டும்; Segment தட்டுவதற்கு முன் ஒரு அல்லது பல labels தேர்வு செய்யலாம்.</string>
     <string name="faq_how_to_screenshot">ஸ்கிரீன்ஷாட் எப்படி எடுப்பது?</string>
     <string name="faq_how_to_screenshot_answer">SmartyPants செயலில் இருக்கும்போது (மூளை ஐகான் பச்சை), கீழே-வலதுபுறத்தில் பகிர் ஐகான் தோன்றும். AI கண்டறிதல்களுடன் பார்வையின் ஸ்கிரீன்ஷாட்டை உங்கள் புகைப்பட நூலகத்தில் சேமிக்க அதைத் தட்டவும்.</string>
     <string name="faq_how_to_save_room">அறையை எப்படி சேமிப்பது?</string>

@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">आप 1000 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।</string>
     <string name="faq_furniture_segmentation">फर्नीचर सेगमेंटेशन</string>
     <string name="faq_what_is_segmentation">फर्नीचर सेगमेंटेशन क्या है?</string>
-    <string name="faq_what_is_segmentation_answer">फर्नीचर सेगमेंटेशन AI का उपयोग करके आपकी फोटो में फर्नीचर आइटम की पहचान करता है और उन्हें अलग करता है, जिससे आप देख सकते हैं कि प्रत्येक टुकड़ा आपके 3D कमरे में कैसे फिट होगा।</string>
+    <string name="faq_what_is_segmentation_answer">फर्नीचर सेगमेंटेशन अब लाइव रूम व्यूअर से काम करता है। पहले detected labels चुनें, फिर Segment सिर्फ चुने हुए फर्नीचर आइटम के लिए cut-out overlay बनाता है ताकि आप 3D कमरे में फिट देख सकें।</string>
     <string name="faq_how_to_segment">फोटो से फर्नीचर कैसे सेगमेंट करें?</string>
-    <string name="faq_how_to_segment_answer">अपना 3D कमरा देखते समय segmentation शुरू करने के लिए brain icon पर टैप करें। फिर फर्नीचर की ओर कैमरा करें ताकि live detection और extracted furniture overlay दिखे।</string>
+    <string name="faq_how_to_segment_answer">रूम व्यूअर में ब्रेन आइकन टैप करें, कैमरा फर्नीचर की ओर करें, एक या अधिक detected labels चुनें, फिर Segment टैप करें। लाइव पहचान पर लौटने के लिए Stop टैप करें।</string>
     <string name="faq_not_detected">मेरा फर्नीचर क्यों नहीं पहचाना जा रहा?</string>
     <string name="faq_not_detected_answer">फर्नीचर पहचान स्पष्ट, अच्छी रोशनी वाली फोटो में सबसे अच्छा काम करती है जहां फर्नीचर स्पष्ट रूप से दिखाई देता है। सुनिश्चित करें कि फर्नीचर आंशिक रूप से छिपा नहीं है या पृष्ठभूमि के साथ मिश्रित नहीं है।</string>
     <string name="faq_multiple_pieces">क्या मैं एक से अधिक फर्नीचर पीस सेगमेंट कर सकता हूं?</string>
@@ -169,7 +169,7 @@
     <string name="faq_how_to_view">अपना 3D कमरा कैसे देखें?</string>
     <string name="faq_how_to_view_answer">3D व्यूअर खोलने के लिए अपनी होम स्क्रीन पर किसी भी कमरे पर टैप करें। आप टच जेस्चर का उपयोग करके घुमा सकते हैं, ज़ूम कर सकते हैं और पैन कर सकते हैं।</string>
     <string name="faq_how_to_place">अपने कमरे में फर्नीचर कैसे रखें?</string>
-    <string name="faq_how_to_place_answer">फर्नीचर सेगमेंट करने के बाद, इसे अपने कमरे में जोड़ने के लिए फर्नीचर पीस पर टैप करें। फिर आप इसे स्थिति देने के लिए खींच सकते हैं, आकार बदलने के लिए पिंच कर सकते हैं, और इसकी दिशा समायोजित करने के लिए घुमा सकते हैं।</string>
+    <string name="faq_how_to_place_answer">Segment टैप करने के बाद चुना हुआ फर्नीचर कमरे में overlay के रूप में दिखता है। पोजिशन करने के लिए ड्रैग करें, आकार बदलने के लिए पिंच करें, और दिशा बदलने के लिए रोटेट करें।</string>
     <string name="faq_sample_room">क्या मैं अपने बजाय सैंपल रूम उपयोग कर सकता हूं?</string>
     <string name="faq_sample_room_answer">हां! ऐप प्रयोग करने के लिए सैंपल रूम प्रदान करता है। पहले अपना कमरा बनाए बिना फर्नीचर प्लेसमेंट आज़माने के लिए एक्सप्लोर सेक्शन से उन्हें एक्सेस करें।</string>
     <string name="faq_accuracy">3D मॉडल कितना सटीक है?</string>
@@ -178,7 +178,7 @@
     <string name="faq_adjust_dimensions_answer">हां, सेटिंग्स पर जाएं और कमरे के आयाम विकल्प खोजें जहां आप अपने जनरेटेड रूम के आकार और अनुपात को फाइन-ट्यून कर सकते हैं।</string>
     <string name="faq_furniture_measurements">फर्नीचर और माप</string>
     <string name="faq_ar_assisted_sizing">AR-सहायता वाला फर्नीचर साइज़िंग क्या है?</string>
-    <string name="faq_ar_assisted_sizing_answer">पहले segmentation शुरू करने के लिए brain icon पर टैप करें, फिर sizing control का इस्तेमाल करें। ARCore depth वाले फ़ोनों पर ऐप live camera depth का उपयोग करके अधिक वास्तविक furniture size दिखाती है। AR depth न होने पर यह एक मोटे proportion-based estimate पर लौटती है, इसलिए furniture measurement बिल्कुल exact नहीं होती।</string>
+    <string name="faq_ar_assisted_sizing_answer">पहले ब्रेन आइकन टैप करें, detected items चुनें, फिर Segment टैप करें। कमरे के अनुपात में scale चाहिए तो sizing control इस्तेमाल करें। AR/depth support वाले फोन पर ऐप live camera depth से अधिक realistic furniture size देती है; depth न होने पर furniture measurements approximate होते हैं।</string>
     <string name="faq_measurement_pill">छोटा माप रीडआउट क्या है?</string>
     <string name="faq_measurement_pill_answer">Furni size pill तभी दिखाई देती है जब sizing mode चालू हो और ऐप के पास उपयोगी live height estimate हो। room viewer में room measurement भी दिख सकती है। non-AR फ़ोनों पर ये रीडिंग, खासकर furniture के लिए, कम भरोसेमंद होती हैं।</string>
     <string name="faq_reset_overlay_scale">मास्क गलत ज़ूम लग रहा है—क्या करें?</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">फोटो से कमरा बनाएं</string>
     <string name="faq_ai_features">AI सुविधाएं</string>
     <string name="faq_what_is_brain_icon">ब्रेन आइकन क्या करता है?</string>
-    <string name="faq_what_is_brain_icon_answer">ब्रेन आइकन SmartyPants को सक्रिय करता है - एक AI-संचालित ऑब्जेक्ट डिटेक्शन फीचर। यह रियल-टाइम में फर्नीचर और वस्तुओं की पहचान करने के लिए आपके कैमरे का उपयोग करता है, पहचाने गए आइटम के चारों ओर लेबल और बाउंडिंग बॉक्स दिखाता है।</string>
+    <string name="faq_what_is_brain_icon_answer">ब्रेन आइकन SmartyPants identify mode शुरू करता है। यह लाइव कैमरा से फर्नीचर और वस्तुओं को ढूँढता है, लेबल और बॉक्स दिखाता है, और Segment टैप करने से पहले आपको एक या अधिक लेबल चुनने देता है।</string>
     <string name="faq_how_to_screenshot">स्क्रीनशॉट कैसे लें?</string>
     <string name="faq_how_to_screenshot_answer">जब SmartyPants सक्रिय हो (ब्रेन आइकन हरा), नीचे-दाईं ओर एक शेयर आइकन दिखाई देता है। AI डिटेक्शन के साथ व्यू का स्क्रीनशॉट अपनी फोटो लाइब्रेरी में सेव करने के लिए इसे टैप करें।</string>
     <string name="faq_how_to_save_room">रूम कैसे सेव करें?</string>

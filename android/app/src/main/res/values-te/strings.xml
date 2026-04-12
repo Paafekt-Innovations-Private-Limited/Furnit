@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">మీరు 1000 గదుల వరకు సృష్టించవచ్చు. కొత్త గదుల కోసం స్థలం కోసం పాత గదులను తొలగించండి. గది సంఖ్య మరియు ఉపయోగించిన నిల్వ మీ హోమ్ స్క్రీన్ పైభాగంలో చూపబడుతుంది.</string>
     <string name="faq_furniture_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్</string>
     <string name="faq_what_is_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?</string>
-    <string name="faq_what_is_segmentation_answer">ఫర్నిచర్ సెగ్మెంటేషన్ AI ఉపయోగించి మీ ఫోటోలలో ఫర్నిచర్‌ను గుర్తించి వేరు చేస్తుంది, ప్రతి ముక్క మీ 3D గదిలో ఎలా సరిపోతుందో చూడటానికి అనుమతిస్తుంది.</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation ఇప్పుడు live room viewer నుంచే పనిచేస్తుంది. ముందుగా detected labels ఎంచుకోండి; తర్వాత Segment ఎంచుకున్న furniture items కోసం మాత్రమే cut-out overlay సృష్టిస్తుంది, 3D గదిలో fit ఎలా ఉందో చూడడానికి.</string>
     <string name="faq_how_to_segment">ఫోటో నుండి ఫర్నిచర్‌ను ఎలా సెగ్మెంట్ చేయాలి?</string>
-    <string name="faq_how_to_segment_answer">మీ 3D గదిని చూస్తున్నప్పుడు segmentation ప్రారంభించడానికి brain icon పై ట్యాప్ చేయండి. ఆ తర్వాత furniture వైపు camera చూపించి live detection మరియు extracted furniture overlay చూడండి.</string>
+    <string name="faq_how_to_segment_answer">Room viewer లో brain icon ట్యాప్ చేసి, camera ను furniture వైపు చూపించి, ఒకటి లేదా ఎక్కువ detected labels ఎంచుకుని, తర్వాత Segment ట్యాప్ చేయండి. Live identifications కు తిరిగి రావడానికి Stop ట్యాప్ చేయండి.</string>
     <string name="faq_not_detected">నా ఫర్నిచర్ ఎందుకు గుర్తించబడలేదు?</string>
     <string name="faq_not_detected_answer">ఫర్నిచర్ డిటెక్షన్ స్పష్టమైన, మంచి వెలుతురు ఫోటోలలో ఫర్నిచర్ స్పష్టంగా కనిపించినప్పుడు బాగా పని చేస్తుంది. ఫర్నిచర్ పాక్షికంగా కప్పబడలేదని లేదా బ్యాక్‌గ్రౌండ్‌తో కలిసిపోలేదని నిర్ధారించుకోండి.</string>
     <string name="faq_multiple_pieces">అనేక ఫర్నిచర్ ముక్కలను సెగ్మెంట్ చేయవచ్చా?</string>
@@ -169,7 +169,7 @@
     <string name="faq_how_to_view">నా 3D గదిని ఎలా చూడాలి?</string>
     <string name="faq_how_to_view_answer">3D వ్యూయర్ తెరవడానికి హోమ్ స్క్రీన్‌లో ఏదైనా గది ట్యాప్ చేయండి. టచ్ జెస్చర్లు ఉపయోగించి గదిని తిప్పవచ్చు, జూమ్ చేయవచ్చు మరియు పాన్ చేయవచ్చు.</string>
     <string name="faq_how_to_place">నా గదిలో ఫర్నిచర్ ఎలా ఉంచాలి?</string>
-    <string name="faq_how_to_place_answer">ఫర్నిచర్ సెగ్మెంట్ చేసిన తర్వాత, మీ గదికి జోడించడానికి ఒక ముక్క ట్యాప్ చేయండి. తర్వాత స్థానానికి డ్రాగ్ చేయవచ్చు, సైజు మార్చడానికి పించ్ చేయవచ్చు, మరియు దిశ సర్దుబాటు చేయడానికి రొటేట్ చేయవచ్చు.</string>
+    <string name="faq_how_to_place_answer">Segment ట్యాప్ చేసిన తర్వాత ఎంచుకున్న furniture గదిలో overlay గా కనిపిస్తుంది. Position కోసం drag చేయండి, size మార్చడానికి pinch చేయండి, orientation సర్దడానికి rotate చేయండి.</string>
     <string name="faq_sample_room">నాదానికి బదులు శాంపిల్ రూమ్ ఉపయోగించవచ్చా?</string>
     <string name="faq_sample_room_answer">అవును! యాప్ ప్రయోగించడానికి శాంపిల్ రూమ్‌లను అందిస్తుంది. మొదట మీ సొంత గది సృష్టించకుండా ఫర్నిచర్ ప్లేస్‌మెంట్ ప్రయత్నించడానికి ఎక్స్‌ప్లోర్ సెక్షన్ నుండి వాటిని యాక్సెస్ చేయండి.</string>
     <string name="faq_accuracy">3D మోడల్ ఎంత ఖచ్చితమైనది?</string>
@@ -178,7 +178,7 @@
     <string name="faq_adjust_dimensions_answer">అవును, సెట్టింగ్‌లకు వెళ్ళి గది కొలత ఆప్షన్లు కనుగొనండి అక్కడ మీరు సృష్టించిన గది సైజు మరియు నిష్పత్తులను ఫైన్-ట్యూన్ చేయవచ్చు.</string>
     <string name="faq_furniture_measurements">ఫర్నిచర్ &amp; కొలతలు</string>
     <string name="faq_ar_assisted_sizing">AR-సహాయ ఫర్నిచర్ సైజింగ్ అంటే ఏమిటి?</string>
-    <string name="faq_ar_assisted_sizing_answer">ముందుగా segmentation ప్రారంభించడానికి brain icon పై ట్యాప్ చేసి, తరువాత sizing control ఉపయోగించండి. ARCore depth మద్దతు ఉన్న ఫోన్లలో app live camera depth ఉపయోగించి మరింత నిజమైన furniture size చూపిస్తుంది. AR depth లేని ఫోన్లలో ఇది సుమారు proportion-based estimate కు వెళ్తుంది, అందువల్ల furniture కొలతలు exact కావు.</string>
+    <string name="faq_ar_assisted_sizing_answer">ముందుగా brain icon ట్యాప్ చేసి detected items ఎంచుకోండి, తర్వాత Segment ట్యాప్ చేయండి. Room-relative scale కావాలంటే sizing control వాడండి. AR/depth support ఉన్న ఫోన్లలో app live camera depth తో మరింత realistic furniture size ఇస్తుంది; depth లేకపోతే furniture measurements approximate గా ఉంటాయి.</string>
     <string name="faq_measurement_pill">చిన్న కొలత చూపు ఏమిటి?</string>
     <string name="faq_measurement_pill_answer">Furni size pill అనేది sizing mode ఆన్ అయ్యి, app కు ఉపయోగపడే live height estimate ఉన్నప్పుడే కనిపిస్తుంది. room viewer లో room measurement కూడా కనిపించవచ్చు. non-AR ఫోన్లలో ఈ రీడింగులు, ముఖ్యంగా furniture కోసం, తక్కువ నమ్మదగినవి.</string>
     <string name="faq_reset_overlay_scale">మాస్క్ తప్పుగా జూమ్ అయినట్లు అనిపిస్తే?</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">ఫోటో నుండి గది సృష్టించు</string>
     <string name="faq_ai_features">AI ఫీచర్లు</string>
     <string name="faq_what_is_brain_icon">బ్రెయిన్ ఐకాన్ ఏమి చేస్తుంది?</string>
-    <string name="faq_what_is_brain_icon_answer">బ్రెయిన్ ఐకాన్ SmartyPants ని యాక్టివేట్ చేస్తుంది - AI-ఆధారిత ఆబ్జెక్ట్ డిటెక్షన్ ఫీచర్. ఇది రియల్-టైమ్‌లో ఫర్నిచర్ మరియు వస్తువులను గుర్తించడానికి మీ కెమెరాను ఉపయోగిస్తుంది, గుర్తించిన ఐటమ్‌ల చుట్టూ లేబుల్స్ మరియు బౌండింగ్ బాక్స్‌లను చూపిస్తుంది.</string>
+    <string name="faq_what_is_brain_icon_answer">బ్రెయిన్ ఐకాన్ SmartyPants identify mode ను ప్రారంభిస్తుంది. ఇది live camera తో furniture మరియు objects ను కనుగొని labels మరియు boxes చూపిస్తుంది, Segment ట్యాప్ చేసే ముందు ఒకటి లేదా ఎక్కువ labels ఎంచుకోవడానికి వీలు ఇస్తుంది.</string>
     <string name="faq_how_to_screenshot">స్క్రీన్‌షాట్ ఎలా తీయాలి?</string>
     <string name="faq_how_to_screenshot_answer">SmartyPants యాక్టివ్‌గా ఉన్నప్పుడు (బ్రెయిన్ ఐకాన్ ఆకుపచ్చ), కింద-కుడివైపు షేర్ ఐకాన్ కనిపిస్తుంది. AI డిటెక్షన్‌లతో వ్యూ స్క్రీన్‌షాట్‌ను మీ ఫోటో లైబ్రరీలో సేవ్ చేయడానికి దాన్ని ట్యాప్ చేయండి.</string>
     <string name="faq_how_to_save_room">గదిని ఎలా సేవ్ చేయాలి?</string>

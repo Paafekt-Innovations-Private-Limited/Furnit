@@ -157,16 +157,16 @@
     <string name="faq_how_many_rooms_answer">আপনি ১০০০টি পর্যন্ত রুম তৈরি করতে পারেন। নতুন রুমের জন্য জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা ও ব্যবহৃত স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।</string>
     <string name="faq_ai_features">AI বৈশিষ্ট্য</string>
     <string name="faq_what_is_brain_icon">ব্রেইন আইকন কী করে?</string>
-    <string name="faq_what_is_brain_icon_answer">ব্রেইন আইকন SmartyPants সক্রিয় করে - একটি AI-চালিত বস্তু শনাক্তকরণ বৈশিষ্ট্য। এটি রিয়েল-টাইমে ফার্নিচার এবং বস্তু শনাক্ত করতে আপনার ক্যামেরা ব্যবহার করে, শনাক্ত আইটেমের চারপাশে লেবেল এবং বাউন্ডিং বক্স দেখায়।</string>
+    <string name="faq_what_is_brain_icon_answer">ব্রেইন আইকন SmartyPants identify mode শুরু করে। এটি লাইভ ক্যামেরা দিয়ে ফার্নিচার ও বস্তু খুঁজে, লেবেল ও বক্স দেখায়, এবং Segment চাপার আগে এক বা একাধিক লেবেল নির্বাচন করতে দেয়।</string>
     <string name="faq_how_to_screenshot">স্ক্রিনশট কিভাবে নেব?</string>
     <string name="faq_how_to_screenshot_answer">SmartyPants সক্রিয় থাকলে (ব্রেইন আইকন সবুজ), নীচে-ডানে একটি শেয়ার আইকন দেখা যায়। AI শনাক্তকরণ সহ ভিউয়ের স্ক্রিনশট আপনার ফটো লাইব্রেরিতে সংরক্ষণ করতে ট্যাপ করুন।</string>
     <string name="faq_how_to_save_room">রুম কিভাবে সেভ করব?</string>
     <string name="faq_how_to_save_room_answer">3D রুম তৈরির পর, কাস্টম নামে সেভ করতে টুলবারে সেভ আইকনে (ডাউনলোড তীর) ট্যাপ করুন। সেভ না করা রুম ব্যাক ট্যাপ করলে মুছে যাবে।</string>
     <string name="faq_furniture_segmentation">ফার্নিচার সেগমেন্টেশন</string>
     <string name="faq_what_is_segmentation">ফার্নিচার সেগমেন্টেশন কী?</string>
-    <string name="faq_what_is_segmentation_answer">ফার্নিচার সেগমেন্টেশন AI ব্যবহার করে আপনার ছবিতে ফার্নিচার শনাক্ত এবং আলাদা করে, প্রতিটি টুকরো আপনার 3D রুমে কিভাবে মানাবে তা দেখতে দেয়।</string>
+    <string name="faq_what_is_segmentation_answer">ফার্নিচার সেগমেন্টেশন এখন লাইভ রুম ভিউয়ার থেকেই কাজ করে। আগে শনাক্ত হওয়া লেবেল নির্বাচন করুন, তারপর Segment শুধু নির্বাচিত ফার্নিচারের জন্য কাট-আউট ওভারলে তৈরি করে যাতে 3D রুমে মানানসই কিনা দেখা যায়।</string>
     <string name="faq_how_to_segment">ছবি থেকে ফার্নিচার কিভাবে সেগমেন্ট করবেন?</string>
-    <string name="faq_how_to_segment_answer">আপনার 3D রুম দেখার সময় segmentation শুরু করতে brain icon-এ ট্যাপ করুন। তারপর ক্যামেরা ফার্নিচারের দিকে ধরলে live detection এবং extracted furniture overlay দেখতে পাবেন।</string>
+    <string name="faq_how_to_segment_answer">রুম ভিউয়ারে ব্রেইন আইকনে ট্যাপ করুন, ক্যামেরা ফার্নিচারের দিকে ধরুন, এক বা একাধিক শনাক্ত লেবেল বেছে নিন, তারপর Segment ট্যাপ করুন। লাইভ শনাক্তকরণে ফিরতে Stop ট্যাপ করুন।</string>
     <string name="faq_not_detected">আমার ফার্নিচার কেন শনাক্ত হচ্ছে না?</string>
     <string name="faq_not_detected_answer">ফার্নিচার শনাক্তকরণ পরিষ্কার, ভালো আলোযুক্ত ছবিতে ফার্নিচার স্পষ্ট দেখা গেলে সবচেয়ে ভালো কাজ করে। নিশ্চিত করুন ফার্নিচার আংশিকভাবে ঢাকা নেই বা ব্যাকগ্রাউন্ডে মিশে যায়নি।</string>
     <string name="faq_multiple_pieces">একাধিক ফার্নিচার সেগমেন্ট করতে পারি?</string>
@@ -183,7 +183,7 @@
     <string name="faq_how_to_view">আমার 3D রুম কিভাবে দেখব?</string>
     <string name="faq_how_to_view_answer">3D ভিউয়ার খুলতে হোম স্ক্রিনে যেকোনো রুমে ট্যাপ করুন। টাচ জেসচার ব্যবহার করে রুম ঘোরাতে, জুম করতে এবং প্যান করতে পারেন।</string>
     <string name="faq_how_to_place">আমার রুমে ফার্নিচার কিভাবে রাখব?</string>
-    <string name="faq_how_to_place_answer">ফার্নিচার সেগমেন্ট করার পর, আপনার রুমে যোগ করতে একটি টুকরোতে ট্যাপ করুন। তারপর স্থান নির্ধারণে টেনে আনতে, আকার পরিবর্তনে পিঞ্চ করতে, এবং দিক সামঞ্জস্যে ঘোরাতে পারেন।</string>
+    <string name="faq_how_to_place_answer">Segment ট্যাপ করার পর নির্বাচিত ফার্নিচার রুমে ওভারলে হিসেবে দেখা যায়। অবস্থান ঠিক করতে টানুন, সাইজ বদলাতে পিঞ্চ করুন, আর দিক ঠিক করতে ঘোরান।</string>
     <string name="faq_sample_room">আমার পরিবর্তে স্যাম্পল রুম ব্যবহার করতে পারি?</string>
     <string name="faq_sample_room_answer">হ্যাঁ! অ্যাপ পরীক্ষা করার জন্য স্যাম্পল রুম সরবরাহ করে। আপনার নিজের রুম তৈরি না করেই ফার্নিচার প্লেসমেন্ট চেষ্টা করতে এক্সপ্লোর সেকশন থেকে এগুলো অ্যাক্সেস করুন।</string>
     <string name="faq_accuracy">3D মডেল কতটা নির্ভুল?</string>
@@ -192,7 +192,7 @@
     <string name="faq_adjust_dimensions_answer">হ্যাঁ, সেটিংসে যান এবং রুম মাত্রা অপশন খুঁজুন যেখানে আপনি তৈরি রুমের আকার ও অনুপাত সূক্ষ্ম-সুর করতে পারেন।</string>
     <string name="faq_furniture_measurements">ফার্নিচার ও মাপ</string>
     <string name="faq_ar_assisted_sizing">AR-সহায়িত ফার্নিচার সাইজিং কী?</string>
-    <string name="faq_ar_assisted_sizing_answer">আগে segmentation শুরু করতে brain icon-এ ট্যাপ করুন, তারপর sizing control ব্যবহার করুন। ARCore depth সাপোর্ট থাকা ফোনে অ্যাপ live camera depth ব্যবহার করে আরও বাস্তবসম্মত furniture size দেখায়। AR depth না থাকলে এটি আনুমানিক proportion-based estimate-এ ফিরে যায়, তাই furniture measurement একদম exact হয় না।</string>
+    <string name="faq_ar_assisted_sizing_answer">প্রথমে ব্রেইন আইকনে ট্যাপ করে শনাক্ত আইটেম নির্বাচন করুন, তারপর Segment ট্যাপ করুন। রুমের অনুপাতে সাইজ চাইলে sizing control ব্যবহার করুন। AR/depth সমর্থিত ফোনে অ্যাপ লাইভ ক্যামেরা depth ব্যবহার করে আরও বাস্তবসম্মত ফার্নিচার সাইজ দেয়; depth না থাকলে মাপ আনুমানিক।</string>
     <string name="faq_measurement_pill">ছোট মাপের রিডআউট কী?</string>
     <string name="faq_measurement_pill_answer">Furni size pill শুধু তখনই দেখা যায় যখন sizing mode চালু থাকে এবং অ্যাপের কাছে ব্যবহারযোগ্য live height estimate থাকে। রুম viewer-এ room measurement-ও দেখা যেতে পারে। non-AR ফোনে এই রিডিংগুলো, বিশেষ করে furniture-এর জন্য, কম নির্ভরযোগ্য।</string>
     <string name="faq_reset_overlay_scale">মাস্ক ভুল জুম লাগছে—কী করব?</string>

@@ -206,9 +206,9 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentation de meubles";
 "faq.whatIsSegmentation" = "Qu'est-ce que la segmentation de meubles ?";
-"faq.whatIsSegmentationAnswer" = "La segmentation de meubles utilise l'IA pour identifier et séparer les meubles dans vos photos, vous permettant de voir comment chaque pièce s'intégrerait dans votre pièce 3D.";
+"faq.whatIsSegmentationAnswer" = "La segmentation de meubles fonctionne maintenant depuis le visualiseur de pièce en direct. Sélectionnez d’abord les étiquettes détectées ; Segmenter crée ensuite un calque découpé uniquement pour ces meubles sélectionnés afin d’évaluer leur place dans la pièce 3D.";
 "faq.howToSegment" = "Comment segmenter des meubles à partir d'une photo ?";
-"faq.howToSegmentAnswer" = "Dans le visualiseur de pièce, touchez l'icône cerveau pour lancer la détection de meubles. Une fois la segmentation active, vous pouvez toucher l'icône de taille pour demander à l'app d'ajuster la surcouche du meuble à la pièce.";
+"faq.howToSegmentAnswer" = "Dans le visualiseur de pièce, touchez l’icône cerveau, pointez la caméra vers le meuble, touchez une ou plusieurs étiquettes détectées pour les sélectionner, puis touchez Segmenter. Touchez Arrêter pour revenir aux identifications en direct.";
 "faq.notDetected" = "Pourquoi mes meubles ne sont-ils pas détectés ?";
 "faq.notDetectedAnswer" = "La détection de meubles fonctionne mieux avec des photos claires et bien éclairées où les meubles sont clairement visibles. Assurez-vous que les meubles ne sont pas partiellement cachés ou ne se confondent pas avec l'arrière-plan.";
 "faq.multiplePieces" = "Puis-je segmenter plusieurs meubles ?";
@@ -232,7 +232,7 @@
 "faq.howToView" = "Comment visualiser ma pièce 3D ?";
 "faq.howToViewAnswer" = "Appuyez sur n'importe quelle pièce de votre écran d'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.";
 "faq.howToPlace" = "Comment placer des meubles dans ma pièce ?";
-"faq.howToPlaceAnswer" = "Après avoir segmenté des meubles, appuyez sur le meuble pour l'ajouter à votre pièce. Vous pouvez ensuite le faire glisser pour le positionner, pincer pour le redimensionner et faire pivoter pour ajuster son orientation.";
+"faq.howToPlaceAnswer" = "Après avoir touché Segmenter, le meuble sélectionné apparaît comme un calque dans la pièce. Faites-le glisser pour le placer, pincez pour le redimensionner et faites-le pivoter pour régler son orientation.";
 "faq.sampleRoom" = "Puis-je utiliser une pièce exemple au lieu de la mienne ?";
 "faq.sampleRoomAnswer" = "Oui ! L'application propose des pièces exemples pour expérimenter. Accédez-y depuis la section Explorer pour essayer le placement de meubles sans créer d'abord votre propre pièce.";
 "faq.accuracy" = "Quelle est la précision du modèle 3D ?";
@@ -241,7 +241,7 @@
 "faq.adjustDimensionsAnswer" = "Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.";
 "faq.furnitureMeasurements" = "Meubles & mesures";
 "faq.arAssistedSizing" = "Qu'est-ce que le dimensionnement des meubles assisté par RA ?";
-"faq.arAssistedSizingAnswer" = "Lorsque cette option est activée dans Réglages, l'app combine la profondeur caméra et la détection d'objets pour ajuster la taille du calque meuble de façon plus réaliste quand vous vous rapprochez ou vous éloignez. Fonctionne mieux avec un bon éclairage et un objet bien visible.";
+"faq.arAssistedSizingAnswer" = "Touchez d’abord l’icône cerveau, sélectionnez les éléments détectés, puis touchez Segmenter. Utilisez le contrôle de taille lorsque vous voulez une échelle relative à la pièce. Sur les téléphones avec AR/profondeur, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste ; sans profondeur, les mesures sont approximatives.";
 "faq.measurementPill" = "À quoi sert le petit bandeau de mesure ?";
 "faq.measurementPillAnswer" = "Quand SmartyPants est actif, un bandeau peut afficher la hauteur estimée du meuble et de la pièce. Touchez-le pour saisir des mesures réelles. Si la photo de la pièce est en grand-angle (0,5×), indiquez-le pour un cadrage cohérent.";
 "faq.resetOverlayScale" = "Le masque semble mal zoomé — que faire ?";
@@ -382,7 +382,7 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "Fonctionnalités IA";
 "faq.whatIsBrainIcon" = "Que fait l'icône du cerveau ?";
-"faq.whatIsBrainIconAnswer" = "L'icône du cerveau active SmartyPants - une fonctionnalité de détection d'objets alimentée par l'IA. Elle utilise votre caméra pour identifier les meubles et objets en temps réel, affichant des étiquettes et des cadres autour des éléments détectés.";
+"faq.whatIsBrainIconAnswer" = "L’icône cerveau lance le mode identification de SmartyPants. Elle utilise la caméra en direct pour trouver les meubles et objets, affiche des étiquettes et des cadres, puis vous laisse sélectionner une ou plusieurs étiquettes avant de toucher Segmenter.";
 "faq.howToScreenshot" = "Comment prendre une capture d'écran ?";
 "faq.howToScreenshotAnswer" = "Lorsque SmartyPants est actif (icône du cerveau verte), une icône de partage apparaît en bas à droite. Appuyez dessus pour enregistrer une capture d'écran avec les détections IA dans votre photothèque.";
 "faq.howToSaveRoom" = "Comment enregistrer une pièce ?";
@@ -499,10 +499,10 @@
 "generationProgress.mayTakeFewMinutes" = "Cela peut prendre quelques minutes";
 
 // FAQ overrides
-"faq.whatIsBrainIconAnswer" = "L'icône cerveau lance la détection de meubles SmartyPants. Elle repère les meubles dans la vue caméra en direct et affiche la surcouche de segmentation. Pour ajuster la taille du meuble par rapport à la pièce, appuyez ensuite sur l'icône de taille.";
+"faq.whatIsBrainIconAnswer" = "L’icône cerveau lance le mode identification de SmartyPants. Elle utilise la caméra en direct pour trouver les meubles et objets, affiche des étiquettes et des cadres, puis vous laisse sélectionner une ou plusieurs étiquettes avant de toucher Segmenter.";
 "faq.accuracyAnswer" = "La pièce 3D est une estimation faite à partir d'une seule photo. Les dimensions peuvent servir de repère, mais elles ne sont pas de précision professionnelle. La mesure des meubles est plus fiable sur les téléphones avec prise en charge AR/profondeur.";
 "faq.adjustDimensionsAnswer" = "Pas directement pour les pièces SHARP générées par IA. Utilisez la règle dans le visualiseur pour voir la largeur, la hauteur et la profondeur estimées actuelles. Pour de meilleurs résultats, prenez une photo nette avec des coins visibles ; les pièces manuelles suivent les limites que vous avez définies.";
-"faq.arAssistedSizingAnswer" = "Touchez d'abord l'icône cerveau pour lancer la segmentation, puis l'icône de taille. Sur les téléphones avec AR/profondeur, l'app utilise la profondeur caméra en direct pour obtenir une taille de meuble plus réaliste. Sur les téléphones sans profondeur AR, elle revient à une estimation approximative basée sur les proportions ; les mesures de meubles ne sont donc pas exactes.";
+"faq.arAssistedSizingAnswer" = "Touchez d’abord l’icône cerveau, sélectionnez les éléments détectés, puis touchez Segmenter. Utilisez le contrôle de taille lorsque vous voulez une échelle relative à la pièce. Sur les téléphones avec AR/profondeur, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste ; sans profondeur, les mesures sont approximatives.";
 "faq.measurementPillAnswer" = "La pastille de taille du meuble n'apparaît que lorsque le mode de taille est activé et que l'app dispose d'une estimation de hauteur exploitable en direct. Le bouton règle affiche la largeur, la hauteur et la profondeur actuelles de la pièce dans une petite carte. Sur les téléphones non AR, ces valeurs sont moins fiables, surtout pour les meubles.";
 "faq.resetOverlayScaleAnswer" = "Il n'y a plus de menu supplémentaire. Si la surcouche semble incorrecte, désactivez puis réactivez l'icône cerveau, ou pincez le meuble manuellement pour affiner sa taille.";
 

@@ -204,9 +204,9 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Möbel-Segmentierung";
 "faq.whatIsSegmentation" = "Was ist Möbel-Segmentierung?";
-"faq.whatIsSegmentationAnswer" = "Die Möbel-Segmentierung verwendet KI, um Möbelstücke in Ihren Fotos zu identifizieren und zu trennen, sodass Sie sehen können, wie jedes Stück in Ihren 3D-Raum passen würde.";
+"faq.whatIsSegmentationAnswer" = "Die Möbel-Segmentierung läuft jetzt direkt im Live-Raum-Viewer. Wählen Sie zuerst erkannte Labels aus; Segment erstellt dann nur für diese ausgewählten Möbel eine ausgeschnittene Überlagerung, damit Sie die Wirkung im 3D-Raum prüfen können.";
 "faq.howToSegment" = "Wie segmentiere ich Möbel aus einem Foto?";
-"faq.howToSegmentAnswer" = "Wenn Sie Ihren 3D-Raum betrachten, tippen Sie auf das Möbel-Symbol, um auf die Segmentierungsfunktion zuzugreifen. Wählen Sie ein Foto mit Möbeln aus, und die App erkennt und extrahiert automatisch die Möbelstücke.";
+"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol, richten Sie die Kamera auf das Möbelstück, wählen Sie ein oder mehrere erkannte Labels aus und tippen Sie dann auf Segment. Mit Stop kehren Sie zur Live-Erkennung zurück.";
 "faq.notDetected" = "Warum werden meine Möbel nicht erkannt?";
 "faq.notDetectedAnswer" = "Die Möbelerkennung funktioniert am besten mit klaren, gut beleuchteten Fotos, auf denen die Möbel deutlich sichtbar sind. Stellen Sie sicher, dass die Möbel nicht teilweise verdeckt sind oder mit dem Hintergrund verschmelzen.";
 "faq.multiplePieces" = "Kann ich mehrere Möbelstücke segmentieren?";
@@ -229,7 +229,7 @@
 "faq.howToView" = "Wie betrachte ich meinen 3D-Raum?";
 "faq.howToViewAnswer" = "Tippen Sie auf einen beliebigen Raum auf Ihrem Startbildschirm, um den 3D-Viewer zu öffnen. Sie können mit Touch-Gesten drehen, zoomen und schwenken.";
 "faq.howToPlace" = "Wie platziere ich Möbel in meinem Raum?";
-"faq.howToPlaceAnswer" = "Nach der Segmentierung von Möbeln tippen Sie auf das Möbelstück, um es Ihrem Raum hinzuzufügen. Sie können es dann ziehen, um es zu positionieren, zusammenziehen, um die Größe zu ändern, und drehen, um seine Ausrichtung anzupassen.";
+"faq.howToPlaceAnswer" = "Nach dem Tippen auf Segment erscheint das ausgewählte Möbel als Überlagerung im Raum. Ziehen Sie es zum Positionieren, nutzen Sie Pinch zum Ändern der Größe und drehen Sie es für die Ausrichtung.";
 "faq.sampleRoom" = "Kann ich einen Beispielraum anstelle meines eigenen verwenden?";
 "faq.sampleRoomAnswer" = "Ja! Die App bietet Beispielräume zum Experimentieren. Greifen Sie über den Entdecken-Bereich darauf zu, um die Möbelplatzierung auszuprobieren, ohne zuerst Ihren eigenen Raum zu erstellen.";
 "faq.accuracy" = "Wie genau ist das 3D-Modell?";
@@ -238,7 +238,7 @@
 "faq.adjustDimensionsAnswer" = "Ja, gehen Sie zu Einstellungen und suchen Sie nach Raummaße-Optionen, wo Sie die Größe und Proportionen Ihres generierten Raums feinabstimmen können.";
 "faq.furnitureMeasurements" = "Möbel & Maße";
 "faq.arAssistedSizing" = "Was ist AR-gestützte Möbelgröße?";
-"faq.arAssistedSizingAnswer" = "Wenn diese Option in den Einstellungen aktiviert ist, kombiniert die App Tiefendaten mit Objekterkennung, damit sich die Möbel-Overlay-Skala beim Näherkommen oder Weggehen realistischer anpasst. Am besten bei guter Beleuchtung und klar sichtbarem Objekt.";
+"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, wählen Sie erkannte Elemente aus und tippen Sie dann auf Segment. Nutzen Sie die Größensteuerung, wenn die Größe relativ zum Raum angepasst werden soll. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
 "faq.measurementPill" = "Was bedeutet die kleine Maßanzeige?";
 "faq.measurementPillAnswer" = "Während SmartyPants aktiv ist, kann eine kleine Anzeige geschätzte Möbel- und Raumhöhe zeigen. Tippen Sie darauf, um reale Maße einzugeben. War das Raumfoto mit Weitwinkel (0,5×) aufgenommen, markieren Sie das.";
 "faq.resetOverlayScale" = "Die Maske wirkt falsch gezoomt – was tun?";
@@ -512,11 +512,11 @@
 "help.measurementAccuracyBody" = "Auf Telefonen ohne AR-Tiefensensor können Räume und Möbel weiterhin angezeigt werden, aber Raummaße und besonders Möbelmaße sind nur Näherungen.";
 "faq.aiFeatures" = "KI-Funktionen";
 "faq.whatIsBrainIcon" = "Was macht das Gehirn-Symbol?";
-"faq.whatIsBrainIconAnswer" = "Das Gehirn-Symbol startet die SmartyPants-Möbelerkennung. Es erkennt Möbel im Live-Kamerabild und zeigt die Segmentierungsüberlagerung an. Für eine größenmäßige Anpassung an den Raum tippen Sie danach auf das Größen-Symbol.";
-"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol, um die Möbelerkennung zu starten. Sobald die Segmentierung aktiv ist, können Sie auf das Größen-Symbol tippen, damit die App die Möbelüberlagerung an den Raum anpasst.";
+"faq.whatIsBrainIconAnswer" = "Das Gehirn-Symbol startet den SmartyPants-Erkennungsmodus. Es nutzt die Live-Kamera, findet Möbel und Objekte, zeigt Labels und Boxen und lässt Sie ein oder mehrere Labels auswählen, bevor Sie auf Segment tippen.";
+"faq.howToSegmentAnswer" = "Tippen Sie im Raum-Viewer auf das Gehirn-Symbol, richten Sie die Kamera auf das Möbelstück, wählen Sie ein oder mehrere erkannte Labels aus und tippen Sie dann auf Segment. Mit Stop kehren Sie zur Live-Erkennung zurück.";
 "faq.accuracyAnswer" = "Der 3D-Raum ist eine Schätzung aus nur einem Foto. Die Raummaße können als Orientierung dienen, sind aber keine exakten Vermessungsdaten. Möbelmaße sind auf Telefonen mit AR-/Tiefenunterstützung am zuverlässigsten.";
 "faq.adjustDimensionsAnswer" = "Nicht direkt bei KI-erzeugten SHARP-Räumen. Verwenden Sie das Lineal im Raum-Viewer, um die aktuell geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen den von Ihnen gesetzten Grenzen.";
-"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, um die Segmentierung zu starten, und danach auf das Größen-Symbol. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen. Ohne AR-Tiefe greift sie auf eine grobe Proportionsschätzung zurück, daher sind Möbelmaße nicht exakt.";
+"faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, wählen Sie erkannte Elemente aus und tippen Sie dann auf Segment. Nutzen Sie die Größensteuerung, wenn die Größe relativ zum Raum angepasst werden soll. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
 "faq.measurementPillAnswer" = "Die kleine Möbelgrößenanzeige erscheint nur, wenn der Größenmodus aktiv ist und die App eine brauchbare Live-Höhenschätzung hat. Die Lineal-Schaltfläche zeigt die aktuelle Raum-Breite, -Höhe und -Tiefe in einer kleinen Karte an. Auf Telefonen ohne AR sind diese Werte weniger zuverlässig, besonders bei Möbeln.";
 "faq.resetOverlayScaleAnswer" = "Es gibt jetzt kein Überlaufmenü mehr. Wenn die Überlagerung nicht richtig aussieht, schalten Sie das Gehirn-Symbol aus und wieder ein oder passen Sie die Möbelgröße per Pinch-Geste manuell an.";
 

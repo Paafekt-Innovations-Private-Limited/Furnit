@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">你最多可以创建1000个房间。删除旧房间以腾出空间。主屏幕顶部会显示房间数量和已用存储空间。</string>
     <string name="faq_furniture_segmentation">家具分割</string>
     <string name="faq_what_is_segmentation">什么是家具分割？</string>
-    <string name="faq_what_is_segmentation_answer">家具分割使用AI识别和分离照片中的家具，让你看到每件家具在3D房间中的效果。</string>
+    <string name="faq_what_is_segmentation_answer">家具分割现在从实时房间查看器中完成。先选择检测到的标签，然后分割只会为这些选中的家具生成抠图叠层，方便你判断它们在 3D 房间里的效果。</string>
     <string name="faq_how_to_segment">如何从照片中分割家具？</string>
-    <string name="faq_how_to_segment_answer">查看 3D 房间时，先点击大脑图标开始分割。然后把相机对准家具，就能看到实时检测和提取出来的家具叠层。</string>
+    <string name="faq_how_to_segment_answer">在房间查看器中，点击大脑图标，把相机对准家具，点击一个或多个检测标签进行选择，然后点击分割。点击停止可返回实时识别。</string>
     <string name="faq_not_detected">为什么我的家具没有被侦测到？</string>
     <string name="faq_not_detected_answer">家具侦测在清晰、光线充足且家具明显可见的照片中效果最佳。确保家具没有被部分遮挡或与背景融合。</string>
     <string name="faq_multiple_pieces">我可以分割多件家具嗎？</string>
@@ -169,7 +169,7 @@
     <string name="faq_how_to_view">如何检视我的3D房间？</string>
     <string name="faq_how_to_view_answer">点擊主画面上的任何房间以开启3D检视器。你可以使用触控手势旋转、缩放和平移房间。</string>
     <string name="faq_how_to_place">如何在房间中放置家具？</string>
-    <string name="faq_how_to_place_answer">分割家具后，点擊家具将其加入房间。然后你可以拖拽定位、捏合调整大小、旋转调整方向。</string>
+    <string name="faq_how_to_place_answer">点击分割后，选中的家具会以叠层形式出现在房间里。拖动可定位，双指缩放可调整大小，旋转可调整方向。</string>
     <string name="faq_sample_room">我可以使用范例房间嗎？</string>
     <string name="faq_sample_room_answer">可以！应用程式提供范例房间供你体验。从探索部分存取它們，无需先建立自己的房间即可尝试家具布置。</string>
     <string name="faq_accuracy">3D模型有多准确？</string>
@@ -178,7 +178,7 @@
     <string name="faq_adjust_dimensions_answer">可以，进入设定并找到房间尺寸选項，你可以微调产生房间的大小和比例。</string>
     <string name="faq_furniture_measurements">家具与测量</string>
     <string name="faq_ar_assisted_sizing">什么是 AR 辅助家具尺寸？</string>
-    <string name="faq_ar_assisted_sizing_answer">先点击大脑图标开始分割，再使用尺寸控制。在支持 ARCore 深度的手机上，应用会使用实时相机深度来给出更真实的家具大小。在没有 AR 深度的手机上，它会退回到较粗略的比例估计，因此家具尺寸并不精确。</string>
+    <string name="faq_ar_assisted_sizing_answer">先点击大脑图标，选择检测到的物体，然后点击分割。需要按房间比例缩放时再使用尺寸控制。在支持 AR/depth 的手机上，应用会使用实时相机深度给出更真实的家具大小；没有深度时，家具测量只是近似值。</string>
     <string name="faq_measurement_pill">画面上小小的测量提示是什么？</string>
     <string name="faq_measurement_pill_answer">Furni 尺寸小标签只会在尺寸模式开启且应用拿到可用的实时高度估计时出现。房间查看器里也可能显示房间尺寸。在不支持 AR 的手机上，这些读数会更不可靠，尤其是家具尺寸。</string>
     <string name="faq_reset_overlay_scale">检测遮罩缩放看起来不对怎么办？</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">从照片建立房间</string>
     <string name="faq_ai_features">AI 功能</string>
     <string name="faq_what_is_brain_icon">大脑图标有什么作用？</string>
-    <string name="faq_what_is_brain_icon_answer">大脑图标激活 SmartyPants - 一个 AI 驱动的物体检测功能。它使用您的相机实时识别家具和物体，在检测到的物品周围显示标签和边界框。</string>
+    <string name="faq_what_is_brain_icon_answer">大脑图标会启动 SmartyPants 识别模式。它使用实时相机寻找家具和物体，显示标签和框，并让你先选择一个或多个标签，再点击分割。</string>
     <string name="faq_how_to_screenshot">如何截屏？</string>
     <string name="faq_how_to_screenshot_answer">当 SmartyPants 激活时（大脑图标变绿），右下角会出现分享图标。点击它将带有 AI 检测的视图截图保存到您的照片库。</string>
     <string name="faq_how_to_save_room">如何保存房间？</string>

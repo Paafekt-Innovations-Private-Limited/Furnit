@@ -10,7 +10,6 @@
     <application
         android:name=".FurnitApplication"
         android:allowBackup="true"
-        android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:label="Furnit"

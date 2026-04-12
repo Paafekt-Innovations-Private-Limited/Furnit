@@ -377,6 +377,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var hasFirstDetection = false
     /// After the first successful segmentation in this container, skip startup progress on later `startIfNeeded()` (same UIView instance).
     private var segmentationCompletedOnceThisSession = false
+    /// True only while the initial detection startup banner is allowed to update.
+    private var startupProgressActive = false
     /// When true (e.g. Sharp Room already completed segmentation this session), hide startup progress even for a new UIView.
     var suppressStartupProgress = false
     /// Called once when the first valid segmentation mask is ready (parent can persist “no progress next time”).
@@ -655,12 +657,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         measurementQueue.asyncAfter(deadline: .now() + assistedMeasurementDebounceSeconds, execute: work)
     }
 
-    // MARK: Class Names (loaded from classes.json)
+    // MARK: Class Names (localized: classes.json in each *.lproj; same keys as Android assets/classes.json)
     internal lazy var classNames: [Int: String] = {
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load classes.json") }
+            if debugMode { logDebug("⚠️ Failed to load localized classes.json (check xx.lproj)") }
             return [:]
         }
         var result: [Int: String] = [:]
@@ -1672,12 +1674,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         if suppressStartupProgress || segmentationCompletedOnceThisSession {
             hasFirstDetection = false
+            startupProgressActive = false
             DispatchQueue.main.async {
                 self.progressContainer.isHidden = true
                 self.progressContainer.alpha = 1
             }
         } else {
             hasFirstDetection = false
+            startupProgressActive = true
             setProgress(0.05, text: "Starting camera…")
         }
 
@@ -1781,6 +1785,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
         segmentationCompletedOnceThisSession = false
+        startupProgressActive = false
         lastSegmentationMeanColorPublishAt = 0
         maskImageView.image = nil
         resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: true)
@@ -2817,6 +2822,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
             DispatchQueue.main.async {
                 self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
+                self.finishStartupProgressIfNeeded()
             }
             resetProcessingFlag()
             return
@@ -2877,6 +2883,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     scaleX: scaleX,
                     scaleY: scaleY
                 )
+                self.finishStartupProgressIfNeeded()
             }
             resetProcessingFlag()
             return
@@ -4224,12 +4231,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Progress UI
     private func setProgress(_ value: Float, text: String) {
-        guard !hasFirstDetection, !suppressStartupProgress else { return }
+        guard startupProgressActive, !hasFirstDetection, !suppressStartupProgress else { return }
         DispatchQueue.main.async {
             self.progressContainer.isHidden = false
             self.progressView.progress = value
             self.progressLabel.text = "  \(text)  "
         }
+    }
+
+    private func finishStartupProgressIfNeeded() {
+        guard startupProgressActive || !segmentationCompletedOnceThisSession else { return }
+        startupProgressActive = false
+        let shouldNotify = !segmentationCompletedOnceThisSession
+        segmentationCompletedOnceThisSession = true
+        if shouldNotify {
+            onFirstSegmentationComplete?()
+        }
+        progressContainer.alpha = 0
+        progressContainer.isHidden = true
+        progressContainer.alpha = 1
     }
 
     /// Throttled mean sRGB of the composited cutout for room aesthetic / furniture profile (runs off the main thread).
@@ -4393,9 +4413,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         bboxHeightPx: Int = 0
     ) {
         guard !hasFirstDetection else { return }
+        let canShowStartupCompletionBanner = startupProgressActive
         hasFirstDetection = true
+        startupProgressActive = false
+        let shouldNotify = !segmentationCompletedOnceThisSession
         segmentationCompletedOnceThisSession = true
-        onFirstSegmentationComplete?()
+        if shouldNotify {
+            onFirstSegmentationComplete?()
+        }
 
         if let fw = furnitureWidthMeters, let fh = furnitureHeightMeters {
             let distStr = distanceMeters.map { String(format: "%.3f", $0) } ?? "—"
@@ -4424,7 +4449,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        let showMeterBanner = furnitureWidthMeters != nil &&
+        let showMeterBanner = canShowStartupCompletionBanner &&
+            furnitureWidthMeters != nil &&
             normalizedARFurnitureHeightMeters() != nil &&
             !suppressStartupProgress
         let dismissDelay: TimeInterval = showMeterBanner ? 0.95 : 0

@@ -286,7 +286,7 @@ Enable via `QualitySettings.debugMode`. Shows:
 - `FurnitureFitView.swift` - Main pipeline implementation
 - `CompositeKernels.metal` - GPU compositing shaders
 - `MetalMaskLogic.swift` - Metal buffer management
-- `classes.json` - Class ID to name mapping
+- `classes.json` (per language in `Furnit/xx.lproj/`) — class ID → display name for bbox labels; `Bundle` loads the file for the active locale
 - `blacklist.json` - Classes to ignore (rooms, walls, etc.)
 
 ## Related docs (room size, pinhole, overlay)

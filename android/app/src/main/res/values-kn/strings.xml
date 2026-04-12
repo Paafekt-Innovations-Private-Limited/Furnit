@@ -168,9 +168,9 @@
     <string name="faq_how_many_rooms_answer">ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಹೊಸದಕ್ಕಾಗಿ ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆ ಮತ್ತು ಬಳಕೆಯ ಸ್ಟೋರೇಜ್ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ.</string>
     <string name="faq_furniture_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ</string>
     <string name="faq_what_is_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?</string>
-    <string name="faq_what_is_segmentation_answer">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ AI ಬಳಸಿ ನಿಮ್ಮ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣಗಳನ್ನು ಗುರುತಿಸುತ್ತದೆ ಮತ್ತು ಬೇರ್ಪಡಿಸುತ್ತದೆ, ಪ್ರತಿ ತುಂಡು ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂಬುದನ್ನು ನೋಡಲು ಅನುಮತಿಸುತ್ತದೆ.</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation ಈಗ live room viewer ನಿಂದಲೇ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ಮೊದಲು detected labels ಆಯ್ಕೆ ಮಾಡಿ; ನಂತರ Segment ಆಯ್ದ furniture items ಗಾಗಿ ಮಾತ್ರ cut-out overlay ರಚಿಸುತ್ತದೆ, ಆದ್ದರಿಂದ 3D room ನಲ್ಲಿ fit ಹೇಗಿದೆ ಎಂದು ನೋಡಬಹುದು.</string>
     <string name="faq_how_to_segment">ಫೋಟೋದಿಂದ ಪೀಠೋಪಕರಣಗಳನ್ನು ಹೇಗೆ ವಿಭಜಿಸುವುದು?</string>
-    <string name="faq_how_to_segment_answer">ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ನೋಡುತ್ತಿರುವಾಗ segmentation ಆರಂಭಿಸಲು brain icon ಅನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಂತರ ಫರ್ನಿಚರ್ ಕಡೆ ಕ್ಯಾಮೆರಾವನ್ನು ತೋರಿಸಿ live detection ಮತ್ತು extracted furniture overlay ನೋಡಿ.</string>
+    <string name="faq_how_to_segment_answer">Room viewer ನಲ್ಲಿ brain icon ಟ್ಯಾಪ್ ಮಾಡಿ, camera ಅನ್ನು furniture ಕಡೆ ತೋರಿಸಿ, ಒಂದು ಅಥವಾ ಹೆಚ್ಚು detected labels ಆಯ್ಕೆ ಮಾಡಿ, ನಂತರ Segment ಟ್ಯಾಪ್ ಮಾಡಿ. Live identifications ಗೆ ಹಿಂದಿರುಗಲು Stop ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
     <string name="faq_not_detected">ನನ್ನ ಪೀಠೋಪಕರಣ ಏಕೆ ಪತ್ತೆಯಾಗುತ್ತಿಲ್ಲ?</string>
     <string name="faq_not_detected_answer">ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.</string>
     <string name="faq_multiple_pieces">ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?</string>
@@ -180,7 +180,7 @@
     <string name="faq_how_to_view">ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?</string>
     <string name="faq_how_to_view_answer">3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.</string>
     <string name="faq_how_to_place">ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?</string>
-    <string name="faq_how_to_place_answer">ಪೀಠೋಪಕರಣ ವಿಭಜಿಸಿದ ನಂತರ, ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಸೇರಿಸಲು ತುಂಡನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಂತರ ಸ್ಥಾನಕ್ಕೆ ಎಳೆಯಬಹುದು, ಗಾತ್ರ ಬದಲಾಯಿಸಲು ಪಿಂಚ್ ಮಾಡಬಹುದು, ಮತ್ತು ದಿಕ್ಕು ಹೊಂದಿಸಲು ತಿರುಗಿಸಬಹುದು.</string>
+    <string name="faq_how_to_place_answer">Segment ಟ್ಯಾಪ್ ಮಾಡಿದ ನಂತರ ಆಯ್ದ furniture room ನಲ್ಲಿ overlay ಆಗಿ ಕಾಣುತ್ತದೆ. Position ಮಾಡಲು drag ಮಾಡಿ, resize ಮಾಡಲು pinch ಮಾಡಿ, orientation ಸರಿಪಡಿಸಲು rotate ಮಾಡಿ.</string>
     <string name="faq_sample_room">ನನ್ನದರ ಬದಲು ಮಾದರಿ ಕೊಠಡಿ ಬಳಸಬಹುದೇ?</string>
     <string name="faq_sample_room_answer">ಹೌದು! ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಯೋಗಿಸಲು ಮಾದರಿ ಕೊಠಡಿಗಳನ್ನು ಒದಗಿಸುತ್ತದೆ. ಮೊದಲು ನಿಮ್ಮ ಸ್ವಂತ ಕೊಠಡಿ ರಚಿಸದೆ ಪೀಠೋಪಕರಣ ಇರಿಸುವಿಕೆ ಪ್ರಯತ್ನಿಸಲು ಎಕ್ಸ್‌ಪ್ಲೋರ್ ವಿಭಾಗದಿಂದ ಅವುಗಳನ್ನು ಪ್ರವೇಶಿಸಿ.</string>
     <string name="faq_accuracy">3D ಮಾದರಿ ಎಷ್ಟು ನಿಖರ?</string>
@@ -189,7 +189,7 @@
     <string name="faq_adjust_dimensions_answer">ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.</string>
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?</string>
-    <string name="faq_ar_assisted_sizing_answer">ಮೊದಲು segmentation ಆರಂಭಿಸಲು brain icon ಅನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ sizing control ಅನ್ನು ಬಳಸಿ. ARCore depth ಬೆಂಬಲ ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ app live camera depth ಬಳಸಿ ಹೆಚ್ಚು ವಾಸ್ತವಿಕ furniture size ತೋರಿಸುತ್ತದೆ. AR depth ಇಲ್ಲದ ಫೋನ್‌ಗಳಲ್ಲಿ ಇದು ಅಂದಾಜಿನ proportion-based estimate ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ, ಆದ್ದರಿಂದ furniture ಅಳತೆಗಳು exact ಆಗಿರುವುದಿಲ್ಲ.</string>
+    <string name="faq_ar_assisted_sizing_answer">ಮೊದಲು brain icon ಟ್ಯಾಪ್ ಮಾಡಿ, detected items ಆಯ್ಕೆ ಮಾಡಿ, ನಂತರ Segment ಟ್ಯಾಪ್ ಮಾಡಿ. Room-relative scale ಬೇಕಾದರೆ sizing control ಬಳಸಿ. AR/depth support ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ app live camera depth ಬಳಸಿ ಹೆಚ್ಚು realistic furniture size ಕೊಡುತ್ತದೆ; depth ಇಲ್ಲದಿದ್ದರೆ furniture measurements approximate ಆಗಿರುತ್ತವೆ.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
     <string name="faq_measurement_pill_answer">Furni size pill sizing mode ಆನ್ ಆಗಿ, app ಗೆ ಬಳಸಬಹುದಾದ live height estimate ಸಿಕ್ಕಾಗ ಮಾತ್ರ ಕಾಣಿಸುತ್ತದೆ. room viewer ನಲ್ಲಿ room measurement ಕೂಡ ಕಾಣಿಸಬಹುದು. non-AR ಫೋನ್‌ಗಳಲ್ಲಿ ಈ ಓದುಗಳು, ವಿಶೇಷವಾಗಿ furniture ಗೆ, ಕಡಿಮೆ ವಿಶ್ವಾಸಾರ್ಹವಾಗಿರುತ್ತವೆ.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು</string>
     <string name="faq_ai_features">AI ವೈಶಿಷ್ಟ್ಯಗಳು</string>
     <string name="faq_what_is_brain_icon">ಮೆದುಳಿನ ಐಕಾನ್ ಏನು ಮಾಡುತ್ತದೆ?</string>
-    <string name="faq_what_is_brain_icon_answer">ಮೆದುಳಿನ ಐಕಾನ್ SmartyPants ಅನ್ನು ಸಕ್ರಿಯಗೊಳಿಸುತ್ತದೆ - AI-ಚಾಲಿತ ವಸ್ತು ಪತ್ತೆ ವೈಶಿಷ್ಟ್ಯ. ಇದು ನೈಜ-ಸಮಯದಲ್ಲಿ ಪೀಠೋಪಕರಣ ಮತ್ತು ವಸ್ತುಗಳನ್ನು ಗುರುತಿಸಲು ನಿಮ್ಮ ಕ್ಯಾಮೆರಾವನ್ನು ಬಳಸುತ್ತದೆ, ಪತ್ತೆಯಾದ ಐಟಂಗಳ ಸುತ್ತಲೂ ಲೇಬಲ್‌ಗಳು ಮತ್ತು ಬೌಂಡಿಂಗ್ ಬಾಕ್ಸ್‌ಗಳನ್ನು ತೋರಿಸುತ್ತದೆ.</string>
+    <string name="faq_what_is_brain_icon_answer">ಬ್ರೇನ್ ಐಕಾನ್ SmartyPants identify mode ಅನ್ನು ಆರಂಭಿಸುತ್ತದೆ. ಇದು live camera ಬಳಸಿ furniture ಮತ್ತು objects ಹುಡುಕುತ್ತದೆ, labels ಮತ್ತು boxes ತೋರಿಸುತ್ತದೆ, ಮತ್ತು Segment ಟ್ಯಾಪ್ ಮಾಡುವ ಮೊದಲು ಒಂದು ಅಥವಾ ಹೆಚ್ಚು labels ಆಯ್ಕೆ ಮಾಡಲು ಬಿಡುತ್ತದೆ.</string>
     <string name="faq_how_to_screenshot">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಹೇಗೆ ತೆಗೆಯುವುದು?</string>
     <string name="faq_how_to_screenshot_answer">SmartyPants ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ (ಮೆದುಳಿನ ಐಕಾನ್ ಹಸಿರು), ಕೆಳಗೆ-ಬಲಭಾಗದಲ್ಲಿ ಹಂಚಿಕೆ ಐಕಾನ್ ಕಾಣಿಸುತ್ತದೆ. AI ಪತ್ತೆಗಳೊಂದಿಗೆ ನೋಟದ ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಅನ್ನು ನಿಮ್ಮ ಫೋಟೋ ಲೈಬ್ರರಿಗೆ ಉಳಿಸಲು ಅದನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
     <string name="faq_how_to_save_room">ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ಉಳಿಸುವುದು?</string>

@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">നിങ്ങൾക്ക് 1000 മുറികൾ വരെ സൃഷ്ടിക്കാം. പുതിയതിനായി ഇടം ഉണ്ടാക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക. മുറി എണ്ണവും ഉപയോഗിച്ച സ്റ്റോറേജും ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണാം.</string>
     <string name="faq_furniture_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ</string>
     <string name="faq_what_is_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?</string>
-    <string name="faq_what_is_segmentation_answer">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ AI ഉപയോഗിച്ച് നിങ്ങളുടെ ഫോട്ടോകളിലെ ഫർണിച്ചർ തിരിച്ചറിയുകയും വേർതിരിക്കുകയും ചെയ്യുന്നു, ഓരോ കഷണവും നിങ്ങളുടെ 3D മുറിയിൽ എങ്ങനെ ചേരുമെന്ന് കാണാൻ അനുവദിക്കുന്നു.</string>
+    <string name="faq_what_is_segmentation_answer">ഫർണിച്ചർ segmentation ഇപ്പോൾ live room viewer-ൽ നിന്നാണ് പ്രവർത്തിക്കുന്നത്. ആദ്യം detected labels തിരഞ്ഞെടുക്കുക; തുടർന്ന് Segment തിരഞ്ഞെടുത്ത furniture items-ിനായി മാത്രം cut-out overlay സൃഷ്ടിക്കും, 3D മുറിയിൽ fit പരിശോധിക്കാൻ.</string>
     <string name="faq_how_to_segment">ഫോട്ടോയിൽ നിന്ന് ഫർണിച്ചർ എങ്ങനെ സെഗ്മെന്റ് ചെയ്യാം?</string>
-    <string name="faq_how_to_segment_answer">നിങ്ങളുടെ 3D മുറി കാണുമ്പോൾ segmentation ആരംഭിക്കാൻ brain icon ടാപ്പ് ചെയ്യുക. തുടർന്ന് ഫർണിച്ചറിലേക്ക് ക്യാമറ തിരിച്ച് live detection ഉം extracted furniture overlay ഉം കാണുക.</string>
+    <string name="faq_how_to_segment_answer">Room viewer-ൽ brain icon ടാപ്പ് ചെയ്യുക, camera ഫർണിച്ചറിലേക്ക് തിരിക്കുക, ഒരു അല്ലെങ്കിൽ കൂടുതൽ detected labels തിരഞ്ഞെടുക്കുക, പിന്നെ Segment ടാപ്പ് ചെയ്യുക. Live identifications-ലേക്ക് മടങ്ങാൻ Stop ടാപ്പ് ചെയ്യുക.</string>
     <string name="faq_not_detected">എന്റെ ഫർണിച്ചർ എന്തുകൊണ്ട് കണ്ടെത്തിയില്ല?</string>
     <string name="faq_not_detected_answer">ഫർണിച്ചർ കണ്ടെത്തൽ വ്യക്തമായ, നല്ല വെളിച്ചമുള്ള ഫോട്ടോകളിൽ ഫർണിച്ചർ വ്യക്തമായി കാണുമ്പോൾ നന്നായി പ്രവർത്തിക്കുന്നു. ഫർണിച്ചർ ഭാഗികമായി മൂടപ്പെട്ടിട്ടില്ലെന്നോ പശ്ചാത്തലവുമായി കലർന്നിട്ടില്ലെന്നോ ഉറപ്പാക്കുക.</string>
     <string name="faq_multiple_pieces">ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ സെഗ്മെന്റ് ചെയ്യാമോ?</string>
@@ -169,7 +169,7 @@
     <string name="faq_how_to_view">എന്റെ 3D മുറി എങ്ങനെ കാണാം?</string>
     <string name="faq_how_to_view_answer">3D വ്യൂവർ തുറക്കാൻ ഹോം സ്ക്രീനിലെ ഏതെങ്കിലും മുറി ടാപ്പ് ചെയ്യുക. ടച്ച് ജെസ്ച്ചറുകൾ ഉപയോഗിച്ച് മുറി തിരിക്കാനും സൂം ചെയ്യാനും പാൻ ചെയ്യാനും കഴിയും.</string>
     <string name="faq_how_to_place">എന്റെ മുറിയിൽ ഫർണിച്ചർ എങ്ങനെ വയ്ക്കാം?</string>
-    <string name="faq_how_to_place_answer">ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്ത ശേഷം, നിങ്ങളുടെ മുറിയിലേക്ക് ചേർക്കാൻ ഒരു കഷണം ടാപ്പ് ചെയ്യുക. തുടർന്ന് സ്ഥാനത്തിന് വലിച്ചിടാനും, വലുപ്പം മാറ്റാൻ പിഞ്ച് ചെയ്യാനും, ദിശ ക്രമീകരിക്കാൻ തിരിക്കാനും കഴിയും.</string>
+    <string name="faq_how_to_place_answer">Segment ടാപ്പ് ചെയ്ത ശേഷം തിരഞ്ഞെടുത്ത ഫർണിച്ചർ മുറിയിൽ overlay ആയി കാണും. സ്ഥാനം മാറ്റാൻ drag ചെയ്യുക, വലിപ്പം മാറ്റാൻ pinch ചെയ്യുക, ദിശ മാറ്റാൻ rotate ചെയ്യുക.</string>
     <string name="faq_sample_room">എന്റേതിന് പകരം സാമ്പിൾ റൂം ഉപയോഗിക്കാമോ?</string>
     <string name="faq_sample_room_answer">അതെ! ആപ്പ് പരീക്ഷിക്കാൻ സാമ്പിൾ റൂമുകൾ നൽകുന്നു. ആദ്യം നിങ്ങളുടെ സ്വന്തം മുറി സൃഷ്ടിക്കാതെ ഫർണിച്ചർ പ്ലേസ്മെന്റ് പരീക്ഷിക്കാൻ എക്സ്പ്ലോർ വിഭാഗത്തിൽ നിന്ന് അവ ആക്സസ് ചെയ്യുക.</string>
     <string name="faq_accuracy">3D മോഡൽ എത്ര കൃത്യമാണ്?</string>
@@ -178,7 +178,7 @@
     <string name="faq_adjust_dimensions_answer">അതെ, ക്രമീകരണങ്ങളിലേക്ക് പോയി മുറി അളവ് ഓപ്ഷനുകൾ കണ്ടെത്തുക അവിടെ നിങ്ങൾക്ക് സൃഷ്ടിച്ച മുറിയുടെ വലുപ്പവും അനുപാതങ്ങളും ഫൈൻ-ട്യൂൺ ചെയ്യാം.</string>
     <string name="faq_furniture_measurements">ഫർണിച്ചറും അളവുകളും</string>
     <string name="faq_ar_assisted_sizing">AR-സഹായിത ഫർണിച്ചർ സൈസിംഗ് എന്താണ്?</string>
-    <string name="faq_ar_assisted_sizing_answer">ആദ്യം segmentation ആരംഭിക്കാൻ brain icon ടാപ്പ് ചെയ്യുക, പിന്നെ sizing control ഉപയോഗിക്കുക. ARCore depth പിന്തുണയുള്ള ഫോണുകളിൽ app live camera depth ഉപയോഗിച്ച് കൂടുതൽ യാഥാർത്ഥ്യസഹിതമായ furniture size കാണിക്കും. AR depth ഇല്ലാത്ത ഫോണുകളിൽ ഇത് ഏകദേശ proportion-based estimate ലേക്ക് മടങ്ങും; അതിനാൽ furniture അളവുകൾ കൃത്യമല്ല.</string>
+    <string name="faq_ar_assisted_sizing_answer">ആദ്യം brain icon ടാപ്പ് ചെയ്ത് detected items തിരഞ്ഞെടുക്കുക, പിന്നെ Segment ടാപ്പ് ചെയ്യുക. Room-relative scale വേണമെങ്കിൽ sizing control ഉപയോഗിക്കുക. AR/depth support ഉള്ള ഫോണുകളിൽ app live camera depth ഉപയോഗിച്ച് കൂടുതൽ realistic furniture size നൽകും; depth ഇല്ലെങ്കിൽ furniture measurements approximate ആയിരിക്കും.</string>
     <string name="faq_measurement_pill">ചെറിയ അളവ് വായന എന്താണ്?</string>
     <string name="faq_measurement_pill_answer">Furni size pill sizing mode ഓണായിരിക്കുമ്പോഴും app ന് ഉപയോഗിക്കാവുന്ന live height estimate ലഭിക്കുമ്പോഴും മാത്രമേ പ്രത്യക്ഷപ്പെടൂ. room viewer ൽ room measurement കൂടി കാണാം. non-AR ഫോണുകളിൽ ഈ റീഡിംഗുകൾ, പ്രത്യേകിച്ച് furniture ന്, കുറച്ച് കുറവായി വിശ്വസനീയമാണ്.</string>
     <string name="faq_reset_overlay_scale">മാസ്ക് തെറ്റായി സൂം ചെയ്തതായി തോന്നുന്നുവോ?</string>
@@ -238,7 +238,7 @@
     <string name="accessibility_create_room">ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക</string>
     <string name="faq_ai_features">AI സവിശേഷതകൾ</string>
     <string name="faq_what_is_brain_icon">ബ്രെയിൻ ഐക്കൺ എന്താണ് ചെയ്യുന്നത്?</string>
-    <string name="faq_what_is_brain_icon_answer">ബ്രെയിൻ ഐക്കൺ SmartyPants സജീവമാക്കുന്നു - AI-പവർഡ് ഒബ്ജക്റ്റ് ഡിറ്റക്ഷൻ ഫീച്ചർ. ഇത് തത്സമയം ഫർണിച്ചറും വസ്തുക്കളും തിരിച്ചറിയാൻ നിങ്ങളുടെ ക്യാമറ ഉപയോഗിക്കുന്നു, കണ്ടെത്തിയ ഇനങ്ങൾക്ക് ചുറ്റും ലേബലുകളും ബൗണ്ടിംഗ് ബോക്സുകളും കാണിക്കുന്നു.</string>
+    <string name="faq_what_is_brain_icon_answer">ബ്രെയിൻ ഐക്കൺ SmartyPants identify mode ആരംഭിക്കുന്നു. ഇത് live camera ഉപയോഗിച്ച് ഫർണിച്ചറും വസ്തുക്കളും കണ്ടെത്തി labels, boxes കാണിക്കും; Segment ടാപ്പ് ചെയ്യുന്നതിന് മുമ്പ് ഒരു അല്ലെങ്കിൽ കൂടുതൽ labels തിരഞ്ഞെടുക്കാൻ അനുവദിക്കും.</string>
     <string name="faq_how_to_screenshot">സ്ക്രീൻഷോട്ട് എങ്ങനെ എടുക്കും?</string>
     <string name="faq_how_to_screenshot_answer">SmartyPants സജീവമാകുമ്പോൾ (ബ്രെയിൻ ഐക്കൺ പച്ച), താഴെ-വലതുവശത്ത് ഒരു ഷെയർ ഐക്കൺ കാണിക്കും. AI ഡിറ്റക്ഷനുകളോടെ വ്യൂവിന്റെ സ്ക്രീൻഷോട്ട് നിങ്ങളുടെ ഫോട്ടോ ലൈബ്രറിയിൽ സേവ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക.</string>
     <string name="faq_how_to_save_room">മുറി എങ്ങനെ സേവ് ചെയ്യും?</string>

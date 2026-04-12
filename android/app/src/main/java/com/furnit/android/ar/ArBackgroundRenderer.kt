@@ -79,7 +79,6 @@ class ArBackgroundRenderer {
                 Coordinates2d.TEXTURE_NORMALIZED,
                 quadTexCoords,
             )
-            vertexBuffer.put(quadCoords).position(0)
             texBuffer.put(quadTexCoords).position(0)
         }
 

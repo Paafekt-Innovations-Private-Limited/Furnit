@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">Vous pouvez créer jusqu\'à 1000 pièces. Supprimez les anciennes pièces pour libérer de l\'espace. Le nombre de pièces et le stockage utilisé s\'affichent en haut de l\'écran d\'accueil.</string>
     <string name="faq_furniture_segmentation">Segmentation de meubles</string>
     <string name="faq_what_is_segmentation">Qu\'est-ce que la segmentation de meubles ?</string>
-    <string name="faq_what_is_segmentation_answer">La segmentation de meubles utilise l\'IA pour identifier et séparer les meubles dans vos photos, vous permettant de voir comment chaque pièce s\'intégrerait dans votre pièce 3D.</string>
+    <string name="faq_what_is_segmentation_answer">La segmentation de meubles fonctionne maintenant depuis le visualiseur de pièce en direct. Sélectionnez d’abord les étiquettes détectées ; Segmenter crée ensuite un calque découpé uniquement pour ces meubles sélectionnés afin d’évaluer leur place dans la pièce 3D.</string>
     <string name="faq_how_to_segment">Comment segmenter des meubles à partir d\'une photo ?</string>
-    <string name="faq_how_to_segment_answer">En visualisant votre pièce 3D, appuyez sur l’icône cerveau pour démarrer la segmentation. Orientez ensuite la caméra vers les meubles pour voir la détection en direct et le calque de meuble extrait.</string>
+    <string name="faq_how_to_segment_answer">Dans le visualiseur de pièce, touchez l’icône cerveau, pointez la caméra vers le meuble, touchez une ou plusieurs étiquettes détectées pour les sélectionner, puis touchez Segmenter. Touchez Arrêter pour revenir aux identifications en direct.</string>
     <string name="faq_not_detected">Pourquoi mes meubles ne sont-ils pas détectés ?</string>
     <string name="faq_not_detected_answer">La détection de meubles fonctionne mieux avec des photos claires et bien éclairées où les meubles sont clairement visibles. Assurez-vous que les meubles ne sont pas partiellement cachés ou ne se confondent pas avec l\'arrière-plan.</string>
     <string name="faq_multiple_pieces">Puis-je segmenter plusieurs meubles ?</string>
@@ -168,7 +168,7 @@
     <string name="faq_how_to_view">Comment visualiser ma pièce 3D ?</string>
     <string name="faq_how_to_view_answer">Appuyez sur n\'importe quelle pièce de votre écran d\'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.</string>
     <string name="faq_how_to_place">Comment placer des meubles dans ma pièce ?</string>
-    <string name="faq_how_to_place_answer">Après avoir segmenté des meubles, appuyez sur le meuble pour l\'ajouter à votre pièce. Vous pouvez ensuite le faire glisser pour le positionner, pincer pour le redimensionner et faire pivoter pour ajuster son orientation.</string>
+    <string name="faq_how_to_place_answer">Après avoir touché Segmenter, le meuble sélectionné apparaît comme un calque dans la pièce. Faites-le glisser pour le placer, pincez pour le redimensionner et faites-le pivoter pour régler son orientation.</string>
     <string name="faq_sample_room">Puis-je utiliser une pièce exemple au lieu de la mienne ?</string>
     <string name="faq_sample_room_answer">Oui ! L\'application propose des pièces exemples pour expérimenter. Accédez-y depuis la section Explorer pour essayer le placement de meubles sans créer d\'abord votre propre pièce.</string>
     <string name="faq_accuracy">Quelle est la précision du modèle 3D ?</string>
@@ -177,7 +177,7 @@
     <string name="faq_adjust_dimensions_answer">Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.</string>
     <string name="faq_furniture_measurements">Meubles &amp; mesures</string>
     <string name="faq_ar_assisted_sizing">Qu\'est-ce que le dimensionnement des meubles assisté par RA ?</string>
-    <string name="faq_ar_assisted_sizing_answer">Touchez d’abord l’icône cerveau pour lancer la segmentation, puis utilisez le contrôle de taille. Sur les téléphones avec profondeur ARCore, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste. Sans profondeur AR, elle revient à une estimation approximative basée sur les proportions, donc les mesures du meuble ne sont pas exactes.</string>
+    <string name="faq_ar_assisted_sizing_answer">Touchez d’abord l’icône cerveau, sélectionnez les éléments détectés, puis touchez Segmenter. Utilisez le contrôle de taille lorsque vous voulez une échelle relative à la pièce. Sur les téléphones avec AR/profondeur, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste ; sans profondeur, les mesures sont approximatives.</string>
     <string name="faq_measurement_pill">À quoi sert le petit bandeau de mesure ?</string>
     <string name="faq_measurement_pill_answer">La pastille Furni n’apparaît que lorsque le mode de taille est activé et que l’app dispose d’une estimation de hauteur en direct exploitable. Des mesures de la pièce peuvent aussi apparaître dans le visualiseur. Sur les téléphones sans AR, ces valeurs sont moins fiables, surtout pour les meubles.</string>
     <string name="faq_reset_overlay_scale">Le masque semble mal zoomé — que faire ?</string>
@@ -237,7 +237,7 @@
     <string name="accessibility_create_room">Créer une pièce à partir d\'une photo</string>
     <string name="faq_ai_features">Fonctionnalités IA</string>
     <string name="faq_what_is_brain_icon">Que fait l\'icône du cerveau ?</string>
-    <string name="faq_what_is_brain_icon_answer">L\'icône du cerveau active SmartyPants - une fonctionnalité de détection d\'objets alimentée par l\'IA. Elle utilise votre caméra pour identifier les meubles et objets en temps réel, affichant des étiquettes et des cadres autour des éléments détectés.</string>
+    <string name="faq_what_is_brain_icon_answer">L’icône cerveau lance le mode identification de SmartyPants. Elle utilise la caméra en direct pour trouver les meubles et objets, affiche des étiquettes et des cadres, puis vous laisse sélectionner une ou plusieurs étiquettes avant de toucher Segmenter.</string>
     <string name="faq_how_to_screenshot">Comment prendre une capture d\'écran ?</string>
     <string name="faq_how_to_screenshot_answer">Lorsque SmartyPants est actif (icône du cerveau verte), une icône de partage apparaît en bas à droite. Appuyez dessus pour enregistrer une capture d\'écran avec les détections IA dans votre photothèque.</string>
     <string name="faq_how_to_save_room">Comment enregistrer une pièce ?</string>

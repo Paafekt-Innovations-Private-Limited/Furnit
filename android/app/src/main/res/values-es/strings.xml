@@ -157,9 +157,9 @@
     <string name="faq_how_many_rooms_answer">Puedes crear hasta 1000 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior de la pantalla de inicio verás el número de habitaciones y el almacenamiento usado.</string>
     <string name="faq_furniture_segmentation">Segmentación de muebles</string>
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
-    <string name="faq_what_is_segmentation_answer">La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza encajaría en tu habitación 3D.</string>
+    <string name="faq_what_is_segmentation_answer">La segmentación de muebles ahora funciona desde el visor de habitación en vivo. Primero selecciona las etiquetas detectadas; luego Segmentar crea una superposición recortada solo para esos muebles seleccionados para que evalúes cómo quedan en la habitación 3D.</string>
     <string name="faq_how_to_segment">¿Cómo segmento muebles de una foto?</string>
-    <string name="faq_how_to_segment_answer">Al ver tu habitación 3D, toca el icono del cerebro para iniciar la segmentación. Después apunta la cámara hacia los muebles para ver la detección en vivo y la superposición extraída.</string>
+    <string name="faq_how_to_segment_answer">En el visor de la habitación, toca el icono del cerebro, apunta la cámara al mueble, toca una o más etiquetas detectadas para seleccionarlas y luego toca Segmentar. Toca Detener para volver a las identificaciones en vivo.</string>
     <string name="faq_not_detected">¿Por qué no se detectan mis muebles?</string>
     <string name="faq_not_detected_answer">La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.</string>
     <string name="faq_multiple_pieces">¿Puedo segmentar múltiples muebles?</string>
@@ -168,7 +168,7 @@
     <string name="faq_how_to_view">¿Cómo veo mi habitación 3D?</string>
     <string name="faq_how_to_view_answer">Toca cualquier habitación en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por la habitación usando gestos táctiles.</string>
     <string name="faq_how_to_place">¿Cómo coloco muebles en mi habitación?</string>
-    <string name="faq_how_to_place_answer">Después de segmentar muebles, toca el mueble para añadirlo a tu habitación. Luego puedes arrastrarlo para posicionarlo, pellizcar para cambiar el tamaño y rotar para ajustar su orientación.</string>
+    <string name="faq_how_to_place_answer">Después de tocar Segmentar, el mueble seleccionado aparece como una superposición en la habitación. Arrástralo para colocarlo, pellizca para cambiar el tamaño y gíralo para ajustar la orientación.</string>
     <string name="faq_sample_room">¿Puedo usar una habitación de ejemplo en lugar de la mía?</string>
     <string name="faq_sample_room_answer">¡Sí! La aplicación proporciona habitaciones de ejemplo para experimentar. Accede a ellas desde la sección Explorar para probar la colocación de muebles sin crear primero tu propia habitación.</string>
     <string name="faq_accuracy">¿Qué tan preciso es el modelo 3D?</string>
@@ -177,7 +177,7 @@
     <string name="faq_adjust_dimensions_answer">Sí, ve a Ajustes y busca las opciones de Dimensiones de habitación donde puedes afinar el tamaño y proporciones de tu habitación generada.</string>
     <string name="faq_furniture_measurements">Muebles y medidas</string>
     <string name="faq_ar_assisted_sizing">¿Qué es el tamaño de muebles asistido por AR?</string>
-    <string name="faq_ar_assisted_sizing_answer">Primero toca el icono del cerebro para iniciar la segmentación y luego usa el control de tamaño. En teléfonos con profundidad ARCore, la app usa profundidad real de la cámara para mostrar un tamaño de mueble más realista. En teléfonos sin profundidad AR, vuelve a una estimación aproximada basada en proporciones, por lo que las medidas del mueble no son exactas.</string>
+    <string name="faq_ar_assisted_sizing_answer">Primero toca el icono del cerebro, selecciona los elementos detectados y luego toca Segmentar. Usa el control de tamaño cuando quieras escala relativa a la habitación. En teléfonos con AR/profundidad, la app usa profundidad en vivo de la cámara para un tamaño de mueble más realista; sin profundidad, las medidas son aproximadas.</string>
     <string name="faq_measurement_pill">¿Qué es la pequeña lectura de medidas?</string>
     <string name="faq_measurement_pill_answer">La pastilla Furni solo aparece cuando el modo de tamaño está activado y la app tiene una estimación útil de altura en vivo. En el visor también pueden aparecer medidas de la habitación. En teléfonos sin AR, estas lecturas son menos fiables, especialmente para muebles.</string>
     <string name="faq_reset_overlay_scale">La máscara parece mal ampliada — ¿qué hago?</string>
@@ -237,7 +237,7 @@
     <string name="accessibility_create_room">Crear habitación desde foto</string>
     <string name="faq_ai_features">Funciones de IA</string>
     <string name="faq_what_is_brain_icon">¿Qué hace el icono del cerebro?</string>
-    <string name="faq_what_is_brain_icon_answer">El icono del cerebro activa SmartyPants - una función de detección de objetos impulsada por IA. Usa tu cámara para identificar muebles y objetos en tiempo real, mostrando etiquetas y cuadros delimitadores alrededor de los elementos detectados.</string>
+    <string name="faq_what_is_brain_icon_answer">El icono del cerebro inicia el modo de identificación de SmartyPants. Usa la cámara en vivo para encontrar muebles y objetos, muestra etiquetas y recuadros, y te permite seleccionar una o más etiquetas antes de tocar Segmentar.</string>
     <string name="faq_how_to_screenshot">¿Cómo tomo una captura de pantalla?</string>
     <string name="faq_how_to_screenshot_answer">Cuando SmartyPants está activo (icono del cerebro verde), aparece un icono de compartir en la parte inferior derecha. Tócalo para guardar una captura de pantalla con las detecciones de IA en tu biblioteca de fotos.</string>
     <string name="faq_how_to_save_room">¿Cómo guardo una habitación?</string>

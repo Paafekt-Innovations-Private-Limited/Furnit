@@ -2110,9 +2110,8 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun showBrainProgressOverlay() {
+    private fun activateBrainOverlayUi() {
         brainOverlayVisible = true
-        brainProgressOverlay.visibility = View.VISIBLE
         setBrainSegmentationButtonActive(true)
         updateBrainActionButton()
         updateBrainLivePreviewVisibility()
@@ -2122,9 +2121,19 @@ class SharpRoomActivity : AppCompatActivity() {
         restartBrainGestureHint()
     }
 
-    /** Every brain tap should show progress until the first result for that tap arrives. */
+    private fun showBrainProgressOverlay() {
+        activateBrainOverlayUi()
+        brainProgressOverlay.visibility = View.VISIBLE
+    }
+
+    /** Show startup progress only until the first successful detection run in this viewer session. */
     private fun showBrainProgressOverlayIfNeeded() {
-        showBrainProgressOverlay()
+        activateBrainOverlayUi()
+        brainProgressOverlay.visibility = if (brainSegmentationCompletedOnceThisSession) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
     }
 
     private fun hideBrainProgressOverlay() {
@@ -3066,15 +3075,12 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // Portrait: identity. Landscape: 180° about local Y only (fixes upside-down from Rx+Ry combo).
+            // Keep the SHARP PLY upright in both orientations. Ry=π made landscape read mirrored;
+            // Rx=π fixed that mirror but flipped the room upside down.
             scene.add(splatMesh);
             splatMesh.scale.set(1, 1, 1);
-            if (isPortrait) {
-                splatMesh.rotation.set(0, 0, 0);
-            } else {
-                splatMesh.rotation.set(0, Math.PI, 0);
-            }
-            console.log('[WebGL] SplatMesh: portrait identity; landscape Ry=π only');
+            splatMesh.rotation.set(0, 0, 0);
+            console.log('[WebGL] SplatMesh: identity rotation for portrait and landscape');
             if (!trySplatLoadHintBox()) {
                 reportStage('hint_unavailable', '');
             }

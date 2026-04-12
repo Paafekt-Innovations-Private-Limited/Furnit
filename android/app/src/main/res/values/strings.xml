@@ -219,13 +219,13 @@
     <!-- FAQ - AI Features -->
     <string name="faq_ai_features">AI Features</string>
     <string name="faq_what_is_brain_icon">What does the brain icon do?</string>
-    <string name="faq_what_is_brain_icon_answer">The brain icon activates SmartyPants - an AI-powered object detection feature. It uses your camera to identify furniture and objects in real-time, showing labels and bounding boxes around detected items.</string>
+    <string name="faq_what_is_brain_icon_answer">The brain icon starts SmartyPants identify mode. It uses the live camera to find furniture and objects, shows labels and boxes, and lets you select one or more labels before tapping Segment.</string>
     <string name="faq_how_to_screenshot">How do I take a screenshot?</string>
     <string name="faq_how_to_screenshot_answer">When SmartyPants is active (brain icon is green), a share icon appears on the bottom-right. Tap it to save a screenshot of the view with AI detections to your Photos library.</string>
     <string name="faq_what_is_segmentation">What is furniture segmentation?</string>
-    <string name="faq_what_is_segmentation_answer">Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation now works from the live room viewer. Select detected labels first, then Segment creates a cut-out overlay only for those selected furniture items so you can judge fit in the 3D room.</string>
     <string name="faq_how_to_segment">How do I segment furniture from a photo?</string>
-    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap the brain icon to start identify mode. Tap one or more furniture labels to select them, then tap Segment. Tap Stop to return to live identifications.</string>
+    <string name="faq_how_to_segment_answer">In the room viewer, tap the brain icon, point the camera at the furniture, tap one or more detected labels to select them, then tap Segment. Tap Stop to return to live identifications.</string>
     <string name="faq_not_detected">Why isn\'t my furniture being detected?</string>
     <string name="faq_not_detected_answer">Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn\'t partially hidden or too far from the camera.</string>
 
@@ -240,7 +240,7 @@
     <string name="faq_what_is_memory_display">What does the MB number mean?</string>
     <string name="faq_what_is_memory_display_answer">The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.</string>
     <string name="faq_how_to_place">How do I place furniture in my room?</string>
-    <string name="faq_how_to_place_answer">After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation.</string>
+    <string name="faq_how_to_place_answer">After you tap Segment, the selected furniture appears as an overlay in the room. Drag to position it, pinch to resize, and rotate to adjust its orientation.</string>
     <string name="faq_sample_room">Can I use a sample room instead of my own?</string>
     <string name="faq_sample_room_answer">Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.</string>
     <string name="faq_accuracy">How accurate is the 3D model?</string>
@@ -251,7 +251,7 @@
     <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">How is furniture overlay size estimated?</string>
-    <string name="faq_ar_assisted_sizing_answer">First tap the brain icon to start segmentation, then use the sizing control. On phones with ARCore depth support, the app uses live camera depth for a more realistic furniture size. On phones without AR depth, it falls back to a rough proportion-based estimate, so furniture measurements are not exact.</string>
+    <string name="faq_ar_assisted_sizing_answer">First tap the brain icon, select detected items, then tap Segment. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
     <string name="faq_measurement_pill_answer">The Furni size pill appears only when sizing mode is on and the app has a usable live height estimate. Room measurements may also appear in the room viewer. On phones without AR, these readings are less reliable, especially for furniture.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>

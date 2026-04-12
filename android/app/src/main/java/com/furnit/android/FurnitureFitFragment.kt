@@ -431,10 +431,14 @@ class FurnitureFitFragment : Fragment() {
         hostActivity.runOnUiThread {
             if (!isAdded) return@runOnUiThread
 
+            if (!segmentationCompletedOnceThisSession) {
+                segmentationCompletedOnceThisSession = true
+                progressContainer.visibility = View.GONE
+            }
+
             if (result != null && result.mask != null) {
                 if (!hasFirstDetection) {
                     hasFirstDetection = true
-                    segmentationCompletedOnceThisSession = true
                     progressContainer.visibility = View.GONE
                 }
 
@@ -962,7 +966,7 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun setProgress(value: Int, text: String) {
-        if (hasFirstDetection) return
+        if (hasFirstDetection || segmentationCompletedOnceThisSession) return
         activity?.runOnUiThread {
             progressContainer.visibility = View.VISIBLE
             progressBar.progress = value

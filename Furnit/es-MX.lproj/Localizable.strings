@@ -206,9 +206,9 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentación de muebles";
 "faq.whatIsSegmentation" = "¿Qué es la segmentación de muebles?";
-"faq.whatIsSegmentationAnswer" = "La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza quedaría en tu cuarto 3D.";
+"faq.whatIsSegmentationAnswer" = "La segmentación de muebles ahora funciona desde el visor del cuarto en vivo. Primero selecciona las etiquetas detectadas; luego Segmentar crea una superposición recortada solo para esos muebles seleccionados para que evalúes cómo quedan en el cuarto 3D.";
 "faq.howToSegment" = "¿Cómo segmento muebles de una foto?";
-"faq.howToSegmentAnswer" = "En el visor del cuarto, toca el ícono del cerebro para iniciar la detección de muebles. Cuando la segmentación ya esté activa, puedes tocar el ícono de tamaño para pedir a la app que ajuste la superposición del mueble al cuarto.";
+"faq.howToSegmentAnswer" = "En el visor del cuarto, toca el ícono del cerebro, apunta la cámara al mueble, toca una o más etiquetas detectadas para seleccionarlas y luego toca Segmentar. Toca Detener para volver a las identificaciones en vivo.";
 "faq.notDetected" = "¿Por qué no se detectan mis muebles?";
 "faq.notDetectedAnswer" = "La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.";
 "faq.multiplePieces" = "¿Puedo segmentar múltiples muebles?";
@@ -232,7 +232,7 @@
 "faq.howToView" = "¿Cómo veo mi cuarto 3D?";
 "faq.howToViewAnswer" = "Toca cualquier cuarto en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por el cuarto usando gestos táctiles.";
 "faq.howToPlace" = "¿Cómo coloco muebles en mi cuarto?";
-"faq.howToPlaceAnswer" = "Después de segmentar muebles, toca el mueble para agregarlo a tu cuarto. Luego puedes arrastrarlo para posicionarlo, pellizcar para cambiar el tamaño y rotar para ajustar su orientación.";
+"faq.howToPlaceAnswer" = "Después de tocar Segmentar, el mueble seleccionado aparece como una superposición en el cuarto. Arrástralo para colocarlo, pellizca para cambiar el tamaño y gíralo para ajustar la orientación.";
 "faq.sampleRoom" = "¿Puedo usar un cuarto de ejemplo en lugar del mío?";
 "faq.sampleRoomAnswer" = "¡Sí! La app proporciona cuartos de ejemplo para experimentar. Accede a ellos desde la sección Explorar para probar la colocación de muebles sin crear primero tu propio cuarto.";
 "faq.accuracy" = "¿Qué tan preciso es el modelo 3D?";
@@ -241,7 +241,7 @@
 "faq.adjustDimensionsAnswer" = "No directamente en cuartos SHARP generados por IA. Usa la regla en el visor para revisar el ancho, alto y fondo estimados. Para mejores resultados, toma una foto clara del cuarto con esquinas visibles; los cuartos manuales siguen los límites que tú marques.";
 "faq.furnitureMeasurements" = "Muebles y medidas";
 "faq.arAssistedSizing" = "¿Qué es el tamaño de muebles asistido por AR?";
-"faq.arAssistedSizingAnswer" = "Primero toca el ícono del cerebro para iniciar la segmentación y luego toca el ícono de tamaño. En teléfonos con AR/profundidad, la app usa la profundidad en vivo de la cámara para dar un tamaño de mueble más realista. En teléfonos sin profundidad AR, usa una estimación aproximada basada en proporciones, así que las medidas del mueble no son exactas.";
+"faq.arAssistedSizingAnswer" = "Primero toca el ícono del cerebro, selecciona los elementos detectados y luego toca Segmentar. Usa el control de tamaño cuando quieras escala relativa al cuarto. En teléfonos con AR/profundidad, la app usa profundidad en vivo de la cámara para un tamaño de mueble más realista; sin profundidad, las medidas son aproximadas.";
 "faq.measurementPill" = "¿Qué es la pequeña lectura de medidas?";
 "faq.measurementPillAnswer" = "La pastilla de tamaño del mueble solo aparece cuando el modo de tamaño está activado y la app tiene una estimación de altura en vivo válida. El botón de regla muestra el ancho, alto y fondo actuales del cuarto en una tarjeta pequeña. En teléfonos sin AR, estas lecturas son menos confiables, especialmente para los muebles.";
 "faq.resetOverlayScale" = "La máscara se ve mal ampliada — ¿qué hago?";
@@ -382,7 +382,7 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "Funciones de IA";
 "faq.whatIsBrainIcon" = "¿Qué hace el ícono del cerebro?";
-"faq.whatIsBrainIconAnswer" = "El ícono del cerebro inicia la detección de muebles de SmartyPants. Busca muebles en la vista en vivo de la cámara y muestra la superposición de segmentación. Para escalar el mueble con relación al cuarto, toca el ícono de tamaño después de activar el cerebro.";
+"faq.whatIsBrainIconAnswer" = "El ícono del cerebro inicia el modo de identificación de SmartyPants. Usa la cámara en vivo para encontrar muebles y objetos, muestra etiquetas y recuadros, y te permite seleccionar una o más etiquetas antes de tocar Segmentar.";
 "faq.howToScreenshot" = "¿Cómo tomo una captura de pantalla?";
 "faq.howToScreenshotAnswer" = "Cuando SmartyPants está activo (ícono del cerebro verde), aparece un ícono de compartir en la parte inferior derecha. Tócalo para guardar una captura de pantalla con las detecciones de IA en tu biblioteca de fotos.";
 "faq.howToSaveRoom" = "¿Cómo guardo un cuarto?";
