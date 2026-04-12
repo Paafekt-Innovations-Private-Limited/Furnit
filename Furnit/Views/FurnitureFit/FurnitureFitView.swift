@@ -468,8 +468,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var latestDisplayedCandidates: [FurnitureFitDetection] = []
     private var latestDisplayedSelectedCandidateIndex: Int?
     private let selectedClassStateLock = NSLock()
-    private var selectedClassIDs: Set<Int> = []
-    private var selectedClassDisplayLabels: [Int: String] = [:]
+    /// User-tapped instances (geometry snapshots). Segmentation matches these to current-frame boxes by IoU — not by class alone (avoids segmenting every chair when one is chosen).
+    private var selectedDetectionPins: [FurnitureFitDetection] = []
+    /// Minimum IoU between a live detection and a stored pin to treat as the same instance.
+    private let pinMatchIoUThreshold: Float = 0.45
     /// Stored reference so `hitTest` can check whether a pinch is already in flight.
     private weak var overlayPinchGesture: UIPinchGestureRecognizer?
     /// Stored reference so `hitTest` can check whether a pan is already in flight.
@@ -1416,22 +1418,44 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    private func selectedClassIDsSnapshot() -> Set<Int> {
+    private func selectedPinsSnapshot() -> [FurnitureFitDetection] {
         selectedClassStateLock.lock()
         defer { selectedClassStateLock.unlock() }
-        return selectedClassIDs
+        return selectedDetectionPins
     }
 
     private func hasSelectedClasses() -> Bool {
-        !selectedClassIDsSnapshot().isEmpty
+        !selectedPinsSnapshot().isEmpty
     }
 
     private func selectedClassLabelsSnapshot() -> [String] {
-        selectedClassStateLock.lock()
-        defer { selectedClassStateLock.unlock() }
-        return selectedClassDisplayLabels
-            .sorted { lhs, rhs in lhs.value.localizedCaseInsensitiveCompare(rhs.value) == .orderedAscending }
-            .map(\.value)
+        selectedPinsSnapshot().map { displayClassName($0.classIdx) }
+    }
+
+    /// Maps each stored pin to the best-matching current-frame detection (same class, IoU ≥ threshold). Skips pins with no good match.
+    private func matchedCandidatesForPins(
+        candidates: [FurnitureFitDetection],
+        pins: [FurnitureFitDetection]
+    ) -> [FurnitureFitDetection] {
+        guard !pins.isEmpty, !candidates.isEmpty else { return [] }
+        var result: [FurnitureFitDetection] = []
+        var usedCandidateIndices = Set<Int>()
+        for pin in pins {
+            var bestIdx: Int?
+            var bestIoU: Float = 0
+            for (i, cand) in candidates.enumerated() {
+                guard cand.classIdx == pin.classIdx else { continue }
+                let iou = FurnitureFitIoU.calculate(cand, pin)
+                if iou > bestIoU {
+                    bestIoU = iou
+                    bestIdx = i
+                }
+            }
+            guard let idx = bestIdx, bestIoU >= pinMatchIoUThreshold, !usedCandidateIndices.contains(idx) else { continue }
+            usedCandidateIndices.insert(idx)
+            result.append(candidates[idx])
+        }
+        return result
     }
 
     private func selectedClassChipTitle(from labels: [String]) -> String? {
@@ -1467,35 +1491,32 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func updateDetectionOverlaySelectionHighlights() {
-        let selectedClassIDs = selectedClassIDsSnapshot()
+        let pins = selectedPinsSnapshot()
         detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
-            DetectionOverlayItem(
+            let isSel = index < latestDisplayedCandidates.count &&
+                pins.contains { FurnitureFitIoU.calculate(latestDisplayedCandidates[index], $0) >= pinMatchIoUThreshold }
+            return DetectionOverlayItem(
                 rectInView: item.rectInView,
                 label: item.label,
                 confidence: item.confidence,
-                isSelected: index < latestDisplayedCandidates.count &&
-                    selectedClassIDs.contains(latestDisplayedCandidates[index].classIdx)
+                isSelected: isSel
             )
         }
     }
 
     private func clearSelectedClassSelections() {
         selectedClassStateLock.lock()
-        selectedClassIDs.removeAll()
-        selectedClassDisplayLabels.removeAll()
+        selectedDetectionPins.removeAll()
         selectedClassStateLock.unlock()
         publishSelectedClassState()
     }
 
-    private func toggleSelectedClass(_ detection: FurnitureFitDetection) {
-        let displayLabel = displayClassName(detection.classIdx)
+    private func toggleSelectedDetection(_ detection: FurnitureFitDetection) {
         selectedClassStateLock.lock()
-        if selectedClassIDs.contains(detection.classIdx) {
-            selectedClassIDs.remove(detection.classIdx)
-            selectedClassDisplayLabels.removeValue(forKey: detection.classIdx)
+        if let idx = selectedDetectionPins.firstIndex(where: { FurnitureFitIoU.calculate($0, detection) >= 0.5 }) {
+            selectedDetectionPins.remove(at: idx)
         } else {
-            selectedClassIDs.insert(detection.classIdx)
-            selectedClassDisplayLabels[detection.classIdx] = displayLabel
+            selectedDetectionPins.append(detection)
         }
         selectedClassStateLock.unlock()
         publishSelectedClassState()
@@ -1575,14 +1596,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 scaleY: scaleY
             )
         }
-        let selectedClassIDs = selectedClassIDsSnapshot()
+        let pins = selectedPinsSnapshot()
         candidateBboxesInView = rects
         detectionBBoxOverlayView.items = candidates.enumerated().map { index, detection in
-            DetectionOverlayItem(
+            let isSel = pins.contains { FurnitureFitIoU.calculate(detection, $0) >= pinMatchIoUThreshold }
+            return DetectionOverlayItem(
                 rectInView: rects[index],
                 label: displayClassName(detection.classIdx),
                 confidence: detection.confidence,
-                isSelected: selectedClassIDs.contains(detection.classIdx)
+                isSelected: isSel
             )
         }
     }
@@ -2860,10 +2882,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        let selectedClassIDs = selectedClassIDsSnapshot()
-        let selectedCandidatePairs = candidates.enumerated().filter { selectedClassIDs.contains($0.element.classIdx) }
-        guard !selectedCandidatePairs.isEmpty else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected classes are visible") }
+        let pins = selectedPinsSnapshot()
+        let selectedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
+        guard !selectedCandidates.isEmpty else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected instances match current frame (IoU≥\(pinMatchIoUThreshold))") }
             DispatchQueue.main.async {
                 self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
                 self.updateDetectionOverlay(
@@ -2879,9 +2901,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        let selectedCandidates = selectedCandidatePairs.map(\.element)
         guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: selectedCandidates, modelSide: onnxSide) else {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among selected classes") }
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
             DispatchQueue.main.async {
                 self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
                 self.updateDetectionOverlay(
@@ -2896,8 +2917,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             resetProcessingFlag()
             return
         }
-        let primaryIdx = selectedCandidatePairs[selectedPrimaryRelativeIndex].offset
-        let primary = candidates[primaryIdx]
+        let primary = selectedCandidates[selectedPrimaryRelativeIndex]
+        guard let primaryIdx = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, primary) >= 0.99 }) else {
+            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): primary not found in full candidate list") }
+            resetProcessingFlag()
+            return
+        }
 
         let maskDetectionsForBuild = selectedCandidates.map {
             onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
@@ -4532,15 +4557,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let tappedIndex = candidateIndexForTap(pointInMask) else { return }
         guard tappedIndex < latestDisplayedCandidates.count else { return }
         let tappedDetection = latestDisplayedCandidates[tappedIndex]
-        toggleSelectedClass(tappedDetection)
+        toggleSelectedDetection(tappedDetection)
         latestDisplayedSelectedCandidateIndex = tappedIndex
-        let selectedClassIDs = selectedClassIDsSnapshot()
+        let pins = selectedPinsSnapshot()
         detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
-            DetectionOverlayItem(
+            let isSel = index < latestDisplayedCandidates.count &&
+                pins.contains { FurnitureFitIoU.calculate(latestDisplayedCandidates[index], $0) >= pinMatchIoUThreshold }
+            return DetectionOverlayItem(
                 rectInView: item.rectInView,
                 label: item.label,
                 confidence: item.confidence,
-                isSelected: selectedClassIDs.contains(latestDisplayedCandidates[index].classIdx)
+                isSelected: isSel
             )
         }
         logDebug(

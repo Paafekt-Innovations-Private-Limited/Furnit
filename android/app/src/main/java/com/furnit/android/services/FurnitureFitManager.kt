@@ -145,14 +145,14 @@ class FurnitureFitManager(private val context: Context) {
         frame: Bitmap?,
         callback: (SegmentationResult?) -> Unit,
     ) {
-        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = emptySet(), callback = callback)
+        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = emptySet(), pinnedDetections = null, callback = callback)
     }
 
     fun detectWithDetectionsAsync(
         frame: Bitmap?,
         callback: (SegmentationResult?) -> Unit,
     ) {
-        analyzeFrameAsync(frame, includeMask = false, selectedClassIds = emptySet(), callback = callback)
+        analyzeFrameAsync(frame, includeMask = false, selectedClassIds = emptySet(), pinnedDetections = null, callback = callback)
     }
 
     fun segmentSelectedClassesAsync(
@@ -160,13 +160,31 @@ class FurnitureFitManager(private val context: Context) {
         selectedClassIds: Set<Int>,
         callback: (SegmentationResult?) -> Unit,
     ) {
-        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = selectedClassIds, callback = callback)
+        analyzeFrameAsync(frame, includeMask = true, selectedClassIds = selectedClassIds, pinnedDetections = null, callback = callback)
+    }
+
+    /**
+     * Segment only the object instances matching [pinnedDetections] (same class + IoU to live box), not every box of that class.
+     */
+    fun segmentSelectedInstancesAsync(
+        frame: Bitmap?,
+        pinnedDetections: List<DetectionResult>,
+        callback: (SegmentationResult?) -> Unit,
+    ) {
+        analyzeFrameAsync(
+            frame,
+            includeMask = true,
+            selectedClassIds = emptySet(),
+            pinnedDetections = pinnedDetections,
+            callback = callback,
+        )
     }
 
     private fun analyzeFrameAsync(
         frame: Bitmap?,
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>? = null,
         callback: (SegmentationResult?) -> Unit,
     ) {
         if (frame == null) {
@@ -177,7 +195,7 @@ class FurnitureFitManager(private val context: Context) {
         inferenceExecutor.execute {
             try {
                 if (ortSession != null) {
-                    runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, callback)
+                    runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, pinnedDetections, callback)
                     return@execute
                 }
 
@@ -665,10 +683,11 @@ class FurnitureFitManager(private val context: Context) {
         frame: Bitmap,
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>?,
         callback: (SegmentationResult?) -> Unit,
     ) {
         try {
-            val base = runOnnxSegmentationOnce(frame, includeMask, selectedClassIds) ?: run {
+            val base = runOnnxSegmentationOnce(frame, includeMask, selectedClassIds, pinnedDetections) ?: run {
                 mainHandler.post { callback(null) }
                 return
             }
@@ -684,6 +703,7 @@ class FurnitureFitManager(private val context: Context) {
         frame: Bitmap,
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>? = null,
     ): SegmentationResult? {
         var tensor: OnnxTensor? = null
         return try {
@@ -816,17 +836,27 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            val primaryCandidates = if (selectedClassIds.isEmpty()) {
-                keepDets
-            } else {
-                keepDets.filter { it.classId in selectedClassIds }
+            val pinList = pinnedDetections.orEmpty()
+            val restrictToSelection =
+                selectedClassIds.isNotEmpty() || pinList.isNotEmpty()
+            val primaryCandidates = when {
+                pinList.isNotEmpty() -> {
+                    val iouPinThreshold = 0.45f
+                    keepDets.filter { det ->
+                        pinList.any { pin ->
+                            det.classId == pin.classId && calculateIoU(det, pin) >= iouPinThreshold
+                        }
+                    }
+                }
+                selectedClassIds.isEmpty() -> keepDets
+                else -> keepDets.filter { it.classId in selectedClassIds }
             }
             val primaryDet = pickPrimaryOnnxDetection(
                 detections = primaryCandidates,
                 frameWidth = inputW.toFloat(),
                 frameHeight = inputH.toFloat(),
             )
-            val maskSourceDetections = if (selectedClassIds.isEmpty()) {
+            val maskSourceDetections = if (!restrictToSelection) {
                 if (primaryDet != null) {
                     collectMaskDetections(primaryDet, keepDets)
                 } else {
@@ -835,7 +865,7 @@ class FurnitureFitManager(private val context: Context) {
             } else {
                 primaryCandidates
             }
-            val maskDetectionsForBuild = if (selectedClassIds.isNotEmpty()) {
+            val maskDetectionsForBuild = if (restrictToSelection) {
                 maskSourceDetections.map { detection ->
                     expandedPrimaryForMaskBuild(
                         primaryDetection = detection,
@@ -944,7 +974,7 @@ class FurnitureFitManager(private val context: Context) {
                         threshold = 0.5f,
                     )
                 }
-                val clipCandidates = if (selectedClassIds.isEmpty()) maskDetectionsForBuild else primaryCandidates
+                val clipCandidates = if (!restrictToSelection) maskDetectionsForBuild else primaryCandidates
                 val clipLeftModel = clipCandidates.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
                 val clipTopModel = clipCandidates.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
                 val clipRightModel = clipCandidates.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
@@ -1343,6 +1373,33 @@ class FurnitureFitManager(private val context: Context) {
 
         val area1 = det1.w * det1.h
         val area2 = det2.w * det2.h
+        val unionArea = area1 + area2 - interArea
+
+        return if (unionArea > 0) interArea / unionArea else 0f
+    }
+
+    private fun calculateIoU(det: Detection, pin: DetectionResult): Float {
+        val x1Min = det.x - det.w / 2
+        val y1Min = det.y - det.h / 2
+        val x1Max = det.x + det.w / 2
+        val y1Max = det.y + det.h / 2
+
+        val x2Min = pin.x - pin.w / 2
+        val y2Min = pin.y - pin.h / 2
+        val x2Max = pin.x + pin.w / 2
+        val y2Max = pin.y + pin.h / 2
+
+        val interXMin = maxOf(x1Min, x2Min)
+        val interYMin = maxOf(y1Min, y2Min)
+        val interXMax = minOf(x1Max, x2Max)
+        val interYMax = minOf(y1Max, y2Max)
+
+        val interWidth = maxOf(0f, interXMax - interXMin)
+        val interHeight = maxOf(0f, interYMax - interYMin)
+        val interArea = interWidth * interHeight
+
+        val area1 = det.w * det.h
+        val area2 = pin.w * pin.h
         val unionArea = area1 + area2 - interArea
 
         return if (unionArea > 0) interArea / unionArea else 0f

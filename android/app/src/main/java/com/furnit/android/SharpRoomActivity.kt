@@ -328,8 +328,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private var latestBrainInputSize: Int = 640
     private var latestBrainOverlayScale: Float = 1f
     private var brainSegmentationMode: BrainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
-    private val selectedBrainClassIds = linkedSetOf<Int>()
-    private val selectedBrainLabels = linkedSetOf<String>()
+    /** Tapped object instances (bbox snapshots); segmentation matches by class + IoU, not class id alone. */
+    private val selectedBrainPins = mutableListOf<DetectionResult>()
     private var showIdentifyLivePreview: Boolean = true
     private var showFullVideoWithIdentifications: Boolean = true
     private var cameraPreviewUseCase: Preview? = null
@@ -2142,7 +2142,7 @@ class SharpRoomActivity : AppCompatActivity() {
             actionButton.visibility = View.VISIBLE
             return
         }
-        if (selectedBrainClassIds.isNotEmpty()) {
+        if (selectedBrainPins.isNotEmpty()) {
             actionButton.text = getString(R.string.segment_furniture_action)
             actionButton.visibility = View.VISIBLE
             return
@@ -2205,7 +2205,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setDetectionBoxVisibility(brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY)
         brainDetectionOverlayView.setIdentifySelectionState(
             enabled = brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY,
-            selectedClassIds = selectedBrainClassIds,
+            selectedPins = selectedBrainPins.toList(),
         )
         brainDetectionOverlay.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
         updateBrainLivePreviewVisibility()
@@ -2215,12 +2215,11 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun clearBrainSelection() {
-        selectedBrainClassIds.clear()
-        selectedBrainLabels.clear()
+        selectedBrainPins.clear()
         updateBrainActionButton()
         brainDetectionOverlayView.setIdentifySelectionState(
             enabled = brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY,
-            selectedClassIds = selectedBrainClassIds,
+            selectedPins = selectedBrainPins.toList(),
         )
     }
 
@@ -2236,21 +2235,41 @@ class SharpRoomActivity : AppCompatActivity() {
         clearBrainSelection()
     }
 
+    /** IoU in model input space (same as [DetectionResult] centers). Used to toggle the same instance vs another object of the same class. */
+    private fun brainDetectionIoU(a: DetectionResult, b: DetectionResult): Float {
+        val ax1 = a.x - a.w / 2f
+        val ay1 = a.y - a.h / 2f
+        val ax2 = a.x + a.w / 2f
+        val ay2 = a.y + a.h / 2f
+        val bx1 = b.x - b.w / 2f
+        val by1 = b.y - b.h / 2f
+        val bx2 = b.x + b.w / 2f
+        val by2 = b.y + b.h / 2f
+        val ix1 = max(ax1, bx1)
+        val iy1 = max(ay1, by1)
+        val ix2 = min(ax2, bx2)
+        val iy2 = min(ay2, by2)
+        val iw = max(0f, ix2 - ix1)
+        val ih = max(0f, iy2 - iy1)
+        val inter = iw * ih
+        val ua = a.w * a.h + b.w * b.h - inter
+        return if (ua > 0f) inter / ua else 0f
+    }
+
     private fun handleBrainDetectionTapped(detection: DetectionResult) {
         if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY) return
-        if (selectedBrainClassIds.contains(detection.classId)) {
-            selectedBrainClassIds.remove(detection.classId)
-            selectedBrainLabels.remove(detection.label)
+        val idx = selectedBrainPins.indexOfFirst { brainDetectionIoU(it, detection) >= 0.5f }
+        if (idx >= 0) {
+            selectedBrainPins.removeAt(idx)
         } else {
-            selectedBrainClassIds.add(detection.classId)
-            selectedBrainLabels.add(detection.label)
+            selectedBrainPins.add(detection)
         }
-        brainDetectionOverlayView.setIdentifySelectionState(true, selectedBrainClassIds)
+        brainDetectionOverlayView.setIdentifySelectionState(true, selectedBrainPins.toList())
         updateBrainActionButton()
     }
 
     private fun activateSelectedBrainSegmentation() {
-        if (selectedBrainClassIds.isEmpty()) return
+        if (selectedBrainPins.isEmpty()) return
         brainSegmentationMode = BrainSegmentationMode.SEGMENT_SELECTED
         showIdentifyLivePreview = false
         latestBrainMask = null
@@ -2271,8 +2290,8 @@ class SharpRoomActivity : AppCompatActivity() {
         bitmap: Bitmap,
         callback: (com.furnit.android.services.SegmentationResult?) -> Unit,
     ) {
-        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED && selectedBrainClassIds.isNotEmpty()) {
-            manager.segmentSelectedClassesAsync(bitmap, selectedBrainClassIds.toSet(), callback)
+        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED && selectedBrainPins.isNotEmpty()) {
+            manager.segmentSelectedInstancesAsync(bitmap, selectedBrainPins.toList(), callback)
         } else {
             manager.detectWithDetectionsAsync(bitmap, callback)
         }
@@ -2364,7 +2383,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
-        brainDetectionOverlayView.setIdentifySelectionState(false, emptySet())
+        brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
         updateBrainLivePreviewVisibility()
         hideBrainProgressOverlay()
         stopBrainDetection()

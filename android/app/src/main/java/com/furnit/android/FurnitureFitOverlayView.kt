@@ -32,7 +32,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var hitTestBitmap: Bitmap? = null
     private var showDetectionBoxes = false
     private var identifySelectionEnabled = false
-    private var selectedClassIds: Set<Int> = emptySet()
+    /** Pinned instances (matched each frame by class + IoU), not "all boxes of this class". */
+    private var selectedPins: List<DetectionResult> = emptyList()
     private var pendingTappedDetection: DetectionResult? = null
 
     // Pinch-to-zoom scale factor for furniture (1.0 = neutral)
@@ -408,10 +409,30 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun setIdentifySelectionState(enabled: Boolean, selectedClassIds: Set<Int>) {
+    fun setIdentifySelectionState(enabled: Boolean, selectedPins: List<DetectionResult>) {
         identifySelectionEnabled = enabled
-        this.selectedClassIds = selectedClassIds
+        this.selectedPins = selectedPins
         invalidate()
+    }
+
+    private fun iou(a: DetectionResult, b: DetectionResult): Float {
+        val ax1 = a.x - a.w / 2f
+        val ay1 = a.y - a.h / 2f
+        val ax2 = a.x + a.w / 2f
+        val ay2 = a.y + a.h / 2f
+        val bx1 = b.x - b.w / 2f
+        val by1 = b.y - b.h / 2f
+        val bx2 = b.x + b.w / 2f
+        val by2 = b.y + b.h / 2f
+        val ix1 = max(ax1, bx1)
+        val iy1 = max(ay1, by1)
+        val ix2 = min(ax2, bx2)
+        val iy2 = min(ay2, by2)
+        val iw = max(0f, ix2 - ix1)
+        val ih = max(0f, iy2 - iy1)
+        val inter = iw * ih
+        val ua = a.w * a.h + b.w * b.h - inter
+        return if (ua > 0f) inter / ua else 0f
     }
 
     fun setMaskAndDetections(
@@ -478,7 +499,9 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 val top = (det.y - det.h / 2) * totalScaleY + centerOffsetY
                 val right = (det.x + det.w / 2) * totalScaleX + centerOffsetX
                 val bottom = (det.y + det.h / 2) * totalScaleY + centerOffsetY
-                val isSelected = det.classId in selectedClassIds
+                val isSelected = selectedPins.any { pin ->
+                    det.classId == pin.classId && iou(det, pin) >= 0.45f
+                }
                 val activeBoxPaint = if (isSelected) selectedBoxPaint else boxPaint
                 val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
 
