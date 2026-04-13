@@ -186,7 +186,7 @@ enum FurnitureFitOnnxStylePipeline {
             }
         }
 
-        return maskProto.map { $0 > 0.5 ? UInt8(255) : UInt8(0) }
+        return maskProto.map { $0 > 0.4 ? UInt8(255) : UInt8(0) }
     }
 }
 

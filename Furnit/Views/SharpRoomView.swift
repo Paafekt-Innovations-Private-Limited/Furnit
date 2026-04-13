@@ -332,39 +332,72 @@ struct SharpRoomView: View {
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
             }
-            Button {
-                if let d = activeRoomMetersDimensions {
-                    logDebug(
-                        "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
-                        "SOURCE=\(activeRoomMetersDimensionsSource) " +
-                        "W=\(String(format: "%.4f", d.width)) " +
-                        "H=\(String(format: "%.4f", d.height)) " +
-                        "D=\(String(format: "%.4f", d.depth))"
-                    )
-                } else {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
+            HStack(spacing: 8) {
+                Button(action: displayAllGestureHelpers) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.7))
                 }
-                guard canPresentRoomDimensionsAlert else {
-                    logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
-                    return
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+
+                Button {
+                    if let d = activeRoomMetersDimensions {
+                        logDebug(
+                            "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
+                            "SOURCE=\(activeRoomMetersDimensionsSource) " +
+                            "W=\(String(format: "%.4f", d.width)) " +
+                            "H=\(String(format: "%.4f", d.height)) " +
+                            "D=\(String(format: "%.4f", d.depth))"
+                        )
+                    } else {
+                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
+                    }
+                    guard canPresentRoomDimensionsAlert else {
+                        logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
+                        return
+                    }
+                    if hasCalculatedRoomMeasurements {
+                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
+                        onRoomDimensionsIconTapped()
+                    } else {
+                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
+                        startAsyncRoomMeasurementForRuler()
+                    }
+                } label: {
+                    Image(systemName: "ruler.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.primary)
                 }
-                if hasCalculatedRoomMeasurements {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
-                    onRoomDimensionsIconTapped()
-                } else {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
-                    startAsyncRoomMeasurementForRuler()
+                .buttonStyle(.plain)
+                .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
+                .accessibilityLabel("Room dimensions")
+
+                if !selectedFurnitureFitLabels.isEmpty {
+                    Button {
+                        NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
+                    } label: {
+                        Text(selectedFurnitureChipTitle)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.black.opacity(0.72)))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
                 }
-            } label: {
-                Image(systemName: "ruler.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
             }
-            .buttonStyle(.plain)
-            .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
-            .accessibilityLabel("Room dimensions")
         }
+    }
+
+    private var selectedFurnitureChipTitle: String {
+        let labels = selectedFurnitureFitLabels
+        if labels.count == 1 { return labels[0] }
+        if labels.count == 2 { return "\(labels[0]), \(labels[1])" }
+        return "\(labels.count) selected"
     }
 
     private func handleSharpRoomBackTap() {
@@ -481,23 +514,6 @@ struct SharpRoomView: View {
     private var sharpRoomToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             navigationBarBackButton
-        }
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: displayAllGestureHelpers) {
-                HStack(spacing: 4) {
-                    Image(systemName: "hand.tap.fill")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                    Text(L10n.RoomViewer.displayAllHelpers)
-                        .font(.caption)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(Color.black.opacity(0.55)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
         }
         ToolbarItem(placement: .principal) {
             navigationBarRoomMeasurementPrincipal

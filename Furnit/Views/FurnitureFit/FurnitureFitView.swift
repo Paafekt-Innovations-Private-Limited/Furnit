@@ -375,6 +375,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }()
     
     private var hasFirstDetection = false
+    /// Consecutive empty-detection frames since the last valid mask. Keeps the previous mask
+    /// visible for up to `maskGraceFrameLimit` frames so brief tracking drops don't flicker.
+    private var consecutiveEmptyMaskFrames = 0
+    private let maskGraceFrameLimit = 3
     /// After the first successful segmentation in this container, skip startup progress on later `startIfNeeded()` (same UIView instance).
     private var segmentationCompletedOnceThisSession = false
     /// True only while the initial detection startup banner is allowed to update.
@@ -820,6 +824,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             self,
             selector: #selector(handleResetScaleTapped),
             name: NSNotification.Name("FurnitureFitResetOverlayScale"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleClearSelectedObjectTapped),
+            name: NSNotification.Name("FurnitureFitClearSelectedObjects"),
             object: nil
         )
 
@@ -1504,14 +1514,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func updateSelectedObjectChip(title: String?) {
         DispatchQueue.main.async {
-            guard let title, !title.isEmpty else {
-                self.selectedObjectChipButton.isHidden = true
-                self.selectedObjectChipButton.alpha = 0
-                return
-            }
-            self.selectedObjectChipButton.configuration?.title = title
-            self.selectedObjectChipButton.isHidden = false
-            self.selectedObjectChipButton.alpha = 1
+            self.selectedObjectChipButton.isHidden = true
+            self.selectedObjectChipButton.alpha = 0
         }
     }
 
@@ -1800,6 +1804,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     func stop() {
         invalidatePendingAssistedMeasurement()
+        consecutiveEmptyMaskFrames = 0
         frameLock.lock()
         isProcessing = false
         preferImmediateNextInference = false
@@ -2843,9 +2848,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         if rawDetections.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
-            DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
-                self.finishStartupProgressIfNeeded()
+            consecutiveEmptyMaskFrames += 1
+            if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
+                    self.finishStartupProgressIfNeeded()
+                }
             }
             resetProcessingFlag()
             return
@@ -2870,8 +2878,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
         if candidates.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
-            DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
+            consecutiveEmptyMaskFrames += 1
+            if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                DispatchQueue.main.async {
+                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
+                }
             }
             resetProcessingFlag()
             return
@@ -2928,8 +2939,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // Full-video OFF: auto-select single primary by confidence/area (old behavior).
             guard let autoIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no auto-primary among candidates") }
-                DispatchQueue.main.async {
-                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false, resetUserOverlayScale: false)
+                consecutiveEmptyMaskFrames += 1
+                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                    DispatchQueue.main.async {
+                        self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false, resetUserOverlayScale: false)
+                    }
                 }
                 resetProcessingFlag()
                 return
@@ -2964,20 +2978,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
             guard !matchedCandidates.isEmpty else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected instances match current frame (IoU≥\(pinMatchIoUThreshold))") }
-                DispatchQueue.main.async {
-                    self.resetOverlayScalesForEmptyMask(
-                        clearDetectedCandidates: false,
-                        clearSelections: false,
-                        resetUserOverlayScale: false
-                    )
-                    self.updateDetectionOverlay(
-                        candidates: candidates,
-                        selectedIndex: nil,
-                        imageWidth: bufW,
-                        imageHeight: bufH,
-                        scaleX: scaleX,
-                        scaleY: scaleY
-                    )
+                consecutiveEmptyMaskFrames += 1
+                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                    DispatchQueue.main.async {
+                        self.resetOverlayScalesForEmptyMask(
+                            clearDetectedCandidates: false,
+                            clearSelections: false,
+                            resetUserOverlayScale: false
+                        )
+                        self.updateDetectionOverlay(
+                            candidates: candidates,
+                            selectedIndex: nil,
+                            imageWidth: bufW,
+                            imageHeight: bufH,
+                            scaleX: scaleX,
+                            scaleY: scaleY
+                        )
+                    }
                 }
                 resetProcessingFlag()
                 return
@@ -2985,20 +3002,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: matchedCandidates, modelSide: onnxSide) else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
-                DispatchQueue.main.async {
-                    self.resetOverlayScalesForEmptyMask(
-                        clearDetectedCandidates: false,
-                        clearSelections: false,
-                        resetUserOverlayScale: false
-                    )
-                    self.updateDetectionOverlay(
-                        candidates: candidates,
-                        selectedIndex: nil,
-                        imageWidth: bufW,
-                        imageHeight: bufH,
-                        scaleX: scaleX,
-                        scaleY: scaleY
-                    )
+                consecutiveEmptyMaskFrames += 1
+                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                    DispatchQueue.main.async {
+                        self.resetOverlayScalesForEmptyMask(
+                            clearDetectedCandidates: false,
+                            clearSelections: false,
+                            resetUserOverlayScale: false
+                        )
+                        self.updateDetectionOverlay(
+                            candidates: candidates,
+                            selectedIndex: nil,
+                            imageWidth: bufW,
+                            imageHeight: bufH,
+                            scaleX: scaleX,
+                            scaleY: scaleY
+                        )
+                    }
                 }
                 resetProcessingFlag()
                 return
@@ -3026,6 +3046,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             detections: maskDetectionsForBuild
         )
         if furnitureFitUseMorphologicalCloseMask {
+            maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
         fillInteriorHolesHVIntersection(mask: &maskSmall, width: pW, height: pH)
@@ -3242,6 +3263,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let arSnapAttached = arDepthSnapshot != nil
 
         if let finalImage = withDebugOverlay {
+            consecutiveEmptyMaskFrames = 0
             let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -3579,9 +3601,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let rgbDim: Float = 1.0
         let inv255: Float = 1.0 / 255.0
-        // Tighter band than before: full opacity sooner inside the mask, thinner feather at the edge.
-        let edgeLo: Float = 0.42
-        let invEdgeWidth: Float = 1.0 / max(0.12, 0.58 - edgeLo)
+        let edgeLo: Float = 0.22
+        let invEdgeWidth: Float = 1.0 / max(0.08, 0.40 - edgeLo)
 
         let maskFull = upscaledPlanarMaskScratch
         for y in yStart..<yEnd {

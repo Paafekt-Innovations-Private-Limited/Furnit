@@ -212,23 +212,6 @@ struct MeshRoomView: View {
                     .accessibilityLabel(L10n.Common.back)
                 }
             }
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: displayAllGestureHelpers) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                        Text(L10n.RoomViewer.displayAllHelpers)
-                            .font(.caption)
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.black.opacity(0.55)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-            }
             ToolbarItem(placement: .principal) {
                 navigationBarRoomMeasurementPrincipal
             }
@@ -357,19 +340,52 @@ struct MeshRoomView: View {
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
             }
-            Button {
-                guard canPresentMeshRoomDimensionsAlert else { return }
-                onMeshRoomDimensionsRulerTapped()
-            } label: {
-                Image(systemName: "ruler.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
+            HStack(spacing: 8) {
+                Button(action: displayAllGestureHelpers) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+
+                Button {
+                    guard canPresentMeshRoomDimensionsAlert else { return }
+                    onMeshRoomDimensionsRulerTapped()
+                } label: {
+                    Image(systemName: "ruler.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canPresentMeshRoomDimensionsAlert || isLoading)
+                .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+
+                if !selectedFurnitureFitLabels.isEmpty {
+                    Button {
+                        NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
+                    } label: {
+                        Text(selectedFurnitureChipTitle)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.black.opacity(0.72)))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!canPresentMeshRoomDimensionsAlert || isLoading)
-            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
         }
+    }
+
+    private var selectedFurnitureChipTitle: String {
+        let labels = selectedFurnitureFitLabels
+        if labels.count == 1 { return labels[0] }
+        if labels.count == 2 { return "\(labels[0]), \(labels[1])" }
+        return "\(labels.count) selected"
     }
 
     private var roomDimensionsHintOverlay: some View {
