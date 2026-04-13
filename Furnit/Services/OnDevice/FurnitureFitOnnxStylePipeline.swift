@@ -6,6 +6,39 @@ enum FurnitureFitOnnxStylePipeline {
     static let confidenceThreshold: Float = 0.25
     static let iouThresholdNms: Float = 0.45
     static let maxDetectionsBeforeNms = 100
+    /// Logit threshold for turning YOLOE mask logits into a binary proto mask.
+    /// Tuned for Core ML float32 export so that weak positives in thin gaps
+    /// (chair handles, bed rails) are suppressed while strong object pixels
+    /// remain. ONNX path uses its own mask thresholding.
+    static let maskLogitThreshold: Float = 1.0
+
+    /// SAM-style stability score: IoU between masks at (threshold - offset)
+    /// and (threshold + offset). Since the high-threshold mask is always a
+    /// subset of the low-threshold mask, this reduces to:
+    ///
+    ///     stability = area(high) / area(low)
+    ///
+    /// Returns 0 if the low-threshold mask is empty.
+    static func calculateMaskStabilityScore(
+        logits: [Float],
+        threshold: Float,
+        offset: Float
+    ) -> Float {
+        guard !logits.isEmpty, offset > 0 else { return 0 }
+
+        let highThresh = threshold + offset
+        let lowThresh = threshold - offset
+        var highCount = 0
+        var lowCount = 0
+
+        for v in logits {
+            if v > highThresh { highCount += 1 }
+            if v > lowThresh { lowCount += 1 }
+        }
+
+        guard lowCount > 0 else { return 0 }
+        return Float(highCount) / Float(lowCount)
+    }
 
     private static let includeSupportingTableForMonitorScene = true
     private static let monitorLikeClassIds: Set<Int> = [1063, 2675, 4105]
@@ -140,7 +173,8 @@ enum FurnitureFitOnnxStylePipeline {
         return maskDetections
     }
 
-    /// Bbox-limited proto mask: per-pixel max sigmoid (Android ONNX loop).
+    /// Raw YOLOE prototype mask using per-pixel logits inside each detection's
+    /// original bbox only. No sigmoid, no morphology, no heuristic expansion.
     static func buildBboxLimitedSigmoidMask(
         planes: [Float],
         protoW: Int,
@@ -148,8 +182,26 @@ enum FurnitureFitOnnxStylePipeline {
         modelSide: Float,
         detections: [FurnitureFitDetection]
     ) -> [UInt8] {
+        return buildBboxLimitedSigmoidMaskWithLogits(
+            planes: planes, protoW: protoW, protoH: protoH,
+            modelSide: modelSide, detections: detections
+        ).binary
+    }
+
+    /// Same as `buildBboxLimitedSigmoidMask` but also returns the raw float
+    /// logits before thresholding, for debug visualization.
+    static func buildBboxLimitedSigmoidMaskWithLogits(
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Float,
+        detections: [FurnitureFitDetection]
+    ) -> (binary: [UInt8], logits: [Float]) {
         let hwProto = protoW * protoH
-        guard planes.count >= 32 * hwProto else { return [UInt8](repeating: 0, count: hwProto) }
+        guard planes.count >= 32 * hwProto else {
+            return ([UInt8](repeating: 0, count: hwProto),
+                    [Float](repeating: 0, count: hwProto))
+        }
 
         var maskProto = [Float](repeating: 0, count: hwProto)
         let protoScaleX = modelSide / Float(protoW)
@@ -170,23 +222,104 @@ enum FurnitureFitOnnxStylePipeline {
             for py in bboxTop...bboxBottom {
                 let rowBase = py * protoW
                 for px in bboxLeft...bboxRight {
-                    let p = rowBase + px
+                    let protoPixelIndex = rowBase + px
                     var sum: Float = 0
-                    var c = 0
-                    while c < 32 {
-                        let protoIdx = c * hwProto + p
-                        sum += detection.coeffs[c] * planes[protoIdx]
-                        c += 1
+                    var coeffIndex = 0
+                    while coeffIndex < 32 {
+                        let protoIdx = coeffIndex * hwProto + protoPixelIndex
+                        sum += detection.coeffs[coeffIndex] * planes[protoIdx]
+                        coeffIndex += 1
                     }
-                    let sigmoidVal = 1 / (1 + exp(-sum))
-                    if sigmoidVal > maskProto[p] {
-                        maskProto[p] = sigmoidVal
+                    if sum > maskProto[protoPixelIndex] {
+                        maskProto[protoPixelIndex] = sum
                     }
                 }
             }
         }
 
-        return maskProto.map { $0 > 0.4 ? UInt8(255) : UInt8(0) }
+        let threshold = maskLogitThreshold
+        let binary = maskProto.map { $0 > threshold ? UInt8(255) : UInt8(0) }
+        return (binary, maskProto)
+    }
+
+    // MARK: - ASCII mask visualization for debug logs
+
+    /// Samples the proto-resolution mask down to a text grid and returns
+    /// multi-line strings you can print to the console.
+    ///
+    /// - `logits`: raw float logits (protoW × protoH, row-major)
+    /// - `binary`: thresholded UInt8 mask (same layout)
+    /// - `protoW`, `protoH`: proto dimensions
+    /// - `gridCols`, `gridRows`: target ASCII grid size (default 64×32)
+    ///
+    /// Returns two strings: (logitArt, binaryArt).
+    /// Logit art uses ` ░▒▓█` to show intensity; binary art uses `·` / `█`.
+    static func asciiMaskVisualization(
+        logits: [Float],
+        binary: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        gridCols: Int = 64,
+        gridRows: Int = 32
+    ) -> (logitArt: String, binaryArt: String) {
+        guard protoW > 0, protoH > 0,
+              logits.count >= protoW * protoH,
+              binary.count >= protoW * protoH else {
+            return ("(empty)", "(empty)")
+        }
+
+        let cols = min(gridCols, protoW)
+        let rows = min(gridRows, protoH)
+
+        var logitMin: Float = .greatestFiniteMagnitude
+        var logitMax: Float = -.greatestFiniteMagnitude
+        for v in logits {
+            if v < logitMin { logitMin = v }
+            if v > logitMax { logitMax = v }
+        }
+        let logitRange = logitMax - logitMin
+        let logitChars: [Character] = [" ", "░", "▒", "▓", "█"]
+
+        var logitLines = [String]()
+        var binaryLines = [String]()
+
+        for row in 0..<rows {
+            let srcY = row * protoH / rows
+            var logitRow = ""
+            var binaryRow = ""
+            for col in 0..<cols {
+                let srcX = col * protoW / cols
+                let idx = srcY * protoW + srcX
+
+                let logitVal = logits[idx]
+                if logitRange > 1e-6 {
+                    let norm = (logitVal - logitMin) / logitRange
+                    let ci = min(logitChars.count - 1, Int(norm * Float(logitChars.count)))
+                    logitRow.append(logitChars[ci])
+                } else {
+                    logitRow.append(logitVal > 0 ? "█" : " ")
+                }
+
+                binaryRow.append(binary[idx] > 0 ? "█" : "·")
+            }
+            logitLines.append(logitRow)
+            binaryLines.append(binaryRow)
+        }
+
+        let logitStats = String(format: "min=%.3f max=%.3f range=%.3f",
+                                logitMin, logitMax, logitRange)
+        let onCount = binary.prefix(protoW * protoH).filter { $0 > 0 }.count
+        let totalPx = protoW * protoH
+        let binaryStats = String(format: "on=%d/%d (%.1f%%)",
+                                 onCount, totalPx,
+                                 Float(onCount) / Float(max(1, totalPx)) * 100)
+
+        let logitArt = "LOGIT HEATMAP (\(protoW)x\(protoH) → \(cols)x\(rows)) \(logitStats)\n"
+            + logitLines.joined(separator: "\n")
+        let binaryArt = "BINARY MASK (\(protoW)x\(protoH) → \(cols)x\(rows)) \(binaryStats)\n"
+            + binaryLines.joined(separator: "\n")
+
+        return (logitArt, binaryArt)
     }
 }
 

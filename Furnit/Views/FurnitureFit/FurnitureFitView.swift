@@ -187,8 +187,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var primaryDetectionMinConfidence: Float = 0.75
     /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
     var primarySelectionByHighestConfidence: Bool = false
-    /// After bbox clip, optional 3×3 morphological close on prototype mask before upscale; uses mask-texture composite path (not fused) when enabled.
-    private let furnitureFitUseMorphologicalCloseMask: Bool = true
+    /// Keep the rendered mask raw from YOLOE logits. Do not morphologically alter it.
+    private let furnitureFitUseMorphologicalCloseMask: Bool = false
     var useBilinearUpscaling: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
@@ -477,6 +477,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Latest displayed candidates aligned with ``candidateBboxesInView``. Main-thread only for tap-selection.
     private var latestDisplayedCandidates: [FurnitureFitDetection] = []
     private var latestDisplayedSelectedCandidateIndex: Int?
+    /// Latest prototype mask state used to validate taps against per-candidate mask presence.
+    private let tapMaskStateLock = NSLock()
+    private var latestTapMaskPlanes: [Float] = []
+    private var latestTapMaskProtoWidth: Int = 0
+    private var latestTapMaskProtoHeight: Int = 0
+    private var latestTapMaskModelSide: Int = 0
+    private var latestTapMaskImageWidth: Int = 0
+    private var latestTapMaskImageHeight: Int = 0
     private let selectedClassStateLock = NSLock()
     /// User-tapped instances (geometry snapshots). Segmentation matches these to current-frame boxes by IoU — not by class alone (avoids segmenting every chair when one is chosen).
     private var selectedDetectionPins: [FurnitureFitDetection] = []
@@ -1442,6 +1450,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             candidateBboxesInView = []
             latestDisplayedCandidates = []
             detectionBBoxOverlayView.items = []
+            clearLatestTapMaskState()
         }
         latestDisplayedSelectedCandidateIndex = nil
         maskImageView.image = nil
@@ -1551,6 +1560,41 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
+    /// Ultralytics-style inverse letterbox mapping from model space (e.g. 640×640)
+    /// back to the original image space, accounting for uniform scale + padding.
+    /// This mirrors `scale_boxes` when the input was letterboxed to a square.
+    private func scaleBoxesLetterbox(
+        box: CGRect,
+        modelShape: CGSize,
+        imageShape: CGSize
+    ) -> CGRect {
+        // 1. Gain: min ratio to fit original image inside the model square.
+        let gain = min(modelShape.width / imageShape.width, modelShape.height / imageShape.height)
+
+        // 2. Padding applied during letterbox.
+        let padX = (modelShape.width - imageShape.width * gain) / 2.0
+        let padY = (modelShape.height - imageShape.height * gain) / 2.0
+
+        // 3. Undo padding + scale to get back to original coordinates.
+        let x1 = (box.minX - padX) / gain
+        let y1 = (box.minY - padY) / gain
+        let x2 = (box.maxX - padX) / gain
+        let y2 = (box.maxY - padY) / gain
+
+        // 4. Clip to image bounds.
+        let clippedX1 = max(0, x1)
+        let clippedY1 = max(0, y1)
+        let clippedX2 = min(imageShape.width, x2)
+        let clippedY2 = min(imageShape.height, y2)
+
+        return CGRect(
+            x: clippedX1,
+            y: clippedY1,
+            width: max(1, clippedX2 - clippedX1),
+            height: max(1, clippedY2 - clippedY1)
+        )
+    }
+
     private func bufferRect(
         for detection: FurnitureFitDetection,
         imageWidth: Int,
@@ -1638,23 +1682,143 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    private func updateLatestTapMaskState(
+        planes: [Float],
+        protoWidth: Int,
+        protoHeight: Int,
+        modelSide: Int,
+        imageWidth: Int,
+        imageHeight: Int
+    ) {
+        tapMaskStateLock.lock()
+        latestTapMaskPlanes = planes
+        latestTapMaskProtoWidth = protoWidth
+        latestTapMaskProtoHeight = protoHeight
+        latestTapMaskModelSide = modelSide
+        latestTapMaskImageWidth = imageWidth
+        latestTapMaskImageHeight = imageHeight
+        tapMaskStateLock.unlock()
+    }
+
+    private func clearLatestTapMaskState() {
+        tapMaskStateLock.lock()
+        latestTapMaskPlanes = []
+        latestTapMaskProtoWidth = 0
+        latestTapMaskProtoHeight = 0
+        latestTapMaskModelSide = 0
+        latestTapMaskImageWidth = 0
+        latestTapMaskImageHeight = 0
+        tapMaskStateLock.unlock()
+    }
+
+    private func maskPresenceScoreForTap(
+        detection: FurnitureFitDetection,
+        pointInMaskView: CGPoint
+    ) -> Float? {
+        tapMaskStateLock.lock()
+        let planes = latestTapMaskPlanes
+        let protoWidth = latestTapMaskProtoWidth
+        let protoHeight = latestTapMaskProtoHeight
+        let modelSide = latestTapMaskModelSide
+        let imageWidth = latestTapMaskImageWidth
+        let imageHeight = latestTapMaskImageHeight
+        tapMaskStateLock.unlock()
+
+        guard !planes.isEmpty,
+              protoWidth > 0,
+              protoHeight > 0,
+              modelSide > 0,
+              imageWidth > 0,
+              imageHeight > 0,
+              detection.coeffs.count >= 32,
+              maskImageView.bounds.width > 0,
+              maskImageView.bounds.height > 0 else {
+            return nil
+        }
+
+        let imageX = Float(pointInMaskView.x / maskImageView.bounds.width) * Float(imageWidth)
+        let imageY = Float(pointInMaskView.y / maskImageView.bounds.height) * Float(imageHeight)
+        let modelX = imageX * Float(modelSide) / Float(imageWidth)
+        let modelY = imageY * Float(modelSide) / Float(imageHeight)
+
+        let bboxHalfWidth = detection.w * 0.5
+        let bboxHalfHeight = detection.h * 0.5
+        let bboxMinX = detection.x - bboxHalfWidth
+        let bboxMaxX = detection.x + bboxHalfWidth
+        let bboxMinY = detection.y - bboxHalfHeight
+        let bboxMaxY = detection.y + bboxHalfHeight
+        guard modelX >= bboxMinX,
+              modelX <= bboxMaxX,
+              modelY >= bboxMinY,
+              modelY <= bboxMaxY else {
+            return nil
+        }
+
+        let protoX = min(
+            protoWidth - 1,
+            max(0, Int(floor(modelX * Float(protoWidth) / Float(modelSide))))
+        )
+        let protoY = min(
+            protoHeight - 1,
+            max(0, Int(floor(modelY * Float(protoHeight) / Float(modelSide))))
+        )
+        let hwProto = protoWidth * protoHeight
+        let protoPixelIndex = protoY * protoWidth + protoX
+        guard planes.count >= 32 * hwProto else { return nil }
+
+        var sum: Float = 0
+        var coeffIndex = 0
+        while coeffIndex < 32 {
+            let planeIndex = coeffIndex * hwProto + protoPixelIndex
+            sum += detection.coeffs[coeffIndex] * planes[planeIndex]
+            coeffIndex += 1
+        }
+        return sum > 0 ? sum : nil
+    }
+
     private func candidateIndexForTap(_ pointInMaskView: CGPoint) -> Int? {
         guard !candidateBboxesInView.isEmpty, candidateBboxesInView.count == latestDisplayedCandidates.count else {
             return nil
         }
+        tapMaskStateLock.lock()
+        let hasTapMaskState =
+            !latestTapMaskPlanes.isEmpty &&
+            latestTapMaskProtoWidth > 0 &&
+            latestTapMaskProtoHeight > 0 &&
+            latestTapMaskModelSide > 0 &&
+            latestTapMaskImageWidth > 0 &&
+            latestTapMaskImageHeight > 0
+        tapMaskStateLock.unlock()
         let paddedMatches = candidateBboxesInView.enumerated().filter { _, rect in
             rect.insetBy(dx: -10, dy: -10).contains(pointInMaskView)
         }
         guard !paddedMatches.isEmpty else { return nil }
-        return paddedMatches.min { lhs, rhs in
-            let leftRect = lhs.element
-            let rightRect = rhs.element
-            let leftArea = leftRect.width * leftRect.height
-            let rightArea = rightRect.width * rightRect.height
-            if abs(leftArea - rightArea) > 1 {
-                return leftArea < rightArea
+        let maskMatches = paddedMatches.compactMap { match -> (offset: Int, rect: CGRect, score: Float)? in
+            guard match.offset < latestDisplayedCandidates.count else { return nil }
+            guard let score = maskPresenceScoreForTap(
+                detection: latestDisplayedCandidates[match.offset],
+                pointInMaskView: pointInMaskView
+            ) else {
+                return nil
             }
-            return latestDisplayedCandidates[lhs.offset].confidence > latestDisplayedCandidates[rhs.offset].confidence
+            return (offset: match.offset, rect: match.element, score: score)
+        }
+        if hasTapMaskState, maskMatches.isEmpty {
+            return nil
+        }
+        let candidatesForSelection = maskMatches.isEmpty
+            ? paddedMatches.map { (offset: $0.offset, rect: $0.element, score: Float.leastNormalMagnitude) }
+            : maskMatches
+        return candidatesForSelection.max { lhs, rhs in
+            if abs(lhs.score - rhs.score) > 0.0001 {
+                return lhs.score < rhs.score
+            }
+            let leftArea = lhs.rect.width * lhs.rect.height
+            let rightArea = rhs.rect.width * rhs.rect.height
+            if abs(leftArea - rightArea) > 1 {
+                return leftArea > rightArea
+            }
+            return latestDisplayedCandidates[lhs.offset].confidence < latestDisplayedCandidates[rhs.offset].confidence
         }?.offset
     }
     
@@ -2502,6 +2666,52 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (widthMeters, heightMeters, "room_model_intrinsics_width_prop_height")
     }
 
+    private func imageBoundsForMask(
+        maskSmall: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> CGRect? {
+        guard protoW > 0,
+              protoH > 0,
+              imageWidth > 0,
+              imageHeight > 0,
+              maskSmall.count >= protoW * protoH else {
+            return nil
+        }
+
+        var minProtoX = protoW
+        var minProtoY = protoH
+        var maxProtoX = -1
+        var maxProtoY = -1
+
+        for protoY in 0..<protoH {
+            let rowOffset = protoY * protoW
+            for protoX in 0..<protoW where maskSmall[rowOffset + protoX] > 0 {
+                minProtoX = min(minProtoX, protoX)
+                minProtoY = min(minProtoY, protoY)
+                maxProtoX = max(maxProtoX, protoX)
+                maxProtoY = max(maxProtoY, protoY)
+            }
+        }
+
+        guard maxProtoX >= minProtoX, maxProtoY >= minProtoY else { return nil }
+
+        let minImageX = max(0, Int(floor(Float(minProtoX) * Float(imageWidth) / Float(protoW))))
+        let minImageY = max(0, Int(floor(Float(minProtoY) * Float(imageHeight) / Float(protoH))))
+        let maxImageX = min(imageWidth, Int(ceil(Float(maxProtoX + 1) * Float(imageWidth) / Float(protoW))))
+        let maxImageY = min(imageHeight, Int(ceil(Float(maxProtoY + 1) * Float(imageHeight) / Float(protoH))))
+
+        guard maxImageX > minImageX, maxImageY > minImageY else { return nil }
+        return CGRect(
+            x: minImageX,
+            y: minImageY,
+            width: maxImageX - minImageX,
+            height: maxImageY - minImageY
+        )
+    }
+
     private func refinedMaskBoundsAndFloorContact(
         maskSmall: [UInt8],
         protoW: Int,
@@ -2836,6 +3046,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let planes = protoInfo.planes
         let pW = protoInfo.width
         let pH = protoInfo.height
+        updateLatestTapMaskState(
+            planes: planes,
+            protoWidth: pW,
+            protoHeight: pH,
+            modelSide: onnxSide,
+            imageWidth: bufW,
+            imageHeight: bufH
+        )
 
         // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
         // Support-surface hints (floor, carpet, tile, etc.) must inspect the unblacklisted detections.
@@ -3034,44 +3252,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             selectedCandidates = matchedCandidates
         }
 
-        let maskDetectionsForBuild = selectedCandidates.map {
-            onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
-        }
-
-        var maskSmall = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMask(
+        let maskResult = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMaskWithLogits(
             planes: planes,
             protoW: pW,
             protoH: pH,
             modelSide: Float(onnxSide),
-            detections: maskDetectionsForBuild
+            detections: selectedCandidates
         )
+        var maskSmall = maskResult.binary
         if furnitureFitUseMorphologicalCloseMask {
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
-            maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
-        fillInteriorHolesHVIntersection(mask: &maskSmall, width: pW, height: pH)
-
-        // Limit the proto mask to the union of all selected detections so multi-tap segmentation
-        // can keep multiple objects while still avoiding spill into the rest of the frame.
-        let protoScaleX = Float(pW) / Float(onnxSide)
-        let protoScaleY = Float(pH) / Float(onnxSide)
-        let unionMinX = selectedCandidates.map { $0.x - $0.w * 0.5 }.min() ?? (primary.x - primary.w * 0.5)
-        let unionMinY = selectedCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
-        let unionMaxX = selectedCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
-        let unionMaxY = selectedCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        let protoPx1 = max(0, Int(floor(unionMinX * protoScaleX)))
-        let protoPy1 = max(0, Int(floor(unionMinY * protoScaleY)))
-        let protoPx2 = min(pW, Int(ceil(unionMaxX * protoScaleX)))
-        let protoPy2 = min(pH, Int(ceil(unionMaxY * protoScaleY)))
-        clipProtoPlanarMaskOutsideRect(
-            mask: &maskSmall,
-            protoW: pW,
-            protoH: pH,
-            clipPx1: protoPx1,
-            clipPy1: protoPy1,
-            clipPx2: protoPx2,
-            clipPy2: protoPy2
-        )
 
         let tightFx1 = (primary.x - primary.w * 0.5) * scaleX
         let tightFy1 = (primary.y - primary.h * 0.5) * scaleY
@@ -3082,26 +3273,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBx2 = min(bufW, Int(tightFx2))
         let primaryBy2 = min(bufH, Int(tightFy2))
 
-        // Compositing band: expand past the tight box. Outside the band we leave pixels transparent, so the live
-        // camera shows through — chair bases / wheels often sit below the detector bbox and looked like "floor not masked".
-        let unionTightFx1 = unionMinX * scaleX
-        let unionTightFy1 = unionMinY * scaleY
-        let unionTightFx2 = unionMaxX * scaleX
-        let unionTightFy2 = unionMaxY * scaleY
-        let bw = max(1, unionTightFx2 - unionTightFx1)
-        let bh = max(1, unionTightFy2 - unionTightFy1)
-        let compMarginW = bw * bboxExpandMargin
-        let compMarginH = bh * bboxExpandMargin
-        let compBx1 = max(0, Int(floor(unionTightFx1 - compMarginW)))
-        let compBy1 = max(0, Int(floor(unionTightFy1 - compMarginH)))
-        let compBx2 = min(bufW, Int(ceil(unionTightFx2 + compMarginW)))
-        let compBy2 = min(bufH, Int(ceil(unionTightFy2 + compMarginH)))
+        let maskImageBounds = imageBoundsForMask(
+            maskSmall: maskSmall,
+            protoW: pW,
+            protoH: pH,
+            imageWidth: bufW,
+            imageHeight: bufH
+        )
+        let compBx1 = Int(maskImageBounds?.minX ?? CGFloat(primaryBx1))
+        let compBy1 = Int(maskImageBounds?.minY ?? CGFloat(primaryBy1))
+        let compBx2 = Int(maskImageBounds?.maxX ?? CGFloat(primaryBx2))
+        let compBy2 = Int(maskImageBounds?.maxY ?? CGFloat(primaryBy2))
 
         if debugMode {
             logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
-            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] mask dets=\(maskDetectionsForBuild.count) manual=true")
-            logDebug("   🖼️ composite band (expanded): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
-            logDebug("   ✂️ proto mask clip (selected union): [\(protoPx1),\(protoPy1)]→[\(protoPx2),\(protoPy2)] (proto \(pW)×\(pH))")
+            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] selected masks=\(selectedCandidates.count) manual=true")
+            logDebug("   🖼️ composite band (mask bounds): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
+
+            let (logitArt, binaryArt) = FurnitureFitOnnxStylePipeline.asciiMaskVisualization(
+                logits: maskResult.logits,
+                binary: maskSmall,
+                protoW: pW,
+                protoH: pH
+            )
+            logDebug("   🔬 MASK SHAPE (sampled):\n\(logitArt)")
+            logDebug("   🔬 MASK BINARY:\n\(binaryArt)")
         }
 
         let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
@@ -3229,10 +3425,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         setProgress(0.92, text: "Compositing…")
         let compStart = Date()
-        // Proto mask → full frame: avoid `kvImageHighQualityResampling` (extra-soft mask → mushy cutout vs camera preview).
-        let composedImage = compositeCpuBilinearProtoMaskCutout(
+        let composedImage = compositeCpuBilinearProtoMaskCutoutFromLogits(
             processBuffer: processBuffer,
             maskProto: maskSmall,
+            maskLogits: maskResult.logits,
             protoW: pW,
             protoH: pH,
             origW: bufW,
@@ -3522,8 +3718,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logDebug("🎨 [RGBA \(tag)] center (\(cx),\(cy)) premul R=\(red) G=\(green) B=\(blue) A=\(alpha)")
     }
 
-    /// ONNX-style cutout: vImage **Planar8 scale** proto→full frame (one fast resize), then scan composite band only.
-    /// Smoothstep on mask reduces bilinear “mush” and frame-to-frame edge flicker vs per-pixel bilinear in a huge band.
+    /// ONNX-style cutout: hard binary mask compositing.
+    /// Each output pixel samples the proto mask with nearest-neighbor lookup and is
+    /// either fully opaque or fully transparent. This avoids semi-transparent
+    /// upscaled edges that can leak floor or wall through the segmented furniture.
     private func compositeCpuBilinearProtoMaskCutout(
         processBuffer: CVPixelBuffer,
         maskProto: [UInt8],
@@ -3546,35 +3744,119 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let yEnd = max(0, min(origH, y1))
         guard xStart < xEnd, yStart < yEnd else { return nil }
 
-        let fullPixels = origW * origH
-        if upscaledPlanarMaskScratch.count < fullPixels {
-            upscaledPlanarMaskScratch = [UInt8](repeating: 0, count: fullPixels)
+        var totalMaskPositive: Int = 0
+        if debugMode {
+            totalMaskPositive = maskProto.reduce(into: 0) { acc, v in
+                if v != 0 { acc += 1 }
+            }
         }
 
-        let scaleErr: vImage_Error = maskProto.withUnsafeBufferPointer { srcPtr in
-            guard let srcBase = srcPtr.baseAddress else { return kvImageNullPointerArgument }
-            var srcBuf = vImage_Buffer(
-                data: UnsafeMutableRawPointer(mutating: srcBase),
-                height: vImagePixelCount(ph),
-                width: vImagePixelCount(pw),
-                rowBytes: pw
-            )
-            return upscaledPlanarMaskScratch.withUnsafeMutableBufferPointer { dstPtr in
-                guard let dstBase = dstPtr.baseAddress else { return kvImageNullPointerArgument }
-                var dstBuf = vImage_Buffer(
-                    data: dstBase,
-                    height: vImagePixelCount(origH),
-                    width: vImagePixelCount(origW),
-                    rowBytes: origW
-                )
-                return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(0))
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        guard let outData = ctx.data else { return nil }
+        let outBase = outData.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRowOut = origW * 4
+
+        for y in 0..<origH {
+            memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
+        }
+        let protoScaleX = Float(pw) / Float(origW)
+        let protoScaleY = Float(ph) / Float(origH)
+        var opaquePixelCount: Int = 0
+
+        if debugMode {
+            logDebug("   🧪 COMPOSITE DIAG: camRowBytes=\(camRowBytes) expected=\(origW*4) pw=\(pw) ph=\(ph) origW=\(origW) origH=\(origH)")
+            logDebug("   🧪 protoScaleX=\(String(format: "%.6f", protoScaleX)) protoScaleY=\(String(format: "%.6f", protoScaleY))")
+            logDebug("   🧪 band: x[\(xStart)..\(xEnd)) y[\(yStart)..\(yEnd))")
+        }
+
+        for y in yStart..<yEnd {
+            let outRow = outBase.advanced(by: y * bytesPerRowOut)
+            let camRow = origBase.advanced(by: y * camRowBytes)
+            let protoY = min(ph - 1, max(0, Int(Float(y) * protoScaleY)))
+            let protoRowOff = protoY * pw
+            for x in xStart..<xEnd {
+                let protoX = min(pw - 1, max(0, Int(Float(x) * protoScaleX)))
+                guard maskProto[protoRowOff + protoX] != 0 else { continue }
+                let cx = x * 4
+                outRow[cx] = camRow[cx + 2]
+                outRow[cx + 1] = camRow[cx + 1]
+                outRow[cx + 2] = camRow[cx]
+                outRow[cx + 3] = 255
+                opaquePixelCount += 1
             }
         }
-        if scaleErr != kvImageNoError {
-            if debugMode {
-                logDebug("⚠️ ONNX-style vImageScale_Planar8 failed (\(scaleErr)); compositing skipped")
+
+        logPremultipliedRGBASampleIfDebug(
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            width: origW,
+            height: origH,
+            x0: xStart,
+            x1: xEnd,
+            y0: yStart,
+            y1: yEnd,
+            tag: debugTag
+        )
+        if debugMode {
+            logDebug(
+                "🧮 [MASK_COUNTS \(debugTag)] protoPositive=\(totalMaskPositive) " +
+                "opaquePixels=\(opaquePixelCount) bandW=\(xEnd - xStart) bandH=\(yEnd - yStart)"
+            )
+        }
+        return ctx.makeImage()
+    }
+
+    /// ONNX-style cutout driven by bilinearly upsampled YOLOE logits.
+    /// We upsample the 160×160 proto logits (align_corners=false semantics) to the
+    /// full camera resolution, apply a positive threshold to shrink the mask away
+    /// from thin gaps, and write fully opaque pixels wherever the upsampled logit
+    /// exceeds that threshold.
+    private func compositeCpuBilinearProtoMaskCutoutFromLogits(
+        processBuffer: CVPixelBuffer,
+        maskProto: [UInt8],
+        maskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        origW: Int,
+        origH: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        debugTag: String
+    ) -> CGImage? {
+        let pw = protoW
+        let ph = protoH
+        guard pw > 0,
+              ph > 0,
+              maskProto.count >= pw * ph,
+              maskLogits.count >= pw * ph,
+              origW > 0, origH > 0 else { return nil }
+
+        let xStart = max(0, min(origW, x0))
+        let xEnd = max(0, min(origW, x1))
+        let yStart = max(0, min(origH, y0))
+        let yEnd = max(0, min(origH, y1))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+
+        var totalMaskPositive: Int = 0
+        if debugMode {
+            totalMaskPositive = maskProto.reduce(into: 0) { acc, v in
+                if v != 0 { acc += 1 }
             }
-            return nil
         }
 
         guard let ctx = CGContext(
@@ -3599,30 +3881,68 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
         }
 
-        let rgbDim: Float = 1.0
-        let inv255: Float = 1.0 / 255.0
-        let edgeLo: Float = 0.22
-        let invEdgeWidth: Float = 1.0 / max(0.08, 0.40 - edgeLo)
+        let protoScaleX = Float(pw) / Float(origW)
+        let protoScaleY = Float(ph) / Float(origH)
+        let maxPx = pw - 1
+        let maxPy = ph - 1
 
-        let maskFull = upscaledPlanarMaskScratch
+        // Ultralytics-style mask native: upsample full-res logits, then apply
+        // a fixed bias before a zero threshold, i.e. (logit - 1.2) > 0.
+        let logitBias: Float = 1.2
+        var opaquePixelCount: Int = 0
+
+        if debugMode {
+            logDebug("   🧪 COMPOSITE(FromLogits) DIAG: camRowBytes=\(camRowBytes) expected=\(origW*4) pw=\(pw) ph=\(ph) origW=\(origW) origH=\(origH)")
+            logDebug("   🧪 protoScaleX=\(String(format: "%.6f", protoScaleX)) protoScaleY=\(String(format: "%.6f", protoScaleY))")
+            logDebug("   🧪 band: x[\(xStart)..\(xEnd)) y[\(yStart)..\(yEnd)) logitBias=\(logitBias)")
+        }
+
         for y in yStart..<yEnd {
-            let rowOff = y * origW
             let outRow = outBase.advanced(by: y * bytesPerRowOut)
             let camRow = origBase.advanced(by: y * camRowBytes)
+
+            // align_corners = false mapping for Y
+            let fy = (Float(y) + 0.5) * protoScaleY - 0.5
+            let py0 = max(0, min(maxPy, Int(floor(fy))))
+            let py1 = max(0, min(maxPy, py0 + 1))
+            let ty = fy - Float(py0)
+
             for x in xStart..<xEnd {
-                let raw = Float(maskFull[rowOff + x]) * inv255
-                let t = (raw - edgeLo) * invEdgeWidth
-                let s = min(1, max(0, t))
-                let sm = s * s * (3 - 2 * s)
-                guard sm > 0.008 else { continue }
+                // align_corners = false mapping for X
+                let fx = (Float(x) + 0.5) * protoScaleX - 0.5
+                let px0 = max(0, min(maxPx, Int(floor(fx))))
+                let px1 = max(0, min(maxPx, px0 + 1))
+                let tx = fx - Float(px0)
+
+                let idx00 = py0 * pw + px0
+                let idx10 = py0 * pw + px1
+                let idx01 = py1 * pw + px0
+                let idx11 = py1 * pw + px1
+
+                let v00 = maskLogits[idx00]
+                let v10 = maskLogits[idx10]
+                let v01 = maskLogits[idx01]
+                let v11 = maskLogits[idx11]
+
+                let rawLogit =
+                    v00 * (1 - tx) * (1 - ty) +
+                    v10 * tx * (1 - ty) +
+                    v01 * (1 - tx) * ty +
+                    v11 * tx * ty
+
+                // Apply negative bias as suggested, then require the biased
+                // logit to be strictly positive. This forces all logits in
+                // (0, logitBias] to become transparent, which helps clear the
+                // "grey wall" inside thin gaps like chair handles.
+                let biasedLogit = rawLogit - logitBias
+                guard biasedLogit > 0 else { continue }
+
                 let cx = x * 4
-                let rf = Float(camRow[cx + 2]) * sm * rgbDim
-                let gf = Float(camRow[cx + 1]) * sm * rgbDim
-                let bf = Float(camRow[cx]) * sm * rgbDim
-                outRow[cx] = UInt8(min(255, max(0, rf + 0.5)))
-                outRow[cx + 1] = UInt8(min(255, max(0, gf + 0.5)))
-                outRow[cx + 2] = UInt8(min(255, max(0, bf + 0.5)))
-                outRow[cx + 3] = UInt8(min(255, max(0, sm * 255 + 0.5)))
+                outRow[cx] = camRow[cx + 2]
+                outRow[cx + 1] = camRow[cx + 1]
+                outRow[cx + 2] = camRow[cx]
+                outRow[cx + 3] = 255
+                opaquePixelCount += 1
             }
         }
 
@@ -3637,6 +3957,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             y1: yEnd,
             tag: debugTag
         )
+        if debugMode {
+            logDebug(
+                "🧮 [MASK_COUNTS \(debugTag) logits] protoPositive=\(totalMaskPositive) " +
+                "opaquePixels=\(opaquePixelCount) bandW=\(xEnd - xStart) bandH=\(yEnd - yStart)"
+            )
+        }
         return ctx.makeImage()
     }
 

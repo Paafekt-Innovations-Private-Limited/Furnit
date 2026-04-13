@@ -70,37 +70,18 @@ print(f"  → Parameters: {num_params:,}")
 print(f"  → Head type: {type(model.model[-1]).__name__}")
 
 # ─────────────────────────────────────────────
-# 2. ATTEMPT FUSE (graceful skip for PF heads)
+# 2. SKIP FUSE FOR CORE ML EXPORT
 # ─────────────────────────────────────────────
+#
+# For YOLOESegment26 PF heads, calling model.fuse() can change the way the
+# proto branch is laid out and makes it harder for Core ML / ANE to preserve
+# near‑zero logits. For this Core ML export we deliberately keep the original
+# graph structure and let the runtime handle any safe Conv+BN fusion.
 
-print("[2/6] Attempting layer fusion (Conv2d + BatchNorm2d)...")
-
+print("[2/6] Skipping model.fuse() for Core ML export (keeping proto branch unfused)…")
 fuse_succeeded = False
-bn_count_before = 0
-bn_count_after = 0
-try:
-    bn_count_before = sum(1 for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d))
-
-    model.fuse()
-    fuse_succeeded = True
-
-    bn_count_after = sum(1 for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d))
-
-    folded = bn_count_before - bn_count_after
-    print(f"  ✓ fuse() succeeded — BatchNorm2d count {bn_count_before} → {bn_count_after} (removed {folded})")
-    if folded == 0:
-        print(
-            "  → (0 removed is OK: often pre-fused weights or PF head without foldable Conv+BN pairs.)"
-        )
-
-except AttributeError as e:
-    print(f"  ⚠ fuse() failed (expected for PF checkpoint): {e}")
-    print("  → Skipping — ONNX Runtime / Core ML / TensorRT fuse automatically at load time")
-
-except Exception as e:
-    print(f"  ⚠ fuse() failed (unexpected): {e}")
-    print("  → Skipping — runtime will handle Conv+BN fusion")
-
+bn_count_before = sum(1 for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d))
+bn_count_after = bn_count_before
 model.eval()
 
 # ─────────────────────────────────────────────
@@ -287,7 +268,9 @@ try:
         ],
         convert_to="mlprogram",
         minimum_deployment_target=ct.target.iOS16,
-        compute_precision=ct.precision.FLOAT16,
+        # Use full Float32 precision to minimize small logit drift around 0.0
+        # so the Core ML mask logits match ONNX/PyTorch more closely.
+        compute_precision=ct.precision.FLOAT32,
     )
 
     mlmodel.short_description = (
