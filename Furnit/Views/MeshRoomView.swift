@@ -198,8 +198,8 @@ struct MeshRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
-            if savedRoomModel == nil {
-                ToolbarItem(placement: .navigationBarLeading) {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if savedRoomModel == nil {
                     Button {
                         if saveWasSuccessful {
                             dismiss()
@@ -217,9 +217,14 @@ struct MeshRoomView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "hand.tap.fill")
                             .font(.subheadline)
+                            .foregroundColor(.white)
                         Text(L10n.RoomViewer.displayAllHelpers)
                             .font(.caption)
+                            .foregroundColor(.white)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
@@ -629,7 +634,6 @@ struct MeshRoomView: View {
         showARSizingHint(requiresBrain: arSizingHintRequiresBrain)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
-        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private var brainButtonWithHintAbove: some View {
@@ -868,13 +872,14 @@ struct MeshRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            // Bottom controls: brain + snapshot with tap helpers (SharpRoomView parity)
+            // Bottom controls: brain + segment + snapshot
             HStack {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
-                    segmentButton
                 }
                 .padding(.leading, 16)
+                segmentButton
+                    .padding(.leading, 10)
 
                 Spacer()
 
@@ -896,8 +901,8 @@ struct MeshRoomView: View {
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
-                    segmentButton
                 }
+                segmentButton
 
                 // Orientation label
                 HStack(spacing: 6) {

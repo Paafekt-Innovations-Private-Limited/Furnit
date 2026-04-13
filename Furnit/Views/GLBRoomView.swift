@@ -324,8 +324,8 @@ struct GLBRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(savedRoomModel == nil)
         .toolbar {
-            if savedRoomModel == nil {
-                ToolbarItem(placement: .navigationBarLeading) {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if savedRoomModel == nil {
                     Button {
                         showDiscardUnsavedAlert = true
                     } label: {
@@ -339,9 +339,14 @@ struct GLBRoomView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "hand.tap.fill")
                             .font(.subheadline)
+                            .foregroundColor(.white)
                         Text(L10n.RoomViewer.displayAllHelpers)
                             .font(.caption)
+                            .foregroundColor(.white)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
@@ -805,7 +810,6 @@ struct GLBRoomView: View {
         showARSizingHint(requiresBrain: arSizingHintRequiresBrain)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
-        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private var arSizingButtonWithHintBelow: some View {
@@ -970,10 +974,8 @@ struct GLBRoomView: View {
             HStack {
                 brainButtonWithHintAbove
                     .padding(.leading, 16)
-                if showingFurnitureFit {
-                    segmentButton
-                        .padding(.leading, 10)
-                }
+                segmentButton
+                    .padding(.leading, 10)
 
                 Spacer()
 

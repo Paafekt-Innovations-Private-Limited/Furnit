@@ -386,19 +386,6 @@ struct SharpRoomView: View {
         .accessibilityLabel(L10n.Common.back)
     }
 
-    private var navigationBarHelpersButton: some View {
-        Button(action: displayAllGestureHelpers) {
-            HStack(spacing: 4) {
-                Image(systemName: "hand.tap.fill")
-                    .font(.subheadline)
-                Text(L10n.RoomViewer.displayAllHelpers)
-                    .font(.caption)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-    }
-
     private var navigationBarRecenterButton: some View {
         Button {
             splatMeasurementHost.recenterSharpRoomCamera()
@@ -496,7 +483,21 @@ struct SharpRoomView: View {
             navigationBarBackButton
         }
         ToolbarItem(placement: .navigationBarLeading) {
-            navigationBarHelpersButton
+            Button(action: displayAllGestureHelpers) {
+                HStack(spacing: 4) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                    Text(L10n.RoomViewer.displayAllHelpers)
+                        .font(.caption)
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
         }
         ToolbarItem(placement: .principal) {
             navigationBarRoomMeasurementPrincipal
@@ -880,7 +881,6 @@ struct SharpRoomView: View {
         showCameraSizingHint(requiresBrain: cameraSizingHintRequiresBrain)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
-        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func onSnapshotHintIconTapped() {
@@ -2043,10 +2043,8 @@ struct SharpRoomView: View {
                 HStack(alignment: .bottom, spacing: 0) {
                     brainButtonWithHintAbove
                         .padding(.leading, 16)
-                    if showingFurnitureFit {
-                        segmentButton
-                            .padding(.leading, 10)
-                    }
+                    segmentButton
+                        .padding(.leading, 10)
                     Spacer(minLength: 4)
                     if showingFurnitureFit {
                         roomIntelligencePlacementCardResetOnExit
