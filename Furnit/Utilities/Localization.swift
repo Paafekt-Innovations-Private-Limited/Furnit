@@ -362,6 +362,7 @@ enum L10n {
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
         /// Shown at the top when full-video identifications are on and furniture fit starts; dismissed when Segment is tapped or furniture fit exits.
         static let fullVideoFurnitureTapHint = "roomViewer.fullVideoFurnitureTapHint".localized
+        static let displayAllHelpers = "roomViewer.displayAllHelpers".localized
         static let segmentFurnitureAction = "roomViewer.segmentFurnitureAction".localized
         static let stopSegmentationAction = "roomViewer.stopSegmentationAction".localized
         static let segmentFurnitureAccessibility = "roomViewer.segmentFurnitureAccessibility".localized

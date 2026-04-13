@@ -382,6 +382,8 @@
 "roomViewer.styleTag.scandinavian" = "إسكندنافي";
 "roomViewer.styleTag.nordic" = "شمالي";
 "roomViewer.styleTag.classic" = "كلاسيكي";
+"roomViewer.fullVideoFurnitureTapHint" = "اضغط على جميع الأشياء التي تريد التحقق منها مع الغرفة";
+"roomViewer.displayAllHelpers" = "عرض جميع المساعدات";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "إرسال التقرير";

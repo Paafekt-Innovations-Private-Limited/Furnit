@@ -216,6 +216,9 @@ struct GLBRoomView: View {
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
     @State private var fullVideoFurnitureTapHintVisible = false
+    @State private var tapHintColorIndex: Int = 0
+    private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
+    @State private var tapHintColorTimer: Timer?
     /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView`` / ``MeshRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
@@ -326,12 +329,22 @@ struct GLBRoomView: View {
                     Button {
                         showDiscardUnsavedAlert = true
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text(L10n.Common.back)
-                        }
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel(L10n.Common.back)
+                }
+            }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: displayAllGestureHelpers) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.subheadline)
+                        Text(L10n.RoomViewer.displayAllHelpers)
+                            .font(.caption)
                     }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
             }
             ToolbarItem(placement: .principal) {
                 navigationBarRoomMeasurementPrincipal
@@ -421,18 +434,34 @@ struct GLBRoomView: View {
     }
 
     private var navigationBarRoomMeasurementPrincipal: some View {
-        Button {
-            guard canPresentGLBRoomDimensionsAlert else { return }
-            onGLBRoomDimensionsRulerTapped()
-        } label: {
-            Image(systemName: "ruler.fill")
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(.primary)
+        VStack(spacing: 4) {
+            if fullVideoFurnitureTapHintVisible {
+                Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 260)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+            }
+            Button {
+                guard canPresentGLBRoomDimensionsAlert else { return }
+                onGLBRoomDimensionsRulerTapped()
+            } label: {
+                Image(systemName: "ruler.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canPresentGLBRoomDimensionsAlert || isLoading)
+            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
         }
-        .buttonStyle(.plain)
-        .disabled(!canPresentGLBRoomDimensionsAlert || isLoading)
-        .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
     }
 
     private var roomDimensionsHintOverlay: some View {
@@ -460,35 +489,23 @@ struct GLBRoomView: View {
     }
 
     private var fullVideoFurnitureTapHintOverlay: some View {
-        ZStack(alignment: .top) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(spacing: 0) {
-                if fullVideoFurnitureTapHintVisible {
-                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 280)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
-                }
-            }
-            .padding(.top, 12)
-        }
-        .zIndex(105)
+        EmptyView()
     }
 
     private func dismissFullVideoFurnitureTapHint() {
         fullVideoFurnitureTapHintVisible = false
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = nil
     }
 
     private func presentFullVideoFurnitureTapHintIfNeeded() {
         guard showFullVideoWithIdentifications else { return }
+        tapHintColorIndex = 0
         fullVideoFurnitureTapHintVisible = true
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            DispatchQueue.main.async { tapHintColorIndex += 1 }
+        }
     }
 
     private func cancelBrainHintTasks() {
@@ -662,16 +679,6 @@ struct GLBRoomView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                     .transition(.opacity)
             }
-            Button(action: onBrainHintIconTapped) {
-                Image(systemName: "hand.tap.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(brainHintAccessibilityLabel)
         }
         .onAppear { restartBrainGestureHint() }
         .onDisappear { cancelBrainHintTasks() }
@@ -690,16 +697,6 @@ struct GLBRoomView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                     .transition(.opacity)
             }
-            Button(action: onSnapshotHintIconTapped) {
-                Image(systemName: "hand.tap.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(snapshotHintAccessibilityLabel)
         }
         .onAppear { restartSnapshotGestureHint() }
         .onDisappear { cancelSnapshotHintTasks() }
@@ -786,16 +783,6 @@ struct GLBRoomView: View {
 
     private var arSizingGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
-            Button(action: onARSizingHintIconTapped) {
-                Image(systemName: "hand.tap.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(arSizingHintAccessibilityLabel)
             if arSizingHintExplanationVisible {
                 Text(arSizingHintText)
                     .font(.caption2)
@@ -809,6 +796,16 @@ struct GLBRoomView: View {
             }
         }
         .onDisappear { cancelARSizingHintTasks() }
+    }
+
+    private func displayAllGestureHelpers() {
+        restartPinchGestureHint()
+        restartBrainGestureHint()
+        restartSnapshotGestureHint()
+        showARSizingHint(requiresBrain: arSizingHintRequiresBrain)
+        roomDimensionsHintVisible = true
+        scheduleRoomDimensionsHintAutoHide(seconds: 3)
+        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private var arSizingButtonWithHintBelow: some View {

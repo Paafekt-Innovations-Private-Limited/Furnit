@@ -45,6 +45,9 @@ struct ModelViewerView: View {
     @State private var showFurnitureHint = true
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
     @State private var fullVideoFurnitureTapHintVisible = false
+    @State private var tapHintColorIndex: Int = 0
+    private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
+    @State private var tapHintColorTimer: Timer?
 
     @State private var isCapturingSnapshot = false
 
@@ -125,12 +128,15 @@ struct ModelViewerView: View {
                     VStack {
                         Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
                             .font(.caption2)
-                            .foregroundColor(.white)
+                            .fontWeight(.semibold)
+                            .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 280)
-                            .padding(8)
+                            .frame(maxWidth: 260)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                            .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
                             .padding(.top, 12)
                         Spacer()
                     }
@@ -332,11 +338,18 @@ struct ModelViewerView: View {
 
     private func dismissFullVideoFurnitureTapHint() {
         fullVideoFurnitureTapHintVisible = false
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = nil
     }
 
     private func presentFullVideoFurnitureTapHintIfNeeded() {
         guard showFullVideoWithIdentifications else { return }
+        tapHintColorIndex = 0
         fullVideoFurnitureTapHintVisible = true
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            DispatchQueue.main.async { tapHintColorIndex += 1 }
+        }
     }
 
     // MARK: - Overlays & Controls

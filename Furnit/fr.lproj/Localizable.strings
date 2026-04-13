@@ -367,6 +367,8 @@
 "roomViewer.styleTag.scandinavian" = "scandinave";
 "roomViewer.styleTag.nordic" = "nordique";
 "roomViewer.styleTag.classic" = "classique";
+"roomViewer.fullVideoFurnitureTapHint" = "Appuyez sur tous les objets que vous souhaitez vérifier avec la pièce";
+"roomViewer.displayAllHelpers" = "Afficher toutes les aides";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "Soumettre le rapport";

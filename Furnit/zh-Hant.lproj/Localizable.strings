@@ -365,6 +365,8 @@
 "roomViewer.styleTag.scandinavian" = "斯堪地那維亞";
 "roomViewer.styleTag.nordic" = "北歐";
 "roomViewer.styleTag.classic" = "經典";
+"roomViewer.fullVideoFurnitureTapHint" = "點擊所有您想要與房間對比的物品";
+"roomViewer.displayAllHelpers" = "顯示所有提示";
 
 // MARK: - Crash Report
 "crashReport.submitReport" = "提交報告";

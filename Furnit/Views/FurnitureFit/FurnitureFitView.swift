@@ -3028,6 +3028,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if furnitureFitUseMorphologicalCloseMask {
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
+        fillInteriorHolesHVIntersection(mask: &maskSmall, width: pW, height: pH)
 
         // Limit the proto mask to the union of all selected detections so multi-tap segmentation
         // can keep multiple objects while still avoiding spill into the rest of the frame.
@@ -4102,6 +4103,52 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
         }
         return closed
+    }
+
+    /// Fill interior holes using horizontal ∩ vertical run-length fill.
+    /// A background pixel is filled when there is foreground both left and right
+    /// on the same row **and** both above and below in the same column. Bridges
+    /// structural gaps (armrest-to-backrest, slats, etc.) at proto resolution
+    /// without expanding the outer silhouette.
+    private func fillInteriorHolesHVIntersection(mask: inout [UInt8], width: Int, height: Int) {
+        let count = width * height
+        guard count == mask.count, width > 1, height > 1 else { return }
+
+        var hFill = [Bool](repeating: false, count: count)
+        var vFill = [Bool](repeating: false, count: count)
+
+        for y in 0..<height {
+            let row = y * width
+            var left = -1
+            var right = -1
+            for x in 0..<width {
+                if mask[row + x] > 0 {
+                    if left < 0 { left = x }
+                    right = x
+                }
+            }
+            if left >= 0 {
+                for x in left...right { hFill[row + x] = true }
+            }
+        }
+
+        for x in 0..<width {
+            var top = -1
+            var bottom = -1
+            for y in 0..<height {
+                if mask[y * width + x] > 0 {
+                    if top < 0 { top = y }
+                    bottom = y
+                }
+            }
+            if top >= 0 {
+                for y in top...bottom { vFill[y * width + x] = true }
+            }
+        }
+
+        for i in 0..<count where mask[i] == 0 {
+            if hFill[i] && vFill[i] { mask[i] = 255 }
+        }
     }
 
     /// 3×3 binary dilate (foreground = any > 0 in neighborhood).
