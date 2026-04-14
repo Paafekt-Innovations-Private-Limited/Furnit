@@ -348,9 +348,8 @@ struct GLBRoomView: View {
             }
         }
         .onAppear {
-            // Do not load YOLOE eagerly here — keep saved manual-room memory low until the user enables brain mode.
-            // This mirrors SharpRoomView and prevents carrying YOLOE unless segmentation is actually requested.
-            // Lock orientation based on photo orientation
+            // Preload YOLOE when the room opens (async; not at app startup).
+            yoloeService.ensureModelLoaded()
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
             } else {

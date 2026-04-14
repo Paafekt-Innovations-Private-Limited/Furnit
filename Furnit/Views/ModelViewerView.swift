@@ -742,7 +742,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var roomImage: UIImage?
     var mlModel: MLModel?  // yoloe-26l-seg-pf (640) via YOLOEModelService
     var processInterval: Double = 0.07
-    var scoreThreshold: Float = 0.25
+    /// Minimum detector confidence (0…1) for parsing YOLOE candidates.
+    /// Matches the updated iOS Core ML path (was 0.25).
+    var scoreThreshold: Float = 0.10
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
 

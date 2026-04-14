@@ -551,8 +551,8 @@ struct SharpRoomView: View {
             ShareSheet(activityItems: shareableRoomURLs)
         }
         .onAppear {
-            // Do not load YOLOE here — it peaks memory with WebKit (WKWebView) and can crash in WKWebViewConfiguration.
-            // Load when the user turns on Furniture Fit (brain) instead.
+            // Preload YOLOE when the room opens (async; not at app startup). First brain tap stays snappy.
+            yoloeService.ensureModelLoaded()
             if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
             loadPersistedRoomMetadataIfNeeded()
@@ -2713,16 +2713,12 @@ struct SharpRoomView: View {
             latestFitCheckResult = fitResult
             latestCornerPlacementSuggestions = suggestions
 
-            logDebug(
-                "📐 [SharpRoomView] Placement intelligence updated " +
-                "furniture=\(String(format: "%.2f", furniture.widthM))×\(String(format: "%.2f", furniture.heightM))×\(String(format: "%.2f", furniture.depthM))m " +
-                "fits=\(fitResult.fitsInRoom) fitLocations=\(fitResult.fitLocations.count) cornerSuggestions=\(suggestions.count)"
-            )
+            // High-frequency placement logging disabled for performance.
         } else {
             latestEstimatedFurnitureDepthMeters = nil
             latestFitCheckResult = nil
             latestCornerPlacementSuggestions = []
-            logDebug("📐 [SharpRoomView] Placement intelligence: metric fit skipped (no height); computing aesthetic only")
+            // Silence metric-fit skipped logs to avoid console spam.
         }
 
         let palette = roomModel.surfacePalette
@@ -2734,9 +2730,7 @@ struct SharpRoomView: View {
         let aestheticAdvisor = AestheticAdvisor(palette: palette, roomStyleTags: roomStyleTags)
         latestAestheticScore = aestheticAdvisor.evaluate(furniture: furnitureProfile)
 
-        logDebug(
-            "📐 [SharpRoomView] Placement aesthetic harmony=\(String(format: "%.2f", latestAestheticScore?.harmonyScore ?? 0))"
-        )
+        // Silence aesthetic harmony logs (can be re-enabled behind a verbose flag).
     }
 
     /// Maps splat-sampled ``SurfacePalette`` material hints to advisor style tags.

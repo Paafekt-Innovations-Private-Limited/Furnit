@@ -1,16 +1,25 @@
 import Foundation
 
-/// Android `FurnitureFitManager` ONNX path parity: NMS → primary scoring → supporting-table heuristic → bbox-limited proto mask (max sigmoid).
+/// Android `FurnitureFitManager` ONNX path parity: NMS → primary scoring → supporting-table heuristic → bbox-limited proto logit mask.
 enum FurnitureFitOnnxStylePipeline {
 
-    static let confidenceThreshold: Float = 0.25
+    /// Default detection confidence threshold for ONNX-style helpers.
+    /// The live FurnitureFit camera path now uses 0.10 via `FurnitureFitUIView.scoreThreshold`.
+    static let confidenceThreshold: Float = 0.10
     static let iouThresholdNms: Float = 0.45
     static let maxDetectionsBeforeNms = 100
     /// Logit threshold for turning YOLOE mask logits into a binary proto mask.
     /// Tuned for Core ML float32 export so that weak positives in thin gaps
     /// (chair handles, bed rails) are suppressed while strong object pixels
     /// remain. ONNX path uses its own mask thresholding.
-    static let maskLogitThreshold: Float = 1.0
+    static let maskLogitThreshold: Float = 0.0
+
+    /// Applied **after** bilinear full-res upsample, **before** the final binary gate:
+    /// foreground iff `upsampled_logit - maskUpsampleLogitBias > 0`.
+    /// Ultralytics uses `> 0` on upsampled floats; a small positive bias offsets
+    /// interpolation bridging near-zero regions (proto binary vs upscaled area inflation).
+    /// Tune ~0.06–0.12: lower if thin parts vanish, higher if upscaled mask stays puffier than proto.
+    static let maskUpsampleLogitBias: Float = 0.09
 
     /// SAM-style stability score: IoU between masks at (threshold - offset)
     /// and (threshold + offset). Since the high-threshold mask is always a
@@ -114,7 +123,6 @@ enum FurnitureFitOnnxStylePipeline {
         let encompassTolerance: Float = 2
         let minimumCandidateConfidence: Float = 0.1
         let bboxDuplicateThreshold: Float = 0.7
-
         var bboxKept: [FurnitureFitDetection] = []
 
         for (idx, detection) in detections.enumerated() {
@@ -137,12 +145,21 @@ enum FurnitureFitOnnxStylePipeline {
                   candidateBottom < primaryTop || candidateTop > primaryBottom)
             if !intersectsPrimary { continue }
 
+            let insidePrimary =
+                candidateLeft >= primaryLeft &&
+                candidateTop >= primaryTop &&
+                candidateRight <= primaryRight &&
+                candidateBottom <= primaryBottom
+            let primaryIoU = FurnitureFitIoU.calculate(detection, primaryDetection)
+            let shouldFuse = insidePrimary
+            if !shouldFuse { continue }
+
             let tooLarge =
                 detection.w > primaryDetection.w * 1.5 &&
                 detection.h > primaryDetection.h * 1.5
             if tooLarge { continue }
 
-            if FurnitureFitIoU.calculate(detection, primaryDetection) > bboxDuplicateThreshold { continue }
+            if !insidePrimary && primaryIoU > bboxDuplicateThreshold { continue }
 
             var shouldSkip = false
             var replaceIndex: Int?
@@ -175,22 +192,22 @@ enum FurnitureFitOnnxStylePipeline {
 
     /// Raw YOLOE prototype mask using per-pixel logits inside each detection's
     /// original bbox only. No sigmoid, no morphology, no heuristic expansion.
-    static func buildBboxLimitedSigmoidMask(
+    static func buildBboxLimitedLogitMask(
         planes: [Float],
         protoW: Int,
         protoH: Int,
         modelSide: Float,
         detections: [FurnitureFitDetection]
     ) -> [UInt8] {
-        return buildBboxLimitedSigmoidMaskWithLogits(
+        return buildBboxLimitedLogitMaskWithLogits(
             planes: planes, protoW: protoW, protoH: protoH,
             modelSide: modelSide, detections: detections
         ).binary
     }
 
-    /// Same as `buildBboxLimitedSigmoidMask` but also returns the raw float
+    /// Same as `buildBboxLimitedLogitMask` but also returns the raw float
     /// logits before thresholding, for debug visualization.
-    static func buildBboxLimitedSigmoidMaskWithLogits(
+    static func buildBboxLimitedLogitMaskWithLogits(
         planes: [Float],
         protoW: Int,
         protoH: Int,
@@ -204,20 +221,29 @@ enum FurnitureFitOnnxStylePipeline {
         }
 
         var maskProto = [Float](repeating: 0, count: hwProto)
-        let protoScaleX = modelSide / Float(protoW)
-        let protoScaleY = modelSide / Float(protoH)
+        var protoPixelTouched = [UInt8](repeating: 0, count: hwProto)
+        // Ultralytics-style process_mask: scale boxes from model space
+        // (e.g. 640×640) into proto grid (e.g. 160×160) using simple ratios.
+        // widthRatio = protoW / modelW, heightRatio = protoH / modelH.
+        let widthRatio = Float(protoW) / modelSide
+        let heightRatio = Float(protoH) / modelSide
+        // Edge bias disabled.
+        let edgeBias: Float = 0.0
 
         for detection in detections {
             guard detection.coeffs.count >= 32 else { continue }
 
-            let bboxLeft = Int(floor((detection.x - detection.w * 0.5) / protoScaleX))
-                .clamped(to: 0...(protoW - 1))
-            let bboxTop = Int(floor((detection.y - detection.h * 0.5) / protoScaleY))
-                .clamped(to: 0...(protoH - 1))
-            let bboxRight = Int(floor((detection.x + detection.w * 0.5) / protoScaleX))
-                .clamped(to: 0...(protoW - 1))
-            let bboxBottom = Int(floor((detection.y + detection.h * 0.5) / protoScaleY))
-                .clamped(to: 0...(protoH - 1))
+            // Map bbox corners from model input size (modelSide×modelSide)
+            // into proto grid coordinates (protoW×protoH).
+            let x1Proto = (detection.x - detection.w * 0.5) * widthRatio
+            let y1Proto = (detection.y - detection.h * 0.5) * heightRatio
+            let x2Proto = (detection.x + detection.w * 0.5) * widthRatio
+            let y2Proto = (detection.y + detection.h * 0.5) * heightRatio
+
+            let bboxLeft = Int(floor(x1Proto - edgeBias)).clamped(to: 0...(protoW - 1))
+            let bboxTop = Int(floor(y1Proto - edgeBias)).clamped(to: 0...(protoH - 1))
+            let bboxRight = Int(ceil(x2Proto + edgeBias)).clamped(to: 0...(protoW - 1))
+            let bboxBottom = Int(ceil(y2Proto + edgeBias)).clamped(to: 0...(protoH - 1))
 
             for py in bboxTop...bboxBottom {
                 let rowBase = py * protoW
@@ -230,7 +256,10 @@ enum FurnitureFitOnnxStylePipeline {
                         sum += detection.coeffs[coeffIndex] * planes[protoIdx]
                         coeffIndex += 1
                     }
-                    if sum > maskProto[protoPixelIndex] {
+                    if protoPixelTouched[protoPixelIndex] == 0 {
+                        maskProto[protoPixelIndex] = sum
+                        protoPixelTouched[protoPixelIndex] = 1
+                    } else if sum > maskProto[protoPixelIndex] {
                         maskProto[protoPixelIndex] = sum
                     }
                 }

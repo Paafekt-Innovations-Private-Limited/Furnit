@@ -30,20 +30,26 @@ func logPlyBoundsDiagnostic(_ message: String) {
 
 /// AR-assisted FurnitureFit metrics. Filter: `FurnitureFitAR`.
 func logFurnitureFitAR(_ message: String) {
-    guard isDebugModeEnabled() else { return }
-    print("[FurnitureFitAR] \(message)")
+    // Temporarily silenced to reduce per-frame logging overhead.
+    // Uncomment to re-enable:
+    // guard isDebugModeEnabled() else { return }
+    // print("[FurnitureFitAR] \(message)")
 }
 
 /// Furniture W×H estimate and pipeline tags. Filter: `FurnitureFitSize`.
 func logFurnitureFitSize(_ message: String) {
-    guard isDebugModeEnabled() else { return }
-    print("[FurnitureFitSize] \(message)")
+    // Temporarily silenced to reduce per-frame logging overhead.
+    // Uncomment to re-enable:
+    // guard isDebugModeEnabled() else { return }
+    // print("[FurnitureFitSize] \(message)")
 }
 
 /// Overlay scale assist. Filter: `FurnitureFitOverlay`.
 func logFurnitureFitOverlay(_ message: String) {
-    guard isDebugModeEnabled() else { return }
-    print("[FurnitureFitOverlay] \(message)")
+    // Temporarily silenced to reduce per-frame logging overhead.
+    // Uncomment to re-enable:
+    // guard isDebugModeEnabled() else { return }
+    // print("[FurnitureFitOverlay] \(message)")
 }
 
 // MARK: - Unified diagnostics (gated by Settings debug mode)

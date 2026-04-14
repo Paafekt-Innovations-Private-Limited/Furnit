@@ -469,6 +469,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Throttled premultiplied RGBA sample at bbox center (filter: `FurnitureFit` + debugMode).
     private var lastCompositePremulRGBAlogAt: TimeInterval = 0
     private let compositePremulRGBAlogInterval: TimeInterval = 0.5
+    /// Throttled sampled binary-mask shape log for the current composited object.
+    private var lastCompositeMaskShapeLogAt: TimeInterval = 0
+    private let compositeMaskShapeLogInterval: TimeInterval = 0.5
+    /// Throttled pre-composite ASCII mask log for chair-like detections.
+    private var lastChairMaskLogAt: TimeInterval = 0
+    private let chairMaskLogInterval: TimeInterval = 0.75
+    /// Throttled staged mask comparison for the primary chair bbox.
+    private var lastChairStageComparisonLogAt: TimeInterval = 0
+    private let chairStageComparisonLogInterval: TimeInterval = 0.75
+    /// Throttled per-pixel contributor log for opaque chair-handle regions.
+    private var lastChairContributorLogAt: TimeInterval = 0
+    private let chairContributorLogInterval: TimeInterval = 0.75
 
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
@@ -698,6 +710,426 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func displayClassName(_ id: Int) -> String {
         classNames[id] ?? "unknown"
+    }
+
+    private func isChairLikeClass(_ id: Int) -> Bool {
+        displayClassName(id).lowercased().contains("chair")
+    }
+
+    private enum ProtoDebugLayout: String {
+        case channelFirst = "CHW"
+        case interleavedPixelFirst = "PIXELxC"
+    }
+
+    private func buildSingleDetectionMaskForDebug(
+        channelFirstPlanes: [Float],
+        interleavedPlanes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        detection: FurnitureFitDetection,
+        layout: ProtoDebugLayout
+    ) -> (logits: [Float], binary: [UInt8], left: Int, top: Int, right: Int, bottom: Int)? {
+        guard detection.coeffs.count >= 32, protoW > 0, protoH > 0, modelSide > 0 else { return nil }
+
+        let widthRatio = Float(protoW) / Float(modelSide)
+        let heightRatio = Float(protoH) / Float(modelSide)
+        let protoLeft = max(0, min(protoW - 1, Int(floor((detection.x - detection.w * 0.5) * widthRatio))))
+        let protoTop = max(0, min(protoH - 1, Int(floor((detection.y - detection.h * 0.5) * heightRatio))))
+        let protoRight = max(0, min(protoW - 1, Int(ceil((detection.x + detection.w * 0.5) * widthRatio))))
+        let protoBottom = max(0, min(protoH - 1, Int(ceil((detection.y + detection.h * 0.5) * heightRatio))))
+        guard protoRight >= protoLeft, protoBottom >= protoTop else { return nil }
+
+        let cropWidth = protoRight - protoLeft + 1
+        let cropHeight = protoBottom - protoTop + 1
+        let cropCount = cropWidth * cropHeight
+        var croppedLogits = [Float](repeating: 0, count: cropCount)
+        var croppedBinary = [UInt8](repeating: 0, count: cropCount)
+        let hwProto = protoW * protoH
+
+        guard channelFirstPlanes.count >= 32 * hwProto,
+              interleavedPlanes.count >= 32 * hwProto else { return nil }
+
+        for protoY in protoTop...protoBottom {
+            for protoX in protoLeft...protoRight {
+                let protoPixelIndex = protoY * protoW + protoX
+                var sum: Float = 0
+                var coeffIndex = 0
+                while coeffIndex < 32 {
+                    switch layout {
+                    case .channelFirst:
+                        let planeIndex = coeffIndex * hwProto + protoPixelIndex
+                        sum += detection.coeffs[coeffIndex] * channelFirstPlanes[planeIndex]
+                    case .interleavedPixelFirst:
+                        let planeIndex = protoPixelIndex * 32 + coeffIndex
+                        sum += detection.coeffs[coeffIndex] * interleavedPlanes[planeIndex]
+                    }
+                    coeffIndex += 1
+                }
+
+                let cropIndex = (protoY - protoTop) * cropWidth + (protoX - protoLeft)
+                croppedLogits[cropIndex] = sum
+                croppedBinary[cropIndex] = sum > 0 ? 255 : 0
+            }
+        }
+
+        return (croppedLogits, croppedBinary, protoLeft, protoTop, protoRight, protoBottom)
+    }
+
+    private func binaryMaskAscii(
+        mask: [UInt8],
+        width: Int,
+        height: Int,
+        gridCols: Int = 40,
+        gridRows: Int = 20
+    ) -> String {
+        guard width > 0, height > 0, mask.count >= width * height else { return "(empty)" }
+        let cols = min(gridCols, width)
+        let rows = min(gridRows, height)
+        var lines: [String] = []
+        lines.reserveCapacity(rows)
+        var onCount = 0
+
+        for row in 0..<rows {
+            let srcY = row * height / rows
+            var line = ""
+            line.reserveCapacity(cols)
+            for col in 0..<cols {
+                let srcX = col * width / cols
+                let idx = srcY * width + srcX
+                let isOn = mask[idx] != 0
+                if isOn { onCount += 1 }
+                line.append(isOn ? "█" : "·")
+            }
+            lines.append(line)
+        }
+
+        let totalSamples = max(1, cols * rows)
+        let coveragePct = Float(onCount) / Float(totalSamples) * 100
+        return "sampled \(cols)x\(rows) on=\(onCount)/\(totalSamples) (\(String(format: "%.1f", coveragePct))%)\n"
+            + lines.joined(separator: "\n")
+    }
+
+    /// Bilinear sample of proto logits at full-image pixel `(imageX, imageY)`.
+    /// Matches PyTorch `F.interpolate(..., mode="bilinear", align_corners=False)`:
+    /// `src = (dst + 0.5) * scale - 0.5` in continuous proto coordinates.
+    private func sampleBilinearLogit(
+        maskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        imageX: Int,
+        imageY: Int,
+        imageW: Int,
+        imageH: Int
+    ) -> Float {
+        guard protoW > 0,
+              protoH > 0,
+              imageW > 0,
+              imageH > 0,
+              maskLogits.count >= protoW * protoH else { return 0 }
+
+        let protoScaleX = Float(protoW) / Float(imageW)
+        let protoScaleY = Float(protoH) / Float(imageH)
+        let maxPx = protoW - 1
+        let maxPy = protoH - 1
+
+        let fy = (Float(imageY) + 0.5) * protoScaleY - 0.5
+        let py0 = max(0, min(maxPy, Int(floor(fy))))
+        let py1 = max(0, min(maxPy, py0 + 1))
+        let ty = fy - Float(py0)
+
+        let fx = (Float(imageX) + 0.5) * protoScaleX - 0.5
+        let px0 = max(0, min(maxPx, Int(floor(fx))))
+        let px1 = max(0, min(maxPx, px0 + 1))
+        let tx = fx - Float(px0)
+
+        let v00 = maskLogits[py0 * protoW + px0]
+        let v10 = maskLogits[py0 * protoW + px1]
+        let v01 = maskLogits[py1 * protoW + px0]
+        let v11 = maskLogits[py1 * protoW + px1]
+        return
+            v00 * (1 - tx) * (1 - ty) +
+            v10 * tx * (1 - ty) +
+            v01 * (1 - tx) * ty +
+            v11 * tx * ty
+    }
+
+    private func logPrimaryChairContributorPixelsIfDebug(
+        primary: FurnitureFitDetection,
+        maskDetectionsForBuild: [FurnitureFitDetection],
+        planes: [Float],
+        fusedMaskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int
+    ) {
+        guard debugMode, isChairLikeClass(primary.classIdx) else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastChairContributorLogAt < chairContributorLogInterval { return }
+        lastChairContributorLogAt = now
+
+        guard let primaryBuildDetection = maskDetectionsForBuild.first,
+              maskDetectionsForBuild.count > 1 else {
+            logDebug("🪑 [CHAIR PIXEL CONTRIBUTORS] no extra fused detections for \(displayClassName(primary.classIdx))")
+            return
+        }
+
+        let primaryOnlyLogits = FurnitureFitOnnxStylePipeline.buildBboxLimitedLogitMaskWithLogits(
+            planes: planes,
+            protoW: protoW,
+            protoH: protoH,
+            modelSide: Float(modelSide),
+            detections: [primaryBuildDetection]
+        ).logits
+
+        let individualDetectionLogits: [(detection: FurnitureFitDetection, logits: [Float])] = maskDetectionsForBuild.map { detection in
+            let individual = FurnitureFitOnnxStylePipeline.buildBboxLimitedLogitMaskWithLogits(
+                planes: planes,
+                protoW: protoW,
+                protoH: protoH,
+                modelSide: Float(modelSide),
+                detections: [detection]
+            )
+            return (detection, individual.logits)
+        }
+
+        let x0 = max(0, min(origW - 1, primaryBx1))
+        let y0 = max(0, min(origH - 1, primaryBy1))
+        let x1 = max(x0 + 1, min(origW, primaryBx2))
+        let y1 = max(y0 + 1, min(origH, primaryBy2))
+        let stepX = max(1, (x1 - x0) / 24)
+        let stepY = max(1, (y1 - y0) / 24)
+        let upsampleBias = FurnitureFitOnnxStylePipeline.maskUpsampleLogitBias
+
+        var suspectPixels: [(x: Int, y: Int, fused: Float, primaryOnly: Float, gain: Float)] = []
+        for imageY in stride(from: y0, to: y1, by: stepY) {
+            for imageX in stride(from: x0, to: x1, by: stepX) {
+                let fusedLogit = sampleBilinearLogit(
+                    maskLogits: fusedMaskLogits,
+                    protoW: protoW,
+                    protoH: protoH,
+                    imageX: imageX,
+                    imageY: imageY,
+                    imageW: origW,
+                    imageH: origH
+                )
+                let primaryOnlyLogit = sampleBilinearLogit(
+                    maskLogits: primaryOnlyLogits,
+                    protoW: protoW,
+                    protoH: protoH,
+                    imageX: imageX,
+                    imageY: imageY,
+                    imageW: origW,
+                    imageH: origH
+                )
+                guard fusedLogit > upsampleBias, primaryOnlyLogit <= upsampleBias else { continue }
+                suspectPixels.append((
+                    x: imageX,
+                    y: imageY,
+                    fused: fusedLogit,
+                    primaryOnly: primaryOnlyLogit,
+                    gain: fusedLogit - primaryOnlyLogit
+                ))
+            }
+        }
+
+        guard !suspectPixels.isEmpty else {
+            logDebug("🪑 [CHAIR PIXEL CONTRIBUTORS] no sampled pixels became opaque only after fusion")
+            return
+        }
+
+        suspectPixels.sort { $0.gain > $1.gain }
+        let selectedPixels = Array(suspectPixels.prefix(3))
+        var lines: [String] = []
+        lines.reserveCapacity(selectedPixels.count + 1)
+        lines.append(
+            "🪑 [CHAIR PIXEL CONTRIBUTORS] sampledPixels=\(suspectPixels.count) " +
+            "reportingTop=\(selectedPixels.count) bbox=[\(x0),\(y0)]→[\(x1),\(y1)]"
+        )
+
+        for pixel in selectedPixels {
+            let contributionLines = individualDetectionLogits
+                .map { entry -> (String, Float) in
+                    let sampledLogit = sampleBilinearLogit(
+                        maskLogits: entry.logits,
+                        protoW: protoW,
+                        protoH: protoH,
+                        imageX: pixel.x,
+                        imageY: pixel.y,
+                        imageW: origW,
+                        imageH: origH
+                    )
+                    let label = "\(displayClassName(entry.detection.classIdx)) conf=\(String(format: "%.2f", entry.detection.confidence))"
+                    return (label, sampledLogit)
+                }
+                .sorted { $0.1 > $1.1 }
+                .prefix(4)
+                .map { "\($0.0) logit=\(String(format: "%.3f", $0.1))" }
+                .joined(separator: " | ")
+
+            lines.append(
+                "pixel=(\(pixel.x),\(pixel.y)) fused=\(String(format: "%.3f", pixel.fused)) " +
+                "primaryOnly=\(String(format: "%.3f", pixel.primaryOnly)) gain=\(String(format: "%.3f", pixel.gain)) :: " +
+                contributionLines
+            )
+        }
+
+        logDebug(lines.joined(separator: "\n"))
+    }
+
+    private func logPrimaryChairStageComparisonIfDebug(
+        primary: FurnitureFitDetection,
+        modelSide: Int,
+        protoMask: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        fullResMask: [UInt8],
+        outBase: UnsafeMutablePointer<UInt8>,
+        bytesPerRowOut: Int,
+        origW: Int,
+        origH: Int,
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int
+    ) {
+        guard debugMode, isChairLikeClass(primary.classIdx) else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastChairStageComparisonLogAt < chairStageComparisonLogInterval { return }
+        lastChairStageComparisonLogAt = now
+
+        let protoWidthRatio = Float(protoW) / Float(modelSide)
+        let protoHeightRatio = Float(protoH) / Float(modelSide)
+        let protoLeft = max(0, min(protoW - 1, Int(floor((primary.x - primary.w * 0.5) * protoWidthRatio))))
+        let protoTop = max(0, min(protoH - 1, Int(floor((primary.y - primary.h * 0.5) * protoHeightRatio))))
+        let protoRight = max(0, min(protoW - 1, Int(ceil((primary.x + primary.w * 0.5) * protoWidthRatio))))
+        let protoBottom = max(0, min(protoH - 1, Int(ceil((primary.y + primary.h * 0.5) * protoHeightRatio))))
+
+        let imageLeft = max(0, min(origW - 1, primaryBx1))
+        let imageTop = max(0, min(origH - 1, primaryBy1))
+        let imageRight = max(0, min(origW, primaryBx2))
+        let imageBottom = max(0, min(origH, primaryBy2))
+
+        guard protoRight >= protoLeft,
+              protoBottom >= protoTop,
+              imageRight > imageLeft,
+              imageBottom > imageTop else { return }
+
+        let protoCropWidth = protoRight - protoLeft + 1
+        let protoCropHeight = protoBottom - protoTop + 1
+        var protoCrop = [UInt8](repeating: 0, count: protoCropWidth * protoCropHeight)
+        for protoY in protoTop...protoBottom {
+            let srcRowBase = protoY * protoW
+            let dstRowBase = (protoY - protoTop) * protoCropWidth
+            for protoX in protoLeft...protoRight {
+                protoCrop[dstRowBase + (protoX - protoLeft)] = protoMask[srcRowBase + protoX]
+            }
+        }
+
+        let imageCropWidth = imageRight - imageLeft
+        let imageCropHeight = imageBottom - imageTop
+        var upscaledCrop = [UInt8](repeating: 0, count: imageCropWidth * imageCropHeight)
+        var compositedAlphaCrop = [UInt8](repeating: 0, count: imageCropWidth * imageCropHeight)
+        for imageY in imageTop..<imageBottom {
+            let dstRowBase = (imageY - imageTop) * imageCropWidth
+            let srcMaskRowBase = imageY * origW
+            let srcOutRowBase = imageY * bytesPerRowOut
+            for imageX in imageLeft..<imageRight {
+                let dstIndex = dstRowBase + (imageX - imageLeft)
+                upscaledCrop[dstIndex] = fullResMask[srcMaskRowBase + imageX]
+                compositedAlphaCrop[dstIndex] = outBase[srcOutRowBase + imageX * 4 + 3]
+            }
+        }
+
+        logDebug(
+            "🪑 [CHAIR STAGE COMPARE] \(displayClassName(primary.classIdx)) " +
+            "conf=\(String(format: "%.2f", primary.confidence)) " +
+            "protoCrop=[\(protoLeft),\(protoTop)]→[\(protoRight),\(protoBottom)] " +
+            "imageBBox=[\(imageLeft),\(imageTop)]→[\(imageRight),\(imageBottom)]\n" +
+            "[PROTO BINARY]\n" + binaryMaskAscii(mask: protoCrop, width: protoCropWidth, height: protoCropHeight) + "\n" +
+            "[UPSCALED FULL-RES MASK]\n" + binaryMaskAscii(mask: upscaledCrop, width: imageCropWidth, height: imageCropHeight) + "\n" +
+            "[FINAL OUTPUT ALPHA]\n" + binaryMaskAscii(mask: compositedAlphaCrop, width: imageCropWidth, height: imageCropHeight)
+        )
+    }
+
+    private func logChairDetectionMasksIfDebug(
+        planes: [Float],
+        interleavedPlanes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        detections: [FurnitureFitDetection],
+        protoShape: [Int],
+        protoStrides: [Int],
+        protoChannelAxis: Int
+    ) {
+        guard debugMode else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastChairMaskLogAt < chairMaskLogInterval { return }
+        lastChairMaskLogAt = now
+
+        let chairDetections = detections.filter { isChairLikeClass($0.classIdx) }
+        guard !chairDetections.isEmpty else { return }
+
+        for (idx, detection) in chairDetections.prefix(3).enumerated() {
+            guard
+                let channelFirstMask = buildSingleDetectionMaskForDebug(
+                    channelFirstPlanes: planes,
+                    interleavedPlanes: interleavedPlanes,
+                    protoW: protoW,
+                    protoH: protoH,
+                    modelSide: modelSide,
+                    detection: detection,
+                    layout: .channelFirst
+                ),
+                let interleavedMask = buildSingleDetectionMaskForDebug(
+                    channelFirstPlanes: planes,
+                    interleavedPlanes: interleavedPlanes,
+                    protoW: protoW,
+                    protoH: protoH,
+                    modelSide: modelSide,
+                    detection: detection,
+                    layout: .interleavedPixelFirst
+                )
+            else { continue }
+
+            let channelFirstAscii = FurnitureFitOnnxStylePipeline.asciiMaskVisualization(
+                logits: channelFirstMask.logits,
+                binary: channelFirstMask.binary,
+                protoW: channelFirstMask.right - channelFirstMask.left + 1,
+                protoH: channelFirstMask.bottom - channelFirstMask.top + 1,
+                gridCols: 40,
+                gridRows: 20
+            )
+            let interleavedAscii = FurnitureFitOnnxStylePipeline.asciiMaskVisualization(
+                logits: interleavedMask.logits,
+                binary: interleavedMask.binary,
+                protoW: interleavedMask.right - interleavedMask.left + 1,
+                protoH: interleavedMask.bottom - interleavedMask.top + 1,
+                gridCols: 40,
+                gridRows: 20
+            )
+            logDebug(
+                "🪑 [CHAIR MASK PRE-COMPOSITE \(idx)] \(displayClassName(detection.classIdx)) " +
+                "conf=\(String(format: "%.2f", detection.confidence)) " +
+                "ctr=(\(Int(detection.x)),\(Int(detection.y))) size=\(Int(detection.w))x\(Int(detection.h)) " +
+                "protoShape=\(protoShape) protoStrides=\(protoStrides) channelAxis=\(protoChannelAxis)\n" +
+                "[\(ProtoDebugLayout.channelFirst.rawValue)] protoCrop=[\(channelFirstMask.left),\(channelFirstMask.top)]→[\(channelFirstMask.right),\(channelFirstMask.bottom)] " +
+                "cropSize=\(channelFirstMask.right - channelFirstMask.left + 1)x\(channelFirstMask.bottom - channelFirstMask.top + 1)\n" +
+                channelFirstAscii.logitArt + "\n" +
+                channelFirstAscii.binaryArt + "\n" +
+                "[\(ProtoDebugLayout.interleavedPixelFirst.rawValue)] protoCrop=[\(interleavedMask.left),\(interleavedMask.top)]→[\(interleavedMask.right),\(interleavedMask.bottom)] " +
+                "cropSize=\(interleavedMask.right - interleavedMask.left + 1)x\(interleavedMask.bottom - interleavedMask.top + 1)\n" +
+                interleavedAscii.logitArt + "\n" +
+                interleavedAscii.binaryArt
+            )
+        }
     }
 
     private func supportSurfaceHint(
@@ -1560,28 +1992,40 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
-    /// Ultralytics-style inverse letterbox mapping from model space (e.g. 640×640)
-    /// back to the original image space, accounting for uniform scale + padding.
-    /// This mirrors `scale_boxes` when the input was letterboxed to a square.
-    private func scaleBoxesLetterbox(
+    /// Ultralytics-style `scale_boxes` mapping from model space back to the
+    /// original image space. Supports both letterboxed-square inputs and the
+    /// current stretch-to-square camera path.
+    private func scaleBoxesFromModel(
         box: CGRect,
         modelShape: CGSize,
-        imageShape: CGSize
+        imageShape: CGSize,
+        usesLetterbox: Bool
     ) -> CGRect {
-        // 1. Gain: min ratio to fit original image inside the model square.
-        let gain = min(modelShape.width / imageShape.width, modelShape.height / imageShape.height)
+        let edgeOffset: CGFloat = 0.0  // edge bias disabled
+        let x1: CGFloat
+        let y1: CGFloat
+        let x2: CGFloat
+        let y2: CGFloat
 
-        // 2. Padding applied during letterbox.
-        let padX = (modelShape.width - imageShape.width * gain) / 2.0
-        let padY = (modelShape.height - imageShape.height * gain) / 2.0
+        if usesLetterbox {
+            // Ultralytics-style gain for square letterbox inputs.
+            let gain = min(modelShape.width / imageShape.width, modelShape.height / imageShape.height)
+            let padX = (modelShape.width - imageShape.width * gain) / 2.0
+            let padY = (modelShape.height - imageShape.height * gain) / 2.0
+            x1 = (box.minX - edgeOffset - padX) / gain
+            y1 = (box.minY - edgeOffset - padY) / gain
+            x2 = (box.maxX + edgeOffset - padX) / gain
+            y2 = (box.maxY + edgeOffset - padY) / gain
+        } else {
+            // Stretch path: independent X/Y scaling, no padding.
+            let gainX = imageShape.width / modelShape.width
+            let gainY = imageShape.height / modelShape.height
+            x1 = (box.minX - edgeOffset) * gainX
+            y1 = (box.minY - edgeOffset) * gainY
+            x2 = (box.maxX + edgeOffset) * gainX
+            y2 = (box.maxY + edgeOffset) * gainY
+        }
 
-        // 3. Undo padding + scale to get back to original coordinates.
-        let x1 = (box.minX - padX) / gain
-        let y1 = (box.minY - padY) / gain
-        let x2 = (box.maxX - padX) / gain
-        let y2 = (box.maxY - padY) / gain
-
-        // 4. Clip to image bounds.
         let clippedX1 = max(0, x1)
         let clippedY1 = max(0, y1)
         let clippedX2 = min(imageShape.width, x2)
@@ -1602,14 +2046,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         scaleX: Float,
         scaleY: Float
     ) -> CGRect {
-        let fx1 = (detection.x - detection.w * 0.5) * scaleX
-        let fy1 = (detection.y - detection.h * 0.5) * scaleY
-        let fx2 = (detection.x + detection.w * 0.5) * scaleX
-        let fy2 = (detection.y + detection.h * 0.5) * scaleY
-        let bx1 = max(0, Int(fx1))
-        let by1 = max(0, Int(fy1))
-        let bx2 = min(imageWidth, Int(fx2))
-        let by2 = min(imageHeight, Int(fy2))
+        let modelShape = CGSize(
+            width: CGFloat(Float(imageWidth) / max(scaleX, 1e-6)),
+            height: CGFloat(Float(imageHeight) / max(scaleY, 1e-6))
+        )
+        let modelBox = CGRect(
+            x: CGFloat(detection.x - detection.w * 0.5),
+            y: CGFloat(detection.y - detection.h * 0.5),
+            width: CGFloat(detection.w),
+            height: CGFloat(detection.h)
+        )
+        let scaledBox = scaleBoxesFromModel(
+            box: modelBox,
+            modelShape: modelShape,
+            imageShape: CGSize(width: imageWidth, height: imageHeight),
+            usesLetterbox: false
+        )
+        let bx1 = max(0, Int(scaledBox.minX))
+        let by1 = max(0, Int(scaledBox.minY))
+        let bx2 = min(imageWidth, Int(scaledBox.maxX))
+        let by2 = min(imageHeight, Int(scaledBox.maxY))
         return CGRect(
             x: bx1,
             y: by1,
@@ -3112,6 +3568,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
         }
+        logChairDetectionMasksIfDebug(
+            planes: planes,
+            interleavedPlanes: protoInfo.interleavedPlanes,
+            protoW: pW,
+            protoH: pH,
+            modelSide: onnxSide,
+            detections: candidates,
+            protoShape: protoInfo.shape,
+            protoStrides: protoInfo.strides,
+            protoChannelAxis: protoInfo.channelAxis
+        )
 
         if segmentationMode == .identifyOnly && showFullVideoWithIdentifications {
             // Full-video identifications ON: show bbox overlays only, no mask compositing.
@@ -3252,52 +3719,152 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             selectedCandidates = matchedCandidates
         }
 
-        let maskResult = FurnitureFitOnnxStylePipeline.buildBboxLimitedSigmoidMaskWithLogits(
+        // Build the proto-space mask from a fusion list of detections.
+        // - When running in identify-only mode (no manual selection), mirror the
+        //   Android path by fusing the primary with nearby overlapping detections
+        //   via `collectMaskDetections`, and expanding the primary bbox slightly
+        //   for legs/wheels before synthesizing logits.
+        // - When running in segmentSelected mode, restrict fusion to the
+        //   user-pinned instances, but still apply the primary expansion per pin.
+        let maskDetectionsForBuild: [FurnitureFitDetection]
+        if segmentationMode == .segmentSelected {
+            // Manual selection: expand each matched pin and build a mask over the
+            // union of those expanded boxes.
+            maskDetectionsForBuild = selectedCandidates.map {
+                onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
+            }
+        } else {
+            // Auto primary: Android-style fusion of primary + supporting
+            // detections that intersect it (monitor/table, overlapped props,
+            // etc.), with an expanded primary bbox for mask synthesis.
+            let maskSource = [primary]  // Temporary debug isolation: primary only
+            let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
+            var fusion: [FurnitureFitDetection] = [expandedPrimary]
+            for det in maskSource {
+                // Drop the unexpanded primary (near-duplicate) while keeping
+                // genuinely distinct overlapping detections.
+                if FurnitureFitIoU.calculate(det, primary) < 0.999 {
+                    fusion.append(det)
+                }
+            }
+            maskDetectionsForBuild = fusion
+        }
+
+        let maskResult = FurnitureFitOnnxStylePipeline.buildBboxLimitedLogitMaskWithLogits(
             planes: planes,
             protoW: pW,
             protoH: pH,
             modelSide: Float(onnxSide),
-            detections: selectedCandidates
+            detections: maskDetectionsForBuild
         )
         var maskSmall = maskResult.binary
         if furnitureFitUseMorphologicalCloseMask {
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
 
-        let tightFx1 = (primary.x - primary.w * 0.5) * scaleX
-        let tightFy1 = (primary.y - primary.h * 0.5) * scaleY
-        let tightFx2 = (primary.x + primary.w * 0.5) * scaleX
-        let tightFy2 = (primary.y + primary.h * 0.5) * scaleY
-        let primaryBx1 = max(0, Int(tightFx1))
-        let primaryBy1 = max(0, Int(tightFy1))
-        let primaryBx2 = min(bufW, Int(tightFx2))
-        let primaryBy2 = min(bufH, Int(tightFy2))
-
-        let maskImageBounds = imageBoundsForMask(
-            maskSmall: maskSmall,
-            protoW: pW,
-            protoH: pH,
+        let primaryBufferRect = bufferRect(
+            for: primary,
             imageWidth: bufW,
-            imageHeight: bufH
+            imageHeight: bufH,
+            scaleX: scaleX,
+            scaleY: scaleY
         )
-        let compBx1 = Int(maskImageBounds?.minX ?? CGFloat(primaryBx1))
-        let compBy1 = Int(maskImageBounds?.minY ?? CGFloat(primaryBy1))
-        let compBx2 = Int(maskImageBounds?.maxX ?? CGFloat(primaryBx2))
-        let compBy2 = Int(maskImageBounds?.maxY ?? CGFloat(primaryBy2))
+        let primaryBx1 = Int(primaryBufferRect.minX)
+        let primaryBy1 = Int(primaryBufferRect.minY)
+        let primaryBx2 = Int(primaryBufferRect.maxX)
+        let primaryBy2 = Int(primaryBufferRect.maxY)
+
+        // Build the composite band from the fused detection boxes rather than the
+        // thresholded small mask. This avoids cropping away weak thin parts (for
+        // example the left handle of a chair) before full-res logits are sampled.
+        let clipCandidates = segmentationMode == .segmentSelected ? selectedCandidates : maskDetectionsForBuild
+        let clipLeftModel = clipCandidates.map { $0.x - $0.w * 0.5 }.min() ?? (primary.x - primary.w * 0.5)
+        let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
+        let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
+        let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
+        let widthRatio = Float(pW) / Float(onnxSide)
+        let heightRatio = Float(pH) / Float(onnxSide)
+        var maskSmallForComposite = maskSmall
+        var maskLogitsForComposite = maskResult.logits
+
+        let clipFx1 = clipLeftModel * scaleX
+        let clipFy1 = clipTopModel * scaleY
+        let clipFx2 = clipRightModel * scaleX
+        let clipFy2 = clipBottomModel * scaleY
+        let bandMarginW: Float = 0  // edge band expansion disabled
+        let bandMarginH: Float = 0  // edge band expansion disabled
+        let compBx1 = max(0, Int(floor(clipFx1 - bandMarginW)))
+        let compBy1 = max(0, Int(floor(clipFy1 - bandMarginH)))
+        let compBx2 = min(bufW, Int(ceil(clipFx2 + bandMarginW)))
+        let compBy2 = min(bufH, Int(ceil(clipFy2 + bandMarginH)))
 
         if debugMode {
-            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", Date().timeIntervalSince(t3) * 1000)) ms")
-            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] selected masks=\(selectedCandidates.count) manual=true")
+            let stage35Ms = Date().timeIntervalSince(t3) * 1000
+            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", stage35Ms)) ms")
+            logDebug("   🎯 PRIMARY: \(className(primary.classIdx)) bbox [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)] fusedMasks=\(maskDetectionsForBuild.count)")
             logDebug("   🖼️ composite band (mask bounds): [\(compBx1),\(compBy1)]→[\(compBx2),\(compBy2)]")
 
-            let (logitArt, binaryArt) = FurnitureFitOnnxStylePipeline.asciiMaskVisualization(
-                logits: maskResult.logits,
-                binary: maskSmall,
-                protoW: pW,
-                protoH: pH
-            )
-            logDebug("   🔬 MASK SHAPE (sampled):\n\(logitArt)")
-            logDebug("   🔬 MASK BINARY:\n\(binaryArt)")
+            // ASCII mask art is extremely expensive to print every frame; keep the
+            // helper for future deep dives but skip logging in normal debug runs.
+
+            // Per-detection coverage diagnostics: check how much of each selected
+            // detection survives into the proto mask and whether its image-space
+            // bbox intersects the primary bbox and composite band.
+            for (idx, det) in maskDetectionsForBuild.prefix(20).enumerated() {
+                let x1Model = det.x - det.w * 0.5
+                let y1Model = det.y - det.h * 0.5
+                let x2Model = det.x + det.w * 0.5
+                let y2Model = det.y + det.h * 0.5
+
+                // Proto-space bbox for this detection (same ratios as mask builder).
+                let rawLeft = Int(floor(x1Model * widthRatio))
+                let rawTop = Int(floor(y1Model * heightRatio))
+                let rawRight = Int(floor(x2Model * widthRatio))
+                let rawBottom = Int(floor(y2Model * heightRatio))
+                let protoLeft = max(0, min(pW - 1, rawLeft))
+                let protoTop = max(0, min(pH - 1, rawTop))
+                let protoRight = max(0, min(pW - 1, rawRight))
+                let protoBottom = max(0, min(pH - 1, rawBottom))
+
+                var detOnCount = 0
+                if protoRight >= protoLeft, protoBottom >= protoTop {
+                    for py in protoTop...protoBottom {
+                        let rowOff = py * pW
+                        for px in protoLeft...protoRight {
+                            if maskSmallForComposite[rowOff + px] != 0 {
+                                detOnCount += 1
+                            }
+                        }
+                    }
+                }
+
+                // Image-space bbox for this detection.
+                let fx1 = x1Model * scaleX
+                let fy1 = y1Model * scaleY
+                let fx2 = x2Model * scaleX
+                let fy2 = y2Model * scaleY
+                let bx1 = max(0, Int(fx1))
+                let by1 = max(0, Int(fy1))
+                let bx2 = min(bufW, Int(fx2))
+                let by2 = min(bufH, Int(fy2))
+
+                let intersectsPrimary =
+                    bx2 > primaryBx1 && bx1 < primaryBx2 &&
+                    by2 > primaryBy1 && by1 < primaryBy2
+                let insidePrimary =
+                    bx1 >= primaryBx1 && by1 >= primaryBy1 &&
+                    bx2 <= primaryBx2 && by2 <= primaryBy2
+                let intersectsBand =
+                    bx2 > compBx1 && bx1 < compBx2 &&
+                    by2 > compBy1 && by1 < compBy2
+
+                logDebug(
+                    "   🧩 DET[\(idx)] \(className(det.classIdx)) maskOn=\(detOnCount) " +
+                    "imgBBox=[\(bx1),\(by1)]→[\(bx2),\(by2)] " +
+                    "insidePrimary=\(insidePrimary) intersectsPrimary=\(intersectsPrimary) " +
+                    "intersectsBand=\(intersectsBand)"
+                )
+            }
         }
 
         let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
@@ -3427,16 +3994,24 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let compStart = Date()
         let composedImage = compositeCpuBilinearProtoMaskCutoutFromLogits(
             processBuffer: processBuffer,
-            maskProto: maskSmall,
-            maskLogits: maskResult.logits,
+            maskProto: maskSmallForComposite,
+            maskLogits: maskLogitsForComposite,
+            planes: planes,
             protoW: pW,
             protoH: pH,
+            modelSide: onnxSide,
             origW: bufW,
             origH: bufH,
             x0: compBx1,
             x1: compBx2,
             y0: compBy1,
             y1: compBy2,
+            primary: primary,
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2,
+            maskDetectionsForBuild: maskDetectionsForBuild,
             debugTag: "ONNX-style CPU composite"
         )
 
@@ -3515,8 +4090,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let maxHalfH = min(primary.y, side - primary.y)
         let capW = 2 * max(maxHalfW, 1)
         let capH = 2 * max(maxHalfH, 1)
-        let ew = min(primary.w * (1 + 2 * bboxExpandMargin), capW)
-        let eh = min(primary.h * (1 + 2 * bboxExpandMargin), capH)
+        let ew = min(primary.w, capW)  // edge expansion disabled
+        let eh = min(primary.h, capH)  // edge expansion disabled
         return FurnitureFitDetection(
             x: primary.x,
             y: primary.y,
@@ -3580,6 +4155,51 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    private func clipProtoFloatMaskOutsideRect(
+        mask: inout [Float],
+        protoW: Int,
+        protoH: Int,
+        clipPx1: Int,
+        clipPy1: Int,
+        clipPx2: Int,
+        clipPy2: Int
+    ) {
+        let clipX1 = max(0, clipPx1)
+        let clipY1 = max(0, clipPy1)
+        let clipX2 = min(protoW, clipPx2)
+        let clipY2 = min(protoH, clipPy2)
+        guard mask.count >= protoW * protoH else { return }
+        guard clipX1 < clipX2, clipY1 < clipY2 else {
+            mask = [Float](repeating: 0, count: protoW * protoH)
+            return
+        }
+        if clipY1 > 0 {
+            for index in 0..<(clipY1 * protoW) {
+                mask[index] = 0
+            }
+        }
+        if clipY2 < protoH {
+            for index in (clipY2 * protoW)..<(protoH * protoW) {
+                mask[index] = 0
+            }
+        }
+        if clipX1 > 0 || clipX2 < protoW {
+            for y in clipY1..<clipY2 {
+                let rowStart = y * protoW
+                if clipX1 > 0 {
+                    for x in 0..<clipX1 {
+                        mask[rowStart + x] = 0
+                    }
+                }
+                if clipX2 < protoW {
+                    for x in clipX2..<protoW {
+                        mask[rowStart + x] = 0
+                    }
+                }
+            }
+        }
+    }
+
     private func clipFullMaskToPrimaryBbox(
         mask: inout [UInt8],
         origW: Int,
@@ -3624,6 +4244,221 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    // MARK: - Small-region post-processing (holes / islands)
+
+    /// Fills small background "holes" (0-valued regions fully enclosed by 255) in a
+    /// band-local binary mask. Mirrors SAM's `remove_small_regions(..., mode="holes")`.
+    private func fillSmallHolesInMaskBand(
+        mask: inout [UInt8],
+        width: Int,
+        height: Int,
+        areaThreshold: Int
+    ) {
+        guard width > 0, height > 0, mask.count >= width * height, areaThreshold > 0 else { return }
+
+        let w = width
+        let h = height
+        var visited = [Bool](repeating: false, count: w * h)
+        var queue = [(x: Int, y: Int)]()
+        queue.reserveCapacity(128)
+
+        func idx(_ x: Int, _ y: Int) -> Int { y * w + x }
+
+        // 8-neighbour BFS on background (0) regions (matches SAM connectivity)
+        for startY in 0..<h {
+            for startX in 0..<w {
+                let startIndex = idx(startX, startY)
+                if visited[startIndex] || mask[startIndex] != 0 {
+                    continue
+                }
+
+                queue.removeAll(keepingCapacity: true)
+                queue.append((startX, startY))
+                visited[startIndex] = true
+
+                var component: [Int] = [startIndex]
+                var touchesBorder = (startX == 0 || startX == w - 1 || startY == 0 || startY == h - 1)
+
+                while !queue.isEmpty {
+                    let (x, y) = queue.removeLast()
+                    // 8-connected neighbours: N, S, E, W, and 4 diagonals.
+                    let neighbours = [
+                        (x: x - 1, y: y),
+                        (x: x + 1, y: y),
+                        (x: x,     y: y - 1),
+                        (x: x,     y: y + 1),
+                        (x: x - 1, y: y - 1),
+                        (x: x + 1, y: y - 1),
+                        (x: x - 1, y: y + 1),
+                        (x: x + 1, y: y + 1),
+                    ]
+                    for n in neighbours {
+                        guard n.x >= 0, n.x < w, n.y >= 0, n.y < h else { continue }
+                        let nIndex = idx(n.x, n.y)
+                        if visited[nIndex] || mask[nIndex] != 0 { continue }
+                        visited[nIndex] = true
+                        queue.append((n.x, n.y))
+                        component.append(nIndex)
+                        if n.x == 0 || n.x == w - 1 || n.y == 0 || n.y == h - 1 {
+                            touchesBorder = true
+                        }
+                    }
+                }
+
+                // If this background component does NOT touch the band border and
+                // is smaller than the threshold, treat it as a "hole" and fill it.
+                if !touchesBorder && component.count < areaThreshold {
+                    for i in component {
+                        mask[i] = 255
+                    }
+                }
+            }
+        }
+    }
+
+    /// Removes small foreground "islands" (255-valued blobs) in a band-local
+    /// binary mask. Mirrors SAM's `remove_small_regions(..., mode="islands")`.
+    private func removeSmallIslandsInMaskBand(
+        mask: inout [UInt8],
+        width: Int,
+        height: Int,
+        areaThreshold: Int
+    ) {
+        guard width > 0, height > 0, mask.count >= width * height, areaThreshold > 0 else { return }
+
+        let w = width
+        let h = height
+        var visited = [Bool](repeating: false, count: w * h)
+        var queue = [(x: Int, y: Int)]()
+        queue.reserveCapacity(128)
+
+        func idx(_ x: Int, _ y: Int) -> Int { y * w + x }
+
+        // 8-neighbour BFS on foreground (255) regions (matches SAM connectivity)
+        for startY in 0..<h {
+            for startX in 0..<w {
+                let startIndex = idx(startX, startY)
+                if visited[startIndex] || mask[startIndex] == 0 {
+                    continue
+                }
+
+                queue.removeAll(keepingCapacity: true)
+                queue.append((startX, startY))
+                visited[startIndex] = true
+
+                var component: [Int] = [startIndex]
+
+                while !queue.isEmpty {
+                    let (x, y) = queue.removeLast()
+                    // 8-connected neighbours: N, S, E, W, and 4 diagonals.
+                    let neighbours = [
+                        (x: x - 1, y: y),
+                        (x: x + 1, y: y),
+                        (x: x,     y: y - 1),
+                        (x: x,     y: y + 1),
+                        (x: x - 1, y: y - 1),
+                        (x: x + 1, y: y - 1),
+                        (x: x - 1, y: y + 1),
+                        (x: x + 1, y: y + 1),
+                    ]
+                    for n in neighbours {
+                        guard n.x >= 0, n.x < w, n.y >= 0, n.y < h else { continue }
+                        let nIndex = idx(n.x, n.y)
+                        if visited[nIndex] || mask[nIndex] == 0 { continue }
+                        visited[nIndex] = true
+                        queue.append((n.x, n.y))
+                        component.append(nIndex)
+                    }
+                }
+
+                // Foreground island smaller than the threshold → remove it.
+                if component.count < areaThreshold {
+                    for i in component {
+                        mask[i] = 0
+                    }
+                }
+            }
+        }
+    }
+
+    /// Simple binary dilation on a band-local mask (3×3 structuring element).
+    private func dilateBandMask(
+        mask: inout [UInt8],
+        width: Int,
+        height: Int,
+        iterations: Int
+    ) {
+        guard width > 0, height > 0, mask.count >= width * height, iterations > 0 else { return }
+
+        let w = width
+        let h = height
+        var scratch = mask
+
+        for _ in 0..<iterations {
+            scratch = mask
+            for y in 0..<h {
+                for x in 0..<w {
+                    let idx = y * w + x
+                    if scratch[idx] == 255 {
+                        mask[idx] = 255
+                        continue
+                    }
+                    var found = false
+                    for ny in max(0, y - 1)...min(h - 1, y + 1) {
+                        for nx in max(0, x - 1)...min(w - 1, x + 1) {
+                            if scratch[ny * w + nx] == 255 {
+                                found = true
+                                break
+                            }
+                        }
+                        if found { break }
+                    }
+                    if found {
+                        mask[idx] = 255
+                    }
+                }
+            }
+        }
+    }
+
+    /// Simple binary erosion on a band-local mask (3×3 structuring element).
+    private func erodeBandMask(
+        mask: inout [UInt8],
+        width: Int,
+        height: Int,
+        iterations: Int
+    ) {
+        guard width > 0, height > 0, mask.count >= width * height, iterations > 0 else { return }
+
+        let w = width
+        let h = height
+        var scratch = mask
+
+        for _ in 0..<iterations {
+            scratch = mask
+            for y in 0..<h {
+                for x in 0..<w {
+                    let idx = y * w + x
+                    if scratch[idx] == 0 {
+                        mask[idx] = 0
+                        continue
+                    }
+                    var allOn = true
+                    for ny in max(0, y - 1)...min(h - 1, y + 1) {
+                        for nx in max(0, x - 1)...min(w - 1, x + 1) {
+                            if scratch[ny * w + nx] == 0 {
+                                allOn = false
+                                break
+                            }
+                        }
+                        if !allOn { break }
+                    }
+                    mask[idx] = allOn ? 255 : 0
+                }
+            }
+        }
+    }
+
     /// BGRA camera × (mask/255) → premultiplied RGBA inside the primary band using vDSP (`vfltu8`, `vsmul`, `vmul`, `vclip`, `vadd`, `vfixu8`).
     private func compositeCpuCameraBandAccelerated(
         outBase: UnsafeMutablePointer<UInt8>,
@@ -3662,6 +4497,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let origRowPtr = origBase.advanced(by: y * camRowBytes)
                 let maskRowPtr = maskBase.advanced(by: y * origW + x0)
                 vDSP_vfltu8(maskRowPtr, 1, alphaPtr, 1, wl)
+                // Normalize alpha to 0...1 before premultiplying RGB. The output
+                // image itself still stores alpha as 0...255 below.
                 vDSP_vsmul(alphaPtr, 1, &inv255, alphaPtr, 1, wl)
                 vDSP_vfltu8(origRowPtr.advanced(by: x0 * 4 + 0), 4, bPtr, 1, wl)
                 vDSP_vfltu8(origRowPtr.advanced(by: x0 * 4 + 1), 4, gPtr, 1, wl)
@@ -3683,6 +4520,48 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     outRowPtr.advanced(by: (x0 + mx) * 4 + 3).pointee = maskRowPtr[mx]
                     mx += 1
                 }
+            }
+        }
+    }
+
+    /// Reference CPU compositor for debugging stale-buffer, stride, and
+    /// premultiplication issues. Assumes `outBase` has already been cleared.
+    private func compositeCpuCameraBandReference(
+        outBase: UnsafeMutablePointer<UInt8>,
+        origBase: UnsafePointer<UInt8>,
+        maskBase: UnsafePointer<UInt8>,
+        camRowBytes: Int,
+        maskRowBytes: Int,
+        bytesPerRowOut: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int
+    ) {
+        guard x1 > x0, y1 > y0 else { return }
+
+        for y in y0..<y1 {
+            let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
+            let origRowPtr = origBase.advanced(by: y * camRowBytes)
+            let maskRowPtr = maskBase.advanced(by: y * maskRowBytes)
+
+            for x in x0..<x1 {
+                let maskValue = maskRowPtr[x]
+                let outputOffset = x * 4
+                let cameraOffset = x * 4
+
+                guard maskValue != 0 else {
+                    outRowPtr[outputOffset + 0] = 0
+                    outRowPtr[outputOffset + 1] = 0
+                    outRowPtr[outputOffset + 2] = 0
+                    outRowPtr[outputOffset + 3] = 0
+                    continue
+                }
+
+                outRowPtr[outputOffset + 0] = origRowPtr[cameraOffset + 2]
+                outRowPtr[outputOffset + 1] = origRowPtr[cameraOffset + 1]
+                outRowPtr[outputOffset + 2] = origRowPtr[cameraOffset + 0]
+                outRowPtr[outputOffset + 3] = maskValue
             }
         }
     }
@@ -3716,6 +4595,61 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let blue = outBase[offset + 2]
         let alpha = outBase[offset + 3]
         logDebug("🎨 [RGBA \(tag)] center (\(cx),\(cy)) premul R=\(red) G=\(green) B=\(blue) A=\(alpha)")
+    }
+
+    /// Logs a compact sampled binary mask silhouette for the current object band.
+    private func logSampledMaskShapeIfDebug(
+        mask: [UInt8],
+        width: Int,
+        height: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        tag: String,
+        gridCols: Int = 48,
+        gridRows: Int = 24
+    ) {
+        guard debugMode else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastCompositeMaskShapeLogAt < compositeMaskShapeLogInterval { return }
+        lastCompositeMaskShapeLogAt = now
+
+        let xStart = max(0, min(width, x0))
+        let xEnd = max(0, min(width, x1))
+        let yStart = max(0, min(height, y0))
+        let yEnd = max(0, min(height, y1))
+        let bandW = xEnd - xStart
+        let bandH = yEnd - yStart
+        guard bandW > 0, bandH > 0, mask.count >= width * height else { return }
+
+        let cols = min(gridCols, bandW)
+        let rows = min(gridRows, bandH)
+        var lines: [String] = []
+        lines.reserveCapacity(rows)
+        var onCount = 0
+
+        for row in 0..<rows {
+            let srcY = yStart + row * bandH / rows
+            var line = ""
+            line.reserveCapacity(cols)
+            for col in 0..<cols {
+                let srcX = xStart + col * bandW / cols
+                let idx = srcY * width + srcX
+                let isOn = mask[idx] != 0
+                if isOn { onCount += 1 }
+                line.append(isOn ? "█" : "·")
+            }
+            lines.append(line)
+        }
+
+        let totalSamples = max(1, cols * rows)
+        let coveragePct = Float(onCount) / Float(totalSamples) * 100
+        logDebug(
+            "🔬 [MASK SHAPE \(tag)] sampled \(cols)x\(rows) on=\(onCount)/\(totalSamples) " +
+            "(\(String(format: "%.1f", coveragePct))%)\n" +
+            lines.joined(separator: "\n")
+        )
     }
 
     /// ONNX-style cutout: hard binary mask compositing.
@@ -3824,7 +4758,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// full camera resolution, apply a positive threshold to shrink the mask away
     /// from thin gaps, and write fully opaque pixels wherever the upsampled logit
     /// exceeds that threshold.
-    private func compositeCpuBilinearProtoMaskCutoutFromLogits(
+    private func compositeCpuBilinearProtoMaskCutoutFromLogitsLegacy(
         processBuffer: CVPixelBuffer,
         maskProto: [UInt8],
         maskLogits: [Float],
@@ -3888,7 +4822,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Ultralytics-style mask native: upsample full-res logits, then apply
         // a fixed bias before a zero threshold, i.e. (logit - 1.2) > 0.
-        let logitBias: Float = 1.2
+        // Temporarily relax bias to 0.0 to test for left-handle erosion.
+        let logitBias: Float = 0.0
         var opaquePixelCount: Int = 0
 
         if debugMode {
@@ -3966,6 +4901,219 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return ctx.makeImage()
     }
 
+    /// ONNX / Ultralytics `process_mask` order on the composite path: fused proto
+    /// logits → bilinear upsample to full camera size (`align_corners=False`) →
+    /// write only the image-space crop band → threshold last (`logit - bias > 0`).
+    private func compositeCpuBilinearProtoMaskCutoutFromLogits(
+        processBuffer: CVPixelBuffer,
+        maskProto: [UInt8],
+        maskLogits: [Float],
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        primary: FurnitureFitDetection,
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int,
+        maskDetectionsForBuild: [FurnitureFitDetection],
+        debugTag: String
+    ) -> CGImage? {
+        let pw = protoW
+        let ph = protoH
+        guard pw > 0,
+              ph > 0,
+              maskProto.count >= pw * ph,
+              maskLogits.count >= pw * ph,
+              origW > 0, origH > 0 else { return nil }
+
+        let xStart = max(0, min(origW, x0))
+        let xEnd = max(0, min(origW, x1))
+        let yStart = max(0, min(origH, y0))
+        let yEnd = max(0, min(origH, y1))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+
+        let bandW = xEnd - xStart
+        let bandH = yEnd - yStart
+        guard bandW > 0, bandH > 0 else { return nil }
+
+        var totalMaskPositive: Int = 0
+        if debugMode {
+            totalMaskPositive = maskProto.reduce(into: 0) { acc, v in
+                if v != 0 { acc += 1 }
+            }
+        }
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        guard let outData = ctx.data else { return nil }
+        let outBase = outData.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRowOut = origW * 4
+
+        for y in 0..<origH {
+            memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
+        }
+
+        let protoScaleX = Float(pw) / Float(origW)
+        let protoScaleY = Float(ph) / Float(origH)
+        let maxPx = pw - 1
+        let maxPy = ph - 1
+        let fullCount = origW * origH
+        if upscaledPlanarMaskScratch.count < fullCount {
+            upscaledPlanarMaskScratch = [UInt8](repeating: 0, count: fullCount)
+        } else {
+            upscaledPlanarMaskScratch.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress { memset(base, 0, fullCount) }
+            }
+        }
+
+        // Ultralytics `process_mask`: upsample float logits (bilinear, align_corners=False),
+        // then crop in image space (here: only fill the composite band), then threshold.
+        let logitBias = FurnitureFitOnnxStylePipeline.maskUpsampleLogitBias
+        var opaquePixelCount = 0
+        for by in 0..<bandH {
+            let y = yStart + by
+            let fy = (Float(y) + 0.5) * protoScaleY - 0.5
+            let py0 = max(0, min(maxPy, Int(floor(fy))))
+            let py1 = max(0, min(maxPy, py0 + 1))
+            let ty = fy - Float(py0)
+
+            for bx in 0..<bandW {
+                let x = xStart + bx
+                let fx = (Float(x) + 0.5) * protoScaleX - 0.5
+                let px0 = max(0, min(maxPx, Int(floor(fx))))
+                let px1 = max(0, min(maxPx, px0 + 1))
+                let tx = fx - Float(px0)
+
+                let idx00 = py0 * pw + px0
+                let idx10 = py0 * pw + px1
+                let idx01 = py1 * pw + px0
+                let idx11 = py1 * pw + px1
+
+                let v00 = maskLogits[idx00]
+                let v10 = maskLogits[idx10]
+                let v01 = maskLogits[idx01]
+                let v11 = maskLogits[idx11]
+
+                let rawLogit =
+                    v00 * (1 - tx) * (1 - ty) +
+                    v10 * tx * (1 - ty) +
+                    v01 * (1 - tx) * ty +
+                    v11 * tx * ty
+
+                let maskValue: UInt8 = rawLogit - logitBias > 0 ? 255 : 0
+                upscaledPlanarMaskScratch[y * origW + x] = maskValue
+                if maskValue != 0 { opaquePixelCount += 1 }
+            }
+        }
+
+        if debugMode {
+            logDebug("   🧪 COMPOSITE(FromLogits) DIAG: camRowBytes=\(camRowBytes) expected=\(origW*4) pw=\(pw) ph=\(ph) origW=\(origW) origH=\(origH)")
+            logDebug("   🧪 logits: bilinear upsample (align_corners=False) → image crop band → threshold (upsampled - \(logitBias) > 0)")
+            logDebug("   🧪 band: x[\(xStart)..\(xEnd)) y[\(yStart)..\(yEnd))")
+        }
+
+        let totalOpaquePixels = upscaledPlanarMaskScratch.reduce(into: 0) { acc, v in
+            if v != 0 { acc += 1 }
+        }
+
+        logSampledMaskShapeIfDebug(
+            mask: upscaledPlanarMaskScratch,
+            width: origW,
+            height: origH,
+            x0: xStart,
+            x1: xEnd,
+            y0: yStart,
+            y1: yEnd,
+            tag: debugTag
+        )
+
+        upscaledPlanarMaskScratch.withUnsafeBufferPointer { maskPtr in
+            guard let maskBase = maskPtr.baseAddress else { return }
+            compositeCpuCameraBandReference(
+                outBase: outBase,
+                origBase: origBase,
+                maskBase: maskBase,
+                camRowBytes: camRowBytes,
+                maskRowBytes: origW,
+                bytesPerRowOut: bytesPerRowOut,
+                x0: xStart,
+                x1: xEnd,
+                y0: yStart,
+                y1: yEnd
+            )
+        }
+
+        logPremultipliedRGBASampleIfDebug(
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            width: origW,
+            height: origH,
+            x0: xStart,
+            x1: xEnd,
+            y0: yStart,
+            y1: yEnd,
+            tag: debugTag
+        )
+        logPrimaryChairStageComparisonIfDebug(
+            primary: primary,
+            modelSide: modelSide,
+            protoMask: maskProto,
+            protoW: pw,
+            protoH: ph,
+            fullResMask: upscaledPlanarMaskScratch,
+            outBase: outBase,
+            bytesPerRowOut: bytesPerRowOut,
+            origW: origW,
+            origH: origH,
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2
+        )
+        logPrimaryChairContributorPixelsIfDebug(
+            primary: primary,
+            maskDetectionsForBuild: maskDetectionsForBuild,
+            planes: planes,
+            fusedMaskLogits: maskLogits,
+            protoW: pw,
+            protoH: ph,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2
+        )
+        if debugMode {
+            logDebug(
+                "🧮 [MASK_COUNTS \(debugTag) logits] protoPositive=\(totalMaskPositive) " +
+                "opaquePixels=\(totalOpaquePixels) bandW=\(bandW) bandH=\(bandH)"
+            )
+        }
+        return ctx.makeImage()
+    }
+
     /// ONNX-style stretch coords → buffer pixels; CGContext stroke uses bottom-left origin, so flip Y like STAGE 7 letterbox debug.
     private func drawOnnxStyleDebugDetectionBboxesOnComposedImage(
         composed: CGImage,
@@ -3990,14 +5138,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
 
         func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
-            let tightFx1 = (d.x - d.w * 0.5) * scaleX
-            let tightFy1 = (d.y - d.h * 0.5) * scaleY
-            let tightFx2 = (d.x + d.w * 0.5) * scaleX
-            let tightFy2 = (d.y + d.h * 0.5) * scaleY
-            let bx1 = max(0, Int(tightFx1))
-            let by1 = max(0, Int(tightFy1))
-            let bx2 = min(origW, Int(tightFx2))
-            let by2 = min(origH, Int(tightFy2))
+            let scaledRect = self.bufferRect(
+                for: d,
+                imageWidth: origW,
+                imageHeight: origH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+            let bx1 = Int(scaledRect.minX)
+            let by1 = Int(scaledRect.minY)
+            let bx2 = Int(scaledRect.maxX)
+            let by2 = Int(scaledRect.maxY)
             let bw = max(1, bx2 - bx1)
             let bh = max(1, by2 - by1)
             return (bx1, by1, bw, bh)
@@ -4175,9 +5326,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Parse Prototypes (FIXED: Accelerate for Float16)
     // Reuses instance-level buffers and uses Accelerate for FP16 → FP32 conversion.
-    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], interleavedPlanes: [Float], count: Int, height: Int, width: Int)? {
+    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], interleavedPlanes: [Float], count: Int, height: Int, width: Int, shape: [Int], strides: [Int], channelAxis: Int)? {
+        var normalizedStrides = proto.strides.map { $0.intValue }
         var shape = proto.shape.map { $0.intValue }
-        if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
+        if shape.count == 4 && shape[0] == 1 {
+            shape.removeFirst()
+            if normalizedStrides.count == 4 {
+                normalizedStrides.removeFirst()
+            }
+        }
         guard shape.count == 3 else { return nil }
 
         let cIdx: Int
@@ -4420,7 +5577,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        return (protoPlanes, protoPlanesInterleaved, count, h, w)
+        return (protoPlanes, protoPlanesInterleaved, count, h, w, shape, normalizedStrides, cIdx)
     }
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
