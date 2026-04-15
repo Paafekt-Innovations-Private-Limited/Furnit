@@ -1786,6 +1786,62 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
+    private func detectionBoundsInModelSpace(_ detection: FurnitureFitDetection) -> (left: Float, top: Float, right: Float, bottom: Float) {
+        (
+            left: detection.x - detection.w * 0.5,
+            top: detection.y - detection.h * 0.5,
+            right: detection.x + detection.w * 0.5,
+            bottom: detection.y + detection.h * 0.5
+        )
+    }
+
+    private func groupedSelectionCandidates(
+        parentDetection: FurnitureFitDetection,
+        candidates: [FurnitureFitDetection]
+    ) -> [FurnitureFitDetection] {
+        let parentBounds = detectionBoundsInModelSpace(parentDetection)
+        let containmentToleranceX = max(4, parentDetection.w * 0.03)
+        let containmentToleranceY = max(4, parentDetection.h * 0.03)
+        var groupedDetections: [FurnitureFitDetection] = [parentDetection]
+
+        for candidate in candidates {
+            if FurnitureFitIoU.calculate(candidate, parentDetection) >= 0.95 { continue }
+            let candidateBounds = detectionBoundsInModelSpace(candidate)
+            let isContained =
+                candidateBounds.left >= parentBounds.left - containmentToleranceX &&
+                candidateBounds.top >= parentBounds.top - containmentToleranceY &&
+                candidateBounds.right <= parentBounds.right + containmentToleranceX &&
+                candidateBounds.bottom <= parentBounds.bottom + containmentToleranceY
+            if isContained {
+                groupedDetections.append(candidate)
+            }
+        }
+
+        return groupedDetections
+    }
+
+    private func toggleSelectedDetectionGroup(_ detections: [FurnitureFitDetection]) {
+        guard !detections.isEmpty else { return }
+        selectedClassStateLock.lock()
+        let allAreSelected = detections.allSatisfy { detection in
+            selectedDetectionPins.contains { FurnitureFitIoU.calculate($0, detection) >= 0.5 }
+        }
+        if allAreSelected {
+            selectedDetectionPins.removeAll { pinnedDetection in
+                detections.contains { FurnitureFitIoU.calculate($0, pinnedDetection) >= 0.5 }
+            }
+        } else {
+            for detection in detections {
+                let alreadySelected = selectedDetectionPins.contains { FurnitureFitIoU.calculate($0, detection) >= 0.5 }
+                if !alreadySelected {
+                    selectedDetectionPins.append(detection)
+                }
+            }
+        }
+        selectedClassStateLock.unlock()
+        publishSelectedClassState()
+    }
+
     /// Ultralytics-style `scale_boxes` mapping from model space back to the
     /// original image space. Supports both letterboxed-square inputs and the
     /// current stretch-to-square camera path.
@@ -3594,8 +3650,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
         let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
         let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        var maskSmallForComposite = maskSmall
-        var maskLogitsForComposite = maskResult.logits
+        let maskSmallForComposite = maskSmall
+        let maskLogitsForComposite = maskResult.logits
 
         let clipModelRect = CGRect(
             x: CGFloat(clipLeftModel),
@@ -4895,16 +4951,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         var maximumLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
         let batchSize = 64
-        let matrixHeight = Int32(planeSize)
-        let matrixDepth = Int32(32)
-        let alpha: Float = 1
-        let beta: Float = 0
+        let matrixHeight = vDSP_Length(planeSize)
+        let matrixDepth = vDSP_Length(32)
         var batchStart = 0
 
         while batchStart < validDetections.count {
             let batchEnd = min(validDetections.count, batchStart + batchSize)
             let batchCount = batchEnd - batchStart
-            let matrixWidth = Int32(batchCount)
             var coefficientMatrix = [Float](repeating: 0, count: 32 * batchCount)
 
             for detectionOffset in 0..<batchCount {
@@ -4921,21 +4974,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         guard let protoBase = protoPtr.baseAddress,
                               let coeffBase = coeffPtr.baseAddress,
                               let batchBase = batchPtr.baseAddress else { return }
-                        cblas_sgemm(
-                            CblasRowMajor,
-                            CblasNoTrans,
-                            CblasNoTrans,
-                            matrixHeight,
-                            matrixWidth,
-                            matrixDepth,
-                            alpha,
+                        vDSP_mmul(
                             protoBase,
-                            matrixDepth,
+                            1,
                             coeffBase,
-                            matrixWidth,
-                            beta,
+                            1,
                             batchBase,
-                            matrixWidth
+                            1,
+                            matrixHeight,
+                            vDSP_Length(batchCount),
+                            matrixDepth
                         )
                     }
                 }
@@ -5193,7 +5241,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let logitBuf = cachedLogitBuf,
               let maskBuf  = cachedBandMaskBuf else { return nil }
 
-        logits.withUnsafeBufferPointer { ptr in
+        _ = logits.withUnsafeBufferPointer { ptr in
             memcpy(logitBuf.contents(), ptr.baseAddress!, logitByteCount)
         }
         memset(maskBuf.contents(), 0, maskByteCount)
@@ -6519,7 +6567,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let tappedIndex = candidateIndexForTap(pointInMask) else { return }
         guard tappedIndex < latestDisplayedCandidates.count else { return }
         let tappedDetection = latestDisplayedCandidates[tappedIndex]
-        toggleSelectedDetection(tappedDetection)
+        let groupedDetections: [FurnitureFitDetection]
+        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications {
+            groupedDetections = groupedSelectionCandidates(
+                parentDetection: tappedDetection,
+                candidates: latestDisplayedCandidates
+            )
+            toggleSelectedDetectionGroup(groupedDetections)
+        } else {
+            groupedDetections = [tappedDetection]
+            toggleSelectedDetection(tappedDetection)
+        }
         latestDisplayedSelectedCandidateIndex = tappedIndex
         let pins = selectedPinsSnapshot()
         detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
@@ -6533,7 +6591,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
         logDebug(
-            "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex)"
+            "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex) groupedCount=\(groupedDetections.count)"
         )
     }
 
