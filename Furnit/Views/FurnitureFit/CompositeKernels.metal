@@ -42,7 +42,7 @@ kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
         }
         if (dotv > maxLogit) maxLogit = dotv;
     }
-    outMask[gid] = (maxLogit > 0.0f) ? (uchar)255 : (uchar)0;
+    outMask[gid] = (maxLogit > -1.5f) ? (uchar)255 : (uchar)0;
 }
 
 // Fused kernel: compute max(A·coeffs) in prototype space and composite into output
@@ -125,9 +125,8 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
         if (dotv > maxLogit) maxLogit = dotv;
     }
 
-    // Threshold at 0 and composite (same as CPU union mask). Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
-    if (maxLogit > 0.0f) {
+    if (maxLogit > -1.5f) {
         float4 s = src.read(gid);
         out = float4(s.b, s.g, s.r, 1.0);
     }
@@ -182,4 +181,65 @@ kernel void sp_maxMaskAndCompositeMorphed(texture2d<float, access::read>  src   
         out = float4(s.b, s.g, s.r, 1.0);
     }
     outTex.write(out, gid);
+}
+
+// ---------------------------------------------------------------------------
+// process_mask_native: bilinear upsample (align_corners=False) + threshold >0
+// ---------------------------------------------------------------------------
+
+struct BilinearUpsampleParams {
+    uint protoW;
+    uint protoH;
+    uint origW;
+    uint origH;
+    uint xStart;
+    uint yStart;
+    uint bandW;
+    uint bandH;
+    float logitThreshold;
+};
+
+/// Bilinear-upsample logits from proto space to image space (band region only)
+/// and threshold at `logitThreshold`.  Output is a UInt8 band mask (255 = opaque, 0 = clear).
+/// Matches PyTorch F.interpolate(mode='bilinear', align_corners=False).
+kernel void sp_bilinearUpsampleThreshold(
+    device const float* logits         [[buffer(0)]],
+    device uchar*       mask           [[buffer(1)]],
+    constant BilinearUpsampleParams& p [[buffer(2)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= p.bandW || gid.y >= p.bandH) return;
+
+    uint imgX = p.xStart + gid.x;
+    uint imgY = p.yStart + gid.y;
+
+    float scaleX = float(p.protoW) / float(p.origW);
+    float scaleY = float(p.protoH) / float(p.origH);
+
+    float fx = (float(imgX) + 0.5f) * scaleX - 0.5f;
+    float fy = (float(imgY) + 0.5f) * scaleY - 0.5f;
+
+    int maxPx = int(p.protoW) - 1;
+    int maxPy = int(p.protoH) - 1;
+
+    int px0 = clamp(int(floor(fx)), 0, maxPx);
+    int px1 = clamp(px0 + 1,        0, maxPx);
+    int py0 = clamp(int(floor(fy)), 0, maxPy);
+    int py1 = clamp(py0 + 1,        0, maxPy);
+
+    float tx = fx - float(px0);
+    float ty = fy - float(py0);
+
+    float v00 = logits[py0 * int(p.protoW) + px0];
+    float v10 = logits[py0 * int(p.protoW) + px1];
+    float v01 = logits[py1 * int(p.protoW) + px0];
+    float v11 = logits[py1 * int(p.protoW) + px1];
+
+    float logit =
+        v00 * (1.0f - tx) * (1.0f - ty) +
+        v10 * tx          * (1.0f - ty) +
+        v01 * (1.0f - tx) * ty          +
+        v11 * tx          * ty;
+
+    mask[gid.y * p.bandW + gid.x] = (logit > p.logitThreshold) ? (uchar)255 : (uchar)0;
 }

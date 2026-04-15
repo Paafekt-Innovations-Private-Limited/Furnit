@@ -740,7 +740,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
 
     var roomImage: UIImage?
-    var mlModel: MLModel?  // yoloe-26l-seg-pf (640) via YOLOEModelService
+    var mlModel: MLModel?  // yoloe-11l-seg-pf / yoloe-26l-seg-pf_* via YOLOEModelService
     var processInterval: Double = 0.07
     /// Minimum detector confidence (0…1) for parsing YOLOE candidates.
     /// Matches the updated iOS Core ML path (was 0.25).

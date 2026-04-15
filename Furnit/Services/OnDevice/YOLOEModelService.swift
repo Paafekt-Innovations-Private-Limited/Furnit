@@ -23,7 +23,7 @@ class YOLOEModelService: ObservableObject {
 
     /// ODR tag for the YOLOE Core ML package. Must change when shipping a new model so TestFlight/App Store
     /// clients do not reuse a cached asset from an older build (same tag = stale model).
-    private static let yoloeModelTag = "yoloe_model_v26"
+    private static let yoloeModelTag = "yoloe_model_v11_pf"
 
     /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource
     private var resourceRequest: NSBundleResourceRequest?
@@ -222,8 +222,11 @@ class YOLOEModelService: ObservableObject {
 
         statusMessage = "Loading detection model…"
 
-        // One-to-many 26L seg export (`scripts/export_yoloe26_onemany_user.py` → `_seg_o2m`), then legacy names.
+        // Prefer **YOLOE 11L PF** (`yoloe-11l-seg-pf.mlpackage` at repo root / ODR). Falls back to 26L
+        // `_seg_o2m`, then legacy `yoloe-26l-seg-pf`, if 11L is not in the app bundle.
         let candidateNames = [
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlpackage"),
             ("yoloe-26l-seg-pf_seg_o2m", "mlmodelc"),
             ("yoloe-26l-seg-pf_seg_o2m", "mlpackage"),
             ("yoloe-26l-seg-pf", "mlmodelc"),

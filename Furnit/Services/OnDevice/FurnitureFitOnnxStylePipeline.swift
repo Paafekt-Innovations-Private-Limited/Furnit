@@ -8,18 +8,67 @@ enum FurnitureFitOnnxStylePipeline {
     static let confidenceThreshold: Float = 0.10
     static let iouThresholdNms: Float = 0.45
     static let maxDetectionsBeforeNms = 100
-    /// Logit threshold for turning YOLOE mask logits into a binary proto mask.
-    /// Tuned for Core ML float32 export so that weak positives in thin gaps
-    /// (chair handles, bed rails) are suppressed while strong object pixels
-    /// remain. ONNX path uses its own mask thresholding.
-    static let maskLogitThreshold: Float = 0.0
 
-    /// Applied **after** bilinear full-res upsample, **before** the final binary gate:
-    /// foreground iff `upsampled_logit - maskUpsampleLogitBias > 0`.
-    /// Ultralytics uses `> 0` on upsampled floats; a small positive bias offsets
-    /// interpolation bridging near-zero regions (proto binary vs upscaled area inflation).
+    // MARK: Mask thresholds (two different stages)
+    //
+    // 1. `maskLogitThreshold` — proto resolution only. Used when building the
+    //    UInt8 proto binary from `buildBboxLimitedLogitMask*` (diagnostics, maskOn
+    //    counts, debug ASCII). Does **not** define the final cutout alpha.
+    //
+    // 2. Composite gate after bilinear upsample to camera pixels: opaque iff
+    //    `upsampled_logit > nativeCompositeUpsampleLogitThreshold()`.
+    //    When ``retinaMasksCompositeEnabled`` is `true`, this matches the spirit of Ultralytics
+    //    `predict(..., retina_masks=True)`: evaluate the mask at full image resolution (we already
+    //    bilinear-upsample the fused logit field from proto to buffer) and use a **logit** gate
+    //    like `masks > 0` (sigmoid midpoint), not an extra stricter constant.
+    //    With `false`, use ``nativeMaskUpsampleLogitThreshold`` (legacy tighter gate, e.g. 0.25).
+    //    Legacy `maskUpsampleLogitBias` remains for older docs; the live path also uses optional
+    //    morphological close on the composite band.
+    //
+    // NOTE: Proto-resolution binary **area** and upsampled binary **area** differ
+    // in general: bilinear blends four proto neighbors, producing sub-cell gradients
+    // near zero crossings; small positive interpolated values inflate the mask vs
+    // per-cell `> 0` on the 160×160 grid. `maskUpsampleLogitBias` offsets that bleed.
+
+    /// Proto-only binary mask gate for `buildBboxLimitedLogitMask*` output.
+    /// Lowered from 0.0: the _seg_o2m Core ML export (un-fused BN) produces
+    /// slightly negative logits (-0.5 to -2) at thin structures (handles, slats)
+    /// that the model clearly distinguishes from background (-8 to -14).
+    static let maskLogitThreshold: Float = -1.5
+
+    /// Post-bilinear gate for compositing; not the same role as `maskLogitThreshold`.
     /// Tune ~0.06–0.12: lower if thin parts vanish, higher if upscaled mask stays puffier than proto.
     static let maskUpsampleLogitBias: Float = 0.09
+
+    /// When `true`, composite uses ``retinaMaskUpsampleLogitThreshold`` (default `0.0`) so thin
+    /// parts are not punched out by a stricter gate. Set `false` to use ``nativeMaskUpsampleLogitThreshold``.
+    static let retinaMasksCompositeEnabled: Bool = true
+
+    /// Logit gate after full-res bilinear sample when ``retinaMasksCompositeEnabled`` is `true`.
+    /// Lowered from 0.0 to match ``maskLogitThreshold``: captures thin structures
+    /// whose logits are slightly negative after bilinear upsample.
+    static let retinaMaskUpsampleLogitThreshold: Float = -1.5
+
+    /// Legacy composite gate when ``retinaMasksCompositeEnabled`` is `false`.
+    /// `process_mask_native` / GPU bilinear path: opaque iff `upsampled_logit > threshold`.
+    /// Lower (~0.2–0.35) restores thin regions that vanish at 0.5; higher reduces bilinear bleed.
+    static let nativeMaskUpsampleLogitThreshold: Float = 0.25
+
+    /// Effective post-bilinear logit threshold for GPU + CPU `process_mask_native` compositing.
+    static func nativeCompositeUpsampleLogitThreshold() -> Float {
+        let base = retinaMasksCompositeEnabled
+            ? retinaMaskUpsampleLogitThreshold
+            : nativeMaskUpsampleLogitThreshold
+        return base + nativeMaskBoundarySharpenExtra
+    }
+
+    /// Added to the chosen base threshold when binarizing (GPU and CPU native paths).
+    /// Increase slightly if physical see-through gaps (e.g. between legs) look too noisy; keeps
+    /// true holes more transparent by requiring a higher logit.
+    static let nativeMaskBoundarySharpenExtra: Float = 0.0
+
+    /// Expands the composite ``crop_mask`` band in pixels so bbox edges do not clip foreground.
+    static let nativeCompositeBandMarginPx: Int = 1
 
     /// SAM-style stability score: IoU between masks at (threshold - offset)
     /// and (threshold + offset). Since the high-threshold mask is always a
@@ -48,6 +97,90 @@ enum FurnitureFitOnnxStylePipeline {
         guard lowCount > 0 else { return 0 }
         return Float(highCount) / Float(lowCount)
     }
+
+    /// Bilinear sample of proto `maskLogits` at full-image pixel `(imageX, imageY)`.
+    /// Matches PyTorch `F.interpolate(..., mode="bilinear", align_corners=False)`.
+    static func bilinearUpsampledLogit(
+        maskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        origW: Int,
+        origH: Int,
+        imageX: Int,
+        imageY: Int
+    ) -> Float {
+        guard protoW > 0,
+              protoH > 0,
+              origW > 0,
+              origH > 0,
+              maskLogits.count >= protoW * protoH else { return 0 }
+
+        let protoScaleX = Float(protoW) / Float(origW)
+        let protoScaleY = Float(protoH) / Float(origH)
+        let maxPx = protoW - 1
+        let maxPy = protoH - 1
+
+        let fy = (Float(imageY) + 0.5) * protoScaleY - 0.5
+        let py0 = max(0, min(maxPy, Int(floor(fy))))
+        let py1 = max(0, min(maxPy, py0 + 1))
+        let ty = fy - Float(py0)
+
+        let fx = (Float(imageX) + 0.5) * protoScaleX - 0.5
+        let px0 = max(0, min(maxPx, Int(floor(fx))))
+        let px1 = max(0, min(maxPx, px0 + 1))
+        let tx = fx - Float(px0)
+
+        let v00 = maskLogits[py0 * protoW + px0]
+        let v10 = maskLogits[py0 * protoW + px1]
+        let v01 = maskLogits[py1 * protoW + px0]
+        let v11 = maskLogits[py1 * protoW + px1]
+        return
+            v00 * (1 - tx) * (1 - ty) +
+            v10 * tx * (1 - ty) +
+            v01 * (1 - tx) * ty +
+            v11 * tx * ty
+    }
+
+#if DEBUG
+    /// Share of composite-band pixels with bilinear `logit > 0` that fall in `(0, bias]`
+    /// (removed when thresholding at `bias`). Values often ~0.05–0.15; sustained **> ~0.2**
+    /// suggests a wide shallow-positive margin for that frame.
+    static func maskUpsampleBiasSensitivityFraction(
+        maskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        xEnd: Int,
+        yStart: Int,
+        yEnd: Int,
+        bias: Float
+    ) -> Float {
+        guard bias > 0, xStart < xEnd, yStart < yEnd else { return 0 }
+        var positiveAtZero: Int = 0
+        var inShallowMargin: Int = 0
+        for y in yStart..<yEnd {
+            for x in xStart..<xEnd {
+                let logit = bilinearUpsampledLogit(
+                    maskLogits: maskLogits,
+                    protoW: protoW,
+                    protoH: protoH,
+                    origW: origW,
+                    origH: origH,
+                    imageX: x,
+                    imageY: y
+                )
+                if logit > 0 {
+                    positiveAtZero += 1
+                    if logit <= bias { inShallowMargin += 1 }
+                }
+            }
+        }
+        guard positiveAtZero > 0 else { return 0 }
+        return Float(inShallowMargin) / Float(positiveAtZero)
+    }
+#endif
 
     private static let includeSupportingTableForMonitorScene = true
     private static let monitorLikeClassIds: Set<Int> = [1063, 2675, 4105]
@@ -229,16 +362,23 @@ enum FurnitureFitOnnxStylePipeline {
         let heightRatio = Float(protoH) / modelSide
         // Edge bias disabled.
         let edgeBias: Float = 0.0
+        let maxX = Float(protoW - 1)
+        let maxY = Float(protoH - 1)
+
+        // Optimization: dot product only within each detection’s bbox on the proto grid.
+        // Ultralytics does a full 160×160 dot then `crop_mask` after upsample; pixels
+        // outside the bbox are zeroed there—so this is equivalent for compositing.
 
         for detection in detections {
             guard detection.coeffs.count >= 32 else { continue }
 
             // Map bbox corners from model input size (modelSide×modelSide)
-            // into proto grid coordinates (protoW×protoH).
-            let x1Proto = (detection.x - detection.w * 0.5) * widthRatio
-            let y1Proto = (detection.y - detection.h * 0.5) * heightRatio
-            let x2Proto = (detection.x + detection.w * 0.5) * widthRatio
-            let y2Proto = (detection.y + detection.h * 0.5) * heightRatio
+            // into proto grid coordinates (protoW×protoH); clamp defensively so
+            // float noise / OOB boxes cannot produce invalid ranges before floor/ceil.
+            let x1Proto = max(0, min(maxX, (detection.x - detection.w * 0.5) * widthRatio))
+            let y1Proto = max(0, min(maxY, (detection.y - detection.h * 0.5) * heightRatio))
+            let x2Proto = max(0, min(maxX, (detection.x + detection.w * 0.5) * widthRatio))
+            let y2Proto = max(0, min(maxY, (detection.y + detection.h * 0.5) * heightRatio))
 
             let bboxLeft = Int(floor(x1Proto - edgeBias)).clamped(to: 0...(protoW - 1))
             let bboxTop = Int(floor(y1Proto - edgeBias)).clamped(to: 0...(protoH - 1))
@@ -262,6 +402,53 @@ enum FurnitureFitOnnxStylePipeline {
                     } else if sum > maskProto[protoPixelIndex] {
                         maskProto[protoPixelIndex] = sum
                     }
+                }
+            }
+        }
+
+        let threshold = maskLogitThreshold
+        let binary = maskProto.map { $0 > threshold ? UInt8(255) : UInt8(0) }
+        return (binary, maskProto)
+    }
+
+    // MARK: - Full-field logit mask (process_mask_native)
+
+    /// Ultralytics `process_mask_native`: coeffs @ protos for ALL 160×160 pixels.
+    /// Unlike `buildBboxLimitedLogitMask*`, this does **not** crop to the detection
+    /// bbox in proto space — every pixel gets a real logit value, so bilinear
+    /// upsampling at bbox edges uses actual negative values instead of artificial
+    /// zeros.  For a single detection, this is 160×160×32 ≈ 820 K multiply-adds.
+    static func buildFullFieldLogitMask(
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        detections: [FurnitureFitDetection]
+    ) -> (binary: [UInt8], logits: [Float]) {
+        let hwProto = protoW * protoH
+        guard planes.count >= 32 * hwProto else {
+            return ([UInt8](repeating: 0, count: hwProto),
+                    [Float](repeating: 0, count: hwProto))
+        }
+
+        var maskProto = [Float](repeating: 0, count: hwProto)
+
+        let detCount = detections.count
+        for (dIdx, detection) in detections.enumerated() {
+            guard detection.coeffs.count >= 32 else { continue }
+            let isFirst = (dIdx == 0)
+            for px in 0..<hwProto {
+                var sum: Float = 0
+                var ch = 0
+                while ch < 32 {
+                    sum += detection.coeffs[ch] * planes[ch * hwProto + px]
+                    ch += 1
+                }
+                if isFirst && detCount == 1 {
+                    maskProto[px] = sum
+                } else if isFirst {
+                    maskProto[px] = sum
+                } else if sum > maskProto[px] {
+                    maskProto[px] = sum
                 }
             }
         }

@@ -12,9 +12,10 @@ enum YoloEImageInference {
         let modelSide: Int
         let sourceWidth: Int
         let sourceHeight: Int
+        let usesLetterbox: Bool
     }
 
-    /// Square side for stretch (from Core ML `image` constraint). **YOLOE 26L PF** exports use **640**; fallback **640** if unconstrained (not legacy 1280 inputs).
+    /// Square side for stretch (from Core ML `image` constraint). **YOLOE PF** (11L / 26L `_seg_o2m`) exports use **640**; fallback **640** if unconstrained (legacy 1280-only packages use letterbox).
     static func modelInputSize(for model: MLModel) -> Int {
         let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
         if let imageConstraint = imageInputDesc?.imageConstraint {
@@ -60,11 +61,15 @@ enum YoloEImageInference {
         let srcW = CVPixelBufferGetWidth(pb)
         let srcH = CVPixelBufferGetHeight(pb)
         let modelSide = modelInputSize(for: model)
-        guard let stretched = resizeStretchToSquare(src: pb, size: modelSide) else {
+        let usesLetterbox = modelSide >= 1280
+        let preparedBuffer = usesLetterbox
+            ? resizeLetterboxToSquare(src: pb, size: modelSide)
+            : resizeStretchToSquare(src: pb, size: modelSide)
+        guard let prepared = preparedBuffer else {
             throw NSError(
                 domain: "YoloEImageInference",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Stretch resize failed"],
+                userInfo: [NSLocalizedDescriptionKey: "\(usesLetterbox ? "Letterbox" : "Stretch") resize failed"],
             )
         }
 
@@ -72,7 +77,7 @@ enum YoloEImageInference {
         let expectsImage = inputDesc?.type == .image
         let inputProvider: MLFeatureProvider
         if expectsImage {
-            let imageValue = MLFeatureValue(pixelBuffer: stretched)
+            let imageValue = MLFeatureValue(pixelBuffer: prepared)
             guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
                 throw NSError(
                     domain: "YoloEImageInference",
@@ -106,20 +111,52 @@ enum YoloEImageInference {
         let map = OnnxStyleMapping(
             modelSide: modelSide,
             sourceWidth: srcW,
-            sourceHeight: srcH
+            sourceHeight: srcH,
+            usesLetterbox: usesLetterbox
         )
         return (dets, map)
     }
 
-    /// Maps box from stretched model space to source pixel coords (same math as ``FurnitureFitView`` ONNX-style `scaleX` / `scaleY`).
+    /// Maps a model-space box back to the source image using the same transform
+    /// as `FurnitureFitView` (stretch for `_seg_o2m`, letterbox for legacy 1280).
     static func mapDetectionToSourceImage(det: FurnitureFitDetection, mapping: OnnxStyleMapping) -> FurnitureFitDetection {
-        let sx = Float(mapping.sourceWidth) / Float(mapping.modelSide)
-        let sy = Float(mapping.sourceHeight) / Float(mapping.modelSide)
+        let sourceWidth = Float(mapping.sourceWidth)
+        let sourceHeight = Float(mapping.sourceHeight)
+        let x1Model = det.x - det.w * 0.5
+        let y1Model = det.y - det.h * 0.5
+        let x2Model = det.x + det.w * 0.5
+        let y2Model = det.y + det.h * 0.5
+        let mappedX1: Float
+        let mappedY1: Float
+        let mappedX2: Float
+        let mappedY2: Float
+
+        if mapping.usesLetterbox {
+            let gain = min(Float(mapping.modelSide) / sourceWidth, Float(mapping.modelSide) / sourceHeight)
+            let padX = (Float(mapping.modelSide) - sourceWidth * gain) * 0.5
+            let padY = (Float(mapping.modelSide) - sourceHeight * gain) * 0.5
+            mappedX1 = (x1Model - padX) / gain
+            mappedY1 = (y1Model - padY) / gain
+            mappedX2 = (x2Model - padX) / gain
+            mappedY2 = (y2Model - padY) / gain
+        } else {
+            let sx = sourceWidth / Float(mapping.modelSide)
+            let sy = sourceHeight / Float(mapping.modelSide)
+            mappedX1 = x1Model * sx
+            mappedY1 = y1Model * sy
+            mappedX2 = x2Model * sx
+            mappedY2 = y2Model * sy
+        }
+
+        let clippedX1 = max(0, mappedX1)
+        let clippedY1 = max(0, mappedY1)
+        let clippedX2 = min(sourceWidth, mappedX2)
+        let clippedY2 = min(sourceHeight, mappedY2)
         return FurnitureFitDetection(
-            x: det.x * sx,
-            y: det.y * sy,
-            w: det.w * sx,
-            h: det.h * sy,
+            x: (clippedX1 + clippedX2) * 0.5,
+            y: (clippedY1 + clippedY2) * 0.5,
+            w: max(1, clippedX2 - clippedX1),
+            h: max(1, clippedY2 - clippedY1),
             confidence: det.confidence,
             classIdx: det.classIdx,
             coeffs: det.coeffs
@@ -191,6 +228,54 @@ enum YoloEImageInference {
             rowBytes: CVPixelBufferGetBytesPerRow(dst)
         )
         guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+            return nil
+        }
+        return dst
+    }
+
+    private static func resizeLetterboxToSquare(src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
+
+        let srcW = CVPixelBufferGetWidth(src)
+        let srcH = CVPixelBufferGetHeight(src)
+        guard srcW > 0, srcH > 0 else { return nil }
+
+        var newBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+              let dst = newBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(dst, [])
+        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
+
+        guard let srcBase = CVPixelBufferGetBaseAddress(src),
+              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
+        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114(
+            dstBase: dstBase,
+            totalByteCount: dstRowBytes * size
+        )
+
+        let scale = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
+        let scaledWidth = max(1, min(size, Int(round(Float(srcW) * scale))))
+        let scaledHeight = max(1, min(size, Int(round(Float(srcH) * scale))))
+        let padX = (size - scaledWidth) / 2
+        let padY = (size - scaledHeight) / 2
+
+        var srcBuffer = vImage_Buffer(
+            data: srcBase,
+            height: vImagePixelCount(srcH),
+            width: vImagePixelCount(srcW),
+            rowBytes: CVPixelBufferGetBytesPerRow(src)
+        )
+        var dstRegion = vImage_Buffer(
+            data: dstBase.advanced(by: padY * dstRowBytes + padX * 4),
+            height: vImagePixelCount(scaledHeight),
+            width: vImagePixelCount(scaledWidth),
+            rowBytes: dstRowBytes
+        )
+        guard vImageScale_ARGB8888(&srcBuffer, &dstRegion, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
             return nil
         }
         return dst
