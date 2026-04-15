@@ -1786,62 +1786,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
-    private func detectionBoundsInModelSpace(_ detection: FurnitureFitDetection) -> (left: Float, top: Float, right: Float, bottom: Float) {
-        (
-            left: detection.x - detection.w * 0.5,
-            top: detection.y - detection.h * 0.5,
-            right: detection.x + detection.w * 0.5,
-            bottom: detection.y + detection.h * 0.5
-        )
-    }
-
-    private func groupedSelectionCandidates(
-        parentDetection: FurnitureFitDetection,
-        candidates: [FurnitureFitDetection]
-    ) -> [FurnitureFitDetection] {
-        let parentBounds = detectionBoundsInModelSpace(parentDetection)
-        let containmentToleranceX = max(4, parentDetection.w * 0.03)
-        let containmentToleranceY = max(4, parentDetection.h * 0.03)
-        var groupedDetections: [FurnitureFitDetection] = [parentDetection]
-
-        for candidate in candidates {
-            if FurnitureFitIoU.calculate(candidate, parentDetection) >= 0.95 { continue }
-            let candidateBounds = detectionBoundsInModelSpace(candidate)
-            let isContained =
-                candidateBounds.left >= parentBounds.left - containmentToleranceX &&
-                candidateBounds.top >= parentBounds.top - containmentToleranceY &&
-                candidateBounds.right <= parentBounds.right + containmentToleranceX &&
-                candidateBounds.bottom <= parentBounds.bottom + containmentToleranceY
-            if isContained {
-                groupedDetections.append(candidate)
-            }
-        }
-
-        return groupedDetections
-    }
-
-    private func toggleSelectedDetectionGroup(_ detections: [FurnitureFitDetection]) {
-        guard !detections.isEmpty else { return }
-        selectedClassStateLock.lock()
-        let allAreSelected = detections.allSatisfy { detection in
-            selectedDetectionPins.contains { FurnitureFitIoU.calculate($0, detection) >= 0.5 }
-        }
-        if allAreSelected {
-            selectedDetectionPins.removeAll { pinnedDetection in
-                detections.contains { FurnitureFitIoU.calculate($0, pinnedDetection) >= 0.5 }
-            }
-        } else {
-            for detection in detections {
-                let alreadySelected = selectedDetectionPins.contains { FurnitureFitIoU.calculate($0, detection) >= 0.5 }
-                if !alreadySelected {
-                    selectedDetectionPins.append(detection)
-                }
-            }
-        }
-        selectedClassStateLock.unlock()
-        publishSelectedClassState()
-    }
-
     /// Ultralytics-style `scale_boxes` mapping from model space back to the
     /// original image space. Supports both letterboxed-square inputs and the
     /// current stretch-to-square camera path.
@@ -2095,8 +2039,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             latestTapMaskImageWidth > 0 &&
             latestTapMaskImageHeight > 0
         tapMaskStateLock.unlock()
+        let tapHitPadding: CGFloat = isShowingLiveVideoIdentifications ? 22 : 10
         let paddedMatches = candidateBboxesInView.enumerated().filter { _, rect in
-            rect.insetBy(dx: -10, dy: -10).contains(pointInMaskView)
+            rect.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMaskView)
         }
         guard !paddedMatches.isEmpty else { return nil }
         let maskMatches = paddedMatches.compactMap { match -> (offset: Int, rect: CGRect, score: Float)? in
@@ -2109,7 +2054,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             return (offset: match.offset, rect: match.element, score: score)
         }
-        if hasTapMaskState, maskMatches.isEmpty {
+        let shouldRequireMaskHit = hasTapMaskState && !isShowingLiveVideoIdentifications
+        if shouldRequireMaskHit, maskMatches.isEmpty {
             return nil
         }
         let candidatesForSelection = maskMatches.isEmpty
@@ -6567,17 +6513,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let tappedIndex = candidateIndexForTap(pointInMask) else { return }
         guard tappedIndex < latestDisplayedCandidates.count else { return }
         let tappedDetection = latestDisplayedCandidates[tappedIndex]
-        let groupedDetections: [FurnitureFitDetection]
-        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications {
-            groupedDetections = groupedSelectionCandidates(
-                parentDetection: tappedDetection,
-                candidates: latestDisplayedCandidates
-            )
-            toggleSelectedDetectionGroup(groupedDetections)
-        } else {
-            groupedDetections = [tappedDetection]
-            toggleSelectedDetection(tappedDetection)
-        }
+        toggleSelectedDetection(tappedDetection)
         latestDisplayedSelectedCandidateIndex = tappedIndex
         let pins = selectedPinsSnapshot()
         detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { index, item in
@@ -6591,7 +6527,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
         logDebug(
-            "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex) groupedCount=\(groupedDetections.count)"
+            "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex)"
         )
     }
 
@@ -6677,7 +6613,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         let pointInMask = convert(point, to: maskImageView)
-        let candidateContains = candidateBboxesInView.contains { $0.insetBy(dx: -10, dy: -10).contains(pointInMask) }
+        let tapHitPadding: CGFloat = isShowingLiveVideoIdentifications ? 22 : 10
+        let candidateContains = candidateBboxesInView.contains {
+            $0.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMask)
+        }
 
         if candidateContains && maskImageView.image == nil {
             return super.hitTest(point, with: event)
