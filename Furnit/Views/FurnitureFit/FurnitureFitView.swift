@@ -3547,7 +3547,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
             // etc.), with an expanded primary bbox for mask synthesis.
-            let maskSource = [primary]  // Temporary debug isolation: primary only
+            let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
+                primaryIndex: primaryIdx,
+                detections: candidates
+            )
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
             var fusion: [FurnitureFitDetection] = [expandedPrimary]
             for det in maskSource {
@@ -3757,29 +3760,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             primaryBx2: primaryBx2,
             primaryBy2: primaryBy2
         )
-        let composedImage: CGImage? = currentYoloUsesLetterbox
-            ? compositeLegacy1280UnionMaskCutout(
-                processBuffer: processBuffer,
-                planes: planes,
-                protoW: pW,
-                protoH: pH,
-                modelSide: onnxSide,
-                origW: bufW,
-                origH: bufH,
-                maskDetectionsForBuild: maskDetectionsForBuild
-            )
-            : (compositeGpuNativeMaskCutout(
+        let composedImage: CGImage? =
+            compositeGpuNativeMaskCutout(
                 processBuffer: processBuffer,
                 maskProto: maskSmallForComposite,
                 maskLogits: maskLogitsForComposite,
                 protoW: pW,
                 protoH: pH,
+                modelSide: onnxSide,
                 origW: bufW,
                 origH: bufH,
                 x0: compBx1,
                 x1: compBx2,
                 y0: compBy1,
                 y1: compBy2,
+                usesLetterbox: currentYoloUsesLetterbox,
                 primary: primary,
                 primaryBx1: primaryBx1,
                 primaryBy1: primaryBy1,
@@ -3800,6 +3795,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 x1: compBx2,
                 y0: compBy1,
                 y1: compBy2,
+                usesLetterbox: currentYoloUsesLetterbox,
                 primary: primary,
                 primaryBx1: primaryBx1,
                 primaryBy1: primaryBy1,
@@ -3807,7 +3803,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy2: primaryBy2,
                 maskDetectionsForBuild: maskDetectionsForBuild,
                 debugTag: "ONNX-style CPU fallback"
-            ))
+            ) ?? (currentYoloUsesLetterbox
+                ? compositeLegacy1280UnionMaskCutout(
+                    processBuffer: processBuffer,
+                    planes: planes,
+                    protoW: pW,
+                    protoH: pH,
+                    modelSide: onnxSide,
+                    origW: bufW,
+                    origH: bufH,
+                    maskDetectionsForBuild: maskDetectionsForBuild,
+                    x0: compBx1,
+                    x1: compBx2,
+                    y0: compBy1,
+                    y1: compBy2
+                )
+                : nil)
 
         let withDebugOverlay: CGImage? = {
             guard debugMode,
@@ -4634,6 +4645,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         x1: Int,
         y0: Int,
         y1: Int,
+        usesLetterbox: Bool,
         primary: FurnitureFitDetection,
         primaryBx1: Int,
         primaryBy1: Int,
@@ -4684,8 +4696,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bytesPerRowOut: bytesPerRowOut
         )
 
-        let protoScaleX = Float(pw) / Float(origW)
-        let protoScaleY = Float(ph) / Float(origH)
+        let geometry = nativeUpsampleGeometry(
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            usesLetterbox: usesLetterbox
+        )
+        let protoScaleX = Float(pw) / geometry.modelInput
+        let protoScaleY = Float(ph) / geometry.modelInput
         let maxPx = pw - 1
         let maxPy = ph - 1
         let fullCount = origW * origH
@@ -4702,14 +4720,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let upsampleThreshold = FurnitureFitOnnxStylePipeline.nativeCompositeUpsampleLogitThreshold()
         for by in 0..<bandH {
             let y = yStart + by
-            let fy = (Float(y) + 0.5) * protoScaleY - 0.5
+            let modelCenterY = (Float(y) + 0.5) * geometry.imageToModelScaleY + geometry.padY
+            let fy = modelCenterY * protoScaleY - 0.5
             let py0 = max(0, min(maxPy, Int(floor(fy))))
             let py1 = max(0, min(maxPy, py0 + 1))
             let ty = fy - Float(py0)
 
             for bx in 0..<bandW {
                 let x = xStart + bx
-                let fx = (Float(x) + 0.5) * protoScaleX - 0.5
+                let modelCenterX = (Float(x) + 0.5) * geometry.imageToModelScaleX + geometry.padX
+                let fx = modelCenterX * protoScaleX - 0.5
                 let px0 = max(0, min(maxPx, Int(floor(fx))))
                 let px1 = max(0, min(maxPx, px0 + 1))
                 let tx = fx - Float(px0)
@@ -4767,12 +4787,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         upscaledPlanarMaskScratch.withUnsafeBufferPointer { maskPtr in
             guard let maskBase = maskPtr.baseAddress else { return }
-            compositeCpuCameraBandReference(
+            compositeCpuCameraBandAccelerated(
                 outBase: outBase,
                 origBase: origBase,
                 maskBase: maskBase,
+                origW: origW,
                 camRowBytes: camRowBytes,
-                maskRowBytes: origW,
                 bytesPerRowOut: bytesPerRowOut,
                 x0: xStart,
                 x1: xEnd,
@@ -4836,13 +4856,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         modelSide: Int,
         origW: Int,
         origH: Int,
-        maskDetectionsForBuild: [FurnitureFitDetection]
+        maskDetectionsForBuild: [FurnitureFitDetection],
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int
     ) -> CGImage? {
         guard currentYoloUsesLetterbox,
               protoW > 0,
               protoH > 0,
               modelSide > 0,
               planes.count >= 32 * protoW * protoH else { return nil }
+
+        let xStart = max(0, min(origW, x0))
+        let xEnd = max(0, min(origW, x1))
+        let yStart = max(0, min(origH, y0))
+        let yEnd = max(0, min(origH, y1))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+        let bandW = xEnd - xStart
+        let bandH = yEnd - yStart
 
         let planeSize = protoW * protoH
         let validDetections = maskDetectionsForBuild.filter { $0.coeffs.count >= 32 }
@@ -4944,6 +4976,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             origH: origH
         )
 
+        var clippedFullMask = fullMask
+        if bandW >= 3, bandH >= 3 {
+            var bandCompact = [UInt8](repeating: 0, count: bandW * bandH)
+            for by in 0..<bandH {
+                let y = yStart + by
+                for bx in 0..<bandW {
+                    let x = xStart + bx
+                    bandCompact[by * bandW + bx] = clippedFullMask[y * origW + x]
+                }
+            }
+            let closedBandMask = morphologicalBinaryClose3x3Planar8(mask: bandCompact, width: bandW, height: bandH)
+            for by in 0..<bandH {
+                let y = yStart + by
+                for bx in 0..<bandW {
+                    let x = xStart + bx
+                    clippedFullMask[y * origW + x] = closedBandMask[by * bandW + bx]
+                }
+            }
+        }
+
         guard let ctx = CGContext(
             data: nil,
             width: origW,
@@ -4967,12 +5019,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bytesPerRowOut: outBytesPerRow
         )
 
-        for y in 0..<origH {
+        for y in yStart..<yEnd {
             let origRow = y * origBytesPerRow
             let outRow = y * outBytesPerRow
             let maskRow = y * origW
-            for x in 0..<origW {
-                guard fullMask[maskRow + x] != 0 else { continue }
+            for x in xStart..<xEnd {
+                guard clippedFullMask[maskRow + x] != 0 else { continue }
                 let outOffset = outRow + x * 4
                 let origOffset = origRow + x * 4
                 outBase[outOffset + 0] = origBase[origOffset + 2]
@@ -5014,6 +5066,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 _ = vImageScale_Planar8(&source, &destination, nil, vImage_Flags(kvImageHighQualityResampling))
             }
         }
+        for pixelIndex in 0..<maskModel.count {
+            maskModel[pixelIndex] = maskModel[pixelIndex] >= 128 ? 255 : 0
+        }
 
         let gain = min(Float(modelInput) / Float(origW), Float(modelInput) / Float(origH))
         let contentWidth = Int(round(Float(origW) * gain))
@@ -5053,12 +5108,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 _ = vImageScale_Planar8(&source, &destination, nil, vImage_Flags(kvImageHighQualityResampling))
             }
         }
+        for pixelIndex in 0..<fullMask.count {
+            fullMask[pixelIndex] = fullMask[pixelIndex] >= 128 ? 255 : 0
+        }
         return fullMask
     }
 
     // MARK: - process_mask_native (GPU bilinear upsample + threshold)
 
-    /// Matches Metal `BilinearUpsampleParams` layout (8×UInt32 + Float).
+    /// Matches Metal `BilinearUpsampleParams` layout (8×UInt32 + 6×Float).
     private struct BilinearUpsampleParams {
         var protoW:  UInt32
         var protoH:  UInt32
@@ -5068,7 +5126,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         var yStart:  UInt32
         var bandW:   UInt32
         var bandH:   UInt32
+        var modelInput: Float
+        var imageToModelScaleX: Float
+        var imageToModelScaleY: Float
+        var padX: Float
+        var padY: Float
         var logitThreshold: Float
+    }
+
+    private func nativeUpsampleGeometry(
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        usesLetterbox: Bool
+    ) -> (modelInput: Float, imageToModelScaleX: Float, imageToModelScaleY: Float, padX: Float, padY: Float) {
+        let modelInput = Float(max(modelSide, 1))
+        let imageWidth = Float(max(origW, 1))
+        let imageHeight = Float(max(origH, 1))
+        if usesLetterbox {
+            let gain = min(modelInput / imageWidth, modelInput / imageHeight)
+            let padX = (modelInput - imageWidth * gain) * 0.5
+            let padY = (modelInput - imageHeight * gain) * 0.5
+            return (modelInput, gain, gain, padX, padY)
+        } else {
+            return (modelInput, modelInput / imageWidth, modelInput / imageHeight, 0, 0)
+        }
     }
 
     /// GPU-accelerated bilinear upsample of full-field logits + threshold >0,
@@ -5077,17 +5159,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logits: [Float],
         protoW: Int,
         protoH: Int,
+        modelSide: Int,
         origW: Int,
         origH: Int,
         xStart: Int,
         yStart: Int,
         bandW: Int,
         bandH: Int,
+        usesLetterbox: Bool,
         logitThreshold: Float
     ) -> [UInt8]? {
         guard let device = metalDevice,
               let queue = metalCommandQueue,
               let pipeline = bilinearUpsamplePipeline else { return nil }
+        let geometry = nativeUpsampleGeometry(
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            usesLetterbox: usesLetterbox
+        )
 
         let logitByteCount = logits.count * MemoryLayout<Float>.stride
         let maskByteCount  = bandW * bandH
@@ -5124,6 +5214,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             yStart: UInt32(yStart),
             bandW:  UInt32(bandW),
             bandH:  UInt32(bandH),
+            modelInput: geometry.modelInput,
+            imageToModelScaleX: geometry.imageToModelScaleX,
+            imageToModelScaleY: geometry.imageToModelScaleY,
+            padX: geometry.padX,
+            padY: geometry.padY,
             logitThreshold: logitThreshold
         )
         encoder.setBytes(&params, length: MemoryLayout<BilinearUpsampleParams>.stride, index: 2)
@@ -5160,12 +5255,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         maskLogits: [Float],
         protoW: Int,
         protoH: Int,
+        modelSide: Int,
         origW: Int,
         origH: Int,
         x0: Int,
         x1: Int,
         y0: Int,
         y1: Int,
+        usesLetterbox: Bool,
         primary: FurnitureFitDetection,
         primaryBx1: Int,
         primaryBy1: Int,
@@ -5195,12 +5292,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logits: maskLogits,
             protoW: pw,
             protoH: ph,
+            modelSide: modelSide,
             origW: origW,
             origH: origH,
             xStart: xStart,
             yStart: yStart,
             bandW: bandW,
             bandH: bandH,
+            usesLetterbox: usesLetterbox,
             logitThreshold: upsampleThreshold
         ) else {
             if debugMode { logDebug("⚠️ GPU bilinear upsample failed, no fallback") }

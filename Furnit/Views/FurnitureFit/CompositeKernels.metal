@@ -196,6 +196,11 @@ struct BilinearUpsampleParams {
     uint yStart;
     uint bandW;
     uint bandH;
+    float modelInput;
+    float imageToModelScaleX;
+    float imageToModelScaleY;
+    float padX;
+    float padY;
     float logitThreshold;
 };
 
@@ -213,11 +218,12 @@ kernel void sp_bilinearUpsampleThreshold(
     uint imgX = p.xStart + gid.x;
     uint imgY = p.yStart + gid.y;
 
-    float scaleX = float(p.protoW) / float(p.origW);
-    float scaleY = float(p.protoH) / float(p.origH);
-
-    float fx = (float(imgX) + 0.5f) * scaleX - 0.5f;
-    float fy = (float(imgY) + 0.5f) * scaleY - 0.5f;
+    float protoScaleX = float(p.protoW) / p.modelInput;
+    float protoScaleY = float(p.protoH) / p.modelInput;
+    float modelCenterX = (float(imgX) + 0.5f) * p.imageToModelScaleX + p.padX;
+    float modelCenterY = (float(imgY) + 0.5f) * p.imageToModelScaleY + p.padY;
+    float fx = modelCenterX * protoScaleX - 0.5f;
+    float fy = modelCenterY * protoScaleY - 0.5f;
 
     int maxPx = int(p.protoW) - 1;
     int maxPy = int(p.protoH) - 1;
