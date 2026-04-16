@@ -225,6 +225,9 @@ struct MeshRoomView: View {
                 }
                 .disabled(isLoading)
             }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                navigationBarFullVideoIdentificationsButton
+            }
             if canOfferBrainArAssist, showingFurnitureFit {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     navigationBarARButton
@@ -396,24 +399,12 @@ struct MeshRoomView: View {
         brainArAssistedSizingEnabled.toggle()
     }
 
-    /// Live camera + labels in identify mode; always visible next to Brain (not only in the nav bar).
-    private var fullVideoIdentificationsFloatingButton: some View {
+    private var navigationBarFullVideoIdentificationsButton: some View {
         Button {
             showFullVideoWithIdentifications.toggle()
         } label: {
             Image(systemName: "text.viewfinder")
-                .font(.system(size: 22, weight: .medium))
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background(
-                    Circle().fill(
-                        showFullVideoWithIdentifications
-                            ? Color.cyan.opacity(0.88)
-                            : Color.black.opacity(0.45)
-                    )
-                )
-                .shadow(radius: 4)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
@@ -903,23 +894,22 @@ struct MeshRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            // Bottom controls: full-video toggle + brain + segment + snapshot
-            HStack(alignment: .bottom, spacing: 10) {
-                fullVideoIdentificationsFloatingButton
+            // Bottom controls: brain + segment + snapshot (full-video toggle is in the nav bar next to recenter)
+            HStack {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }
+                .padding(.leading, 16)
                 segmentButton
-                    .padding(.leading, 4)
+                    .padding(.leading, 10)
 
                 Spacer()
 
                 VStack(spacing: 10) {
                     snapshotButtonWithHintAbove
                 }
+                    .padding(.trailing, 16)
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 16)
             .padding(.bottom, 20)
         }
     }
@@ -930,8 +920,7 @@ struct MeshRoomView: View {
             Spacer()
 
             // Horizontal bottom bar
-            HStack(alignment: .bottom, spacing: 20) {
-                fullVideoIdentificationsFloatingButton
+            HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }

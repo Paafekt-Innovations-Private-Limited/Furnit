@@ -347,6 +347,9 @@ struct GLBRoomView: View {
                 }
                 .disabled(isLoading)
             }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                navigationBarFullVideoIdentificationsButton
+            }
             if canOfferBrainArAssist, showingFurnitureFit {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     navigationBarARButton
@@ -494,23 +497,12 @@ struct GLBRoomView: View {
         brainArAssistedSizingEnabled.toggle()
     }
 
-    private var fullVideoIdentificationsFloatingButton: some View {
+    private var navigationBarFullVideoIdentificationsButton: some View {
         Button {
             showFullVideoWithIdentifications.toggle()
         } label: {
             Image(systemName: "text.viewfinder")
-                .font(.system(size: 22, weight: .medium))
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background(
-                    Circle().fill(
-                        showFullVideoWithIdentifications
-                            ? Color.cyan.opacity(0.88)
-                            : Color.black.opacity(0.45)
-                    )
-                )
-                .shadow(radius: 4)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
@@ -1001,18 +993,17 @@ struct GLBRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            HStack(alignment: .bottom, spacing: 10) {
-                fullVideoIdentificationsFloatingButton
+            HStack {
                 brainButtonWithHintAbove
+                    .padding(.leading, 16)
                 segmentButton
-                    .padding(.leading, 4)
+                    .padding(.leading, 10)
 
                 Spacer()
 
                 snapshotButtonWithHintAbove
+                    .padding(.trailing, 16)
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 16)
             .padding(.bottom, 20)
         }
     }
@@ -1022,8 +1013,7 @@ struct GLBRoomView: View {
         VStack {
             Spacer()
 
-            HStack(alignment: .bottom, spacing: 20) {
-                fullVideoIdentificationsFloatingButton
+            HStack(spacing: 20) {
                 brainButtonWithHintAbove
                 segmentButton
 
