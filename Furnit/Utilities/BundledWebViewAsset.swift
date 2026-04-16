@@ -14,6 +14,9 @@ enum BundledWebViewAsset {
     }
 }
 
+/// Serves bundled WebViewVendor assets from the `viewer-assets://local/` custom URL scheme.
+/// Used with `loadHTMLString(baseURL: viewer-assets://local/)` so that ES module importmap
+/// entries pointing to `viewer-assets://local/three/...` are same-origin and resolve here.
 final class BundledWebViewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
     private let fileManager = FileManager.default
 

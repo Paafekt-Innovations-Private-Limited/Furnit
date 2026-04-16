@@ -201,6 +201,7 @@ struct GLBRoomView: View {
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var appState = AppStateManager.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
     @State private var showDiscardUnsavedAlert = false
 
@@ -224,7 +225,8 @@ struct GLBRoomView: View {
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
     private var canOfferBrainArAssist: Bool {
-        QualitySettings.supportsFurnitureFitARAssisted
+        QualitySettings.supportsFurnitureFitARAssisted &&
+            appState.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 
     private var canSegmentSelectedFurniture: Bool {
@@ -281,7 +283,7 @@ struct GLBRoomView: View {
 
             if !isLoading {
                 cameraButtonsOverlay
-                topTrailingARSizingOverlay
+                topTrailingPinchTapAndSizingHintsOverlay
             }
 
             // FurnitureFit overlay (when active) - full screen camera for furniture detection
@@ -337,14 +339,19 @@ struct GLBRoomView: View {
             ToolbarItem(placement: .principal) {
                 navigationBarRoomMeasurementPrincipal
             }
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Recenter button
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     NotificationCenter.default.post(name: NSNotification.Name("RecenterGLBCamera"), object: nil)
                 }) {
                     Image(systemName: "viewfinder")
                 }
                 .disabled(isLoading)
+            }
+            if canOfferBrainArAssist {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    navigationBarARButton
+                        .fixedSize(horizontal: true, vertical: true)
+                }
             }
         }
         .onAppear {
@@ -361,6 +368,7 @@ struct GLBRoomView: View {
                 cancelPinchHintTasks()
                 cancelBrainHintTasks()
                 cancelSnapshotHintTasks()
+                cancelARSizingHintTasks()
                 cancelRoomDimensionsHintTasks()
             } else {
                 restartPinchGestureHint()
@@ -437,14 +445,6 @@ struct GLBRoomView: View {
                     .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
             }
             HStack(spacing: 8) {
-                Button(action: displayAllGestureHelpers) {
-                    Image(systemName: "hand.tap.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-
                 Button {
                     guard canPresentGLBRoomDimensionsAlert else { return }
                     onGLBRoomDimensionsRulerTapped()
@@ -482,6 +482,99 @@ struct GLBRoomView: View {
         if labels.count == 1 { return labels[0] }
         if labels.count == 2 { return "\(labels[0]), \(labels[1])" }
         return "\(labels.count) selected"
+    }
+
+    private func toggleBrainArAssistedSizingOrShowHint() {
+        if showingFurnitureFit {
+            brainArAssistedSizingEnabled.toggle()
+        } else {
+            showARSizingHint(requiresBrain: true)
+        }
+    }
+
+    private var navigationBarARButton: some View {
+        Button(action: toggleBrainArAssistedSizingOrShowHint) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle().fill(
+                        brainArAssistedSizingEnabled
+                            ? Color.green.opacity(0.9)
+                            : Color.black.opacity(0.45)
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(
+            brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+        )
+    }
+
+    /// Pinch + tap gesture helpers in the top-trailing corner (same pattern as ``SharpRoomView`` / ``MeshRoomView``).
+    private var topTrailingPinchTapAndSizingHintsOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 8) {
+                    Button(action: onPinchHintIconTapped) {
+                        Image(systemName: "hand.pinch.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(pinchHintAccessibilityLabel)
+
+                    Button(action: displayAllGestureHelpers) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+                }
+                if pinchHintExplanationVisible {
+                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+                if canOfferBrainArAssist, arSizingHintExplanationVisible {
+                    Text(arSizingHintText)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 200)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 52)
+            .padding(.trailing, 16)
+        }
+        .zIndex(101)
+        .onAppear { restartPinchGestureHint() }
+        .onDisappear {
+            cancelPinchHintTasks()
+            cancelARSizingHintTasks()
+        }
     }
 
     private var roomDimensionsHintOverlay: some View {
@@ -605,15 +698,6 @@ struct GLBRoomView: View {
         scheduleARSizingHintTextAutoHide(seconds: 3)
     }
 
-    private func onARSizingHintIconTapped() {
-        cancelARSizingHintTasks()
-        arSizingHintRequiresBrain = false
-        arSizingHintExplanationVisible.toggle()
-        if arSizingHintExplanationVisible {
-            scheduleARSizingHintTextAutoHide(seconds: 3)
-        }
-    }
-
     private func cancelRoomDimensionsHintTasks() {
         roomDimensionsHintHideTask?.cancel()
         roomDimensionsHintHideTask = nil
@@ -674,10 +758,6 @@ struct GLBRoomView: View {
 
     private var snapshotHintAccessibilityLabel: String {
         L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var arSizingHintAccessibilityLabel: String {
-        arSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
     private var arSizingHintText: String {
@@ -801,23 +881,6 @@ struct GLBRoomView: View {
         }
     }
 
-    private var arSizingGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if arSizingHintExplanationVisible {
-                Text(arSizingHintText)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-            }
-        }
-        .onDisappear { cancelARSizingHintTasks() }
-    }
-
     private func displayAllGestureHelpers() {
         restartPinchGestureHint()
         restartBrainGestureHint()
@@ -825,51 +888,6 @@ struct GLBRoomView: View {
         showARSizingHint(requiresBrain: arSizingHintRequiresBrain)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
-    }
-
-    private var arSizingButtonWithHintBelow: some View {
-        VStack(alignment: .center, spacing: 6) {
-            Button {
-                if showingFurnitureFit {
-                    brainArAssistedSizingEnabled.toggle()
-                } else {
-                    showARSizingHint(requiresBrain: true)
-                }
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        Circle().fill(
-                            brainArAssistedSizingEnabled
-                                ? Color.green.opacity(0.9)
-                                : Color.black.opacity(0.45)
-                        )
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(isLoading)
-            .accessibilityLabel(
-                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
-            )
-
-            arSizingGestureHintColumn
-        }
-    }
-
-    private var topTrailingARSizingOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            if canOfferBrainArAssist {
-                arSizingButtonWithHintBelow
-                    .padding(.top, 52)
-                    .padding(.trailing, 16)
-            }
-        }
-        .zIndex(19)
     }
 
     private var cameraDPadCluster: some View {
@@ -911,35 +929,6 @@ struct GLBRoomView: View {
         }
     }
 
-    private var pinchGestureHintOverlay: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if pinchHintExplanationVisible {
-                Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 220, alignment: .leading)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-            }
-            Button(action: onPinchHintIconTapped) {
-                Image(systemName: "hand.pinch.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(pinchHintAccessibilityLabel)
-        }
-        .onAppear { restartPinchGestureHint() }
-        .onDisappear { cancelPinchHintTasks() }
-        .zIndex(12)
-    }
-
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
@@ -947,8 +936,6 @@ struct GLBRoomView: View {
                 .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 10) {
                 cameraDPadCluster
-                pinchGestureHintOverlay
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 12)
                     .padding(.top, 12)
                 if photoOrientation == .landscape {
@@ -1074,7 +1061,6 @@ struct GLBWebGLView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
-        config.setURLSchemeHandler(BundledWebViewAssetSchemeHandler(), forURLScheme: BundledWebViewAsset.scheme)
 
         // Add message handler for JS -> Swift communication
         config.userContentController.add(context.coordinator, name: "glbViewer")
@@ -1115,9 +1101,9 @@ struct GLBWebGLView: UIViewRepresentable {
             }
         }
 
-        // Load GLB data and generate HTML
         if let glbData = try? Data(contentsOf: glbURL) {
             let html = generateGLBViewerHTML(glbData: glbData)
+            logDebug("📄 [GLBViewer] loadHTMLString (CDN three.js) htmlBytes=\(html.utf8.count)")
             webView.loadHTMLString(html, baseURL: nil)
         } else {
             logDebug("❌ [GLBRoomView] Failed to load GLB file: \(glbURL.path)")
@@ -1235,9 +1221,6 @@ struct GLBWebGLView: UIViewRepresentable {
     private func generateGLBViewerHTML(glbData: Data) -> String {
         let base64GLB = glbData.base64EncodedString()
         let isPortrait = photoOrientation == .portrait
-        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
-        let threeAddonsBaseURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/")
-
         return """
         <!DOCTYPE html>
         <html>
@@ -1265,8 +1248,8 @@ struct GLBWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "\(threeModuleURL)",
-                    "three/addons/": "\(threeAddonsBaseURL)"
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
                 }
             }
             </script>

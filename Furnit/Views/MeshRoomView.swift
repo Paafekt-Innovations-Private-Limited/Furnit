@@ -44,6 +44,7 @@ struct MeshRoomView: View {
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var appState = AppStateManager.shared
 
     // WebView reference for GLTF export
     @State private var webView: WKWebView?
@@ -74,7 +75,8 @@ struct MeshRoomView: View {
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
     private var canOfferBrainArAssist: Bool {
-        QualitySettings.supportsFurnitureFitARAssisted
+        QualitySettings.supportsFurnitureFitARAssisted &&
+            appState.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 
     private var canSegmentSelectedFurniture: Bool {
@@ -154,7 +156,7 @@ struct MeshRoomView: View {
 
             if !isLoading {
                 cameraButtonsOverlay
-                topTrailingARSizingOverlay
+                topTrailingPinchTapAndSizingHintsOverlay
             }
 
             // FurnitureFit overlay (when active) - full screen camera for furniture detection
@@ -215,16 +217,7 @@ struct MeshRoomView: View {
             ToolbarItem(placement: .principal) {
                 navigationBarRoomMeasurementPrincipal
             }
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Save Room button
-                Button(action: {
-                    showRoomNameInput = true
-                }) {
-                    Image(systemName: "square.and.arrow.down")
-                }
-                .disabled(isLoading || isSavingRoom)
-
-                // Recenter button
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     NotificationCenter.default.post(name: NSNotification.Name("RecenterMeshCamera"), object: nil)
                 }) {
@@ -232,10 +225,24 @@ struct MeshRoomView: View {
                 }
                 .disabled(isLoading)
             }
+            if canOfferBrainArAssist {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    navigationBarARButton
+                        .fixedSize(horizontal: true, vertical: true)
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showRoomNameInput = true
+                }) {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .disabled(isLoading || isSavingRoom)
+                .accessibilityLabel(L10n.RoomViewer.saveRoom)
+            }
         }
         .onAppear {
-            // Preload YOLOE when the room opens (async; not at app startup).
-            yoloeService.ensureModelLoaded()
+            // Do not load YOLOE eagerly here — keep manual room memory low until the user enables brain mode.
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
@@ -340,14 +347,6 @@ struct MeshRoomView: View {
                     .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
             }
             HStack(spacing: 8) {
-                Button(action: displayAllGestureHelpers) {
-                    Image(systemName: "hand.tap.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-
                 Button {
                     guard canPresentMeshRoomDimensionsAlert else { return }
                     onMeshRoomDimensionsRulerTapped()
@@ -385,6 +384,99 @@ struct MeshRoomView: View {
         if labels.count == 1 { return labels[0] }
         if labels.count == 2 { return "\(labels[0]), \(labels[1])" }
         return "\(labels.count) selected"
+    }
+
+    private func toggleBrainArAssistedSizingOrShowHint() {
+        if showingFurnitureFit {
+            brainArAssistedSizingEnabled.toggle()
+        } else {
+            showARSizingHint(requiresBrain: true)
+        }
+    }
+
+    private var navigationBarARButton: some View {
+        Button(action: toggleBrainArAssistedSizingOrShowHint) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle().fill(
+                        brainArAssistedSizingEnabled
+                            ? Color.green.opacity(0.9)
+                            : Color.black.opacity(0.45)
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(
+            brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+        )
+    }
+
+    /// Pinch + tap gesture helpers in the top-trailing corner (same pattern as ``SharpRoomView``).
+    private var topTrailingPinchTapAndSizingHintsOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 8) {
+                    Button(action: onPinchHintIconTapped) {
+                        Image(systemName: "hand.pinch.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(pinchHintAccessibilityLabel)
+
+                    Button(action: displayAllGestureHelpers) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+                }
+                if pinchHintExplanationVisible {
+                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+                if canOfferBrainArAssist, arSizingHintExplanationVisible {
+                    Text(arSizingHintText)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 200)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 52)
+            .padding(.trailing, 16)
+        }
+        .zIndex(101)
+        .onAppear { restartPinchGestureHint() }
+        .onDisappear {
+            cancelPinchHintTasks()
+            cancelARSizingHintTasks()
+        }
     }
 
     private var roomDimensionsHintOverlay: some View {
@@ -508,15 +600,6 @@ struct MeshRoomView: View {
         scheduleARSizingHintTextAutoHide(seconds: 3)
     }
 
-    private func onARSizingHintIconTapped() {
-        cancelARSizingHintTasks()
-        arSizingHintRequiresBrain = false
-        arSizingHintExplanationVisible.toggle()
-        if arSizingHintExplanationVisible {
-            scheduleARSizingHintTextAutoHide(seconds: 3)
-        }
-    }
-
     private func cancelRoomDimensionsHintTasks() {
         roomDimensionsHintHideTask?.cancel()
         roomDimensionsHintHideTask = nil
@@ -579,10 +662,6 @@ struct MeshRoomView: View {
         L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    private var arSizingHintAccessibilityLabel: String {
-        arSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
     private var arSizingHintText: String {
         arSizingHintRequiresBrain
             ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
@@ -623,23 +702,6 @@ struct MeshRoomView: View {
         }
         .onAppear { restartSnapshotGestureHint() }
         .onDisappear { cancelSnapshotHintTasks() }
-    }
-
-    private var arSizingGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if arSizingHintExplanationVisible {
-                Text(arSizingHintText)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-            }
-        }
-        .onDisappear { cancelARSizingHintTasks() }
     }
 
     private func displayAllGestureHelpers() {
@@ -730,50 +792,6 @@ struct MeshRoomView: View {
         }
     }
 
-    private var arSizingButtonWithHintBelow: some View {
-        VStack(alignment: .center, spacing: 6) {
-            Button(action: {
-                if showingFurnitureFit {
-                    brainArAssistedSizingEnabled.toggle()
-                } else {
-                    showARSizingHint(requiresBrain: true)
-                }
-            }) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        Circle().fill(
-                            brainArAssistedSizingEnabled
-                                ? Color.green.opacity(0.9)
-                                : Color.black.opacity(0.45)
-                        )
-                    )
-            }
-            .disabled(isLoading)
-            .accessibilityLabel(
-                brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
-            )
-
-            arSizingGestureHintColumn
-        }
-    }
-
-    private var topTrailingARSizingOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            if canOfferBrainArAssist {
-                arSizingButtonWithHintBelow
-                    .padding(.top, 52)
-                    .padding(.trailing, 16)
-            }
-        }
-        .zIndex(19)
-    }
-
     /// D-pad cluster only (same notifications as ``SharpRoomView`` / GLB viewer).
     private var cameraDPadCluster: some View {
         HStack(spacing: 8) {
@@ -814,35 +832,6 @@ struct MeshRoomView: View {
         }
     }
 
-    private var pinchGestureHintOverlay: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if pinchHintExplanationVisible {
-                Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 220, alignment: .leading)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-            }
-            Button(action: onPinchHintIconTapped) {
-                Image(systemName: "hand.pinch.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(pinchHintAccessibilityLabel)
-        }
-        .onAppear { restartPinchGestureHint() }
-        .onDisappear { cancelPinchHintTasks() }
-        .zIndex(12)
-    }
-
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
@@ -850,8 +839,6 @@ struct MeshRoomView: View {
                 .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 10) {
                 cameraDPadCluster
-                pinchGestureHintOverlay
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 12)
                     .padding(.top, 12)
                 if photoOrientation == .landscape {
@@ -1039,7 +1026,6 @@ struct MeshWebGLView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
-        config.setURLSchemeHandler(BundledWebViewAssetSchemeHandler(), forURLScheme: BundledWebViewAsset.scheme)
 
         // Add message handler for JS -> Swift communication
         config.userContentController.add(context.coordinator, name: "meshViewer")
@@ -1085,8 +1071,10 @@ struct MeshWebGLView: UIViewRepresentable {
             webViewRef = webView
         }
 
-        // Load the HTML with Three.js
+        // Historical manual-room path: Three.js from jsDelivr + loadHTMLString (requires network).
+        // This matches the pre–App Store review bundling flow (~Apr 2026) that users relied on.
         let html = generateMeshViewerHTML()
+        logDebug("📄 [MeshViewer] loadHTMLString (CDN three.js) htmlBytes=\(html.utf8.count)")
         webView.loadHTMLString(html, baseURL: nil)
 
         return webView
@@ -1207,8 +1195,6 @@ struct MeshWebGLView: UIViewRepresentable {
         let base64Image = imageData.base64EncodedString()
 
         let isPortrait = photoOrientation == .portrait
-        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
-        let threeAddonsBaseURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/")
 
         return """
         <!DOCTYPE html>
@@ -1237,8 +1223,8 @@ struct MeshWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "\(threeModuleURL)",
-                    "three/addons/": "\(threeAddonsBaseURL)"
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
                 }
             }
             </script>
@@ -1246,6 +1232,23 @@ struct MeshWebGLView: UIViewRepresentable {
                 import * as THREE from 'three';
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+                function meshPost(event, extra) {
+                    try {
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.meshViewer) {
+                            var o = { event: event };
+                            if (extra) { for (var k in extra) { o[k] = extra[k]; } }
+                            window.webkit.messageHandlers.meshViewer.postMessage(o);
+                        }
+                    } catch (e) {}
+                }
+                function safeViewportSize() {
+                    var w = Math.max(1, window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 1);
+                    var h = Math.max(1, window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 1);
+                    return { w: w, h: h };
+                }
+                var vp = safeViewportSize();
+                meshPost('jsLog', { step: 'module_after_import', w: vp.w, h: vp.h, dpr: window.devicePixelRatio || 1 });
 
                 // Room dimensions from Swift (in meters)
                 const roomWidth = \(roomWidth);
@@ -1272,15 +1275,40 @@ struct MeshWebGLView: UIViewRepresentable {
                 roomGroup.name = 'Room';
                 scene.add(roomGroup);
 
-                // Camera - start inside the room looking at front wall
-                const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+                // Camera — avoid 0×0 innerWidth/innerHeight on first WKWebView layout (NaN aspect → blank WebGL).
+                const camera = new THREE.PerspectiveCamera(70, vp.w / vp.h, 0.1, 100);
 
                 // Renderer
-                const renderer = new THREE.WebGLRenderer({ antialias: true });
-                renderer.setSize(window.innerWidth, window.innerHeight);
+                const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+                renderer.setSize(vp.w, vp.h);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.outputColorSpace = THREE.SRGBColorSpace;
                 document.body.appendChild(renderer.domElement);
+
+                renderer.domElement.addEventListener('webglcontextlost', function (ev) {
+                    meshPost('jsError', { message: 'webglcontextlost' });
+                    ev.preventDefault();
+                }, false);
+
+                function applyViewportSize() {
+                    vp = safeViewportSize();
+                    camera.aspect = vp.w / vp.h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(vp.w, vp.h);
+                    meshPost('jsLog', { step: 'viewport_apply', w: vp.w, h: vp.h });
+                }
+                applyViewportSize();
+                window.addEventListener('resize', applyViewportSize);
+                requestAnimationFrame(function () {
+                    applyViewportSize();
+                    requestAnimationFrame(applyViewportSize);
+                });
+                try {
+                    if (typeof ResizeObserver !== 'undefined') {
+                        var ro = new ResizeObserver(function () { applyViewportSize(); });
+                        ro.observe(document.documentElement);
+                    }
+                } catch (e0) {}
 
                 // Orbit controls - smooth touch interactions
                 const controls = new OrbitControls(camera, renderer.domElement);
@@ -1371,10 +1399,12 @@ struct MeshWebGLView: UIViewRepresentable {
                 const img = new Image();
                 img.onload = function() {
                     console.log('[MeshViewer] Image loaded:', img.width, 'x', img.height);
+                    meshPost('jsLog', { step: 'photo_image_onload', iw: img.width, ih: img.height });
                     buildRoomWithTextures(img);
                 };
                 img.onerror = function() {
                     console.error('[MeshViewer] Failed to load image');
+                    meshPost('jsError', { message: 'data:image/jpeg base64 failed to decode in Image()' });
                     buildRoomGray(); // Build room with gray walls as fallback
                 };
                 img.src = 'data:image/jpeg;base64,\(base64Image)';
@@ -1394,6 +1424,7 @@ struct MeshWebGLView: UIViewRepresentable {
                 }
 
                 function buildRoomWithTextures(sourceImg) {
+                    try {
                     const imgW = sourceImg.width;
                     const imgH = sourceImg.height;
 
@@ -1508,9 +1539,12 @@ struct MeshWebGLView: UIViewRepresentable {
                     // No back wall - open for camera to enter
 
                     console.log('[MeshViewer] Room built with textures');
-
-                    // Notify Swift that we're loaded
+                    meshPost('jsLog', { step: 'room_built_textures' });
                     window.webkit.messageHandlers.meshViewer.postMessage({ event: 'loaded' });
+                    } catch (e) {
+                        meshPost('jsError', { message: 'buildRoomWithTextures: ' + ((e && e.message) ? e.message : String(e)) });
+                        buildRoomGray();
+                    }
                 }
 
                 // Fallback: build room with gray walls
@@ -1622,14 +1656,10 @@ struct MeshWebGLView: UIViewRepresentable {
                 }
                 animate();
 
-                // Handle resize
-                window.addEventListener('resize', () => {
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                });
+                // Resize: handled by applyViewportSize() above (WKWebView often reports 0×0 until layout).
 
                 console.log('[MeshViewer] Initialized');
+                meshPost('jsLog', { step: 'init_complete', w: vp.w, h: vp.h });
 
             </script>
         </body>

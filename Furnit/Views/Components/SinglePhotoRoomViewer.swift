@@ -370,8 +370,6 @@ struct RoomBoundaryDetectionView: View {
                 savedBoundaries = boundaries
                 isProcessingInView = false
             }
-            // Let the parent’s `adjustedBoundaries` commit before pushing MeshRoomView; otherwise
-            // `navigationDestination(isPresented: $navigateToViewer)` can build with nil boundaries and log the default-boundaries fallback.
             await Task.yield()
             await MainActor.run {
                 onProcessingComplete?()
@@ -1312,8 +1310,6 @@ struct SinglePhotoRoomView: View {
                     height: Float(roomHeight)
                 ),
                 onProcessingComplete: {
-                    // Navigate to MeshRoomView when processing is complete
-                    // MeshRoomView uses WebGL, doesn't need reconstructor.generatedRoomScene
                     logDebug("✅ [onProcessingComplete] Processing complete, navigating to viewer")
                     navigateToViewer = true
                 },
@@ -1354,13 +1350,8 @@ struct SinglePhotoRoomView: View {
             // Navigation is triggered by onProcessingComplete callback, not here
             // This just logs the boundary update for debugging
         }
-        // Programmatic navigation using the modern API (iOS 16+).  When
-        // `navigateToViewer` is set to true, a destination is pushed onto
-        // the navigation stack.  We wrap the destination in a `Group` to
-        // handle the optional room scene gracefully.
         .navigationDestination(isPresented: $navigateToViewer) {
             if let image = selectedImage, let boundaries = adjustedBoundaries {
-                // Pass FULL image with boundaries - MeshRoomView will texture all walls
                 let _ = {
                     logDebug("🎯 [Navigation] MeshRoomView with boundaries")
                     logDebug("   Boundaries: L=\(boundaries.leftX), R=\(boundaries.rightX), T=\(boundaries.ceilingY), B=\(boundaries.floorY)")
@@ -1379,14 +1370,12 @@ struct SinglePhotoRoomView: View {
                     floorY: boundaries.floorY
                 )
             } else if let image = selectedImage {
-                // Fallback: full-frame wall lines when `adjustedBoundaries` is nil (common for SHARP / no boundary sheet).
                 MeshRoomView(
                     roomWidth: Float(roomWidth),
                     roomHeight: Float(roomHeight),
                     roomDepth: Float(roomDepth),
                     frontWallImage: image,
                     photoOrientation: selectedOrientation
-                    // Default boundaries: leftX=0.12, rightX=0.88, ceilingY=0.15, floorY=0.85
                 )
             }
         }
