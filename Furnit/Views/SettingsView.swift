@@ -24,9 +24,8 @@ struct SettingsView: View {
     @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
 
     /// Minimum confidence for choosing the **primary** furniture detection (largest box among those above this threshold).
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidence: Double = 0.75
+    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidence: Double = 0.57
     @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
 
     var body: some View {
         NavigationView {
@@ -211,21 +210,6 @@ struct SettingsView: View {
                     }
                     .tint(.cyan)
                     .disabled(!QualitySettings.supportsFurnitureFitARAssisted)
-
-                    Toggle(isOn: $showFullVideoWithIdentifications) {
-                        HStack {
-                            Image(systemName: "video.badge.checkmark")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.fullVideoWithIdentifications)
-                                    .font(.headline)
-                                Text(L10n.Settings.fullVideoWithIdentificationsDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .tint(.blue)
 
                     if QualitySettings.supportsLiDARSceneDepth {
                         Toggle(isOn: $showRoomFurnitureCalibrate) {

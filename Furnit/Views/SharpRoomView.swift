@@ -262,7 +262,7 @@ struct SharpRoomView: View {
     @State private var cameraSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -502,6 +502,11 @@ struct SharpRoomView: View {
         }
         ToolbarItem(placement: .navigationBarTrailing) {
             navigationBarRecenterButton
+        }
+        if showingFurnitureFit {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                navigationBarFullVideoIdentificationsButton
+            }
         }
         if canOfferBrainArAssist, showingFurnitureFit {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -1245,6 +1250,31 @@ struct SharpRoomView: View {
         }
     }
 
+    private var fullVideoIdentificationsFloatingButton: some View {
+        Button {
+            showFullVideoWithIdentifications.toggle()
+        } label: {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 22, weight: .medium))
+                .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(
+                    Circle().fill(
+                        showFullVideoWithIdentifications
+                            ? Color.cyan.opacity(0.88)
+                            : Color.black.opacity(0.45)
+                    )
+                )
+                .shadow(radius: 4)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+        .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+        .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+    }
+
     @ViewBuilder
     private var segmentButton: some View {
         if showingFurnitureFit && showFullVideoWithIdentifications {
@@ -1968,6 +1998,7 @@ struct SharpRoomView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
                 HStack(alignment: .bottom, spacing: 16) {
+                    fullVideoIdentificationsFloatingButton
                     brainButtonWithHintAbove
                     segmentButton
                     if showingFurnitureFit {
@@ -2004,8 +2035,9 @@ struct SharpRoomView: View {
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
                 HStack(alignment: .bottom, spacing: 0) {
-                    brainButtonWithHintAbove
+                    fullVideoIdentificationsFloatingButton
                         .padding(.leading, 16)
+                    brainButtonWithHintAbove
                     segmentButton
                         .padding(.leading, 10)
                     Spacer(minLength: 4)

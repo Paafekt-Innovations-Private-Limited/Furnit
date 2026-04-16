@@ -31,9 +31,9 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     var useBilinearUpscaling: Bool = true
     var active: Bool = false
 
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.75
+    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
     @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
 
     @ObservedObject private var appState = AppStateManager.shared
 
@@ -184,7 +184,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
-    var primaryDetectionMinConfidence: Float = 0.75
+    var primaryDetectionMinConfidence: Float = 0.57
     /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
     var primarySelectionByHighestConfidence: Bool = false
     /// Keep the rendered mask raw from YOLOE logits. Do not morphologically alter it.
@@ -420,7 +420,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if defaults.object(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey) != nil {
             return defaults.bool(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey)
         }
-        return true
+        return false
     }() {
         didSet {
             guard oldValue != showFullVideoWithIdentifications else { return }

@@ -65,7 +65,7 @@ struct MeshRoomView: View {
     /// Ruler tap: show W×H×D chip below top safe area (matches Sharp room dimensions hint).
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -394,6 +394,32 @@ struct MeshRoomView: View {
     private func toggleBrainArAssistedSizingOrShowHint() {
         guard showingFurnitureFit else { return }
         brainArAssistedSizingEnabled.toggle()
+    }
+
+    /// Live camera + labels in identify mode; always visible next to Brain (not only in the nav bar).
+    private var fullVideoIdentificationsFloatingButton: some View {
+        Button {
+            showFullVideoWithIdentifications.toggle()
+        } label: {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 22, weight: .medium))
+                .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(
+                    Circle().fill(
+                        showFullVideoWithIdentifications
+                            ? Color.cyan.opacity(0.88)
+                            : Color.black.opacity(0.45)
+                    )
+                )
+                .shadow(radius: 4)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+        .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+        .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
     }
 
     private var navigationBarARButton: some View {
@@ -877,22 +903,23 @@ struct MeshRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            // Bottom controls: brain + segment + snapshot
-            HStack {
+            // Bottom controls: full-video toggle + brain + segment + snapshot
+            HStack(alignment: .bottom, spacing: 10) {
+                fullVideoIdentificationsFloatingButton
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }
-                .padding(.leading, 16)
                 segmentButton
-                    .padding(.leading, 10)
+                    .padding(.leading, 4)
 
                 Spacer()
 
                 VStack(spacing: 10) {
                     snapshotButtonWithHintAbove
                 }
-                    .padding(.trailing, 16)
             }
+            .padding(.leading, 16)
+            .padding(.trailing, 16)
             .padding(.bottom, 20)
         }
     }
@@ -903,7 +930,8 @@ struct MeshRoomView: View {
             Spacer()
 
             // Horizontal bottom bar
-            HStack(spacing: 20) {
+            HStack(alignment: .bottom, spacing: 20) {
+                fullVideoIdentificationsFloatingButton
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }

@@ -43,7 +43,7 @@ struct ModelViewerView: View {
     
     // Furniture hint
     @State private var showFurnitureHint = true
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -185,6 +185,28 @@ struct ModelViewerView: View {
                     Spacer()
                     HStack {
                         VStack(spacing: 16) {
+                            Button {
+                                showFullVideoWithIdentifications.toggle()
+                            } label: {
+                                Image(systemName: "text.viewfinder")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 52, height: 52)
+                                    .background(
+                                        Circle().fill(
+                                            showFullVideoWithIdentifications
+                                                ? Color.cyan.opacity(0.88)
+                                                : Color.black.opacity(0.45)
+                                        )
+                                    )
+                                    .shadow(radius: 4)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+                            .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+                            .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+
                             // Brain button
                             Button(action: {
                                 logDebug("BRAIN FLOW: tap received")
@@ -735,9 +757,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
     /// Synced with Settings → Furniture segmentation → primary detection confidence.
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.75
+    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
     @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = true
+    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
 
     var roomImage: UIImage?
     var mlModel: MLModel?  // yoloe-11l-seg-pf / yoloe-26l-seg-pf_* via YOLOEModelService
