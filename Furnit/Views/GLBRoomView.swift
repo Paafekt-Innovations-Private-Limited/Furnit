@@ -347,7 +347,7 @@ struct GLBRoomView: View {
                 }
                 .disabled(isLoading)
             }
-            if canOfferBrainArAssist {
+            if canOfferBrainArAssist, showingFurnitureFit {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     navigationBarARButton
                         .fixedSize(horizontal: true, vertical: true)
@@ -379,8 +379,13 @@ struct GLBRoomView: View {
         .onChange(of: showingFurnitureFit) { _, isOn in
             if isOn {
                 yoloeService.ensureModelLoaded()
+                if canOfferBrainArAssist {
+                    showARSizingHint(requiresBrain: false)
+                }
             } else {
                 dismissFullVideoFurnitureTapHint()
+                cancelARSizingHintTasks()
+                arSizingHintExplanationVisible = false
                 brainArAssistedSizingEnabled = false
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
@@ -485,11 +490,8 @@ struct GLBRoomView: View {
     }
 
     private func toggleBrainArAssistedSizingOrShowHint() {
-        if showingFurnitureFit {
-            brainArAssistedSizingEnabled.toggle()
-        } else {
-            showARSizingHint(requiresBrain: true)
-        }
+        guard showingFurnitureFit else { return }
+        brainArAssistedSizingEnabled.toggle()
     }
 
     private var navigationBarARButton: some View {
@@ -554,7 +556,8 @@ struct GLBRoomView: View {
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                         .transition(.opacity)
                 }
-                if canOfferBrainArAssist, arSizingHintExplanationVisible {
+                if canOfferBrainArAssist, arSizingHintExplanationVisible,
+                   showingFurnitureFit || arSizingHintRequiresBrain {
                     Text(arSizingHintText)
                         .font(.caption2)
                         .foregroundColor(.white)
@@ -885,7 +888,7 @@ struct GLBRoomView: View {
         restartPinchGestureHint()
         restartBrainGestureHint()
         restartSnapshotGestureHint()
-        showARSizingHint(requiresBrain: arSizingHintRequiresBrain)
+        showARSizingHint(requiresBrain: !showingFurnitureFit)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
     }

@@ -399,11 +399,8 @@ struct SharpRoomView: View {
     }
 
     private func toggleBrainArAssistedSizingOrShowHint() {
-        if showingFurnitureFit {
-            brainArAssistedSizingEnabled.toggle()
-        } else {
-            showCameraSizingHint(requiresBrain: true)
-        }
+        guard showingFurnitureFit else { return }
+        brainArAssistedSizingEnabled.toggle()
     }
 
     /// AR sizing control in the navigation bar (replaces the share-PLY toolbar button).
@@ -470,7 +467,8 @@ struct SharpRoomView: View {
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
                         .transition(.opacity)
                 }
-                if canOfferBrainArAssist, cameraSizingHintExplanationVisible {
+                if canOfferBrainArAssist, cameraSizingHintExplanationVisible,
+                   showingFurnitureFit || cameraSizingHintRequiresBrain {
                     Text(cameraSizingHintText)
                         .font(.caption2)
                         .foregroundColor(.white)
@@ -505,7 +503,7 @@ struct SharpRoomView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             navigationBarRecenterButton
         }
-        if canOfferBrainArAssist {
+        if canOfferBrainArAssist, showingFurnitureFit {
             ToolbarItem(placement: .navigationBarTrailing) {
                 navigationBarARButton
                     .fixedSize(horizontal: true, vertical: true)
@@ -549,8 +547,13 @@ struct SharpRoomView: View {
             if isOn {
                 yoloeService.ensureModelLoaded()
                 updateRoomPlacementIntelligence()
+                if canOfferBrainArAssist {
+                    showCameraSizingHint(requiresBrain: false)
+                }
             } else {
                 dismissFullVideoFurnitureTapHint()
+                cancelCameraSizingHintTasks()
+                cameraSizingHintExplanationVisible = false
                 brainArAssistedSizingEnabled = false
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
@@ -875,7 +878,7 @@ struct SharpRoomView: View {
         restartPinchGestureHint()
         restartBrainGestureHint()
         restartSnapshotGestureHint()
-        showCameraSizingHint(requiresBrain: cameraSizingHintRequiresBrain)
+        showCameraSizingHint(requiresBrain: !showingFurnitureFit)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)
     }
