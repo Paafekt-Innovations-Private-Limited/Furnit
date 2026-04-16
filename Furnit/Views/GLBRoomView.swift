@@ -307,7 +307,7 @@ struct GLBRoomView: View {
                     },
                     showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
                 )
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
                 .zIndex(100)
             }
 
@@ -437,22 +437,7 @@ struct GLBRoomView: View {
     }
 
     private var navigationBarRoomMeasurementPrincipal: some View {
-        VStack(spacing: 4) {
-            if fullVideoFurnitureTapHintVisible {
-                Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 260)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-            }
-            HStack(spacing: 8) {
+        HStack(spacing: 8) {
                 Button {
                     guard canPresentGLBRoomDimensionsAlert else { return }
                     onGLBRoomDimensionsRulerTapped()
@@ -482,7 +467,6 @@ struct GLBRoomView: View {
                     .transition(.opacity)
                 }
             }
-        }
     }
 
     private var selectedFurnitureChipTitle: String {
@@ -622,7 +606,30 @@ struct GLBRoomView: View {
     }
 
     private var fullVideoFurnitureTapHintOverlay: some View {
-        EmptyView()
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if fullVideoFurnitureTapHintVisible {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 260)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+                }
+            }
+            .padding(.top, roomDimensionsHintVisible ? 56 : 12)
+        }
+        .allowsHitTesting(false)
+        .zIndex(14)
     }
 
     private func dismissFullVideoFurnitureTapHint() {

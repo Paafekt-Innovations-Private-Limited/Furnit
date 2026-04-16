@@ -267,6 +267,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sampleQueue = DispatchQueue(label: "com.furnit.sample", qos: .userInitiated)
     private let captureSessionControlQueue = DispatchQueue(label: "com.furnit.capture.control", qos: .userInitiated)
+    private var coreMLInferenceQueueGeneration: UInt = 0
+    private var coreMLInferenceQueue = DispatchQueue(label: "com.furnit.coreml.inference.0", qos: .userInitiated)
+    private var coreMLInferenceBackoffUntil: Date?
+    private let coreMLInferenceWarningSeconds: TimeInterval = 2.0
+    private let coreMLInferenceTimeoutSeconds: TimeInterval = 12.0
 
     // MARK: Camera Path
     private let arSession = ARSession()
@@ -556,17 +561,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var protoPlanesInterleaved: [Float] = []
 
     // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
-    /// Stretch path: full frame scaled to the model square (matches Android / ONNX-style preprocessing).
-    private var cachedStretchBuffer: CVPixelBuffer?
-    private var cachedStretchSize: Int = 0
-    /// Letterbox path for the legacy 1280 Core ML package (`yoloe-26l-seg-pf`).
-    private var cachedLetterboxBuffer: CVPixelBuffer?
-    private var cachedLetterboxSize: Int = 0
+    /// Shared square model-input buffer reused by both stretch and letterbox preprocessing.
+    private var cachedSquareBuffer: CVPixelBuffer?
+    private var cachedSquareSize: Int = 0
     private var cachedMLArray: MLMultiArray?
     private var cachedMLArraySize: Int = 0
 
-    /// Reused scratch for CPU fallback compositing (vDSP + BLAS); grows with frame width, never shrinks.
-    private var compositeCpuScratchFloats: [Float] = []
+    /// Reused scratch for CPU fallback compositing (vDSP + BLAS); preallocated for common widths and grows if needed.
+    private var compositeCpuScratchFloats: [Float] = [Float](repeating: 0, count: 5 * 2048)
     /// Proto mask upscaled to the active composite band via vImage; grows to the largest band seen and never shrinks.
     private var upscaledPlanarMaskScratch: [UInt8] = []
     /// Whether the current model frame used Ultralytics-style letterbox instead of stretch.
@@ -3222,35 +3224,116 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         setProgress(0.40, text: "Running model…")
         let t2 = Date()
-        guard let output = try? model.prediction(from: inputProvider) else {
-            if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 2 FAILED: Model inference") }
-            resetProcessingFlag()
-            return
-        }
-        if debugMode {
-            logDebug("⏱️ ONNX-STYLE STAGE 2 - Inference (Core ML): \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
-            logMemory("AFTER ONNX-STYLE Core ML INFERENCE")
-        }
-
-        guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
+        if let backoffUntil = coreMLInferenceBackoffUntil, backoffUntil > Date() {
             if debugMode {
-                logDebug("❌ ONNX-STYLE Core ML: Missing output tensors")
-                let availableOutputs = output.featureNames.joined(separator: ", ")
-                logDebug("   Available outputs: \(availableOutputs)")
+                logDebug(
+                    "⚠️ ONNX-STYLE Core ML STAGE 2 SKIPPED: cooling down after timeout for " +
+                    "\(String(format: "%.2f", backoffUntil.timeIntervalSinceNow)) s"
+                )
             }
             resetProcessingFlag()
             return
         }
+        let processedSuccessfully = autoreleasepool { () -> Bool in
+            guard let output = performCoreMLPredictionWithWatchdog(
+                model: model,
+                inputProvider: inputProvider,
+                startedAt: t2
+            ) else {
+                return false
+            }
+            if debugMode {
+                logDebug("⏱️ ONNX-STYLE STAGE 2 - Inference (Core ML): \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
+                logMemory("AFTER ONNX-STYLE Core ML INFERENCE")
+            }
 
-        processFrameOnnxStyleCommon(
-            processBuffer: processBuffer,
-            arDepthSnapshot: arDepthSnapshot,
-            frameStart: frameStart,
-            detArray: pair.det,
-            protoArray: pair.proto,
-            modelSide: modelInputSize,
-            stage2DebugLabel: "Core ML"
+            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
+                if debugMode {
+                    logDebug("❌ ONNX-STYLE Core ML: Missing output tensors")
+                    let availableOutputs = output.featureNames.joined(separator: ", ")
+                    logDebug("   Available outputs: \(availableOutputs)")
+                }
+                return false
+            }
+
+            processFrameOnnxStyleCommon(
+                processBuffer: processBuffer,
+                arDepthSnapshot: arDepthSnapshot,
+                frameStart: frameStart,
+                detArray: pair.det,
+                protoArray: pair.proto,
+                modelSide: modelInputSize,
+                stage2DebugLabel: "Core ML"
+            )
+            return true
+        }
+        guard processedSuccessfully else {
+            resetProcessingFlag()
+            return
+        }
+    }
+
+    private func performCoreMLPredictionWithWatchdog(
+        model: MLModel,
+        inputProvider: MLFeatureProvider,
+        startedAt: Date
+    ) -> MLFeatureProvider? {
+        let semaphore = DispatchSemaphore(value: 0)
+        let inferenceQueue = coreMLInferenceQueue
+        var outputProvider: MLFeatureProvider?
+        var predictionError: Error?
+
+        let warningWorkItem = DispatchWorkItem { [weak self] in
+            guard let self, self.debugMode else { return }
+            logDebug(
+                "⚠️ ONNX-STYLE Core ML inference still running after " +
+                "\(String(format: "%.2f", Date().timeIntervalSince(startedAt) * 1000)) ms"
+            )
+            logMemory("DURING ONNX-STYLE Core ML INFERENCE")
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(
+            deadline: .now() + coreMLInferenceWarningSeconds,
+            execute: warningWorkItem
         )
+
+        inferenceQueue.async {
+            defer { semaphore.signal() }
+            do {
+                outputProvider = try model.prediction(from: inputProvider)
+            } catch {
+                predictionError = error
+            }
+        }
+
+        let waitResult = semaphore.wait(timeout: .now() + coreMLInferenceTimeoutSeconds)
+        warningWorkItem.cancel()
+
+        switch waitResult {
+        case .success:
+            if let predictionError {
+                if debugMode {
+                    logDebug("❌ ONNX-STYLE Core ML STAGE 2 FAILED: Model inference error: \(predictionError)")
+                }
+                return nil
+            }
+            coreMLInferenceBackoffUntil = nil
+            return outputProvider
+        case .timedOut:
+            if debugMode {
+                logDebug(
+                    "❌ ONNX-STYLE Core ML STAGE 2 TIMED OUT after " +
+                    "\(String(format: "%.2f", coreMLInferenceTimeoutSeconds * 1000)) ms; rotating inference queue"
+                )
+                logMemory("ONNX-STYLE Core ML INFERENCE TIMEOUT")
+            }
+            coreMLInferenceQueueGeneration += 1
+            coreMLInferenceQueue = DispatchQueue(
+                label: "com.furnit.coreml.inference.\(coreMLInferenceQueueGeneration)",
+                qos: .userInitiated
+            )
+            coreMLInferenceBackoffUntil = Date().addingTimeInterval(1.5)
+            return nil
+        }
     }
 
     /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence or largest bbox area (see ``primarySelectionByHighestConfidence``).
@@ -3306,11 +3389,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let scaleY = Float(bufH) / Float(onnxSide)
 
         let t3 = Date()
+        let prototypeParseStart = Date()
         guard let protoInfo = parsePrototypes(protoArray) else {
             if debugMode { logDebug("❌ ONNX-STYLE (\(stage2DebugLabel)): parse prototypes failed") }
             resetProcessingFlag()
             return
         }
+        let prototypeParseMs = Date().timeIntervalSince(prototypeParseStart) * 1000
         let planes = protoInfo.planes
         let pW = protoInfo.width
         let pH = protoInfo.height
@@ -3325,12 +3410,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
         // Support-surface hints (floor, carpet, tile, etc.) must inspect the unblacklisted detections.
+        let detectionParseAndFilterStart = Date()
         let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
-            classBlacklist: []
+            classBlacklist: [],
+            maximumDetections: 100
         )
-        YoloEDetectionParser.releaseF16Scratch()
 
         if rawDetections.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
@@ -3349,7 +3435,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if rawDetections.count > 1 {
             let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
             let capped = Array(sorted.prefix(100))
-            candidates = FurnitureFitNMS.apply(detections: capped, iouThreshold: 0.5)
+            candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
         } else {
             candidates = rawDetections
         }
@@ -3380,6 +3466,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
         }
+        let detectionParseAndFilterMs = Date().timeIntervalSince(detectionParseAndFilterStart) * 1000
         logChairDetectionMasksIfDebug(
             planes: planes,
             interleavedPlanes: protoInfo.interleavedPlanes,
@@ -3565,16 +3652,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             maskDetectionsForBuild = fusion
         }
 
+        let maskFusionStart = Date()
         let maskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
             planes: planes,
             protoW: pW,
             protoH: pH,
             detections: maskDetectionsForBuild
         )
+        let maskFusionMs = Date().timeIntervalSince(maskFusionStart) * 1000
         var maskSmall = maskResult.binary
+        let morphologyStart = Date()
         if furnitureFitUseMorphologicalCloseMask {
             maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
         }
+        let morphologyMs = Date().timeIntervalSince(morphologyStart) * 1000
 
         let primaryBufferRect = bufferRect(
             for: primary,
@@ -3621,6 +3712,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         if debugMode {
             let stage35Ms = Date().timeIntervalSince(t3) * 1000
+            logDebug(
+                "⏱️ ONNX-STYLE (\(stage2DebugLabel)) breakdown - " +
+                "proto/decode: \(String(format: "%.2f", prototypeParseMs)) ms, " +
+                "parse/NMS/filter: \(String(format: "%.2f", detectionParseAndFilterMs)) ms, " +
+                "mask fusion: \(String(format: "%.2f", maskFusionMs)) ms, " +
+                "morph: \(String(format: "%.2f", morphologyMs)) ms"
+            )
             logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", stage35Ms)) ms")
         }
 
@@ -5501,6 +5599,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return ctx.makeImage()
     }
 
+    private func squarePixelBufferAttributes() -> CFDictionary {
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true,
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ]
+        return attrs as CFDictionary
+    }
+
     /// Stretch to fill `size`×`size` (matches Android ONNX `createScaledBitmap` preprocessing).
     private func resizeStretchToSquare(_ src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
         CVPixelBufferLockBaseAddress(src, .readOnly)
@@ -5509,15 +5617,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let srcW = CVPixelBufferGetWidth(src)
         let srcH = CVPixelBufferGetHeight(src)
 
-        if cachedStretchSize != size || cachedStretchBuffer == nil {
+        if cachedSquareSize != size || cachedSquareBuffer == nil {
             var newBuffer: CVPixelBuffer?
-            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, squarePixelBufferAttributes(), &newBuffer) == kCVReturnSuccess,
                   let buf = newBuffer else { return nil }
-            cachedStretchBuffer = buf
-            cachedStretchSize = size
+            cachedSquareBuffer = buf
+            cachedSquareSize = size
         }
 
-        guard let dst = cachedStretchBuffer else { return nil }
+        guard let dst = cachedSquareBuffer else { return nil }
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
 
@@ -5536,7 +5644,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             width: vImagePixelCount(size),
             rowBytes: CVPixelBufferGetBytesPerRow(dst)
         )
-        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
             return nil
         }
         return dst
@@ -5551,32 +5659,37 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let srcH = CVPixelBufferGetHeight(src)
         guard srcW > 0, srcH > 0 else { return nil }
 
-        if cachedLetterboxSize != size || cachedLetterboxBuffer == nil {
+        if cachedSquareSize != size || cachedSquareBuffer == nil {
             var newBuffer: CVPixelBuffer?
-            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, squarePixelBufferAttributes(), &newBuffer) == kCVReturnSuccess,
                   let buf = newBuffer else { return nil }
-            cachedLetterboxBuffer = buf
-            cachedLetterboxSize = size
+            cachedSquareBuffer = buf
+            cachedSquareSize = size
         }
 
-        guard let dst = cachedLetterboxBuffer else { return nil }
+        guard let dst = cachedSquareBuffer else { return nil }
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
 
         guard let srcBase = CVPixelBufferGetBaseAddress(src),
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
 
-        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114(
-            dstBase: dstBase,
-            totalByteCount: dstRowBytes * size
-        )
-
         let scale = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
         let scaledWidth = max(1, min(size, Int(round(Float(srcW) * scale))))
         let scaledHeight = max(1, min(size, Int(round(Float(srcH) * scale))))
         let padX = (size - scaledWidth) / 2
         let padY = (size - scaledHeight) / 2
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
+        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114LetterboxStrips(
+            dstBase: dstBase,
+            width: size,
+            height: size,
+            bytesPerRow: dstRowBytes,
+            padX: padX,
+            padY: padY,
+            scaledWidth: scaledWidth,
+            scaledHeight: scaledHeight
+        )
 
         var srcBuffer = vImage_Buffer(
             data: srcBase,
@@ -5590,21 +5703,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             width: vImagePixelCount(scaledWidth),
             rowBytes: dstRowBytes
         )
-        guard vImageScale_ARGB8888(&srcBuffer, &dstRegion, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+        guard vImageScale_ARGB8888(&srcBuffer, &dstRegion, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
             return nil
         }
         return dst
     }
 
     private func processFrameInner(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
-        let frameStart = Date()
-        if debugMode { logMemory("FRAME START") }
-        loadBlacklistOnce()
-
         guard let model = mlModel else {
             resetProcessingFlag()
             return
         }
+        let frameStart = Date()
+        if debugMode { logMemory("FRAME START") }
+        loadBlacklistOnce()
         processFrameOnnxStyleCoreML(
             processBuffer: pixelBuffer,
             model: model,
@@ -5642,15 +5754,104 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let total = shape[0] * shape[1] * shape[2]
 
         guard proto.dataType == .float32 || proto.dataType == .float16 else { return nil }
-
-        if protoRawFloats.count != total {
-            protoRawFloats = [Float](repeating: 0, count: total)
-        }
         if protoPlanes.count != count * planeSize {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
         }
-        if protoPlanesInterleaved.count != count * planeSize {
+        let shouldBuildInterleavedPlanes = debugMode
+        if shouldBuildInterleavedPlanes, protoPlanesInterleaved.count != count * planeSize {
             protoPlanesInterleaved = [Float](repeating: 0, count: count * planeSize)
+        } else if !shouldBuildInterleavedPlanes, !protoPlanesInterleaved.isEmpty {
+            protoPlanesInterleaved = []
+        }
+
+        let channelFirstContiguous = cIdx == 0 &&
+            normalizedStrides.count == 3 &&
+            normalizedStrides[0] == planeSize &&
+            normalizedStrides[1] == w &&
+            normalizedStrides[2] == 1
+        let channelLastContiguous = cIdx == 2 &&
+            normalizedStrides.count == 3 &&
+            normalizedStrides[0] == w * count &&
+            normalizedStrides[1] == count &&
+            normalizedStrides[2] == 1
+        if channelFirstContiguous {
+            if proto.dataType == .float32 {
+                protoPlanes.withUnsafeMutableBufferPointer { dst in
+                    guard let dstBase = dst.baseAddress else { return }
+                    memcpy(dstBase, proto.dataPointer, count * planeSize * MemoryLayout<Float>.size)
+                }
+            } else {
+                let src16 = proto.dataPointer.bindMemory(to: UInt16.self, capacity: proto.count)
+                protoPlanes.withUnsafeMutableBufferPointer { dst in
+                    guard let dstBase = dst.baseAddress else { return }
+                    var srcBuf = vImage_Buffer(
+                        data: UnsafeMutableRawPointer(mutating: src16),
+                        height: 1,
+                        width: vImagePixelCount(count * planeSize),
+                        rowBytes: count * planeSize * MemoryLayout<UInt16>.size
+                    )
+                    var dstBuf = vImage_Buffer(
+                        data: dstBase,
+                        height: 1,
+                        width: vImagePixelCount(count * planeSize),
+                        rowBytes: count * planeSize * MemoryLayout<Float>.size
+                    )
+                    vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                }
+            }
+
+            if shouldBuildInterleavedPlanes {
+                protoPlanes.withUnsafeBufferPointer { src in
+                    protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
+                        guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
+                        for protoIndex in 0..<planeSize {
+                            let dstRowBase = protoIndex * count
+                            for channel in 0..<count {
+                                dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
+                            }
+                        }
+                    }
+                }
+            }
+
+            return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
+        }
+
+        if channelLastContiguous, proto.dataType == .float32 {
+            let srcBase = proto.dataPointer.bindMemory(to: Float.self, capacity: total)
+            protoPlanes.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress else { return }
+                for channel in 0..<count {
+                    blas_scopy(
+                        BLASInt(planeSize),
+                        srcBase.advanced(by: channel),
+                        BLASInt(count),
+                        dstBase.advanced(by: channel * planeSize),
+                        1
+                    )
+                }
+            }
+
+            if shouldBuildInterleavedPlanes {
+                protoPlanes.withUnsafeBufferPointer { src in
+                    protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
+                        guard let contiguousPlanes = src.baseAddress,
+                              let interleavedBase = dst.baseAddress else { return }
+                        for protoIndex in 0..<planeSize {
+                            let dstRowBase = protoIndex * count
+                            for channel in 0..<count {
+                                interleavedBase[dstRowBase + channel] = contiguousPlanes[channel * planeSize + protoIndex]
+                            }
+                        }
+                    }
+                }
+            }
+
+            return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
+        }
+
+        if protoRawFloats.count != total {
+            protoRawFloats = [Float](repeating: 0, count: total)
         }
 
         if proto.dataType == .float32 {
@@ -5854,20 +6055,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        // GPU fused kernels prefer [pixel][32] so one pixel's prototype vector is contiguous.
-        protoPlanes.withUnsafeBufferPointer { src in
-            protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
-                guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
-                for protoIndex in 0..<planeSize {
-                    let dstRowBase = protoIndex * count
-                    for channel in 0..<count {
-                        dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
+        if shouldBuildInterleavedPlanes {
+            // Debug-only chair logging prefers [pixel][32] so one pixel's prototype vector is contiguous.
+            protoPlanes.withUnsafeBufferPointer { src in
+                protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
+                    guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
+                    for protoIndex in 0..<planeSize {
+                        let dstRowBase = protoIndex * count
+                        for channel in 0..<count {
+                            dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
+                        }
                     }
                 }
             }
         }
 
-        return (protoPlanes, protoPlanesInterleaved, count, h, w, shape, normalizedStrides, cIdx)
+        return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
     }
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
@@ -6020,47 +6223,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-        
+
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let pixelCount = width * height
         let floatSize = MemoryLayout<Float32>.size
         let planeStrideBytes = pixelCount * floatSize
-        
+
         let rPtr = array.dataPointer.advanced(by: 0).assumingMemoryBound(to: Float32.self)
         let gPtr = array.dataPointer.advanced(by: planeStrideBytes).assumingMemoryBound(to: Float32.self)
         let bPtr = array.dataPointer.advanced(by: planeStrideBytes * 2).assumingMemoryBound(to: Float32.self)
-        
-        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
-        var rowU8 = [UInt8](repeating: 0, count: width * 4)
-        var rowF = [Float](repeating: 0, count: width * 4)
         var scale: Float = 1.0 / 255.0
-        
-        var indicesR = [vDSP_Length](repeating: 0, count: width)
-        var indicesG = [vDSP_Length](repeating: 0, count: width)
-        var indicesB = [vDSP_Length](repeating: 0, count: width)
-        for i in 0..<width {
-            indicesR[i] = vDSP_Length(2 + i * 4)
-            indicesG[i] = vDSP_Length(1 + i * 4)
-            indicesB[i] = vDSP_Length(0 + i * 4)
-        }
-        
+        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let rowLength = vDSP_Length(width)
+
         for y in 0..<height {
             let rowStart = src.advanced(by: y * bytesPerRow)
-            memcpy(&rowU8, rowStart, width * 4)
-            
-            rowU8.withUnsafeBufferPointer { u8 in
-                rowF.withUnsafeMutableBufferPointer { f in
-                    vDSP_vfltu8(u8.baseAddress!, 1, f.baseAddress!, 1, vDSP_Length(width * 4))
-                    vDSP_vsmul(f.baseAddress!, 1, &scale, f.baseAddress!, 1, vDSP_Length(width * 4))
-                }
-            }
-            
-            rowF.withUnsafeBufferPointer { rf in
-                vDSP_vgathr(rf.baseAddress!, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(rf.baseAddress!, indicesG, 1, gPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(rf.baseAddress!, indicesB, 1, bPtr.advanced(by: y * width), 1, vDSP_Length(width))
-            }
+            let rRow = rPtr.advanced(by: y * width)
+            let gRow = gPtr.advanced(by: y * width)
+            let bRow = bPtr.advanced(by: y * width)
+
+            vDSP_vfltu8(rowStart.advanced(by: 2), 4, rRow, 1, rowLength)
+            vDSP_vsmul(rRow, 1, &scale, rRow, 1, rowLength)
+
+            vDSP_vfltu8(rowStart.advanced(by: 1), 4, gRow, 1, rowLength)
+            vDSP_vsmul(gRow, 1, &scale, gRow, 1, rowLength)
+
+            vDSP_vfltu8(rowStart.advanced(by: 0), 4, bRow, 1, rowLength)
+            vDSP_vsmul(bRow, 1, &scale, bRow, 1, rowLength)
         }
+
         return array
     }
 
@@ -6077,6 +6268,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Create destination buffer with proper attributes
         let attrs: [String: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+            kCVPixelBufferMetalCompatibilityKey as String: true,
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
         ]

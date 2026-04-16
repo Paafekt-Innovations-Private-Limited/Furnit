@@ -79,7 +79,8 @@ enum YoloEDetectionParser {
         detArray: MLMultiArray,
         totalCount: Int,
         confidenceThreshold: Float,
-        classBlacklist: Set<Int>
+        classBlacklist: Set<Int>,
+        maximumDetections: Int?
     ) -> [FurnitureFitDetection] {
         let dim1 = detArray.shape[1].intValue
         let dim2 = detArray.shape[2].intValue
@@ -157,6 +158,10 @@ enum YoloEDetectionParser {
                     )
                 )
             }
+            if let maximumDetections, maximumDetections > 0, allDets.count > maximumDetections {
+                allDets.sort { $0.confidence > $1.confidence }
+                allDets.removeSubrange(maximumDetections...)
+            }
         } else {
             // ── One-to-many format: [1, numFeatures, numAnchors] ──
             let numFeatures = dim1
@@ -168,94 +173,104 @@ enum YoloEDetectionParser {
             let coeffOffset = 4 + numClasses
 
             // Pre-compute max class score + argmax for ALL anchors at once.
-            // Class rows [4 ..< 4+numClasses] are laid out as contiguous rows of `numAnchors` floats,
-            // so iterating over classes gives us cache-friendly, sequential access. We also allow
-            // early exit for anchors that already have a very high score.
+            // Class rows [4 ..< 4+numClasses] are contiguous rows of `numAnchors` floats,
+            // so scanning class-major keeps memory access sequential and avoids strided MLMultiArray reads.
             var maxScores = [Float](repeating: -Float.greatestFiniteMagnitude, count: numAnchors)
             var maxClassIndices = [Int](repeating: 0, count: numAnchors)
-            var anchorDone = [Bool](repeating: false, count: numAnchors)
-            var remainingAnchors = numAnchors
-            let earlyStopThreshold: Float = 0.9
+            maxScores.withUnsafeMutableBufferPointer { scores in
+                maxClassIndices.withUnsafeMutableBufferPointer { indices in
+                    guard let scoreBase = scores.baseAddress,
+                          let classIndexBase = indices.baseAddress else { return }
+                    for cls in 0..<numClasses {
+                        let rowPtr = detBuf.advanced(by: (4 + cls) * stride)
+                        var anchor = 0
+                        let unrolledLimit = numAnchors - (numAnchors % 8)
+                        while anchor < unrolledLimit {
+                            let value0 = rowPtr[anchor]
+                            if value0 > scoreBase[anchor] {
+                                scoreBase[anchor] = value0
+                                classIndexBase[anchor] = cls
+                            }
 
-            for cls in 0..<numClasses {
-                if remainingAnchors == 0 {
-                    break
-                }
-                let rowPtr = detBuf.advanced(by: (4 + cls) * stride)
-                maxScores.withUnsafeMutableBufferPointer { scores in
-                    maxClassIndices.withUnsafeMutableBufferPointer { indices in
-                        guard let sBase = scores.baseAddress,
-                              let iBase = indices.baseAddress else { return }
-                        var a = 0
-                        // Process 4 anchors at a time to help the compiler generate SIMD.
-                        let limit = numAnchors - (numAnchors % 4)
-                        while a < limit {
-                            if !anchorDone[a] {
-                                let v0 = rowPtr[a]
-                                if v0 > sBase[a] {
-                                    sBase[a] = v0
-                                    iBase[a] = cls
-                                    if v0 >= earlyStopThreshold && !anchorDone[a] {
-                                        anchorDone[a] = true
-                                        remainingAnchors -= 1
-                                    }
-                                }
+                            let value1 = rowPtr[anchor + 1]
+                            if value1 > scoreBase[anchor + 1] {
+                                scoreBase[anchor + 1] = value1
+                                classIndexBase[anchor + 1] = cls
                             }
-                            if !anchorDone[a + 1] {
-                                let v1 = rowPtr[a + 1]
-                                if v1 > sBase[a + 1] {
-                                    sBase[a + 1] = v1
-                                    iBase[a + 1] = cls
-                                    if v1 >= earlyStopThreshold && !anchorDone[a + 1] {
-                                        anchorDone[a + 1] = true
-                                        remainingAnchors -= 1
-                                    }
-                                }
+
+                            let value2 = rowPtr[anchor + 2]
+                            if value2 > scoreBase[anchor + 2] {
+                                scoreBase[anchor + 2] = value2
+                                classIndexBase[anchor + 2] = cls
                             }
-                            if !anchorDone[a + 2] {
-                                let v2 = rowPtr[a + 2]
-                                if v2 > sBase[a + 2] {
-                                    sBase[a + 2] = v2
-                                    iBase[a + 2] = cls
-                                    if v2 >= earlyStopThreshold && !anchorDone[a + 2] {
-                                        anchorDone[a + 2] = true
-                                        remainingAnchors -= 1
-                                    }
-                                }
+
+                            let value3 = rowPtr[anchor + 3]
+                            if value3 > scoreBase[anchor + 3] {
+                                scoreBase[anchor + 3] = value3
+                                classIndexBase[anchor + 3] = cls
                             }
-                            if !anchorDone[a + 3] {
-                                let v3 = rowPtr[a + 3]
-                                if v3 > sBase[a + 3] {
-                                    sBase[a + 3] = v3
-                                    iBase[a + 3] = cls
-                                    if v3 >= earlyStopThreshold && !anchorDone[a + 3] {
-                                        anchorDone[a + 3] = true
-                                        remainingAnchors -= 1
-                                    }
-                                }
+
+                            let value4 = rowPtr[anchor + 4]
+                            if value4 > scoreBase[anchor + 4] {
+                                scoreBase[anchor + 4] = value4
+                                classIndexBase[anchor + 4] = cls
                             }
-                            a += 4
+
+                            let value5 = rowPtr[anchor + 5]
+                            if value5 > scoreBase[anchor + 5] {
+                                scoreBase[anchor + 5] = value5
+                                classIndexBase[anchor + 5] = cls
+                            }
+
+                            let value6 = rowPtr[anchor + 6]
+                            if value6 > scoreBase[anchor + 6] {
+                                scoreBase[anchor + 6] = value6
+                                classIndexBase[anchor + 6] = cls
+                            }
+
+                            let value7 = rowPtr[anchor + 7]
+                            if value7 > scoreBase[anchor + 7] {
+                                scoreBase[anchor + 7] = value7
+                                classIndexBase[anchor + 7] = cls
+                            }
+
+                            anchor += 8
                         }
-                        while a < numAnchors {
-                            if !anchorDone[a] {
-                                let v = rowPtr[a]
-                                if v > sBase[a] {
-                                    sBase[a] = v
-                                    iBase[a] = cls
-                                    if v >= earlyStopThreshold && !anchorDone[a] {
-                                        anchorDone[a] = true
-                                        remainingAnchors -= 1
-                                    }
-                                }
+
+                        while anchor < numAnchors {
+                            let value = rowPtr[anchor]
+                            if value > scoreBase[anchor] {
+                                scoreBase[anchor] = value
+                                classIndexBase[anchor] = cls
                             }
-                            a += 1
+                            anchor += 1
                         }
                     }
                 }
             }
 
-            // Now emit detections using the pre-computed max scores / indices.
-            for anchor in 0..<numAnchors {
+            var anchorsToMaterialize: [Int]
+            if let maximumDetections, maximumDetections > 0 {
+                anchorsToMaterialize = []
+                anchorsToMaterialize.reserveCapacity(min(maximumDetections, numAnchors))
+                for anchor in 0..<numAnchors {
+                    let maxVal = maxScores[anchor]
+                    guard maxVal.isFinite, maxVal >= confidenceThreshold else { continue }
+                    let classIdx = maxClassIndices[anchor]
+                    guard classIdx >= 0, !classBlacklist.contains(classIdx) else { continue }
+                    anchorsToMaterialize.append(anchor)
+                }
+                if anchorsToMaterialize.count > maximumDetections {
+                    anchorsToMaterialize.sort { maxScores[$0] > maxScores[$1] }
+                    anchorsToMaterialize.removeSubrange(maximumDetections...)
+                } else {
+                    anchorsToMaterialize.sort { maxScores[$0] > maxScores[$1] }
+                }
+            } else {
+                anchorsToMaterialize = Array(0..<numAnchors)
+            }
+
+            for anchor in anchorsToMaterialize {
                 let maxVal = maxScores[anchor]
                 guard maxVal.isFinite, maxVal >= confidenceThreshold else { continue }
 
@@ -269,7 +284,6 @@ enum YoloEDetectionParser {
 
                 guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
 
-                // Gather 32 mask coefficients (strided → contiguous) via BLAS
                 var coeffs = [Float](repeating: 0, count: 32)
                 let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                 yolo_blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
@@ -294,7 +308,8 @@ enum YoloEDetectionParser {
     static func parseDetections(
         detArray: MLMultiArray,
         confidenceThreshold: Float,
-        classBlacklist: Set<Int>
+        classBlacklist: Set<Int>,
+        maximumDetections: Int? = nil
     ) -> [FurnitureFitDetection] {
         let totalCount = detArray.count
         guard totalCount > 0 else { return [] }
@@ -307,7 +322,8 @@ enum YoloEDetectionParser {
                 detArray: detArray,
                 totalCount: totalCount,
                 confidenceThreshold: confidenceThreshold,
-                classBlacklist: classBlacklist
+                classBlacklist: classBlacklist,
+                maximumDetections: maximumDetections
             )
 
         case .float16:
@@ -372,7 +388,8 @@ enum YoloEDetectionParser {
                     detArray: detArray,
                     totalCount: totalCount,
                     confidenceThreshold: confidenceThreshold,
-                    classBlacklist: classBlacklist
+                    classBlacklist: classBlacklist,
+                    maximumDetections: maximumDetections
                 )
             }
             return result
@@ -380,6 +397,10 @@ enum YoloEDetectionParser {
         default:
             return []
         }
+    }
+
+    static func trimScratchBuffers() {
+        releaseF16Scratch()
     }
 
     static func extractDetectionAndProto(

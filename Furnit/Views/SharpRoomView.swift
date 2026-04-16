@@ -283,22 +283,7 @@ struct SharpRoomView: View {
 
     /// Center nav bar: tap the ruler to inspect the dimensions currently backing the room preview.
     private var navigationBarRoomMeasurementPrincipal: some View {
-        VStack(spacing: 4) {
-            if fullVideoFurnitureTapHintVisible {
-                Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 260)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-            }
-            HStack(spacing: 8) {
+        HStack(spacing: 8) {
                 Button {
                     if let d = activeRoomMetersDimensions {
                         logDebug(
@@ -348,7 +333,6 @@ struct SharpRoomView: View {
                     .transition(.opacity)
                 }
             }
-        }
     }
 
     private var selectedFurnitureChipTitle: String {
@@ -1192,7 +1176,31 @@ struct SharpRoomView: View {
     }
 
     private var fullVideoFurnitureTapHintOverlay: some View {
-        EmptyView()
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if fullVideoFurnitureTapHintVisible {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 260)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+                }
+            }
+            .padding(.top, roomDimensionsHintVisible ? 56 : 12)
+        }
+        .allowsHitTesting(false)
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(105)
     }
 
     /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
@@ -1638,7 +1646,8 @@ struct SharpRoomView: View {
             },
             showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
         )
-        .ignoresSafeArea()
+        // Do not ignore top safe area: full-screen camera would sit under the nav bar and steal ruler taps.
+        .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
         .zIndex(100)
     }
 

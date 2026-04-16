@@ -76,6 +76,31 @@ public struct FurnitureFitIoU {
 /// Utility class for Non-Maximum Suppression operations
 public struct FurnitureFitNMS {
 
+    private static func applySortedDescending(
+        detections: [FurnitureFitDetection],
+        iouThreshold: Float
+    ) -> [FurnitureFitDetection] {
+        var kept: [FurnitureFitDetection] = []
+        kept.reserveCapacity(detections.count)
+        var suppressed = [Bool](repeating: false, count: detections.count)
+
+        for currentIndex in 0..<detections.count {
+            if suppressed[currentIndex] { continue }
+            let current = detections[currentIndex]
+            kept.append(current)
+
+            if currentIndex + 1 >= detections.count { continue }
+            for candidateIndex in (currentIndex + 1)..<detections.count {
+                if suppressed[candidateIndex] { continue }
+                if FurnitureFitIoU.calculate(current, detections[candidateIndex]) > iouThreshold {
+                    suppressed[candidateIndex] = true
+                }
+            }
+        }
+
+        return kept
+    }
+
     /// Apply NMS to a list of detections
     /// - Parameters:
     ///   - detections: List of detections to filter
@@ -84,21 +109,13 @@ public struct FurnitureFitNMS {
     public static func apply(detections: [FurnitureFitDetection], iouThreshold: Float) -> [FurnitureFitDetection] {
         guard !detections.isEmpty else { return [] }
 
-        // Sort by confidence descending
-        var sorted = detections.sorted { $0.confidence > $1.confidence }
-        var kept: [FurnitureFitDetection] = []
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        return applySortedDescending(detections: sorted, iouThreshold: iouThreshold)
+    }
 
-        while !sorted.isEmpty {
-            let current = sorted.removeFirst()
-            kept.append(current)
-
-            // Remove all boxes with IoU > threshold
-            sorted.removeAll { candidate in
-                FurnitureFitIoU.calculate(current, candidate) > iouThreshold
-            }
-        }
-
-        return kept
+    public static func applySortedByConfidence(detections: [FurnitureFitDetection], iouThreshold: Float) -> [FurnitureFitDetection] {
+        guard !detections.isEmpty else { return [] }
+        return applySortedDescending(detections: detections, iouThreshold: iouThreshold)
     }
 
     /// Apply NMS using CGRect boxes and scores
@@ -110,21 +127,27 @@ public struct FurnitureFitNMS {
     public static func apply(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
         guard boxes.count == scores.count, !boxes.isEmpty else { return [] }
 
-        // Sort indices by score descending
-        var indices = scores.enumerated()
+        let indices = scores.enumerated()
             .sorted { $0.element > $1.element }
             .map { $0.offset }
 
         var kept: [Int] = []
+        kept.reserveCapacity(indices.count)
+        var suppressed = [Bool](repeating: false, count: indices.count)
 
-        while !indices.isEmpty {
-            let currentIdx = indices.removeFirst()
+        for currentPosition in 0..<indices.count {
+            if suppressed[currentPosition] { continue }
+            let currentIdx = indices[currentPosition]
             kept.append(currentIdx)
 
-            // Remove indices with high IoU overlap
-            indices.removeAll { nextIdx in
+            if currentPosition + 1 >= indices.count { continue }
+            for nextPosition in (currentPosition + 1)..<indices.count {
+                if suppressed[nextPosition] { continue }
+                let nextIdx = indices[nextPosition]
                 let iou = FurnitureFitIoU.calculate(boxes[currentIdx], boxes[nextIdx])
-                return iou > CGFloat(iouThreshold)
+                if iou > CGFloat(iouThreshold) {
+                    suppressed[nextPosition] = true
+                }
             }
         }
 
@@ -278,6 +301,45 @@ public enum YoloUltralyticsLetterboxFill {
         var pattern = (UInt8(114), UInt8(114), UInt8(114), UInt8(255))
         withUnsafePointer(to: &pattern) {
             memset_pattern4(dstBase, UnsafeRawPointer($0), totalByteCount)
+        }
+    }
+
+    public static func fillOpaqueBGRA114LetterboxStrips(
+        dstBase: UnsafeMutableRawPointer,
+        width: Int,
+        height: Int,
+        bytesPerRow: Int,
+        padX: Int,
+        padY: Int,
+        scaledWidth: Int,
+        scaledHeight: Int
+    ) {
+        guard width > 0, height > 0, bytesPerRow > 0 else { return }
+
+        var pattern = (UInt8(114), UInt8(114), UInt8(114), UInt8(255))
+        let clampedPadX = max(0, min(width, padX))
+        let clampedPadY = max(0, min(height, padY))
+        let scaledRight = max(clampedPadX, min(width, clampedPadX + scaledWidth))
+        let scaledBottom = max(clampedPadY, min(height, clampedPadY + scaledHeight))
+        let fullRowBytes = width * 4
+        let leftPadBytes = clampedPadX * 4
+        let rightPadBytes = max(0, width - scaledRight) * 4
+
+        withUnsafePointer(to: &pattern) { patternPointer in
+            let rawPattern = UnsafeRawPointer(patternPointer)
+            for y in 0..<height {
+                let rowBase = dstBase.advanced(by: y * bytesPerRow)
+                if y < clampedPadY || y >= scaledBottom {
+                    memset_pattern4(rowBase, rawPattern, fullRowBytes)
+                } else {
+                    if leftPadBytes > 0 {
+                        memset_pattern4(rowBase, rawPattern, leftPadBytes)
+                    }
+                    if rightPadBytes > 0 {
+                        memset_pattern4(rowBase.advanced(by: scaledRight * 4), rawPattern, rightPadBytes)
+                    }
+                }
+            }
         }
     }
 }

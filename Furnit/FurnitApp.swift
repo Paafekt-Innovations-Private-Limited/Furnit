@@ -131,6 +131,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         Task { @MainActor in
             logDebug("⚠️ [AppDelegate] Memory warning — releasing SHARP + YOLOE")
+            YoloEDetectionParser.trimScratchBuffers()
             SHARPService.shared.releaseResources()
             YOLOEModelService.shared.releaseResources()
         }

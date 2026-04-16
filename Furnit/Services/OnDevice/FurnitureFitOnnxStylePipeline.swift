@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 
 /// Android `FurnitureFitManager` ONNX path parity: NMS → primary scoring → supporting-table heuristic → bbox-limited proto logit mask.
@@ -430,32 +431,91 @@ enum FurnitureFitOnnxStylePipeline {
                     [Float](repeating: 0, count: hwProto))
         }
 
-        var maskProto = [Float](repeating: 0, count: hwProto)
+        let validDetections = detections.filter { $0.coeffs.count >= 32 }
+        guard !validDetections.isEmpty else {
+            return ([UInt8](repeating: 0, count: hwProto),
+                    [Float](repeating: 0, count: hwProto))
+        }
 
-        let detCount = detections.count
-        for (dIdx, detection) in detections.enumerated() {
-            guard detection.coeffs.count >= 32 else { continue }
-            let isFirst = (dIdx == 0)
-            for px in 0..<hwProto {
-                var sum: Float = 0
-                var ch = 0
-                while ch < 32 {
-                    sum += detection.coeffs[ch] * planes[ch * hwProto + px]
-                    ch += 1
-                }
-                if isFirst && detCount == 1 {
-                    maskProto[px] = sum
-                } else if isFirst {
-                    maskProto[px] = sum
-                } else if sum > maskProto[px] {
-                    maskProto[px] = sum
+        var prototypeMatrixPixelMajor = [Float](repeating: 0, count: hwProto * 32)
+        var zero: Float = 0
+        prototypeMatrixPixelMajor.withUnsafeMutableBufferPointer { destinationPointer in
+            planes.withUnsafeBufferPointer { sourcePointer in
+                guard let destinationBase = destinationPointer.baseAddress,
+                      let sourceBase = sourcePointer.baseAddress else { return }
+                for channelIndex in 0..<32 {
+                    let sourceStart = sourceBase.advanced(by: channelIndex * hwProto)
+                    let destinationStart = destinationBase.advanced(by: channelIndex)
+                    vDSP_vsadd(sourceStart, 1, &zero, destinationStart, 32, vDSP_Length(hwProto))
                 }
             }
         }
 
+        var maximumLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: hwProto)
+        let batchSize = 64
+        let matrixHeight = vDSP_Length(hwProto)
+        let matrixDepth = vDSP_Length(32)
+        var batchStart = 0
+
+        while batchStart < validDetections.count {
+            let batchEnd = min(validDetections.count, batchStart + batchSize)
+            let batchCount = batchEnd - batchStart
+            var coefficientMatrix = [Float](repeating: 0, count: 32 * batchCount)
+
+            for detectionOffset in 0..<batchCount {
+                let coeffs = validDetections[batchStart + detectionOffset].coeffs
+                for channelIndex in 0..<32 {
+                    coefficientMatrix[channelIndex * batchCount + detectionOffset] = coeffs[channelIndex]
+                }
+            }
+
+            var logitsBatch = [Float](repeating: 0, count: hwProto * batchCount)
+            prototypeMatrixPixelMajor.withUnsafeBufferPointer { prototypePointer in
+                coefficientMatrix.withUnsafeBufferPointer { coefficientPointer in
+                    logitsBatch.withUnsafeMutableBufferPointer { logitsPointer in
+                        guard let prototypeBase = prototypePointer.baseAddress,
+                              let coefficientBase = coefficientPointer.baseAddress,
+                              let logitsBase = logitsPointer.baseAddress else { return }
+                        vDSP_mmul(
+                            prototypeBase,
+                            1,
+                            coefficientBase,
+                            1,
+                            logitsBase,
+                            1,
+                            matrixHeight,
+                            vDSP_Length(batchCount),
+                            matrixDepth
+                        )
+                    }
+                }
+            }
+
+            logitsBatch.withUnsafeBufferPointer { logitsPointer in
+                maximumLogits.withUnsafeMutableBufferPointer { maximumPointer in
+                    guard let logitsBase = logitsPointer.baseAddress,
+                          let maximumBase = maximumPointer.baseAddress else { return }
+                    for protoPixelIndex in 0..<hwProto {
+                        var rowMaximum: Float = 0
+                        vDSP_maxv(
+                            logitsBase.advanced(by: protoPixelIndex * batchCount),
+                            1,
+                            &rowMaximum,
+                            vDSP_Length(batchCount)
+                        )
+                        if rowMaximum > maximumBase[protoPixelIndex] {
+                            maximumBase[protoPixelIndex] = rowMaximum
+                        }
+                    }
+                }
+            }
+
+            batchStart = batchEnd
+        }
+
         let threshold = maskLogitThreshold
-        let binary = maskProto.map { $0 > threshold ? UInt8(255) : UInt8(0) }
-        return (binary, maskProto)
+        let binary = maximumLogits.map { $0 > threshold ? UInt8(255) : UInt8(0) }
+        return (binary, maximumLogits)
     }
 
     // MARK: - ASCII mask visualization for debug logs

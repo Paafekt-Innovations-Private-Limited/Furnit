@@ -176,8 +176,10 @@ enum YoloEImageInference {
         let h = cgImage.height
         var pb: CVPixelBuffer?
         let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true,
             kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
         ]
         guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb) == kCVReturnSuccess,
               let buffer = pb else { return nil }
@@ -198,6 +200,16 @@ enum YoloEImageInference {
 
     // MARK: - Stretch (matches `FurnitureFitView.resizeStretchToSquare`)
 
+    private static func squarePixelBufferAttributes() -> CFDictionary {
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true,
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ]
+        return attrs as CFDictionary
+    }
+
     private static func resizeStretchToSquare(src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
         CVPixelBufferLockBaseAddress(src, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
@@ -206,7 +218,7 @@ enum YoloEImageInference {
         let srcH = CVPixelBufferGetHeight(src)
 
         var newBuffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, squarePixelBufferAttributes(), &newBuffer) == kCVReturnSuccess,
               let dst = newBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(dst, [])
@@ -227,7 +239,7 @@ enum YoloEImageInference {
             width: vImagePixelCount(size),
             rowBytes: CVPixelBufferGetBytesPerRow(dst)
         )
-        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+        guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
             return nil
         }
         return dst
@@ -242,7 +254,7 @@ enum YoloEImageInference {
         guard srcW > 0, srcH > 0 else { return nil }
 
         var newBuffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, squarePixelBufferAttributes(), &newBuffer) == kCVReturnSuccess,
               let dst = newBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(dst, [])
@@ -251,17 +263,22 @@ enum YoloEImageInference {
         guard let srcBase = CVPixelBufferGetBaseAddress(src),
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
 
-        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114(
-            dstBase: dstBase,
-            totalByteCount: dstRowBytes * size
-        )
-
         let scale = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
         let scaledWidth = max(1, min(size, Int(round(Float(srcW) * scale))))
         let scaledHeight = max(1, min(size, Int(round(Float(srcH) * scale))))
         let padX = (size - scaledWidth) / 2
         let padY = (size - scaledHeight) / 2
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
+        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114LetterboxStrips(
+            dstBase: dstBase,
+            width: size,
+            height: size,
+            bytesPerRow: dstRowBytes,
+            padX: padX,
+            padY: padY,
+            scaledWidth: scaledWidth,
+            scaledHeight: scaledHeight
+        )
 
         var srcBuffer = vImage_Buffer(
             data: srcBase,
@@ -275,7 +292,7 @@ enum YoloEImageInference {
             width: vImagePixelCount(scaledWidth),
             rowBytes: dstRowBytes
         )
-        guard vImageScale_ARGB8888(&srcBuffer, &dstRegion, nil, vImage_Flags(kvImageHighQualityResampling)) == kvImageNoError else {
+        guard vImageScale_ARGB8888(&srcBuffer, &dstRegion, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
             return nil
         }
         return dst

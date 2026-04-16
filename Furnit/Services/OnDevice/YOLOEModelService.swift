@@ -108,6 +108,7 @@ class YOLOEModelService: ObservableObject {
         isDownloadingResources = false
         downloadProgress = 0.0
         statusMessage = ""
+        YoloEDetectionParser.trimScratchBuffers()
         logDebug("YOLOE: Released model + ODR resources (memory)")
     }
 
