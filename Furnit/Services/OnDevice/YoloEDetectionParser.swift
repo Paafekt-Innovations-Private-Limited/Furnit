@@ -177,89 +177,59 @@ enum YoloEDetectionParser {
             // so scanning class-major keeps memory access sequential and avoids strided MLMultiArray reads.
             var maxScores = [Float](repeating: -Float.greatestFiniteMagnitude, count: numAnchors)
             var maxClassIndices = [Int](repeating: 0, count: numAnchors)
-            maxScores.withUnsafeMutableBufferPointer { scores in
-                maxClassIndices.withUnsafeMutableBufferPointer { indices in
-                    guard let scoreBase = scores.baseAddress,
-                          let classIndexBase = indices.baseAddress else { return }
+            var anchorsToMaterialize: [Int]
+
+            if let maximumDetections, maximumDetections > 0 {
+                // Two-phase SIMD path (massive speedup for large numClasses, e.g. YOLO-E 1280 with 4585 classes):
+                //   Phase 1: vDSP_vmax accumulates per-anchor max score across all class rows. NEON-vectorised
+                //            elementwise max → ~10× faster than the scalar 8-way unrolled comparison, and we
+                //            don't track class indices yet (they are only needed for anchors that pass threshold).
+                //   Phase 2: threshold filter selects the few anchors with max score >= confidenceThreshold.
+                //   Phase 3: strided vDSP_maxvi finds the argmax class only for surviving anchors. Stride equals
+                //            numAnchors (one cache line per load), but N_candidates is usually <1% of numAnchors,
+                //            so total work is tiny compared to the 154M comparisons the scalar path did.
+                maxScores.withUnsafeMutableBufferPointer { scores in
+                    guard let scoreBase = scores.baseAddress else { return }
                     for cls in 0..<numClasses {
                         let rowPtr = detBuf.advanced(by: (4 + cls) * stride)
-                        var anchor = 0
-                        let unrolledLimit = numAnchors - (numAnchors % 8)
-                        while anchor < unrolledLimit {
-                            let value0 = rowPtr[anchor]
-                            if value0 > scoreBase[anchor] {
-                                scoreBase[anchor] = value0
-                                classIndexBase[anchor] = cls
-                            }
-
-                            let value1 = rowPtr[anchor + 1]
-                            if value1 > scoreBase[anchor + 1] {
-                                scoreBase[anchor + 1] = value1
-                                classIndexBase[anchor + 1] = cls
-                            }
-
-                            let value2 = rowPtr[anchor + 2]
-                            if value2 > scoreBase[anchor + 2] {
-                                scoreBase[anchor + 2] = value2
-                                classIndexBase[anchor + 2] = cls
-                            }
-
-                            let value3 = rowPtr[anchor + 3]
-                            if value3 > scoreBase[anchor + 3] {
-                                scoreBase[anchor + 3] = value3
-                                classIndexBase[anchor + 3] = cls
-                            }
-
-                            let value4 = rowPtr[anchor + 4]
-                            if value4 > scoreBase[anchor + 4] {
-                                scoreBase[anchor + 4] = value4
-                                classIndexBase[anchor + 4] = cls
-                            }
-
-                            let value5 = rowPtr[anchor + 5]
-                            if value5 > scoreBase[anchor + 5] {
-                                scoreBase[anchor + 5] = value5
-                                classIndexBase[anchor + 5] = cls
-                            }
-
-                            let value6 = rowPtr[anchor + 6]
-                            if value6 > scoreBase[anchor + 6] {
-                                scoreBase[anchor + 6] = value6
-                                classIndexBase[anchor + 6] = cls
-                            }
-
-                            let value7 = rowPtr[anchor + 7]
-                            if value7 > scoreBase[anchor + 7] {
-                                scoreBase[anchor + 7] = value7
-                                classIndexBase[anchor + 7] = cls
-                            }
-
-                            anchor += 8
-                        }
-
-                        while anchor < numAnchors {
-                            let value = rowPtr[anchor]
-                            if value > scoreBase[anchor] {
-                                scoreBase[anchor] = value
-                                classIndexBase[anchor] = cls
-                            }
-                            anchor += 1
-                        }
+                        vDSP_vmax(rowPtr, 1, scoreBase, 1, scoreBase, 1, vDSP_Length(numAnchors))
                     }
                 }
-            }
 
-            var anchorsToMaterialize: [Int]
-            if let maximumDetections, maximumDetections > 0 {
-                anchorsToMaterialize = []
-                anchorsToMaterialize.reserveCapacity(min(maximumDetections, numAnchors))
+                var candidateAnchors: [Int] = []
+                candidateAnchors.reserveCapacity(min(maximumDetections * 4, numAnchors))
                 for anchor in 0..<numAnchors {
                     let maxVal = maxScores[anchor]
-                    guard maxVal.isFinite, maxVal >= confidenceThreshold else { continue }
-                    let classIdx = maxClassIndices[anchor]
-                    guard classIdx >= 0, !classBlacklist.contains(classIdx) else { continue }
-                    anchorsToMaterialize.append(anchor)
+                    if maxVal.isFinite, maxVal >= confidenceThreshold {
+                        candidateAnchors.append(anchor)
+                    }
                 }
+
+                maxClassIndices.withUnsafeMutableBufferPointer { indices in
+                    guard let indexBase = indices.baseAddress else { return }
+                    for anchor in candidateAnchors {
+                        var localMax: Float = 0
+                        var argmaxIndex: vDSP_Length = 0
+                        let classColStart = detBuf.advanced(by: 4 * stride + anchor)
+                        // vDSP_maxvi returns the index of the first greatest value — matches the scalar
+                        // `>` semantics (first class wins ties), preserving existing detection ordering.
+                        vDSP_maxvi(
+                            classColStart, vDSP_Stride(stride),
+                            &localMax,
+                            &argmaxIndex,
+                            vDSP_Length(numClasses)
+                        )
+                        // vDSP_maxvi returns I = i * IA (raw element offset, not logical index).
+                        // Divide by stride to recover the class index; see Accelerate docs.
+                        indexBase[anchor] = Int(argmaxIndex) / stride
+                    }
+                }
+
+                anchorsToMaterialize = candidateAnchors.filter { anchor in
+                    let classIdx = maxClassIndices[anchor]
+                    return classIdx >= 0 && !classBlacklist.contains(classIdx)
+                }
+
                 if anchorsToMaterialize.count > maximumDetections {
                     anchorsToMaterialize.sort { maxScores[$0] > maxScores[$1] }
                     anchorsToMaterialize.removeSubrange(maximumDetections...)
@@ -267,6 +237,79 @@ enum YoloEDetectionParser {
                     anchorsToMaterialize.sort { maxScores[$0] > maxScores[$1] }
                 }
             } else {
+                // Uncapped path (rare — callers normally pass maximumDetections). Keep the original
+                // class-major scalar argmax since strided vDSP_maxvi over ALL anchors is not faster.
+                maxScores.withUnsafeMutableBufferPointer { scores in
+                    maxClassIndices.withUnsafeMutableBufferPointer { indices in
+                        guard let scoreBase = scores.baseAddress,
+                              let classIndexBase = indices.baseAddress else { return }
+                        for cls in 0..<numClasses {
+                            let rowPtr = detBuf.advanced(by: (4 + cls) * stride)
+                            var anchor = 0
+                            let unrolledLimit = numAnchors - (numAnchors % 8)
+                            while anchor < unrolledLimit {
+                                let value0 = rowPtr[anchor]
+                                if value0 > scoreBase[anchor] {
+                                    scoreBase[anchor] = value0
+                                    classIndexBase[anchor] = cls
+                                }
+
+                                let value1 = rowPtr[anchor + 1]
+                                if value1 > scoreBase[anchor + 1] {
+                                    scoreBase[anchor + 1] = value1
+                                    classIndexBase[anchor + 1] = cls
+                                }
+
+                                let value2 = rowPtr[anchor + 2]
+                                if value2 > scoreBase[anchor + 2] {
+                                    scoreBase[anchor + 2] = value2
+                                    classIndexBase[anchor + 2] = cls
+                                }
+
+                                let value3 = rowPtr[anchor + 3]
+                                if value3 > scoreBase[anchor + 3] {
+                                    scoreBase[anchor + 3] = value3
+                                    classIndexBase[anchor + 3] = cls
+                                }
+
+                                let value4 = rowPtr[anchor + 4]
+                                if value4 > scoreBase[anchor + 4] {
+                                    scoreBase[anchor + 4] = value4
+                                    classIndexBase[anchor + 4] = cls
+                                }
+
+                                let value5 = rowPtr[anchor + 5]
+                                if value5 > scoreBase[anchor + 5] {
+                                    scoreBase[anchor + 5] = value5
+                                    classIndexBase[anchor + 5] = cls
+                                }
+
+                                let value6 = rowPtr[anchor + 6]
+                                if value6 > scoreBase[anchor + 6] {
+                                    scoreBase[anchor + 6] = value6
+                                    classIndexBase[anchor + 6] = cls
+                                }
+
+                                let value7 = rowPtr[anchor + 7]
+                                if value7 > scoreBase[anchor + 7] {
+                                    scoreBase[anchor + 7] = value7
+                                    classIndexBase[anchor + 7] = cls
+                                }
+
+                                anchor += 8
+                            }
+
+                            while anchor < numAnchors {
+                                let value = rowPtr[anchor]
+                                if value > scoreBase[anchor] {
+                                    scoreBase[anchor] = value
+                                    classIndexBase[anchor] = cls
+                                }
+                                anchor += 1
+                            }
+                        }
+                    }
+                }
                 anchorsToMaterialize = Array(0..<numAnchors)
             }
 

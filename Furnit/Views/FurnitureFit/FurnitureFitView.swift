@@ -560,6 +560,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var protoPlanes: [Float] = []
     private var protoPlanesInterleaved: [Float] = []
 
+    // Once-per-session diagnostic logs to verify proto/det tensor layouts hit the Accelerate fast paths.
+    // Reset on session stop so a new model/shape emits fresh diagnostics.
+    private var didLogProtoLayoutDiagnostic = false
+    private var didLogDetLayoutDiagnostic = false
+
+    // Per-frame ANE→CPU materialization split out of the proto/parse timers.
+    // Measured by forcing a `.dataPointer` touch before the memcpy/parse work begins.
+    private var lastProtoDataPointerSyncMs: Double = 0
+    private var lastDetDataPointerSyncMs: Double = 0
+
     // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
     /// Shared square model-input buffer reused by both stretch and letterbox preprocessing.
     private var cachedSquareBuffer: CVPixelBuffer?
@@ -2227,11 +2237,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         isProcessing = false
         preferImmediateNextInference = false
         frameLock.unlock()
+        // Rotate the CoreML inference queue and clear watchdog backoff so any in-flight
+        // session-N `model.prediction` closure cannot block session-(N+1) frames when it
+        // eventually completes on the abandoned queue. Without this, stop→start can leave
+        // the shared inference queue backed up with stale work and only the first frame
+        // of the next session gets through before subsequent frames sit behind the relic.
+        //
+        // Serialize the write onto `detectionQueue` to match the existing timeout-path
+        // rotate (line ~3342), which writes `coreMLInferenceQueue` from the same queue
+        // that reads it inside `performCoreMLPredictionWithWatchdog`. Using the same
+        // serialization avoids a data race on the property.
+        detectionQueue.async { [weak self] in
+            guard let self else { return }
+            self.coreMLInferenceBackoffUntil = nil
+            self.coreMLInferenceQueueGeneration &+= 1
+            self.coreMLInferenceQueue = DispatchQueue(
+                label: "com.furnit.coreml.inference.\(self.coreMLInferenceQueueGeneration)",
+                qos: .userInitiated
+            )
+            if self.debugMode {
+                logDebug("🔄 stop(): rotated coreMLInferenceQueue → gen=\(self.coreMLInferenceQueueGeneration), cleared backoff")
+            }
+        }
         lastARHeavyWorkFinishCAC = 0
         // Synchronous reset: if UI/flags were only cleared in `main.async`, the next `startIfNeeded()` could run first and keep stale state.
         hasFirstDetection = false
         segmentationCompletedOnceThisSession = false
         startupProgressActive = false
+        didLogProtoLayoutDiagnostic = false
+        didLogDetLayoutDiagnostic = false
         lastSegmentationMeanColorPublishAt = 0
         maskImageView.image = nil
         resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: true)
@@ -2534,6 +2568,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         // Classic camera path feeds the non-AR floor-contact estimate only.
         let depthSnapshot: FurnitureFitARDepthSnapshot? = nil
+        if debugMode { logDebug("📥 captureOutput dispatching frame (isProcessing was false)") }
         detectionQueue.async { [weak self] in
             self?.processFrame(pixelBuffer, arDepthSnapshot: depthSnapshot)
         }
@@ -3308,6 +3343,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let waitResult = semaphore.wait(timeout: .now() + coreMLInferenceTimeoutSeconds)
         warningWorkItem.cancel()
 
+        if debugMode {
+            let resultLabel = (waitResult == .success) ? "success" : "TIMED_OUT"
+            logDebug("🔓 coreml semaphore returned: \(resultLabel) after \(String(format: "%.2f", Date().timeIntervalSince(startedAt) * 1000)) ms")
+        }
+
         switch waitResult {
         case .success:
             if let predictionError {
@@ -3411,6 +3451,47 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
         // Support-surface hints (floor, carpet, tile, etc.) must inspect the unblacklisted detections.
         let detectionParseAndFilterStart = Date()
+
+        // Split ANE→CPU materialization out of the parse timer (see `parsePrototypes` for rationale).
+        // For the 620 MB detArray this is typically the dominant cost when CoreML lazily DMAs from ANE.
+        let detSyncStart = Date()
+        _ = detArray.dataPointer.load(as: UInt8.self)
+        lastDetDataPointerSyncMs = Date().timeIntervalSince(detSyncStart) * 1000
+
+        if debugMode, !didLogDetLayoutDiagnostic {
+            didLogDetLayoutDiagnostic = true
+            let detShape = detArray.shape.map { $0.intValue }
+            let detStrides = detArray.strides.map { $0.intValue }
+            let dataTypeRaw = detArray.dataType.rawValue
+            let dataTypeName: String
+            switch detArray.dataType {
+            case .float32: dataTypeName = "float32"
+            case .float16: dataTypeName = "float16"
+            case .float64: dataTypeName = "float64"
+            case .int32: dataTypeName = "int32"
+            @unknown default: dataTypeName = "unknown"
+            }
+            // Replicate YoloEDetectionParser.isContiguous: standard C-contiguous strides?
+            var expected = 1
+            var isCContiguous = !detShape.isEmpty && detShape.count == detStrides.count
+            if isCContiguous {
+                for i in stride(from: detShape.count - 1, through: 0, by: -1) {
+                    if detStrides[i] != expected { isCContiguous = false; break }
+                    expected *= detShape[i]
+                }
+            }
+            let parserPath: String
+            switch detArray.dataType {
+            case .float32:
+                parserPath = "FAST:float32+directPointer"
+            case .float16:
+                parserPath = isCContiguous ? "FAST:float16+bulkVImage" : "SLOW:float16+rowByRowOrScalar"
+            default:
+                parserPath = "UNSUPPORTED"
+            }
+            logDebug("🔬 parseDetections layout dtype=\(dataTypeName)(\(dataTypeRaw)) shape=\(detShape) strides=\(detStrides) contiguous=\(isCContiguous) path=\(parserPath)")
+        }
+
         let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
@@ -3714,8 +3795,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let stage35Ms = Date().timeIntervalSince(t3) * 1000
             logDebug(
                 "⏱️ ONNX-STYLE (\(stage2DebugLabel)) breakdown - " +
-                "proto/decode: \(String(format: "%.2f", prototypeParseMs)) ms, " +
-                "parse/NMS/filter: \(String(format: "%.2f", detectionParseAndFilterMs)) ms, " +
+                "proto/decode: \(String(format: "%.2f", prototypeParseMs)) ms " +
+                "(ANE-sync: \(String(format: "%.2f", lastProtoDataPointerSyncMs))), " +
+                "parse/NMS/filter: \(String(format: "%.2f", detectionParseAndFilterMs)) ms " +
+                "(ANE-sync: \(String(format: "%.2f", lastDetDataPointerSyncMs))), " +
                 "mask fusion: \(String(format: "%.2f", maskFusionMs)) ms, " +
                 "morph: \(String(format: "%.2f", morphologyMs)) ms"
             )
@@ -5710,6 +5793,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func processFrameInner(_ pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot? = nil) {
+        if debugMode { logDebug("▶️ processFrameInner entered (mlModel=\(mlModel == nil ? "NIL" : "set"))") }
         guard let model = mlModel else {
             resetProcessingFlag()
             return
@@ -5754,13 +5838,24 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let total = shape[0] * shape[1] * shape[2]
 
         guard proto.dataType == .float32 || proto.dataType == .float16 else { return nil }
+
+        // Split the ANE→CPU materialization cost out of the parse timer. First access to
+        // `.dataPointer` triggers CoreML to DMA the output buffer from ANE memory and
+        // (if needed) convert Float16→Float32. This can dominate "proto/decode" time.
+        let dataPointerSyncStart = Date()
+        _ = proto.dataPointer.load(as: UInt8.self)
+        lastProtoDataPointerSyncMs = Date().timeIntervalSince(dataPointerSyncStart) * 1000
         if protoPlanes.count != count * planeSize {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
         }
-        let shouldBuildInterleavedPlanes = debugMode
-        if shouldBuildInterleavedPlanes, protoPlanesInterleaved.count != count * planeSize {
-            protoPlanesInterleaved = [Float](repeating: 0, count: count * planeSize)
-        } else if !shouldBuildInterleavedPlanes, !protoPlanesInterleaved.isEmpty {
+        // Previously gated on `debugMode`, but the only consumers are
+        // `logChairDetectionMasksIfDebug` (a disabled stub) and `buildSingleDetectionMaskForDebug`
+        // (an orphan with no callers). The transpose was costing ~1,000 ms per frame in debug
+        // mode via a 3.3M-iteration cache-unfriendly strided loop. If either debug routine is
+        // ever resurrected, swap this for `vDSP_mtrans(src, 1, dst, 1, 32, planeSize)` — do NOT
+        // restore the scalar loop.
+        let shouldBuildInterleavedPlanes = false
+        if !protoPlanesInterleaved.isEmpty {
             protoPlanesInterleaved = []
         }
 
@@ -5774,6 +5869,29 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             normalizedStrides[0] == w * count &&
             normalizedStrides[1] == count &&
             normalizedStrides[2] == 1
+
+        if debugMode, !didLogProtoLayoutDiagnostic {
+            didLogProtoLayoutDiagnostic = true
+            let dataTypeRaw = proto.dataType.rawValue
+            let dataTypeName: String
+            switch proto.dataType {
+            case .float32: dataTypeName = "float32"
+            case .float16: dataTypeName = "float16"
+            case .float64: dataTypeName = "float64"
+            case .int32: dataTypeName = "int32"
+            @unknown default: dataTypeName = "unknown"
+            }
+            let chosenPath: String
+            if channelFirstContiguous {
+                chosenPath = proto.dataType == .float32 ? "FAST:channelFirst+memcpy" : "FAST:channelFirst+vImageF16"
+            } else if channelLastContiguous, proto.dataType == .float32 {
+                chosenPath = "FAST:channelLast+blasScopy"
+            } else {
+                chosenPath = "SLOW:fallback(protoRawFloats+transpose)"
+            }
+            logDebug("🔬 parsePrototypes layout dtype=\(dataTypeName)(\(dataTypeRaw)) shape=\(shape) strides=\(normalizedStrides) cIdx=\(cIdx) channelFirstContig=\(channelFirstContiguous) channelLastContig=\(channelLastContiguous) path=\(chosenPath)")
+        }
+
         if channelFirstContiguous {
             if proto.dataType == .float32 {
                 protoPlanes.withUnsafeMutableBufferPointer { dst in
