@@ -236,10 +236,13 @@ class YOLOEModelService: ObservableObject {
 
         let config = MLModelConfiguration()
         // Default CPU-only: this Core ML export can SIGABRT inside `prediction` when using GPU
-        // or ANE (Swift `try?` does not catch that). Optional GPU is in Settings.
-        let allowGPU = UserDefaults.standard.bool(forKey: QualitySettings.yoloeCoreMLAllowGPUKey)
-        config.computeUnits = allowGPU ? .cpuAndGPU : .cpuOnly
-        logDebug("YOLOE: Core ML computeUnits=\(allowGPU ? "cpuAndGPU (experimental)" : "cpuOnly (stable)")")
+        // or ANE (Swift `try?` does not catch that). The Settings toggle (yoloeCoreMLAllowGPU)
+        // now opts into `.cpuAndNeuralEngine` rather than `.cpuAndGPU` — ANE is the faster path
+        // for YOLO-E if this model export is compatible. If it SIGABRTs on first prediction,
+        // flip the toggle off in Settings and the next launch falls back to `.cpuOnly`.
+        let allowAcceleratedComputeUnits = UserDefaults.standard.bool(forKey: QualitySettings.yoloeCoreMLAllowGPUKey)
+        config.computeUnits = allowAcceleratedComputeUnits ? .cpuAndNeuralEngine : .cpuOnly
+        logDebug("YOLOE: Core ML computeUnits=\(allowAcceleratedComputeUnits ? "cpuAndNeuralEngine (experimental ANE)" : "cpuOnly (stable)")")
 
         for (name, ext) in candidateNames {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {

@@ -17,6 +17,8 @@ enum YoloEDetectionParser {
         ("var_2286", "var_2369"),
         ("var_2346", "var_2429"),
         ("var_2374", "var_2412"),
+        ("var_2413", "p"),
+        ("var_2438", "p"),
         ("detections", "protos"),
     ]
 

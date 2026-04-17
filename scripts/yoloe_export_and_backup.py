@@ -111,6 +111,11 @@ def main():
         help="Export format (default: coreml). ONNX uses nms=False for end-to-end tensors.",
     )
     parser.add_argument(
+        "--half",
+        action="store_true",
+        help="Export with half=True (Float16 weights+activations). Required for ANE compatibility.",
+    )
+    parser.add_argument(
         "--legacy-26l-coreml-patch",
         action="store_true",
         help="Apply no-op fuse on head module classes (old 26L CoreML workaround). Off by default.",
@@ -217,12 +222,14 @@ def main():
     if not args.skip_export:
         fmt = args.format
         print(f"Exporting to {fmt.upper()} (nms=False)…")
+        use_half = args.half
+        print(f"Exporting with half={use_half}")
         exported_path = model.export(
             format=fmt,
             imgsz=args.imgsz,
             batch=1,
             nms=False,
-            half=False,
+            half=use_half,
             simplify=True,
         )
         if isinstance(exported_path, (list, tuple)):
