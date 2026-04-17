@@ -1,0 +1,17 @@
+We fixed the SHARP ExecuTorch INT8 pipeline: we now use center-crop (2160x2160 from 3840x2160) then resize to 1536x1536, and write PLY with raw coordinates (x = rawX, y = -rawY, z = -rawZ; no aspect scaling). Room dimensions improved (8.78 x 7.62 x 4.17 m, 1.18M Gaussians) but the position is still not correct in the 3D viewer.
+
+**Exact run (logs):**
+- Input: 3840x2160 (landscape). Center crop: 2160x2160 -> 1536x1536 (no black bars).
+- writePly: raw coords only; y,z negated. isPortrait=false.
+- [PLY] saved bbox: roomWidth=8.782185 roomHeight=7.6217375 roomDepth=4.165868 (raw coords)
+- Viewer: Three.js + Spark (Gaussian splat), OrbitControls. We pass roomWidth/roomHeight/roomDepth from the activity (from previous run or PLY metadata). Box3 mapping: landscape roomWidth=size.x, roomHeight=size.y, roomDepth=size.z. Camera placed at back wall center, looking at front wall.
+
+**Problem:** The 3D room or the camera/content appears in the wrong position—not correctly centered or framed.
+
+**Questions:**
+1. **PLY origin vs viewer:** Does the model output (x,y,z) in a coordinate system where the origin is at the room center, at a corner, or at the camera? Should we translate the mesh (e.g. subtract bbox center) so the room is centered at the viewer origin before applying Box3/camera framing?
+2. **Fallback dimensions:** We pass roomWidth/roomHeight/roomDepth from Kotlin to the WebView for initial camera framing. These come from the previous inference (StreamingResult) or saved metadata. Could a mismatch between these fallback dims and the actual PLY Box3 cause the camera to be positioned wrong so the room appears off-center?
+3. **Axis convention:** We write y = -rawY, z = -rawZ. Is the viewer (Three.js, Y-up) expecting a different sign or axis mapping so that "back wall" and "front wall" line up correctly? Could wrong negation cause the room to appear shifted or flipped?
+4. **Scale and position:** Are the raw model outputs in meters, normalized [-1,1], or another scale? If we use them directly in PLY and the viewer assumes meters, could an offset or scale error make the room appear in the wrong place?
+
+Please suggest concrete fixes: (a) whether to center the mesh (subtract bbox center) before or after writing PLY; (b) how to pass or compute dimensions so the viewer camera frames the room correctly; (c) any axis/sign change for position. This is 3D Gaussian splatting (SHARP) on Android, not YOLO.

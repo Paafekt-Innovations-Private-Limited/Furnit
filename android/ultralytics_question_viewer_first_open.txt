@@ -1,7 +1,0 @@
-We have an Android WebView 3D room viewer using Three.js and OrbitControls. The room is a Gaussian splatting PLY from a ViT-based model (SHARP, ExecuTorch INT8). We pass room dimensions (roomWidth, roomHeight, roomDepth) from the pipeline to the viewer. We do NOT move the splat mesh (no position offset). Orbit target is set to room center (0,0,0). Jagged output is solved and the orbit anchor is correct.
-
-The remaining issue: when the room is opened the first time, it is not in front of the camera—the user has to slide (orbit) to bring the room into view. So the initial camera position or look-at direction is wrong; the room is loaded but the first frame shows empty space until the user rotates.
-
-We use SparkJS SplatMesh; Box3 from setFromObject(splatMesh) is never valid (size stays tiny), so we use a fallback path with Kotlin-provided dimensions only. For landscape we place the camera at front (min Z) + inset, target at (0,0,0). For portrait, camera at back - inset, target at (0,0,0). The mesh is not translated.
-
-How do we set the initial camera position and target so the room is visible on first open without the user having to slide? Is the pipeline/model coordinate frame (which axis is “forward” from the photo view) different from Three.js +Z/-Z, so we need a fixed rotation of the mesh or different camera placement? We are not using YOLO; this is 3D Gaussian splatting room reconstruction.

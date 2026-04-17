@@ -1,0 +1,177 @@
+--------- beginning of main
+03-21 02:30:00.775 25258 27188 I sharp_executorch_full: CPU inference: OMP_NUM_THREADS=8 (processors online=8)
+03-21 02:30:04.976 25258 27302 D sharp_executorch_full: ModuleCache: loading CPU Part1+Part2 INT8 from /data/user/0/com.furnit.android/files/models_cpu
+03-21 02:30:04.983 25258 27302 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 batch=4 loaded
+03-21 02:30:04.983 25258 27302 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 (CPU) loaded
+03-21 02:30:05.997 25258 27302 D sharp_executorch_full: ModuleCache warmup: Part1 forward finished in 1013ms
+03-21 02:30:06.795 25258 27302 D sharp_executorch_full: ModuleCache warmup: Part2 forward finished in 797ms
+03-21 02:30:06.850 25258 27188 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:30:06.850 25258 27188 D sharp_executorch_full: Released module cache + workspace
+03-21 02:30:07.214 25258 27188 D sharp_executorch_full: runFullPipelineInt8: modelDir=/data/user/0/com.furnit.android/files/models_vulkan useVulkan=1 part12OnCpu=1 part1Limits 1x=25 0.5x=0 chunk1x=0 chunk05x=0 yieldMs=0 preferSingleP4b=0 swapTileNdc=0
+03-21 02:30:07.245 25258 27188 D sharp_executorch_full: [MEM] after workspace allocate rss=413MB hwm=691MB vmsize=18019MB avail=3482MB workspace_est=149MB
+03-21 02:30:07.251 25258 27188 D sharp_executorch_full: Downsample 2x+4x: 6ms
+03-21 02:30:07.251 25258 27188 D sharp_executorch_full: ModuleCache: loading CPU Part1+Part2 INT8 from /data/user/0/com.furnit.android/files/models_cpu
+03-21 02:30:07.251 25258 27188 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 batch=4 loaded
+03-21 02:30:07.251 25258 27188 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 (CPU) loaded
+03-21 02:30:07.251 25258 27188 D sharp_executorch_full: Part1+Part2 ready (cache): 0ms
+03-21 02:30:07.252 25258 27188 D sharp_executorch_full: BEFORE_PART1_FORWARD 1x (0,0) useCache=1 inputNumel=442368 nbytes=1769472 dims=[1,3,384,384] OK
+03-21 02:30:07.252 25258 27188 D sharp_executorch_full: BEFORE_PART1_FORWARD input[0..2]=0.67451 0.67451 0.67451
+03-21 02:30:07.252 25258 27188 D sharp_executorch_full: Part1 1x (0,0): calling m1->forward (CPU/XNNPACK INT8)
+03-21 02:30:08.041 25258 27188 D sharp_executorch_full: AFTER_PART1_FORWARD 1x (0,0) status=ok
+03-21 02:30:08.041 25258 27188 D sharp_executorch_full: AFTER_PART1_FORWARD output_size=2 out0_numel=590848
+03-21 02:30:08.041 25258 27188 D sharp_executorch_full: Part1 1x (0,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:08.041 25258 27188 D sharp_executorch_full: Part1 1x (0,0): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:08.041 25258 27188 D sharp_executorch_full: Part1 1x (0,0): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:08.045 25258 27188 D sharp_executorch_full: Part1 1x (0,0): calling Part2 forward
+03-21 02:30:08.792 25258 27188 D sharp_executorch_full: Part1 1x (0,0): Part2 forward returned
+03-21 02:30:09.319 25258 27188 D sharp_executorch_full: Part1 1x (0,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:09.319 25258 27188 D sharp_executorch_full: Part1 1x (0,1): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:09.319 25258 27188 D sharp_executorch_full: Part1 1x (0,1): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:09.323 25258 27188 D sharp_executorch_full: Part1 1x (0,1): calling Part2 forward
+03-21 02:30:09.853 25258 27188 D sharp_executorch_full: Part1 1x (0,1): Part2 forward returned
+03-21 02:30:10.386 25258 27188 D sharp_executorch_full: Part1 1x (0,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:10.386 25258 27188 D sharp_executorch_full: Part1 1x (0,2): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:10.386 25258 27188 D sharp_executorch_full: Part1 1x (0,2): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:10.389 25258 27188 D sharp_executorch_full: Part1 1x (0,2): calling Part2 forward
+03-21 02:30:10.922 25258 27188 D sharp_executorch_full: Part1 1x (0,2): Part2 forward returned
+03-21 02:30:11.488 25258 27188 D sharp_executorch_full: Part1 1x (0,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:11.488 25258 27188 D sharp_executorch_full: Part1 1x (0,3): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:11.488 25258 27188 D sharp_executorch_full: Part1 1x (0,3): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:11.491 25258 27188 D sharp_executorch_full: Part1 1x (0,3): calling Part2 forward
+03-21 02:30:12.060 25258 27188 D sharp_executorch_full: Part1 1x (0,3): Part2 forward returned
+03-21 02:30:12.632 25258 27188 D sharp_executorch_full: Part1 1x (0,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:12.632 25258 27188 D sharp_executorch_full: Part1 1x (0,4): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:12.632 25258 27188 D sharp_executorch_full: Part1 1x (0,4): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:12.636 25258 27188 D sharp_executorch_full: Part1 1x (0,4): calling Part2 forward
+03-21 02:30:13.222 25258 27188 D sharp_executorch_full: Part1 1x (0,4): Part2 forward returned
+03-21 02:30:13.798 25258 27188 D sharp_executorch_full: Part1 1x (1,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:13.798 25258 27188 D sharp_executorch_full: Part1 1x (1,0): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:13.798 25258 27188 D sharp_executorch_full: Part1 1x (1,0): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:13.801 25258 27188 D sharp_executorch_full: Part1 1x (1,0): calling Part2 forward
+03-21 02:30:14.365 25258 27188 D sharp_executorch_full: Part1 1x (1,0): Part2 forward returned
+03-21 02:30:14.943 25258 27188 D sharp_executorch_full: Part1 1x (1,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:14.944 25258 27188 D sharp_executorch_full: Part1 1x (1,1): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:14.944 25258 27188 D sharp_executorch_full: Part1 1x (1,1): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:14.948 25258 27188 D sharp_executorch_full: Part1 1x (1,1): calling Part2 forward
+03-21 02:30:15.518 25258 27188 D sharp_executorch_full: Part1 1x (1,1): Part2 forward returned
+03-21 02:30:16.126 25258 27188 D sharp_executorch_full: Part1 1x (1,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:16.126 25258 27188 D sharp_executorch_full: Part1 1x (1,2): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:16.126 25258 27188 D sharp_executorch_full: Part1 1x (1,2): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:16.130 25258 27188 D sharp_executorch_full: Part1 1x (1,2): calling Part2 forward
+03-21 02:30:16.712 25258 27188 D sharp_executorch_full: Part1 1x (1,2): Part2 forward returned
+03-21 02:30:17.329 25258 27188 D sharp_executorch_full: Part1 1x (1,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:17.329 25258 27188 D sharp_executorch_full: Part1 1x (1,3): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:17.329 25258 27188 D sharp_executorch_full: Part1 1x (1,3): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:17.332 25258 27188 D sharp_executorch_full: Part1 1x (1,3): calling Part2 forward
+03-21 02:30:17.915 25258 27188 D sharp_executorch_full: Part1 1x (1,3): Part2 forward returned
+03-21 02:30:18.511 25258 27188 D sharp_executorch_full: Part1 1x (1,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:18.511 25258 27188 D sharp_executorch_full: Part1 1x (1,4): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:18.511 25258 27188 D sharp_executorch_full: Part1 1x (1,4): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:18.516 25258 27188 D sharp_executorch_full: Part1 1x (1,4): calling Part2 forward
+03-21 02:30:19.102 25258 27188 D sharp_executorch_full: Part1 1x (1,4): Part2 forward returned
+03-21 02:30:19.718 25258 27188 D sharp_executorch_full: Part1 1x (2,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:19.718 25258 27188 D sharp_executorch_full: Part1 1x (2,0): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:19.718 25258 27188 D sharp_executorch_full: Part1 1x (2,0): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:19.721 25258 27188 D sharp_executorch_full: Part1 1x (2,0): calling Part2 forward
+03-21 02:30:20.311 25258 27188 D sharp_executorch_full: Part1 1x (2,0): Part2 forward returned
+03-21 02:30:20.934 25258 27188 D sharp_executorch_full: Part1 1x (2,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:20.934 25258 27188 D sharp_executorch_full: Part1 1x (2,1): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:20.934 25258 27188 D sharp_executorch_full: Part1 1x (2,1): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:20.937 25258 27188 D sharp_executorch_full: Part1 1x (2,1): calling Part2 forward
+03-21 02:30:21.549 25258 27188 D sharp_executorch_full: Part1 1x (2,1): Part2 forward returned
+03-21 02:30:22.193 25258 27188 D sharp_executorch_full: Part1 1x (2,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:22.193 25258 27188 D sharp_executorch_full: Part1 1x (2,2): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:22.193 25258 27188 D sharp_executorch_full: Part1 1x (2,2): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:22.196 25258 27188 D sharp_executorch_full: Part1 1x (2,2): calling Part2 forward
+03-21 02:30:22.800 25258 27188 D sharp_executorch_full: Part1 1x (2,2): Part2 forward returned
+03-21 02:30:23.413 25258 27188 D sharp_executorch_full: Part1 1x (2,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:23.413 25258 27188 D sharp_executorch_full: Part1 1x (2,3): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:23.413 25258 27188 D sharp_executorch_full: Part1 1x (2,3): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:23.416 25258 27188 D sharp_executorch_full: Part1 1x (2,3): calling Part2 forward
+03-21 02:30:24.010 25258 27188 D sharp_executorch_full: Part1 1x (2,3): Part2 forward returned
+03-21 02:30:24.632 25258 27188 D sharp_executorch_full: Part1 1x (2,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:24.632 25258 27188 D sharp_executorch_full: Part1 1x (2,4): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:24.632 25258 27188 D sharp_executorch_full: Part1 1x (2,4): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:24.635 25258 27188 D sharp_executorch_full: Part1 1x (2,4): calling Part2 forward
+03-21 02:30:25.253 25258 27188 D sharp_executorch_full: Part1 1x (2,4): Part2 forward returned
+03-21 02:30:25.886 25258 27188 D sharp_executorch_full: Part1 1x (3,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:25.886 25258 27188 D sharp_executorch_full: Part1 1x (3,0): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:25.886 25258 27188 D sharp_executorch_full: Part1 1x (3,0): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:25.889 25258 27188 D sharp_executorch_full: Part1 1x (3,0): calling Part2 forward
+03-21 02:30:26.518 25258 27188 D sharp_executorch_full: Part1 1x (3,0): Part2 forward returned
+03-21 02:30:27.170 25258 27188 D sharp_executorch_full: Part1 1x (3,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:27.170 25258 27188 D sharp_executorch_full: Part1 1x (3,1): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:27.170 25258 27188 D sharp_executorch_full: Part1 1x (3,1): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:27.173 25258 27188 D sharp_executorch_full: Part1 1x (3,1): calling Part2 forward
+03-21 02:30:27.797 25258 27188 D sharp_executorch_full: Part1 1x (3,1): Part2 forward returned
+03-21 02:30:28.446 25258 27188 D sharp_executorch_full: Part1 1x (3,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:28.446 25258 27188 D sharp_executorch_full: Part1 1x (3,2): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:28.446 25258 27188 D sharp_executorch_full: Part1 1x (3,2): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:28.450 25258 27188 D sharp_executorch_full: Part1 1x (3,2): calling Part2 forward
+03-21 02:30:29.062 25258 27188 D sharp_executorch_full: Part1 1x (3,2): Part2 forward returned
+03-21 02:30:29.733 25258 27188 D sharp_executorch_full: Part1 1x (3,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:29.733 25258 27188 D sharp_executorch_full: Part1 1x (3,3): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:29.733 25258 27188 D sharp_executorch_full: Part1 1x (3,3): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:29.736 25258 27188 D sharp_executorch_full: Part1 1x (3,3): calling Part2 forward
+03-21 02:30:30.375 25258 27188 D sharp_executorch_full: Part1 1x (3,3): Part2 forward returned
+03-21 02:30:31.013 25258 27188 D sharp_executorch_full: Part1 1x (3,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:31.013 25258 27188 D sharp_executorch_full: Part1 1x (3,4): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:31.013 25258 27188 D sharp_executorch_full: Part1 1x (3,4): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:31.016 25258 27188 D sharp_executorch_full: Part1 1x (3,4): calling Part2 forward
+03-21 02:30:31.635 25258 27188 D sharp_executorch_full: Part1 1x (3,4): Part2 forward returned
+03-21 02:30:32.283 25258 27188 D sharp_executorch_full: Part1 1x (4,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:32.283 25258 27188 D sharp_executorch_full: Part1 1x (4,0): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:32.283 25258 27188 D sharp_executorch_full: Part1 1x (4,0): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:32.287 25258 27188 D sharp_executorch_full: Part1 1x (4,0): calling Part2 forward
+03-21 02:30:32.931 25258 27188 D sharp_executorch_full: Part1 1x (4,0): Part2 forward returned
+03-21 02:30:33.544 25258 27188 D sharp_executorch_full: Part1 1x (4,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:33.544 25258 27188 D sharp_executorch_full: Part1 1x (4,1): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:33.544 25258 27188 D sharp_executorch_full: Part1 1x (4,1): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:33.548 25258 27188 D sharp_executorch_full: Part1 1x (4,1): calling Part2 forward
+03-21 02:30:34.189 25258 27188 D sharp_executorch_full: Part1 1x (4,1): Part2 forward returned
+03-21 02:30:34.832 25258 27188 D sharp_executorch_full: Part1 1x (4,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:34.832 25258 27188 D sharp_executorch_full: Part1 1x (4,2): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:34.832 25258 27188 D sharp_executorch_full: Part1 1x (4,2): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:34.836 25258 27188 D sharp_executorch_full: Part1 1x (4,2): calling Part2 forward
+03-21 02:30:35.449 25258 27188 D sharp_executorch_full: Part1 1x (4,2): Part2 forward returned
+03-21 02:30:36.111 25258 27188 D sharp_executorch_full: Part1 1x (4,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:36.111 25258 27188 D sharp_executorch_full: Part1 1x (4,3): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:36.111 25258 27188 D sharp_executorch_full: Part1 1x (4,3): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:36.114 25258 27188 D sharp_executorch_full: Part1 1x (4,3): calling Part2 forward
+03-21 02:30:36.747 25258 27188 D sharp_executorch_full: Part1 1x (4,3): Part2 forward returned
+03-21 02:30:37.391 25258 27188 D sharp_executorch_full: Part1 1x (4,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:30:37.391 25258 27188 D sharp_executorch_full: Part1 1x (4,4): tokPtr=0xb40000706b288af0 (after token readback)
+03-21 02:30:37.391 25258 27188 D sharp_executorch_full: Part1 1x (4,4): spaPtr=0xb40000706f400bb0 (after spatial readback)
+03-21 02:30:37.395 25258 27188 D sharp_executorch_full: Part1 1x (4,4): calling Part2 forward
+03-21 02:30:38.023 25258 27188 D sharp_executorch_full: Part1 1x (4,4): Part2 forward returned
+03-21 02:30:38.026 25258 27188 D sharp_executorch_full: 1x patches (25): 30775ms
+03-21 02:30:38.026 25258 27188 D sharp_executorch_full: 0.5x patches (0): 0ms
+03-21 02:30:38.034 25258 27188 D sharp_executorch_full: Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat
+03-21 02:30:38.034 25258 27188 I sharp_executorch_full: SHARP_pte_paths useVulkan=1 dir=/data/user/0/com.furnit.android/files/models_vulkan
+03-21 02:30:38.034 25258 27188 I sharp_executorch_full:   Part3=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part3_vulkan_fp32.pte
+03-21 02:30:38.034 25258 27188 I sharp_executorch_full:   Part4a512=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_512_vulkan.pte
+03-21 02:30:38.034 25258 27188 I sharp_executorch_full:   Part4a65=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_65_vulkan.pte
+03-21 02:30:38.034 25258 27188 I sharp_executorch_full:   Part4b_single=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4b_vulkan.pte
+03-21 02:30:38.034 25258 27188 D sharp_executorch_full: [MEM] combinedTokens planned ~2MB image=1536x1536
+03-21 02:30:38.035 25258 27188 D sharp_executorch_full: [MEM] before Part3 load rss=873MB hwm=877MB vmsize=18442MB avail=3063MB workspace_est=149MB
+03-21 02:30:53.777 25258 27188 D sharp_executorch_full: Part3: 15743ms (numel=590848)
+03-21 02:30:53.778 25258 27188 D sharp_executorch_full: [MEM] after Part3 reset rss=1842MB hwm=3925MB vmsize=20170MB avail=2677MB workspace_est=149MB
+03-21 02:30:53.780 25258 27188 D sharp_executorch_full: [MEM] after releasing encoder scratch before Part4 rss=1831MB hwm=3925MB vmsize=20142MB avail=2688MB workspace_est=119MB
+03-21 02:30:53.780 25258 27188 D sharp_executorch_full: [MEM] before Part4a/512 load rss=1831MB hwm=3925MB vmsize=20142MB avail=2688MB workspace_est=119MB
+03-21 02:30:53.782 25258 27188 I sharp_executorch_full: Part4a/512: mmap+load OK in 1ms; forward() file=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_512_vulkan.pte
+03-21 02:31:07.038 25258 27188 I sharp_executorch_full: Part4a/512: forward finished in 13257ms
+03-21 02:31:07.230 25258 27188 D sharp_executorch_full: Part4a/512: 13450ms (out=524288)
+03-21 02:31:07.230 25258 27188 D sharp_executorch_full: [MEM] after Part4a/512 reset rss=1848MB hwm=3925MB vmsize=20238MB avail=2679MB workspace_est=119MB
+03-21 02:31:07.230 25258 27188 D sharp_executorch_full: [MEM] before Part4a/65 load rss=1848MB hwm=3925MB vmsize=20238MB avail=2679MB workspace_est=119MB
+03-21 02:31:07.231 25258 27188 I sharp_executorch_full: Part4a/65: load OK in 1ms; forward() file=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_65_vulkan.pte
+03-21 02:31:09.872 25258 27188 I sharp_executorch_full: Part4a/65: forward finished in 2641ms
+03-21 02:31:09.899 25258 27188 D sharp_executorch_full: Part4a/65: 2669ms. Part4a total: 16119ms
+03-21 02:31:09.899 25258 27188 D sharp_executorch_full: [MEM] after Part4a/65 reset rss=1651MB hwm=3925MB vmsize=21196MB avail=2991MB workspace_est=119MB
+03-21 02:31:09.930 25258 27188 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:31:09.930 25258 27188 D sharp_executorch_full: Released Part1+Part2 cache before Part4b to free memory
+03-21 02:31:09.931 25258 27188 D sharp_executorch_full: [MEM] before Part4b routing rss=1230MB hwm=3925MB vmsize=20763MB avail=3408MB workspace_est=119MB
+03-21 02:31:09.936 25258 27188 D sharp_executorch_full: [MEM] Part4b batched tiled: before module load rss=1232MB hwm=3925MB vmsize=20765MB avail=3405MB workspace_est=119MB
+03-21 02:31:09.938 25258 27188 D sharp_executorch_full: runPart4bBatchedTiledPipeline: loaded split tile_b2 modules (batch=2)
+03-21 02:31:09.938 25258 27188 D sharp_executorch_full: [MEM] Part4b batched tiled: after module load rss=1232MB hwm=3925MB vmsize=20943MB avail=3405MB workspace_est=119MB
+03-21 02:34:45.443 25258 25258 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:34:45.463 25258 25258 D sharp_executorch_full: Released module cache + workspace

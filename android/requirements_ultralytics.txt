@@ -1,2 +1,0 @@
-# For ultralytics_ask_ai.py (Ask AI in browser)
-playwright>=1.40.0

@@ -1,0 +1,409 @@
+--------- beginning of main
+03-21 02:45:27.194 30261 30386 I sharp_executorch_full: CPU inference: OMP_NUM_THREADS=8 (processors online=8)
+--------- beginning of system
+03-21 02:45:28.238  1581  1665 I ActivityManager: Start proc 30390:com.google.android.documentsui/u0a94 for next-top-activity {com.google.android.documentsui/com.android.documentsui.picker.TrampolineActivity}
+03-21 02:45:28.310  1581  1665 I ActivityManager: Start proc 30422:com.google.android.photopicker/u0a276 for next-top-activity {com.google.android.photopicker/com.android.photopicker.PhotopickerGetContentActivity}
+03-21 02:45:28.372  1581  4425 D ActivityManager: sync unfroze 29412 com.google.android.apps.photos for 7
+03-21 02:45:28.411 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.475 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.476 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.477 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.477 29412 29829 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.539 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.603 29412 29439 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:28.621 29412 29439 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.081 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.081 29412 29829 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.081 29412 30448 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.634 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.649 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.687 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.688 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:29.734 29412 29437 W libc    : Access denied finding property "ro.debuggable"
+03-21 02:45:31.889 30261 30499 D sharp_executorch_full: ModuleCache: loading CPU Part1+Part2 INT8 from /data/user/0/com.furnit.android/files/models_cpu
+03-21 02:45:31.893 30261 30499 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 batch=4 loaded
+03-21 02:45:31.893 30261 30499 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 (CPU) loaded
+03-21 02:45:32.830 30261 30499 D sharp_executorch_full: ModuleCache warmup: Part1 forward finished in 936ms
+03-21 02:45:33.666 30261 30499 D sharp_executorch_full: ModuleCache warmup: Part2 forward finished in 836ms
+03-21 02:45:33.716 30261 30386 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:45:33.716 30261 30386 D sharp_executorch_full: Released module cache + workspace
+03-21 02:45:34.085 30261 30386 D sharp_executorch_full: runFullPipelineInt8: modelDir=/data/user/0/com.furnit.android/files/models_vulkan useVulkan=1 part12OnCpu=1 part1Limits 1x=25 0.5x=0 chunk1x=0 chunk05x=0 yieldMs=0 preferSingleP4b=0 swapTileNdc=0
+03-21 02:45:34.114 30261 30386 D sharp_executorch_full: [MEM] after workspace allocate rss=426MB hwm=701MB vmsize=17993MB avail=3824MB workspace_est=149MB
+03-21 02:45:34.120 30261 30386 D sharp_executorch_full: Downsample 2x+4x: 6ms
+03-21 02:45:34.120 30261 30386 D sharp_executorch_full: ModuleCache: loading CPU Part1+Part2 INT8 from /data/user/0/com.furnit.android/files/models_cpu
+03-21 02:45:34.120 30261 30386 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 batch=4 loaded
+03-21 02:45:34.120 30261 30386 D sharp_executorch_full: ModuleCache: Part1+Part2 INT8 (CPU) loaded
+03-21 02:45:34.120 30261 30386 D sharp_executorch_full: Part1+Part2 ready (cache): 0ms
+03-21 02:45:34.121 30261 30386 D sharp_executorch_full: BEFORE_PART1_FORWARD 1x (0,0) useCache=1 inputNumel=442368 nbytes=1769472 dims=[1,3,384,384] OK
+03-21 02:45:34.121 30261 30386 D sharp_executorch_full: BEFORE_PART1_FORWARD input[0..2]=0.67451 0.67451 0.67451
+03-21 02:45:34.121 30261 30386 D sharp_executorch_full: Part1 1x (0,0): calling m1->forward (CPU/XNNPACK INT8)
+03-21 02:45:34.871 30261 30386 D sharp_executorch_full: AFTER_PART1_FORWARD 1x (0,0) status=ok
+03-21 02:45:34.871 30261 30386 D sharp_executorch_full: AFTER_PART1_FORWARD output_size=2 out0_numel=590848
+03-21 02:45:34.871 30261 30386 D sharp_executorch_full: Part1 1x (0,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:34.871 30261 30386 D sharp_executorch_full: Part1 1x (0,0): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:34.871 30261 30386 D sharp_executorch_full: Part1 1x (0,0): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:34.875 30261 30386 D sharp_executorch_full: Part1 1x (0,0): calling Part2 forward
+03-21 02:45:35.649 30261 30386 D sharp_executorch_full: Part1 1x (0,0): Part2 forward returned
+03-21 02:45:36.247 30261 30386 D sharp_executorch_full: Part1 1x (0,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:36.247 30261 30386 D sharp_executorch_full: Part1 1x (0,1): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:36.247 30261 30386 D sharp_executorch_full: Part1 1x (0,1): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:36.251 30261 30386 D sharp_executorch_full: Part1 1x (0,1): calling Part2 forward
+03-21 02:45:36.835 30261 30386 D sharp_executorch_full: Part1 1x (0,1): Part2 forward returned
+03-21 02:45:37.435 30261 30386 D sharp_executorch_full: Part1 1x (0,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:37.435 30261 30386 D sharp_executorch_full: Part1 1x (0,2): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:37.435 30261 30386 D sharp_executorch_full: Part1 1x (0,2): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:37.439 30261 30386 D sharp_executorch_full: Part1 1x (0,2): calling Part2 forward
+03-21 02:45:38.033 30261 30386 D sharp_executorch_full: Part1 1x (0,2): Part2 forward returned
+03-21 02:45:38.657 30261 30386 D sharp_executorch_full: Part1 1x (0,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:38.657 30261 30386 D sharp_executorch_full: Part1 1x (0,3): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:38.657 30261 30386 D sharp_executorch_full: Part1 1x (0,3): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:38.661 30261 30386 D sharp_executorch_full: Part1 1x (0,3): calling Part2 forward
+03-21 02:45:38.859  1581  1984 D ActivityManager: freezing 30390 com.google.android.documentsui
+03-21 02:45:39.295 30261 30386 D sharp_executorch_full: Part1 1x (0,3): Part2 forward returned
+03-21 02:45:39.933 30261 30386 D sharp_executorch_full: Part1 1x (0,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:39.933 30261 30386 D sharp_executorch_full: Part1 1x (0,4): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:39.933 30261 30386 D sharp_executorch_full: Part1 1x (0,4): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:39.936 30261 30386 D sharp_executorch_full: Part1 1x (0,4): calling Part2 forward
+03-21 02:45:40.539 30261 30386 D sharp_executorch_full: Part1 1x (0,4): Part2 forward returned
+03-21 02:45:41.172 30261 30386 D sharp_executorch_full: Part1 1x (1,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:41.172 30261 30386 D sharp_executorch_full: Part1 1x (1,0): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:41.172 30261 30386 D sharp_executorch_full: Part1 1x (1,0): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:41.175 30261 30386 D sharp_executorch_full: Part1 1x (1,0): calling Part2 forward
+03-21 02:45:41.812 30261 30386 D sharp_executorch_full: Part1 1x (1,0): Part2 forward returned
+03-21 02:45:41.858  1581  1984 D ActivityManager: freezing 28637 com.google.android.googlequicksearchbox:search
+03-21 02:45:42.107  1581  1984 D ActivityManager: freezing 30422 com.google.android.photopicker
+03-21 02:45:42.483 30261 30386 D sharp_executorch_full: Part1 1x (1,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:42.483 30261 30386 D sharp_executorch_full: Part1 1x (1,1): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:42.483 30261 30386 D sharp_executorch_full: Part1 1x (1,1): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:42.487 30261 30386 D sharp_executorch_full: Part1 1x (1,1): calling Part2 forward
+03-21 02:45:43.110 30261 30386 D sharp_executorch_full: Part1 1x (1,1): Part2 forward returned
+03-21 02:45:43.774 30261 30386 D sharp_executorch_full: Part1 1x (1,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:43.775 30261 30386 D sharp_executorch_full: Part1 1x (1,2): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:43.775 30261 30386 D sharp_executorch_full: Part1 1x (1,2): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:43.778 30261 30386 D sharp_executorch_full: Part1 1x (1,2): calling Part2 forward
+03-21 02:45:44.428 30261 30386 D sharp_executorch_full: Part1 1x (1,2): Part2 forward returned
+03-21 02:45:45.083 30261 30386 D sharp_executorch_full: Part1 1x (1,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:45.083 30261 30386 D sharp_executorch_full: Part1 1x (1,3): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:45.083 30261 30386 D sharp_executorch_full: Part1 1x (1,3): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:45.087 30261 30386 D sharp_executorch_full: Part1 1x (1,3): calling Part2 forward
+03-21 02:45:45.748 30261 30386 D sharp_executorch_full: Part1 1x (1,3): Part2 forward returned
+03-21 02:45:46.419 30261 30386 D sharp_executorch_full: Part1 1x (1,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:46.419 30261 30386 D sharp_executorch_full: Part1 1x (1,4): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:46.419 30261 30386 D sharp_executorch_full: Part1 1x (1,4): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:46.423 30261 30386 D sharp_executorch_full: Part1 1x (1,4): calling Part2 forward
+03-21 02:45:47.070 30261 30386 D sharp_executorch_full: Part1 1x (1,4): Part2 forward returned
+03-21 02:45:47.742 30261 30386 D sharp_executorch_full: Part1 1x (2,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:47.742 30261 30386 D sharp_executorch_full: Part1 1x (2,0): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:47.742 30261 30386 D sharp_executorch_full: Part1 1x (2,0): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:47.746 30261 30386 D sharp_executorch_full: Part1 1x (2,0): calling Part2 forward
+03-21 02:45:48.426 30261 30386 D sharp_executorch_full: Part1 1x (2,0): Part2 forward returned
+03-21 02:45:49.092 30261 30386 D sharp_executorch_full: Part1 1x (2,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:49.092 30261 30386 D sharp_executorch_full: Part1 1x (2,1): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:49.092 30261 30386 D sharp_executorch_full: Part1 1x (2,1): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:49.096 30261 30386 D sharp_executorch_full: Part1 1x (2,1): calling Part2 forward
+03-21 02:45:49.739 30261 30386 D sharp_executorch_full: Part1 1x (2,1): Part2 forward returned
+03-21 02:45:50.401 30261 30386 D sharp_executorch_full: Part1 1x (2,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:50.401 30261 30386 D sharp_executorch_full: Part1 1x (2,2): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:50.401 30261 30386 D sharp_executorch_full: Part1 1x (2,2): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:50.405 30261 30386 D sharp_executorch_full: Part1 1x (2,2): calling Part2 forward
+03-21 02:45:51.061 30261 30386 D sharp_executorch_full: Part1 1x (2,2): Part2 forward returned
+03-21 02:45:51.752 30261 30386 D sharp_executorch_full: Part1 1x (2,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:51.752 30261 30386 D sharp_executorch_full: Part1 1x (2,3): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:51.752 30261 30386 D sharp_executorch_full: Part1 1x (2,3): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:51.756 30261 30386 D sharp_executorch_full: Part1 1x (2,3): calling Part2 forward
+03-21 02:45:52.409 30261 30386 D sharp_executorch_full: Part1 1x (2,3): Part2 forward returned
+03-21 02:45:53.095 30261 30386 D sharp_executorch_full: Part1 1x (2,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:53.095 30261 30386 D sharp_executorch_full: Part1 1x (2,4): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:53.095 30261 30386 D sharp_executorch_full: Part1 1x (2,4): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:53.098 30261 30386 D sharp_executorch_full: Part1 1x (2,4): calling Part2 forward
+03-21 02:45:53.758 30261 30386 D sharp_executorch_full: Part1 1x (2,4): Part2 forward returned
+03-21 02:45:54.437 30261 30386 D sharp_executorch_full: Part1 1x (3,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:54.437 30261 30386 D sharp_executorch_full: Part1 1x (3,0): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:54.437 30261 30386 D sharp_executorch_full: Part1 1x (3,0): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:54.441 30261 30386 D sharp_executorch_full: Part1 1x (3,0): calling Part2 forward
+03-21 02:45:55.164 30261 30386 D sharp_executorch_full: Part1 1x (3,0): Part2 forward returned
+03-21 02:45:55.899 30261 30386 D sharp_executorch_full: Part1 1x (3,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:55.899 30261 30386 D sharp_executorch_full: Part1 1x (3,1): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:55.899 30261 30386 D sharp_executorch_full: Part1 1x (3,1): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:55.902 30261 30386 D sharp_executorch_full: Part1 1x (3,1): calling Part2 forward
+03-21 02:45:56.630 30261 30386 D sharp_executorch_full: Part1 1x (3,1): Part2 forward returned
+03-21 02:45:57.390 30261 30386 D sharp_executorch_full: Part1 1x (3,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:57.390 30261 30386 D sharp_executorch_full: Part1 1x (3,2): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:57.390 30261 30386 D sharp_executorch_full: Part1 1x (3,2): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:57.394 30261 30386 D sharp_executorch_full: Part1 1x (3,2): calling Part2 forward
+03-21 02:45:58.141 30261 30386 D sharp_executorch_full: Part1 1x (3,2): Part2 forward returned
+03-21 02:45:58.893 30261 30386 D sharp_executorch_full: Part1 1x (3,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:45:58.893 30261 30386 D sharp_executorch_full: Part1 1x (3,3): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:45:58.893 30261 30386 D sharp_executorch_full: Part1 1x (3,3): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:45:58.896 30261 30386 D sharp_executorch_full: Part1 1x (3,3): calling Part2 forward
+03-21 02:45:59.633 30261 30386 D sharp_executorch_full: Part1 1x (3,3): Part2 forward returned
+03-21 02:46:00.383 30261 30386 D sharp_executorch_full: Part1 1x (3,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:00.383 30261 30386 D sharp_executorch_full: Part1 1x (3,4): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:00.383 30261 30386 D sharp_executorch_full: Part1 1x (3,4): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:00.386 30261 30386 D sharp_executorch_full: Part1 1x (3,4): calling Part2 forward
+03-21 02:46:01.140 30261 30386 D sharp_executorch_full: Part1 1x (3,4): Part2 forward returned
+03-21 02:46:01.894 30261 30386 D sharp_executorch_full: Part1 1x (4,0): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:01.894 30261 30386 D sharp_executorch_full: Part1 1x (4,0): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:01.894 30261 30386 D sharp_executorch_full: Part1 1x (4,0): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:01.898 30261 30386 D sharp_executorch_full: Part1 1x (4,0): calling Part2 forward
+03-21 02:46:02.617 30261 30386 D sharp_executorch_full: Part1 1x (4,0): Part2 forward returned
+03-21 02:46:03.364 30261 30386 D sharp_executorch_full: Part1 1x (4,1): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:03.365 30261 30386 D sharp_executorch_full: Part1 1x (4,1): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:03.365 30261 30386 D sharp_executorch_full: Part1 1x (4,1): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:03.369 30261 30386 D sharp_executorch_full: Part1 1x (4,1): calling Part2 forward
+03-21 02:46:04.094 30261 30386 D sharp_executorch_full: Part1 1x (4,1): Part2 forward returned
+03-21 02:46:04.845 30261 30386 D sharp_executorch_full: Part1 1x (4,2): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:04.845 30261 30386 D sharp_executorch_full: Part1 1x (4,2): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:04.845 30261 30386 D sharp_executorch_full: Part1 1x (4,2): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:04.849 30261 30386 D sharp_executorch_full: Part1 1x (4,2): calling Part2 forward
+03-21 02:46:05.574 30261 30386 D sharp_executorch_full: Part1 1x (4,2): Part2 forward returned
+03-21 02:46:06.322 30261 30386 D sharp_executorch_full: Part1 1x (4,3): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:06.322 30261 30386 D sharp_executorch_full: Part1 1x (4,3): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:06.322 30261 30386 D sharp_executorch_full: Part1 1x (4,3): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:06.326 30261 30386 D sharp_executorch_full: Part1 1x (4,3): calling Part2 forward
+03-21 02:46:07.077 30261 30386 D sharp_executorch_full: Part1 1x (4,3): Part2 forward returned
+03-21 02:46:07.828 30261 30386 D sharp_executorch_full: Part1 1x (4,4): getting output tensors (readback may sync Vulkan fence)
+03-21 02:46:07.828 30261 30386 D sharp_executorch_full: Part1 1x (4,4): tokPtr=0xb40000706c083af0 (after token readback)
+03-21 02:46:07.828 30261 30386 D sharp_executorch_full: Part1 1x (4,4): spaPtr=0xb4000070701fbbb0 (after spatial readback)
+03-21 02:46:07.832 30261 30386 D sharp_executorch_full: Part1 1x (4,4): calling Part2 forward
+03-21 02:46:08.568 30261 30386 D sharp_executorch_full: Part1 1x (4,4): Part2 forward returned
+03-21 02:46:08.570 30261 30386 D sharp_executorch_full: 1x patches (25): 34450ms
+03-21 02:46:08.570 30261 30386 D sharp_executorch_full: 0.5x patches (0): 0ms
+03-21 02:46:08.576 30261 30386 D sharp_executorch_full: Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat
+03-21 02:46:08.576 30261 30386 I sharp_executorch_full: SHARP_pte_paths useVulkan=1 dir=/data/user/0/com.furnit.android/files/models_vulkan
+03-21 02:46:08.576 30261 30386 I sharp_executorch_full:   Part3=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part3_vulkan_fp32.pte
+03-21 02:46:08.576 30261 30386 I sharp_executorch_full:   Part4a512=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_512_vulkan.pte
+03-21 02:46:08.576 30261 30386 I sharp_executorch_full:   Part4a65=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_65_vulkan.pte
+03-21 02:46:08.576 30261 30386 I sharp_executorch_full:   Part4b_single=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4b_vulkan.pte
+03-21 02:46:08.576 30261 30386 D sharp_executorch_full: [MEM] combinedTokens planned ~2MB image=1536x1536
+03-21 02:46:08.576 30261 30386 D sharp_executorch_full: [MEM] before Part3 load rss=886MB hwm=890MB vmsize=18433MB avail=3423MB workspace_est=149MB
+03-21 02:46:09.527  1581  4425 I ActivityManager: Process com.google.android.apps.aiwallpapers (pid 28751) has died: cch  +85 CEM 
+03-21 02:46:09.534  1581  4425 I ActivityManager: Process com.google.android.apps.wallpaper (pid 28624) has died: cch  +85 CEM 
+03-21 02:46:09.541  1581  3092 W ActivityManager: pid 29412 com.google.android.apps.photos sent binder code 2 with flags 1 and got error -32
+03-21 02:46:09.543  1581  3819 I ActivityManager: Process com.google.android.cellbroadcastreceiver (pid 28390) has died: cch  +75 CEM 
+03-21 02:46:09.622  1581  4425 I ActivityManager: Process com.google.android.apps.emojiwallpaper (pid 29022) has died: cch  +75 CEM 
+03-21 02:46:09.635  1581  4425 I ActivityManager: Process com.google.android.apps.pixel.customizationbundle (pid 29200) has died: cch  +75 CEM 
+03-21 02:46:09.697  1581  4425 I ActivityManager: Process com.google.android.as:captions (pid 29277) has died: cch  +65 CEM 
+03-21 02:46:09.729  1581  4425 I ActivityManager: Process com.google.pixel.livewallpaper (pid 29473) has died: cch  +65 CEM 
+03-21 02:46:09.800  1581  1609 I ActivityManager: Process com.google.android.apps.googleassistant:remote (pid 29441) has died: cch  +65 CEM 
+03-21 02:46:09.827  1581  1609 I ActivityManager: Process .ShannonImsService (pid 29559) has died: cch  +55 CEM 
+03-21 02:46:10.189  1581  1609 I ActivityManager: Process android.process.acore (pid 28597) has died: cch  +55 CEM 
+03-21 02:46:10.267  1581  1609 I ActivityManager: Process com.google.android.carrier (pid 30042) has died: cch  +45 CEM 
+03-21 02:46:10.328  1581  3179 I ActivityManager: Process com.google.android.aicore (pid 29746) has died: cch  +45 CEM 
+03-21 02:46:10.331  1581  4591 I ActivityManager: Process com.google.android.tts (pid 29961) has died: cch  +55 CEM 
+03-21 02:46:10.366  1581  2397 I ActivityManager: Process com.google.android.apps.privacy.wildlife (pid 29477) has died: cch  +45 CEM 
+03-21 02:46:10.370  1581  2397 D ActivityManager: sync unfroze 28913 com.google.android.gms for 33
+03-21 02:46:10.456  1581  2397 I ActivityManager: Process com.google.android.apps.wellbeing (pid 28673) has died: cch  +35 CEM 
+03-21 02:46:10.462  1581  3092 I ActivityManager: Process com.android.keychain (pid 30194) has died: cch  +35 CEM 
+03-21 02:46:10.514  1581  3092 I ActivityManager: Process com.android.settings (pid 30191) has died: cch  +35 CEM 
+03-21 02:46:10.556  1581  1609 I ActivityManager: Process com.google.android.odad (pid 30224) has died: cch  +25 CEM 
+03-21 02:46:10.606  1581  1609 I ActivityManager: Process com.google.android.permissioncontroller (pid 29361) has died: cch  +25 CEM 
+03-21 02:46:10.671  1581  3092 I ActivityManager: Process com.android.vending:background (pid 29898) has died: cch  +15 CEM 
+03-21 02:46:10.672  1581  3092 W ActivityManager: Scheduling restart of crashed service com.android.vending/com.google.frameworks.client.data.android.server.play.BackgroundProcessEndpointService in 1000ms for connection
+03-21 02:46:10.723  1581  4425 I ActivityManager: Process com.android.vending (pid 28650) has died: cch  +15 CEM 
+03-21 02:46:10.747  1581  2390 I ActivityManager: Process com.google.android.euicc (pid 30075) has died: cch  +15 CEM 
+03-21 02:46:10.798  1581  2390 I ActivityManager: Process com.google.android.documentsui (pid 30390) has died: cch CEM 
+03-21 02:46:10.926  1581  2390 I ActivityManager: Process com.google.android.photopicker (pid 30422) has died: cch CEM 
+03-21 02:46:10.930  1581  1650 W ActivityManager: setHasOverlayUi called on unknown pid: 30422
+03-21 02:46:10.940  1581  2390 I ActivityManager: Process com.google.android.googlequicksearchbox:search (pid 28637) has died: cch CEM 
+03-21 02:46:10.990  1581  2390 I ActivityManager: Process com.google.android.GoogleCamera (pid 28836) has died: svcb SVC 
+03-21 02:46:10.992  1581  2390 W ActivityManager: Scheduling restart of crashed service com.google.android.GoogleCamera/com.google.android.apps.camera.prewarm.NoOpPrewarmService in 30000ms for start-requested
+03-21 02:46:11.000  1581  4426 I ActivityManager: Process com.google.android.gms (pid 28913) has died: cch CEM 
+03-21 02:46:14.226  1581  1663 W ActivityManager: Rescheduling restart of crashed service com.google.android.GoogleCamera/com.google.android.apps.camera.prewarm.NoOpPrewarmService in 0ms for mem-pressure-event
+03-21 02:46:14.252  1581  1665 I ActivityManager: Start proc 30522:com.google.android.GoogleCamera/u0a176 for service {com.google.android.GoogleCamera/com.google.android.apps.camera.prewarm.NoOpPrewarmService}
+03-21 02:46:16.003  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:20.497  1581  2560 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@345382f
+03-21 02:46:20.503  1581  2560 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:46:21.008  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:24.624 30261 30386 D sharp_executorch_full: Part3: 16048ms (numel=590848)
+03-21 02:46:24.625 30261 30386 D sharp_executorch_full: [MEM] after Part3 reset rss=1844MB hwm=3928MB vmsize=20162MB avail=2626MB workspace_est=149MB
+03-21 02:46:24.625 30261 30386 D sharp_executorch_full: [MEM] after releasing encoder scratch before Part4 rss=1833MB hwm=3928MB vmsize=20134MB avail=2637MB workspace_est=119MB
+03-21 02:46:24.625 30261 30386 D sharp_executorch_full: [MEM] before Part4a/512 load rss=1833MB hwm=3928MB vmsize=20134MB avail=2637MB workspace_est=119MB
+03-21 02:46:24.627 30261 30386 I sharp_executorch_full: Part4a/512: mmap+load OK in 2ms; forward() file=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_512_vulkan.pte
+03-21 02:46:25.861  1581  1665 I ActivityManager: Start proc 30598:com.google.android.apps.privacy.wildlife/u0a167 for broadcast {com.google.android.apps.privacy.wildlife/com.google.android.apps.privacy.wildlife.receiver.WildlifeVpnReceiver}
+03-21 02:46:26.010  1581  1664 I ActivityManager: Test idle failed due to d57df64 30598:com.google.android.apps.privacy.wildlife/u0a167 not runnable because EMPTY
+03-21 02:46:26.089  1581  1665 I ActivityManager: Start proc 30614:com.google.android.gms/u0a147 for service {com.google.android.gms/com.google.android.gms.chimera.GmsApiService}
+03-21 02:46:31.010  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:36.014  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:36.183  1581  1984 D ActivityManager: freezing 30598 com.google.android.apps.privacy.wildlife
+03-21 02:46:37.746  1581  1984 D ActivityManager: freezing 30614 com.google.android.gms
+03-21 02:46:37.793 30261 30386 I sharp_executorch_full: Part4a/512: forward finished in 13165ms
+03-21 02:46:37.936 30261 30386 D sharp_executorch_full: Part4a/512: 13311ms (out=524288)
+03-21 02:46:37.936 30261 30386 D sharp_executorch_full: [MEM] after Part4a/512 reset rss=1838MB hwm=3928MB vmsize=20218MB avail=2619MB workspace_est=119MB
+03-21 02:46:37.936 30261 30386 D sharp_executorch_full: [MEM] before Part4a/65 load rss=1838MB hwm=3928MB vmsize=20218MB avail=2619MB workspace_est=119MB
+03-21 02:46:37.938 30261 30386 I sharp_executorch_full: Part4a/65: load OK in 2ms; forward() file=/data/user/0/com.furnit.android/files/models_vulkan/sharp_split_part4a_chunk_65_vulkan.pte
+03-21 02:46:38.291  1581  1664 D ActivityManager: sync unfroze 30598 com.google.android.apps.privacy.wildlife for 3
+03-21 02:46:38.299  1581  1664 D ActivityManager: sync unfroze 30614 com.google.android.gms for 3
+03-21 02:46:40.627 30261 30386 I sharp_executorch_full: Part4a/65: forward finished in 2688ms
+03-21 02:46:40.648 30261 30386 D sharp_executorch_full: Part4a/65: 2712ms. Part4a total: 16023ms
+03-21 02:46:40.649 30261 30386 D sharp_executorch_full: [MEM] after Part4a/65 reset rss=1651MB hwm=3928MB vmsize=21186MB avail=2905MB workspace_est=119MB
+03-21 02:46:40.676 30261 30386 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:46:40.676 30261 30386 D sharp_executorch_full: Released Part1+Part2 cache before Part4b to free memory
+03-21 02:46:40.676 30261 30386 D sharp_executorch_full: [MEM] before Part4b routing rss=1231MB hwm=3928MB vmsize=20752MB avail=3321MB workspace_est=119MB
+03-21 02:46:40.681 30261 30386 D sharp_executorch_full: [MEM] Part4b batched tiled: before module load rss=1233MB hwm=3928MB vmsize=20754MB avail=3318MB workspace_est=119MB
+03-21 02:46:40.682 30261 30386 D sharp_executorch_full: runPart4bBatchedTiledPipeline: loaded split tile_b2 modules (batch=2)
+03-21 02:46:40.682 30261 30386 D sharp_executorch_full: [MEM] Part4b batched tiled: after module load rss=1233MB hwm=3928MB vmsize=20932MB avail=3318MB workspace_est=119MB
+03-21 02:46:41.018  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:41.509  1581  2390 I ActivityManager: Process com.google.android.apps.privacy.wildlife (pid 30598) has died: fg  RCVR
+03-21 02:46:44.626  1581  1665 I ActivityManager: Start proc 30680:com.google.android.apps.privacy.wildlife/u0a167 for broadcast {com.google.android.apps.privacy.wildlife/com.google.android.apps.privacy.wildlife.receiver.WildlifeVpnReceiver}
+03-21 02:46:46.524  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:51.527  1581  1664 I ActivityManager: Test idle passed
+03-21 02:46:52.349  1581  1665 I ActivityManager: Start proc 30727:com.google.android.googlequicksearchbox:googleapp/u0a179 for broadcast {com.google.android.googlequicksearchbox/com.google.android.apps.search.widgets.stocks.StocksWidgetReceiver}
+03-21 02:46:52.371  1581  1665 I ActivityManager: Start proc 30730:com.google.android.googlequicksearchbox:search/u0a179 for service {com.google.android.googlequicksearchbox/androidx.work.impl.background.systemjob.SystemJobService}
+03-21 02:46:56.158  1581  4426 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@b3e2f5
+03-21 02:46:56.160  1581  4426 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:46:56.530  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:01.535  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:04.106  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:47:06.542  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:11.547  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:16.550  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:21.558  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:25.075  1581  1984 D ActivityManager: freezing 30614 com.google.android.gms
+03-21 02:47:26.560  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:31.567  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:33.806  1581  9001 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@3070d3e
+03-21 02:47:33.808  1581  9001 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:47:36.574  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:41.578  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:44.848  1581  1665 I ActivityManager: Start proc 30840:com.whatsapp/u0a342 for service {com.whatsapp/androidx.work.impl.background.systemjob.SystemJobService}
+03-21 02:47:45.540 30840 30863 W libc    : Access denied finding property "ro.mediatek.platform"
+03-21 02:47:45.540 30840 30863 W libc    : Access denied finding property "ro.chipname"
+03-21 02:47:45.541 30840 30863 W libc    : Access denied finding property "ro.hardware.chipname"
+03-21 02:47:46.237  1581  2560 W ActivityManager: Background start not allowed: service Intent { act=com.whatsapp.messageservice.messaging.MessageService.START xflg=0x4 cmp=com.whatsapp/.messageservice.messaging.MessageService } to com.whatsapp/.messageservice.messaging.MessageService from pid=30840 uid=10342 pkg=com.whatsapp startFg?=false
+03-21 02:47:46.580  1581  1664 I ActivityManager: Test idle passed
+03-21 02:47:47.570  1581  1665 I ActivityManager: Start proc 30922:android.process.acore/u0a82 for content provider {com.android.providers.contacts/com.android.providers.contacts.ContactsProvider2}
+03-21 02:47:48.009  1581  1665 I ActivityManager: Start proc 30958:com.instagram.android/u0a289 for content provider {com.instagram.android/com.instagram.contentprovider.AsyncFamilyAppsUserValuesProvider}
+03-21 02:47:49.139  1581  2603 W ActivityManager: Background start not allowed: service Intent { act=Orca.START xflg=0x4 cmp=com.instagram.android/com.facebook.rti.push.service.FbnsService (has extras) } to com.instagram.android/com.facebook.rti.push.service.FbnsService from pid=30958 uid=10289 pkg=com.instagram.android startFg?=false
+03-21 02:47:49.816  1581  1984 D ActivityManager: freezing 30727 com.google.android.googlequicksearchbox:googleapp
+03-21 02:47:49.821  1581  1984 D ActivityManager: freezing 30730 com.google.android.googlequicksearchbox:search
+03-21 02:47:51.583  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 runnable at -1s950ms because NORMAL
+03-21 02:47:56.587  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 runnable at -6s955ms because NORMAL
+03-21 02:47:58.128  1581  2560 W ActivityManager: Background start not allowed: service Intent { act=Orca.START xflg=0x4 cmp=com.instagram.android/com.facebook.rti.push.service.FbnsService (has extras) } to com.instagram.android/com.facebook.rti.push.service.FbnsService from pid=30958 uid=10289 pkg=com.instagram.android startFg?=false
+03-21 02:47:59.504  1581  1984 D ActivityManager: freezing 30840 com.whatsapp
+03-21 02:47:59.513  1581  1984 D ActivityManager: freezing 30922 android.process.acore
+03-21 02:48:01.591  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:06.598  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:11.604  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:13.266  1581  3535 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@4c483d6
+03-21 02:48:13.268  1581  3535 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:48:16.605  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:21.611  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:24.814  1581  1664 D ActivityManager: sync unfroze 30680 com.google.android.apps.privacy.wildlife for 3
+03-21 02:48:24.816  1581  1664 D ActivityManager: sync unfroze 30614 com.google.android.gms for 3
+03-21 02:48:26.612  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:31.615  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:36.619  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:41.621  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:46.624  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:51.629  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:56.635  1581  1664 I ActivityManager: Test idle failed due to 4b633ec 30958:com.instagram.android/u0a289 not runnable because EMPTY
+03-21 02:48:56.971  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:49:01.637  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:06.640  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:11.231  1581  1984 D ActivityManager: freezing 30958 com.instagram.android
+03-21 02:49:11.647  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:12.113  1581  4426 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@3fe2a39
+03-21 02:49:12.116  1581  4426 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:49:13.921  1581  1665 I ActivityManager: Start proc 31084:com.google.android.apps.wellbeing/u0a119 for service {com.google.android.apps.wellbeing/androidx.work.impl.background.systemjob.SystemJobService}
+03-21 02:49:13.938  1581  1665 I ActivityManager: Start proc 31085:com.google.android.apps.messaging/u0a138 for service {com.google.android.apps.messaging/androidx.work.impl.background.systemjob.SystemJobService}
+03-21 02:49:13.952  1581  1665 I ActivityManager: Start proc 31088:com.google.android.apps.weather/u0a170 for service {com.google.android.apps.weather/androidx.work.impl.background.systemjob.SystemJobService}
+03-21 02:49:14.946  1581  4977 W ActivityManager: Background start not allowed: service Intent { xflg=0x4 cmp=com.google.android.apps.messaging/com.google.apps.tiktok.concurrent.AndroidFuturesService (has extras) } to com.google.android.apps.messaging/com.google.apps.tiktok.concurrent.AndroidFuturesService from pid=31085 uid=10138 pkg=com.google.android.apps.messaging startFg?=false
+03-21 02:49:16.650  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:21.661  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:24.742  1581  1984 D ActivityManager: freezing 31084 com.google.android.apps.wellbeing
+03-21 02:49:25.324  1581  1984 D ActivityManager: freezing 31085 com.google.android.apps.messaging
+03-21 02:49:26.665  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:31.669  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:36.673  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:40.154  1581  1984 D ActivityManager: freezing 30614 com.google.android.gms
+03-21 02:49:41.680  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:46.684  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:51.688  1581  1664 I ActivityManager: Test idle passed
+03-21 02:49:56.700  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:01.703  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:06.709  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:08.883  1581  2603 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@8a59ffa
+03-21 02:50:08.885  1581  1608 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:50:11.715  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:12.723  1581  1984 D ActivityManager: freezing 31088 com.google.android.apps.weather
+03-21 02:50:16.718  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:21.725  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:21.728 30261 30261 D sharp_executorch_full: ModuleCache: released Part1+Part2
+03-21 02:50:21.745 30261 30261 D sharp_executorch_full: Released module cache + workspace
+03-21 02:50:26.732  1581  1664 I ActivityManager: Test idle passed
+03-21 02:50:27.084  1581  1664 D ActivityManager: sync unfroze 30680 com.google.android.apps.privacy.wildlife for 3
+03-21 02:50:27.088  1581  1664 D ActivityManager: sync unfroze 30614 com.google.android.gms for 3
+03-21 02:50:37.817  1581  1984 D ActivityManager: freezing 29412 com.google.android.apps.photos
+03-21 02:50:46.573  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:51:11.445  1581  2390 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@3edad0d
+03-21 02:51:11.449  1581  2390 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:51:34.498  1581  1984 D ActivityManager: freezing 30013 com.google.android.apps.turbo
+03-21 02:51:56.324  1581  2390 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@4a9c3e9
+03-21 02:51:56.332  1581  2390 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:52:04.496  1581  4977 D ActivityManager: sync unfroze 30013 com.google.android.apps.turbo for 6
+03-21 02:52:18.562  1581  1665 I ActivityManager: Start proc 31254:com.google.android.partnersetup/u0a161 for service {com.google.android.partnersetup/com.google.android.partnersetup.InstalledAppJobService}
+03-21 02:52:18.574  1581  1665 I ActivityManager: Start proc 31256:com.google.android.apps.turbo:aab/u0a134 for service {com.google.android.apps.turbo/com.google.android.libraries.smartbattery.appusage.library.InferAppBucketsJob}
+03-21 02:52:18.587  1581  2033 D ActivityManager: sync unfroze 30840 com.whatsapp for 6
+03-21 02:52:18.673  1581  2603 D ActivityManager: sync unfroze 30922 android.process.acore for 7
+03-21 02:52:19.011  1581  2594 W ActivityManager: Background start not allowed: service Intent { act=com.whatsapp.messageservice.messaging.MessageService.START xflg=0x4 cmp=com.whatsapp/.messageservice.messaging.MessageService } to com.whatsapp/.messageservice.messaging.MessageService from pid=30840 uid=10342 pkg=com.whatsapp startFg?=false
+03-21 02:52:19.239 31256 31289 W libc    : Access denied finding property "ro.mediatek.platform"
+03-21 02:52:19.239 31256 31289 W libc    : Access denied finding property "ro.chipname"
+03-21 02:52:19.239 31256 31289 W libc    : Access denied finding property "ro.hardware.chipname"
+03-21 02:52:19.276  1581  1665 I ActivityManager: Start proc 31311:com.android.chrome/u0a202 for broadcast {com.android.chrome/com.google.android.apps.chrome.rlz.RevenueStatsConfigurationUpdateReceiver}
+03-21 02:52:19.457  1581  1665 I ActivityManager: Start proc 31337:com.android.settings/1000 for content provider {com.android.settings/com.google.android.settings.fuelgauge.CommandContentProvider}
+03-21 02:52:29.270  1581  1664 D ActivityManager: sync unfroze 30680 com.google.android.apps.privacy.wildlife for 3
+03-21 02:52:29.298  1581  1984 D ActivityManager: freezing 30840 com.whatsapp
+03-21 02:52:29.301  1581  1984 D ActivityManager: freezing 30922 android.process.acore
+03-21 02:52:29.574  1581  1984 D ActivityManager: freezing 31254 com.google.android.partnersetup
+03-21 02:52:29.575  1581  1984 D ActivityManager: freezing 31311 com.android.chrome
+03-21 02:52:29.816  1581  1984 D ActivityManager: freezing 31256 com.google.android.apps.turbo:aab
+03-21 02:52:29.817  1581  1984 D ActivityManager: freezing 31337 com.android.settings
+03-21 02:52:42.318  1581  3535 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@ad5c359
+03-21 02:52:42.322  1581  3535 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:52:45.639  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:52:57.545  1581  1664 D ActivityManager: sync unfroze 30680 com.google.android.apps.privacy.wildlife for 3
+03-21 02:53:07.603  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:53:10.916  1581  2594 I ActivityManager: Force stopping com.furnit.android appid=10432 user=0: from pid 31369
+03-21 02:53:10.922  1581  2594 I ActivityManager: Killing 30261:com.furnit.android/u0a432 (adj 0): stop com.furnit.android due to from pid 31369
+03-21 02:53:10.979  1581  1974 D ActivityManager: sync unfroze 30840 com.whatsapp for 6
+03-21 02:53:11.020  1581  1665 I ActivityManager: Start proc 31378:com.google.android.euicc/u0a117 for service {com.google.android.euicc/com.android.euicc.service.EuiccServiceImpl}
+03-21 02:53:11.027  1581  2003 W ActivityManager: pid 1581 system sent binder code 6 with flags 1 and got error -32
+03-21 02:53:11.027  1581  2003 W ActivityManager: pid 1581 system sent binder code 4 with flags 1 and got error -32
+03-21 02:53:11.027  1581  2003 D ActivityManager: Too many transaction errors, throttling freezer binder callback.
+03-21 02:53:11.328  1581  2603 V ActivityManager: Got obituary of 30261:com.furnit.android
+03-21 02:53:11.333  1581  1650 W ActivityManager: setHasOverlayUi called on unknown pid: 30261
+03-21 02:53:11.352  1581  7820 W ActivityManager: pid 1581 system sent binder code 7 with flags 1 and got error -32
+03-21 02:53:11.353  1581  7820 D ActivityManager: Too many transaction errors, throttling freezer binder callback.
+03-21 02:53:11.440  1581  7820 W ActivityManager: Background start not allowed: service Intent { act=com.whatsapp.messageservice.messaging.MessageService.START xflg=0x4 cmp=com.whatsapp/.messageservice.messaging.MessageService } to com.whatsapp/.messageservice.messaging.MessageService from pid=30840 uid=10342 pkg=com.whatsapp startFg?=false
+03-21 02:53:13.263  1581  1664 D ActivityManager: sync unfroze 30680 com.google.android.apps.privacy.wildlife for 3
+03-21 02:53:21.741  1581  1984 D ActivityManager: freezing 30840 com.whatsapp
+03-21 02:53:23.280  1581  1984 D ActivityManager: freezing 30680 com.google.android.apps.privacy.wildlife
+03-21 02:53:26.837  1581  7820 I ActivityManager: Force stopping com.furnit.android appid=10432 user=0: from pid 31432
+03-21 02:53:36.891  1581  1984 D ActivityManager: freezing 30614 com.google.android.gms
+03-21 02:53:43.259  1581  1664 I ActivityManager: Force stopping com.furnit.android appid=10432 user=-1: installPackageLI
+03-21 02:53:43.314  1581  1731 I ActivityManager: Force stopping com.furnit.android appid=10432 user=0: pkg removed
+03-21 02:53:43.389  1581  1581 D ActivityManager: sync unfroze 31337 com.android.settings for 10
+03-21 02:53:43.392  1581  1608 D ActivityManager: sync unfroze 31084 com.google.android.apps.wellbeing for 7
+03-21 02:53:43.422  1581  1665 I ActivityManager: Start proc 31471:com.google.android.permissioncontroller/u0a264 for broadcast {com.google.android.permissioncontroller/com.android.permissioncontroller.safetylabel.SafetyLabelChangedBroadcastReceiver}
+03-21 02:53:43.447  1581  1665 I ActivityManager: Start proc 31473:com.android.keychain/1000 for service {com.android.keychain/com.android.keychain.KeyChainService}
+03-21 02:53:43.490  1581  2397 I ActivityManager: Force stopping com.furnit.android appid=10432 user=0: from pid 31480
+03-21 02:53:43.503  1581  1665 I ActivityManager: Start proc 31501:com.google.android.odad/u0a162 for service {com.google.android.odad/com.google.android.apps.miphone.odad.contentprotection.ContentProtectionService}
+03-21 02:53:43.728  1581  1665 I ActivityManager: Start proc 31527:com.android.vending/u0a178 for broadcast {com.android.vending/com.google.android.finsky.packagemonitor.impl.PackageMonitorReceiverImpl$RegisteredReceiver}
+03-21 02:53:43.784  1581  4977 I ActivityManager: Background started FGS: Allowed [callingPackage: com.google.android.odad; callingUid: 10162; uidState: IMPF; uidBFSL: n/a; intent: Intent { xflg=0x4 cmp=com.google.android.odad/com.google.android.apps.miphone.odad.backgroundwork.impl.WorkService (has extras) }; code:BACKGROUND_ACTIVITY_PERMISSION; tempAllowListReason:<null>; allowWiu:58; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+03-21 02:53:43.821  1581  1665 I ActivityManager: Start proc 31556:com.furnit.android/u0a432 for next-top-activity {com.furnit.android/com.furnit.android.auth.LoginActivity}
+03-21 02:53:43.852  1581  4591 D ActivityManager: sync unfroze 30614 com.google.android.gms for 6
+03-21 02:53:44.138 31556 31556 W libc    : Access denied finding property "ro.mediatek.platform"
+03-21 02:53:44.138 31556 31556 W libc    : Access denied finding property "ro.chipname"
+03-21 02:53:44.138 31556 31556 W libc    : Access denied finding property "ro.hardware.chipname"
+03-21 02:53:44.148  1581  1665 I ActivityManager: Start proc 31620:com.android.vending:background/u0a178 for broadcast {com.android.vending/com.google.android.finsky.packagemonitor.backgroundimpl.BackgroundPackageMonitorReceiverImpl$RegisteredReceiver}
+03-21 02:53:44.914  1581  9001 D ActivityManager: sync unfroze 30730 com.google.android.googlequicksearchbox:search for 6
+03-21 02:53:45.263 30730 31717 W libc    : Access denied finding property "ro.mediatek.platform"
+03-21 02:53:45.263 30730 31717 W libc    : Access denied finding property "ro.chipname"
+03-21 02:53:45.263 30730 31717 W libc    : Access denied finding property "ro.hardware.chipname"
+03-21 02:53:45.356  1581  2397 D ActivityManager: sync unfroze 30922 android.process.acore for 7
+03-21 02:53:46.087  1581  4425 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@c60973b
+03-21 02:53:46.089  1581  4425 W ActivityManager: Unable to start service Intent { act=android.telephony.satellite.SatelliteService xflg=0x4 pkg=com.google.android.satellite } U=0: not found
+03-21 02:53:54.934  1581  1984 D ActivityManager: freezing 31620 com.android.vending:background
+03-21 02:53:55.498  1581  1984 D ActivityManager: freezing 31527 com.android.vending
+03-21 02:53:56.700  1581  1984 D ActivityManager: freezing 31501 com.google.android.odad

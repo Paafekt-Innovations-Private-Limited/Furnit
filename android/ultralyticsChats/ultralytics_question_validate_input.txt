@@ -1,0 +1,19 @@
+We have a ViT-based 3D reconstruction model (SHARP) on Android with ExecuTorch INT8. The model expects square input (1536x1536). We need to validate our input preprocessing approach.
+
+**Previous approach (aggressive):**
+- Center-crop to square (side = min(width, height)), then resize to 1536x1536.
+- No black bars; patch grid only sees real image. But we discard a lot of image content (e.g. landscape 3840x2160 loses the sides).
+
+**New approach (lenient, no black bars):**
+- Resize the full image so it fits inside 1536x1536 (scale = 1536 / max(w,h)); content is e.g. 1536x864 for 3840x2160.
+- Pad to 1536x1536 using edge extension: the padding regions are filled by repeating the image edge pixels (BitmapShader with CLAMP so sampling outside the content area returns the nearest edge pixel). No black bars; we use the full image.
+
+**Questions:**
+
+1. Is resize-to-fit + edge-extension padding a valid approach for a ViT / vision transformer that expects square input? Could the extended edges (replicated edge pixels in the pad regions) cause artifacts or confuse the model compared to center crop?
+
+2. For 3D reconstruction (Gaussian splatting), is it generally better to (a) center-crop to square (no padding, discard content) or (b) resize-fit + edge pad (full image, no black bars)? Any deployment best practices?
+
+3. If edge extension can cause issues (e.g. the model "sees" fake extended walls at the padding), would mirror/reflection padding be safer than clamp, or is center crop still the safest for this class of model?
+
+We want to keep the full image in view (lenient) and avoid black bars. We are not using YOLO; this is SHARP 3D room reconstruction.

@@ -298,6 +298,76 @@ def apply_delayed_concat_split(graph, mod, initializers, output_consumers):
             graph.initializer.remove(init)
 
 
+def verify_onnx_outputs_match(
+    original_onnx_path: str,
+    split_onnx_path: str,
+    imgsz: int = 1280,
+    tolerance: float = 1e-4,
+) -> bool:
+    import onnxruntime as ort
+
+    np.random.seed(42)
+    test_input = np.random.randn(1, 3, imgsz, imgsz).astype(np.float32)
+
+    original_session = ort.InferenceSession(original_onnx_path)
+    split_session = ort.InferenceSession(split_onnx_path)
+
+    input_name = original_session.get_inputs()[0].name
+    original_outputs = original_session.run(None, {input_name: test_input})
+    split_outputs = split_session.run(None, {input_name: test_input})
+
+    all_outputs_match = True
+    for output_index, (original_output, split_output) in enumerate(zip(original_outputs, split_outputs)):
+        maximum_difference = np.max(np.abs(original_output - split_output))
+        status = "✅" if maximum_difference < tolerance else "❌"
+        print(
+            f"  {status} Output[{output_index}] "
+            f"shape={original_output.shape} max_diff={maximum_difference:.8f}"
+        )
+        if maximum_difference >= tolerance:
+            all_outputs_match = False
+
+    return all_outputs_match
+
+
+def convert_split_onnx_to_coreml(
+    split_onnx_path: str,
+    output_mlpackage_path: str,
+    imgsz: int = 1280,
+):
+    import coremltools as ct
+
+    model = ct.convert(
+        split_onnx_path,
+        inputs=[ct.ImageType(
+            name="image",
+            shape=(1, 3, imgsz, imgsz),
+            scale=1.0 / 255.0,
+            bias=[0.0, 0.0, 0.0],
+            color_layout="RGB",
+        )],
+        compute_precision=ct.precision.FLOAT16,
+        minimum_deployment_target=ct.target.iOS16,
+        convert_to="mlprogram",
+    )
+    model.save(output_mlpackage_path)
+    print(f"✅ Saved: {output_mlpackage_path}")
+    return model
+
+
+def print_coreml_output_names(model, imgsz: int = 1280):
+    from PIL import Image
+
+    test_image = Image.fromarray(
+        np.random.randint(0, 255, (imgsz, imgsz, 3), dtype=np.uint8)
+    )
+    outputs = model.predict({"image": test_image})
+    print("\nOutput names (update YoloEDetectionParser.swift knownDetectionProtoPairs):")
+    for name, array in outputs.items():
+        shape = array.shape if hasattr(array, "shape") else "?"
+        print(f"  {name}: {shape}")
+
+
 def main():
     import argparse
 
@@ -326,27 +396,7 @@ def main():
         print("Verifying outputs match original...")
         print("="*60)
         try:
-            import onnxruntime as ort
-
-            np.random.seed(42)
-            test_input = np.random.randn(1, 3, 1280, 1280).astype(np.float32)
-
-            sess_orig = ort.InferenceSession(onnx_path)
-            sess_split = ort.InferenceSession(output_onnx)
-
-            input_name = sess_orig.get_inputs()[0].name
-            out_orig = sess_orig.run(None, {input_name: test_input})
-            out_split = sess_split.run(None, {input_name: test_input})
-
-            all_match = True
-            for i, (a, b) in enumerate(zip(out_orig, out_split)):
-                diff = np.max(np.abs(a - b))
-                status = "✅" if diff < 1e-4 else "❌"
-                print(f"  {status} Output[{i}] shape={a.shape} max_diff={diff:.8f}")
-                if diff >= 1e-4:
-                    all_match = False
-
-            if all_match:
+            if verify_onnx_outputs_match(onnx_path, output_onnx):
                 print("✅ Verification PASSED")
             else:
                 print("❌ Verification FAILED — outputs don't match")
@@ -361,37 +411,11 @@ def main():
         print("Converting to CoreML...")
         print("="*60)
         try:
-            import coremltools as ct
-
             output_ml = args.output_mlpackage or str(
                 Path(onnx_path).parent / (Path(onnx_path).stem + "_ane.mlpackage")
             )
-
-            model = ct.convert(
-                output_onnx,
-                inputs=[ct.ImageType(
-                    name="image",
-                    shape=(1, 3, 1280, 1280),
-                    scale=1.0 / 255.0,
-                    bias=[0.0, 0.0, 0.0],
-                    color_layout="RGB",
-                )],
-                compute_precision=ct.precision.FLOAT16,
-                minimum_deployment_target=ct.target.iOS16,
-                convert_to="mlprogram",
-            )
-            model.save(output_ml)
-            print(f"✅ Saved: {output_ml}")
-
-            # Print output names for iOS parser update
-            from PIL import Image
-            test_img = Image.fromarray(np.random.randint(0, 255, (1280, 1280, 3), dtype=np.uint8))
-            out = model.predict({"image": test_img})
-            print("\nOutput names (update YoloEDetectionParser.swift knownDetectionProtoPairs):")
-            for name, arr in out.items():
-                shape = arr.shape if hasattr(arr, "shape") else "?"
-                print(f"  {name}: {shape}")
-
+            model = convert_split_onnx_to_coreml(output_onnx, output_ml)
+            print_coreml_output_names(model)
         except ImportError:
             print("⚠️  coremltools not available — skipping CoreML conversion")
         except Exception as e:
