@@ -3934,11 +3934,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let primaryCandidate = candidates[primaryIdx]
                 let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                     primaryIndex: primaryIdx,
-                    detections: candidates,
-                    planes: planes,
-                    protoW: pW,
-                    protoH: pH,
-                    modelSide: Float(onnxSide)
+                    detections: candidates
                 )
                 let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primaryCandidate, onnxSide: onnxSide)
                 var fusedDetections: [FurnitureFitDetection] = [expandedPrimary]
@@ -4138,7 +4134,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // - When running in segmentSelected mode, restrict fusion to the
         //   user-pinned instances, but still apply the primary expansion per pin.
         let maskDetectionsForBuild: [FurnitureFitDetection]
-        let maskOwnershipDetections: [FurnitureFitDetection]
         if segmentationMode == .segmentSelected {
             // Manual selection: expand each matched pin and build a mask over the
             // union of those expanded boxes.
@@ -4147,18 +4142,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &selectedFusion)
             maskDetectionsForBuild = selectedFusion
-            maskOwnershipDetections = selectedFusion
         } else {
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
             // etc.), with an expanded primary bbox for mask synthesis.
             var maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                 primaryIndex: primaryIdx,
-                detections: candidates,
-                planes: planes,
-                protoW: pW,
-                protoH: pH,
-                modelSide: Float(onnxSide)
+                detections: candidates
             )
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &maskSource)
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
@@ -4171,7 +4161,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
             maskDetectionsForBuild = fusion
-            maskOwnershipDetections = [expandedPrimary] + maskSource.filter { FurnitureFitIoU.calculate($0, primary) < 0.999 }
         }
 
         let maskFusionStart = Date()
@@ -4192,27 +4181,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let maskSmall = maskResult.binary
         let morphologyMs = 0.0
 
-        let expandedPrimarySolo = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
-        let primaryOnlyBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
-            planes: planes,
-            protoW: pW,
-            protoH: pH,
-            detections: [expandedPrimarySolo]
-        )
-        var primaryOnlyLogits = primaryOnlyBuilt.logits
-        if currentYoloInputVerticallyFlipped {
-            FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&primaryOnlyLogits, protoW: pW, protoH: pH)
-        }
         let compositeDetectionsForBuild = maskDetectionsForBuild
-        let compositeOwnershipDetections = maskOwnershipDetections
-        // Keep only the simple contributor-merge path active.
-        // let usePrimaryOnlyComposite = segmentationMode != .segmentSelected && !FurnitureFitOnnxStylePipeline.simpleApproach
-        // let compositeDetectionsForBuild = segmentationMode == .segmentSelected
-        //     ? maskDetectionsForBuild
-        //     : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskDetectionsForBuild)
-        // let compositeOwnershipDetections = segmentationMode == .segmentSelected
-        //     ? maskOwnershipDetections
-        //     : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskOwnershipDetections)
 
         let primaryBufferRect = bufferRect(
             for: primary,
@@ -4225,15 +4194,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBy1 = Int(primaryBufferRect.minY)
         let primaryBx2 = Int(primaryBufferRect.maxX)
         let primaryBy2 = Int(primaryBufferRect.maxY)
-        let maskOwnershipRects = compositeOwnershipDetections.map {
-            self.bufferRect(
-                for: $0,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-        }
 
         // Build the composite band from the fused detection boxes rather than the
         // thresholded small mask. This avoids cropping away weak thin parts (for
@@ -4245,9 +4205,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
         let maskSmallForComposite = maskSmall
         let maskLogitsForComposite = maskResult.logits
-        // Keep only the simple contributor-merge path active.
-        // let maskSmallForComposite = usePrimaryOnlyComposite ? primaryOnlyMaskResult.binary : maskSmall
-        // let maskLogitsForComposite = usePrimaryOnlyComposite ? primaryOnlyLogits : maskResult.logits
 
         let clipModelRect = CGRect(
             x: CGFloat(clipLeftModel),
@@ -4442,8 +4399,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy1: primaryBy1,
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
-                maskOwnershipRects: maskOwnershipRects,
-                primaryOnlyLogits: primaryOnlyLogits,
                 debugTag: "process_mask_native GPU"
             ) ?? compositeCpuBilinearProtoMaskCutoutFromLogits(
                 processBuffer: processBuffer,
@@ -4466,8 +4421,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
                 maskDetectionsForBuild: compositeDetectionsForBuild,
-                maskOwnershipRects: maskOwnershipRects,
-                primaryOnlyLogits: primaryOnlyLogits,
                 debugTag: "ONNX-style CPU fallback"
             ) ?? (currentYoloUsesLetterbox
                 ? compositeLegacy1280UnionMaskCutout(
@@ -4487,8 +4440,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     primaryBy1: primaryBy1,
                     primaryBx2: primaryBx2,
                     primaryBy2: primaryBy2,
-                    maskOwnershipRects: maskOwnershipRects,
-                    primaryOnlyLogits: primaryOnlyLogits
                 )
                 : nil)
 
@@ -5444,8 +5395,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx2: Int,
         primaryBy2: Int,
         maskDetectionsForBuild: [FurnitureFitDetection],
-        maskOwnershipRects: [CGRect],
-        primaryOnlyLogits: [Float],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
@@ -5454,7 +5403,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
               ph > 0,
               maskProto.count >= pw * ph,
               maskLogits.count >= pw * ph,
-              primaryOnlyLogits.count >= pw * ph,
               origW > 0, origH > 0 else { return nil }
 
         let xStart = max(0, min(origW, x0))
@@ -5568,35 +5516,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        if !FurnitureFitOnnxStylePipeline.simpleApproach {
-            applyOwnershipConstraintToFullMask(
-                fullMask: &upscaledPlanarMaskScratch,
-                ownershipRects: maskOwnershipRects,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH
-            )
-        }
-
-        // Keep only the simple contributor-merge path active.
-        // mergePrimaryMaskOpaqueIntoFullMaskBand(
-        //     fullMask: &upscaledPlanarMaskScratch,
-        //     primaryOnlyLogits: primaryOnlyLogits,
-        //     protoW: pw,
-        //     protoH: ph,
-        //     modelSide: modelSide,
-        //     origW: origW,
-        //     origH: origH,
-        //     xStart: xStart,
-        //     yStart: yStart,
-        //     bandW: bandW,
-        //     bandH: bandH,
-        //     usesLetterbox: usesLetterbox
-        // )
-
         // if furnitureFitCompositeRemoveSmallHoles {
         //     removeSmallRegionsFromFullMaskBandRegion(
         //         fullMask: &upscaledPlanarMaskScratch,
@@ -5701,9 +5620,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx1: Int,
         primaryBy1: Int,
         primaryBx2: Int,
-        primaryBy2: Int,
-        maskOwnershipRects: [CGRect],
-        primaryOnlyLogits: [Float]
+        primaryBy2: Int
     ) -> CGImage? {
         guard currentYoloUsesLetterbox,
               protoW > 0,
@@ -5830,35 +5747,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        if !FurnitureFitOnnxStylePipeline.simpleApproach {
-            applyOwnershipConstraintToFullMask(
-                fullMask: &clippedFullMask,
-                ownershipRects: maskOwnershipRects,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH
-            )
-        }
-
-        // Keep only the simple contributor-merge path active.
-        // mergePrimaryMaskOpaqueIntoFullMaskBand(
-        //     fullMask: &clippedFullMask,
-        //     primaryOnlyLogits: primaryOnlyLogits,
-        //     protoW: protoW,
-        //     protoH: protoH,
-        //     modelSide: modelSide,
-        //     origW: origW,
-        //     origH: origH,
-        //     xStart: xStart,
-        //     yStart: yStart,
-        //     bandW: bandW,
-        //     bandH: bandH,
-        //     usesLetterbox: true
-        // )
-
         // Legacy 1280 union path: logits-only mask; no island hole fill (different semantics from ONNX-style composite).
 
         guard let ctx = CGContext(
@@ -6467,15 +6355,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy1: Int,
         primaryBx2: Int,
         primaryBy2: Int,
-        maskOwnershipRects: [CGRect],
-        primaryOnlyLogits: [Float],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
         let ph = protoH
         guard pw > 0, ph > 0,
               maskLogits.count >= pw * ph,
-              primaryOnlyLogits.count >= pw * ph,
               origW > 0, origH > 0 else { return nil }
 
         let xStart = max(0, min(origW, x0))
@@ -6511,33 +6396,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
-        if !FurnitureFitOnnxStylePipeline.simpleApproach {
-            applyOwnershipConstraintToBandMask(
-                bandMask: &bandMask,
-                ownershipRects: maskOwnershipRects,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH
-            )
-        }
-
-        // Keep only the simple contributor-merge path active.
-        // mergePrimaryMaskOpaqueIntoBandMask(
-        //     bandMask: &bandMask,
-        //     primaryOnlyLogits: primaryOnlyLogits,
-        //     protoW: pw,
-        //     protoH: ph,
-        //     modelSide: modelSide,
-        //     origW: origW,
-        //     origH: origH,
-        //     xStart: xStart,
-        //     yStart: yStart,
-        //     bandW: bandW,
-        //     bandH: bandH,
-        //     usesLetterbox: usesLetterbox
-        // )
-
         // if furnitureFitCompositeRemoveSmallHoles {
         //     removeSmallRegionsFromBinaryBandMask(
         //         mask: &bandMask,
@@ -6591,181 +6449,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         return ctx.makeImage()
-    }
-
-    private func applyOwnershipConstraintToBandMask(
-        bandMask: inout [UInt8],
-        ownershipRects: [CGRect],
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int
-    ) {
-        guard bandW > 0, bandH > 0, bandMask.count >= bandW * bandH else { return }
-        guard !ownershipRects.isEmpty else {
-            bandMask = [UInt8](repeating: 0, count: bandW * bandH)
-            return
-        }
-
-        var ownershipBandMask = [UInt8](repeating: 0, count: bandW * bandH)
-        for rect in ownershipRects {
-            let rectMinX = Int(floor(rect.minX))
-            let rectMinY = Int(floor(rect.minY))
-            let rectMaxX = Int(ceil(rect.maxX))
-            let rectMaxY = Int(ceil(rect.maxY))
-            let clippedMinX = max(xStart, rectMinX)
-            let clippedMinY = max(yStart, rectMinY)
-            let clippedMaxX = min(xStart + bandW, rectMaxX)
-            let clippedMaxY = min(yStart + bandH, rectMaxY)
-            guard clippedMinX < clippedMaxX, clippedMinY < clippedMaxY else { continue }
-
-            for imageY in clippedMinY..<clippedMaxY {
-                let bandY = imageY - yStart
-                let rowOffset = bandY * bandW
-                for imageX in clippedMinX..<clippedMaxX {
-                    ownershipBandMask[rowOffset + (imageX - xStart)] = 255
-                }
-            }
-        }
-
-        for pixelIndex in 0..<(bandW * bandH) where ownershipBandMask[pixelIndex] == 0 {
-            bandMask[pixelIndex] = 0
-        }
-    }
-
-    private func applyOwnershipConstraintToFullMask(
-        fullMask: inout [UInt8],
-        ownershipRects: [CGRect],
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int
-    ) {
-        guard origW > 0, origH > 0, fullMask.count >= origW * origH else { return }
-        guard bandW > 0, bandH > 0 else { return }
-        guard !ownershipRects.isEmpty else {
-            for bandY in 0..<bandH {
-                let imageY = yStart + bandY
-                guard imageY >= 0, imageY < origH else { continue }
-                let rowOffset = imageY * origW
-                for bandX in 0..<bandW {
-                    let imageX = xStart + bandX
-                    guard imageX >= 0, imageX < origW else { continue }
-                    fullMask[rowOffset + imageX] = 0
-                }
-            }
-            return
-        }
-
-        var ownershipBandMask = [UInt8](repeating: 0, count: bandW * bandH)
-        for rect in ownershipRects {
-            let rectMinX = Int(floor(rect.minX))
-            let rectMinY = Int(floor(rect.minY))
-            let rectMaxX = Int(ceil(rect.maxX))
-            let rectMaxY = Int(ceil(rect.maxY))
-            let clippedMinX = max(xStart, rectMinX)
-            let clippedMinY = max(yStart, rectMinY)
-            let clippedMaxX = min(xStart + bandW, rectMaxX)
-            let clippedMaxY = min(yStart + bandH, rectMaxY)
-            guard clippedMinX < clippedMaxX, clippedMinY < clippedMaxY else { continue }
-
-            for imageY in clippedMinY..<clippedMaxY {
-                let bandY = imageY - yStart
-                let rowOffset = bandY * bandW
-                for imageX in clippedMinX..<clippedMaxX {
-                    ownershipBandMask[rowOffset + (imageX - xStart)] = 255
-                }
-            }
-        }
-
-        for bandY in 0..<bandH {
-            let imageY = yStart + bandY
-            guard imageY >= 0, imageY < origH else { continue }
-            let fullMaskRowOffset = imageY * origW
-            let bandRowOffset = bandY * bandW
-            for bandX in 0..<bandW {
-                if ownershipBandMask[bandRowOffset + bandX] == 0 {
-                    let imageX = xStart + bandX
-                    guard imageX >= 0, imageX < origW else { continue }
-                    fullMask[fullMaskRowOffset + imageX] = 0
-                }
-            }
-        }
-    }
-
-    /// After fused mask + ownership, force every pixel inside the primary-only upsampled mask to opaque (fills holes vs fused max).
-    private func mergePrimaryMaskOpaqueIntoBandMask(
-        bandMask: inout [UInt8],
-        primaryOnlyLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int,
-        usesLetterbox: Bool
-    ) {
-        guard let primaryBand = debugUpsampledBandMaskFromLogits(
-            maskLogits: primaryOnlyLogits,
-            protoW: protoW,
-            protoH: protoH,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: usesLetterbox
-        ), primaryBand.count == bandMask.count else { return }
-        for i in 0..<bandMask.count where primaryBand[i] != 0 {
-            bandMask[i] = 255
-        }
-    }
-
-    private func mergePrimaryMaskOpaqueIntoFullMaskBand(
-        fullMask: inout [UInt8],
-        primaryOnlyLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int,
-        usesLetterbox: Bool
-    ) {
-        guard let primaryBand = debugUpsampledBandMaskFromLogits(
-            maskLogits: primaryOnlyLogits,
-            protoW: protoW,
-            protoH: protoH,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: usesLetterbox
-        ) else { return }
-        for by in 0..<bandH {
-            let y = yStart + by
-            guard y >= 0, y < origH else { continue }
-            let row = y * origW
-            for bx in 0..<bandW {
-                guard primaryBand[by * bandW + bx] != 0 else { continue }
-                let x = xStart + bx
-                guard x >= 0, x < origW else { continue }
-                fullMask[row + x] = 255
-            }
-        }
     }
 
     private enum SmallRegionCleanupMode {

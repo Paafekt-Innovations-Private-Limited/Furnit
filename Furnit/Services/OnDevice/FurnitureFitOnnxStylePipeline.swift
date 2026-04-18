@@ -3,11 +3,6 @@ import Foundation
 
 /// Android `FurnitureFitManager` ONNX path parity: NMS → primary scoring → supporting-table heuristic → bbox-limited proto logit mask.
 enum FurnitureFitOnnxStylePipeline {
-    /// Simpler auto-fill heuristic for instance-mask holes: merge any other detection whose center
-    /// lies inside the primary bbox. This is cheap and works well when the model splits blankets /
-    /// cushions / items resting on top of the furniture into separate non-overlapping instances.
-    static let simpleApproach: Bool = true
-
     /// Default detection confidence threshold for ONNX-style helpers.
     /// The live FurnitureFit camera path now uses 0.10 via `FurnitureFitUIView.scoreThreshold`.
     static let confidenceThreshold: Float = 0.01
@@ -214,126 +209,15 @@ enum FurnitureFitOnnxStylePipeline {
     }
 #endif
 
-    private static let includeSupportingTableForMonitorScene = true
-    private static let monitorLikeClassIds: Set<Int> = [1063, 2675, 4105]
-    private static let supportingTableClassIds: Set<Int> = [1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564]
-
-    private static func pickSupportingTableForMonitorScene(
-        primaryDetection: FurnitureFitDetection,
-        detections: [FurnitureFitDetection],
-        primaryIndex: Int
-    ) -> FurnitureFitDetection? {
-        if !includeSupportingTableForMonitorScene { return nil }
-        if !monitorLikeClassIds.contains(primaryDetection.classIdx) { return nil }
-
-        let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
-        let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
-        let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
-        let primaryArea = max(1e-3, primaryDetection.w * primaryDetection.h)
-
-        var best: FurnitureFitDetection?
-        var bestScore: Float = -1
-
-        for (idx, detection) in detections.enumerated() {
-            if idx == primaryIndex { continue }
-            if !supportingTableClassIds.contains(detection.classIdx) { continue }
-
-            let candidateLeft = detection.x - detection.w * 0.5
-            let candidateRight = detection.x + detection.w * 0.5
-            let candidateTop = detection.y - detection.h * 0.5
-            let overlapWidth = max(0, min(primaryRight, candidateRight) - max(primaryLeft, candidateLeft))
-            let horizontalOverlapRatio = overlapWidth / max(1e-3, min(primaryDetection.w, detection.w))
-            if horizontalOverlapRatio < 0.35 { continue }
-
-            if detection.y <= primaryDetection.y { continue }
-
-            let verticalGap = candidateTop - primaryBottom
-            if verticalGap < -primaryDetection.h * 0.20 || verticalGap > primaryDetection.h * 0.60 { continue }
-
-            let widthRatio = detection.w / max(1e-3, primaryDetection.w)
-            if widthRatio < 0.75 || widthRatio > 5.0 { continue }
-
-            let areaRatio = (detection.w * detection.h) / primaryArea
-            if areaRatio < 0.50 || areaRatio > 12.0 { continue }
-
-            let closenessTerm = 1 - min(1, abs(verticalGap) / max(primaryDetection.h * 0.60, 1e-3))
-            let score = detection.confidence * horizontalOverlapRatio * max(0.1, closenessTerm)
-
-            if score > bestScore {
-                bestScore = score
-                best = detection
-            }
-        }
-        return best
-    }
-
-    /// Approximates the candidate mask center from proto pixels inside the candidate bbox.
-    private static func candidateMaskCenterInModelSpace(
-        detection: FurnitureFitDetection,
-        planes: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Float
-    ) -> (x: Float, y: Float)? {
-        let hwProto = protoW * protoH
-        guard protoW > 0,
-              protoH > 0,
-              modelSide > 0,
-              detection.coeffs.count >= 32,
-              planes.count >= 32 * hwProto else { return nil }
-
-        let widthRatio = Float(protoW) / modelSide
-        let heightRatio = Float(protoH) / modelSide
-        let bboxLeft = max(0, min(protoW - 1, Int(floor((detection.x - detection.w * 0.5) * widthRatio))))
-        let bboxTop = max(0, min(protoH - 1, Int(floor((detection.y - detection.h * 0.5) * heightRatio))))
-        let bboxRight = max(0, min(protoW - 1, Int(ceil((detection.x + detection.w * 0.5) * widthRatio))))
-        let bboxBottom = max(0, min(protoH - 1, Int(ceil((detection.y + detection.h * 0.5) * heightRatio))))
-        guard bboxRight >= bboxLeft, bboxBottom >= bboxTop else { return nil }
-
-        var sumProtoX: Float = 0
-        var sumProtoY: Float = 0
-        var onPixelCount: Int = 0
-        for protoY in bboxTop...bboxBottom {
-            let rowBase = protoY * protoW
-            for protoX in bboxLeft...bboxRight {
-                let protoPixelIndex = rowBase + protoX
-                var logitSum: Float = 0
-                var coeffIndex = 0
-                while coeffIndex < 32 {
-                    let planeIndex = coeffIndex * hwProto + protoPixelIndex
-                    logitSum += detection.coeffs[coeffIndex] * planes[planeIndex]
-                    coeffIndex += 1
-                }
-                guard logitSum > maskLogitThreshold else { continue }
-                sumProtoX += Float(protoX) + 0.5
-                sumProtoY += Float(protoY) + 0.5
-                onPixelCount += 1
-            }
-        }
-
-        guard onPixelCount > 0 else { return nil }
-        let centerProtoX = sumProtoX / Float(onPixelCount)
-        let centerProtoY = sumProtoY / Float(onPixelCount)
-        return (
-            x: centerProtoX / widthRatio,
-            y: centerProtoY / heightRatio
-        )
-    }
-
     /// Android `collectMaskDetections` (returns list for mask fusion, primary first).
+    /// Merge any other detection whose bbox center lies inside the primary bbox.
     static func collectMaskDetections(
         primaryIndex: Int,
-        detections: [FurnitureFitDetection],
-        planes: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Float
+        detections: [FurnitureFitDetection]
     ) -> [FurnitureFitDetection] {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
         let primaryDetection = detections[primaryIndex]
 
-        // Keep only the simple center-in-primary-bbox contributor rule active.
-        // The previous heuristic path remains commented out below for reference.
         let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
         let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
         let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
@@ -352,89 +236,6 @@ enum FurnitureFitOnnxStylePipeline {
             maskDetections.append(detection)
         }
         return maskDetections
-
-        /*
-
-        let supportingTableDetection = pickSupportingTableForMonitorScene(
-            primaryDetection: primaryDetection,
-            detections: detections,
-            primaryIndex: primaryIndex
-        )
-
-        let encompassTolerance: Float = 2
-        // Fusion-only confidence floor (redundant with parse `confidenceThreshold`); kept for reference.
-        // let minimumCandidateConfidence: Float = 0.10
-        let bboxDuplicateThreshold: Float = 0.7
-        var bboxKept: [FurnitureFitDetection] = []
-
-        for (idx, detection) in detections.enumerated() {
-            if idx == primaryIndex { continue }
-            if detection.coeffs.count < 32 { continue }
-
-            let candidateLeft = detection.x - detection.w * 0.5
-            let candidateTop = detection.y - detection.h * 0.5
-            let candidateRight = detection.x + detection.w * 0.5
-            let candidateBottom = detection.y + detection.h * 0.5
-            let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
-            let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
-            let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
-            let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
-
-            let encompassesPrimary =
-                candidateLeft <= primaryLeft + encompassTolerance &&
-                candidateTop <= primaryTop + encompassTolerance &&
-                candidateRight >= primaryRight - encompassTolerance &&
-                candidateBottom >= primaryBottom - encompassTolerance
-            if encompassesPrimary { continue }
-
-            guard let candidateMaskCenter = candidateMaskCenterInModelSpace(
-                detection: detection,
-                planes: planes,
-                protoW: protoW,
-                protoH: protoH,
-                modelSide: modelSide
-            ) else { continue }
-
-            let shouldFuse =
-                candidateMaskCenter.x >= primaryLeft &&
-                candidateMaskCenter.x <= primaryRight &&
-                candidateMaskCenter.y >= primaryTop &&
-                candidateMaskCenter.y <= primaryBottom
-            if !shouldFuse { continue }
-
-            let tooLarge =
-                detection.w > primaryDetection.w * 1.5 &&
-                detection.h > primaryDetection.h * 1.5
-            if tooLarge { continue }
-
-            var shouldSkip = false
-            var replaceIndex: Int?
-            for (k, keptDetection) in bboxKept.enumerated() {
-                let iou = FurnitureFitIoU.calculate(detection, keptDetection)
-                if iou > bboxDuplicateThreshold {
-                    if detection.confidence > keptDetection.confidence {
-                        replaceIndex = k
-                    } else {
-                        shouldSkip = true
-                    }
-                    break
-                }
-            }
-            if shouldSkip { continue }
-            if let r = replaceIndex {
-                bboxKept[r] = detection
-            } else {
-                bboxKept.append(detection)
-            }
-        }
-
-        var maskDetections: [FurnitureFitDetection] = [primaryDetection]
-        maskDetections.append(contentsOf: bboxKept)
-        if let st = supportingTableDetection, !maskDetections.contains(where: { $0.classIdx == st.classIdx && $0.x == st.x && $0.y == st.y }) {
-            maskDetections.append(st)
-        }
-        return maskDetections
-        */
     }
 
     /// Raw YOLOE prototype mask using per-pixel logits inside each detection's
