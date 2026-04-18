@@ -103,6 +103,33 @@ enum FurnitureFitOnnxStylePipeline {
         return Float(highCount) / Float(lowCount)
     }
 
+    // MARK: - Vertical flip (Ultralytics `Instances.flipud` parity)
+
+    /// Row-major `protoW`×`protoH` grid: swaps rows `py` ↔ `protoH - 1 - py`.
+    /// Use after mask synthesis when the model input was vertically flipped relative to the camera buffer.
+    static func flipProtoFloatGridVertically(_ buffer: inout [Float], protoW: Int, protoH: Int) {
+        guard protoW > 0, protoH > 1, buffer.count >= protoW * protoH else { return }
+        for py in 0..<(protoH / 2) {
+            let rowA = py * protoW
+            let rowB = (protoH - 1 - py) * protoW
+            for px in 0..<protoW {
+                buffer.swapAt(rowA + px, rowB + px)
+            }
+        }
+    }
+
+    /// Same layout as ``flipProtoFloatGridVertically`` for UInt8 proto binaries.
+    static func flipProtoUInt8GridVertically(_ buffer: inout [UInt8], protoW: Int, protoH: Int) {
+        guard protoW > 0, protoH > 1, buffer.count >= protoW * protoH else { return }
+        for py in 0..<(protoH / 2) {
+            let rowA = py * protoW
+            let rowB = (protoH - 1 - py) * protoW
+            for px in 0..<protoW {
+                buffer.swapAt(rowA + px, rowB + px)
+            }
+        }
+    }
+
     /// Bilinear sample of proto `maskLogits` at full-image pixel `(imageX, imageY)`.
     /// Matches PyTorch `F.interpolate(..., mode="bilinear", align_corners=False)`.
     static func bilinearUpsampledLogit(

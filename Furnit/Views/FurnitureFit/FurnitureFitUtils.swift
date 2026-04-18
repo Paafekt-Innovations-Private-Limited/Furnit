@@ -92,6 +92,7 @@ public struct FurnitureFitNMS {
             if currentIndex + 1 >= detections.count { continue }
             for candidateIndex in (currentIndex + 1)..<detections.count {
                 if suppressed[candidateIndex] { continue }
+                if current.classIdx != detections[candidateIndex].classIdx { continue }
                 if FurnitureFitIoU.calculate(current, detections[candidateIndex]) > iouThreshold {
                     suppressed[candidateIndex] = true
                 }

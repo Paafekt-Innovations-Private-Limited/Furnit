@@ -1,11 +1,16 @@
 import Accelerate
 import CoreML
 import CoreVideo
+import Darwin
 import UIKit
 
 /// Still-image YOLO-E inference using the **same stretch + Core ML path** as ``FurnitureFitView`` (ONNX-style / Android parity).
 /// - Parameter `classBlacklist`: Furniture Fit loads `blacklist.json` into this; **wall measurement must pass `[]`** so wall/door classes are never stripped.
 enum YoloEImageInference {
+
+    /// Single source of truth for Ultralytics-style vertical input flip.
+    /// Keep still-image and live Furniture Fit paths in sync.
+    static let verticalFlipModelInputEnabled: Bool = false
 
     /// Maps detections from the model square back to source pixels (independent scale per axis), matching Furniture Fit ONNX-style preprocessing.
     struct OnnxStyleMapping {
@@ -13,6 +18,44 @@ enum YoloEImageInference {
         let sourceWidth: Int
         let sourceHeight: Int
         let usesLetterbox: Bool
+        /// When the square model input was vertically flipped before inference (TTA-style), map boxes back with Ultralytics `flipud`: `y1' = H - y2`, `y2' = H - y1`.
+        let inputVerticallyFlipped: Bool
+
+        init(
+            modelSide: Int,
+            sourceWidth: Int,
+            sourceHeight: Int,
+            usesLetterbox: Bool,
+            inputVerticallyFlipped: Bool = false
+        ) {
+            self.modelSide = modelSide
+            self.sourceWidth = sourceWidth
+            self.sourceHeight = sourceHeight
+            self.usesLetterbox = usesLetterbox
+            self.inputVerticallyFlipped = inputVerticallyFlipped
+        }
+    }
+
+    /// Flips a BGRA pixel buffer vertically in place (row order reversed). Returns false if the buffer could not be locked.
+    static func flipPixelBufferVerticallyBGRA(_ buffer: CVPixelBuffer) -> Bool {
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return false }
+        let height = CVPixelBufferGetHeight(buffer)
+        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        guard height > 1, rowBytes > 0 else { return true }
+        var temp = [UInt8](repeating: 0, count: rowBytes)
+        for y in 0..<(height / 2) {
+            let rowTop = base.advanced(by: y * rowBytes)
+            let rowBot = base.advanced(by: (height - 1 - y) * rowBytes)
+            temp.withUnsafeMutableBufferPointer { tmp in
+                guard let t = tmp.baseAddress else { return }
+                memcpy(t, rowTop, rowBytes)
+                memcpy(rowTop, rowBot, rowBytes)
+                memcpy(rowBot, t, rowBytes)
+            }
+        }
+        return true
     }
 
     /// Square side for stretch (from Core ML `image` constraint). **YOLOE PF** (11L / 26L `_seg_o2m`) exports use **640**; fallback **640** if unconstrained (legacy 1280-only packages use letterbox).
@@ -49,7 +92,8 @@ enum YoloEImageInference {
         image: UIImage,
         model: MLModel,
         classBlacklist: Set<Int>,
-        confidenceThreshold: Float = 0.05
+        confidenceThreshold: Float = 0.05,
+        flipInputVertically: Bool = verticalFlipModelInputEnabled
     ) throws -> (detections: [FurnitureFitDetection], mapping: OnnxStyleMapping) {
         guard let pb = uiImageToBGRAPixelBuffer(image) else {
             throw NSError(
@@ -72,6 +116,8 @@ enum YoloEImageInference {
                 userInfo: [NSLocalizedDescriptionKey: "\(usesLetterbox ? "Letterbox" : "Stretch") resize failed"],
             )
         }
+
+        let inputVerticallyFlipped = flipInputVertically && flipPixelBufferVerticallyBGRA(prepared)
 
         let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
         let expectsImage = inputDesc?.type == .image
@@ -112,7 +158,8 @@ enum YoloEImageInference {
             modelSide: modelSide,
             sourceWidth: srcW,
             sourceHeight: srcH,
-            usesLetterbox: usesLetterbox
+            usesLetterbox: usesLetterbox,
+            inputVerticallyFlipped: inputVerticallyFlipped
         )
         return (dets, map)
     }
@@ -126,10 +173,10 @@ enum YoloEImageInference {
         let y1Model = det.y - det.h * 0.5
         let x2Model = det.x + det.w * 0.5
         let y2Model = det.y + det.h * 0.5
-        let mappedX1: Float
-        let mappedY1: Float
-        let mappedX2: Float
-        let mappedY2: Float
+        var mappedX1: Float
+        var mappedY1: Float
+        var mappedX2: Float
+        var mappedY2: Float
 
         if mapping.usesLetterbox {
             let gain = min(Float(mapping.modelSide) / sourceWidth, Float(mapping.modelSide) / sourceHeight)
@@ -146,6 +193,14 @@ enum YoloEImageInference {
             mappedY1 = y1Model * sy
             mappedX2 = x2Model * sx
             mappedY2 = y2Model * sy
+        }
+
+        // Ultralytics `Instances.flipud(height)`: y1' = H - y2, y2' = H - y1 in source space.
+        if mapping.inputVerticallyFlipped {
+            let ny1 = sourceHeight - mappedY2
+            let ny2 = sourceHeight - mappedY1
+            mappedY1 = ny1
+            mappedY2 = ny2
         }
 
         let clippedX1 = max(0, mappedX1)

@@ -274,8 +274,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var primaryDetectionMinConfidence: Float = 0.57
     /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
     var primarySelectionByHighestConfidence: Bool = false
-    /// Keep the rendered mask raw from YOLOE logits. Do not morphologically alter it.
+    /// Optional proto-resolution hole filling for the fused mask before upscale.
+    /// Disabled by default while we prefer recovering weak fabric detections directly.
     private let furnitureFitUseMorphologicalCloseMask: Bool = false
+    /// Larger proto kernel to bridge bed-sheet / duvet print gaps before full-res upsample.
+    private let furnitureFitProtoMorphologicalCloseKernelSize: Int = 7
+    /// Lower confidence threshold used only for secondary contributors whose centers land inside the primary bbox.
+    private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.01
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
@@ -683,6 +688,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var upscaledPlanarMaskScratch: [UInt8] = []
     /// Whether the current model frame used Ultralytics-style letterbox instead of stretch.
     private var currentYoloUsesLetterbox: Bool = false
+    /// Shared vertical-flip activation for live Furniture Fit and still-image inference.
+    private var furnitureFitVerticalFlipModelInput: Bool { YoloEImageInference.verticalFlipModelInputEnabled }
+    /// Set per frame when ``furnitureFitVerticalFlipModelInput`` is enabled and the flip succeeds.
+    private var currentYoloInputVerticallyFlipped: Bool = false
     // MARK: - Memory Logging
     private func logMemory(_ tag: String) {
         var info = mach_task_basic_info()
@@ -1911,7 +1920,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         box: CGRect,
         modelShape: CGSize,
         imageShape: CGSize,
-        usesLetterbox: Bool
+        usesLetterbox: Bool,
+        inputVerticallyFlipped: Bool
     ) -> CGRect {
         let edgeOffset: CGFloat = 0.0  // edge bias disabled
         let x1: CGFloat
@@ -1938,10 +1948,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             y2 = (box.maxY + edgeOffset) * gainY
         }
 
+        // Ultralytics `Instances.flipud(height)`: y1' = H - y2, y2' = H - y1 in source space.
+        let fy1: CGFloat
+        let fy2: CGFloat
+        if inputVerticallyFlipped {
+            fy1 = imageShape.height - y2
+            fy2 = imageShape.height - y1
+        } else {
+            fy1 = y1
+            fy2 = y2
+        }
+
         let clippedX1 = max(0, x1)
-        let clippedY1 = max(0, y1)
+        let clippedY1 = max(0, fy1)
         let clippedX2 = min(imageShape.width, x2)
-        let clippedY2 = min(imageShape.height, y2)
+        let clippedY2 = min(imageShape.height, fy2)
 
         return CGRect(
             x: clippedX1,
@@ -1972,7 +1993,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             box: modelBox,
             modelShape: modelShape,
             imageShape: CGSize(width: imageWidth, height: imageHeight),
-            usesLetterbox: currentYoloUsesLetterbox
+            usesLetterbox: currentYoloUsesLetterbox,
+            inputVerticallyFlipped: currentYoloInputVerticallyFlipped
         )
         let bx1 = max(0, Int(scaledBox.minX))
         let by1 = max(0, Int(scaledBox.minY))
@@ -3363,6 +3385,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let usesLetterboxPreprocess = modelInputSize >= 1280
         currentYoloUsesLetterbox = usesLetterboxPreprocess
+        currentYoloInputVerticallyFlipped = false
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
@@ -3385,6 +3408,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             resetProcessingFlag()
             return
+        }
+        if furnitureFitVerticalFlipModelInput {
+            if YoloEImageInference.flipPixelBufferVerticallyBGRA(modelInputBuffer) {
+                currentYoloInputVerticallyFlipped = true
+                if debugMode { logDebug("⏱️ ONNX-STYLE: model input vertically flipped (flipud correction active)") }
+            } else if debugMode {
+                logDebug("⚠️ ONNX-STYLE: vertical flip of model input failed; continuing unflipped")
+            }
         }
         if debugMode {
             logDebug(
@@ -3769,18 +3800,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        // Keep all parsed detections for the single-furniture mask use case.
-        // NMS is helpful for counting distinct objects, but here overlapping detections
-        // can add useful mask coverage before the simple center-in-primary merge.
-        var candidates: [FurnitureFitDetection] = rawDetections.sorted { $0.confidence > $1.confidence }
-        // var candidates: [FurnitureFitDetection]
-        // if rawDetections.count > 1 {
-        //     let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
-        //     let capped = Array(sorted.prefix(100))
-        //     candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
-        // } else {
-        //     candidates = rawDetections
-        // }
+        var candidates: [FurnitureFitDetection]
+        if rawDetections.count > 1 {
+            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
+            let capped = Array(sorted.prefix(100))
+            candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
+        } else {
+            candidates = rawDetections
+        }
 
         let supportSurfaceHintName = supportSurfaceHint(
             from: candidates,
@@ -3803,7 +3830,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         if debugMode {
-            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS disabled, blacklist.json \(clsToIgnore.count) ids)")
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), class-aware NMS IoU≤0.5, blacklist.json \(clsToIgnore.count) ids)")
             for (i, d) in candidates.enumerated() {
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
@@ -3855,7 +3882,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     protoH: pH,
                     detections: fusedDetections
                 )
-                return (fusedMaskResult.logits, fusedDetections)
+                var fusedLogits = fusedMaskResult.logits
+                if currentYoloInputVerticallyFlipped {
+                    FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&fusedLogits, protoW: pW, protoH: pH)
+                }
+                return (fusedLogits, fusedDetections)
             }()
             let liveDebugMaskOverlayImage = debugMode
                 ? renderLiveDebugMaskOverlayImage(
@@ -4016,6 +4047,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             selectedCandidates = matchedCandidates
         }
 
+        let lowConfidencePrimaryContributors = lowConfidenceInsidePrimaryContributors(
+            detArray: detArray,
+            primary: primary,
+            blacklist: clsToIgnore
+        )
+        if debugMode, !lowConfidencePrimaryContributors.isEmpty {
+            logDebug(
+                "🧵 ONNX-STYLE (\(stage2DebugLabel)) low-threshold inside-primary contributors: " +
+                "\(lowConfidencePrimaryContributors.count) (conf≥\(furnitureFitInsidePrimaryContributorConfidenceThreshold))"
+            )
+        }
+
         // Build the proto-space mask from a fusion list of detections.
         // - When running in identify-only mode (no manual selection), mirror the
         //   Android path by fusing the primary with nearby overlapping detections
@@ -4028,15 +4071,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if segmentationMode == .segmentSelected {
             // Manual selection: expand each matched pin and build a mask over the
             // union of those expanded boxes.
-            maskDetectionsForBuild = selectedCandidates.map {
+            var selectedFusion = selectedCandidates.map {
                 onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
             }
-            maskOwnershipDetections = maskDetectionsForBuild
+            appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &selectedFusion)
+            maskDetectionsForBuild = selectedFusion
+            maskOwnershipDetections = selectedFusion
         } else {
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
             // etc.), with an expanded primary bbox for mask synthesis.
-            let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
+            var maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                 primaryIndex: primaryIdx,
                 detections: candidates,
                 planes: planes,
@@ -4044,6 +4089,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 protoH: pH,
                 modelSide: Float(onnxSide)
             )
+            appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &maskSource)
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
             var fusion: [FurnitureFitDetection] = [expandedPrimary]
             for det in maskSource {
@@ -4058,28 +4104,43 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         let maskFusionStart = Date()
-        let maskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+        let maskBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
             planes: planes,
             protoW: pW,
             protoH: pH,
             detections: maskDetectionsForBuild
         )
+        var maskLogitsFused = maskBuilt.logits
+        var maskBinaryFused = maskBuilt.binary
+        if currentYoloInputVerticallyFlipped {
+            FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&maskLogitsFused, protoW: pW, protoH: pH)
+            FurnitureFitOnnxStylePipeline.flipProtoUInt8GridVertically(&maskBinaryFused, protoW: pW, protoH: pH)
+        }
+        let maskResult = (binary: maskBinaryFused, logits: maskLogitsFused)
         let maskFusionMs = Date().timeIntervalSince(maskFusionStart) * 1000
         var maskSmall = maskResult.binary
         let morphologyStart = Date()
         if furnitureFitUseMorphologicalCloseMask {
-            maskSmall = morphologicalBinaryClose3x3Planar8(mask: maskSmall, width: pW, height: pH)
+            maskSmall = morphologicalBinaryClosePlanar8(
+                mask: maskSmall,
+                width: pW,
+                height: pH,
+                kernelSize: furnitureFitProtoMorphologicalCloseKernelSize
+            )
         }
         let morphologyMs = Date().timeIntervalSince(morphologyStart) * 1000
 
         let expandedPrimarySolo = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
-        let primaryOnlyMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+        let primaryOnlyBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
             planes: planes,
             protoW: pW,
             protoH: pH,
             detections: [expandedPrimarySolo]
         )
-        let primaryOnlyLogits = primaryOnlyMaskResult.logits
+        var primaryOnlyLogits = primaryOnlyBuilt.logits
+        if currentYoloInputVerticallyFlipped {
+            FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&primaryOnlyLogits, protoW: pW, protoH: pH)
+        }
         let compositeDetectionsForBuild = maskDetectionsForBuild
         let compositeOwnershipDetections = maskOwnershipDetections
         // Keep only the simple contributor-merge path active.
@@ -4136,7 +4197,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             box: clipModelRect,
             modelShape: CGSize(width: CGFloat(onnxSide), height: CGFloat(onnxSide)),
             imageShape: CGSize(width: bufW, height: bufH),
-            usesLetterbox: currentYoloUsesLetterbox
+            usesLetterbox: currentYoloUsesLetterbox,
+            inputVerticallyFlipped: currentYoloInputVerticallyFlipped
         )
         let bandMarginW: Float = 0  // edge band expansion disabled
         let bandMarginH: Float = 0  // edge band expansion disabled
@@ -4507,6 +4569,58 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             classIdx: primary.classIdx,
             coeffs: primary.coeffs
         )
+    }
+
+    private func centerInsidePrimaryBoundingBox(_ detection: FurnitureFitDetection, primary: FurnitureFitDetection) -> Bool {
+        let primaryLeft = primary.x - primary.w * 0.5
+        let primaryTop = primary.y - primary.h * 0.5
+        let primaryRight = primary.x + primary.w * 0.5
+        let primaryBottom = primary.y + primary.h * 0.5
+        return
+            detection.x >= primaryLeft &&
+            detection.x <= primaryRight &&
+            detection.y >= primaryTop &&
+            detection.y <= primaryBottom
+    }
+
+    private func appendUniqueMaskContributors(
+        from additions: [FurnitureFitDetection],
+        to existing: inout [FurnitureFitDetection]
+    ) {
+        for addition in additions {
+            let alreadyPresent = existing.contains {
+                $0.classIdx == addition.classIdx &&
+                FurnitureFitIoU.calculate($0, addition) >= 0.95
+            }
+            if !alreadyPresent {
+                existing.append(addition)
+            }
+        }
+    }
+
+    private func lowConfidenceInsidePrimaryContributors(
+        detArray: MLMultiArray,
+        primary: FurnitureFitDetection,
+        blacklist: Set<Int>
+    ) -> [FurnitureFitDetection] {
+        let lowerConfidenceThreshold = furnitureFitInsidePrimaryContributorConfidenceThreshold
+        guard lowerConfidenceThreshold < confidenceThreshold else { return [] }
+
+        let lowThresholdDetections = YoloEDetectionParser.parseDetections(
+            detArray: detArray,
+            confidenceThreshold: lowerConfidenceThreshold,
+            classBlacklist: [],
+            maximumDetections: 400
+        )
+        guard !lowThresholdDetections.isEmpty else { return [] }
+
+        let blacklistFilteredDetections = FurnitureFitFilter.excludingClasses(
+            lowThresholdDetections,
+            blacklist: blacklist
+        )
+        return blacklistFilteredDetections
+            .filter { $0.coeffs.count >= 32 && centerInsidePrimaryBoundingBox($0, primary: primary) }
+            .sorted { $0.confidence > $1.confidence }
     }
 
     /// Zeros planar proto mask outside [clipPx1, clipPx2) × [clipPy1, clipPy2) (same idea as Core ML stage 15d clip in full-res).
@@ -5359,6 +5473,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
+        if furnitureFitUseMorphologicalCloseMask {
+            var protoClosedBandMask = [UInt8](repeating: 0, count: bandW * bandH)
+            unionNearestUpsampledProtoMaskIntoBandMask(
+                bandMask: &protoClosedBandMask,
+                protoMask: maskProto,
+                protoW: pw,
+                protoH: ph,
+                modelSide: modelSide,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH,
+                usesLetterbox: usesLetterbox
+            )
+            for by in 0..<bandH {
+                let y = yStart + by
+                let bandRowOffset = by * bandW
+                for bx in 0..<bandW where protoClosedBandMask[bandRowOffset + bx] != 0 {
+                    let x = xStart + bx
+                    upscaledPlanarMaskScratch[y * origW + x] = 255
+                }
+            }
+        }
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             var bandCompact = [UInt8](repeating: 0, count: bandW * bandH)
             for by in 0..<bandH {
@@ -6187,14 +6326,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let bandH = yEnd - yStart
             guard bandW > 0, bandH > 0 else { continue }
 
-            let perDetectionMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+            let perDetectionBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
                 planes: planes,
                 protoW: protoW,
                 protoH: protoH,
                 detections: [detection]
             )
+            var perDetectionLogits = perDetectionBuilt.logits
+            if currentYoloInputVerticallyFlipped {
+                FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&perDetectionLogits, protoW: protoW, protoH: protoH)
+            }
             guard let bandMask = debugUpsampledBandMaskFromLogits(
-                maskLogits: perDetectionMaskResult.logits,
+                maskLogits: perDetectionLogits,
                 protoW: protoW,
                 protoH: protoH,
                 modelSide: modelSide,
@@ -6309,6 +6452,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
+        if furnitureFitUseMorphologicalCloseMask {
+            unionNearestUpsampledProtoMaskIntoBandMask(
+                bandMask: &bandMask,
+                protoMask: maskProto,
+                protoW: pw,
+                protoH: ph,
+                modelSide: modelSide,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH,
+                usesLetterbox: usesLetterbox
+            )
+        }
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
@@ -7555,7 +7714,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
     private func morphologicalBinaryClose3x3Planar8(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
+        morphologicalBinaryClosePlanar8(mask: mask, width: width, height: height, kernelSize: 3)
+    }
+
+    /// Binary closing (dilate ∘ erode) on a planar mask using vImage max/min.
+    /// Larger odd kernels fill broader patterned holes directly at proto resolution.
+    private func morphologicalBinaryClosePlanar8(mask: [UInt8], width: Int, height: Int, kernelSize: Int) -> [UInt8] {
         let count = width * height
+        let clampedKernelSize = max(1, kernelSize | 1)
         guard count == mask.count, width >= 1, height >= 1 else { return mask }
         var dilated = [UInt8](repeating: 0, count: count)
         var closed = [UInt8](repeating: 0, count: count)
@@ -7563,21 +7729,43 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             dilated.withUnsafeMutableBufferPointer { dPtr in
                 var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
                 var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                return vImageMax_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
+                return vImageMax_Planar8(
+                    &s,
+                    &d,
+                    nil,
+                    0,
+                    0,
+                    vImagePixelCount(clampedKernelSize),
+                    vImagePixelCount(clampedKernelSize),
+                    vImage_Flags(kvImageNoFlags)
+                )
             }
         }
         guard errMax == kvImageNoError else {
-            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+            return clampedKernelSize == 3
+                ? morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+                : mask
         }
         let errMin: vImage_Error = dilated.withUnsafeBufferPointer { srcPtr in
             closed.withUnsafeMutableBufferPointer { dPtr in
                 var s = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
                 var d = vImage_Buffer(data: dPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                return vImageMin_Planar8(&s, &d, nil, 0, 0, 3, 3, vImage_Flags(kvImageNoFlags))
+                return vImageMin_Planar8(
+                    &s,
+                    &d,
+                    nil,
+                    0,
+                    0,
+                    vImagePixelCount(clampedKernelSize),
+                    vImagePixelCount(clampedKernelSize),
+                    vImage_Flags(kvImageNoFlags)
+                )
             }
         }
         guard errMin == kvImageNoError else {
-            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+            return clampedKernelSize == 3
+                ? morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
+                : mask
         }
         return closed
     }
@@ -7681,6 +7869,57 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func morphologicalBinaryClose3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
         let dilated = morphologicalBinaryDilate3x3(mask: mask, width: width, height: height)
         return morphologicalBinaryErode3x3(mask: dilated, width: width, height: height)
+    }
+
+    /// ORs a proto-space binary mask into a band mask using the same model→image geometry
+    /// as the native bilinear path. This lets proto hole-filling survive the logit-based upscale.
+    private func unionNearestUpsampledProtoMaskIntoBandMask(
+        bandMask: inout [UInt8],
+        protoMask: [UInt8],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int,
+        usesLetterbox: Bool
+    ) {
+        guard bandMask.count >= bandW * bandH,
+              protoMask.count >= protoW * protoH,
+              protoW > 0,
+              protoH > 0,
+              bandW > 0,
+              bandH > 0 else { return }
+
+        let geometry = nativeUpsampleGeometry(
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            usesLetterbox: usesLetterbox
+        )
+        let protoScaleX = Float(protoW) / geometry.modelInput
+        let protoScaleY = Float(protoH) / geometry.modelInput
+        let maxPx = protoW - 1
+        let maxPy = protoH - 1
+
+        for by in 0..<bandH {
+            let y = yStart + by
+            let modelCenterY = (Float(y) + 0.5) * geometry.imageToModelScaleY + geometry.padY
+            let protoY = max(0, min(maxPy, Int(round(modelCenterY * protoScaleY - 0.5))))
+            let protoRowOffset = protoY * protoW
+            let bandRowOffset = by * bandW
+            for bx in 0..<bandW {
+                let x = xStart + bx
+                let modelCenterX = (Float(x) + 0.5) * geometry.imageToModelScaleX + geometry.padX
+                let protoX = max(0, min(maxPx, Int(round(modelCenterX * protoScaleX - 0.5))))
+                if protoMask[protoRowOffset + protoX] != 0 {
+                    bandMask[bandRowOffset + bx] = 255
+                }
+            }
+        }
     }
 
     // MARK: - MLMultiArray
