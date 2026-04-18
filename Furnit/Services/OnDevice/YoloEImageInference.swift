@@ -226,6 +226,10 @@ enum YoloEImageInference {
         return uiImageToBGRAPixelBuffer(img)
     }
 
+    static func pixelBufferFromImage(_ image: UIImage) -> CVPixelBuffer? {
+        uiImageToBGRAPixelBuffer(image)
+    }
+
     private static func uiImageToBGRAPixelBuffer(_ image: UIImage) -> CVPixelBuffer? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = image.scale

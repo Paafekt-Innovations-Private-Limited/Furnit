@@ -269,6 +269,24 @@ struct SettingsView: View {
                     .font(.footnote)
                 }
 
+                Section {
+                    NavigationLink(destination: SettingsFurnitureFitImageScanView()) {
+                        HStack {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .foregroundColor(.pink)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Image Scan")
+                                    .font(.headline)
+                                Text("Pick a gallery photo and run the Furniture Fit pipeline with class IDs on the preview.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Single Image Scan")
+                }
+
                 #if DEBUG
                 // Developer Settings Section
                 Section {

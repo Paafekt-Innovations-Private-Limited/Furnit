@@ -1644,7 +1644,8 @@ struct SharpRoomView: View {
             onSelectedClassLabelsChanged: { labels in
                 selectedFurnitureFitLabels = labels
             },
-            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+            showFullVideoWithIdentificationsOverride: false
         )
         // Do not ignore top safe area: full-screen camera would sit under the nav bar and steal ruler taps.
         .ignoresSafeArea(edges: [.bottom, .leading, .trailing])

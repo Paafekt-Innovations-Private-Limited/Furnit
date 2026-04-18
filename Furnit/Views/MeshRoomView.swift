@@ -178,7 +178,8 @@ struct MeshRoomView: View {
                     onSelectedClassLabelsChanged: { labels in
                         selectedFurnitureFitLabels = labels
                     },
-                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                    showFullVideoWithIdentificationsOverride: false
                 )
                 .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
                 .zIndex(100)
@@ -904,11 +905,7 @@ struct MeshRoomView: View {
             // Bottom controls: brain + segment + snapshot (full-video toggle is in the nav bar next to recenter)
             HStack {
                 VStack(spacing: 10) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        brainButtonWithHintAbove
-                        FurnitureFitAllDetectionsPreviewButton()
-                            .padding(.bottom, 8)
-                    }
+                    brainButtonWithHintAbove
                 }
                 .padding(.leading, 16)
                 segmentButton
@@ -933,11 +930,7 @@ struct MeshRoomView: View {
             // Horizontal bottom bar
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        brainButtonWithHintAbove
-                        FurnitureFitAllDetectionsPreviewButton()
-                            .padding(.bottom, 8)
-                    }
+                    brainButtonWithHintAbove
                 }
                 segmentButton
 

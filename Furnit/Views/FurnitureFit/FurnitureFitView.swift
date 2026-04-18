@@ -274,11 +274,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var primaryDetectionMinConfidence: Float = 0.57
     /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
     var primarySelectionByHighestConfidence: Bool = false
-    /// Optional proto-resolution hole filling for the fused mask before upscale.
-    /// Disabled by default while we prefer recovering weak fabric detections directly.
-    private let furnitureFitUseMorphologicalCloseMask: Bool = false
-    /// Larger proto kernel to bridge bed-sheet / duvet print gaps before full-res upsample.
-    private let furnitureFitProtoMorphologicalCloseKernelSize: Int = 7
     /// Lower confidence threshold used only for secondary contributors whose centers land inside the primary bbox.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.01
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
@@ -355,6 +350,52 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if blacklistLoaded { return }
         loadBlacklist()
         blacklistLoaded = true
+    }
+
+    func submitStillImageForScanning(_ image: UIImage, requestID: UUID) {
+        pendingStillImageScanRequest = (image, requestID)
+        if processedStillImageScanRequestID == requestID { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.setProgress(0.05, text: "Scanning selected photo…")
+        }
+        detectionQueue.async { [weak self] in
+            self?.runPendingStillImageScanIfNeeded()
+        }
+    }
+
+    private func runPendingStillImageScanIfNeeded() {
+        guard stillImageScanModeEnabled,
+              let pendingRequest = pendingStillImageScanRequest,
+              processedStillImageScanRequestID != pendingRequest.requestID else { return }
+        guard mlModel != nil else { return }
+        guard let pixelBuffer = YoloEImageInference.pixelBufferFromImage(pendingRequest.image) else {
+            DispatchQueue.main.async { [weak self] in
+                self?.setProgress(1.0, text: "Photo load failed")
+                self?.finishStartupProgressIfNeeded()
+            }
+            return
+        }
+
+        frameLock.lock()
+        if isProcessing {
+            frameLock.unlock()
+            return
+        }
+        isProcessing = true
+        frameLock.unlock()
+
+        DispatchQueue.main.async { [weak self] in
+            self?.setProgress(0.12, text: "Scanning selected photo…")
+        }
+        processFrameInner(pixelBuffer, arDepthSnapshot: nil)
+        processedStillImageScanRequestID = pendingRequest.requestID
+
+        if let latestRequest = pendingStillImageScanRequest,
+           latestRequest.requestID != processedStillImageScanRequestID {
+            detectionQueue.async { [weak self] in
+                self?.runPendingStillImageScanIfNeeded()
+            }
+        }
     }
 
     // MARK: Camera
@@ -495,6 +536,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var onSelectedClassLabelsChanged: (([String]) -> Void)?
     /// Controls whether identify-only mode should show the full live preview layer.
     var showIdentifyLivePreview: Bool = true
+    /// When enabled, skip camera startup and run the selected still image through the same segmentation pipeline.
+    var stillImageScanModeEnabled: Bool = false
+    private var pendingStillImageScanRequest: (image: UIImage, requestID: UUID)?
+    private var processedStillImageScanRequestID: UUID?
 
     // MARK: - Overlay scale (room × AR when enabled × user pinch)
     /// From `FurnitureSizingCalculator`; combined with a modest default baseline so large furniture
@@ -2249,6 +2294,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     func startIfNeeded() {
         // SwiftUI calls this on many `updateUIView` passes; only run setup once until `stop()`.
         if captureSession.isRunning { return }
+        if stillImageScanModeEnabled, furnitureFitCameraStartupInitiated {
+            detectionQueue.async { [weak self] in
+                self?.runPendingStillImageScanIfNeeded()
+            }
+            return
+        }
         if furnitureFitCameraStartupInitiated { return }
         furnitureFitCameraStartupInitiated = true
         logFurnitureFitSize(
@@ -2270,6 +2321,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
         loadBlacklistOnce()
+
+        if stillImageScanModeEnabled {
+            setProgress(0.08, text: "Still image scan")
+            detectionQueue.async { [weak self] in
+                self?.runPendingStillImageScanIfNeeded()
+            }
+            return
+        }
 
         if Self.oneImageRun {
             setProgress(0.08, text: "One-image debug…")
@@ -2455,6 +2514,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         furnitureFitCameraStartupInitiated = false
         oneImageRunAwaitingSave = false
         oneImageRunFinished = false
+        pendingStillImageScanRequest = nil
+        processedStillImageScanRequestID = nil
         arCompanionStartGeneration &+= 1
         suppressARDepthCompanionAfterCaptureFailure = false
         sharpRoomSplatMeasurementHost = nil
@@ -3737,7 +3798,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
 
         // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
-        // Support-surface hints (floor, carpet, tile, etc.) must inspect the unblacklisted detections.
+        // Support-surface hints (floor, carpet, tile, etc.) normally inspect the unblacklisted detections,
+        // but the one-image debug path should respect blacklist.json consistently.
         let detectionParseAndFilterStart = Date()
 
         // Split ANE→CPU materialization out of the parse timer (see `parsePrototypes` for rationale).
@@ -3780,10 +3842,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("🔬 parseDetections layout dtype=\(dataTypeName)(\(dataTypeRaw)) shape=\(detShape) strides=\(detStrides) contiguous=\(isCContiguous) path=\(parserPath)")
         }
 
+        let parseBlacklist: Set<Int> = (oneImageRunAwaitingSave || stillImageScanModeEnabled) ? clsToIgnore : []
         let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
-            classBlacklist: [],
+            classBlacklist: parseBlacklist,
             maximumDetections: 100
         )
 
@@ -3809,8 +3872,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             candidates = rawDetections
         }
 
+        let supportSurfaceHintCandidates = (oneImageRunAwaitingSave || stillImageScanModeEnabled)
+            ? FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
+            : candidates
         let supportSurfaceHintName = supportSurfaceHint(
-            from: candidates,
+            from: supportSurfaceHintCandidates,
             imageWidth: onnxSide,
             imageHeight: onnxSide
         )
@@ -3848,7 +3914,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             protoChannelAxis: protoInfo.channelAxis
         )
 
-        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && !oneImageRunAwaitingSave {
+        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && debugMode && !oneImageRunAwaitingSave {
             let liveDebugMaskBaseImage = debugMode
                 ? renderOriginalFrameCGImage(
                     processBuffer: processBuffer,
@@ -4118,17 +4184,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         let maskResult = (binary: maskBinaryFused, logits: maskLogitsFused)
         let maskFusionMs = Date().timeIntervalSince(maskFusionStart) * 1000
-        var maskSmall = maskResult.binary
-        let morphologyStart = Date()
-        if furnitureFitUseMorphologicalCloseMask {
-            maskSmall = morphologicalBinaryClosePlanar8(
-                mask: maskSmall,
-                width: pW,
-                height: pH,
-                kernelSize: furnitureFitProtoMorphologicalCloseKernelSize
-            )
-        }
-        let morphologyMs = Date().timeIntervalSince(morphologyStart) * 1000
+        let maskSmall = maskResult.binary
+        let morphologyMs = 0.0
 
         let expandedPrimarySolo = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
         let primaryOnlyBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
@@ -4437,6 +4494,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     composed: base,
                     compositeDetections: compositeDetectionsForBuild,
                     primary: primary,
+                    origW: bufW,
+                    origH: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                ) ?? base
+            }
+            if stillImageScanModeEnabled {
+                return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
+                    composed: base,
+                    candidates: candidates,
+                    primaryIndex: primaryIdx,
                     origW: bufW,
                     origH: bufH,
                     scaleX: scaleX,
@@ -5473,31 +5541,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        if furnitureFitUseMorphologicalCloseMask {
-            var protoClosedBandMask = [UInt8](repeating: 0, count: bandW * bandH)
-            unionNearestUpsampledProtoMaskIntoBandMask(
-                bandMask: &protoClosedBandMask,
-                protoMask: maskProto,
-                protoW: pw,
-                protoH: ph,
-                modelSide: modelSide,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH,
-                usesLetterbox: usesLetterbox
-            )
-            for by in 0..<bandH {
-                let y = yStart + by
-                let bandRowOffset = by * bandW
-                for bx in 0..<bandW where protoClosedBandMask[bandRowOffset + bx] != 0 {
-                    let x = xStart + bx
-                    upscaledPlanarMaskScratch[y * origW + x] = 255
-                }
-            }
-        }
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             var bandCompact = [UInt8](repeating: 0, count: bandW * bandH)
             for by in 0..<bandH {
@@ -6456,22 +6499,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
-        if furnitureFitUseMorphologicalCloseMask {
-            unionNearestUpsampledProtoMaskIntoBandMask(
-                bandMask: &bandMask,
-                protoMask: maskProto,
-                protoW: pw,
-                protoH: ph,
-                modelSide: modelSide,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH,
-                usesLetterbox: usesLetterbox
-            )
-        }
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
@@ -7038,7 +7065,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             ctx.setLineWidth(isPrimary ? 4.0 : 2.2)
             ctx.stroke(rect)
 
-            let labelText = "\(displayClassName(detection.classIdx)) \(String(format: "%.2f", detection.confidence))"
+            let labelText = "\(displayClassName(detection.classIdx)) [\(detection.classIdx)] \(String(format: "%.2f", detection.confidence))"
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: isPrimary ? 13 : 12, weight: isPrimary ? .semibold : .medium),
                 .foregroundColor: UIColor.white,
@@ -7117,7 +7144,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             let plainName = classNames[d.classIdx] ?? "unknown"
             let confidence = String(format: "%.2f", d.confidence)
-            let labelText = "\(plainName) (\(confidence))"
+            let labelText = "\(plainName) [\(d.classIdx)] (\(confidence))"
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: UIColor.white
@@ -7720,14 +7747,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
     private func morphologicalBinaryClose3x3Planar8(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
-        morphologicalBinaryClosePlanar8(mask: mask, width: width, height: height, kernelSize: 3)
-    }
-
-    /// Binary closing (dilate ∘ erode) on a planar mask using vImage max/min.
-    /// Larger odd kernels fill broader patterned holes directly at proto resolution.
-    private func morphologicalBinaryClosePlanar8(mask: [UInt8], width: Int, height: Int, kernelSize: Int) -> [UInt8] {
         let count = width * height
-        let clampedKernelSize = max(1, kernelSize | 1)
         guard count == mask.count, width >= 1, height >= 1 else { return mask }
         var dilated = [UInt8](repeating: 0, count: count)
         var closed = [UInt8](repeating: 0, count: count)
@@ -7741,16 +7761,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     nil,
                     0,
                     0,
-                    vImagePixelCount(clampedKernelSize),
-                    vImagePixelCount(clampedKernelSize),
+                    3,
+                    3,
                     vImage_Flags(kvImageNoFlags)
                 )
             }
         }
         guard errMax == kvImageNoError else {
-            return clampedKernelSize == 3
-                ? morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
-                : mask
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
         }
         let errMin: vImage_Error = dilated.withUnsafeBufferPointer { srcPtr in
             closed.withUnsafeMutableBufferPointer { dPtr in
@@ -7762,16 +7780,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     nil,
                     0,
                     0,
-                    vImagePixelCount(clampedKernelSize),
-                    vImagePixelCount(clampedKernelSize),
+                    3,
+                    3,
                     vImage_Flags(kvImageNoFlags)
                 )
             }
         }
         guard errMin == kvImageNoError else {
-            return clampedKernelSize == 3
-                ? morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
-                : mask
+            return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
         }
         return closed
     }
@@ -7875,57 +7891,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func morphologicalBinaryClose3x3(mask: [UInt8], width: Int, height: Int) -> [UInt8] {
         let dilated = morphologicalBinaryDilate3x3(mask: mask, width: width, height: height)
         return morphologicalBinaryErode3x3(mask: dilated, width: width, height: height)
-    }
-
-    /// ORs a proto-space binary mask into a band mask using the same model→image geometry
-    /// as the native bilinear path. This lets proto hole-filling survive the logit-based upscale.
-    private func unionNearestUpsampledProtoMaskIntoBandMask(
-        bandMask: inout [UInt8],
-        protoMask: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int,
-        usesLetterbox: Bool
-    ) {
-        guard bandMask.count >= bandW * bandH,
-              protoMask.count >= protoW * protoH,
-              protoW > 0,
-              protoH > 0,
-              bandW > 0,
-              bandH > 0 else { return }
-
-        let geometry = nativeUpsampleGeometry(
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            usesLetterbox: usesLetterbox
-        )
-        let protoScaleX = Float(protoW) / geometry.modelInput
-        let protoScaleY = Float(protoH) / geometry.modelInput
-        let maxPx = protoW - 1
-        let maxPy = protoH - 1
-
-        for by in 0..<bandH {
-            let y = yStart + by
-            let modelCenterY = (Float(y) + 0.5) * geometry.imageToModelScaleY + geometry.padY
-            let protoY = max(0, min(maxPy, Int(round(modelCenterY * protoScaleY - 0.5))))
-            let protoRowOffset = protoY * protoW
-            let bandRowOffset = by * bandW
-            for bx in 0..<bandW {
-                let x = xStart + bx
-                let modelCenterX = (Float(x) + 0.5) * geometry.imageToModelScaleX + geometry.padX
-                let protoX = max(0, min(maxPx, Int(round(modelCenterX * protoScaleX - 0.5))))
-                if protoMask[protoRowOffset + protoX] != 0 {
-                    bandMask[bandRowOffset + bx] = 255
-                }
-            }
-        }
     }
 
     // MARK: - MLMultiArray

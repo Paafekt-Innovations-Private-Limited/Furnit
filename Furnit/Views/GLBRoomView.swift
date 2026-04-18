@@ -305,7 +305,8 @@ struct GLBRoomView: View {
                     onSelectedClassLabelsChanged: { labels in
                         selectedFurnitureFitLabels = labels
                     },
-                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                    showFullVideoWithIdentificationsOverride: false
                 )
                 .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
                 .zIndex(100)
@@ -1001,11 +1002,7 @@ struct GLBRoomView: View {
             .padding(.bottom, 12)
 
             HStack {
-                HStack(alignment: .bottom, spacing: 8) {
-                    brainButtonWithHintAbove
-                    FurnitureFitAllDetectionsPreviewButton()
-                        .padding(.bottom, 8)
-                }
+                brainButtonWithHintAbove
                     .padding(.leading, 16)
                 segmentButton
                     .padding(.leading, 10)
@@ -1025,11 +1022,7 @@ struct GLBRoomView: View {
             Spacer()
 
             HStack(spacing: 20) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    brainButtonWithHintAbove
-                    FurnitureFitAllDetectionsPreviewButton()
-                        .padding(.bottom, 8)
-                }
+                brainButtonWithHintAbove
                 segmentButton
 
                 // Orientation label

@@ -804,6 +804,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var segmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     var onSelectedClassLabelsChanged: (([String]) -> Void)? = nil
     var showIdentifyLivePreview: Bool = true
+    var showFullVideoWithIdentificationsOverride: Bool? = nil
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
@@ -819,7 +820,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.confidenceThreshold = scoreThreshold
         view.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
         view.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
-        view.showFullVideoWithIdentifications = showFullVideoWithIdentifications
+        view.showFullVideoWithIdentifications = showFullVideoWithIdentificationsOverride ?? showFullVideoWithIdentifications
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
@@ -848,7 +849,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.confidenceThreshold = scoreThreshold
             uiView.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
             uiView.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
-            uiView.showFullVideoWithIdentifications = showFullVideoWithIdentifications
+            uiView.showFullVideoWithIdentifications = showFullVideoWithIdentificationsOverride ?? showFullVideoWithIdentifications
             uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
             uiView.suppressStartupProgress = suppressStartupProgress
             uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
