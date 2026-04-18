@@ -279,6 +279,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
+    /// SAM-style small-hole cleanup: fill only enclosed background connected-components below an area cap.
+    private let furnitureFitCompositeRemoveSmallHoles: Bool = true
+    /// Max enclosed background component size (pixels in the composite band) to fill as a hole.
+    private let furnitureFitCompositeSmallHoleAreaThreshold: Int = 4096
     var useBilinearUpscaling: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
@@ -610,6 +614,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
     private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
     private let bboxExpandMargin: Float = 0.08     // 8% expansion on each side
+    /// Auto-primary hysteresis state for identify-only mode.
+    private var stableAutoPrimaryDetection: FurnitureFitDetection?
+    private var pendingAutoPrimaryDetection: FurnitureFitDetection?
+    private var pendingAutoPrimaryFrameCount: Int = 0
+    private let autoPrimaryPersistenceIoUThreshold: Float = 0.45
+    private let autoPrimarySwitchRequiredFrames: Int = 3
+    private let autoPrimaryConfidenceSwitchGain: Float = 1.08
+    private let autoPrimaryConfidenceSwitchMargin: Float = 0.03
+    private let autoPrimaryAreaSwitchGain: Float = 1.12
 
     /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
@@ -1775,6 +1788,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayScale = nil
         }
         smoothedTightPrimaryBbox = nil
+        resetAutoPrimarySelectionStability()
         primaryBboxInView = .zero
         if clearDetectedCandidates {
             candidateBboxesInView = []
@@ -3555,6 +3569,105 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return bestIdx
     }
 
+    private func resetAutoPrimarySelectionStability() {
+        stableAutoPrimaryDetection = nil
+        pendingAutoPrimaryDetection = nil
+        pendingAutoPrimaryFrameCount = 0
+    }
+
+    private func autoPrimarySelectionScore(_ detection: FurnitureFitDetection) -> Float {
+        primarySelectionByHighestConfidence ? detection.confidence : detection.w * detection.h
+    }
+
+    private func matchedCandidateIndexForStableAutoPrimary(
+        reference: FurnitureFitDetection,
+        candidates: [FurnitureFitDetection]
+    ) -> Int? {
+        var bestIndex: Int?
+        var bestIoU: Float = 0
+        for (index, candidate) in candidates.enumerated() {
+            guard candidate.classIdx == reference.classIdx else { continue }
+            let iou = FurnitureFitIoU.calculate(candidate, reference)
+            if iou > bestIoU {
+                bestIoU = iou
+                bestIndex = index
+            }
+        }
+        guard let bestIndex, bestIoU >= autoPrimaryPersistenceIoUThreshold else { return nil }
+        return bestIndex
+    }
+
+    private func isSameStableAutoPrimaryTrack(_ lhs: FurnitureFitDetection, _ rhs: FurnitureFitDetection) -> Bool {
+        lhs.classIdx == rhs.classIdx && FurnitureFitIoU.calculate(lhs, rhs) >= autoPrimaryPersistenceIoUThreshold
+    }
+
+    /// Keep the current auto-primary unless a challenger is clearly better for several consecutive frames.
+    private func selectStablePrimaryIndexAutoFlow(candidates: [FurnitureFitDetection], modelSide: Int) -> Int? {
+        guard let preferredIndex = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: modelSide) else {
+            resetAutoPrimarySelectionStability()
+            return nil
+        }
+
+        let preferredCandidate = candidates[preferredIndex]
+        let minimumConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
+
+        guard let stableReference = stableAutoPrimaryDetection,
+              let stableIndex = matchedCandidateIndexForStableAutoPrimary(reference: stableReference, candidates: candidates) else {
+            stableAutoPrimaryDetection = preferredCandidate
+            pendingAutoPrimaryDetection = nil
+            pendingAutoPrimaryFrameCount = 0
+            return preferredIndex
+        }
+
+        let stableCandidate = candidates[stableIndex]
+        guard stableCandidate.confidence >= minimumConfidence else {
+            stableAutoPrimaryDetection = preferredCandidate
+            pendingAutoPrimaryDetection = nil
+            pendingAutoPrimaryFrameCount = 0
+            return preferredIndex
+        }
+
+        if stableIndex == preferredIndex {
+            stableAutoPrimaryDetection = stableCandidate
+            pendingAutoPrimaryDetection = nil
+            pendingAutoPrimaryFrameCount = 0
+            return stableIndex
+        }
+
+        let stableScore = autoPrimarySelectionScore(stableCandidate)
+        let preferredScore = autoPrimarySelectionScore(preferredCandidate)
+        let switchThreshold: Float = if primarySelectionByHighestConfidence {
+            max(stableScore * autoPrimaryConfidenceSwitchGain, stableScore + autoPrimaryConfidenceSwitchMargin)
+        } else {
+            stableScore * autoPrimaryAreaSwitchGain
+        }
+
+        guard preferredScore >= switchThreshold else {
+            stableAutoPrimaryDetection = stableCandidate
+            pendingAutoPrimaryDetection = nil
+            pendingAutoPrimaryFrameCount = 0
+            return stableIndex
+        }
+
+        if let pendingCandidate = pendingAutoPrimaryDetection,
+           isSameStableAutoPrimaryTrack(preferredCandidate, pendingCandidate) {
+            pendingAutoPrimaryFrameCount += 1
+        } else {
+            pendingAutoPrimaryDetection = preferredCandidate
+            pendingAutoPrimaryFrameCount = 1
+        }
+
+        if pendingAutoPrimaryFrameCount >= autoPrimarySwitchRequiredFrames {
+            stableAutoPrimaryDetection = preferredCandidate
+            pendingAutoPrimaryDetection = nil
+            pendingAutoPrimaryFrameCount = 0
+            return preferredIndex
+        }
+
+        stableAutoPrimaryDetection = stableCandidate
+        return stableIndex
+    }
+
     /// Shared postprocess after stretch + inference: detection list, NMS, primary selection, and Android-style bbox-limited proto mask (``FurnitureFitOnnxStylePipeline``).
     private func processFrameOnnxStyleCommon(
         processBuffer: CVPixelBuffer,
@@ -3712,7 +3825,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     origH: bufH
                 )
                 : nil
-            let primaryIdxOpt = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide)
+            let primaryIdxOpt = selectStablePrimaryIndexAutoFlow(candidates: candidates, modelSide: onnxSide)
             let liveDebugFusedMaskPayload: (logits: [Float], detections: [FurnitureFitDetection])? = {
                 guard debugMode,
                       let primaryIdx = primaryIdxOpt,
@@ -3802,7 +3915,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         if segmentationMode == .identifyOnly {
             // Full-video OFF: auto-select single primary by confidence/area (old behavior).
-            guard let autoIdx = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide) else {
+            guard let autoIdx = selectStablePrimaryIndexAutoFlow(candidates: candidates, modelSide: onnxSide) else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no auto-primary among candidates") }
                 consecutiveEmptyMaskFrames += 1
                 if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
@@ -3955,6 +4068,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         let morphologyMs = Date().timeIntervalSince(morphologyStart) * 1000
 
+        let expandedPrimarySolo = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
+        let primaryOnlyMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+            planes: planes,
+            protoW: pW,
+            protoH: pH,
+            detections: [expandedPrimarySolo]
+        )
+        let primaryOnlyLogits = primaryOnlyMaskResult.logits
+        let usePrimaryOnlyComposite = segmentationMode != .segmentSelected && !FurnitureFitOnnxStylePipeline.simpleApproach
+        let compositeDetectionsForBuild = segmentationMode == .segmentSelected
+            ? maskDetectionsForBuild
+            : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskDetectionsForBuild)
+        let compositeOwnershipDetections = segmentationMode == .segmentSelected
+            ? maskOwnershipDetections
+            : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskOwnershipDetections)
+
         let primaryBufferRect = bufferRect(
             for: primary,
             imageWidth: bufW,
@@ -3966,7 +4095,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBy1 = Int(primaryBufferRect.minY)
         let primaryBx2 = Int(primaryBufferRect.maxX)
         let primaryBy2 = Int(primaryBufferRect.maxY)
-        let maskOwnershipRects = maskOwnershipDetections.map {
+        let maskOwnershipRects = compositeOwnershipDetections.map {
             self.bufferRect(
                 for: $0,
                 imageWidth: bufW,
@@ -3979,13 +4108,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Build the composite band from the fused detection boxes rather than the
         // thresholded small mask. This avoids cropping away weak thin parts (for
         // example the left handle of a chair) before full-res logits are sampled.
-        let clipCandidates = segmentationMode == .segmentSelected ? selectedCandidates : maskDetectionsForBuild
+        let clipCandidates = segmentationMode == .segmentSelected ? selectedCandidates : compositeDetectionsForBuild
         let clipLeftModel = clipCandidates.map { $0.x - $0.w * 0.5 }.min() ?? (primary.x - primary.w * 0.5)
         let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
         let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
         let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        let maskSmallForComposite = maskSmall
-        let maskLogitsForComposite = maskResult.logits
+        let maskSmallForComposite = usePrimaryOnlyComposite ? primaryOnlyMaskResult.binary : maskSmall
+        let maskLogitsForComposite = usePrimaryOnlyComposite ? primaryOnlyLogits : maskResult.logits
 
         let clipModelRect = CGRect(
             x: CGFloat(clipLeftModel),
@@ -4180,6 +4309,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
                 maskOwnershipRects: maskOwnershipRects,
+                primaryOnlyLogits: primaryOnlyLogits,
                 debugTag: "process_mask_native GPU"
             ) ?? compositeCpuBilinearProtoMaskCutoutFromLogits(
                 processBuffer: processBuffer,
@@ -4201,8 +4331,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy1: primaryBy1,
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
-                maskDetectionsForBuild: maskDetectionsForBuild,
+                maskDetectionsForBuild: compositeDetectionsForBuild,
                 maskOwnershipRects: maskOwnershipRects,
+                primaryOnlyLogits: primaryOnlyLogits,
                 debugTag: "ONNX-style CPU fallback"
             ) ?? (currentYoloUsesLetterbox
                 ? compositeLegacy1280UnionMaskCutout(
@@ -4213,7 +4344,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     modelSide: onnxSide,
                     origW: bufW,
                     origH: bufH,
-                    maskDetectionsForBuild: maskDetectionsForBuild,
+                    maskDetectionsForBuild: compositeDetectionsForBuild,
                     x0: compBx1,
                     x1: compBx2,
                     y0: compBy1,
@@ -4222,7 +4353,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     primaryBy1: primaryBy1,
                     primaryBx2: primaryBx2,
                     primaryBy2: primaryBy2,
-                    maskOwnershipRects: maskOwnershipRects
+                    maskOwnershipRects: maskOwnershipRects,
+                    primaryOnlyLogits: primaryOnlyLogits
                 )
                 : nil)
 
@@ -4231,7 +4363,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             if Self.oneImageRun, oneImageRunAwaitingSave {
                 return drawCompositeContributorBboxesOnComposedImage(
                     composed: base,
-                    compositeDetections: maskDetectionsForBuild,
+                    compositeDetections: compositeDetectionsForBuild,
                     primary: primary,
                     origW: bufW,
                     origH: bufH,
@@ -5112,6 +5244,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy2: Int,
         maskDetectionsForBuild: [FurnitureFitDetection],
         maskOwnershipRects: [CGRect],
+        primaryOnlyLogits: [Float],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
@@ -5120,6 +5253,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
               ph > 0,
               maskProto.count >= pw * ph,
               maskLogits.count >= pw * ph,
+              primaryOnlyLogits.count >= pw * ph,
               origW > 0, origH > 0 else { return nil }
 
         let xStart = max(0, min(origW, x0))
@@ -5244,6 +5378,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandH: bandH
         )
 
+        mergePrimaryMaskOpaqueIntoFullMaskBand(
+            fullMask: &upscaledPlanarMaskScratch,
+            primaryOnlyLogits: primaryOnlyLogits,
+            protoW: pw,
+            protoH: ph,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: usesLetterbox
+        )
+
+        if furnitureFitCompositeRemoveSmallHoles {
+            removeSmallRegionsFromFullMaskBandRegion(
+                fullMask: &upscaledPlanarMaskScratch,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH,
+                areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
+                mode: .holes
+            )
+        }
+
         logSampledMaskShapeIfDebug(
             mask: upscaledPlanarMaskScratch,
             width: origW,
@@ -5335,7 +5498,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy1: Int,
         primaryBx2: Int,
         primaryBy2: Int,
-        maskOwnershipRects: [CGRect]
+        maskOwnershipRects: [CGRect],
+        primaryOnlyLogits: [Float]
     ) -> CGImage? {
         guard currentYoloUsesLetterbox,
               protoW > 0,
@@ -5472,6 +5636,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandW: bandW,
             bandH: bandH
         )
+
+        mergePrimaryMaskOpaqueIntoFullMaskBand(
+            fullMask: &clippedFullMask,
+            primaryOnlyLogits: primaryOnlyLogits,
+            protoW: protoW,
+            protoH: protoH,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: true
+        )
+
+        // Legacy 1280 union path: logits-only mask; no island hole fill (different semantics from ONNX-style composite).
 
         guard let ctx = CGContext(
             data: nil,
@@ -6076,12 +6257,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx2: Int,
         primaryBy2: Int,
         maskOwnershipRects: [CGRect],
+        primaryOnlyLogits: [Float],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
         let ph = protoH
         guard pw > 0, ph > 0,
               maskLogits.count >= pw * ph,
+              primaryOnlyLogits.count >= pw * ph,
               origW > 0, origH > 0 else { return nil }
 
         let xStart = max(0, min(origW, x0))
@@ -6125,6 +6308,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandW: bandW,
             bandH: bandH
         )
+
+        mergePrimaryMaskOpaqueIntoBandMask(
+            bandMask: &bandMask,
+            primaryOnlyLogits: primaryOnlyLogits,
+            protoW: pw,
+            protoH: ph,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: usesLetterbox
+        )
+
+        if furnitureFitCompositeRemoveSmallHoles {
+            removeSmallRegionsFromBinaryBandMask(
+                mask: &bandMask,
+                width: bandW,
+                height: bandH,
+                areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
+                mode: .holes
+            )
+        }
 
         guard let ctx = CGContext(
             data: nil,
@@ -6269,6 +6477,210 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     guard imageX >= 0, imageX < origW else { continue }
                     fullMask[fullMaskRowOffset + imageX] = 0
                 }
+            }
+        }
+    }
+
+    /// After fused mask + ownership, force every pixel inside the primary-only upsampled mask to opaque (fills holes vs fused max).
+    private func mergePrimaryMaskOpaqueIntoBandMask(
+        bandMask: inout [UInt8],
+        primaryOnlyLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int,
+        usesLetterbox: Bool
+    ) {
+        guard let primaryBand = debugUpsampledBandMaskFromLogits(
+            maskLogits: primaryOnlyLogits,
+            protoW: protoW,
+            protoH: protoH,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: usesLetterbox
+        ), primaryBand.count == bandMask.count else { return }
+        for i in 0..<bandMask.count where primaryBand[i] != 0 {
+            bandMask[i] = 255
+        }
+    }
+
+    private func mergePrimaryMaskOpaqueIntoFullMaskBand(
+        fullMask: inout [UInt8],
+        primaryOnlyLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int,
+        usesLetterbox: Bool
+    ) {
+        guard let primaryBand = debugUpsampledBandMaskFromLogits(
+            maskLogits: primaryOnlyLogits,
+            protoW: protoW,
+            protoH: protoH,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: usesLetterbox
+        ) else { return }
+        for by in 0..<bandH {
+            let y = yStart + by
+            guard y >= 0, y < origH else { continue }
+            let row = y * origW
+            for bx in 0..<bandW {
+                guard primaryBand[by * bandW + bx] != 0 else { continue }
+                let x = xStart + bx
+                guard x >= 0, x < origW else { continue }
+                fullMask[row + x] = 255
+            }
+        }
+    }
+
+    private enum SmallRegionCleanupMode {
+        case holes
+        case islands
+    }
+
+    /// SAM-style connected-component cleanup. In `.holes` mode, only enclosed background regions
+    /// below `areaThreshold` are filled. In `.islands` mode, only small foreground regions are removed.
+    private func removeSmallRegionsFromBinaryBandMask(
+        mask: inout [UInt8],
+        width: Int,
+        height: Int,
+        areaThreshold: Int,
+        mode: SmallRegionCleanupMode
+    ) {
+        let count = width * height
+        guard count == mask.count, width >= 1, height >= 1, areaThreshold > 0 else { return }
+
+        var visited = [Bool](repeating: false, count: count)
+        var queue: [Int] = []
+        queue.reserveCapacity(256)
+
+        for start in 0..<count {
+            guard !visited[start] else { continue }
+            let isForeground = mask[start] != 0
+            let matchesMode = (mode == .holes && !isForeground) || (mode == .islands && isForeground)
+            guard matchesMode else {
+                visited[start] = true
+                continue
+            }
+
+            queue.removeAll(keepingCapacity: true)
+            var component: [Int] = []
+            var touchesBorder = false
+            queue.append(start)
+            visited[start] = true
+
+            var head = 0
+            while head < queue.count {
+                let index = queue[head]
+                head += 1
+                component.append(index)
+
+                let x = index % width
+                let y = index / width
+                if x == 0 || x == width - 1 || y == 0 || y == height - 1 {
+                    touchesBorder = true
+                }
+
+                if x > 0 {
+                    let next = index - 1
+                    if !visited[next], (mask[next] != 0) == isForeground {
+                        visited[next] = true
+                        queue.append(next)
+                    }
+                }
+                if x + 1 < width {
+                    let next = index + 1
+                    if !visited[next], (mask[next] != 0) == isForeground {
+                        visited[next] = true
+                        queue.append(next)
+                    }
+                }
+                if y > 0 {
+                    let next = index - width
+                    if !visited[next], (mask[next] != 0) == isForeground {
+                        visited[next] = true
+                        queue.append(next)
+                    }
+                }
+                if y + 1 < height {
+                    let next = index + width
+                    if !visited[next], (mask[next] != 0) == isForeground {
+                        visited[next] = true
+                        queue.append(next)
+                    }
+                }
+            }
+
+            switch mode {
+            case .holes:
+                guard !touchesBorder, component.count <= areaThreshold else { continue }
+                for index in component { mask[index] = 255 }
+            case .islands:
+                guard component.count <= areaThreshold else { continue }
+                for index in component { mask[index] = 0 }
+            }
+        }
+    }
+
+    private func removeSmallRegionsFromFullMaskBandRegion(
+        fullMask: inout [UInt8],
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int,
+        areaThreshold: Int,
+        mode: SmallRegionCleanupMode
+    ) {
+        guard bandW >= 3, bandH >= 3, fullMask.count >= origW * origH, origW > 0, origH > 0 else { return }
+        var bandCompact = [UInt8](repeating: 0, count: bandW * bandH)
+        for by in 0..<bandH {
+            let y = yStart + by
+            guard y >= 0, y < origH else { continue }
+            let row = y * origW
+            for bx in 0..<bandW {
+                let x = xStart + bx
+                guard x >= 0, x < origW else { continue }
+                bandCompact[by * bandW + bx] = fullMask[row + x]
+            }
+        }
+        removeSmallRegionsFromBinaryBandMask(
+            mask: &bandCompact,
+            width: bandW,
+            height: bandH,
+            areaThreshold: areaThreshold,
+            mode: mode
+        )
+        for by in 0..<bandH {
+            let y = yStart + by
+            guard y >= 0, y < origH else { continue }
+            let row = y * origW
+            for bx in 0..<bandW {
+                let x = xStart + bx
+                guard x >= 0, x < origW else { continue }
+                fullMask[row + x] = bandCompact[by * bandW + bx]
             }
         }
     }

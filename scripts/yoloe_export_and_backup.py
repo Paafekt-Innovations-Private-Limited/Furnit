@@ -116,6 +116,19 @@ def main():
         help="Export with half=True (Float16). Default is FP32 (half=False) for yoloe-11l-seg-pf.",
     )
     parser.add_argument(
+        "--fuse",
+        dest="fuse",
+        action="store_true",
+        help="Run model.fuse() before export (default: on).",
+    )
+    parser.add_argument(
+        "--no-fuse",
+        dest="fuse",
+        action="store_false",
+        help="Skip model.fuse() before export.",
+    )
+    parser.set_defaults(fuse=True)
+    parser.add_argument(
         "--legacy-26l-coreml-patch",
         action="store_true",
         help="Apply no-op fuse on head module classes (old 26L CoreML workaround). Off by default.",
@@ -201,8 +214,11 @@ def main():
         model.set_classes(names)
 
     # Conv+BN fusion; for end2end Detect heads also removes one-to-many branch when applicable.
-    print("model.fuse() …")
-    model.fuse()
+    if args.fuse:
+        print("model.fuse() …")
+        model.fuse()
+    else:
+        print("Skipping model.fuse() (--no-fuse)")
 
     # Optional: predict with retina_masks=True
     if args.verify_image:
@@ -221,7 +237,7 @@ def main():
     exported_path = None
     if not args.skip_export:
         fmt = args.format
-        print(f"Exporting to {fmt.upper()} (nms=False)…")
+        print(f"Exporting to {fmt.upper()} (nms=False, fuse={args.fuse})…")
         use_half = args.half
         print(f"Exporting with half={use_half}")
         exported_path = model.export(

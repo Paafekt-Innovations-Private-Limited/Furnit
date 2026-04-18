@@ -1223,12 +1223,13 @@ class FurnitureFitManager(private val context: Context) {
         val primaryRight = primaryDetection.x + primaryDetection.w / 2f
         val primaryBottom = primaryDetection.y + primaryDetection.h / 2f
         val encompassTolerance = 2f
-        val minimumCandidateConfidence = 0.1f
+        // Fusion-only confidence floor (redundant with parse threshold); kept for reference.
+        // val minimumCandidateConfidence = 0.1f
         val bboxDuplicateThreshold = 0.7f
 
         val bboxKept = mutableListOf<Detection>()
         for (detection in detections) {
-            if (detection == primaryDetection || detection.confidence < minimumCandidateConfidence) continue
+            if (detection == primaryDetection) continue
 
             val candidateLeft = detection.x - detection.w / 2f
             val candidateTop = detection.y - detection.h / 2f

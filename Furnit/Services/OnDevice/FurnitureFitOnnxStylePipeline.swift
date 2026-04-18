@@ -3,12 +3,16 @@ import Foundation
 
 /// Android `FurnitureFitManager` ONNX path parity: NMS → primary scoring → supporting-table heuristic → bbox-limited proto logit mask.
 enum FurnitureFitOnnxStylePipeline {
+    /// Simpler auto-fill heuristic for instance-mask holes: merge any other detection whose center
+    /// lies inside the primary bbox. This is cheap and works well when the model splits blankets /
+    /// cushions / items resting on top of the furniture into separate non-overlapping instances.
+    static let simpleApproach: Bool = true
 
     /// Default detection confidence threshold for ONNX-style helpers.
     /// The live FurnitureFit camera path now uses 0.10 via `FurnitureFitUIView.scoreThreshold`.
-    static let confidenceThreshold: Float = 0.10
+    static let confidenceThreshold: Float = 0.01
     static let iouThresholdNms: Float = 0.45
-    static let maxDetectionsBeforeNms = 100
+    static let maxDetectionsBeforeNms = 1000
 
     // MARK: Mask thresholds (two different stages)
     //
@@ -39,7 +43,7 @@ enum FurnitureFitOnnxStylePipeline {
 
     /// Post-bilinear gate for compositing; not the same role as `maskLogitThreshold`.
     /// Tune ~0.06–0.12: lower if thin parts vanish, higher if upscaled mask stays puffier than proto.
-    static let maskUpsampleLogitBias: Float = 0.09
+    static let maskUpsampleLogitBias: Float = 0.01
 
     /// When `true`, composite uses ``retinaMaskUpsampleLogitThreshold`` (default `0.0`) so thin
     /// parts are not punched out by a stricter gate. Set `false` to use ``nativeMaskUpsampleLogitThreshold``.
@@ -48,12 +52,12 @@ enum FurnitureFitOnnxStylePipeline {
     /// Logit gate after full-res bilinear sample when ``retinaMasksCompositeEnabled`` is `true`.
     /// Lowered from 0.0 to match ``maskLogitThreshold``: captures thin structures
     /// whose logits are slightly negative after bilinear upsample.
-    static let retinaMaskUpsampleLogitThreshold: Float = -1.5
+    static let retinaMaskUpsampleLogitThreshold: Float = 0.0
 
     /// Legacy composite gate when ``retinaMasksCompositeEnabled`` is `false`.
     /// `process_mask_native` / GPU bilinear path: opaque iff `upsampled_logit > threshold`.
     /// Lower (~0.2–0.35) restores thin regions that vanish at 0.5; higher reduces bilinear bleed.
-    static let nativeMaskUpsampleLogitThreshold: Float = 0.25
+    static let nativeMaskUpsampleLogitThreshold: Float = 0.0
 
     /// Effective post-bilinear logit threshold for GPU + CPU `process_mask_native` compositing.
     static func nativeCompositeUpsampleLogitThreshold() -> Float {
@@ -301,6 +305,27 @@ enum FurnitureFitOnnxStylePipeline {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
         let primaryDetection = detections[primaryIndex]
 
+        if simpleApproach {
+            let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
+            let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
+            let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
+            let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
+
+            var maskDetections: [FurnitureFitDetection] = [primaryDetection]
+            for (idx, detection) in detections.enumerated() {
+                guard idx != primaryIndex else { continue }
+                guard detection.coeffs.count >= 32 else { continue }
+                let centerInsidePrimary =
+                    detection.x >= primaryLeft &&
+                    detection.x <= primaryRight &&
+                    detection.y >= primaryTop &&
+                    detection.y <= primaryBottom
+                guard centerInsidePrimary else { continue }
+                maskDetections.append(detection)
+            }
+            return maskDetections
+        }
+
         let supportingTableDetection = pickSupportingTableForMonitorScene(
             primaryDetection: primaryDetection,
             detections: detections,
@@ -308,12 +333,13 @@ enum FurnitureFitOnnxStylePipeline {
         )
 
         let encompassTolerance: Float = 2
-        let minimumCandidateConfidence: Float = 0.10
+        // Fusion-only confidence floor (redundant with parse `confidenceThreshold`); kept for reference.
+        // let minimumCandidateConfidence: Float = 0.10
         let bboxDuplicateThreshold: Float = 0.7
         var bboxKept: [FurnitureFitDetection] = []
 
         for (idx, detection) in detections.enumerated() {
-            if idx == primaryIndex || detection.confidence < minimumCandidateConfidence { continue }
+            if idx == primaryIndex { continue }
             if detection.coeffs.count < 32 { continue }
 
             let candidateLeft = detection.x - detection.w * 0.5
