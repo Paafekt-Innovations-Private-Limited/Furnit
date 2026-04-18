@@ -516,7 +516,7 @@ struct MeshRoomView: View {
             .padding(.top, 12)
             .onDisappear { cancelRoomDimensionsHintTasks() }
         }
-        .zIndex(13)
+        .zIndex(104)
     }
 
     private var fullVideoFurnitureTapHintOverlay: some View {
@@ -543,7 +543,7 @@ struct MeshRoomView: View {
             .padding(.top, roomDimensionsHintVisible ? 56 : 12)
         }
         .allowsHitTesting(false)
-        .zIndex(14)
+        .zIndex(105)
     }
 
     private func dismissFullVideoFurnitureTapHint() {
@@ -886,7 +886,7 @@ struct MeshRoomView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .zIndex(18)
+        .zIndex(102)
     }
 
     // MARK: - Portrait Controls
@@ -931,6 +931,7 @@ struct MeshRoomView: View {
             }
             .padding(.bottom, 20)
         }
+        .zIndex(99998)
     }
 
     // MARK: - Landscape Controls
@@ -972,6 +973,7 @@ struct MeshRoomView: View {
             .padding(.horizontal, 30)
             .padding(.bottom, 20)
         }
+        .zIndex(99997)
     }
 
     // MARK: - Request GLB Export from JavaScript

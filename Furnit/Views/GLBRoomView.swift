@@ -614,7 +614,7 @@ struct GLBRoomView: View {
             .padding(.top, 12)
             .onDisappear { cancelRoomDimensionsHintTasks() }
         }
-        .zIndex(13)
+        .zIndex(104)
     }
 
     private var fullVideoFurnitureTapHintOverlay: some View {
@@ -641,7 +641,7 @@ struct GLBRoomView: View {
             .padding(.top, roomDimensionsHintVisible ? 56 : 12)
         }
         .allowsHitTesting(false)
-        .zIndex(14)
+        .zIndex(105)
     }
 
     private func dismissFullVideoFurnitureTapHint() {
@@ -983,7 +983,7 @@ struct GLBRoomView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .zIndex(18)
+        .zIndex(102)
     }
 
     // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
@@ -1025,6 +1025,7 @@ struct GLBRoomView: View {
             }
             .padding(.bottom, 20)
         }
+        .zIndex(99998)
     }
 
     // MARK: - Landscape Controls
@@ -1061,6 +1062,7 @@ struct GLBRoomView: View {
             .padding(.horizontal, 30)
             .padding(.bottom, 20)
         }
+        .zIndex(99997)
     }
 
     // MARK: - Take Screenshot
