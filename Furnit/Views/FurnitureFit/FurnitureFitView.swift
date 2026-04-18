@@ -3705,8 +3705,58 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
 
         if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && !oneImageRunAwaitingSave {
-            // Full-video identifications ON: show bbox overlays only, no mask compositing.
+            let liveDebugMaskBaseImage = debugMode
+                ? renderOriginalFrameCGImage(
+                    processBuffer: processBuffer,
+                    origW: bufW,
+                    origH: bufH
+                )
+                : nil
             let primaryIdxOpt = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide)
+            let liveDebugFusedMaskPayload: (logits: [Float], detections: [FurnitureFitDetection])? = {
+                guard debugMode,
+                      let primaryIdx = primaryIdxOpt,
+                      primaryIdx >= 0,
+                      primaryIdx < candidates.count else { return nil }
+                let primaryCandidate = candidates[primaryIdx]
+                let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
+                    primaryIndex: primaryIdx,
+                    detections: candidates,
+                    planes: planes,
+                    protoW: pW,
+                    protoH: pH,
+                    modelSide: Float(onnxSide)
+                )
+                let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primaryCandidate, onnxSide: onnxSide)
+                var fusedDetections: [FurnitureFitDetection] = [expandedPrimary]
+                for detection in maskSource where FurnitureFitIoU.calculate(detection, primaryCandidate) < 0.999 {
+                    fusedDetections.append(detection)
+                }
+                let fusedMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+                    planes: planes,
+                    protoW: pW,
+                    protoH: pH,
+                    detections: fusedDetections
+                )
+                return (fusedMaskResult.logits, fusedDetections)
+            }()
+            let liveDebugMaskOverlayImage = debugMode
+                ? renderLiveDebugMaskOverlayImage(
+                    baseImage: liveDebugMaskBaseImage,
+                    candidates: candidates,
+                    primaryIndex: primaryIdxOpt,
+                    fusedMaskLogits: liveDebugFusedMaskPayload?.logits,
+                    fusedMaskDetections: liveDebugFusedMaskPayload?.detections ?? [],
+                    planes: planes,
+                    protoW: pW,
+                    protoH: pH,
+                    modelSide: onnxSide,
+                    origW: bufW,
+                    origH: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
+                : nil
             DispatchQueue.main.async {
                 self.resetOverlayScalesForEmptyMask(
                     clearDetectedCandidates: false,
@@ -3731,6 +3781,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     )
                 } else {
                     self.primaryBboxInView = .zero
+                }
+                if let liveDebugMaskOverlayImage {
+                    let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
+                    self.maskImageView.image = UIImage(cgImage: liveDebugMaskOverlayImage, scale: scale, orientation: .up)
+                } else {
+                    self.maskImageView.image = nil
                 }
                 self.applyCurrentOverlayScaleTransform()
                 self.finishStartupProgressIfNeeded()
@@ -3851,12 +3907,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // - When running in segmentSelected mode, restrict fusion to the
         //   user-pinned instances, but still apply the primary expansion per pin.
         let maskDetectionsForBuild: [FurnitureFitDetection]
+        let maskOwnershipDetections: [FurnitureFitDetection]
         if segmentationMode == .segmentSelected {
             // Manual selection: expand each matched pin and build a mask over the
             // union of those expanded boxes.
             maskDetectionsForBuild = selectedCandidates.map {
                 onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
             }
+            maskOwnershipDetections = maskDetectionsForBuild
         } else {
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
@@ -3879,6 +3937,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
             maskDetectionsForBuild = fusion
+            maskOwnershipDetections = [expandedPrimary] + maskSource.filter { FurnitureFitIoU.calculate($0, primary) < 0.999 }
         }
 
         let maskFusionStart = Date()
@@ -3907,6 +3966,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primaryBy1 = Int(primaryBufferRect.minY)
         let primaryBx2 = Int(primaryBufferRect.maxX)
         let primaryBy2 = Int(primaryBufferRect.maxY)
+        let maskOwnershipRects = maskOwnershipDetections.map {
+            self.bufferRect(
+                for: $0,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+        }
 
         // Build the composite band from the fused detection boxes rather than the
         // thresholded small mask. This avoids cropping away weak thin parts (for
@@ -4111,6 +4179,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy1: primaryBy1,
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
+                maskOwnershipRects: maskOwnershipRects,
                 debugTag: "process_mask_native GPU"
             ) ?? compositeCpuBilinearProtoMaskCutoutFromLogits(
                 processBuffer: processBuffer,
@@ -4133,6 +4202,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
                 maskDetectionsForBuild: maskDetectionsForBuild,
+                maskOwnershipRects: maskOwnershipRects,
                 debugTag: "ONNX-style CPU fallback"
             ) ?? (currentYoloUsesLetterbox
                 ? compositeLegacy1280UnionMaskCutout(
@@ -4151,7 +4221,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     primaryBx1: primaryBx1,
                     primaryBy1: primaryBy1,
                     primaryBx2: primaryBx2,
-                    primaryBy2: primaryBy2
+                    primaryBy2: primaryBy2,
+                    maskOwnershipRects: maskOwnershipRects
                 )
                 : nil)
 
@@ -5040,6 +5111,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx2: Int,
         primaryBy2: Int,
         maskDetectionsForBuild: [FurnitureFitDetection],
+        maskOwnershipRects: [CGRect],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
@@ -5161,6 +5233,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
+        applyOwnershipConstraintToFullMask(
+            fullMask: &upscaledPlanarMaskScratch,
+            ownershipRects: maskOwnershipRects,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH
+        )
 
         logSampledMaskShapeIfDebug(
             mask: upscaledPlanarMaskScratch,
@@ -5252,7 +5334,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx1: Int,
         primaryBy1: Int,
         primaryBx2: Int,
-        primaryBy2: Int
+        primaryBy2: Int,
+        maskOwnershipRects: [CGRect]
     ) -> CGImage? {
         guard currentYoloUsesLetterbox,
               protoW > 0,
@@ -5379,6 +5462,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
+        applyOwnershipConstraintToFullMask(
+            fullMask: &clippedFullMask,
+            ownershipRects: maskOwnershipRects,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH
+        )
 
         guard let ctx = CGContext(
             data: nil,
@@ -5631,6 +5724,336 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return result
     }
 
+    private func debugUpsampledBandMaskFromLogits(
+        maskLogits: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int,
+        usesLetterbox: Bool
+    ) -> [UInt8]? {
+        guard protoW > 0,
+              protoH > 0,
+              bandW > 0,
+              bandH > 0,
+              maskLogits.count >= protoW * protoH else { return nil }
+
+        let upsampleThreshold = FurnitureFitOnnxStylePipeline.nativeCompositeUpsampleLogitThreshold()
+        if let gpuBandMask = gpuBilinearUpsampleAndThreshold(
+            logits: maskLogits,
+            protoW: protoW,
+            protoH: protoH,
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH,
+            usesLetterbox: usesLetterbox,
+            logitThreshold: upsampleThreshold
+        ) {
+            if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
+                return morphologicalBinaryClose3x3Planar8(mask: gpuBandMask, width: bandW, height: bandH)
+            }
+            return gpuBandMask
+        }
+
+        let geometry = nativeUpsampleGeometry(
+            modelSide: modelSide,
+            origW: origW,
+            origH: origH,
+            usesLetterbox: usesLetterbox
+        )
+        let protoScaleX = Float(protoW) / geometry.modelInput
+        let protoScaleY = Float(protoH) / geometry.modelInput
+        let maximumProtoX = protoW - 1
+        let maximumProtoY = protoH - 1
+        var bandMask = [UInt8](repeating: 0, count: bandW * bandH)
+
+        for bandY in 0..<bandH {
+            let imageY = yStart + bandY
+            let modelCenterY = (Float(imageY) + 0.5) * geometry.imageToModelScaleY + geometry.padY
+            let protoYFloat = modelCenterY * protoScaleY - 0.5
+            let protoY0 = max(0, min(maximumProtoY, Int(floor(protoYFloat))))
+            let protoY1 = max(0, min(maximumProtoY, protoY0 + 1))
+            let yBlend = protoYFloat - Float(protoY0)
+
+            for bandX in 0..<bandW {
+                let imageX = xStart + bandX
+                let modelCenterX = (Float(imageX) + 0.5) * geometry.imageToModelScaleX + geometry.padX
+                let protoXFloat = modelCenterX * protoScaleX - 0.5
+                let protoX0 = max(0, min(maximumProtoX, Int(floor(protoXFloat))))
+                let protoX1 = max(0, min(maximumProtoX, protoX0 + 1))
+                let xBlend = protoXFloat - Float(protoX0)
+
+                let topLeftIndex = protoY0 * protoW + protoX0
+                let topRightIndex = protoY0 * protoW + protoX1
+                let bottomLeftIndex = protoY1 * protoW + protoX0
+                let bottomRightIndex = protoY1 * protoW + protoX1
+
+                let topLeftLogit = maskLogits[topLeftIndex]
+                let topRightLogit = maskLogits[topRightIndex]
+                let bottomLeftLogit = maskLogits[bottomLeftIndex]
+                let bottomRightLogit = maskLogits[bottomRightIndex]
+
+                let blendedLogit =
+                    topLeftLogit * (1 - xBlend) * (1 - yBlend) +
+                    topRightLogit * xBlend * (1 - yBlend) +
+                    bottomLeftLogit * (1 - xBlend) * yBlend +
+                    bottomRightLogit * xBlend * yBlend
+
+                bandMask[bandY * bandW + bandX] = blendedLogit > upsampleThreshold ? 255 : 0
+            }
+        }
+
+        if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
+            bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
+        }
+        return bandMask
+    }
+
+    private func liveDebugMaskColor(
+        detectionIndex: Int,
+        isPrimary: Bool
+    ) -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) {
+        if isPrimary {
+            return (255, 64, 64, 170)
+        }
+
+        let palette: [(UInt8, UInt8, UInt8, UInt8)] = [
+            (72, 220, 255, 120),
+            (112, 255, 140, 120),
+            (255, 196, 72, 120),
+            (196, 136, 255, 120),
+            (255, 120, 184, 120)
+        ]
+        let color = palette[detectionIndex % palette.count]
+        return (color.0, color.1, color.2, color.3)
+    }
+
+    private func blendLiveDebugMaskPixel(
+        outBase: UnsafeMutablePointer<UInt8>,
+        bytesPerRow: Int,
+        x: Int,
+        y: Int,
+        color: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)
+    ) {
+        let pixelOffset = y * bytesPerRow + x * 4
+        let sourceAlpha = Float(color.alpha) / 255
+        let destinationAlpha = Float(outBase[pixelOffset + 3]) / 255
+        let destinationKeep = 1 - sourceAlpha
+
+        let sourceRedPremultiplied = Float(color.red) * sourceAlpha
+        let sourceGreenPremultiplied = Float(color.green) * sourceAlpha
+        let sourceBluePremultiplied = Float(color.blue) * sourceAlpha
+
+        let blendedRed = sourceRedPremultiplied + Float(outBase[pixelOffset + 0]) * destinationKeep
+        let blendedGreen = sourceGreenPremultiplied + Float(outBase[pixelOffset + 1]) * destinationKeep
+        let blendedBlue = sourceBluePremultiplied + Float(outBase[pixelOffset + 2]) * destinationKeep
+        let blendedAlpha = sourceAlpha + destinationAlpha * destinationKeep
+
+        outBase[pixelOffset + 0] = UInt8(max(0, min(255, Int(blendedRed.rounded()))))
+        outBase[pixelOffset + 1] = UInt8(max(0, min(255, Int(blendedGreen.rounded()))))
+        outBase[pixelOffset + 2] = UInt8(max(0, min(255, Int(blendedBlue.rounded()))))
+        outBase[pixelOffset + 3] = UInt8(max(0, min(255, Int((blendedAlpha * 255).rounded()))))
+    }
+
+    private func renderLiveDebugMaskOverlayImage(
+        baseImage: CGImage?,
+        candidates: [FurnitureFitDetection],
+        primaryIndex: Int?,
+        fusedMaskLogits: [Float]?,
+        fusedMaskDetections: [FurnitureFitDetection],
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Int,
+        origW: Int,
+        origH: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGImage? {
+        guard !candidates.isEmpty,
+              protoW > 0,
+              protoH > 0,
+              modelSide > 0,
+              origW > 0,
+              origH > 0 else { return nil }
+
+        guard let context = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let rawData = context.data else { return nil }
+
+        let bytesPerRow = cgBitmapAllocatedBytesPerRow(context)
+        let outBase = rawData.assumingMemoryBound(to: UInt8.self)
+        if let baseImage {
+            context.draw(baseImage, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+        } else {
+            fillCompositeBufferTransparent(
+                outBase: outBase,
+                height: origH,
+                bytesPerRowOut: bytesPerRow
+            )
+        }
+
+        let orderedIndices = candidates.indices.filter { $0 != primaryIndex }
+            + (primaryIndex.map { [$0] } ?? [])
+        var paintedPixelCount = 0
+
+        if let fusedMaskLogits,
+           !fusedMaskDetections.isEmpty,
+           fusedMaskLogits.count >= protoW * protoH {
+            let fusedRects = fusedMaskDetections.map {
+                bufferRect(
+                    for: $0,
+                    imageWidth: origW,
+                    imageHeight: origH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                )
+            }
+            let fusedMinX = max(0, Int(floor(fusedRects.map(\.minX).min() ?? 0)))
+            let fusedMinY = max(0, Int(floor(fusedRects.map(\.minY).min() ?? 0)))
+            let fusedMaxX = min(origW, Int(ceil(fusedRects.map(\.maxX).max() ?? 0)))
+            let fusedMaxY = min(origH, Int(ceil(fusedRects.map(\.maxY).max() ?? 0)))
+            let fusedBandWidth = fusedMaxX - fusedMinX
+            let fusedBandHeight = fusedMaxY - fusedMinY
+
+            if fusedBandWidth > 0,
+               fusedBandHeight > 0,
+               let fusedBandMask = debugUpsampledBandMaskFromLogits(
+                    maskLogits: fusedMaskLogits,
+                    protoW: protoW,
+                    protoH: protoH,
+                    modelSide: modelSide,
+                    origW: origW,
+                    origH: origH,
+                    xStart: fusedMinX,
+                    yStart: fusedMinY,
+                    bandW: fusedBandWidth,
+                    bandH: fusedBandHeight,
+                    usesLetterbox: currentYoloUsesLetterbox
+               ) {
+                let fusedFillColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) = (255, 32, 32, 215)
+                for bandY in 0..<fusedBandHeight {
+                    let imageY = fusedMinY + bandY
+                    let rowOffset = bandY * fusedBandWidth
+                    for bandX in 0..<fusedBandWidth where fusedBandMask[rowOffset + bandX] != 0 {
+                        let isBoundaryPixel =
+                            bandX == 0 ||
+                            bandY == 0 ||
+                            bandX == fusedBandWidth - 1 ||
+                            bandY == fusedBandHeight - 1 ||
+                            fusedBandMask[rowOffset + max(0, bandX - 1)] == 0 ||
+                            fusedBandMask[rowOffset + min(fusedBandWidth - 1, bandX + 1)] == 0 ||
+                            fusedBandMask[max(0, bandY - 1) * fusedBandWidth + bandX] == 0 ||
+                            fusedBandMask[min(fusedBandHeight - 1, bandY + 1) * fusedBandWidth + bandX] == 0
+                        let pixelColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) =
+                            isBoundaryPixel ? (255, 255, 255, 255) : fusedFillColor
+                        blendLiveDebugMaskPixel(
+                            outBase: outBase,
+                            bytesPerRow: bytesPerRow,
+                            x: fusedMinX + bandX,
+                            y: imageY,
+                            color: pixelColor
+                        )
+                        paintedPixelCount += 1
+                    }
+                }
+            }
+        }
+
+        let shouldDrawPerDetectionMasks = fusedMaskLogits == nil || fusedMaskDetections.isEmpty
+        if shouldDrawPerDetectionMasks {
+        for detectionIndex in orderedIndices {
+            let detection = candidates[detectionIndex]
+            let detectionBufferRect = bufferRect(
+                for: detection,
+                imageWidth: origW,
+                imageHeight: origH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+            let xStart = max(0, Int(floor(detectionBufferRect.minX)))
+            let yStart = max(0, Int(floor(detectionBufferRect.minY)))
+            let xEnd = min(origW, Int(ceil(detectionBufferRect.maxX)))
+            let yEnd = min(origH, Int(ceil(detectionBufferRect.maxY)))
+            let bandW = xEnd - xStart
+            let bandH = yEnd - yStart
+            guard bandW > 0, bandH > 0 else { continue }
+
+            let perDetectionMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
+                planes: planes,
+                protoW: protoW,
+                protoH: protoH,
+                detections: [detection]
+            )
+            guard let bandMask = debugUpsampledBandMaskFromLogits(
+                maskLogits: perDetectionMaskResult.logits,
+                protoW: protoW,
+                protoH: protoH,
+                modelSide: modelSide,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH,
+                usesLetterbox: currentYoloUsesLetterbox
+            ) else { continue }
+
+            let maskColor = liveDebugMaskColor(
+                detectionIndex: detectionIndex,
+                isPrimary: detectionIndex == primaryIndex
+            )
+            for bandY in 0..<bandH {
+                let imageY = yStart + bandY
+                let bandRowOffset = bandY * bandW
+                for bandX in 0..<bandW where bandMask[bandRowOffset + bandX] != 0 {
+                    let isBoundaryPixel =
+                        bandX == 0 ||
+                        bandY == 0 ||
+                        bandX == bandW - 1 ||
+                        bandY == bandH - 1 ||
+                        bandMask[bandRowOffset + max(0, bandX - 1)] == 0 ||
+                        bandMask[bandRowOffset + min(bandW - 1, bandX + 1)] == 0 ||
+                        bandMask[max(0, bandY - 1) * bandW + bandX] == 0 ||
+                        bandMask[min(bandH - 1, bandY + 1) * bandW + bandX] == 0
+                    let pixelColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) =
+                        isBoundaryPixel
+                        ? (255, 255, 255, detectionIndex == primaryIndex ? 255 : 220)
+                        : maskColor
+                    blendLiveDebugMaskPixel(
+                        outBase: outBase,
+                        bytesPerRow: bytesPerRow,
+                        x: xStart + bandX,
+                        y: imageY,
+                        color: pixelColor
+                    )
+                    paintedPixelCount += 1
+                }
+            }
+        }
+        }
+
+        if debugMode && paintedPixelCount == 0 {
+            logDebug("⚠️ Live debug mask overlay produced zero painted pixels")
+        }
+        return context.makeImage()
+    }
+
     /// `process_mask_native` composite: full-field matmul → GPU bilinear upsample →
     /// crop + threshold → optional morph close → CPU camera composite.
     private func compositeGpuNativeMaskCutout(
@@ -5652,6 +6075,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBy1: Int,
         primaryBx2: Int,
         primaryBy2: Int,
+        maskOwnershipRects: [CGRect],
         debugTag: String
     ) -> CGImage? {
         let pw = protoW
@@ -5693,6 +6117,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
+        applyOwnershipConstraintToBandMask(
+            bandMask: &bandMask,
+            ownershipRects: maskOwnershipRects,
+            xStart: xStart,
+            yStart: yStart,
+            bandW: bandW,
+            bandH: bandH
+        )
 
         guard let ctx = CGContext(
             data: nil,
@@ -5737,6 +6169,108 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         return ctx.makeImage()
+    }
+
+    private func applyOwnershipConstraintToBandMask(
+        bandMask: inout [UInt8],
+        ownershipRects: [CGRect],
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int
+    ) {
+        guard bandW > 0, bandH > 0, bandMask.count >= bandW * bandH else { return }
+        guard !ownershipRects.isEmpty else {
+            bandMask = [UInt8](repeating: 0, count: bandW * bandH)
+            return
+        }
+
+        var ownershipBandMask = [UInt8](repeating: 0, count: bandW * bandH)
+        for rect in ownershipRects {
+            let rectMinX = Int(floor(rect.minX))
+            let rectMinY = Int(floor(rect.minY))
+            let rectMaxX = Int(ceil(rect.maxX))
+            let rectMaxY = Int(ceil(rect.maxY))
+            let clippedMinX = max(xStart, rectMinX)
+            let clippedMinY = max(yStart, rectMinY)
+            let clippedMaxX = min(xStart + bandW, rectMaxX)
+            let clippedMaxY = min(yStart + bandH, rectMaxY)
+            guard clippedMinX < clippedMaxX, clippedMinY < clippedMaxY else { continue }
+
+            for imageY in clippedMinY..<clippedMaxY {
+                let bandY = imageY - yStart
+                let rowOffset = bandY * bandW
+                for imageX in clippedMinX..<clippedMaxX {
+                    ownershipBandMask[rowOffset + (imageX - xStart)] = 255
+                }
+            }
+        }
+
+        for pixelIndex in 0..<(bandW * bandH) where ownershipBandMask[pixelIndex] == 0 {
+            bandMask[pixelIndex] = 0
+        }
+    }
+
+    private func applyOwnershipConstraintToFullMask(
+        fullMask: inout [UInt8],
+        ownershipRects: [CGRect],
+        origW: Int,
+        origH: Int,
+        xStart: Int,
+        yStart: Int,
+        bandW: Int,
+        bandH: Int
+    ) {
+        guard origW > 0, origH > 0, fullMask.count >= origW * origH else { return }
+        guard bandW > 0, bandH > 0 else { return }
+        guard !ownershipRects.isEmpty else {
+            for bandY in 0..<bandH {
+                let imageY = yStart + bandY
+                guard imageY >= 0, imageY < origH else { continue }
+                let rowOffset = imageY * origW
+                for bandX in 0..<bandW {
+                    let imageX = xStart + bandX
+                    guard imageX >= 0, imageX < origW else { continue }
+                    fullMask[rowOffset + imageX] = 0
+                }
+            }
+            return
+        }
+
+        var ownershipBandMask = [UInt8](repeating: 0, count: bandW * bandH)
+        for rect in ownershipRects {
+            let rectMinX = Int(floor(rect.minX))
+            let rectMinY = Int(floor(rect.minY))
+            let rectMaxX = Int(ceil(rect.maxX))
+            let rectMaxY = Int(ceil(rect.maxY))
+            let clippedMinX = max(xStart, rectMinX)
+            let clippedMinY = max(yStart, rectMinY)
+            let clippedMaxX = min(xStart + bandW, rectMaxX)
+            let clippedMaxY = min(yStart + bandH, rectMaxY)
+            guard clippedMinX < clippedMaxX, clippedMinY < clippedMaxY else { continue }
+
+            for imageY in clippedMinY..<clippedMaxY {
+                let bandY = imageY - yStart
+                let rowOffset = bandY * bandW
+                for imageX in clippedMinX..<clippedMaxX {
+                    ownershipBandMask[rowOffset + (imageX - xStart)] = 255
+                }
+            }
+        }
+
+        for bandY in 0..<bandH {
+            let imageY = yStart + bandY
+            guard imageY >= 0, imageY < origH else { continue }
+            let fullMaskRowOffset = imageY * origW
+            let bandRowOffset = bandY * bandW
+            for bandX in 0..<bandW {
+                if ownershipBandMask[bandRowOffset + bandX] == 0 {
+                    let imageX = xStart + bandX
+                    guard imageX >= 0, imageX < origW else { continue }
+                    fullMask[fullMaskRowOffset + imageX] = 0
+                }
+            }
+        }
     }
 
     /// Draws bounding boxes for every detection whose mask logits are fused into the composite (expanded primary + overlapping contributors).

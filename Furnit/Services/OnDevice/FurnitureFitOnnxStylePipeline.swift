@@ -308,7 +308,7 @@ enum FurnitureFitOnnxStylePipeline {
         )
 
         let encompassTolerance: Float = 2
-        let minimumCandidateConfidence: Float = 0.01
+        let minimumCandidateConfidence: Float = 0.10
         let bboxDuplicateThreshold: Float = 0.7
         var bboxKept: [FurnitureFitDetection] = []
 
