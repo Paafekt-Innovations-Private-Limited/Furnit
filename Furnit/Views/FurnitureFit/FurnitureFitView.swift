@@ -753,7 +753,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: Model & State
-    private var mlModel: MLModel?  // yoloe-11l-seg-pf or yoloe-26l-seg-pf_* via YOLOEModelService
+    private var mlModel: MLModel?  // yoloe-11l-seg-pf via YOLOEModelService
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false

@@ -28,8 +28,8 @@ final class ImageBasedTests: XCTestCase {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine
 
-        // Match app load order: 11L PF first, then 26L fallbacks (see YOLOEModelService).
-        let modelNames = ["yoloe-11l-seg-pf", "yoloe-26l-seg-pf_seg_o2m", "yoloe-26l-seg-pf_bu"]
+        // Match app load order: the app now ships only the 11L PF model.
+        let modelNames = ["yoloe-11l-seg-pf"]
 
         for modelName in modelNames {
             if let modelURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {

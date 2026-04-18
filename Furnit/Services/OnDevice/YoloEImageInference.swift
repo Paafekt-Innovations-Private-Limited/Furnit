@@ -58,7 +58,7 @@ enum YoloEImageInference {
         return true
     }
 
-    /// Square side for stretch (from Core ML `image` constraint). **YOLOE PF** (11L / 26L `_seg_o2m`) exports use **640**; fallback **640** if unconstrained (legacy 1280-only packages use letterbox).
+    /// Square side for stretch (from Core ML `image` constraint). The shipped YOLOE 11L PF export uses **640**; fallback **640** if unconstrained (legacy 1280-only packages use letterbox).
     static func modelInputSize(for model: MLModel) -> Int {
         let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
         if let imageConstraint = imageInputDesc?.imageConstraint {
