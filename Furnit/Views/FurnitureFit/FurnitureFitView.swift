@@ -5516,16 +5516,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        applyOwnershipConstraintToFullMask(
-            fullMask: &upscaledPlanarMaskScratch,
-            ownershipRects: maskOwnershipRects,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH
-        )
+        if !FurnitureFitOnnxStylePipeline.simpleApproach {
+            applyOwnershipConstraintToFullMask(
+                fullMask: &upscaledPlanarMaskScratch,
+                ownershipRects: maskOwnershipRects,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH
+            )
+        }
 
         // Keep only the simple contributor-merge path active.
         // mergePrimaryMaskOpaqueIntoFullMaskBand(
@@ -5776,16 +5778,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        applyOwnershipConstraintToFullMask(
-            fullMask: &clippedFullMask,
-            ownershipRects: maskOwnershipRects,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH
-        )
+        if !FurnitureFitOnnxStylePipeline.simpleApproach {
+            applyOwnershipConstraintToFullMask(
+                fullMask: &clippedFullMask,
+                ownershipRects: maskOwnershipRects,
+                origW: origW,
+                origH: origH,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH
+            )
+        }
 
         // Keep only the simple contributor-merge path active.
         // mergePrimaryMaskOpaqueIntoFullMaskBand(
@@ -6471,14 +6475,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
-        applyOwnershipConstraintToBandMask(
-            bandMask: &bandMask,
-            ownershipRects: maskOwnershipRects,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH
-        )
+        if !FurnitureFitOnnxStylePipeline.simpleApproach {
+            applyOwnershipConstraintToBandMask(
+                bandMask: &bandMask,
+                ownershipRects: maskOwnershipRects,
+                xStart: xStart,
+                yStart: yStart,
+                bandW: bandW,
+                bandH: bandH
+            )
+        }
 
         // Keep only the simple contributor-merge path active.
         // mergePrimaryMaskOpaqueIntoBandMask(
