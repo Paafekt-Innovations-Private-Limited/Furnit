@@ -1001,7 +1001,11 @@ struct GLBRoomView: View {
             .padding(.bottom, 12)
 
             HStack {
-                brainButtonWithHintAbove
+                HStack(alignment: .bottom, spacing: 8) {
+                    brainButtonWithHintAbove
+                    FurnitureFitAllDetectionsPreviewButton()
+                        .padding(.bottom, 8)
+                }
                     .padding(.leading, 16)
                 segmentButton
                     .padding(.leading, 10)
@@ -1021,7 +1025,11 @@ struct GLBRoomView: View {
             Spacer()
 
             HStack(spacing: 20) {
-                brainButtonWithHintAbove
+                HStack(alignment: .bottom, spacing: 8) {
+                    brainButtonWithHintAbove
+                    FurnitureFitAllDetectionsPreviewButton()
+                        .padding(.bottom, 8)
+                }
                 segmentButton
 
                 // Orientation label

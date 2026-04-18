@@ -1995,7 +1995,11 @@ struct SharpRoomView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
                 HStack(alignment: .bottom, spacing: 16) {
-                    brainButtonWithHintAbove
+                    HStack(alignment: .bottom, spacing: 8) {
+                        brainButtonWithHintAbove
+                        FurnitureFitAllDetectionsPreviewButton()
+                            .padding(.bottom, 8)
+                    }
                     segmentButton
                     if showingFurnitureFit {
                         roomIntelligencePlacementCardResetOnExit
@@ -2031,7 +2035,11 @@ struct SharpRoomView: View {
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
                 HStack(alignment: .bottom, spacing: 0) {
-                    brainButtonWithHintAbove
+                    HStack(alignment: .bottom, spacing: 8) {
+                        brainButtonWithHintAbove
+                        FurnitureFitAllDetectionsPreviewButton()
+                            .padding(.bottom, 8)
+                    }
                         .padding(.leading, 16)
                     segmentButton
                         .padding(.leading, 10)

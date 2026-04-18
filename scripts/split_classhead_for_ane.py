@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Split the 4585-channel class conv in YOLO-E into two halves (each <4096)
-so ANE can execute them. Then re-export to CoreML with half=True.
+so ANE can execute them. Then re-export to CoreML with half=False (FP32).
 
 Path 3: bypasses all coremltools spec-patching — the fix is in the model itself.
 
@@ -177,13 +177,13 @@ def export_to_coreml(model, pt_path: str, output_dir: str):
     print("\nFusing model...")
     model.fuse()
 
-    print("Exporting to CoreML (half=True, nms=False)...")
+    print("Exporting to CoreML (half=False FP32, nms=False)...")
     exported = model.export(
         format="coreml",
         imgsz=1280,
         batch=1,
         nms=False,
-        half=True,
+        half=False,
         simplify=True,
     )
     if isinstance(exported, (list, tuple)):

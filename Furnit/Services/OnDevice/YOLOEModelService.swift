@@ -21,9 +21,15 @@ class YOLOEModelService: ObservableObject {
 
     // MARK: - On-Demand Resources
 
-    /// ODR tag for the YOLOE Core ML package. Must change when shipping a new model so TestFlight/App Store
-    /// clients do not reuse a cached asset from an older build (same tag = stale model).
-    private static let yoloeModelTag = "yoloe_model_v11_pf"
+    /// ODR tags for each YOLOE `.mlpackage` in the target (see `project.pbxproj` → Compile Sources → Asset Tags).
+    /// Split tags so 11L vs 26L caches invalidate independently; bump a tag when replacing that package.
+    private static let yoloeOdrTag11l = "yoloe_11l_seg_pf"
+    private static let yoloeOdrTag26l = "yoloe_26l_seg_pf"
+    private static let yoloeOdrTag26lO2m = "yoloe_26l_seg_pf_o2m"
+
+    private static var allYoloeOdrTags: Set<String> {
+        [yoloeOdrTag11l, yoloeOdrTag26l, yoloeOdrTag26lO2m]
+    }
 
     /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource
     private var resourceRequest: NSBundleResourceRequest?
@@ -122,8 +128,7 @@ class YOLOEModelService: ObservableObject {
             return
         }
 
-        let tags: Set<String> = [Self.yoloeModelTag]
-        let request = NSBundleResourceRequest(tags: tags)
+        let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
         request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
 
         let conditionallyAvailable = await request.conditionallyBeginAccessingResources()
@@ -159,8 +164,7 @@ class YOLOEModelService: ObservableObject {
         downloadProgress = 0.0
         statusMessage = "Downloading detection model…"
 
-        let tags: Set<String> = [Self.yoloeModelTag]
-        let request = NSBundleResourceRequest(tags: tags)
+        let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
         request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
 
         progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
@@ -223,7 +227,7 @@ class YOLOEModelService: ObservableObject {
 
         statusMessage = "Loading detection model…"
 
-        // Prefer **YOLOE 11L PF** (`yoloe-11l-seg-pf.mlpackage` at repo root / ODR). Falls back to 26L
+        // Prefer **YOLOE 11L PF** (`Furnit/yoloe-11l-seg-pf.mlpackage` in repo / ODR). Falls back to 26L
         // `_seg_o2m`, then legacy `yoloe-26l-seg-pf`, if 11L is not in the app bundle.
         let candidateNames = [
             ("yoloe-11l-seg-pf", "mlmodelc"),

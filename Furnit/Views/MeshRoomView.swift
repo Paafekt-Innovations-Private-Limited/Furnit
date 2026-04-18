@@ -904,7 +904,11 @@ struct MeshRoomView: View {
             // Bottom controls: brain + segment + snapshot (full-video toggle is in the nav bar next to recenter)
             HStack {
                 VStack(spacing: 10) {
-                    brainButtonWithHintAbove
+                    HStack(alignment: .bottom, spacing: 8) {
+                        brainButtonWithHintAbove
+                        FurnitureFitAllDetectionsPreviewButton()
+                            .padding(.bottom, 8)
+                    }
                 }
                 .padding(.leading, 16)
                 segmentButton
@@ -929,7 +933,11 @@ struct MeshRoomView: View {
             // Horizontal bottom bar
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
-                    brainButtonWithHintAbove
+                    HStack(alignment: .bottom, spacing: 8) {
+                        brainButtonWithHintAbove
+                        FurnitureFitAllDetectionsPreviewButton()
+                            .padding(.bottom, 8)
+                    }
                 }
                 segmentButton
 

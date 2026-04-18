@@ -180,6 +180,93 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private static let minimumARFurnitureHeightMeters: Float = 0.25
     private static let minimumARFurnitureWidthMeters: Float = 0.25
 
+    // MARK: - One-image debug pipeline (offline JPEG → full composite → PNG on disk)
+    /// Set to `true` to run one still image through the full composite path. Input is resolved by ``resolvedOneImageInputURL()``; output is written under the app Documents directory (and best-effort to the Mac repo path on Simulator). Default `false` restores normal live segmentation.
+    private static let oneImageRun = false
+    /// Optional: copy `alchair.jpeg` into the app target (e.g. `Furnit/test_images/alchair.jpeg`) or into Documents — see ``resolvedOneImageInputURL()``.
+    private static let oneImageInputPathMacDev = "/Users/al/Documents/tries01/Furnit/test_images/alchair.jpeg"
+    private var oneImageRunAwaitingSave = false
+    private var oneImageRunFinished = false
+
+    /// Bundle `test_images/alchair.{jpeg,jpg,png}` → bundle root → `Documents/test_images/` → `Documents/` → optional Mac dev path (Simulator/host only).
+    private static func resolvedOneImageInputURL() -> URL? {
+        let fm = FileManager.default
+        var candidates: [URL] = []
+        for ext in ["jpeg", "jpg", "png"] {
+            if let u = Bundle.main.url(forResource: "alchair", withExtension: ext, subdirectory: "test_images") {
+                candidates.append(u)
+            }
+            if let u = Bundle.main.url(forResource: "alchair", withExtension: ext) {
+                candidates.append(u)
+            }
+        }
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            candidates.append(docs.appendingPathComponent("test_images/alchair.jpeg"))
+            candidates.append(docs.appendingPathComponent("test_images/alchair.jpg"))
+            candidates.append(docs.appendingPathComponent("test_images/alchair.png"))
+            candidates.append(docs.appendingPathComponent("alchair.jpeg"))
+        }
+        candidates.append(URL(fileURLWithPath: oneImageInputPathMacDev))
+        var seen = Set<String>()
+        for u in candidates {
+            let p = u.path
+            guard !seen.contains(p) else { continue }
+            seen.insert(p)
+            if fm.fileExists(atPath: p) { return u }
+        }
+        return nil
+    }
+
+    private static func resolvedOneImageOutputPrimaryURL(filename: String = "alchair_furniturefit_result.png") -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent(filename)
+    }
+
+    private static func oneImageOutputURLMacRepo(filename: String = "alchair_furniturefit_result.png") -> URL {
+        URL(fileURLWithPath: oneImageInputPathMacDev).deletingLastPathComponent().appendingPathComponent(filename)
+    }
+
+    private static func logOneImageInputNotFound() {
+        logDebug(
+            "🖼️ oneImageRun: missing alchair image. Add `test_images/alchair.jpeg` to the Furnit target, " +
+            "or copy the file to the app Documents folder (Files app / container), " +
+            "or place at \(oneImageInputPathMacDev) when the sandbox allows (often Simulator only)."
+        )
+    }
+
+    private func writeOneImageOutputPNG(_ image: CGImage, filename: String, logLabel: String) {
+        let uiImage = UIImage(cgImage: image, scale: 1, orientation: .up)
+        guard let pngData = uiImage.pngData() else {
+            logDebug("🖼️ oneImageRun: failed to encode \(logLabel) PNG")
+            return
+        }
+
+        let primaryURL = Self.resolvedOneImageOutputPrimaryURL(filename: filename)
+        let repoURL = Self.oneImageOutputURLMacRepo(filename: filename)
+
+        do {
+            try FileManager.default.createDirectory(
+                at: primaryURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try pngData.write(to: primaryURL, options: .atomic)
+            logDebug("🖼️ oneImageRun: wrote \(logLabel) to \(primaryURL.path)")
+        } catch {
+            logDebug("🖼️ oneImageRun: failed writing \(logLabel) to Documents — \(error)")
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: repoURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try pngData.write(to: repoURL, options: .atomic)
+            logDebug("🖼️ oneImageRun: also wrote \(logLabel) to \(repoURL.path)")
+        } catch {
+            // Expected on-device; repo path is best-effort only.
+        }
+    }
+
     // MARK: Config
     var processInterval: TimeInterval = 0.07
     var confidenceThreshold: Float = 0.1
@@ -640,6 +727,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Thread-safe reset of isProcessing flag.
     private func resetProcessingFlag() {
+        if oneImageRunAwaitingSave {
+            oneImageRunAwaitingSave = false
+            oneImageRunFinished = true
+            logDebug("🖼️ oneImageRun: finished without writing PNG (early exit or no composed image)")
+        }
         frameLock.lock()
         isProcessing = false
         if preferImmediateNextInference {
@@ -2143,6 +2235,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
         loadBlacklistOnce()
 
+        if Self.oneImageRun {
+            setProgress(0.08, text: "One-image debug…")
+            detectionQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.runSingleImageDebugPipelineIfNeeded()
+            }
+            return
+        }
+
         // Setup orientation detection for landscape support
         currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
             ? UIDevice.current.orientation : .portrait
@@ -2164,6 +2264,48 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
             self.updateProgressOrientationOnMain(self.currentDeviceOrientation)
         }
+    }
+
+    /// Runs one resolved still image on ``detectionQueue`` (full ONNX-style composite). Skips camera; writes PNG on success.
+    private func runSingleImageDebugPipelineIfNeeded() {
+        guard Self.oneImageRun, !oneImageRunFinished else { return }
+        for _ in 0..<80 {
+            if mlModel != nil { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        guard mlModel != nil else {
+            logDebug("🖼️ oneImageRun: no Core ML model after wait — abort")
+            oneImageRunFinished = true
+            DispatchQueue.main.async { [weak self] in
+                self?.setProgress(1.0, text: "One-image: no model")
+                self?.finishStartupProgressIfNeeded()
+            }
+            return
+        }
+        guard let inputURL = Self.resolvedOneImageInputURL() else {
+            Self.logOneImageInputNotFound()
+            oneImageRunFinished = true
+            DispatchQueue.main.async { [weak self] in
+                self?.setProgress(1.0, text: "One-image: missing file")
+                self?.finishStartupProgressIfNeeded()
+            }
+            return
+        }
+        guard let pixelBuffer = YoloEImageInference.pixelBufferFromImage(atPath: inputURL.path) else {
+            logDebug("🖼️ oneImageRun: could not decode image at \(inputURL.path)")
+            oneImageRunFinished = true
+            DispatchQueue.main.async { [weak self] in
+                self?.setProgress(1.0, text: "One-image: load failed")
+                self?.finishStartupProgressIfNeeded()
+            }
+            return
+        }
+        oneImageRunAwaitingSave = true
+        frameLock.lock()
+        isProcessing = true
+        frameLock.unlock()
+        logDebug("🖼️ oneImageRun: starting pipeline for \(inputURL.path)")
+        processFrameInner(pixelBuffer, arDepthSnapshot: nil)
     }
 
     @objc private func deviceOrientationDidChange() {
@@ -2275,6 +2417,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         asyncDepthSampler.stop()
         stopDeviceMotionPitchUpdates()
         furnitureFitCameraStartupInitiated = false
+        oneImageRunAwaitingSave = false
+        oneImageRunFinished = false
         arCompanionStartGeneration &+= 1
         suppressARDepthCompanionAfterCaptureFailure = false
         sharpRoomSplatMeasurementHost = nil
@@ -3560,7 +3704,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             protoChannelAxis: protoInfo.channelAxis
         )
 
-        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications {
+        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && !oneImageRunAwaitingSave {
             // Full-video identifications ON: show bbox overlays only, no mask compositing.
             let primaryIdxOpt = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: onnxSide)
             DispatchQueue.main.async {
@@ -3719,7 +3863,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // etc.), with an expanded primary bbox for mask synthesis.
             let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                 primaryIndex: primaryIdx,
-                detections: candidates
+                detections: candidates,
+                planes: planes,
+                protoW: pW,
+                protoH: pH,
+                modelSide: Float(onnxSide)
             )
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
             var fusion: [FurnitureFitDetection] = [expandedPrimary]
@@ -3999,13 +4147,28 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     x0: compBx1,
                     x1: compBx2,
                     y0: compBy1,
-                    y1: compBy2
+                    y1: compBy2,
+                    primaryBx1: primaryBx1,
+                    primaryBy1: primaryBy1,
+                    primaryBx2: primaryBx2,
+                    primaryBy2: primaryBy2
                 )
                 : nil)
 
         let withDebugOverlay: CGImage? = {
-            guard debugMode,
-                  let base = composedImage else { return composedImage }
+            guard let base = composedImage else { return composedImage }
+            if Self.oneImageRun, oneImageRunAwaitingSave {
+                return drawCompositeContributorBboxesOnComposedImage(
+                    composed: base,
+                    compositeDetections: maskDetectionsForBuild,
+                    primary: primary,
+                    origW: bufW,
+                    origH: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                ) ?? base
+            }
+            guard debugMode else { return composedImage }
             return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
                 composed: base,
                 candidates: candidates,
@@ -4024,12 +4187,54 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if let finalImage = withDebugOverlay {
             consecutiveEmptyMaskFrames = 0
             let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
+            var out: CGImage = finalImage
+            if needsRotate {
+                if let r = self.rotateCGImage90(finalImage, clockwise: true) { out = r }
+            }
+            if oneImageRunAwaitingSave {
+                writeOneImageOutputPNG(
+                    out,
+                    filename: "alchair_furniturefit_result.png",
+                    logLabel: "composite result"
+                )
+
+                if let originalFrameImage = renderOriginalFrameCGImage(
+                    processBuffer: processBuffer,
+                    origW: bufW,
+                    origH: bufH
+                ), let allDetectionsImage = drawAllDetectionBboxesOnImage(
+                    baseImage: originalFrameImage,
+                    candidates: candidates,
+                    primaryIndex: primaryIdx,
+                    origW: bufW,
+                    origH: bufH,
+                    scaleX: scaleX,
+                    scaleY: scaleY
+                ) {
+                    let rotatedAllDetectionsImage: CGImage
+                    if needsRotate, let rotated = rotateCGImage90(allDetectionsImage, clockwise: true) {
+                        rotatedAllDetectionsImage = rotated
+                    } else {
+                        rotatedAllDetectionsImage = allDetectionsImage
+                    }
+                    writeOneImageOutputPNG(
+                        rotatedAllDetectionsImage,
+                        filename: "alchair_furniturefit_all_detections.png",
+                        logLabel: "all detections"
+                    )
+                } else {
+                    logDebug("🖼️ oneImageRun: failed to build all-detections overlay image")
+                }
+
+                oneImageRunAwaitingSave = false
+                oneImageRunFinished = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.setProgress(1.0, text: "Saved one-image result")
+                    self?.finishStartupProgressIfNeeded()
+                }
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                var out = finalImage
-                if needsRotate {
-                    if let r = self.rotateCGImage90(out, clockwise: true) { out = r }
-                }
                 let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
                 self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
                 self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: out)
@@ -5043,7 +5248,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         x0: Int,
         x1: Int,
         y0: Int,
-        y1: Int
+        y1: Int,
+        primaryBx1: Int,
+        primaryBy1: Int,
+        primaryBx2: Int,
+        primaryBy2: Int
     ) -> CGImage? {
         guard currentYoloUsesLetterbox,
               protoW > 0,
@@ -5525,6 +5734,209 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 outRowPtr[outOff + 2] = origRowPtr[camOff + 0]  // R → B
                 outRowPtr[outOff + 3] = 255
             }
+        }
+
+        return ctx.makeImage()
+    }
+
+    /// Draws bounding boxes for every detection whose mask logits are fused into the composite (expanded primary + overlapping contributors).
+    private func drawCompositeContributorBboxesOnComposedImage(
+        composed: CGImage,
+        compositeDetections: [FurnitureFitDetection],
+        primary: FurnitureFitDetection,
+        origW: Int,
+        origH: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGImage? {
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+
+        func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
+            let scaledRect = self.bufferRect(
+                for: d,
+                imageWidth: origW,
+                imageHeight: origH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+            let bx1 = Int(scaledRect.minX)
+            let by1 = Int(scaledRect.minY)
+            let bx2 = Int(scaledRect.maxX)
+            let by2 = Int(scaledRect.maxY)
+            let bw = max(1, bx2 - bx1)
+            let bh = max(1, by2 - by1)
+            return (bx1, by1, bw, bh)
+        }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingTail
+
+        for d in compositeDetections {
+            let r = bufferRect(for: d)
+            let cgRect = CGRect(
+                x: CGFloat(r.bx1),
+                y: CGFloat(origH - r.by1 - r.bh),
+                width: CGFloat(r.bw),
+                height: CGFloat(r.bh)
+            )
+            let isPrimaryChip = FurnitureFitIoU.calculate(d, primary) >= 0.92
+            ctx.setLineWidth(isPrimaryChip ? 4.0 : 2.5)
+            ctx.setStrokeColor((isPrimaryChip ? UIColor.systemRed : UIColor.systemOrange).cgColor)
+            ctx.stroke(cgRect)
+
+            let labelText = "\(displayClassName(d.classIdx)) \(String(format: "%.2f", d.confidence))"
+            let font = UIFont.systemFont(ofSize: 12, weight: isPrimaryChip ? .semibold : .regular)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraphStyle
+            ]
+            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+            let line = CTLineCreateWithAttributedString(attributedString)
+            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            let labelX = CGFloat(r.bx1)
+            let labelY = CGFloat(origH - r.by1 + 4)
+            let textBackgroundRect = CGRect(
+                x: labelX - 2,
+                y: labelY - textBounds.height - 2,
+                width: min(CGFloat(origW) - labelX + 2, textBounds.width + 8),
+                height: textBounds.height + 4
+            )
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.72).cgColor)
+            ctx.fill(textBackgroundRect)
+            ctx.saveGState()
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
+            ctx.setFillColor(UIColor.white.cgColor)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
+        }
+
+        return ctx.makeImage()
+    }
+
+    private func renderOriginalFrameCGImage(
+        processBuffer: CVPixelBuffer,
+        origW: Int,
+        origH: Int
+    ) -> CGImage? {
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
+
+        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self),
+              let outData = ctx.data else { return nil }
+
+        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
+        let outBase = outData.assumingMemoryBound(to: UInt8.self)
+
+        for y in 0..<origH {
+            let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
+            let origRowPtr = origBase.advanced(by: y * camRowBytes)
+            for x in 0..<origW {
+                let outOff = x * 4
+                let camOff = x * 4
+                outRowPtr[outOff + 0] = origRowPtr[camOff + 2]
+                outRowPtr[outOff + 1] = origRowPtr[camOff + 1]
+                outRowPtr[outOff + 2] = origRowPtr[camOff + 0]
+                outRowPtr[outOff + 3] = 255
+            }
+        }
+
+        return ctx.makeImage()
+    }
+
+    private func drawAllDetectionBboxesOnImage(
+        baseImage: CGImage,
+        candidates: [FurnitureFitDetection],
+        primaryIndex: Int,
+        origW: Int,
+        origH: Int,
+        scaleX: Float,
+        scaleY: Float
+    ) -> CGImage? {
+        guard let ctx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(baseImage, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+
+        func bufferRect(for detection: FurnitureFitDetection) -> CGRect {
+            let scaledRect = self.bufferRect(
+                for: detection,
+                imageWidth: origW,
+                imageHeight: origH,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+            return CGRect(
+                x: scaledRect.minX,
+                y: CGFloat(origH) - scaledRect.maxY,
+                width: max(1, scaledRect.width),
+                height: max(1, scaledRect.height)
+            )
+        }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingTail
+
+        for (index, detection) in candidates.enumerated() {
+            let rect = bufferRect(for: detection)
+            let isPrimary = index == primaryIndex
+            let strokeColor = isPrimary ? UIColor.systemRed : UIColor.systemCyan
+            ctx.setStrokeColor(strokeColor.cgColor)
+            ctx.setLineWidth(isPrimary ? 4.0 : 2.2)
+            ctx.stroke(rect)
+
+            let labelText = "\(displayClassName(detection.classIdx)) \(String(format: "%.2f", detection.confidence))"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: isPrimary ? 13 : 12, weight: isPrimary ? .semibold : .medium),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraphStyle
+            ]
+            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+            let line = CTLineCreateWithAttributedString(attributedString)
+            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            let labelRect = CGRect(
+                x: rect.minX,
+                y: max(0, rect.minY - textBounds.height - 6),
+                width: min(CGFloat(origW) - rect.minX, textBounds.width + 10),
+                height: textBounds.height + 6
+            )
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.72).cgColor)
+            ctx.fill(labelRect)
+            ctx.saveGState()
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: labelRect.minX + 5, y: labelRect.minY + 3)
+            ctx.setFillColor(UIColor.white.cgColor)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
         }
 
         return ctx.makeImage()

@@ -165,6 +165,12 @@ enum YoloEImageInference {
 
     // MARK: - UIImage → CVPixelBuffer (upright)
 
+    /// Loads a JPEG/PNG from disk into a BGRA ``CVPixelBuffer`` (same layout as the live camera path).
+    static func pixelBufferFromImage(atPath path: String) -> CVPixelBuffer? {
+        guard let img = UIImage(contentsOfFile: path) else { return nil }
+        return uiImageToBGRAPixelBuffer(img)
+    }
+
     private static func uiImageToBGRAPixelBuffer(_ image: UIImage) -> CVPixelBuffer? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = image.scale

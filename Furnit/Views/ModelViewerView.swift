@@ -207,45 +207,50 @@ struct ModelViewerView: View {
                             .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
                             .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
 
-                            // Brain button
-                            Button(action: {
-                                logDebug("BRAIN FLOW: tap received")
-                                // Dismiss hint on first touch
-                                showFurnitureHint = false
-                                
-                                if showingFurnitureFit {
-                                    dismissFullVideoFurnitureTapHint()
-                                    showingFurnitureFit = false
-                                } else {
-                                    logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
-                                    yoloeService.ensureModelLoaded()
-                                    furnitureFitSegmentationMode = .identifyOnly
-                                    furnitureFitShowIdentifyLivePreview = true
-                                    selectedFurnitureFitLabels = []
-
-                                    // Hide other overlays
-                                    showingCameraPreview = false
-                                    showingSegmentExamine = false
-                                    showingSegmentForeground = false
-                                    showingSegmentFurniture = false
+                            HStack(alignment: .bottom, spacing: 8) {
+                                // Brain button
+                                Button(action: {
+                                    logDebug("BRAIN FLOW: tap received")
+                                    // Dismiss hint on first touch
+                                    showFurnitureHint = false
                                     
-                                    // Open after the current UI update cycle; no AR snapshot needed here.
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        logDebug("BRAIN FLOW: showing FurnitureFit overlay")
-                                        self.furnitureFitInitialSegmentationDone = false
-                                        self.showingFurnitureFit = true
-                                        self.presentFullVideoFurnitureTapHintIfNeeded()
+                                    if showingFurnitureFit {
+                                        dismissFullVideoFurnitureTapHint()
+                                        showingFurnitureFit = false
+                                    } else {
+                                        logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
+                                        yoloeService.ensureModelLoaded()
+                                        furnitureFitSegmentationMode = .identifyOnly
+                                        furnitureFitShowIdentifyLivePreview = true
+                                        selectedFurnitureFitLabels = []
+
+                                        // Hide other overlays
+                                        showingCameraPreview = false
+                                        showingSegmentExamine = false
+                                        showingSegmentForeground = false
+                                        showingSegmentFurniture = false
+                                        
+                                        // Open after the current UI update cycle; no AR snapshot needed here.
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                                            self.furnitureFitInitialSegmentationDone = false
+                                            self.showingFurnitureFit = true
+                                            self.presentFullVideoFurnitureTapHintIfNeeded()
+                                        }
                                     }
+                                }) {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: 28))
+                                        .foregroundColor(.white)
+                                        .frame(width: 60, height: 60)
+                                        .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                                 }
-                            }) {
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white)
-                                    .frame(width: 60, height: 60)
-                                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                                .contentShape(Circle())
+                                .frame(width: 76, height: 76)
+
+                                FurnitureFitAllDetectionsPreviewButton()
+                                    .padding(.bottom, 20)
                             }
-                            .contentShape(Circle())
-                            .frame(width: 76, height: 76)
 
                             if showingFurnitureFit && showFullVideoWithIdentifications {
                                 Button(action: {
@@ -548,35 +553,40 @@ struct ModelViewerView: View {
     // FurnitureFit Button (YOLOE - 168 furniture classes!)
     private var smartyPantsButton: some View {
         ZStack {
-            Button(action: {
-                // Dismiss hint on first touch
-                showFurnitureHint = false
-                
-                if showingFurnitureFit {
-                    dismissFullVideoFurnitureTapHint()
-                    showingFurnitureFit = false
-                    furnitureFitEstimatedHeightM = nil
-                } else {
-                    // Trigger ARView snapshot
-                    shouldCaptureARViewSnapshot = true
+            HStack(alignment: .bottom, spacing: 8) {
+                Button(action: {
+                    // Dismiss hint on first touch
+                    showFurnitureHint = false
                     
-                    // Hide other overlays
-                    showingCameraPreview = false
-                    showingSegmentExamine = false
-                    showingSegmentForeground = false
-                    showingSegmentFurniture = false
-                    
-                    // Wait briefly for snapshot to complete
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        self.showingFurnitureFit = true
-                        self.presentFullVideoFurnitureTapHintIfNeeded()
+                    if showingFurnitureFit {
+                        dismissFullVideoFurnitureTapHint()
+                        showingFurnitureFit = false
+                        furnitureFitEstimatedHeightM = nil
+                    } else {
+                        // Trigger ARView snapshot
+                        shouldCaptureARViewSnapshot = true
+                        
+                        // Hide other overlays
+                        showingCameraPreview = false
+                        showingSegmentExamine = false
+                        showingSegmentForeground = false
+                        showingSegmentFurniture = false
+                        
+                        // Wait briefly for snapshot to complete
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            self.showingFurnitureFit = true
+                            self.presentFullVideoFurnitureTapHintIfNeeded()
+                        }
                     }
+                }) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 28)).foregroundColor(.white)
+                        .frame(width: 60, height: 60)
+                        .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                 }
-            }) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 28)).foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+
+                FurnitureFitAllDetectionsPreviewButton()
+                    .padding(.bottom, 12)
             }
             
             // Hint badge on button

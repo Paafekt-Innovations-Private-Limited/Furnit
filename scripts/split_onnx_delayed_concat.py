@@ -346,12 +346,12 @@ def convert_split_onnx_to_coreml(
             bias=[0.0, 0.0, 0.0],
             color_layout="RGB",
         )],
-        compute_precision=ct.precision.FLOAT16,
+        compute_precision=ct.precision.FLOAT32,
         minimum_deployment_target=ct.target.iOS16,
         convert_to="mlprogram",
     )
     model.save(output_mlpackage_path)
-    print(f"✅ Saved: {output_mlpackage_path}")
+    print(f"✅ Saved (FP32): {output_mlpackage_path}")
     return model
 
 

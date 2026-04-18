@@ -113,7 +113,7 @@ def main():
     parser.add_argument(
         "--half",
         action="store_true",
-        help="Export with half=True (Float16 weights+activations). Required for ANE compatibility.",
+        help="Export with half=True (Float16). Default is FP32 (half=False) for yoloe-11l-seg-pf.",
     )
     parser.add_argument(
         "--legacy-26l-coreml-patch",

@@ -236,10 +236,67 @@ enum FurnitureFitOnnxStylePipeline {
         return best
     }
 
+    /// Approximates the candidate mask center from proto pixels inside the candidate bbox.
+    private static func candidateMaskCenterInModelSpace(
+        detection: FurnitureFitDetection,
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Float
+    ) -> (x: Float, y: Float)? {
+        let hwProto = protoW * protoH
+        guard protoW > 0,
+              protoH > 0,
+              modelSide > 0,
+              detection.coeffs.count >= 32,
+              planes.count >= 32 * hwProto else { return nil }
+
+        let widthRatio = Float(protoW) / modelSide
+        let heightRatio = Float(protoH) / modelSide
+        let bboxLeft = max(0, min(protoW - 1, Int(floor((detection.x - detection.w * 0.5) * widthRatio))))
+        let bboxTop = max(0, min(protoH - 1, Int(floor((detection.y - detection.h * 0.5) * heightRatio))))
+        let bboxRight = max(0, min(protoW - 1, Int(ceil((detection.x + detection.w * 0.5) * widthRatio))))
+        let bboxBottom = max(0, min(protoH - 1, Int(ceil((detection.y + detection.h * 0.5) * heightRatio))))
+        guard bboxRight >= bboxLeft, bboxBottom >= bboxTop else { return nil }
+
+        var sumProtoX: Float = 0
+        var sumProtoY: Float = 0
+        var onPixelCount: Int = 0
+        for protoY in bboxTop...bboxBottom {
+            let rowBase = protoY * protoW
+            for protoX in bboxLeft...bboxRight {
+                let protoPixelIndex = rowBase + protoX
+                var logitSum: Float = 0
+                var coeffIndex = 0
+                while coeffIndex < 32 {
+                    let planeIndex = coeffIndex * hwProto + protoPixelIndex
+                    logitSum += detection.coeffs[coeffIndex] * planes[planeIndex]
+                    coeffIndex += 1
+                }
+                guard logitSum > maskLogitThreshold else { continue }
+                sumProtoX += Float(protoX) + 0.5
+                sumProtoY += Float(protoY) + 0.5
+                onPixelCount += 1
+            }
+        }
+
+        guard onPixelCount > 0 else { return nil }
+        let centerProtoX = sumProtoX / Float(onPixelCount)
+        let centerProtoY = sumProtoY / Float(onPixelCount)
+        return (
+            x: centerProtoX / widthRatio,
+            y: centerProtoY / heightRatio
+        )
+    }
+
     /// Android `collectMaskDetections` (returns list for mask fusion, primary first).
     static func collectMaskDetections(
         primaryIndex: Int,
-        detections: [FurnitureFitDetection]
+        detections: [FurnitureFitDetection],
+        planes: [Float],
+        protoW: Int,
+        protoH: Int,
+        modelSide: Float
     ) -> [FurnitureFitDetection] {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
         let primaryDetection = detections[primaryIndex]
@@ -250,10 +307,6 @@ enum FurnitureFitOnnxStylePipeline {
             primaryIndex: primaryIndex
         )
 
-        let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
-        let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
-        let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
-        let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
         let encompassTolerance: Float = 2
         let minimumCandidateConfidence: Float = 0.1
         let bboxDuplicateThreshold: Float = 0.7
@@ -261,11 +314,16 @@ enum FurnitureFitOnnxStylePipeline {
 
         for (idx, detection) in detections.enumerated() {
             if idx == primaryIndex || detection.confidence < minimumCandidateConfidence { continue }
+            if detection.coeffs.count < 32 { continue }
 
             let candidateLeft = detection.x - detection.w * 0.5
             let candidateTop = detection.y - detection.h * 0.5
             let candidateRight = detection.x + detection.w * 0.5
             let candidateBottom = detection.y + detection.h * 0.5
+            let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
+            let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
+            let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
+            let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
 
             let encompassesPrimary =
                 candidateLeft <= primaryLeft + encompassTolerance &&
@@ -274,26 +332,25 @@ enum FurnitureFitOnnxStylePipeline {
                 candidateBottom >= primaryBottom - encompassTolerance
             if encompassesPrimary { continue }
 
-            let intersectsPrimary =
-                !(candidateRight < primaryLeft || candidateLeft > primaryRight ||
-                  candidateBottom < primaryTop || candidateTop > primaryBottom)
-            if !intersectsPrimary { continue }
+            guard let candidateMaskCenter = candidateMaskCenterInModelSpace(
+                detection: detection,
+                planes: planes,
+                protoW: protoW,
+                protoH: protoH,
+                modelSide: modelSide
+            ) else { continue }
 
-            let insidePrimary =
-                candidateLeft >= primaryLeft &&
-                candidateTop >= primaryTop &&
-                candidateRight <= primaryRight &&
-                candidateBottom <= primaryBottom
-            let primaryIoU = FurnitureFitIoU.calculate(detection, primaryDetection)
-            let shouldFuse = insidePrimary
+            let shouldFuse =
+                candidateMaskCenter.x >= primaryLeft &&
+                candidateMaskCenter.x <= primaryRight &&
+                candidateMaskCenter.y >= primaryTop &&
+                candidateMaskCenter.y <= primaryBottom
             if !shouldFuse { continue }
 
             let tooLarge =
                 detection.w > primaryDetection.w * 1.5 &&
                 detection.h > primaryDetection.h * 1.5
             if tooLarge { continue }
-
-            if !insidePrimary && primaryIoU > bboxDuplicateThreshold { continue }
 
             var shouldSkip = false
             var replaceIndex: Int?
