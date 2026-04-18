@@ -1530,6 +1530,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func updateVideoIdentificationPresentation() {
         DispatchQueue.main.async {
             self.previewLayer.isHidden = !self.isShowingLiveVideoIdentifications
+            if self.isShowingLiveVideoIdentifications {
+                self.maskImageView.image = nil
+            }
             self.applyLockedOrientationVideoRotation()
             self.applyCurrentOverlayScaleTransform()
         }
@@ -3996,7 +3999,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 } else {
                     self.primaryBboxInView = .zero
                 }
-                if let liveDebugMaskOverlayImage {
+                if self.isShowingLiveVideoIdentifications {
+                    self.maskImageView.image = nil
+                } else if let liveDebugMaskOverlayImage {
                     let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
                     self.maskImageView.image = UIImage(cgImage: liveDebugMaskOverlayImage, scale: scale, orientation: .up)
                 } else {
@@ -4579,7 +4584,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
-                self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
+                if self.isShowingLiveVideoIdentifications {
+                    self.maskImageView.image = nil
+                } else {
+                    self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
+                }
                 self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: out)
                 self.commitFurnitureSizeAfterSegmentationMaskApplied(
                     maskHasForeground: maskHasForeground,
