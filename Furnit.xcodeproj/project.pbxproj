@@ -162,7 +162,7 @@
 					yoloe_11l_seg_pf,
 				);
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					045F5BD82E6D302900C5585D = {
 						CreatedOnToolsVersion = 16.4;

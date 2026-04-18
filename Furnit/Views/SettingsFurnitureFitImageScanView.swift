@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import CoreML
 
+@MainActor
 struct SettingsFurnitureFitImageScanView: View {
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -11,6 +12,10 @@ struct SettingsFurnitureFitImageScanView: View {
     @State private var loadErrorMessage: String?
 
     var body: some View {
+        let loadedModel = yoloeService.model
+        let isModelLoading = yoloeService.isLoadingModel
+        let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
+
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
@@ -24,11 +29,11 @@ struct SettingsFurnitureFitImageScanView: View {
                                 .scaledToFit()
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                            if yoloeService.model != nil {
+                            if loadedModel != nil {
                                 SettingsFurnitureFitStillImageScannerRepresentable(
                                     selectedImage: selectedImage,
                                     scanRequestID: scanRequestID,
-                                    mlModel: yoloeService.model
+                                    mlModel: loadedModel
                                 )
                                 .allowsHitTesting(false)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -48,7 +53,7 @@ struct SettingsFurnitureFitImageScanView: View {
                             .padding(24)
                         }
 
-                        if isLoadingSelectedPhoto || yoloeService.model == nil || yoloeService.isLoadingModel {
+                        if shouldShowLoadingOverlay {
                             VStack(spacing: 10) {
                                 ProgressView()
                                 Text(statusText)

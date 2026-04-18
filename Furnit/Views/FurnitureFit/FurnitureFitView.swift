@@ -3822,7 +3822,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             case .float16: dataTypeName = "float16"
             case .float64: dataTypeName = "float64"
             case .int32: dataTypeName = "int32"
-            @unknown default: dataTypeName = "unknown"
+            default: dataTypeName = "unknown"
             }
             // Replicate YoloEDetectionParser.isContiguous: standard C-contiguous strides?
             var expected = 1
@@ -7125,7 +7125,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             case .float16: dataTypeName = "float16"
             case .float64: dataTypeName = "float64"
             case .int32: dataTypeName = "int32"
-            @unknown default: dataTypeName = "unknown"
+            default: dataTypeName = "unknown"
             }
             let chosenPath: String
             if channelFirstContiguous {
