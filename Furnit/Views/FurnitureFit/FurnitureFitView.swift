@@ -3769,14 +3769,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        var candidates: [FurnitureFitDetection]
-        if rawDetections.count > 1 {
-            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
-            let capped = Array(sorted.prefix(100))
-            candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
-        } else {
-            candidates = rawDetections
-        }
+        // Keep all parsed detections for the single-furniture mask use case.
+        // NMS is helpful for counting distinct objects, but here overlapping detections
+        // can add useful mask coverage before the simple center-in-primary merge.
+        var candidates: [FurnitureFitDetection] = rawDetections.sorted { $0.confidence > $1.confidence }
+        // var candidates: [FurnitureFitDetection]
+        // if rawDetections.count > 1 {
+        //     let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
+        //     let capped = Array(sorted.prefix(100))
+        //     candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
+        // } else {
+        //     candidates = rawDetections
+        // }
 
         let supportSurfaceHintName = supportSurfaceHint(
             from: candidates,
@@ -3799,8 +3803,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         if debugMode {
-            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS IoU≤0.5, blacklist.json \(clsToIgnore.count) ids)")
-            for (i, d) in candidates.prefix(20).enumerated() {
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), NMS disabled, blacklist.json \(clsToIgnore.count) ids)")
+            for (i, d) in candidates.enumerated() {
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
         }
@@ -4076,13 +4080,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             detections: [expandedPrimarySolo]
         )
         let primaryOnlyLogits = primaryOnlyMaskResult.logits
-        let usePrimaryOnlyComposite = segmentationMode != .segmentSelected && !FurnitureFitOnnxStylePipeline.simpleApproach
-        let compositeDetectionsForBuild = segmentationMode == .segmentSelected
-            ? maskDetectionsForBuild
-            : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskDetectionsForBuild)
-        let compositeOwnershipDetections = segmentationMode == .segmentSelected
-            ? maskOwnershipDetections
-            : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskOwnershipDetections)
+        let compositeDetectionsForBuild = maskDetectionsForBuild
+        let compositeOwnershipDetections = maskOwnershipDetections
+        // Keep only the simple contributor-merge path active.
+        // let usePrimaryOnlyComposite = segmentationMode != .segmentSelected && !FurnitureFitOnnxStylePipeline.simpleApproach
+        // let compositeDetectionsForBuild = segmentationMode == .segmentSelected
+        //     ? maskDetectionsForBuild
+        //     : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskDetectionsForBuild)
+        // let compositeOwnershipDetections = segmentationMode == .segmentSelected
+        //     ? maskOwnershipDetections
+        //     : (usePrimaryOnlyComposite ? [expandedPrimarySolo] : maskOwnershipDetections)
 
         let primaryBufferRect = bufferRect(
             for: primary,
@@ -4113,8 +4120,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
         let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
         let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        let maskSmallForComposite = usePrimaryOnlyComposite ? primaryOnlyMaskResult.binary : maskSmall
-        let maskLogitsForComposite = usePrimaryOnlyComposite ? primaryOnlyLogits : maskResult.logits
+        let maskSmallForComposite = maskSmall
+        let maskLogitsForComposite = maskResult.logits
+        // Keep only the simple contributor-merge path active.
+        // let maskSmallForComposite = usePrimaryOnlyComposite ? primaryOnlyMaskResult.binary : maskSmall
+        // let maskLogitsForComposite = usePrimaryOnlyComposite ? primaryOnlyLogits : maskResult.logits
 
         let clipModelRect = CGRect(
             x: CGFloat(clipLeftModel),
@@ -5378,34 +5388,35 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandH: bandH
         )
 
-        mergePrimaryMaskOpaqueIntoFullMaskBand(
-            fullMask: &upscaledPlanarMaskScratch,
-            primaryOnlyLogits: primaryOnlyLogits,
-            protoW: pw,
-            protoH: ph,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: usesLetterbox
-        )
+        // Keep only the simple contributor-merge path active.
+        // mergePrimaryMaskOpaqueIntoFullMaskBand(
+        //     fullMask: &upscaledPlanarMaskScratch,
+        //     primaryOnlyLogits: primaryOnlyLogits,
+        //     protoW: pw,
+        //     protoH: ph,
+        //     modelSide: modelSide,
+        //     origW: origW,
+        //     origH: origH,
+        //     xStart: xStart,
+        //     yStart: yStart,
+        //     bandW: bandW,
+        //     bandH: bandH,
+        //     usesLetterbox: usesLetterbox
+        // )
 
-        if furnitureFitCompositeRemoveSmallHoles {
-            removeSmallRegionsFromFullMaskBandRegion(
-                fullMask: &upscaledPlanarMaskScratch,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH,
-                areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
-                mode: .holes
-            )
-        }
+        // if furnitureFitCompositeRemoveSmallHoles {
+        //     removeSmallRegionsFromFullMaskBandRegion(
+        //         fullMask: &upscaledPlanarMaskScratch,
+        //         origW: origW,
+        //         origH: origH,
+        //         xStart: xStart,
+        //         yStart: yStart,
+        //         bandW: bandW,
+        //         bandH: bandH,
+        //         areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
+        //         mode: .holes
+        //     )
+        // }
 
         logSampledMaskShapeIfDebug(
             mask: upscaledPlanarMaskScratch,
@@ -5637,20 +5648,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandH: bandH
         )
 
-        mergePrimaryMaskOpaqueIntoFullMaskBand(
-            fullMask: &clippedFullMask,
-            primaryOnlyLogits: primaryOnlyLogits,
-            protoW: protoW,
-            protoH: protoH,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: true
-        )
+        // Keep only the simple contributor-merge path active.
+        // mergePrimaryMaskOpaqueIntoFullMaskBand(
+        //     fullMask: &clippedFullMask,
+        //     primaryOnlyLogits: primaryOnlyLogits,
+        //     protoW: protoW,
+        //     protoH: protoH,
+        //     modelSide: modelSide,
+        //     origW: origW,
+        //     origH: origH,
+        //     xStart: xStart,
+        //     yStart: yStart,
+        //     bandW: bandW,
+        //     bandH: bandH,
+        //     usesLetterbox: true
+        // )
 
         // Legacy 1280 union path: logits-only mask; no island hole fill (different semantics from ONNX-style composite).
 
@@ -6309,30 +6321,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bandH: bandH
         )
 
-        mergePrimaryMaskOpaqueIntoBandMask(
-            bandMask: &bandMask,
-            primaryOnlyLogits: primaryOnlyLogits,
-            protoW: pw,
-            protoH: ph,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: usesLetterbox
-        )
+        // Keep only the simple contributor-merge path active.
+        // mergePrimaryMaskOpaqueIntoBandMask(
+        //     bandMask: &bandMask,
+        //     primaryOnlyLogits: primaryOnlyLogits,
+        //     protoW: pw,
+        //     protoH: ph,
+        //     modelSide: modelSide,
+        //     origW: origW,
+        //     origH: origH,
+        //     xStart: xStart,
+        //     yStart: yStart,
+        //     bandW: bandW,
+        //     bandH: bandH,
+        //     usesLetterbox: usesLetterbox
+        // )
 
-        if furnitureFitCompositeRemoveSmallHoles {
-            removeSmallRegionsFromBinaryBandMask(
-                mask: &bandMask,
-                width: bandW,
-                height: bandH,
-                areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
-                mode: .holes
-            )
-        }
+        // if furnitureFitCompositeRemoveSmallHoles {
+        //     removeSmallRegionsFromBinaryBandMask(
+        //         mask: &bandMask,
+        //         width: bandW,
+        //         height: bandH,
+        //         areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
+        //         mode: .holes
+        //     )
+        // }
 
         guard let ctx = CGContext(
             data: nil,
@@ -6932,11 +6945,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         for (index, d) in candidates.enumerated() {
             let r = bufferRect(for: d)
             let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
-            ctx.setLineWidth(2.0)
-            ctx.setStrokeColor(UIColor.cyan.cgColor)
+            let isPrimary = index == primaryIndex
+            ctx.setLineWidth(isPrimary ? 4.0 : 2.0)
+            ctx.setStrokeColor((isPrimary ? UIColor.red : UIColor.cyan).cgColor)
             ctx.stroke(cgRect)
 
-            guard index == primaryIndex else { continue }
             let plainName = classNames[d.classIdx] ?? "unknown"
             let confidence = String(format: "%.2f", d.confidence)
             let labelText = "\(plainName) (\(confidence))"
@@ -6955,7 +6968,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 width: textBounds.width + 4,
                 height: textBounds.height + 4
             )
-            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            ctx.setFillColor((isPrimary ? UIColor.systemRed : UIColor.black).withAlphaComponent(0.7).cgColor)
             ctx.fill(textBackgroundRect)
             ctx.saveGState()
             ctx.textMatrix = .identity
@@ -6963,15 +6976,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             ctx.setFillColor(UIColor.white.cgColor)
             CTLineDraw(line, ctx)
             ctx.restoreGState()
-        }
-
-        if primaryIndex >= 0, primaryIndex < candidates.count {
-            let d = candidates[primaryIndex]
-            let r = bufferRect(for: d)
-            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
-            ctx.setStrokeColor(UIColor.red.cgColor)
-            ctx.setLineWidth(4.0)
-            ctx.stroke(cgRect)
         }
 
         return ctx.makeImage()

@@ -305,26 +305,28 @@ enum FurnitureFitOnnxStylePipeline {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
         let primaryDetection = detections[primaryIndex]
 
-        if simpleApproach {
-            let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
-            let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
-            let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
-            let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
+        // Keep only the simple center-in-primary-bbox contributor rule active.
+        // The previous heuristic path remains commented out below for reference.
+        let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
+        let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
+        let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
+        let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
 
-            var maskDetections: [FurnitureFitDetection] = [primaryDetection]
-            for (idx, detection) in detections.enumerated() {
-                guard idx != primaryIndex else { continue }
-                guard detection.coeffs.count >= 32 else { continue }
-                let centerInsidePrimary =
-                    detection.x >= primaryLeft &&
-                    detection.x <= primaryRight &&
-                    detection.y >= primaryTop &&
-                    detection.y <= primaryBottom
-                guard centerInsidePrimary else { continue }
-                maskDetections.append(detection)
-            }
-            return maskDetections
+        var maskDetections: [FurnitureFitDetection] = [primaryDetection]
+        for (idx, detection) in detections.enumerated() {
+            guard idx != primaryIndex else { continue }
+            guard detection.coeffs.count >= 32 else { continue }
+            let centerInsidePrimary =
+                detection.x >= primaryLeft &&
+                detection.x <= primaryRight &&
+                detection.y >= primaryTop &&
+                detection.y <= primaryBottom
+            guard centerInsidePrimary else { continue }
+            maskDetections.append(detection)
         }
+        return maskDetections
+
+        /*
 
         let supportingTableDetection = pickSupportingTableForMonitorScene(
             primaryDetection: primaryDetection,
@@ -405,6 +407,7 @@ enum FurnitureFitOnnxStylePipeline {
             maskDetections.append(st)
         }
         return maskDetections
+        */
     }
 
     /// Raw YOLOE prototype mask using per-pixel logits inside each detection's
