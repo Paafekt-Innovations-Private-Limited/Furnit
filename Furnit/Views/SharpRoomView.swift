@@ -262,7 +262,7 @@ struct SharpRoomView: View {
     @State private var cameraSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
+    @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -376,6 +376,17 @@ struct SharpRoomView: View {
     private var navigationBarFullVideoIdentificationsButton: some View {
         Button {
             showFullVideoWithIdentifications.toggle()
+            if showFullVideoWithIdentifications {
+                if showingFurnitureFit {
+                    presentFullVideoFurnitureTapHintIfNeeded()
+                }
+            } else {
+                dismissFullVideoFurnitureTapHint()
+                if furnitureFitSegmentationMode == .segmentSelected {
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                }
+            }
         } label: {
             Image(systemName: "text.viewfinder")
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
@@ -753,13 +764,13 @@ struct SharpRoomView: View {
             dismissFullVideoFurnitureTapHint()
             showingFurnitureFit = false
         } else {
+            showFullVideoWithIdentifications = false
             furnitureFitInitialSegmentationDone = false
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
             selectedFurnitureFitLabels = []
             SHARPService.shared.releaseResources()
             showingFurnitureFit = true
-            presentFullVideoFurnitureTapHintIfNeeded()
         }
     }
 
@@ -1645,7 +1656,7 @@ struct SharpRoomView: View {
                 selectedFurnitureFitLabels = labels
             },
             showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
-            showFullVideoWithIdentificationsOverride: false
+            showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
         )
         // Do not ignore top safe area: full-screen camera would sit under the nav bar and steal ruler taps.
         .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
@@ -1998,8 +2009,6 @@ struct SharpRoomView: View {
                 HStack(alignment: .bottom, spacing: 16) {
                     HStack(alignment: .bottom, spacing: 8) {
                         brainButtonWithHintAbove
-                        FurnitureFitAllDetectionsPreviewButton()
-                            .padding(.bottom, 8)
                     }
                     segmentButton
                     if showingFurnitureFit {
@@ -2038,8 +2047,6 @@ struct SharpRoomView: View {
                 HStack(alignment: .bottom, spacing: 0) {
                     HStack(alignment: .bottom, spacing: 8) {
                         brainButtonWithHintAbove
-                        FurnitureFitAllDetectionsPreviewButton()
-                            .padding(.bottom, 8)
                     }
                         .padding(.leading, 16)
                     segmentButton

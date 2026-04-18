@@ -43,7 +43,7 @@ struct ModelViewerView: View {
     
     // Furniture hint
     @State private var showFurnitureHint = true
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
+    @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -95,7 +95,8 @@ struct ModelViewerView: View {
                             onSelectedClassLabelsChanged: { labels in
                                 selectedFurnitureFitLabels = labels
                             },
-                            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+                            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                            showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .zIndex(9000)
@@ -187,6 +188,17 @@ struct ModelViewerView: View {
                         VStack(spacing: 16) {
                             Button {
                                 showFullVideoWithIdentifications.toggle()
+                                if showFullVideoWithIdentifications {
+                                    if showingFurnitureFit {
+                                        presentFullVideoFurnitureTapHintIfNeeded()
+                                    }
+                                } else {
+                                    dismissFullVideoFurnitureTapHint()
+                                    if furnitureFitSegmentationMode == .segmentSelected {
+                                        furnitureFitSegmentationMode = .identifyOnly
+                                        furnitureFitShowIdentifyLivePreview = true
+                                    }
+                                }
                             } label: {
                                 Image(systemName: "text.viewfinder")
                                     .font(.system(size: 22, weight: .medium))
@@ -220,6 +232,7 @@ struct ModelViewerView: View {
                                     } else {
                                         logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
                                         yoloeService.ensureModelLoaded()
+                                        showFullVideoWithIdentifications = false
                                         furnitureFitSegmentationMode = .identifyOnly
                                         furnitureFitShowIdentifyLivePreview = true
                                         selectedFurnitureFitLabels = []
@@ -235,7 +248,6 @@ struct ModelViewerView: View {
                                             logDebug("BRAIN FLOW: showing FurnitureFit overlay")
                                             self.furnitureFitInitialSegmentationDone = false
                                             self.showingFurnitureFit = true
-                                            self.presentFullVideoFurnitureTapHintIfNeeded()
                                         }
                                     }
                                 }) {
@@ -248,8 +260,6 @@ struct ModelViewerView: View {
                                 .contentShape(Circle())
                                 .frame(width: 76, height: 76)
 
-                                FurnitureFitAllDetectionsPreviewButton()
-                                    .padding(.bottom, 20)
                             }
 
                             if showingFurnitureFit && showFullVideoWithIdentifications {
@@ -565,6 +575,7 @@ struct ModelViewerView: View {
                     } else {
                         // Trigger ARView snapshot
                         shouldCaptureARViewSnapshot = true
+                        showFullVideoWithIdentifications = false
                         
                         // Hide other overlays
                         showingCameraPreview = false
@@ -575,7 +586,6 @@ struct ModelViewerView: View {
                         // Wait briefly for snapshot to complete
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             self.showingFurnitureFit = true
-                            self.presentFullVideoFurnitureTapHintIfNeeded()
                         }
                     }
                 }) {
@@ -585,8 +595,6 @@ struct ModelViewerView: View {
                         .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                 }
 
-                FurnitureFitAllDetectionsPreviewButton()
-                    .padding(.bottom, 12)
             }
             
             // Hint badge on button

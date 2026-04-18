@@ -65,7 +65,7 @@ struct MeshRoomView: View {
     /// Ruler tap: show W×H×D chip below top safe area (matches Sharp room dimensions hint).
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
+    @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
@@ -179,7 +179,7 @@ struct MeshRoomView: View {
                         selectedFurnitureFitLabels = labels
                     },
                     showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
-                    showFullVideoWithIdentificationsOverride: false
+                    showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
                 )
                 .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
                 .zIndex(100)
@@ -387,6 +387,17 @@ struct MeshRoomView: View {
     private var navigationBarFullVideoIdentificationsButton: some View {
         Button {
             showFullVideoWithIdentifications.toggle()
+            if showFullVideoWithIdentifications {
+                if showingFurnitureFit {
+                    presentFullVideoFurnitureTapHintIfNeeded()
+                }
+            } else {
+                dismissFullVideoFurnitureTapHint()
+                if furnitureFitSegmentationMode == .segmentSelected {
+                    furnitureFitSegmentationMode = .identifyOnly
+                    furnitureFitShowIdentifyLivePreview = true
+                }
+            }
         } label: {
             Image(systemName: "text.viewfinder")
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
@@ -749,12 +760,12 @@ struct MeshRoomView: View {
                     dismissFullVideoFurnitureTapHint()
                     showingFurnitureFit = false
                 } else {
+                    showFullVideoWithIdentifications = false
                     furnitureFitInitialSegmentationDone = false
                     furnitureFitSegmentationMode = .identifyOnly
                     furnitureFitShowIdentifyLivePreview = true
                     selectedFurnitureFitLabels = []
                     showingFurnitureFit = true
-                    presentFullVideoFurnitureTapHintIfNeeded()
                 }
             }) {
                 Image(systemName: "brain.head.profile")
