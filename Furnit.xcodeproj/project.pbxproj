@@ -13,8 +13,8 @@
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
 		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
-		71B8315D3F28D19801FE866A /* Furnit/yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* Furnit/yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_11l_seg_pf, ); }; };
-		D69C029960DF4FC09C6BFE23 /* yoloe-26l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 0066E789B91441738DE71FBE /* yoloe-26l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_26l_seg_pf, ); }; };
+		71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_11l_seg_pf, ); }; };
+		D69C029960DF4FC09C6BFE23 /* yoloe-26l-seg-pf_bu.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 0066E789B91441738DE71FBE /* yoloe-26l-seg-pf_bu.mlpackage */; settings = {ASSET_TAGS = (yoloe_26l_seg_pf, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,12 +28,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0066E789B91441738DE71FBE /* yoloe-26l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-26l-seg-pf.mlpackage"; sourceTree = "<group>"; };
+		0066E789B91441738DE71FBE /* yoloe-26l-seg-pf_bu.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-26l-seg-pf_bu.mlpackage"; sourceTree = "<group>"; };
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp32_1536.mlpackage; sourceTree = "<group>"; };
 		61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-26l-seg-pf_seg_o2m.mlpackage"; sourceTree = "<group>"; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		71B8315C3F28D19801FE866A /* Furnit/yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Furnit/yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
+		71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -41,7 +41,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				"yoloe-11l-seg-pf.mlpackage",
 			);
 			target = 045F5BD82E6D302900C5585D /* Furnit */;
 		};
@@ -91,8 +90,8 @@
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
 				045F5BDA2E6D302900C5585D /* Products */,
-				71B8315C3F28D19801FE866A /* Furnit/yoloe-11l-seg-pf.mlpackage */,
-				0066E789B91441738DE71FBE /* yoloe-26l-seg-pf.mlpackage */,
+				71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */,
+				0066E789B91441738DE71FBE /* yoloe-26l-seg-pf_bu.mlpackage */,
 				61A6214B2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage */,
 				613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */,
 			);
@@ -243,8 +242,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */,
-				71B8315D3F28D19801FE866A /* Furnit/yoloe-11l-seg-pf.mlpackage in Sources */,
-				D69C029960DF4FC09C6BFE23 /* yoloe-26l-seg-pf.mlpackage in Sources */,
+				71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Sources */,
+				D69C029960DF4FC09C6BFE23 /* yoloe-26l-seg-pf_bu.mlpackage in Sources */,
 				61A6214C2F17C08700FE755A /* yoloe-26l-seg-pf_seg_o2m.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

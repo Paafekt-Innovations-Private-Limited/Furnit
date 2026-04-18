@@ -227,15 +227,15 @@ class YOLOEModelService: ObservableObject {
 
         statusMessage = "Loading detection model…"
 
-        // Prefer **YOLOE 11L PF** (`Furnit/yoloe-11l-seg-pf.mlpackage` in repo / ODR). Falls back to 26L
-        // `_seg_o2m`, then legacy `yoloe-26l-seg-pf`, if 11L is not in the app bundle.
+        // Prefer **YOLOE 11L PF** (`yoloe-11l-seg-pf.mlpackage` at repo root / ODR). Falls back to 26L
+        // `_seg_o2m`, then backup `yoloe-26l-seg-pf_bu`, if 11L is not in the app bundle.
         let candidateNames = [
             ("yoloe-11l-seg-pf", "mlmodelc"),
             ("yoloe-11l-seg-pf", "mlpackage"),
             ("yoloe-26l-seg-pf_seg_o2m", "mlmodelc"),
             ("yoloe-26l-seg-pf_seg_o2m", "mlpackage"),
-            ("yoloe-26l-seg-pf", "mlmodelc"),
-            ("yoloe-26l-seg-pf", "mlpackage"),
+            ("yoloe-26l-seg-pf_bu", "mlmodelc"),
+            ("yoloe-26l-seg-pf_bu", "mlpackage"),
         ]
 
         let config = MLModelConfiguration()
