@@ -127,8 +127,6 @@ enum AssetQuality: String, CaseIterable, Identifiable {
 // ObservableObject to manage quality settings across the app
 class QualitySettings: ObservableObject {
 
-    /// UserDefaults key for optional Core ML GPU path (read by ``YOLOEModelService`` at model load).
-    static let yoloeCoreMLAllowGPUKey = "yoloe_core_ml_allow_gpu"
     /// UserDefaults key: run ARKit scene-depth session alongside AVCapture in Furniture Fit (LiDAR-class devices).
     static let furnitureFitARDepthCompanionEnabledKey = "furniture_fit_ar_depth_companion_enabled"
 
@@ -172,13 +170,6 @@ class QualitySettings: ObservableObject {
     @Published var bboxInMaskThreshold: Float {
         didSet {
             saveBboxInMaskThreshold()
-        }
-    }
-
-    /// When `false` (default): YOLOE Core ML loads with CPU only (avoids SIGABRT on some 26L exports). When `true`: CPU+GPU (faster if stable on your device).
-    @Published var yoloeCoreMLAllowGPU: Bool {
-        didSet {
-            saveYoloeCoreMLAllowGPU()
         }
     }
 
@@ -231,12 +222,6 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-        if UserDefaults.standard.object(forKey: Self.yoloeCoreMLAllowGPUKey) != nil {
-            self.yoloeCoreMLAllowGPU = UserDefaults.standard.bool(forKey: Self.yoloeCoreMLAllowGPUKey)
-        } else {
-            self.yoloeCoreMLAllowGPU = false
-        }
-
         if UserDefaults.standard.object(forKey: Self.furnitureFitARDepthCompanionEnabledKey) != nil {
             self.furnitureFitARDepthCompanionEnabled = UserDefaults.standard.bool(forKey: Self.furnitureFitARDepthCompanionEnabledKey)
         } else {
@@ -266,11 +251,6 @@ class QualitySettings: ObservableObject {
     private func saveBboxInMaskThreshold() {
         UserDefaults.standard.set(bboxInMaskThreshold, forKey: bboxInMaskThresholdKey)
         logDebug("💾 Saved bbox-in-mask threshold setting: \(bboxInMaskThreshold)")
-    }
-
-    private func saveYoloeCoreMLAllowGPU() {
-        UserDefaults.standard.set(yoloeCoreMLAllowGPU, forKey: Self.yoloeCoreMLAllowGPUKey)
-        logDebug("💾 Saved YOLOE Core ML GPU preference: \(yoloeCoreMLAllowGPU)")
     }
 
     private func saveFurnitureFitARDepthCompanionEnabled() {
@@ -316,7 +296,6 @@ class QualitySettings: ObservableObject {
         selectedMovementSpeed = .normal
         debugMode = false
         bboxInMaskThreshold = 0.30
-        yoloeCoreMLAllowGPU = false
         furnitureFitARDepthCompanionEnabled = true
     }
 }

@@ -84,13 +84,6 @@ class YOLOEModelService: ObservableObject {
         }
     }
 
-    /// Reload after toggling Core ML GPU in Settings (`computeUnits` are fixed at load time).
-    func reloadForComputeUnitsChange() async {
-        model = nil
-        isLoadingModel = false
-        await loadModel()
-    }
-
     /// Wait until `model` is non-nil or `maxWaitSeconds` elapses (for one-shot room calibration after ODR).
     func waitForModelReady(maxWaitSeconds: TimeInterval = 45) async {
         if model != nil { return }
@@ -234,14 +227,10 @@ class YOLOEModelService: ObservableObject {
         ]
 
         let config = MLModelConfiguration()
-        // Default CPU-only: this Core ML export can SIGABRT inside `prediction` when using GPU
-        // or ANE (Swift `try?` does not catch that). The Settings toggle (yoloeCoreMLAllowGPU)
-        // now opts into `.cpuAndNeuralEngine` rather than `.cpuAndGPU` — ANE is the faster path
-        // for YOLO-E if this model export is compatible. If it SIGABRTs on first prediction,
-        // flip the toggle off in Settings and the next launch falls back to `.cpuOnly`.
-        let allowAcceleratedComputeUnits = UserDefaults.standard.bool(forKey: QualitySettings.yoloeCoreMLAllowGPUKey)
-        config.computeUnits = allowAcceleratedComputeUnits ? .cpuAndNeuralEngine : .cpuOnly
-        logDebug("YOLOE: Core ML computeUnits=\(allowAcceleratedComputeUnits ? "cpuAndNeuralEngine (experimental ANE)" : "cpuOnly (stable)")")
+        // Keep YOLO-E on CPU only: the shipped Core ML export has previously SIGABRTed during
+        // prediction on accelerated paths, and that crash is outside Swift error handling.
+        config.computeUnits = .cpuOnly
+        logDebug("YOLOE: Core ML computeUnits=cpuOnly (stable)")
 
         for (name, ext) in candidateNames {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {

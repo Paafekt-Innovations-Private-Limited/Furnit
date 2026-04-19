@@ -1097,7 +1097,7 @@ struct SharpRoomView: View {
     }
 
     private var canOfferBrainArAssist: Bool {
-        QualitySettings.supportsFurnitureFitARAssisted &&
+        QualitySettings.supportsLiDARSceneDepth &&
             appState.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 

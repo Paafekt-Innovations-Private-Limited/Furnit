@@ -232,7 +232,7 @@ struct GLBRoomView: View {
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
     private var canOfferBrainArAssist: Bool {
-        QualitySettings.supportsFurnitureFitARAssisted &&
+        QualitySettings.supportsLiDARSceneDepth &&
             appState.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 
