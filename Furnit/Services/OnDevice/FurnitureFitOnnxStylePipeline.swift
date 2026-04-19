@@ -30,7 +30,8 @@ enum FurnitureFitOnnxStylePipeline {
 
     /// When `true`, composite uses ``retinaMaskUpsampleLogitThreshold`` (default `0.0`) so thin
     /// parts are not punched out by a stricter gate. Set `false` to use ``nativeMaskUpsampleLogitThreshold``.
-    static let retinaMasksCompositeEnabled: Bool = true
+    // static let retinaMasksCompositeEnabled: Bool = true
+    static let retinaMasksCompositeEnabled: Bool = false
 
     /// Logit gate after full-res bilinear sample when ``retinaMasksCompositeEnabled`` is `true`.
     /// Lowered from 0.0 to match ``maskLogitThreshold``: captures thin structures
@@ -250,6 +251,86 @@ enum FurnitureFitOnnxStylePipeline {
         return mask
     }
 
+    static func buildCroppedBinaryMask(
+        detection: FurnitureFitDetection,
+        protos: [Float],
+        protoWidth: Int,
+        protoHeight: Int,
+        modelSide: Int
+    ) -> [Float] {
+        let spatialSize = protoWidth * protoHeight
+        let coefficients = Array(detection.coeffs.prefix(32))
+        let numProtos = coefficients.count
+        guard numProtos > 0, protos.count == numProtos * spatialSize else {
+            return [Float](repeating: 0, count: spatialSize)
+        }
+
+        var logits = [Float](repeating: 0, count: spatialSize)
+        cblas_sgemv(
+            CblasRowMajor,
+            CblasTrans,
+            Int32(numProtos),
+            Int32(spatialSize),
+            1.0,
+            protos,
+            Int32(spatialSize),
+            coefficients,
+            1,
+            0.0,
+            &logits,
+            1
+        )
+
+        let bboxMask = buildBboxBinaryMask(
+            detection: detection,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide,
+            spatialSize: spatialSize
+        )
+
+#if DEBUG
+        var positiveLogitsBeforeCrop: Float = 0
+        var positiveLogitsAfterCrop: Float = 0
+        for protoPixelIndex in 0..<spatialSize {
+            if logits[protoPixelIndex] > 0 {
+                positiveLogitsBeforeCrop += 1
+            }
+        }
+#endif
+
+        vDSP_vmul(logits, 1, bboxMask, 1, &logits, 1, vDSP_Length(spatialSize))
+
+#if DEBUG
+        for protoPixelIndex in 0..<spatialSize {
+            if logits[protoPixelIndex] > 0 {
+                positiveLogitsAfterCrop += 1
+            }
+        }
+        if let bbox = protoBounds(
+            for: detection,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide
+        ) {
+            print(
+                "🔲 BBOX CROP class=\(detection.classIdx) " +
+                "bbox=(\(bbox.left),\(bbox.top))-(\(bbox.right),\(bbox.bottom)) " +
+                "proto=\(protoWidth)x\(protoHeight) " +
+                "pixels before=\(Int(positiveLogitsBeforeCrop)) " +
+                "after=\(Int(positiveLogitsAfterCrop))"
+            )
+        }
+#endif
+
+        var binary = [Float](repeating: 0, count: spatialSize)
+        var zero: Float = 0.0
+        var one: Float = 1.0
+        vDSP_vthres(logits, 1, &zero, &binary, 1, vDSP_Length(spatialSize))
+        vDSP_vclip(binary, 1, &zero, &one, &binary, 1, vDSP_Length(spatialSize))
+        return binary
+    }
+
     static func protoBounds(
         for detection: FurnitureFitDetection,
         protoWidth: Int,
@@ -457,9 +538,8 @@ enum FurnitureFitOnnxStylePipeline {
 
     // MARK: - Full-field logit mask (process_mask_native)
 
-    /// Ultralytics `process_mask_native`: coeffs @ protos for ALL 160×160 pixels.
-    /// The first detection stays full-field, while later contributor detections are
-    /// cropped back to their own proto-space bbox before fusion.
+    /// Builds a fused binary union by cropping and binarizing each detection independently,
+    /// then OR-ing the per-detection masks together.
     static func buildFullFieldLogitMask(
         planes: [Float],
         protoW: Int,
@@ -479,109 +559,31 @@ enum FurnitureFitOnnxStylePipeline {
                     [Float](repeating: 0, count: hwProto))
         }
 
-        var prototypeMatrixPixelMajor = [Float](repeating: 0, count: hwProto * 32)
-        var zero: Float = 0
-        prototypeMatrixPixelMajor.withUnsafeMutableBufferPointer { destinationPointer in
-            planes.withUnsafeBufferPointer { sourcePointer in
-                guard let destinationBase = destinationPointer.baseAddress,
-                      let sourceBase = sourcePointer.baseAddress else { return }
-                for channelIndex in 0..<32 {
-                    let sourceStart = sourceBase.advanced(by: channelIndex * hwProto)
-                    let destinationStart = destinationBase.advanced(by: channelIndex)
-                    vDSP_vsadd(sourceStart, 1, &zero, destinationStart, 32, vDSP_Length(hwProto))
-                }
-            }
+        var compositeBinary = [Float](repeating: 0, count: hwProto)
+        var unionScratch = [Float](repeating: 0, count: hwProto)
+
+        for detection in validDetections {
+            let detectionBinary = buildCroppedBinaryMask(
+                detection: detection,
+                protos: planes,
+                protoWidth: protoW,
+                protoHeight: protoH,
+                modelSide: modelSide
+            )
+            vDSP_vmax(
+                compositeBinary,
+                1,
+                detectionBinary,
+                1,
+                &unionScratch,
+                1,
+                vDSP_Length(hwProto)
+            )
+            swap(&compositeBinary, &unionScratch)
         }
 
-        var maximumLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: hwProto)
-        let batchSize = 64
-        let matrixHeight = vDSP_Length(hwProto)
-        let matrixDepth = vDSP_Length(32)
-        var batchStart = 0
-
-        while batchStart < validDetections.count {
-            let batchEnd = min(validDetections.count, batchStart + batchSize)
-            let batchCount = batchEnd - batchStart
-            var coefficientMatrix = [Float](repeating: 0, count: 32 * batchCount)
-
-            for detectionOffset in 0..<batchCount {
-                let coeffs = validDetections[batchStart + detectionOffset].coeffs
-                for channelIndex in 0..<32 {
-                    coefficientMatrix[channelIndex * batchCount + detectionOffset] = coeffs[channelIndex]
-                }
-            }
-
-            var logitsBatch = [Float](repeating: 0, count: hwProto * batchCount)
-            prototypeMatrixPixelMajor.withUnsafeBufferPointer { prototypePointer in
-                coefficientMatrix.withUnsafeBufferPointer { coefficientPointer in
-                    logitsBatch.withUnsafeMutableBufferPointer { logitsPointer in
-                        guard let prototypeBase = prototypePointer.baseAddress,
-                              let coefficientBase = coefficientPointer.baseAddress,
-                              let logitsBase = logitsPointer.baseAddress else { return }
-                        vDSP_mmul(
-                            prototypeBase,
-                            1,
-                            coefficientBase,
-                            1,
-                            logitsBase,
-                            1,
-                            matrixHeight,
-                            vDSP_Length(batchCount),
-                            matrixDepth
-                        )
-                    }
-                }
-            }
-
-            for detectionOffset in 0..<batchCount {
-                let globalDetectionIndex = batchStart + detectionOffset
-                guard globalDetectionIndex > 0 else { continue }
-                let detection = validDetections[globalDetectionIndex]
-                guard let bbox = protoBounds(
-                    for: detection,
-                    protoWidth: protoW,
-                    protoHeight: protoH,
-                    modelSide: modelSide
-                ) else { continue }
-
-                for protoRow in 0..<protoH {
-                    let rowOffset = protoRow * protoW
-                    for protoColumn in 0..<protoW {
-                        if protoRow < bbox.top ||
-                            protoRow > bbox.bottom ||
-                            protoColumn < bbox.left ||
-                            protoColumn > bbox.right {
-                            logitsBatch[(rowOffset + protoColumn) * batchCount + detectionOffset] = -999.0
-                        }
-                    }
-                }
-            }
-
-            logitsBatch.withUnsafeBufferPointer { logitsPointer in
-                maximumLogits.withUnsafeMutableBufferPointer { maximumPointer in
-                    guard let logitsBase = logitsPointer.baseAddress,
-                          let maximumBase = maximumPointer.baseAddress else { return }
-                    for protoPixelIndex in 0..<hwProto {
-                        var rowMaximum: Float = 0
-                        vDSP_maxv(
-                            logitsBase.advanced(by: protoPixelIndex * batchCount),
-                            1,
-                            &rowMaximum,
-                            vDSP_Length(batchCount)
-                        )
-                        if rowMaximum > maximumBase[protoPixelIndex] {
-                            maximumBase[protoPixelIndex] = rowMaximum
-                        }
-                    }
-                }
-            }
-
-            batchStart = batchEnd
-        }
-
-        let threshold = maskLogitThreshold
-        let binary = maximumLogits.map { $0 > threshold ? UInt8(255) : UInt8(0) }
-        return (binary, maximumLogits)
+        let binary = compositeBinary.map { $0 > 0 ? UInt8(255) : UInt8(0) }
+        return (binary, compositeBinary)
     }
 
     // MARK: - ASCII mask visualization for debug logs

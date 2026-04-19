@@ -224,11 +224,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// When `false`, primary comes from the **3 largest** qualifying boxes by area, then picks the **highest confidence** within that shortlist.
     var primarySelectionByHighestConfidence: Bool = false
     /// Lower parse threshold used only for low-confidence secondary contributors.
-    private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.01
+    private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.10
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
-    var useBilinearUpscaling: Bool = true
+    // var useBilinearUpscaling: Bool = true
+    var useBilinearUpscaling: Bool = false
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
     // MARK: Room Dimensions (from SHARP output, in meters)
@@ -2890,7 +2891,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
             classBlacklist: parseBlacklist,
-            maximumDetections: 100
+            maximumDetections: 1000
         )
 
         if rawDetections.isEmpty {
@@ -2906,10 +2907,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
+        if debugMode {
+            let rawDetectionClassNames = rawDetections.map { className($0.classIdx) }.joined(separator: ", ")
+            logDebug("🧾 ONNX-STYLE (\(stage2DebugLabel)) raw detections: \(rawDetectionClassNames)")
+            let rawBedFamilyDetections = rawDetections.filter {
+                let normalizedClassName = displayClassName($0.classIdx).lowercased()
+                return normalizedClassName.contains("bed")
+            }
+            if !rawBedFamilyDetections.isEmpty {
+                let rawBedFamilySummary = rawBedFamilyDetections.map {
+                    "\(displayClassName($0.classIdx)) conf=\(String(format: "%.3f", $0.confidence)) ctr=(\(Int($0.x)),\(Int($0.y))) sz=\(Int($0.w))x\(Int($0.h)))"
+                }.joined(separator: " | ")
+                print("🛏️ ONNX-STYLE (\(stage2DebugLabel)) raw bed-family detections: \(rawBedFamilySummary)")
+            }
+        }
+
         var candidates: [FurnitureFitDetection]
         if rawDetections.count > 1 {
             let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
-            let capped = Array(sorted.prefix(100))
+            let capped = Array(sorted.prefix(300))
             candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
         } else {
             candidates = rawDetections
@@ -3410,68 +3426,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         setProgress(0.92, text: "Compositing…")
         let compStart = Date()
         let composedImage: CGImage? =
-            compositeGpuNativeMaskCutout(
+            currentYoloUsesLetterbox
+            ? compositeLegacy1280UnionMaskCutout(
                 processBuffer: processBuffer,
-                maskProto: maskSmallForComposite,
-                maskLogits: maskLogitsForComposite,
-                protoW: pW,
-                protoH: pH,
-                modelSide: onnxSide,
-                origW: bufW,
-                origH: bufH,
-                x0: compBx1,
-                x1: compBx2,
-                y0: compBy1,
-                y1: compBy2,
-                usesLetterbox: currentYoloUsesLetterbox,
-                primary: primary,
-                primaryBx1: primaryBx1,
-                primaryBy1: primaryBy1,
-                primaryBx2: primaryBx2,
-                primaryBy2: primaryBy2,
-                debugTag: "process_mask_native GPU"
-            ) ?? compositeCpuBilinearProtoMaskCutoutFromLogits(
-                processBuffer: processBuffer,
-                maskProto: maskSmallForComposite,
-                maskLogits: maskLogitsForComposite,
                 planes: planes,
                 protoW: pW,
                 protoH: pH,
                 modelSide: onnxSide,
                 origW: bufW,
                 origH: bufH,
+                maskDetectionsForBuild: compositeDetectionsForBuild,
                 x0: compBx1,
                 x1: compBx2,
                 y0: compBy1,
                 y1: compBy2,
-                usesLetterbox: currentYoloUsesLetterbox,
-                primary: primary,
                 primaryBx1: primaryBx1,
                 primaryBy1: primaryBy1,
                 primaryBx2: primaryBx2,
                 primaryBy2: primaryBy2,
-                maskDetectionsForBuild: compositeDetectionsForBuild,
-                debugTag: "ONNX-style CPU fallback"
-            ) ?? (currentYoloUsesLetterbox
-                ? compositeLegacy1280UnionMaskCutout(
-                    processBuffer: processBuffer,
-                    planes: planes,
-                    protoW: pW,
-                    protoH: pH,
-                    modelSide: onnxSide,
-                    origW: bufW,
-                    origH: bufH,
-                    maskDetectionsForBuild: compositeDetectionsForBuild,
-                    x0: compBx1,
-                    x1: compBx2,
-                    y0: compBy1,
-                    y1: compBy2,
-                    primaryBx1: primaryBx1,
-                    primaryBy1: primaryBy1,
-                    primaryBx2: primaryBx2,
-                    primaryBy2: primaryBy2,
-                )
-                : nil)
+            )
+            : nil
 
         let withDebugOverlay: CGImage? = {
             guard let base = composedImage else { return composedImage }
@@ -3670,15 +3644,28 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             detArray: detArray,
             confidenceThreshold: lowerConfidenceThreshold,
             classBlacklist: [],
-            maximumDetections: 400
+            maximumDetections: 1000
         )
         guard !lowThresholdDetections.isEmpty else { return [] }
 
+        if debugMode {
+            let reparsedBedFamilyDetections = lowThresholdDetections.filter {
+                let normalizedClassName = displayClassName($0.classIdx).lowercased()
+                return normalizedClassName.contains("bed")
+            }
+            if !reparsedBedFamilyDetections.isEmpty {
+                let reparsedBedFamilySummary = reparsedBedFamilyDetections.map {
+                    "\(displayClassName($0.classIdx)) conf=\(String(format: "%.3f", $0.confidence)) ctr=(\(Int($0.x)),\(Int($0.y))) sz=\(Int($0.w))x\(Int($0.h)))"
+                }.joined(separator: " | ")
+                print("🛏️ ONNX-STYLE reparsed bed-family detections: \(reparsedBedFamilySummary)")
+            }
+        }
+
         let sortedDetections = lowThresholdDetections.sorted { $0.confidence > $1.confidence }
-        let cappedDetections = Array(sortedDetections.prefix(100))
+        let cappedDetections = Array(sortedDetections.prefix(300))
         let dedupedDetections = FurnitureFitNMS.applySortedByConfidence(
             detections: cappedDetections,
-            iouThreshold: 0.5
+            iouThreshold: 0.7
         )
         let filteredDetections = dedupedDetections
             .filter { !blacklist.contains($0.classIdx) }
@@ -3984,84 +3971,30 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let validDetections = maskDetectionsForBuild.filter { $0.coeffs.count >= 32 }
         guard !validDetections.isEmpty else { return nil }
 
-        var prototypeMatrix = [Float](repeating: 0, count: planeSize * 32)
-        var zero: Float = 0
-        prototypeMatrix.withUnsafeMutableBufferPointer { dstPtr in
-            planes.withUnsafeBufferPointer { srcPtr in
-                guard let dstBase = dstPtr.baseAddress, let srcBase = srcPtr.baseAddress else { return }
-                for channelIndex in 0..<32 {
-                    let srcStart = srcBase.advanced(by: channelIndex * planeSize)
-                    let dstStart = dstBase.advanced(by: channelIndex)
-                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
-                }
-            }
+        var compositeBinary = [Float](repeating: 0, count: planeSize)
+        var unionScratch = [Float](repeating: 0, count: planeSize)
+
+        for detection in validDetections {
+            let detectionBinary = FurnitureFitOnnxStylePipeline.buildCroppedBinaryMask(
+                detection: detection,
+                protos: planes,
+                protoWidth: protoW,
+                protoHeight: protoH,
+                modelSide: modelSide
+            )
+            vDSP_vmax(
+                compositeBinary,
+                1,
+                detectionBinary,
+                1,
+                &unionScratch,
+                1,
+                vDSP_Length(planeSize)
+            )
+            swap(&compositeBinary, &unionScratch)
         }
 
-        var maximumLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
-        let batchSize = 64
-        let matrixHeight = vDSP_Length(planeSize)
-        let matrixDepth = vDSP_Length(32)
-        var batchStart = 0
-
-        while batchStart < validDetections.count {
-            let batchEnd = min(validDetections.count, batchStart + batchSize)
-            let batchCount = batchEnd - batchStart
-            var coefficientMatrix = [Float](repeating: 0, count: 32 * batchCount)
-
-            for detectionOffset in 0..<batchCount {
-                let coeffs = validDetections[batchStart + detectionOffset].coeffs
-                for channelIndex in 0..<32 {
-                    coefficientMatrix[channelIndex * batchCount + detectionOffset] = coeffs[channelIndex]
-                }
-            }
-
-            var logitsBatch = [Float](repeating: 0, count: planeSize * batchCount)
-            prototypeMatrix.withUnsafeBufferPointer { protoPtr in
-                coefficientMatrix.withUnsafeBufferPointer { coeffPtr in
-                    logitsBatch.withUnsafeMutableBufferPointer { batchPtr in
-                        guard let protoBase = protoPtr.baseAddress,
-                              let coeffBase = coeffPtr.baseAddress,
-                              let batchBase = batchPtr.baseAddress else { return }
-                        vDSP_mmul(
-                            protoBase,
-                            1,
-                            coeffBase,
-                            1,
-                            batchBase,
-                            1,
-                            matrixHeight,
-                            vDSP_Length(batchCount),
-                            matrixDepth
-                        )
-                    }
-                }
-            }
-
-            logitsBatch.withUnsafeBufferPointer { batchPtr in
-                maximumLogits.withUnsafeMutableBufferPointer { maxPtr in
-                    guard let batchBase = batchPtr.baseAddress, let maxBase = maxPtr.baseAddress else { return }
-                    for pixelIndex in 0..<planeSize {
-                        var rowMaximum: Float = 0
-                        vDSP_maxv(
-                            batchBase.advanced(by: pixelIndex * batchCount),
-                            1,
-                            &rowMaximum,
-                            vDSP_Length(batchCount)
-                        )
-                        if rowMaximum > maxBase[pixelIndex] {
-                            maxBase[pixelIndex] = rowMaximum
-                        }
-                    }
-                }
-            }
-
-            batchStart = batchEnd
-        }
-
-        var protoBinaryMask = [UInt8](repeating: 0, count: planeSize)
-        for pixelIndex in 0..<planeSize {
-            protoBinaryMask[pixelIndex] = maximumLogits[pixelIndex] > 0 ? 255 : 0
-        }
+        let protoBinaryMask = compositeBinary.map { $0 > 0 ? UInt8(255) : UInt8(0) }
 
         let fullMask = makeLegacy1280FullMaskFromProtoWithLetterboxFix(
             maskSmall: protoBinaryMask,
