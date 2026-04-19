@@ -272,7 +272,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var confidenceThreshold: Float = 0.1
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
-    /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area). When `false`, primary is the **largest area** among those boxes.
+    /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area).
+    /// When `false`, primary comes from the **10 largest** qualifying boxes by area, then picks the **highest confidence** within that shortlist.
     var primarySelectionByHighestConfidence: Bool = false
     /// Lower confidence threshold used only for secondary contributors whose centers land inside the primary bbox.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.01
@@ -672,7 +673,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let autoPrimarySwitchRequiredFrames: Int = 3
     private let autoPrimaryConfidenceSwitchGain: Float = 1.08
     private let autoPrimaryConfidenceSwitchMargin: Float = 0.03
-    private let autoPrimaryAreaSwitchGain: Float = 1.12
+    private let autoPrimaryAreaShortlistCount: Int = 10
 
     /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
@@ -3629,7 +3630,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence or largest bbox area (see ``primarySelectionByHighestConfidence``).
+    private func areaShortlistedPrimaryCandidateIndices(
+        candidates: [FurnitureFitDetection],
+        minConfidence: Float
+    ) -> [Int] {
+        Array(
+            candidates.enumerated()
+                .filter { _, detection in detection.confidence >= minConfidence }
+                .sorted { lhs, rhs in
+                    let lhsArea = lhs.element.w * lhs.element.h
+                    let rhsArea = rhs.element.w * rhs.element.h
+                    if abs(lhsArea - rhsArea) > 1e-6 {
+                        return lhsArea > rhsArea
+                    }
+                    if abs(lhs.element.confidence - rhs.element.confidence) > 1e-6 {
+                        return lhs.element.confidence > rhs.element.confidence
+                    }
+                    return lhs.offset < rhs.offset
+                }
+                .prefix(autoPrimaryAreaShortlistCount)
+                .map(\.offset)
+        )
+    }
+
+    /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence directly
+    /// or the highest confidence inside the top-area shortlist (see ``primarySelectionByHighestConfidence``).
     /// (`modelSide` unused; kept for call-site stability with the ONNX-style pipeline.)
     private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide _: Int) -> Int? {
         let minConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
@@ -3651,17 +3676,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             return bestIdx
         }
-        var bestIdx: Int?
-        var maxArea: Float = 0
-        for (i, d) in candidates.enumerated() {
-            guard d.confidence >= minConfidence else { continue }
-            let area = d.w * d.h
-            if area > maxArea {
-                maxArea = area
-                bestIdx = i
+        let shortlistedIndices = areaShortlistedPrimaryCandidateIndices(
+            candidates: candidates,
+            minConfidence: minConfidence
+        )
+        return shortlistedIndices.max { lhsIndex, rhsIndex in
+            let lhsDetection = candidates[lhsIndex]
+            let rhsDetection = candidates[rhsIndex]
+            if abs(lhsDetection.confidence - rhsDetection.confidence) > 1e-6 {
+                return lhsDetection.confidence < rhsDetection.confidence
             }
+            let lhsArea = lhsDetection.w * lhsDetection.h
+            let rhsArea = rhsDetection.w * rhsDetection.h
+            if abs(lhsArea - rhsArea) > 1e-6 {
+                return lhsArea < rhsArea
+            }
+            return lhsIndex > rhsIndex
         }
-        return bestIdx
     }
 
     private func resetAutoPrimarySelectionStability() {
@@ -3671,7 +3702,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func autoPrimarySelectionScore(_ detection: FurnitureFitDetection) -> Float {
-        primarySelectionByHighestConfidence ? detection.confidence : detection.w * detection.h
+        detection.confidence
     }
 
     private func matchedCandidateIndexForStableAutoPrimary(
@@ -3722,6 +3753,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return preferredIndex
         }
 
+        if !primarySelectionByHighestConfidence {
+            let shortlistedIndices = Set(
+                areaShortlistedPrimaryCandidateIndices(
+                    candidates: candidates,
+                    minConfidence: minimumConfidence
+                )
+            )
+            guard shortlistedIndices.contains(stableIndex) else {
+                stableAutoPrimaryDetection = preferredCandidate
+                pendingAutoPrimaryDetection = nil
+                pendingAutoPrimaryFrameCount = 0
+                return preferredIndex
+            }
+        }
+
         if stableIndex == preferredIndex {
             stableAutoPrimaryDetection = stableCandidate
             pendingAutoPrimaryDetection = nil
@@ -3731,11 +3777,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let stableScore = autoPrimarySelectionScore(stableCandidate)
         let preferredScore = autoPrimarySelectionScore(preferredCandidate)
-        let switchThreshold: Float = if primarySelectionByHighestConfidence {
-            max(stableScore * autoPrimaryConfidenceSwitchGain, stableScore + autoPrimaryConfidenceSwitchMargin)
-        } else {
-            stableScore * autoPrimaryAreaSwitchGain
-        }
+        let switchThreshold = max(
+            stableScore * autoPrimaryConfidenceSwitchGain,
+            stableScore + autoPrimaryConfidenceSwitchMargin
+        )
 
         guard preferredScore >= switchThreshold else {
             stableAutoPrimaryDetection = stableCandidate
