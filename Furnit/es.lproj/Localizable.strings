@@ -451,12 +451,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "La profundidad de escena no está disponible en este dispositivo.";
 "settings.fullVideoWithIdentifications" = "Vídeo completo con identificaciones";
 "settings.fullVideoWithIdentificationsDescription" = "Muestra la cámara en vivo con cuadros y etiquetas de detección en lugar de centrar automáticamente la superposición de muebles segmentados.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "Confianza de detección principal";
+"settings.primaryDetectionConfidenceFooter" = "Confianza mínima del modelo (5-99%) para elegir la caja principal del mueble entre las candidatas. Los valores más bajos dejan más cajas elegibles; los valores más altos son más estrictos. El detector sigue analizando primero las cajas más débiles con su umbral independiente.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "Principal por mayor confianza";
+"settings.primarySelectionByHighestConfidenceDescription" = "Activado: elige la caja con mayor puntuación entre las que están sobre el control. Desactivado: elige la caja más grande entre ellas.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Ambos modos solo consideran detecciones en o por encima del control de confianza de detección principal.";
 
 
 "settings.roomMeasurementSection" = "Medidas de la habitación";
@@ -512,8 +512,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "Desactivado: elige la caja más grande entre las que están sobre el control deslizante.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Ambos modos solo consideran detecciones en o por encima del control deslizante de confianza de detección primaria. El comportamiento del Parser/NMS no cambia.";
+"settings.primarySelectionBehaviorNote" = "El comportamiento de Parser/NMS no cambia.";
 
 /* Settings - Single Image Scan */
-"settings.singleImageScanSection" = "Escaneo de imagen única";
+"settings.singleImageScanSection" = "Escaneo de una sola imagen";
+
+"settings.imageScan" = "Escaneo de imagen";
+"settings.imageScanDescription" = "Elige una foto y ejecuta la detección de muebles en el dispositivo.";
+"settings.imageScanTapToChoose" = "Toca para elegir una foto";
+"settings.imageScanTapToChooseSubtitle" = "Selecciona una sola imagen para revisar las detecciones de muebles.";
+"settings.imageScanFootnote" = "El escaneo se realiza en el dispositivo. Elige una foto clara donde se vea el mueble.";
+"settings.imageScanLoadingPhoto" = "Cargando foto...";
+"settings.imageScanPreparingModel" = "Preparando modelo...";
+"settings.imageScanLoadFailed" = "No se pudo cargar esta foto.";
 

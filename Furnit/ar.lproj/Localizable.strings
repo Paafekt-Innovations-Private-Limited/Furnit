@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "عمق المشهد غير متاح على هذا الجهاز.";
 "settings.fullVideoWithIdentifications" = "فيديو كامل مع التعريفات";
 "settings.fullVideoWithIdentificationsDescription" = "عرض بث الكاميرا المباشر مع مربعات الكشف والتسميات بدلاً من توسيط طبقة الأثاث المجزأة تلقائياً.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "ثقة الاكتشاف الأساسية";
+"settings.primaryDetectionConfidenceFooter" = "الحد الأدنى لثقة النموذج (5-99%) لاختيار مربع الأثاث الرئيسي من بين المرشحين. القيم الأقل تُبقي المزيد من المربعات مؤهلة، والقيم الأعلى تكون أكثر صرامة. ما يزال الكاشف يمر على المربعات الأضعف أولاً باستخدام حدّه المنفصل.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "اختيار الأساسي حسب أعلى ثقة";
+"settings.primarySelectionByHighestConfidenceDescription" = "تشغيل: اختر المربع الأعلى درجة من بين المربعات فوق المنزلق. إيقاف: اختر أكبر مربع من بينها.";
+"settings.primarySelectionByHighestConfidenceFooter" = "يأخذ الوضعان فقط الاكتشافات التي عند منزلق ثقة الاكتشاف الأساسية أو أعلى منه في الاعتبار.";
 
 
 "settings.roomMeasurementSection" = "قياس الغرفة";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "إيقاف: اختر أكبر مربع من بين تلك الموجودة فوق المنزلق.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "يأخذ كلا الوضعين في الاعتبار فقط الاكتشافات عند أو أعلى من منزلق ثقة الكشف الأساسي. سلوك المحلل/NMS لم يتغير.";
+"settings.primarySelectionBehaviorNote" = "سلوك Parser/NMS لم يتغير.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "مسح صورة واحدة";
+
+"settings.imageScan" = "فحص الصورة";
+"settings.imageScanDescription" = "اختر صورة وشغّل اكتشاف الأثاث على الجهاز.";
+"settings.imageScanTapToChoose" = "اضغط لاختيار صورة";
+"settings.imageScanTapToChooseSubtitle" = "اختر صورة واحدة لمراجعة اكتشافات الأثاث.";
+"settings.imageScanFootnote" = "يتم الفحص على الجهاز فقط. اختر صورة واضحة يظهر فيها الأثاث.";
+"settings.imageScanLoadingPhoto" = "جارٍ تحميل الصورة...";
+"settings.imageScanPreparingModel" = "جارٍ تجهيز النموذج...";
+"settings.imageScanLoadFailed" = "تعذر تحميل هذه الصورة.";
 

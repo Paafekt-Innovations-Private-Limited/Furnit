@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "ഈ ഉപകരണത്തിൽ ദൃശ്യ ആഴം ലഭ്യമല്ല.";
 "settings.fullVideoWithIdentifications" = "തിരിച്ചറിയലുകളോടെ പൂർണ്ണ വീഡിയോ";
 "settings.fullVideoWithIdentificationsDescription" = "വിഭജിച്ച ഫർണിച്ചർ ഓവർലേ സ്വയം കേന്ദ്രീകരിക്കുന്നതിന് പകരം കണ്ടെത്തൽ ബോക്സുകളും ലേബലുകളും കൊണ്ടുള്ള തത്സമയ ക്യാമറ ഫീഡ് കാണിക്കുക.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസം";
+"settings.primaryDetectionConfidenceFooter" = "സ്ഥാനാർഥി ബോക്സുകളിൽ നിന്ന് പ്രധാന ഫർണിച്ചർ ബോക്സ് തിരഞ്ഞെടുക്കാൻ വേണ്ട കുറഞ്ഞ മോഡൽ വിശ്വാസം (5–99%). കുറഞ്ഞ മൂല്യങ്ങൾ കൂടുതൽ ബോക്സുകൾ അർഹമാക്കും; ഉയർന്ന മൂല്യങ്ങൾ കൂടുതൽ കർശനമാണ്. ഡിറ്റക്ടർ തന്റെ വേർതിരിച്ച ത്രെഷോൾഡ് ഉപയോഗിച്ച് ദുർബലമായ ബോക്സുകൾ ഇപ്പോഴും ആദ്യം പാഴ്സ് ചെയ്യും.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "ഏറ്റവും ഉയർന്ന വിശ്വാസപ്രകാരമുള്ള പ്രധാനത്";
+"settings.primarySelectionByHighestConfidenceDescription" = "ഓൺ: സ്ലൈഡറിന് മുകളിലുള്ള ബോക്സുകളിൽ ഏറ്റവും ഉയർന്ന സ്കോർ ഉള്ളത് തിരഞ്ഞെടുക്കുക. ഓഫ്: അവയിൽ ഏറ്റവും വലിയ ബോക്സ് തിരഞ്ഞെടുക്കുക.";
+"settings.primarySelectionByHighestConfidenceFooter" = "രണ്ട് മോഡുകളും പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസ സ്ലൈഡറിലോ അതിന് മുകളിലോ ഉള്ള കണ്ടെത്തലുകൾ മാത്രം പരിഗണിക്കുന്നു.";
 
 
 "settings.roomMeasurementSection" = "മുറി അളവുകൾ";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "ഓഫ്: സ്ലൈഡറിന് മുകളിലുള്ളവയിൽ വലിയ ബോക്‌സ് തിരഞ്ഞെടുക്കുക.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "രണ്ട് മോഡുകളും പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസ സ്ലൈഡറിലോ അതിനു മുകളിലോ ഉള്ള കണ്ടെത്തലുകൾ മാത്രം പരിഗണിക്കുന്നു. പാഴ്‌സർ/NMS പെരുമാറ്റം മാറ്റമില്ലാതെ തുടരുന്നു.";
+"settings.primarySelectionBehaviorNote" = "Parser/NMS പെരുമാറ്റം മാറ്റമില്ലാതെ തുടരുന്നു.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ഒറ്റ ചിത്ര സ്കാൻ";
+
+"settings.imageScan" = "ചിത്ര സ്കാൻ";
+"settings.imageScanDescription" = "ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുകയും ഉപകരണത്തിനകത്ത് തന്നെ ഫർണിച്ചർ കണ്ടെത്തൽ നടത്തുകയും ചെയ്യുക.";
+"settings.imageScanTapToChoose" = "ഫോട്ടോ തിരഞ്ഞെടുക്കാൻ ടാപ്പ് ചെയ്യുക";
+"settings.imageScanTapToChooseSubtitle" = "ഫർണിച്ചർ കണ്ടെത്തലുകൾ പരിശോധിക്കാൻ ഒരു ചിത്രം തിരഞ്ഞെടുക്കുക.";
+"settings.imageScanFootnote" = "സ്കാൻ ഉപകരണത്തിനകത്ത് തന്നെ നടക്കുന്നു. ഫർണിച്ചർ വ്യക്തമായി കാണുന്ന ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുക.";
+"settings.imageScanLoadingPhoto" = "ഫോട്ടോ ലോഡ് ചെയ്യുന്നു...";
+"settings.imageScanPreparingModel" = "മോഡൽ തയ്യാറാക്കുന്നു...";
+"settings.imageScanLoadFailed" = "ഈ ഫോട്ടോ ലോഡ് ചെയ്യാനായില്ല.";
 

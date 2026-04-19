@@ -173,7 +173,6 @@ enum L10n {
         static let roomMeasurementFooter = "settings.roomMeasurementFooter".localized
         static let singleImageScanSection = "settings.singleImageScanSection".localized
         
-        static let singleImageScan = "settings.singleImageScan".localized
         static let imageScan = "settings.imageScan".localized
         static let imageScanDescription = "settings.imageScanDescription".localized
         static let imageScanTapToChoose = "settings.imageScanTapToChoose".localized

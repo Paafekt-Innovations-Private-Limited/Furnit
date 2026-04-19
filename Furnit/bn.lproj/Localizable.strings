@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "এই ডিভাইসে দৃশ্যের গভীরতা নেই।";
 "settings.fullVideoWithIdentifications" = "সনাক্তকরণসহ পূর্ণ ভিডিও";
 "settings.fullVideoWithIdentificationsDescription" = "স্বয়ংক্রিয়ভাবে বিভাজিত ফার্নিচার ওভারলে কেন্দ্রীভূত করার পরিবর্তে সরাসরি ক্যামেরা ফিডে সনাক্তকরণ বক্স ও লেবেল দেখান।";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস";
+"settings.primaryDetectionConfidenceFooter" = "প্রার্থীদের মধ্যে মূল ফার্নিচার বক্স বেছে নিতে ন্যূনতম মডেল আত্মবিশ্বাস (5–99%)। মান কম হলে আরও বেশি বক্স যোগ্য থাকে; মান বেশি হলে নির্বাচন কঠোর হয়। ডিটেক্টর এখনও তার আলাদা থ্রেশহোল্ড ব্যবহার করে দুর্বল বক্সগুলো আগে পার্স করে।";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "সর্বোচ্চ আত্মবিশ্বাস অনুযায়ী প্রধানটি";
+"settings.primarySelectionByHighestConfidenceDescription" = "চালু: স্লাইডারের উপরের বক্সগুলোর মধ্যে সর্বোচ্চ স্কোরের বক্সটি নিন। বন্ধ: সেগুলোর মধ্যে সবচেয়ে বড় বক্সটি নিন।";
+"settings.primarySelectionByHighestConfidenceFooter" = "উভয় মোডই শুধুমাত্র প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস স্লাইডারে বা তার উপরের সনাক্তকরণগুলো বিবেচনা করে।";
 
 
 "settings.roomMeasurementSection" = "রুম মাপ";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "বন্ধ: স্লাইডারের উপরে থাকা বক্সগুলির মধ্যে সবচেয়ে বড় বক্সটি বেছে নিন।";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "উভয় মোড শুধুমাত্র প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস স্লাইডারে বা তার উপরে থাকা সনাক্তকরণ বিবেচনা করে। পার্সার/NMS আচরণ অপরিবর্তিত।";
+"settings.primarySelectionBehaviorNote" = "Parser/NMS আচরণ অপরিবর্তিত।";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "একক ছবি স্ক্যান";
+
+"settings.imageScan" = "ছবি স্ক্যান";
+"settings.imageScanDescription" = "একটি ছবি বেছে নিয়ে ডিভাইসেই ফার্নিচার সনাক্তকরণ চালান।";
+"settings.imageScanTapToChoose" = "ছবি বেছে নিতে ট্যাপ করুন";
+"settings.imageScanTapToChooseSubtitle" = "ফার্নিচার সনাক্তকরণ দেখার জন্য একটি ছবি নির্বাচন করুন।";
+"settings.imageScanFootnote" = "স্ক্যান ডিভাইসের মধ্যেই হয়। ফার্নিচার স্পষ্ট দেখা যায় এমন একটি পরিষ্কার ছবি বেছে নিন।";
+"settings.imageScanLoadingPhoto" = "ছবি লোড হচ্ছে...";
+"settings.imageScanPreparingModel" = "মডেল প্রস্তুত করা হচ্ছে...";
+"settings.imageScanLoadFailed" = "এই ছবি লোড করা যায়নি।";
 

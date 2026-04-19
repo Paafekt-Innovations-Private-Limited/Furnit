@@ -449,12 +449,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "此设备不支持场景深度。";
 "settings.fullVideoWithIdentifications" = "全屏视频与识别";
 "settings.fullVideoWithIdentificationsDescription" = "显示实时相机画面及检测框和标签，而不是自动居中分割后的家具叠加层。";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "主要检测置信度";
+"settings.primaryDetectionConfidenceFooter" = "用于在候选框中选择主要家具框的最低模型置信度（5–99%）。较低的值会让更多框符合条件；较高的值则更严格。检测器仍会使用单独阈值先解析较弱的框。";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "按最高置信度选主框";
+"settings.primarySelectionByHighestConfidenceDescription" = "开：从滑块以上的框中选择得分最高的框。关：从滑块以上的框中选择最大的框。";
+"settings.primarySelectionByHighestConfidenceFooter" = "两种模式都只考虑达到或高于“主要检测置信度”滑块的检测结果。";
 
 
 "settings.roomMeasurementSection" = "房间测量";
@@ -521,8 +521,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "关闭：在滑块上方的框中选择最大的框。";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "两种模式仅考虑位于或高于主检测置信度滑块的检测。解析器/NMS 行为保持不变。";
+"settings.primarySelectionBehaviorNote" = "Parser/NMS 行为保持不变。";
 
 /* Settings - Single Image Scan */
-"settings.singleImageScanSection" = "单图像扫描";
+"settings.singleImageScanSection" = "单张图片扫描";
+
+"settings.imageScan" = "图片扫描";
+"settings.imageScanDescription" = "选择一张照片，在设备上运行家具检测。";
+"settings.imageScanTapToChoose" = "点按以选择照片";
+"settings.imageScanTapToChooseSubtitle" = "选择一张图片以查看家具检测结果。";
+"settings.imageScanFootnote" = "扫描仅在设备上进行。请选择一张能清楚看到家具的照片。";
+"settings.imageScanLoadingPhoto" = "正在加载照片...";
+"settings.imageScanPreparingModel" = "正在准备模型...";
+"settings.imageScanLoadFailed" = "无法加载这张照片。";
 

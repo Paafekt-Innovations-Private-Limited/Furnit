@@ -460,12 +460,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "Szenentiefe ist auf diesem Gerät nicht verfügbar.";
 "settings.fullVideoWithIdentifications" = "Vollbild-Video mit Erkennungen";
 "settings.fullVideoWithIdentificationsDescription" = "Live-Kamerabild mit Erkennungsrahmen und Beschriftungen anzeigen statt die segmentierte Möbel-Einblendung automatisch zu zentrieren.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "Primäre Erkennungssicherheit";
+"settings.primaryDetectionConfidenceFooter" = "Minimale Modellkonfidenz (5-99%), um unter den Kandidaten die Haupt-Möbelbox auszuwählen. Niedrigere Werte lassen mehr Boxen zu, höhere Werte sind strenger. Der Detektor verarbeitet schwächere Boxen weiterhin zuerst mit seinem separaten Schwellenwert.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "Primär nach höchster Sicherheit";
+"settings.primarySelectionByHighestConfidenceDescription" = "Ein: Wähle unter den Boxen über dem Schieberegler die mit dem höchsten Wert. Aus: Wähle darunter die größte Box.";
+"settings.primarySelectionByHighestConfidenceFooter" = "Beide Modi berücksichtigen nur Erkennungen auf oder über dem Schieberegler für die primäre Erkennungssicherheit.";
 
 
 "settings.roomMeasurementSection" = "Raummaße";
@@ -534,8 +534,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "Aus: Wähle die größte Box unter denen über dem Schieberegler.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Beide Modi berücksichtigen nur Erkennungen auf oder über dem Primären Erkennungs-Konfidenzschieberegler. Parser/NMS-Verhalten bleibt unverändert.";
+"settings.primarySelectionBehaviorNote" = "Das Parser-/NMS-Verhalten bleibt unverändert.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "Einzelbild-Scan";
+
+"settings.imageScan" = "Bildscan";
+"settings.imageScanDescription" = "Wähle ein Foto und führe die Möbelerkennung direkt auf dem Gerät aus.";
+"settings.imageScanTapToChoose" = "Tippe, um ein Foto auszuwählen";
+"settings.imageScanTapToChooseSubtitle" = "Wähle ein einzelnes Bild, um Möbelerkennungen zu prüfen.";
+"settings.imageScanFootnote" = "Der Scan bleibt auf dem Gerät. Wähle ein klares Foto, auf dem die Möbel gut sichtbar sind.";
+"settings.imageScanLoadingPhoto" = "Foto wird geladen...";
+"settings.imageScanPreparingModel" = "Modell wird vorbereitet...";
+"settings.imageScanLoadFailed" = "Dieses Foto konnte nicht geladen werden.";
 

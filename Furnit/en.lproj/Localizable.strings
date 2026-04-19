@@ -533,3 +533,12 @@
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "Single Image Scan";
 
+"settings.imageScan" = "Image Scan";
+"settings.imageScanDescription" = "Pick a photo and run on-device furniture detection.";
+"settings.imageScanTapToChoose" = "Tap to choose a photo";
+"settings.imageScanTapToChooseSubtitle" = "Select a single image to inspect furniture detections.";
+"settings.imageScanFootnote" = "Scanning stays on device. Choose one clear photo with the furniture visible.";
+"settings.imageScanLoadingPhoto" = "Loading photo...";
+"settings.imageScanPreparingModel" = "Preparing model...";
+"settings.imageScanLoadFailed" = "Could not load this photo.";
+

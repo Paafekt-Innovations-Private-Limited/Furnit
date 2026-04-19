@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "ఈ పరికరంలో దృశ్య లోతు అందుబాటులో లేదు.";
 "settings.fullVideoWithIdentifications" = "గుర్తింపులతో పూర్తి వీడియో";
 "settings.fullVideoWithIdentificationsDescription" = "విభజించిన ఫర్నిచర్ ఓవర్‌లేను స్వయంచాలకంగా కేంద్రీకరించడానికి బదులుగా గుర్తింపు పెట్టెలు మరియు లేబుల్‌లతో ప్రత్యక్ష కెమెరా ఫీడ్‌ను చూపించు.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "ప్రధాన గుర్తింపు నమ్మకం";
+"settings.primaryDetectionConfidenceFooter" = "అభ్యర్థి బాక్సుల్లో ప్రధాన ఫర్నిచర్ బాక్స్‌ను ఎంచుకునేందుకు కనిష్ఠ మోడల్ నమ్మకం (5–99%). తక్కువ విలువలు ఎక్కువ బాక్సులను అర్హంగా ఉంచుతాయి; ఎక్కువ విలువలు మరింత కఠినంగా ఉంటాయి. డిటెక్టర్ తన విడి థ్రెషోల్డ్‌ను ఉపయోగించి బలహీనమైన బాక్సులను ఇంకా ముందుగా పార్స్ చేస్తుంది.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "అత్యధిక నమ్మకంతో ప్రధానది";
+"settings.primarySelectionByHighestConfidenceDescription" = "ఆన్: స్లయిడర్ పైనున్న బాక్సుల్లో అత్యధిక స్కోర్ ఉన్నదాన్ని ఎంచుకుంటుంది. ఆఫ్: వాటిలో పెద్ద బాక్స్‌ను ఎంచుకుంటుంది.";
+"settings.primarySelectionByHighestConfidenceFooter" = "రెండు మోడ్‌లు ప్రధాన గుర్తింపు నమ్మకం స్లయిడర్ వద్ద లేదా అంతకంటే పై స్థాయిలో ఉన్న గుర్తింపులను మాత్రమే పరిగణిస్తాయి.";
 
 
 "settings.roomMeasurementSection" = "గది కొలతలు";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "ఆఫ్: స్లయిడర్ పైన ఉన్న వాటిలో పెద్ద బాక్స్‌ను ఎంచుకోండి.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "రెండు మోడ్‌లు ప్రాథమిక గుర్తింపు విశ్వాసం స్లయిడర్ వద్ద లేదా అంతకంటే ఎక్కువగా ఉన్న గుర్తింపులను మాత్రమే పరిగణిస్తాయి. పార్సర్/NMS ప్రవర్తన మారదు.";
+"settings.primarySelectionBehaviorNote" = "Parser/NMS ప్రవర్తన మారదు.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ఒకే చిత్ర స్కాన్";
+
+"settings.imageScan" = "చిత్ర స్కాన్";
+"settings.imageScanDescription" = "ఒక ఫోటోను ఎంచుకుని, పరికరంపైనే ఫర్నిచర్ గుర్తింపును నడపండి.";
+"settings.imageScanTapToChoose" = "ఫోటో ఎంచుకోవడానికి ట్యాప్ చేయండి";
+"settings.imageScanTapToChooseSubtitle" = "ఫర్నిచర్ గుర్తింపులను చూడటానికి ఒకే చిత్రాన్ని ఎంచుకోండి.";
+"settings.imageScanFootnote" = "స్కాన్ పరికరంపైనే జరుగుతుంది. ఫర్నిచర్ స్పష్టంగా కనిపించే ఫోటోను ఎంచుకోండి.";
+"settings.imageScanLoadingPhoto" = "ఫోటో లోడ్ అవుతోంది...";
+"settings.imageScanPreparingModel" = "మోడల్ సిద్ధమవుతోంది...";
+"settings.imageScanLoadFailed" = "ఈ ఫోటోను లోడ్ చేయలేకపోయాం.";
 

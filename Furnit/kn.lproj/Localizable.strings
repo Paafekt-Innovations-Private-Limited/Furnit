@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "ಈ ಸಾಧನದಲ್ಲಿ ದೃಶ್ಯಾಂತರ ಲಭ್ಯವಿಲ್ಲ.";
 "settings.fullVideoWithIdentifications" = "ಗುರುತಿಸುವಿಕೆಗಳೊಂದಿಗೆ ಪೂರ್ಣ ವೀಡಿಯೊ";
 "settings.fullVideoWithIdentificationsDescription" = "ವಿಭಜಿತ ಫರ್ಣಿಚರ್ ಓವರ್‌ಲೇಯನ್ನು ಸ್ವಯಂ ಕೇಂದ್ರೀಕರಿಸುವ ಬದಲು ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಲೇಬಲ್‌ಗಳೊಂದಿಗೆ ಲೈವ್ ಕ್ಯಾಮರಾ ಫೀಡ್ ತೋರಿಸಿ.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ";
+"settings.primaryDetectionConfidenceFooter" = "ಅಭ್ಯರ್ಥಿ ಬಾಕ್ಸ್‌ಗಳಲ್ಲಿ ಮುಖ್ಯ ಪೀಠೋಪಕರಣ ಬಾಕ್ಸ್ ಆಯ್ಕೆ ಮಾಡಲು ಕನಿಷ್ಠ ಮಾದರಿ ವಿಶ್ವಾಸ (5–99%). ಮೌಲ್ಯ ಕಡಿಮೆ ಇದ್ದರೆ ಹೆಚ್ಚು ಬಾಕ್ಸ್‌ಗಳು ಅರ್ಹವಾಗುತ್ತವೆ; ಹೆಚ್ಚು ಇದ್ದರೆ ಆಯ್ಕೆ ಇನ್ನಷ್ಟು ಕಠಿಣವಾಗುತ್ತದೆ. ಡಿಟೆಕ್ಟರ್ ತನ್ನ ಪ್ರತ್ಯೇಕ ಥ್ರೆಶ್‌ಹೋಲ್ಡ್ ಬಳಸಿ ದುರ್ಬಲ ಬಾಕ್ಸ್‌ಗಳನ್ನು ಇನ್ನೂ ಮೊದಲು ಪಾರ್ಸ್ ಮಾಡುತ್ತದೆ.";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "ಅತ್ಯಧಿಕ ವಿಶ್ವಾಸದ ಆಧಾರದ ಮೇಲೆ ಪ್ರಾಥಮಿಕ";
+"settings.primarySelectionByHighestConfidenceDescription" = "ಆನ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ಅತಿ ಹೆಚ್ಚು ಸ್ಕೋರ್ ಇರುವ ಬಾಕ್ಸ್ ಆಯ್ಕೆಮಾಡಿ. ಆಫ್: ಅವುಗಳಲ್ಲಿ ಅತಿ ದೊಡ್ಡ ಬಾಕ್ಸ್ ಆಯ್ಕೆಮಾಡಿ.";
+"settings.primarySelectionByHighestConfidenceFooter" = "ಎರಡೂ ಮೋಡ್‌ಗಳು ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ ಸ್ಲೈಡರ್‌ನಲ್ಲಿರುವ ಅಥವಾ ಅದಕ್ಕಿಂತ ಮೇಲಿನ ಪತ್ತೆಗಳನ್ನು ಮಾತ್ರ ಪರಿಗಣಿಸುತ್ತವೆ.";
 
 
 "settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "ಆಫ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ದೊಡ್ಡ ಪೆಟ್ಟಿಗೆಯನ್ನು ಆರಿಸಿ.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "ಎರಡೂ ಮೋಡ್‌ಗಳು ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ ಸ್ಲೈಡರ್‌ನಲ್ಲಿ ಅಥವಾ ಅದಕ್ಕಿಂತ ಹೆಚ್ಚಿನ ಪತ್ತೆಗಳನ್ನು ಮಾತ್ರ ಪರಿಗಣಿಸುತ್ತವೆ. ಪಾರ್ಸರ್/NMS ನಡವಳಿಕೆ ಬದಲಾಗುವುದಿಲ್ಲ.";
+"settings.primarySelectionBehaviorNote" = "ಪಾರ್ಸರ್/NMS ನಡವಳಿಕೆ ಬದಲಾಗುವುದಿಲ್ಲ.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ಏಕ ಚಿತ್ರ ಸ್ಕ್ಯಾನ್";
+
+"settings.imageScan" = "ಚಿತ್ರ ಸ್ಕ್ಯಾನ್";
+"settings.imageScanDescription" = "ಒಂದು ಫೋಟೋ ಆಯ್ಕೆ ಮಾಡಿ, ಸಾಧನದಲ್ಲೇ ಪೀಠೋಪಕರಣ ಪತ್ತೆ ಚಲಾಯಿಸಿ.";
+"settings.imageScanTapToChoose" = "ಫೋಟೋ ಆಯ್ಕೆ ಮಾಡಲು ತಟ್ಟಿರಿ";
+"settings.imageScanTapToChooseSubtitle" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಗಳನ್ನು ಪರಿಶೀಲಿಸಲು ಒಂದು ಚಿತ್ರವನ್ನು ಆಯ್ಕೆ ಮಾಡಿ.";
+"settings.imageScanFootnote" = "ಸ್ಕ್ಯಾನ್ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಕಾಣುವ ಒಂದು ಫೋಟೋ ಆಯ್ಕೆ ಮಾಡಿ.";
+"settings.imageScanLoadingPhoto" = "ಫೋಟೋ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+"settings.imageScanPreparingModel" = "ಮಾದರಿ ಸಿದ್ಧಗೊಳಿಸಲಾಗುತ್ತಿದೆ...";
+"settings.imageScanLoadFailed" = "ಈ ಫೋಟೋ ಲೋಡ್ ಆಗಲಿಲ್ಲ.";
 

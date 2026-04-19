@@ -448,12 +448,12 @@
 "settings.furnitureFitARCompanionUnavailable" = "इस डिवाइस पर दृश्य गहराई उपलब्ध नहीं है।";
 "settings.fullVideoWithIdentifications" = "पहचान के साथ पूर्ण वीडियो";
 "settings.fullVideoWithIdentificationsDescription" = "खंडित फर्नीचर ओवरले को स्वतः केंद्रित करने के बजाय पहचान बॉक्स और लेबल के साथ लाइव कैमरा फ़ीड दिखाएँ।";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
+"settings.primaryDetectionConfidence" = "प्राथमिक पहचान भरोसा";
+"settings.primaryDetectionConfidenceFooter" = "उम्मीदवारों में मुख्य फर्नीचर बॉक्स चुनने के लिए न्यूनतम मॉडल भरोसा (5–99%). कम मान अधिक बॉक्सों को योग्य रखते हैं; अधिक मान ज्यादा सख्त होते हैं। डिटेक्टर अभी भी अपने अलग थ्रेशहोल्ड का उपयोग करके कमजोर बॉक्सों को पहले पार्स करता है।";
 "settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+"settings.primarySelectionByHighestConfidence" = "सबसे अधिक भरोसे के आधार पर प्राथमिक";
+"settings.primarySelectionByHighestConfidenceDescription" = "ऑन: स्लाइडर के ऊपर वाले बॉक्सों में सबसे अधिक स्कोर वाला बॉक्स चुनें। ऑफ: उनमें सबसे बड़ा बॉक्स चुनें।";
+"settings.primarySelectionByHighestConfidenceFooter" = "दोनों मोड केवल प्राथमिक पहचान भरोसा स्लाइडर पर या उससे ऊपर की पहचान को ही मानते हैं।";
 
 
 "settings.roomMeasurementSection" = "कमरे का माप";
@@ -520,8 +520,17 @@
 "settings.primarySelectionByHighestConfidenceOff" = "ऑफ: स्लाइडर के ऊपर वाले बॉक्सों में से सबसे बड़े बॉक्स को चुनें।";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "दोनों मोड केवल प्राथमिक पहचान विश्वास स्लाइडर पर या उससे ऊपर की पहचान पर विचार करते हैं। पार्सर/NMS व्यवहार अपरिवर्तित रहता है।";
+"settings.primarySelectionBehaviorNote" = "Parser/NMS का व्यवहार अपरिवर्तित रहता है।";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "एकल छवि स्कैन";
+
+"settings.imageScan" = "छवि स्कैन";
+"settings.imageScanDescription" = "एक फोटो चुनें और डिवाइस पर ही फर्नीचर डिटेक्शन चलाएं।";
+"settings.imageScanTapToChoose" = "फोटो चुनने के लिए टैप करें";
+"settings.imageScanTapToChooseSubtitle" = "फर्नीचर डिटेक्शन देखने के लिए एक ही छवि चुनें।";
+"settings.imageScanFootnote" = "स्कैन डिवाइस पर ही रहता है। ऐसी साफ फोटो चुनें जिसमें फर्नीचर साफ दिखाई दे।";
+"settings.imageScanLoadingPhoto" = "फोटो लोड हो रही है...";
+"settings.imageScanPreparingModel" = "मॉडल तैयार किया जा रहा है...";
+"settings.imageScanLoadFailed" = "यह फोटो लोड नहीं हो सकी।";
 
