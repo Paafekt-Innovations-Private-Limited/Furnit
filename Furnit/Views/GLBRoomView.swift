@@ -203,6 +203,13 @@ struct GLBRoomView: View {
     @ObservedObject private var yoloeService = YOLOEModelService.shared
     @ObservedObject private var appState = AppStateManager.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
+    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
+    @State private var detectedFurnitureHeightAR: Float?
+    @State private var showFurnitureDimensionsInput = false
+    @State private var inputFurnitureHeight: String = ""
+    @State private var realFurnitureHeight: Float?
+    @State private var roomCalibrationScaleFactor: Float = 1.0
+    @State private var calibrationBaselineDetectedHeight: Float?
     @State private var showDiscardUnsavedAlert = false
 
     /// Brain / snapshot tap helpers — same as ``MeshRoomView`` (parity for GLB opened from Home).
@@ -231,6 +238,30 @@ struct GLBRoomView: View {
 
     private var canSegmentSelectedFurniture: Bool {
         showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
+    }
+
+    private var supportsMetricFurnitureMeasurementUI: Bool {
+        QualitySettings.supportsLiDARSceneDepth
+    }
+
+    private var calibratedRoomWidth: Float? {
+        roomWidth.map { $0 * roomCalibrationScaleFactor }
+    }
+
+    private var calibratedRoomHeight: Float? {
+        roomHeight.map { $0 * roomCalibrationScaleFactor }
+    }
+
+    private var calibratedRoomDepth: Float? {
+        roomDepth.map { $0 * roomCalibrationScaleFactor }
+    }
+
+    private var shouldShowArFurnitureMeasurementPill: Bool {
+        showingFurnitureFit &&
+            brainArAssistedSizingEnabled &&
+            supportsMetricFurnitureMeasurementUI &&
+            (detectedFurnitureHeightAR?.isFinite == true) &&
+            ((detectedFurnitureHeightAR ?? 0) > 0.05)
     }
 
     var body: some View {
@@ -295,9 +326,18 @@ struct GLBRoomView: View {
                     processInterval: 0.07,
                     active: true,
                     lockedOrientation: photoOrientation,
-                    roomWidthMeters: roomWidth ?? 4.0,
-                    roomHeightMeters: roomHeight ?? 3.0,
-                    onFurnitureSizeEstimated: { _ in },
+                    roomWidthMeters: calibratedRoomWidth ?? roomWidth ?? 4.0,
+                    roomHeightMeters: calibratedRoomHeight ?? roomHeight ?? 3.0,
+                    roomDepthMeters: calibratedRoomDepth ?? roomDepth ?? 4.0,
+                    onFurnitureSizeEstimated: { estimate in
+                        if let arHeight = estimate.arHeightMeters,
+                           arHeight.isFinite,
+                           arHeight > 0.05 {
+                            detectedFurnitureHeightAR = arHeight
+                        } else {
+                            detectedFurnitureHeightAR = nil
+                        }
+                    },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
                     onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
                     arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
@@ -314,6 +354,11 @@ struct GLBRoomView: View {
 
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
+            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+                calibrationOverlayView
+                    .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
+                    .onDisappear { calibrationBaselineDetectedHeight = nil }
+            }
 
             // Controls based on orientation
             if photoOrientation == .landscape {
@@ -394,6 +439,8 @@ struct GLBRoomView: View {
                 furnitureFitSegmentationMode = .identifyOnly
                 furnitureFitShowIdentifyLivePreview = true
                 selectedFurnitureFitLabels = []
+                detectedFurnitureHeightAR = nil
+                showFurnitureDimensionsInput = false
                 yoloeService.releaseResources()
             }
         }
@@ -427,14 +474,182 @@ struct GLBRoomView: View {
     }
 
     private var glbRoomDimensionsHintText: String {
-        if let w = roomWidth, let h = roomHeight, let d = roomDepth,
+        if let w = calibratedRoomWidth ?? roomWidth,
+           let h = calibratedRoomHeight ?? roomHeight,
+           let d = calibratedRoomDepth ?? roomDepth,
            w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
             return L10n.RoomViewer.roomDimensionsWHDManualChip(width: w, height: h, depth: d)
         }
-        if let w = roomWidth, let h = roomHeight, w > 0.05, h > 0.05, w.isFinite, h.isFinite {
+        if let w = calibratedRoomWidth ?? roomWidth,
+           let h = calibratedRoomHeight ?? roomHeight,
+           w > 0.05, h > 0.05, w.isFinite, h.isFinite {
             return L10n.RoomViewer.roomDimensionsWHManualChip(width: w, height: h)
         }
         return "3D Room"
+    }
+
+    private func furnitureMeasurementPillContent(showTapHint: Bool) -> some View {
+        let displayHeight = detectedFurnitureHeightAR ?? 0
+        return VStack(spacing: 2) {
+            if let displayedRoomHeight = calibratedRoomHeight ?? roomHeight {
+                Text(L10n.RoomViewer.roomMetersShort(displayedRoomHeight))
+                    .font(.caption2)
+                    .foregroundColor(roomCalibrationScaleFactor == 1.0 ? .white : .green)
+            }
+            Text(L10n.RoomViewer.furnitureMetersShort(realFurnitureHeight ?? displayHeight))
+                .font(.caption.bold())
+                .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+            if showTapHint {
+                Text(L10n.RoomViewer.tapToCalibrate)
+                    .font(.system(size: 9))
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.6))
+        .cornerRadius(6)
+    }
+
+    private var calibrationOverlayView: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture { showFurnitureDimensionsInput = false }
+            VStack(spacing: 16) {
+                Text(L10n.RoomViewer.calibrateRoomTitle)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text(L10n.RoomViewer.enterFurnitureHeightMeters)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text(L10n.RoomViewer.furnitureFullHeightHint)
+                    .font(.caption2)
+                    .foregroundColor(.gray.opacity(0.9))
+                if let height = calibrationBaselineDetectedHeight ?? detectedFurnitureHeightAR {
+                    Text(L10n.RoomViewer.detectedMeters(height))
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                }
+                Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .frame(width: 120, height: 44)
+                    .background(Color.white.opacity(0.1))
+                    .cornerRadius(8)
+                calibrationNumberPadView
+                HStack(spacing: 16) {
+                    Button(L10n.Common.cancel) {
+                        inputFurnitureHeight = ""
+                        showFurnitureDimensionsInput = false
+                    }
+                    .font(.body.bold())
+                    .foregroundColor(.red)
+                    .frame(width: 80, height: 40)
+                    .background(Color.red.opacity(0.2))
+                    .cornerRadius(8)
+
+                    Button(L10n.Common.apply) {
+                        applyCalibration()
+                    }
+                    .font(.body.bold())
+                    .foregroundColor(.green)
+                    .frame(width: 80, height: 40)
+                    .background(Color.green.opacity(0.2))
+                    .cornerRadius(8)
+                    .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
+                }
+            }
+            .padding(20)
+            .background(Color.black.opacity(0.95))
+            .cornerRadius(16)
+        }
+        .zIndex(99999)
+    }
+
+    private var calibrationNumberPadView: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<3, id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(1...3, id: \.self) { column in
+                        let digit = row * 3 + column
+                        Button(action: { appendDigit("\(digit)") }) {
+                            Text("\(digit)")
+                                .font(.title2.bold())
+                                .foregroundColor(.white)
+                                .frame(width: 50, height: 44)
+                                .background(Color.gray.opacity(0.3))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Button(action: {
+                    if !inputFurnitureHeight.contains(".") {
+                        inputFurnitureHeight += inputFurnitureHeight.isEmpty ? "0." : "."
+                    }
+                }) {
+                    Text(".")
+                        .font(.title2.bold())
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 44)
+                        .background(Color.gray.opacity(0.3))
+                        .cornerRadius(8)
+                }
+                Button(action: { appendDigit("0") }) {
+                    Text("0")
+                        .font(.title2.bold())
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 44)
+                        .background(Color.gray.opacity(0.3))
+                        .cornerRadius(8)
+                }
+                Button(action: {
+                    if !inputFurnitureHeight.isEmpty {
+                        inputFurnitureHeight.removeLast()
+                    }
+                }) {
+                    Image(systemName: "delete.left")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 44)
+                        .background(Color.gray.opacity(0.3))
+                        .cornerRadius(8)
+                }
+            }
+        }
+    }
+
+    private func applyCalibration() {
+        guard let realHeight = Float(inputFurnitureHeight),
+              let detectedHeight = calibrationBaselineDetectedHeight ?? detectedFurnitureHeightAR,
+              detectedHeight > 0 else {
+            inputFurnitureHeight = ""
+            showFurnitureDimensionsInput = false
+            return
+        }
+
+        let scaleFactor = realHeight / detectedHeight
+        roomCalibrationScaleFactor = scaleFactor
+        realFurnitureHeight = realHeight
+        NotificationCenter.default.post(
+            name: NSNotification.Name("GLBRoomScaleRoom"),
+            object: nil,
+            userInfo: ["factor": Double(scaleFactor)]
+        )
+        logDebug("📐 [GLB calibration] Real height: \(realHeight)m, scale factor: \(scaleFactor)")
+        inputFurnitureHeight = ""
+        showFurnitureDimensionsInput = false
+    }
+
+    private func appendDigit(_ digit: String) {
+        if inputFurnitureHeight.count >= 5 { return }
+        if let dotIndex = inputFurnitureHeight.firstIndex(of: ".") {
+            let decimals = inputFurnitureHeight.distance(from: dotIndex, to: inputFurnitureHeight.endIndex) - 1
+            if decimals >= 2 { return }
+        }
+        inputFurnitureHeight += digit
     }
 
     private var navigationBarRoomMeasurementPrincipal: some View {
@@ -1020,8 +1235,19 @@ struct GLBRoomView: View {
 
                 Spacer()
 
-                snapshotButtonWithHintAbove
-                    .padding(.trailing, 16)
+                VStack(spacing: 10) {
+                    if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                        if showRoomFurnitureCalibrate {
+                            Button(action: { showFurnitureDimensionsInput = true }) {
+                                furnitureMeasurementPillContent(showTapHint: true)
+                            }
+                        } else {
+                            furnitureMeasurementPillContent(showTapHint: false)
+                        }
+                    }
+                    snapshotButtonWithHintAbove
+                }
+                .padding(.trailing, 16)
             }
             .padding(.bottom, 20)
         }
@@ -1057,7 +1283,18 @@ struct GLBRoomView: View {
 
                 Spacer()
 
-                snapshotButtonWithHintAbove
+                VStack(spacing: 10) {
+                    if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                        if showRoomFurnitureCalibrate {
+                            Button(action: { showFurnitureDimensionsInput = true }) {
+                                furnitureMeasurementPillContent(showTapHint: true)
+                            }
+                        } else {
+                            furnitureMeasurementPillContent(showTapHint: false)
+                        }
+                    }
+                    snapshotButtonWithHintAbove
+                }
             }
             .padding(.horizontal, 30)
             .padding(.bottom, 20)
@@ -1203,6 +1440,12 @@ struct GLBWebGLView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLCameraMoveDown"),
                 object: nil
             )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(scaleGLBRoom(_:)),
+                name: NSNotification.Name("GLBRoomScaleRoom"),
+                object: nil
+            )
         }
 
         deinit {
@@ -1227,6 +1470,12 @@ struct GLBWebGLView: UIViewRepresentable {
 
         @objc private func nudgeGLBCameraDown() {
             webView?.evaluateJavaScript("if (typeof moveCameraUp === 'function') moveCameraUp(-0.2);", completionHandler: nil)
+        }
+
+        @objc private func scaleGLBRoom(_ notification: Notification) {
+            guard let factor = notification.userInfo?["factor"] as? Double, factor.isFinite, factor > 0 else { return }
+            let js = "if (typeof window.scaleRoom === 'function') { window.scaleRoom(\(factor)); }"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -1304,6 +1553,10 @@ struct GLBWebGLView: UIViewRepresentable {
                 console.log('[GLBViewer] Starting...');
 
                 let roomBoundsForClamping = null;
+                const scaledRoomSize = new THREE.Vector3(0, 0, 0);
+                const modelSize = new THREE.Vector3(0, 0, 0);
+                const initialCameraPos = new THREE.Vector3(0, 2, 5);
+                const initialTarget = new THREE.Vector3(0, 2, 0);
 
                 // Scene setup
                 const scene = new THREE.Scene();
@@ -1414,6 +1667,7 @@ struct GLBWebGLView: UIViewRepresentable {
                         const box = new THREE.Box3().setFromObject(model);
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3());
+                        modelSize.copy(size);
 
                         console.log('[GLBViewer] Model bounds - center:', center, 'size:', size);
 
@@ -1423,37 +1677,44 @@ struct GLBWebGLView: UIViewRepresentable {
                         // Adjust Y so floor is at 0
                         model.position.y = -box.min.y;
 
-                        const boxWorld = new THREE.Box3().setFromObject(model);
+                        function applyScaleAndReframe(scaleFactor) {
+                            if (typeof scaleFactor !== 'number' || !isFinite(scaleFactor) || scaleFactor <= 0) return;
+                            model.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                            const boxWorld = new THREE.Box3().setFromObject(model);
+                            roomBoundsForClamping.minX = boxWorld.min.x + 0.05;
+                            roomBoundsForClamping.maxX = boxWorld.max.x - 0.05;
+                            roomBoundsForClamping.minY = boxWorld.min.y + 0.05;
+                            roomBoundsForClamping.maxY = boxWorld.max.y - 0.05;
+                            roomBoundsForClamping.minZ = boxWorld.min.z + 0.05;
+                            roomBoundsForClamping.maxZ = boxWorld.max.z - 0.02;
+
+                            const roomWidth = modelSize.x * scaleFactor;
+                            const roomHeight = modelSize.y * scaleFactor;
+                            const roomDepth = modelSize.z * scaleFactor;
+                            scaledRoomSize.set(roomWidth, roomHeight, roomDepth);
+
+                            const eyeHeight = roomHeight * 0.5;
+                            const cameraZ = roomDepth * 0.2;
+                            const targetZ = -roomDepth * 0.2;
+
+                            initialCameraPos.set(0, eyeHeight, cameraZ);
+                            initialTarget.set(0, eyeHeight, targetZ);
+                            camera.position.copy(initialCameraPos);
+                            controls.target.copy(initialTarget);
+                            controls.maxDistance = Math.max(roomWidth, roomDepth) * 2.0;
+                            controls.update();
+                            console.log('[GLBViewer] Room scaled by factor:', scaleFactor);
+                        }
+
                         roomBoundsForClamping = {
-                            minX: boxWorld.min.x + 0.05,
-                            maxX: boxWorld.max.x - 0.05,
-                            minY: boxWorld.min.y + 0.05,
-                            maxY: boxWorld.max.y - 0.05,
-                            minZ: boxWorld.min.z + 0.05,
-                            maxZ: boxWorld.max.z - 0.02
+                            minX: 0,
+                            maxX: 0,
+                            minY: 0,
+                            maxY: 0,
+                            minZ: 0,
+                            maxZ: 0
                         };
-
-                        // Position camera inside the room looking at front wall
-                        // After centering: room spans -size/2 to +size/2 in X and Z
-                        // Front wall is at Z = -roomDepth/2, back (open) is at Z = +roomDepth/2
-                        const roomWidth = size.x;
-                        const roomHeight = size.y;
-                        const roomDepth = size.z;
-
-                        // Camera at back part of room, eye level, looking at front wall
-                        const eyeHeight = roomHeight * 0.5;
-                        // Position camera 30% into the room from back (+Z side)
-                        const cameraZ = roomDepth * 0.2;
-                        // Look at center-front of room (towards -Z)
-                        const targetZ = -roomDepth * 0.2;
-
-                        camera.position.set(0, eyeHeight, cameraZ);
-                        controls.target.set(0, eyeHeight, targetZ);
-                        controls.update();
-
-                        // Save initial camera state for recenter
-                        const initialCameraPos = camera.position.clone();
-                        const initialTarget = controls.target.clone();
+                        applyScaleAndReframe(1);
 
                         // Recenter function
                         window.recenterCamera = function() {
@@ -1463,8 +1724,12 @@ struct GLBWebGLView: UIViewRepresentable {
                             console.log('[GLBViewer] Camera recentered');
                         };
 
-                        console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
-                        console.log('[GLBViewer] Camera at (0,', eyeHeight.toFixed(2), ',', cameraZ.toFixed(2), '), looking at (0,', eyeHeight.toFixed(2), ',', targetZ.toFixed(2), ')');
+                        window.scaleRoom = function(factor) {
+                            applyScaleAndReframe(factor);
+                        };
+
+                        console.log('[GLBViewer] Room size:', scaledRoomSize.x.toFixed(2), 'x', scaledRoomSize.y.toFixed(2), 'x', scaledRoomSize.z.toFixed(2));
+                        console.log('[GLBViewer] Camera at (0,', initialCameraPos.y.toFixed(2), ',', initialCameraPos.z.toFixed(2), '), looking at (0,', initialTarget.y.toFixed(2), ',', initialTarget.z.toFixed(2), ')');
 
                         // Notify Swift that we're loaded
                         window.webkit.messageHandlers.glbViewer.postMessage({ event: 'loaded' });
