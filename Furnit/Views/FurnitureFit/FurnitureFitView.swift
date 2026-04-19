@@ -217,13 +217,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
-    var confidenceThreshold: Float = 0.1
+    var confidenceThreshold: Float = 0.10
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
     /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area).
-    /// When `false`, primary comes from the **10 largest** qualifying boxes by area, then picks the **highest confidence** within that shortlist.
+    /// When `false`, primary comes from the **3 largest** qualifying boxes by area, then picks the **highest confidence** within that shortlist.
     var primarySelectionByHighestConfidence: Bool = false
-    /// Lower confidence threshold used only for secondary contributors whose centers land inside the primary bbox.
+    /// Lower parse threshold used only for low-confidence secondary contributors.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.01
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
@@ -2963,7 +2963,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 let primaryCandidate = candidates[primaryIdx]
                 let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                     primaryIndex: primaryIdx,
-                    detections: candidates
+                    detections: candidates,
+                    protos: planes,
+                    protoHeight: pH,
+                    protoWidth: pW,
+                    modelSide: onnxSide
                 )
                 let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primaryCandidate, onnxSide: onnxSide)
                 var fusedDetections: [FurnitureFitDetection] = [expandedPrimary]
@@ -2974,7 +2978,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     planes: planes,
                     protoW: pW,
                     protoH: pH,
-                    detections: fusedDetections
+                    detections: fusedDetections,
+                    modelSide: onnxSide
                 )
                 var fusedLogits = fusedMaskResult.logits
                 if currentYoloInputVerticallyFlipped {
@@ -3146,12 +3151,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let lowConfidencePrimaryContributors = lowConfidenceInsidePrimaryContributors(
             detArray: detArray,
             primary: primary,
-            blacklist: clsToIgnore
+            blacklist: clsToIgnore,
+            protos: planes,
+            protoHeight: pH,
+            protoWidth: pW,
+            modelSide: onnxSide
         )
         if debugMode, !lowConfidencePrimaryContributors.isEmpty {
             logDebug(
-                "🧵 ONNX-STYLE (\(stage2DebugLabel)) low-threshold inside-primary contributors: " +
-                "\(lowConfidencePrimaryContributors.count) (conf≥\(furnitureFitInsidePrimaryContributorConfidenceThreshold))"
+                "🧵 ONNX-STYLE (\(stage2DebugLabel)) mask-overlap reparsed contributors: " +
+                "\(lowConfidencePrimaryContributors.count) (conf≥\(furnitureFitInsidePrimaryContributorConfidenceThreshold), overlap≥0.15)"
             )
         }
 
@@ -3177,7 +3186,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // etc.), with an expanded primary bbox for mask synthesis.
             var maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
                 primaryIndex: primaryIdx,
-                detections: candidates
+                detections: candidates,
+                protos: planes,
+                protoHeight: pH,
+                protoWidth: pW,
+                modelSide: onnxSide
             )
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &maskSource)
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
@@ -3197,7 +3210,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             planes: planes,
             protoW: pW,
             protoH: pH,
-            detections: maskDetectionsForBuild
+            detections: maskDetectionsForBuild,
+            modelSide: onnxSide
         )
         var maskLogitsFused = maskBuilt.logits
         var maskBinaryFused = maskBuilt.binary
@@ -3615,18 +3629,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
-    private func centerInsidePrimaryBoundingBox(_ detection: FurnitureFitDetection, primary: FurnitureFitDetection) -> Bool {
-        let primaryLeft = primary.x - primary.w * 0.5
-        let primaryTop = primary.y - primary.h * 0.5
-        let primaryRight = primary.x + primary.w * 0.5
-        let primaryBottom = primary.y + primary.h * 0.5
-        return
-            detection.x >= primaryLeft &&
-            detection.x <= primaryRight &&
-            detection.y >= primaryTop &&
-            detection.y <= primaryBottom
-    }
-
     private func appendUniqueMaskContributors(
         from additions: [FurnitureFitDetection],
         to existing: inout [FurnitureFitDetection]
@@ -3645,10 +3647,24 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func lowConfidenceInsidePrimaryContributors(
         detArray: MLMultiArray,
         primary: FurnitureFitDetection,
-        blacklist: Set<Int>
+        blacklist: Set<Int>,
+        protos: [Float],
+        protoHeight: Int,
+        protoWidth: Int,
+        modelSide: Int
     ) -> [FurnitureFitDetection] {
         let lowerConfidenceThreshold = furnitureFitInsidePrimaryContributorConfidenceThreshold
         guard lowerConfidenceThreshold < confidenceThreshold else { return [] }
+        guard primary.coeffs.count >= 32 else { return [] }
+
+        let spatialSize = protoHeight * protoWidth
+        let primaryBinary = FurnitureFitOnnxStylePipeline.buildBboxBinaryMask(
+            detection: primary,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide,
+            spatialSize: spatialSize
+        )
 
         let lowThresholdDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
@@ -3658,12 +3674,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
         guard !lowThresholdDetections.isEmpty else { return [] }
 
-        let blacklistFilteredDetections = FurnitureFitFilter.excludingClasses(
-            lowThresholdDetections,
-            blacklist: blacklist
+        let sortedDetections = lowThresholdDetections.sorted { $0.confidence > $1.confidence }
+        let cappedDetections = Array(sortedDetections.prefix(100))
+        let dedupedDetections = FurnitureFitNMS.applySortedByConfidence(
+            detections: cappedDetections,
+            iouThreshold: 0.5
         )
-        return blacklistFilteredDetections
-            .filter { $0.coeffs.count >= 32 && centerInsidePrimaryBoundingBox($0, primary: primary) }
+        let filteredDetections = dedupedDetections
+            .filter { !blacklist.contains($0.classIdx) }
+            .filter { $0.coeffs.count >= 32 }
+        return filteredDetections
+            .filter {
+                let overlap = FurnitureFitOnnxStylePipeline.childOverlapsFraction(
+                    childDetection: $0,
+                    primaryBinary: primaryBinary,
+                    protos: protos,
+                    protoWidth: protoWidth,
+                    protoHeight: protoHeight,
+                    modelSide: modelSide
+                )
+                return overlap >= 0.15
+            }
             .sorted { $0.confidence > $1.confidence }
     }
 
@@ -4587,7 +4618,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 planes: planes,
                 protoW: protoW,
                 protoH: protoH,
-                detections: [detection]
+                detections: [detection],
+                modelSide: modelSide
             )
             var perDetectionLogits = perDetectionBuilt.logits
             if currentYoloInputVerticallyFlipped {

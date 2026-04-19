@@ -128,31 +128,256 @@ enum FurnitureFitOnnxStylePipeline {
             v11 * tx * ty
     }
 
-    /// Android `collectMaskDetections` (returns list for mask fusion, primary first).
-    /// Merge any other detection whose bbox center lies inside the primary bbox.
+    /// Computes what fraction of a child detection's mask pixels overlap the
+    /// primary detection's mask pixels at proto resolution.
+    static func maskOverlapFraction(
+        childCoeffs: [Float],
+        primaryCoeffs: [Float],
+        protos: [Float],
+        protoHeight: Int,
+        protoWidth: Int
+    ) -> Float {
+        let spatialSize = protoHeight * protoWidth
+        let numProtos = childCoeffs.count
+
+        guard numProtos > 0, protos.count == numProtos * spatialSize else { return 0 }
+
+        var childLogits = [Float](repeating: 0, count: spatialSize)
+
+        cblas_sgemv(
+            CblasRowMajor,
+            CblasTrans,
+            Int32(numProtos),
+            Int32(spatialSize),
+            1.0,
+            protos,
+            Int32(spatialSize),
+            childCoeffs,
+            1,
+            0.0,
+            &childLogits,
+            1
+        )
+
+        var primaryLogits = [Float](repeating: 0, count: spatialSize)
+
+        cblas_sgemv(
+            CblasRowMajor,
+            CblasTrans,
+            Int32(numProtos),
+            Int32(spatialSize),
+            1.0,
+            protos,
+            Int32(spatialSize),
+            primaryCoeffs,
+            1,
+            0.0,
+            &primaryLogits,
+            1
+        )
+
+        var childBinary = [Float](repeating: 0, count: spatialSize)
+        var primaryBinary = [Float](repeating: 0, count: spatialSize)
+        var zero: Float = 0.0
+        var one: Float = 1.0
+
+        vDSP_vthres(childLogits, 1, &zero, &childBinary, 1, vDSP_Length(spatialSize))
+        vDSP_vclip(childBinary, 1, &zero, &one, &childBinary, 1, vDSP_Length(spatialSize))
+
+        vDSP_vthres(primaryLogits, 1, &zero, &primaryBinary, 1, vDSP_Length(spatialSize))
+        vDSP_vclip(primaryBinary, 1, &zero, &one, &primaryBinary, 1, vDSP_Length(spatialSize))
+
+        var intersection = [Float](repeating: 0, count: spatialSize)
+        vDSP_vmul(childBinary, 1, primaryBinary, 1, &intersection, 1, vDSP_Length(spatialSize))
+
+        var childPixelCount: Float = 0
+        var overlapPixelCount: Float = 0
+        vDSP_sve(childBinary, 1, &childPixelCount, vDSP_Length(spatialSize))
+        vDSP_sve(intersection, 1, &overlapPixelCount, vDSP_Length(spatialSize))
+
+        guard childPixelCount > 0 else { return 0 }
+        return overlapPixelCount / childPixelCount
+    }
+
+    /// Pre-compute the primary binary mask once and reuse it for child overlap checks.
+    static func buildBinaryMask(
+        coeffs: [Float],
+        protos: [Float],
+        spatialSize: Int
+    ) -> [Float] {
+        let numProtos = coeffs.count
+        var logits = [Float](repeating: 0, count: spatialSize)
+
+        cblas_sgemv(
+            CblasRowMajor, CblasTrans,
+            Int32(numProtos), Int32(spatialSize),
+            1.0, protos, Int32(spatialSize),
+            coeffs, 1,
+            0.0, &logits, 1
+        )
+
+        var binary = [Float](repeating: 0, count: spatialSize)
+        var zero: Float = 0.0
+        var one: Float = 1.0
+        vDSP_vthres(logits, 1, &zero, &binary, 1, vDSP_Length(spatialSize))
+        vDSP_vclip(binary, 1, &zero, &one, &binary, 1, vDSP_Length(spatialSize))
+
+        return binary
+    }
+
+    static func buildBboxBinaryMask(
+        detection: FurnitureFitDetection,
+        protoWidth: Int,
+        protoHeight: Int,
+        modelSide: Int,
+        spatialSize: Int
+    ) -> [Float] {
+        var mask = [Float](repeating: 0, count: spatialSize)
+        guard let bbox = protoBounds(
+            for: detection,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide
+        ) else { return mask }
+
+        for row in bbox.top...bbox.bottom {
+            let start = row * protoWidth + bbox.left
+            let length = bbox.right - bbox.left + 1
+            for columnOffset in 0..<length {
+                mask[start + columnOffset] = 1.0
+            }
+        }
+        return mask
+    }
+
+    static func protoBounds(
+        for detection: FurnitureFitDetection,
+        protoWidth: Int,
+        protoHeight: Int,
+        modelSide: Int
+    ) -> (left: Int, top: Int, right: Int, bottom: Int)? {
+        guard protoWidth > 0, protoHeight > 0, modelSide > 0 else { return nil }
+
+        let widthRatio = Float(protoWidth) / Float(modelSide)
+        let heightRatio = Float(protoHeight) / Float(modelSide)
+        let edgeBias: Float = 0.0
+        let maxX = Float(protoWidth - 1)
+        let maxY = Float(protoHeight - 1)
+
+        let x1Proto = max(0, min(maxX, (detection.x - detection.w * 0.5) * widthRatio))
+        let y1Proto = max(0, min(maxY, (detection.y - detection.h * 0.5) * heightRatio))
+        let x2Proto = max(0, min(maxX, (detection.x + detection.w * 0.5) * widthRatio))
+        let y2Proto = max(0, min(maxY, (detection.y + detection.h * 0.5) * heightRatio))
+
+        let bboxLeft = Int(floor(x1Proto - edgeBias)).clamped(to: 0...(protoWidth - 1))
+        let bboxTop = Int(floor(y1Proto - edgeBias)).clamped(to: 0...(protoHeight - 1))
+        let bboxRight = Int(ceil(x2Proto + edgeBias)).clamped(to: 0...(protoWidth - 1))
+        let bboxBottom = Int(ceil(y2Proto + edgeBias)).clamped(to: 0...(protoHeight - 1))
+        guard bboxLeft <= bboxRight, bboxTop <= bboxBottom else { return nil }
+        return (bboxLeft, bboxTop, bboxRight, bboxBottom)
+    }
+
+    /// Fast overlap check using a pre-computed primary mask.
+    static func childOverlapsFraction(
+        childDetection: FurnitureFitDetection,
+        primaryBinary: [Float],
+        protos: [Float],
+        protoWidth: Int,
+        protoHeight: Int,
+        modelSide: Int
+    ) -> Float {
+        let spatialSize = protoWidth * protoHeight
+        let childCoefficients = Array(childDetection.coeffs.prefix(32))
+        let numProtos = childCoefficients.count
+        var childLogits = [Float](repeating: 0, count: spatialSize)
+
+        cblas_sgemv(
+            CblasRowMajor, CblasTrans,
+            Int32(numProtos), Int32(spatialSize),
+            1.0, protos, Int32(spatialSize),
+            childCoefficients, 1,
+            0.0, &childLogits, 1
+        )
+
+        guard let bbox = protoBounds(
+            for: childDetection,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide
+        ) else { return 0 }
+
+        var bboxMask = [Float](repeating: 0, count: spatialSize)
+        for row in bbox.top...bbox.bottom {
+            let rowStart = row * protoWidth + bbox.left
+            let rowLength = bbox.right - bbox.left + 1
+            for columnOffset in 0..<rowLength {
+                bboxMask[rowStart + columnOffset] = 1.0
+            }
+        }
+        vDSP_vmul(childLogits, 1, bboxMask, 1, &childLogits, 1, vDSP_Length(spatialSize))
+
+        var childBinary = [Float](repeating: 0, count: spatialSize)
+        let childThreshold: Float = 0.0
+        var negativeChildThreshold = -childThreshold
+        var zero: Float = 0.0
+        var one: Float = 1.0
+        // Use the standard logit > 0 test after cropping the child mask to its own
+        // proto-space bbox so overlap is measured only within the detection region.
+        vDSP_vsadd(childLogits, 1, &negativeChildThreshold, &childBinary, 1, vDSP_Length(spatialSize))
+        vDSP_vthres(childBinary, 1, &zero, &childBinary, 1, vDSP_Length(spatialSize))
+        vDSP_vclip(childBinary, 1, &zero, &one, &childBinary, 1, vDSP_Length(spatialSize))
+
+        var intersection = [Float](repeating: 0, count: spatialSize)
+        vDSP_vmul(childBinary, 1, primaryBinary, 1, &intersection, 1, vDSP_Length(spatialSize))
+
+        var childCount: Float = 0
+        var overlapCount: Float = 0
+        vDSP_sve(childBinary, 1, &childCount, vDSP_Length(spatialSize))
+        vDSP_sve(intersection, 1, &overlapCount, vDSP_Length(spatialSize))
+
+        return childCount > 0 ? overlapCount / childCount : 0
+    }
+
+    /// Returns the primary first, followed by detections whose proto masks overlap it.
     static func collectMaskDetections(
         primaryIndex: Int,
-        detections: [FurnitureFitDetection]
+        detections: [FurnitureFitDetection],
+        protos: [Float],
+        protoHeight: Int,
+        protoWidth: Int,
+        modelSide: Int,
+        minOverlapFraction: Float = 0.15
     ) -> [FurnitureFitDetection] {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
-        let primaryDetection = detections[primaryIndex]
+        let primary = detections[primaryIndex]
+        guard primary.coeffs.count >= 32 else { return [primary] }
 
-        let primaryLeft = primaryDetection.x - primaryDetection.w * 0.5
-        let primaryTop = primaryDetection.y - primaryDetection.h * 0.5
-        let primaryRight = primaryDetection.x + primaryDetection.w * 0.5
-        let primaryBottom = primaryDetection.y + primaryDetection.h * 0.5
+        let spatialSize = protoHeight * protoWidth
+        let primaryBinary = buildBboxBinaryMask(
+            detection: primary,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide,
+            spatialSize: spatialSize
+        )
 
-        var maskDetections: [FurnitureFitDetection] = [primaryDetection]
+        var maskDetections: [FurnitureFitDetection] = [primary]
         for (idx, detection) in detections.enumerated() {
             guard idx != primaryIndex else { continue }
             guard detection.coeffs.count >= 32 else { continue }
-            let centerInsidePrimary =
-                detection.x >= primaryLeft &&
-                detection.x <= primaryRight &&
-                detection.y >= primaryTop &&
-                detection.y <= primaryBottom
-            guard centerInsidePrimary else { continue }
-            maskDetections.append(detection)
+
+            let overlap = childOverlapsFraction(
+                childDetection: detection,
+                primaryBinary: primaryBinary,
+                protos: protos,
+                protoWidth: protoWidth,
+                protoHeight: protoHeight,
+                modelSide: modelSide
+            )
+
+            if overlap >= minOverlapFraction {
+                maskDetections.append(detection)
+            }
         }
         return maskDetections
     }
@@ -233,15 +458,14 @@ enum FurnitureFitOnnxStylePipeline {
     // MARK: - Full-field logit mask (process_mask_native)
 
     /// Ultralytics `process_mask_native`: coeffs @ protos for ALL 160×160 pixels.
-    /// Unlike `buildBboxLimitedLogitMask*`, this does **not** crop to the detection
-    /// bbox in proto space — every pixel gets a real logit value, so bilinear
-    /// upsampling at bbox edges uses actual negative values instead of artificial
-    /// zeros.  For a single detection, this is 160×160×32 ≈ 820 K multiply-adds.
+    /// The first detection stays full-field, while later contributor detections are
+    /// cropped back to their own proto-space bbox before fusion.
     static func buildFullFieldLogitMask(
         planes: [Float],
         protoW: Int,
         protoH: Int,
-        detections: [FurnitureFitDetection]
+        detections: [FurnitureFitDetection],
+        modelSide: Int
     ) -> (binary: [UInt8], logits: [Float]) {
         let hwProto = protoW * protoH
         guard planes.count >= 32 * hwProto else {
@@ -305,6 +529,30 @@ enum FurnitureFitOnnxStylePipeline {
                             vDSP_Length(batchCount),
                             matrixDepth
                         )
+                    }
+                }
+            }
+
+            for detectionOffset in 0..<batchCount {
+                let globalDetectionIndex = batchStart + detectionOffset
+                guard globalDetectionIndex > 0 else { continue }
+                let detection = validDetections[globalDetectionIndex]
+                guard let bbox = protoBounds(
+                    for: detection,
+                    protoWidth: protoW,
+                    protoHeight: protoH,
+                    modelSide: modelSide
+                ) else { continue }
+
+                for protoRow in 0..<protoH {
+                    let rowOffset = protoRow * protoW
+                    for protoColumn in 0..<protoW {
+                        if protoRow < bbox.top ||
+                            protoRow > bbox.bottom ||
+                            protoColumn < bbox.left ||
+                            protoColumn > bbox.right {
+                            logitsBatch[(rowOffset + protoColumn) * batchCount + detectionOffset] = -999.0
+                        }
                     }
                 }
             }
