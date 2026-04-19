@@ -9,7 +9,6 @@ import Accelerate
 import AVFoundation
 import ARKit
 import QuartzCore
-import CoreMotion
 import SceneKit
 import CoreText
 import MetalKit
@@ -34,8 +33,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
     @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
-
-    @ObservedObject private var appState = AppStateManager.shared
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let v = FurnitureFitContainerView()
@@ -71,10 +68,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
 }
 
 // MARK: - Detection & Sizing Types
-// Note: Using FurnitureFitDetection from FurnitureFitUtils.swift (single source of truth)
-// typealias kept for minimal code changes
-typealias UnionDet = FurnitureFitDetection
-
 /// High-level furniture size estimate surfaced to SharpRoom / viewers.
 struct FurnitureSizeEstimate {
     /// Width from room-model intrinsics when available, else bbox × room width (no-LiDAR fallback).
@@ -280,10 +273,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
-    /// SAM-style small-hole cleanup: fill only enclosed background connected-components below an area cap.
-    private let furnitureFitCompositeRemoveSmallHoles: Bool = true
-    /// Max enclosed background component size (pixels in the composite band) to fill as a hole.
-    private let furnitureFitCompositeSmallHoleAreaThreshold: Int = 4096
     var useBilinearUpscaling: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
@@ -302,18 +291,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var cameraFocalLengthPixels: Float = 0
 
     private var captureBackCamera: AVCaptureDevice?
-    private var lastSceneFitmentLogAt: CFAbsoluteTime = 0
-    private let deviceMotionManager = CMMotionManager()
-    private let deviceMotionQueue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "FurnitureFitDeviceMotionQueue"
-        queue.qualityOfService = .userInitiated
-        queue.maxConcurrentOperationCount = 1
-        return queue
-    }()
-    private let devicePitchLock = NSLock()
-    private var latestDevicePitchRadians: Float?
-
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
     /// Mean straight sRGB (0…1) over opaque-enough pixels of the composited segmentation cutout; throttled (~4 Hz).
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
@@ -441,10 +418,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         isUsingARCameraPath || isARDepthCompanionSessionRunning
     }
 
-    /// Not started while `AVCaptureSession` runs — a second `ARSession` still grabs the back camera (Fig -17281).
-    private let asyncDepthSampler = FurnitureFitAsyncDepthSampler()
-    /// Bumps on each `startClassicCameraPathIfNeeded` so a stale deferred AR `run` cannot fire after reconfigure.
-    private var arCompanionStartGeneration: UInt64 = 0
     /// Set when AVCapture reports Fig-style contention so we drop AR for the rest of this container session (until `stop()`).
     private var suppressARDepthCompanionAfterCaptureFailure = false
     private var furnitureFitCameraStartupInitiated = false
@@ -457,7 +430,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var snapArOverlayScaleAfterPrimaryChange = false
     /// When depth/estimation drops for a few frames, keep last AR scale instead of snapping to 1× (avoids small/big flicker).
     private var arAssistedConsecutiveMisses: Int = 0
-    private let maxArAssistedHoldMisses: Int = 18
     /// Latest AR-estimated furniture height in meters (UI only; does not affect segmentation).
     private var lastAREstimatedHeightMeters: Float?
     /// Raw furniture estimate before user pinch is applied; used to republish the pill immediately on manual resize.
@@ -616,25 +588,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var lastFurnitureFitARFrameLogAt: TimeInterval = 0
     private let furnitureFitARLogInterval: TimeInterval = 0.5
 
-    /// Throttled premultiplied RGBA sample at bbox center (filter: `FurnitureFit` + debugMode).
-    private var lastCompositePremulRGBAlogAt: TimeInterval = 0
-    private let compositePremulRGBAlogInterval: TimeInterval = 0.5
-    /// Throttled sampled binary-mask shape log for the current composited object.
-    private var lastCompositeMaskShapeLogAt: TimeInterval = 0
-    private let compositeMaskShapeLogInterval: TimeInterval = 0.5
-    /// Throttled pre-composite ASCII mask log for chair-like detections.
-    private var lastChairMaskLogAt: TimeInterval = 0
-    private let chairMaskLogInterval: TimeInterval = 0.75
-    /// Throttled staged mask comparison for the primary chair bbox.
-    private var lastChairStageComparisonLogAt: TimeInterval = 0
-    private let chairStageComparisonLogInterval: TimeInterval = 0.75
-    /// Throttled per-pixel contributor log for opaque chair-handle regions.
-    private var lastChairContributorLogAt: TimeInterval = 0
-    private let chairContributorLogInterval: TimeInterval = 0.75
-    /// Throttled numeric logit grids (proto + bilinear) for chair structure / handle debugging.
-    private var lastChairLogitGridLogAt: TimeInterval = 0
-    private let chairLogitGridLogInterval: TimeInterval = 1.25
-
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
     /// All current candidate bboxes in pre-transform overlay coordinates. Used for drawing and tap-selection.
@@ -661,10 +614,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private weak var overlayPanGesture: UIPanGestureRecognizer?
     /// Stored reference so bbox taps can coexist with pan/pinch.
     private weak var overlayTapGesture: UITapGestureRecognizer?
-    /// Smoothed **tight** primary bbox in image coords (model box, no margin). Used for mask clip so multi-candidate cannot spill outside the detection.
-    private var smoothedTightPrimaryBbox: (x1: Float, y1: Float, x2: Float, y2: Float)?
-    private let bboxSmoothingAlpha: Float = 0.35  // 0 = no smoothing, 1 = no memory
-    private let bboxExpandMargin: Float = 0.08     // 8% expansion on each side
     /// Auto-primary hysteresis state for identify-only mode.
     private var stableAutoPrimaryDetection: FurnitureFitDetection?
     private var pendingAutoPrimaryDetection: FurnitureFitDetection?
@@ -673,29 +622,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let autoPrimarySwitchRequiredFrames: Int = 3
     private let autoPrimaryConfidenceSwitchGain: Float = 1.08
     private let autoPrimaryConfidenceSwitchMargin: Float = 0.03
-    private let autoPrimaryAreaShortlistCount: Int = 10
-
-    /// STAGE 5a–5b: prune / bbox dedupe for extra furniture. Off = primary detection only in `kept2`.
-    private var useMultiCandidateStage5 = true
+    private let autoPrimaryAreaShortlistCount: Int = 3
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
     private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
     private var metalLibrary: MTLLibrary?            // FIXED: was computed property creating new library on every access
-    private var compositePipeline: MTLComputePipelineState?
-    private var fusedMaskCompositePipeline: MTLComputePipelineState?
-    /// Fused compositing using Swift morphed prototype mask (same geometry as `sp_maxMaskAndComposite`, no logit loop).
-    private var fusedMaskMorphedCompositePipeline: MTLComputePipelineState?
     /// process_mask_native: bilinear upsample + threshold >0 on GPU.
     private var bilinearUpsamplePipeline: MTLComputePipelineState?
-
-    // MARK: - Cached Metal buffers for fused compositing (prevents allocation per frame)
-    private var cachedFusedPlanesBuf: MTLBuffer?
-    private var cachedFusedCoeffBuf: MTLBuffer?
-    private var cachedFusedPlanesCapacity: Int = 0
-    private var cachedFusedCoeffCapacity: Int = 0
-    private var cachedFusedProtoMaskBuf: MTLBuffer?
-    private var cachedFusedProtoMaskCapacity: Int = 0
 
     // MARK: - Cached Metal buffers for bilinear upsample (process_mask_native)
     private var cachedLogitBuf: MTLBuffer?
@@ -709,7 +643,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Reusable prototype buffers (FIXED: prevents ~26MB allocation per frame)
     private var protoRawFloats: [Float] = []
     private var protoPlanes: [Float] = []
-    private var protoPlanesInterleaved: [Float] = []
 
     // Once-per-session diagnostic logs to verify proto/det tensor layouts hit the Accelerate fast paths.
     // Reset on session stop so a new model/shape emits fresh diagnostics.
@@ -901,198 +834,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func displayClassName(_ id: Int) -> String {
         classNames[id] ?? "unknown"
-    }
-
-    private func isChairLikeClass(_ id: Int) -> Bool {
-        displayClassName(id).lowercased().contains("chair")
-    }
-
-    private enum ProtoDebugLayout: String {
-        case channelFirst = "CHW"
-        case interleavedPixelFirst = "PIXELxC"
-    }
-
-    private func buildSingleDetectionMaskForDebug(
-        channelFirstPlanes: [Float],
-        interleavedPlanes: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        detection: FurnitureFitDetection,
-        layout: ProtoDebugLayout
-    ) -> (logits: [Float], binary: [UInt8], left: Int, top: Int, right: Int, bottom: Int)? {
-        guard detection.coeffs.count >= 32, protoW > 0, protoH > 0, modelSide > 0 else { return nil }
-
-        let widthRatio = Float(protoW) / Float(modelSide)
-        let heightRatio = Float(protoH) / Float(modelSide)
-        let protoLeft = max(0, min(protoW - 1, Int(floor((detection.x - detection.w * 0.5) * widthRatio))))
-        let protoTop = max(0, min(protoH - 1, Int(floor((detection.y - detection.h * 0.5) * heightRatio))))
-        let protoRight = max(0, min(protoW - 1, Int(ceil((detection.x + detection.w * 0.5) * widthRatio))))
-        let protoBottom = max(0, min(protoH - 1, Int(ceil((detection.y + detection.h * 0.5) * heightRatio))))
-        guard protoRight >= protoLeft, protoBottom >= protoTop else { return nil }
-
-        let cropWidth = protoRight - protoLeft + 1
-        let cropHeight = protoBottom - protoTop + 1
-        let cropCount = cropWidth * cropHeight
-        var croppedLogits = [Float](repeating: 0, count: cropCount)
-        var croppedBinary = [UInt8](repeating: 0, count: cropCount)
-        let hwProto = protoW * protoH
-
-        guard channelFirstPlanes.count >= 32 * hwProto,
-              interleavedPlanes.count >= 32 * hwProto else { return nil }
-
-        for protoY in protoTop...protoBottom {
-            for protoX in protoLeft...protoRight {
-                let protoPixelIndex = protoY * protoW + protoX
-                var sum: Float = 0
-                var coeffIndex = 0
-                while coeffIndex < 32 {
-                    switch layout {
-                    case .channelFirst:
-                        let planeIndex = coeffIndex * hwProto + protoPixelIndex
-                        sum += detection.coeffs[coeffIndex] * channelFirstPlanes[planeIndex]
-                    case .interleavedPixelFirst:
-                        let planeIndex = protoPixelIndex * 32 + coeffIndex
-                        sum += detection.coeffs[coeffIndex] * interleavedPlanes[planeIndex]
-                    }
-                    coeffIndex += 1
-                }
-
-                let cropIndex = (protoY - protoTop) * cropWidth + (protoX - protoLeft)
-                croppedLogits[cropIndex] = sum
-                croppedBinary[cropIndex] = sum > 0 ? 255 : 0
-            }
-        }
-
-        return (croppedLogits, croppedBinary, protoLeft, protoTop, protoRight, protoBottom)
-    }
-
-    private func binaryMaskAscii(
-        mask: [UInt8],
-        width: Int,
-        height: Int,
-        gridCols: Int = 40,
-        gridRows: Int = 20
-    ) -> String {
-        guard width > 0, height > 0, mask.count >= width * height else { return "(empty)" }
-        let cols = min(gridCols, width)
-        let rows = min(gridRows, height)
-        var lines: [String] = []
-        lines.reserveCapacity(rows)
-        var onCount = 0
-
-        for row in 0..<rows {
-            let srcY = row * height / rows
-            var line = ""
-            line.reserveCapacity(cols)
-            for col in 0..<cols {
-                let srcX = col * width / cols
-                let idx = srcY * width + srcX
-                let isOn = mask[idx] != 0
-                if isOn { onCount += 1 }
-                line.append(isOn ? "█" : "·")
-            }
-            lines.append(line)
-        }
-
-        let totalSamples = max(1, cols * rows)
-        let coveragePct = Float(onCount) / Float(totalSamples) * 100
-        return "sampled \(cols)x\(rows) on=\(onCount)/\(totalSamples) (\(String(format: "%.1f", coveragePct))%)\n"
-            + lines.joined(separator: "\n")
-    }
-
-    private func sampleBilinearLogit(
-        maskLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        imageX: Int,
-        imageY: Int,
-        imageW: Int,
-        imageH: Int
-    ) -> Float {
-        FurnitureFitOnnxStylePipeline.bilinearUpsampledLogit(
-            maskLogits: maskLogits,
-            protoW: protoW,
-            protoH: protoH,
-            origW: imageW,
-            origH: imageH,
-            imageX: imageX,
-            imageY: imageY
-        )
-    }
-
-    private func logPrimaryChairContributorPixelsIfDebug(
-        primary: FurnitureFitDetection,
-        maskDetectionsForBuild: [FurnitureFitDetection],
-        planes: [Float],
-        fusedMaskLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int
-    ) {
-        guard debugMode, isChairLikeClass(primary.classIdx) else { return }
-        // Disabled: noisy logit / per-pixel mask contributor debug
-    }
-
-    private func logPrimaryChairStageComparisonIfDebug(
-        primary: FurnitureFitDetection,
-        modelSide: Int,
-        protoMask: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        fullResMask: [UInt8],
-        outBase: UnsafeMutablePointer<UInt8>,
-        bytesPerRowOut: Int,
-        origW: Int,
-        origH: Int,
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int
-    ) {
-        guard debugMode, isChairLikeClass(primary.classIdx) else { return }
-        // Disabled: noisy mask-shape ASCII stage comparison
-    }
-
-    /// Prints throttled numeric grids of **fused** proto logits and bilinear image logits so you can
-    /// compare raw model structure (handle gaps, sign) vs upsampled values at `maskUpsampleLogitBias`.
-    private func logChairFusedLogitNumericGridsIfDebug(
-        maskLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        primary: FurnitureFitDetection,
-        origW: Int,
-        origH: Int,
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int
-    ) {
-        guard debugMode, isChairLikeClass(primary.classIdx) else { return }
-        // Disabled: noisy fused proto / bilinear logit numeric grids
-    }
-
-    private func logChairDetectionMasksIfDebug(
-        planes: [Float],
-        interleavedPlanes: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        detections: [FurnitureFitDetection],
-        protoShape: [Int],
-        protoStrides: [Int],
-        protoChannelAxis: Int
-    ) {
-        guard debugMode else { return }
-        // Disabled: noisy chair ASCII logit/binary mask + protoShape lines
-        _ = (planes, interleavedPlanes, protoW, protoH, modelSide, detections, protoShape, protoStrides, protoChannelAxis)
     }
 
     private func supportSurfaceHint(
@@ -1288,15 +1029,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         // Create pipelines only once
         do {
-            if compositePipeline == nil, let fn = library.makeFunction(name: "sp_compositeMask") {
-                compositePipeline = try device.makeComputePipelineState(function: fn)
-            }
-            if fusedMaskCompositePipeline == nil, let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
-                fusedMaskCompositePipeline = try device.makeComputePipelineState(function: fn2)
-            }
-            if fusedMaskMorphedCompositePipeline == nil, let fn3 = library.makeFunction(name: "sp_maxMaskAndCompositeMorphed") {
-                fusedMaskMorphedCompositePipeline = try device.makeComputePipelineState(function: fn3)
-            }
             if bilinearUpsamplePipeline == nil, let fn4 = library.makeFunction(name: "sp_bilinearUpsampleThreshold") {
                 bilinearUpsamplePipeline = try device.makeComputePipelineState(function: fn4)
             }
@@ -1845,7 +1577,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayHeightMeters = nil
             lastStableOverlayScale = nil
         }
-        smoothedTightPrimaryBbox = nil
         resetAutoPrimarySelectionStability()
         primaryBboxInView = .zero
         if clearDetectedCandidates {
@@ -1868,10 +1599,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         selectedClassStateLock.lock()
         defer { selectedClassStateLock.unlock() }
         return selectedDetectionPins
-    }
-
-    private func hasSelectedClasses() -> Bool {
-        !selectedPinsSnapshot().isEmpty
     }
 
     private func selectedClassLabelsSnapshot() -> [String] {
@@ -2353,8 +2080,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             name: UIDevice.orientationDidChangeNotification,
             object: nil
         )
-        startDeviceMotionPitchUpdatesIfNeeded()
-
         requestCameraPermissionAndStart()
 
         // Set initial video rotation and progress orientation after camera starts
@@ -2513,14 +2238,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logFurnitureFitSize(
             "phase=session_stop cleared isProcessing + segmentation UI flags (fixes stuck frames + stale first-mask after brain off/on)"
         )
-        asyncDepthSampler.stop()
-        stopDeviceMotionPitchUpdates()
         furnitureFitCameraStartupInitiated = false
         oneImageRunAwaitingSave = false
         oneImageRunFinished = false
         pendingStillImageScanRequest = nil
         processedStillImageScanRequestID = nil
-        arCompanionStartGeneration &+= 1
         suppressARDepthCompanionAfterCaptureFailure = false
         sharpRoomSplatMeasurementHost = nil
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
@@ -2555,38 +2277,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastAREstimatedHeightMeters = nil
         }
         startPreferredCameraPathIfNeeded()
-    }
-
-    private func startDeviceMotionPitchUpdatesIfNeeded() {
-        guard deviceMotionManager.isDeviceMotionAvailable else { return }
-        guard !deviceMotionManager.isDeviceMotionActive else { return }
-        deviceMotionManager.deviceMotionUpdateInterval = 1.0 / 30.0
-        deviceMotionManager.startDeviceMotionUpdates(
-            using: .xArbitraryZVertical,
-            to: deviceMotionQueue
-        ) { [weak self] motion, _ in
-            guard let self, let motion else { return }
-            self.devicePitchLock.lock()
-            self.latestDevicePitchRadians = Float(motion.attitude.pitch)
-            self.devicePitchLock.unlock()
-        }
-    }
-
-    private func stopDeviceMotionPitchUpdates() {
-        deviceMotionManager.stopDeviceMotionUpdates()
-        devicePitchLock.lock()
-        latestDevicePitchRadians = nil
-        devicePitchLock.unlock()
-    }
-
-    private func latestDownwardPitchDegrees() -> Float? {
-        devicePitchLock.lock()
-        let cachedPitchRadians = latestDevicePitchRadians
-        devicePitchLock.unlock()
-        let livePitchRadians = deviceMotionManager.deviceMotion.map { Float($0.attitude.pitch) }
-        let pitchRadians = livePitchRadians ?? cachedPitchRadians
-        guard let pitchRadians else { return nil }
-        return abs(pitchRadians) * 180 / .pi
     }
 
     // MARK: - Camera Setup
@@ -2658,7 +2348,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func startARCameraPathIfNeeded() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.arCompanionStartGeneration &+= 1
             self.isUsingARCameraPath = true
             self.isARDepthCompanionSessionRunning = true
 
@@ -2720,8 +2409,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         isUsingARCameraPath = false
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.arCompanionStartGeneration &+= 1
-            let companionLaunchToken = self.arCompanionStartGeneration
             self.isARDepthCompanionSessionRunning = false
             CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.ARSession", event: "ar_pause", details: "reason=startClassicCameraPath")
             self.arSession.pause()
@@ -2734,7 +2421,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     self.captureSession.startRunning()
                 }
                 // Floor-contact depth estimation stays on the AVCapture path; no AR companion is started here.
-                _ = companionLaunchToken
             }
 
             if self.debugMode {
@@ -2758,36 +2444,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
     }
-
-    /*
-    /// World-tracking AR beside `AVCaptureSession` (disabled for pinhole-only builds).
-    private func scheduleARDepthCompanionAfterCaptureIfEligible(launchGeneration: UInt64) {
-        let qs = AppStateManager.shared.qualitySettings
-        guard qs.furnitureFitARDepthCompanionRuntimeActive,
-              !suppressARDepthCompanionAfterCaptureFailure,
-              FurnitureFitARSupport.isWorldTrackingSupported,
-              QualitySettings.supportsLiDARSceneDepth else {
-            if qs.furnitureFitARDepthCompanionRuntimeActive,
-               FurnitureFitARSupport.isWorldTrackingSupported,
-               !QualitySettings.supportsLiDARSceneDepth {
-                logFurnitureFitAR(
-                    "event=ar_depth_companion_skipped reason=no_LiDAR parallel_AR_plus_AVCapture_causes_Fig_-17281 pinhole_uses_room_proxy_vy"
-                )
-            }
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            guard let self else { return }
-            guard launchGeneration == self.arCompanionStartGeneration else { return }
-            guard !self.isUsingARCameraPath else { return }
-            guard self.captureSession.isRunning else { return }
-            let config = FurnitureFitARSupport.makeWorldTrackingConfiguration()
-            self.arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
-            self.isARDepthCompanionSessionRunning = true
-            logFurnitureFitAR("event=ar_depth_companion_started parallel_capture lidar=true sceneDepth_for_pinhole=true")
-        }
-    }
-    */
 
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -2828,610 +2484,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Floor-contact size in **meters** from the primary bbox using a non-AR depth estimate from the object's floor contact.
     private typealias PrimaryBboxMetersResult = (size: FurnitureSceneSize, pipeline: String, distanceMeters: Float?)
-    private typealias FloorContactSizingResult = (
-        metric: PrimaryBboxMetersResult,
-        contactImageX: Int,
-        contactImageY: Int,
-        widthPixels: Float,
-        heightPixels: Float,
-        focalPixels: Float,
-        measuredPitchDeg: Float?,
-        effectivePitchDeg: Float
-    )
-
-    private func estimatedPitchDegreesForFloorContact(
-        contactImageY: Float,
-        imageHeight: Int,
-        focalPixels: Float
-    ) -> (measuredPitchDeg: Float?, effectivePitchDeg: Float) {
-        let measuredPitchDeg = latestDownwardPitchDegrees()
-        let cy = Float(imageHeight) * 0.5
-        let yCam = max(0, (contactImageY - cy) / max(focalPixels, 1))
-        let minimumPitchDeg = atan(yCam) * 180 / .pi + 1.0
-        let basePitchDeg = measuredPitchDeg ?? 35.0
-        let effectivePitchDeg = min(80.0, max(max(10.0, basePitchDeg), minimumPitchDeg))
-        return (measuredPitchDeg, effectivePitchDeg)
-    }
-
-    private func floorContactDepthEstimateMeters(
-        contactImageY: Float,
-        imageHeight: Int,
-        focalPixels: Float
-    ) -> (depthMeters: Float, measuredPitchDeg: Float?, effectivePitchDeg: Float) {
-        let (measuredPitchDeg, effectivePitchDeg) = estimatedPitchDegreesForFloorContact(
-            contactImageY: contactImageY,
-            imageHeight: imageHeight,
-            focalPixels: focalPixels
-        )
-        let cameraHeightMeters: Float = 1.2
-        let cy = Float(imageHeight) * 0.5
-        let yCam = (contactImageY - cy) / max(focalPixels, 1)
-        let pitchRadians = effectivePitchDeg * .pi / 180
-        let sinPitch = sin(pitchRadians)
-        let cosPitch = cos(pitchRadians)
-        let numerator = cameraHeightMeters * (yCam * sinPitch + cosPitch)
-        let denominator = sinPitch - yCam * cosPitch
-        guard denominator > 1e-4 else {
-            return (0.3, measuredPitchDeg, effectivePitchDeg)
-        }
-        let depthMeters = max(0.3, min(10.0, numerator / denominator))
-        return (depthMeters, measuredPitchDeg, effectivePitchDeg)
-    }
-
-    /// Sharp Room: depth to the splat surface at the floor-contact pixel (matches the rendered splat camera). Caller must be on the main thread.
-    private func liveRoomSplatDepthMetersForFloorContactIfAvailable(
-        contactImageX: Float,
-        contactImageY: Float,
-        imageWidth: Int,
-        imageHeight: Int
-    ) -> Float? {
-        guard let host = sharpRoomSplatMeasurementHost,
-              let rm = roomModel,
-              rm.sceneToMeters > 1e-5,
-              window != nil else { return nil }
-
-        let dest = maskImageView.convert(maskImageView.bounds, to: nil)
-        guard dest.width > 2, dest.height > 2 else { return nil }
-
-        let iw = CGFloat(imageWidth)
-        let ih = CGFloat(imageHeight)
-        let scale = max(dest.width / iw, dest.height / ih)
-        let dispW = iw * scale
-        let dispH = ih * scale
-        let ox = dest.midX - dispW * 0.5
-        let oy = dest.midY - dispH * 0.5
-        let px = (CGFloat(contactImageX) + 0.5) / iw
-        let py = (CGFloat(contactImageY) + 0.5) / ih
-        let windowPoint = CGPoint(x: ox + px * dispW, y: oy + py * dispH)
-
-        guard let sceneDist = host.splatCameraToSurfaceDistanceSceneUnits(atWindowPoint: windowPoint),
-              sceneDist.isFinite,
-              sceneDist > 0.02,
-              sceneDist < 500 else { return nil }
-
-        let meters = sceneDist * rm.sceneToMeters
-        guard meters.isFinite, meters > 0.15, meters < 40 else { return nil }
-        return meters
-    }
-
-    private func floorContactSizingResult(
-        contactImageX: Float,
-        contactImageY: Float,
-        widthPixels: Float,
-        heightPixels: Float,
-        imageWidth: Int,
-        imageHeight: Int,
-        pipeline: String,
-        preferRoomRaycastSizing: Bool
-    ) -> FloorContactSizingResult? {
-        _ = preferRoomRaycastSizing
-        guard imageWidth > 1, imageHeight > 1, widthPixels > 0.5, heightPixels > 0.5 else { return nil }
-
-        let clampedImageX = min(max(contactImageX, 0), Float(max(1, imageWidth - 1)))
-        let clampedImageY = min(max(contactImageY, 0), Float(max(1, imageHeight - 1)))
-        var focalLengthX = cameraFocalLengthPixels
-        if focalLengthX < 1, let camera = captureBackCamera {
-            focalLengthX = FurnitureMonocularMeasurer.focalLengthPixels(
-                imageWidth: Float(imageWidth),
-                hFovDegrees: Float(camera.activeFormat.videoFieldOfView)
-            )
-        }
-        if focalLengthX < 1 { focalLengthX = Float(imageWidth) * 0.73 }
-        let focalLengthY = focalLengthX
-
-        let liveRoomSplatDepthMeters: Float? = {
-            if Thread.isMainThread {
-                return liveRoomSplatDepthMetersForFloorContactIfAvailable(
-                    contactImageX: clampedImageX,
-                    contactImageY: clampedImageY,
-                    imageWidth: imageWidth,
-                    imageHeight: imageHeight
-                )
-            }
-            var out: Float?
-            DispatchQueue.main.sync {
-                out = self.liveRoomSplatDepthMetersForFloorContactIfAvailable(
-                    contactImageX: clampedImageX,
-                    contactImageY: clampedImageY,
-                    imageWidth: imageWidth,
-                    imageHeight: imageHeight
-                )
-            }
-            return out
-        }()
-
-        let depthMeters: Float
-        let measuredPitchDeg: Float?
-        let effectivePitchDeg: Float
-        let depthPipelineSuffix: String
-        if let dm = liveRoomSplatDepthMeters {
-            depthMeters = dm
-            measuredPitchDeg = nil
-            effectivePitchDeg = 0
-            depthPipelineSuffix = "_splat"
-            logFurnitureFitSize(
-                "phase=metric_depth source=splat depth_m=\(String(format: "%.3f", dm)) " +
-                    "contact_px=(\(Int(clampedImageX)),\(Int(clampedImageY))) buf=\(imageWidth)×\(imageHeight)"
-            )
-        } else {
-            let depthEstimate = floorContactDepthEstimateMeters(
-                contactImageY: clampedImageY,
-                imageHeight: imageHeight,
-                focalPixels: focalLengthY
-            )
-            depthMeters = depthEstimate.depthMeters
-            measuredPitchDeg = depthEstimate.measuredPitchDeg
-            effectivePitchDeg = depthEstimate.effectivePitchDeg
-            depthPipelineSuffix =
-                "_pitch\(String(format: "%.1f", depthEstimate.effectivePitchDeg))" +
-                (depthEstimate.measuredPitchDeg != nil ? "_motion" : "_fallback")
-        }
-
-        let preferredRoomMetricSize = preferredRoomModelMetricSize(
-            contactImageX: clampedImageX,
-            contactImageY: clampedImageY,
-            widthPixels: widthPixels,
-            heightPixels: heightPixels,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            depthMeters: depthMeters
-        )
-
-        let fallbackMetricSize: (widthMeters: Float, heightMeters: Float, pipeline: String)? = {
-            guard roomWidthMeters.isFinite, roomHeightMeters.isFinite,
-                  roomWidthMeters > 0.05, roomHeightMeters > 0.05 else { return nil }
-            let w = (widthPixels / Float(imageWidth)) * roomWidthMeters
-            let h = (heightPixels / Float(imageHeight)) * roomHeightMeters
-            guard w.isFinite, h.isFinite, w > 0.01, h > 0.01 else { return nil }
-            return (w, h, "room_bbox_proportion")
-        }()
-
-        let selectedMetricSize: (widthMeters: Float, heightMeters: Float, pipeline: String)?
-        if let preferredRoomMetricSize,
-           isReasonableFurnitureMetricEstimate(
-            widthMeters: preferredRoomMetricSize.widthMeters,
-            heightMeters: preferredRoomMetricSize.heightMeters,
-            distanceMeters: depthMeters,
-            pipeline: preferredRoomMetricSize.pipeline
-           ) {
-            logFurnitureFitSize(
-                "phase=metric_policy policy=room_model_width_prop_height depth_m=\(String(format: "%.3f", depthMeters)) " +
-                "selected=\(preferredRoomMetricSize.pipeline)"
-            )
-            selectedMetricSize = preferredRoomMetricSize
-        } else if let fallbackMetricSize,
-                  isReasonableFurnitureMetricEstimate(
-                    widthMeters: fallbackMetricSize.widthMeters,
-                    heightMeters: fallbackMetricSize.heightMeters,
-                    distanceMeters: depthMeters,
-                    pipeline: fallbackMetricSize.pipeline
-                  ) {
-            logFurnitureFitSize(
-                "phase=metric_policy policy=room_bbox_proportion depth_m=\(String(format: "%.3f", depthMeters))"
-            )
-            selectedMetricSize = fallbackMetricSize
-        } else {
-            selectedMetricSize = nil
-        }
-
-        guard let selectedMetricSize else { return nil }
-        let widthMeters = selectedMetricSize.widthMeters
-        let heightMeters = selectedMetricSize.heightMeters
-        let sizingPipelinePrefix = selectedMetricSize.pipeline
-
-        let depthThicknessMeters = max(0.04, min(widthMeters, heightMeters) * 0.12)
-        return (
-            metric: (
-                size: FurnitureSceneSize(width: widthMeters, height: heightMeters, depth: depthThicknessMeters),
-                pipeline: sizingPipelinePrefix + depthPipelineSuffix,
-                distanceMeters: depthMeters
-            ),
-            contactImageX: Int(round(clampedImageX)),
-            contactImageY: Int(round(clampedImageY)),
-            widthPixels: widthPixels,
-            heightPixels: heightPixels,
-            focalPixels: focalLengthY,
-            measuredPitchDeg: measuredPitchDeg,
-            effectivePitchDeg: effectivePitchDeg
-        )
-    }
-
-    private func isReasonableFurnitureMetricEstimate(
-        widthMeters: Float,
-        heightMeters: Float,
-        distanceMeters: Float,
-        pipeline: String
-    ) -> Bool {
-        guard widthMeters.isFinite,
-              heightMeters.isFinite,
-              distanceMeters.isFinite,
-              widthMeters > 0.015,
-              heightMeters > 0.015,
-              distanceMeters > 0.2 else {
-            logFurnitureFitSize(
-                "phase=metric_reject pipeline=\(pipeline) reason=non_finite_or_too_small " +
-                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
-                "dist_m=\(String(format: "%.3f", distanceMeters))"
-            )
-            return false
-        }
-
-        let maxRoomSpan = max(roomWidthMeters, roomDepthMeters, 0.5)
-        let widthLimit = max(6.0, maxRoomSpan * 1.35)
-        let heightLimit = max(4.0, max(roomHeightMeters, 0.5) * 1.25)
-        let distanceLimit = max(12.0, max(roomDepthMeters, 0.5) * 2.0)
-
-        guard widthMeters <= widthLimit,
-              heightMeters <= heightLimit,
-              distanceMeters <= distanceLimit else {
-            logFurnitureFitSize(
-                "phase=metric_reject pipeline=\(pipeline) reason=exceeds_limits " +
-                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
-                "dist_m=\(String(format: "%.3f", distanceMeters)) " +
-                "limits_w_h_d=\(String(format: "%.3f", widthLimit))×\(String(format: "%.3f", heightLimit))×\(String(format: "%.3f", distanceLimit)) " +
-                "room_w_h_d=\(String(format: "%.3f", roomWidthMeters))×\(String(format: "%.3f", roomHeightMeters))×\(String(format: "%.3f", roomDepthMeters))"
-            )
-            return false
-        }
-
-        return true
-    }
-
-    private func preferredRoomModelMetricSize(
-        contactImageX: Float,
-        contactImageY: Float,
-        widthPixels: Float,
-        heightPixels: Float,
-        imageWidth: Int,
-        imageHeight: Int,
-        depthMeters: Float
-    ) -> (widthMeters: Float, heightMeters: Float, pipeline: String)? {
-        guard imageWidth > 1, imageHeight > 1 else { return nil }
-
-        let proportionalFallback: () -> (widthMeters: Float, heightMeters: Float, pipeline: String)? = {
-            guard self.roomWidthMeters.isFinite, self.roomHeightMeters.isFinite,
-                  self.roomWidthMeters > 0.05, self.roomHeightMeters > 0.05 else {
-                return nil
-            }
-            let widthMeters = (widthPixels / Float(imageWidth)) * self.roomWidthMeters
-            let heightMeters = (heightPixels / Float(imageHeight)) * self.roomHeightMeters
-            guard widthMeters.isFinite, heightMeters.isFinite,
-                  widthMeters > 0.01, heightMeters > 0.01 else {
-                return nil
-            }
-            logFurnitureFitSize(
-                "phase=room_model_sizing_fallback pipeline=room_bbox_proportion " +
-                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters)) " +
-                "room_m=\(String(format: "%.3f", self.roomWidthMeters))×\(String(format: "%.3f", self.roomHeightMeters)) " +
-                "bbox_px=\(String(format: "%.1f", widthPixels))×\(String(format: "%.1f", heightPixels))"
-            )
-            return (widthMeters, heightMeters, "room_bbox_proportion")
-        }
-
-        guard let roomModel,
-              roomModel.sceneToMeters.isFinite,
-              roomModel.sceneToMeters > 0.0001 else {
-            logFurnitureFitSize(
-                "phase=room_model_sizing_unavailable reason=missing_room_model_or_scale " +
-                "roomModel=\(roomModel != nil) sceneToMeters=\(String(format: "%.4f", roomModel?.sceneToMeters ?? 0))"
-            )
-            return proportionalFallback()
-        }
-
-        guard let cam = roomModel.cameraInfo,
-              let focalLengthMM = cam.focalLengthMM,
-              focalLengthMM > 0,
-              let sensorWidthMM = cam.sensorWidthMM,
-              sensorWidthMM > 0 else {
-            logFurnitureFitSize(
-                "phase=room_model_sizing_unavailable reason=missing_intrinsics " +
-                "sceneToMeters=\(String(format: "%.4f", roomModel.sceneToMeters)) " +
-                "focal_mm=\(String(format: "%.2f", roomModel.cameraInfo?.focalLengthMM ?? 0)) " +
-                "sensor_w_mm=\(String(format: "%.2f", roomModel.cameraInfo?.sensorWidthMM ?? 0))"
-            )
-            return proportionalFallback()
-        }
-
-        let intrinsics = DepthSizingService.CameraIntrinsics(
-            focalLengthMM: focalLengthMM,
-            sensorWidthMM: sensorWidthMM,
-            imageWidthPx: Float(cam.imageWidthPx ?? imageWidth),
-            imageHeightPx: Float(cam.imageHeightPx ?? imageHeight)
-        )
-        let sizingService = DepthSizingService(
-            intrinsics: intrinsics,
-            sceneToMeters: roomModel.sceneToMeters
-        )
-
-        let sceneDepth = roomModel.toScene(depthMeters: depthMeters)
-        guard sceneDepth.isFinite, sceneDepth > 0 else {
-            logFurnitureFitSize(
-                "phase=room_model_sizing_unavailable reason=invalid_scene_depth " +
-                "metric_depth=\(String(format: "%.3f", depthMeters)) scene_depth=\(String(format: "%.3f", sceneDepth))"
-            )
-            return proportionalFallback()
-        }
-
-        let halfWidth = widthPixels * 0.5
-        let widthMeters = sizingService.estimateMetricWidth(
-            leftScreenX: CGFloat(contactImageX - halfWidth),
-            rightScreenX: CGFloat(contactImageX + halfWidth),
-            depth: sceneDepth,
-            viewportWidth: CGFloat(imageWidth)
-        )
-        let heightMeters = (heightPixels / Float(imageHeight)) * roomHeightMeters
-
-        guard widthMeters.isFinite, heightMeters.isFinite,
-              widthMeters > 0.01, heightMeters > 0.01 else {
-            logFurnitureFitSize(
-                "phase=room_model_sizing_unavailable reason=invalid_intrinsics_output " +
-                "W×H_m=\(String(format: "%.3f", widthMeters))×\(String(format: "%.3f", heightMeters))"
-            )
-            return proportionalFallback()
-        }
-
-        logFurnitureFitSize(
-            "phase=room_model_sizing sceneToMeters=\(String(format: "%.4f", roomModel.sceneToMeters)) " +
-            "scene_depth=\(String(format: "%.3f", sceneDepth)) metric_depth=\(String(format: "%.3f", depthMeters)) " +
-            "focal_mm=\(String(format: "%.2f", focalLengthMM)) sensor_w_mm=\(String(format: "%.2f", sensorWidthMM)) " +
-            "W_m=\(String(format: "%.3f", widthMeters)) H_m_prop=\(String(format: "%.3f", heightMeters))"
-        )
-
-        return (widthMeters, heightMeters, "room_model_intrinsics_width_prop_height")
-    }
-
-    private func imageBoundsForMask(
-        maskSmall: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        imageWidth: Int,
-        imageHeight: Int
-    ) -> CGRect? {
-        guard protoW > 0,
-              protoH > 0,
-              imageWidth > 0,
-              imageHeight > 0,
-              maskSmall.count >= protoW * protoH else {
-            return nil
-        }
-
-        var minProtoX = protoW
-        var minProtoY = protoH
-        var maxProtoX = -1
-        var maxProtoY = -1
-
-        for protoY in 0..<protoH {
-            let rowOffset = protoY * protoW
-            for protoX in 0..<protoW where maskSmall[rowOffset + protoX] > 0 {
-                minProtoX = min(minProtoX, protoX)
-                minProtoY = min(minProtoY, protoY)
-                maxProtoX = max(maxProtoX, protoX)
-                maxProtoY = max(maxProtoY, protoY)
-            }
-        }
-
-        guard maxProtoX >= minProtoX, maxProtoY >= minProtoY else { return nil }
-
-        let minImageX = max(0, Int(floor(Float(minProtoX) * Float(imageWidth) / Float(protoW))))
-        let minImageY = max(0, Int(floor(Float(minProtoY) * Float(imageHeight) / Float(protoH))))
-        let maxImageX = min(imageWidth, Int(ceil(Float(maxProtoX + 1) * Float(imageWidth) / Float(protoW))))
-        let maxImageY = min(imageHeight, Int(ceil(Float(maxProtoY + 1) * Float(imageHeight) / Float(protoH))))
-
-        guard maxImageX > minImageX, maxImageY > minImageY else { return nil }
-        return CGRect(
-            x: minImageX,
-            y: minImageY,
-            width: maxImageX - minImageX,
-            height: maxImageY - minImageY
-        )
-    }
-
-    private func refinedMaskBoundsAndFloorContact(
-        maskSmall: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        imageWidth: Int,
-        imageHeight: Int,
-        bboxCenterImageX: Int
-    ) -> (contactImageX: Int, contactImageY: Int, widthPixels: Float, heightPixels: Float)? {
-        guard protoW > 1, protoH > 1, imageWidth > 1, imageHeight > 1, !maskSmall.isEmpty else { return nil }
-
-        var minProtoX = protoW
-        var minProtoY = protoH
-        var maxProtoX = -1
-        var maxProtoY = -1
-
-        for protoY in 0..<protoH {
-            let rowOffset = protoY * protoW
-            for protoX in 0..<protoW where maskSmall[rowOffset + protoX] > 0 {
-                minProtoX = min(minProtoX, protoX)
-                minProtoY = min(minProtoY, protoY)
-                maxProtoX = max(maxProtoX, protoX)
-                maxProtoY = max(maxProtoY, protoY)
-            }
-        }
-
-        guard maxProtoX >= minProtoX, maxProtoY >= minProtoY else { return nil }
-
-        let bboxCenterProtoX = Int(
-            round((Float(bboxCenterImageX) / Float(max(1, imageWidth))) * Float(max(1, protoW - 1)))
-        )
-        var contactProtoX = bboxCenterProtoX
-        var contactProtoY = maxProtoY
-        var foundContact = false
-
-        for protoY in stride(from: maxProtoY, through: minProtoY, by: -1) {
-            let rowOffset = protoY * protoW
-            var bestProtoXOnRow: Int?
-            var bestCenterDelta = Int.max
-            for protoX in minProtoX...maxProtoX where maskSmall[rowOffset + protoX] > 0 {
-                let delta = abs(protoX - bboxCenterProtoX)
-                if delta < bestCenterDelta {
-                    bestCenterDelta = delta
-                    bestProtoXOnRow = protoX
-                }
-            }
-            if let rowX = bestProtoXOnRow {
-                contactProtoX = rowX
-                contactProtoY = protoY
-                foundContact = true
-                break
-            }
-        }
-
-        guard foundContact else { return nil }
-
-        let minImageX = max(0, Int(floor(Float(minProtoX) * Float(imageWidth) / Float(protoW))))
-        let maxImageX = min(imageWidth, Int(ceil(Float(maxProtoX + 1) * Float(imageWidth) / Float(protoW))))
-        let minImageY = max(0, Int(floor(Float(minProtoY) * Float(imageHeight) / Float(protoH))))
-        let maxImageY = min(imageHeight, Int(ceil(Float(maxProtoY + 1) * Float(imageHeight) / Float(protoH))))
-        let contactImageX = min(
-            max(0, Int(round((Float(contactProtoX) + 0.5) * Float(imageWidth) / Float(protoW)))),
-            max(0, imageWidth - 1)
-        )
-        let contactImageY = min(
-            max(0, Int(round((Float(contactProtoY) + 0.5) * Float(imageHeight) / Float(protoH)))),
-            max(0, imageHeight - 1)
-        )
-
-        return (
-            contactImageX: contactImageX,
-            contactImageY: contactImageY,
-            widthPixels: Float(max(1, maxImageX - minImageX)),
-            heightPixels: Float(max(1, maxImageY - minImageY))
-        )
-    }
-
-    private func refinedMaskFloorContactSizeMeters(
-        maskSmall: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        bboxCenterImageX: Int,
-        imageWidth: Int,
-        imageHeight: Int,
-        preferRoomRaycastSizing: Bool
-    ) -> FloorContactSizingResult? {
-        guard let refinedMask = refinedMaskBoundsAndFloorContact(
-            maskSmall: maskSmall,
-            protoW: protoW,
-            protoH: protoH,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            bboxCenterImageX: bboxCenterImageX
-        ) else { return nil }
-
-        return floorContactSizingResult(
-            contactImageX: Float(refinedMask.contactImageX),
-            contactImageY: Float(refinedMask.contactImageY),
-            widthPixels: refinedMask.widthPixels,
-            heightPixels: refinedMask.heightPixels,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            pipeline: "floor_contact_mask_contact",
-            preferRoomRaycastSizing: preferRoomRaycastSizing
-        )
-    }
-
-    /// Unlike ``FurnitureSizingCalculator``, this does **not** assume the full frame height equals ``roomHeightMeters``,
-    /// so close-up shots do not blow up to ~room-sized readings.
-    private func primaryBboxMonocularSizeMeters(
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int,
-        imageWidth: Int,
-        imageHeight: Int,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
-        preferRoomRaycastSizing: Bool
-    ) -> PrimaryBboxMetersResult? {
-        _ = arDepthSnapshot
-        let bboxWpx = Float(max(1, primaryBx2 - primaryBx1))
-        let bboxHpx = Float(max(1, primaryBy2 - primaryBy1))
-        guard let floorMeasurement = floorContactSizingResult(
-            contactImageX: Float(primaryBx1 + primaryBx2) * 0.5,
-            contactImageY: Float(max(primaryBy1, primaryBy2 - 1)),
-            widthPixels: bboxWpx,
-            heightPixels: bboxHpx,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            pipeline: "floor_contact_bbox_bottom_center",
-            preferRoomRaycastSizing: preferRoomRaycastSizing
-        ) else { return nil }
-        return floorMeasurement.metric
-    }
-
-    /// Throttled logs: furniture vs room **ratio** space when ``roomRaycastSceneDimensions`` is set (Sharp / saved `.meta`).
-    private func maybeLogSceneFitmentFromPrimaryBbox(
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int,
-        imageWidth: Int,
-        imageHeight: Int,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
-        preferRoomRaycastSizing: Bool
-    ) {
-        guard let room = roomRaycastSceneDimensions,
-              room.width > 1e-5, room.height > 1e-5, room.depth > 1e-5 else { return }
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastSceneFitmentLogAt > 2.0 else { return }
-        lastSceneFitmentLogAt = now
-
-        guard let metric = primaryBboxMonocularSizeMeters(
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            arDepthSnapshot: arDepthSnapshot,
-            preferRoomRaycastSizing: preferRoomRaycastSizing
-        ) else { return }
-        let furnMeters = metric.size
-
-        // Pinhole path is in meters; room raycast is in splat scene units — align before ratio checks.
-        let sceneToMeters: Float = {
-            if let m = roomModel?.sceneToMeters, m > 1e-4 { return m }
-            if room.depth > 1e-5 { return roomDepthMeters / room.depth }
-            if room.width > 1e-5 { return roomWidthMeters / room.width }
-            return 0
-        }()
-        guard sceneToMeters > 1e-4 else { return }
-        let furnSu = FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits(
-            furnitureMeters: furnMeters,
-            sceneToMeters: sceneToMeters
-        )
-
-        logFurnitureFitSize(
-            "phase=fitment_abs furniture_su=\(String(format: "%.3f", furnSu.width))×\(String(format: "%.3f", furnSu.height))×\(String(format: "%.3f", furnSu.depth)) " +
-            "room_su=\(String(format: "%.3f", room.width))×\(String(format: "%.3f", room.height))×\(String(format: "%.3f", room.depth)) " +
-            "pinhole_m=\(String(format: "%.3f", furnMeters.width))×\(String(format: "%.3f", furnMeters.height))×\(String(format: "%.3f", furnMeters.depth)) " +
-            "pipeline=\(metric.pipeline)"
-        )
-
-        _ = FitmentCheck.check(furniture: furnSu, room: room)
-        _ = OverlayScale.compute(furniture: furnSu, room: room)
-    }
 
     /// ONNX-style pipeline using Core ML ``mlModel``. The legacy 1280 package
     /// (`yoloe-26l-seg-pf`) expects Ultralytics-style letterbox; the newer
@@ -3954,17 +3006,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         let detectionParseAndFilterMs = Date().timeIntervalSince(detectionParseAndFilterStart) * 1000
-        logChairDetectionMasksIfDebug(
-            planes: planes,
-            interleavedPlanes: protoInfo.interleavedPlanes,
-            protoW: pW,
-            protoH: pH,
-            modelSide: onnxSide,
-            detections: candidates,
-            protoShape: protoInfo.shape,
-            protoStrides: protoInfo.strides,
-            protoChannelAxis: protoInfo.channelAxis
-        )
 
         if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && debugMode && !oneImageRunAwaitingSave {
             let liveDebugMaskBaseImage = debugMode
@@ -4415,19 +3456,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         setProgress(0.92, text: "Compositing…")
         let compStart = Date()
-        logChairFusedLogitNumericGridsIfDebug(
-            maskLogits: maskLogitsForComposite,
-            protoW: pW,
-            protoH: pH,
-            modelSide: onnxSide,
-            primary: primary,
-            origW: bufW,
-            origH: bufH,
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2
-        )
         let composedImage: CGImage? =
             compositeGpuNativeMaskCutout(
                 processBuffer: processBuffer,
@@ -4700,362 +3728,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             .sorted { $0.confidence > $1.confidence }
     }
 
-    /// Zeros planar proto mask outside [clipPx1, clipPx2) × [clipPy1, clipPy2) (same idea as Core ML stage 15d clip in full-res).
-    private func clipProtoPlanarMaskOutsideRect(
-        mask: inout [UInt8],
-        protoW: Int,
-        protoH: Int,
-        clipPx1: Int,
-        clipPy1: Int,
-        clipPx2: Int,
-        clipPy2: Int
-    ) {
-        let clipX1 = max(0, clipPx1)
-        let clipY1 = max(0, clipPy1)
-        let clipX2 = min(protoW, clipPx2)
-        let clipY2 = min(protoH, clipPy2)
-        guard mask.count >= protoW * protoH else { return }
-        guard clipX1 < clipX2, clipY1 < clipY2 else {
-            mask.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress { memset(base, 0, protoW * protoH) }
-            }
-            return
-        }
-        if clipY1 > 0 {
-            let topBytes = clipY1 * protoW
-            mask.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress { memset(base, 0, topBytes) }
-            }
-        }
-        if clipY2 < protoH {
-            let bottomStart = clipY2 * protoW
-            let bottomBytes = (protoH - clipY2) * protoW
-            mask.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress {
-                    memset(base.advanced(by: bottomStart), 0, bottomBytes)
-                }
-            }
-        }
-        if clipX1 > 0 || clipX2 < protoW {
-            mask.withUnsafeMutableBytes { raw in
-                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                for y in clipY1..<clipY2 {
-                    let rowStart = y * protoW
-                    if clipX1 > 0 {
-                        memset(base.advanced(by: rowStart), 0, clipX1)
-                    }
-                    if clipX2 < protoW {
-                        memset(base.advanced(by: rowStart + clipX2), 0, protoW - clipX2)
-                    }
-                }
-            }
-        }
-    }
-
-    private func clipProtoFloatMaskOutsideRect(
-        mask: inout [Float],
-        protoW: Int,
-        protoH: Int,
-        clipPx1: Int,
-        clipPy1: Int,
-        clipPx2: Int,
-        clipPy2: Int
-    ) {
-        let clipX1 = max(0, clipPx1)
-        let clipY1 = max(0, clipPy1)
-        let clipX2 = min(protoW, clipPx2)
-        let clipY2 = min(protoH, clipPy2)
-        guard mask.count >= protoW * protoH else { return }
-        guard clipX1 < clipX2, clipY1 < clipY2 else {
-            mask = [Float](repeating: 0, count: protoW * protoH)
-            return
-        }
-        if clipY1 > 0 {
-            for index in 0..<(clipY1 * protoW) {
-                mask[index] = 0
-            }
-        }
-        if clipY2 < protoH {
-            for index in (clipY2 * protoW)..<(protoH * protoW) {
-                mask[index] = 0
-            }
-        }
-        if clipX1 > 0 || clipX2 < protoW {
-            for y in clipY1..<clipY2 {
-                let rowStart = y * protoW
-                if clipX1 > 0 {
-                    for x in 0..<clipX1 {
-                        mask[rowStart + x] = 0
-                    }
-                }
-                if clipX2 < protoW {
-                    for x in clipX2..<protoW {
-                        mask[rowStart + x] = 0
-                    }
-                }
-            }
-        }
-    }
-
-    private func clipFullMaskToPrimaryBbox(
-        mask: inout [UInt8],
-        origW: Int,
-        origH: Int,
-        px1: Int,
-        py1: Int,
-        px2: Int,
-        py2: Int
-    ) {
-        let clipPx1 = max(0, px1)
-        let clipPy1 = max(0, py1)
-        let clipPx2 = min(origW, px2)
-        let clipPy2 = min(origH, py2)
-        if clipPy1 > 0 {
-            let topBytes = clipPy1 * origW
-            mask.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress { memset(base, 0, topBytes) }
-            }
-        }
-        if clipPy2 < origH {
-            let bottomStart = clipPy2 * origW
-            let bottomBytes = (origH - clipPy2) * origW
-            mask.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress {
-                    memset(base.advanced(by: bottomStart), 0, bottomBytes)
-                }
-            }
-        }
-        if clipPx1 > 0 || clipPx2 < origW {
-            mask.withUnsafeMutableBytes { raw in
-                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                for y in clipPy1..<clipPy2 {
-                    let rowStart = y * origW
-                    if clipPx1 > 0 {
-                        memset(base.advanced(by: rowStart), 0, clipPx1)
-                    }
-                    if clipPx2 < origW {
-                        memset(base.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Small-region post-processing (holes / islands)
-
-    /// Fills small background "holes" (0-valued regions fully enclosed by 255) in a
-    /// band-local binary mask. Mirrors SAM's `remove_small_regions(..., mode="holes")`.
-    private func fillSmallHolesInMaskBand(
-        mask: inout [UInt8],
-        width: Int,
-        height: Int,
-        areaThreshold: Int
-    ) {
-        guard width > 0, height > 0, mask.count >= width * height, areaThreshold > 0 else { return }
-
-        let w = width
-        let h = height
-        var visited = [Bool](repeating: false, count: w * h)
-        var queue = [(x: Int, y: Int)]()
-        queue.reserveCapacity(128)
-
-        func idx(_ x: Int, _ y: Int) -> Int { y * w + x }
-
-        // 8-neighbour BFS on background (0) regions (matches SAM connectivity)
-        for startY in 0..<h {
-            for startX in 0..<w {
-                let startIndex = idx(startX, startY)
-                if visited[startIndex] || mask[startIndex] != 0 {
-                    continue
-                }
-
-                queue.removeAll(keepingCapacity: true)
-                queue.append((startX, startY))
-                visited[startIndex] = true
-
-                var component: [Int] = [startIndex]
-                var touchesBorder = (startX == 0 || startX == w - 1 || startY == 0 || startY == h - 1)
-
-                while !queue.isEmpty {
-                    let (x, y) = queue.removeLast()
-                    // 8-connected neighbours: N, S, E, W, and 4 diagonals.
-                    let neighbours = [
-                        (x: x - 1, y: y),
-                        (x: x + 1, y: y),
-                        (x: x,     y: y - 1),
-                        (x: x,     y: y + 1),
-                        (x: x - 1, y: y - 1),
-                        (x: x + 1, y: y - 1),
-                        (x: x - 1, y: y + 1),
-                        (x: x + 1, y: y + 1),
-                    ]
-                    for n in neighbours {
-                        guard n.x >= 0, n.x < w, n.y >= 0, n.y < h else { continue }
-                        let nIndex = idx(n.x, n.y)
-                        if visited[nIndex] || mask[nIndex] != 0 { continue }
-                        visited[nIndex] = true
-                        queue.append((n.x, n.y))
-                        component.append(nIndex)
-                        if n.x == 0 || n.x == w - 1 || n.y == 0 || n.y == h - 1 {
-                            touchesBorder = true
-                        }
-                    }
-                }
-
-                // If this background component does NOT touch the band border and
-                // is smaller than the threshold, treat it as a "hole" and fill it.
-                if !touchesBorder && component.count < areaThreshold {
-                    for i in component {
-                        mask[i] = 255
-                    }
-                }
-            }
-        }
-    }
-
-    /// Removes small foreground "islands" (255-valued blobs) in a band-local
-    /// binary mask. Mirrors SAM's `remove_small_regions(..., mode="islands")`.
-    private func removeSmallIslandsInMaskBand(
-        mask: inout [UInt8],
-        width: Int,
-        height: Int,
-        areaThreshold: Int
-    ) {
-        guard width > 0, height > 0, mask.count >= width * height, areaThreshold > 0 else { return }
-
-        let w = width
-        let h = height
-        var visited = [Bool](repeating: false, count: w * h)
-        var queue = [(x: Int, y: Int)]()
-        queue.reserveCapacity(128)
-
-        func idx(_ x: Int, _ y: Int) -> Int { y * w + x }
-
-        // 8-neighbour BFS on foreground (255) regions (matches SAM connectivity)
-        for startY in 0..<h {
-            for startX in 0..<w {
-                let startIndex = idx(startX, startY)
-                if visited[startIndex] || mask[startIndex] == 0 {
-                    continue
-                }
-
-                queue.removeAll(keepingCapacity: true)
-                queue.append((startX, startY))
-                visited[startIndex] = true
-
-                var component: [Int] = [startIndex]
-
-                while !queue.isEmpty {
-                    let (x, y) = queue.removeLast()
-                    // 8-connected neighbours: N, S, E, W, and 4 diagonals.
-                    let neighbours = [
-                        (x: x - 1, y: y),
-                        (x: x + 1, y: y),
-                        (x: x,     y: y - 1),
-                        (x: x,     y: y + 1),
-                        (x: x - 1, y: y - 1),
-                        (x: x + 1, y: y - 1),
-                        (x: x - 1, y: y + 1),
-                        (x: x + 1, y: y + 1),
-                    ]
-                    for n in neighbours {
-                        guard n.x >= 0, n.x < w, n.y >= 0, n.y < h else { continue }
-                        let nIndex = idx(n.x, n.y)
-                        if visited[nIndex] || mask[nIndex] == 0 { continue }
-                        visited[nIndex] = true
-                        queue.append((n.x, n.y))
-                        component.append(nIndex)
-                    }
-                }
-
-                // Foreground island smaller than the threshold → remove it.
-                if component.count < areaThreshold {
-                    for i in component {
-                        mask[i] = 0
-                    }
-                }
-            }
-        }
-    }
-
-    /// Simple binary dilation on a band-local mask (3×3 structuring element).
-    private func dilateBandMask(
-        mask: inout [UInt8],
-        width: Int,
-        height: Int,
-        iterations: Int
-    ) {
-        guard width > 0, height > 0, mask.count >= width * height, iterations > 0 else { return }
-
-        let w = width
-        let h = height
-        var scratch = mask
-
-        for _ in 0..<iterations {
-            scratch = mask
-            for y in 0..<h {
-                for x in 0..<w {
-                    let idx = y * w + x
-                    if scratch[idx] == 255 {
-                        mask[idx] = 255
-                        continue
-                    }
-                    var found = false
-                    for ny in max(0, y - 1)...min(h - 1, y + 1) {
-                        for nx in max(0, x - 1)...min(w - 1, x + 1) {
-                            if scratch[ny * w + nx] == 255 {
-                                found = true
-                                break
-                            }
-                        }
-                        if found { break }
-                    }
-                    if found {
-                        mask[idx] = 255
-                    }
-                }
-            }
-        }
-    }
-
-    /// Simple binary erosion on a band-local mask (3×3 structuring element).
-    private func erodeBandMask(
-        mask: inout [UInt8],
-        width: Int,
-        height: Int,
-        iterations: Int
-    ) {
-        guard width > 0, height > 0, mask.count >= width * height, iterations > 0 else { return }
-
-        let w = width
-        let h = height
-        var scratch = mask
-
-        for _ in 0..<iterations {
-            scratch = mask
-            for y in 0..<h {
-                for x in 0..<w {
-                    let idx = y * w + x
-                    if scratch[idx] == 0 {
-                        mask[idx] = 0
-                        continue
-                    }
-                    var allOn = true
-                    for ny in max(0, y - 1)...min(h - 1, y + 1) {
-                        for nx in max(0, x - 1)...min(w - 1, x + 1) {
-                            if scratch[ny * w + nx] == 0 {
-                                allOn = false
-                                break
-                            }
-                        }
-                        if !allOn { break }
-                    }
-                    mask[idx] = allOn ? 255 : 0
-                }
-            }
-        }
-    }
-
     /// BGRA camera × (mask/255) → premultiplied RGBA inside the primary band using vDSP (`vfltu8`, `vsmul`, `vmul`, `vclip`, `vadd`, `vfixu8`).
     private func compositeCpuCameraBandAccelerated(
         outBase: UnsafeMutablePointer<UInt8>,
@@ -5138,286 +3810,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         for y in 0..<height {
             memset(outBase.advanced(by: y * bytesPerRowOut), 0, bytesPerRowOut)
         }
-    }
-
-    /// Reference CPU compositor. Expects `outBase` to already be transparent outside the band.
-    private func compositeCpuCameraBandReference(
-        outBase: UnsafeMutablePointer<UInt8>,
-        origBase: UnsafePointer<UInt8>,
-        maskBase: UnsafePointer<UInt8>,
-        camRowBytes: Int,
-        maskRowBytes: Int,
-        bytesPerRowOut: Int,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int
-    ) {
-        guard x1 > x0, y1 > y0 else { return }
-
-        for y in y0..<y1 {
-            let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
-            let origRowPtr = origBase.advanced(by: y * camRowBytes)
-            let maskRowPtr = maskBase.advanced(by: y * maskRowBytes)
-
-            for x in x0..<x1 {
-                let maskValue = maskRowPtr[x]
-                let outputOffset = x * 4
-                let cameraOffset = x * 4
-
-                guard maskValue != 0 else { continue }
-
-                outRowPtr[outputOffset + 0] = origRowPtr[cameraOffset + 2]
-                outRowPtr[outputOffset + 1] = origRowPtr[cameraOffset + 1]
-                outRowPtr[outputOffset + 2] = origRowPtr[cameraOffset + 0]
-                outRowPtr[outputOffset + 3] = maskValue
-            }
-        }
-    }
-
-    /// Logs premultiplied-last R, G, B, A at the center of the primary band (throttled when `debugMode` is on).
-    private func logPremultipliedRGBASampleIfDebug(
-        outBase: UnsafeMutablePointer<UInt8>,
-        bytesPerRowOut: Int,
-        width: Int,
-        height: Int,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int,
-        tag: String
-    ) {
-        guard debugMode else { return }
-        // Disabled: premultiplied RGBA sample logging
-        _ = (outBase, bytesPerRowOut, width, height, x0, x1, y0, y1, tag)
-    }
-
-    /// Logs a compact sampled binary mask silhouette for the current object band.
-    private func logSampledMaskShapeIfDebug(
-        mask: [UInt8],
-        width: Int,
-        height: Int,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int,
-        tag: String,
-        gridCols: Int = 48,
-        gridRows: Int = 24
-    ) {
-        guard debugMode else { return }
-        // Disabled: MASK SHAPE ASCII grid
-        _ = (mask, width, height, x0, x1, y0, y1, tag, gridCols, gridRows)
-    }
-
-    /// ONNX-style cutout: hard binary mask compositing.
-    /// Each output pixel samples the proto mask with nearest-neighbor lookup and is
-    /// either fully opaque or fully transparent. This avoids semi-transparent
-    /// upscaled edges that can leak floor or wall through the segmented furniture.
-    private func compositeCpuBilinearProtoMaskCutout(
-        processBuffer: CVPixelBuffer,
-        maskProto: [UInt8],
-        protoW: Int,
-        protoH: Int,
-        origW: Int,
-        origH: Int,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int,
-        debugTag: String
-    ) -> CGImage? {
-        let pw = protoW
-        let ph = protoH
-        guard pw > 0, ph > 0, maskProto.count >= pw * ph, origW > 0, origH > 0 else { return nil }
-        let xStart = max(0, min(origW, x0))
-        let xEnd = max(0, min(origW, x1))
-        let yStart = max(0, min(origH, y0))
-        let yEnd = max(0, min(origH, y1))
-        guard xStart < xEnd, yStart < yEnd else { return nil }
-
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
-
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
-        guard let outData = ctx.data else { return nil }
-        let outBase = outData.assumingMemoryBound(to: UInt8.self)
-
-        fillCompositeBufferTransparent(
-            outBase: outBase,
-            height: origH,
-            bytesPerRowOut: bytesPerRowOut
-        )
-        let protoScaleX = Float(pw) / Float(origW)
-        let protoScaleY = Float(ph) / Float(origH)
-
-        for y in yStart..<yEnd {
-            let outRow = outBase.advanced(by: y * bytesPerRowOut)
-            let camRow = origBase.advanced(by: y * camRowBytes)
-            let protoY = min(ph - 1, max(0, Int(Float(y) * protoScaleY)))
-            let protoRowOff = protoY * pw
-            for x in xStart..<xEnd {
-                let protoX = min(pw - 1, max(0, Int(Float(x) * protoScaleX)))
-                guard maskProto[protoRowOff + protoX] != 0 else { continue }
-                let cx = x * 4
-                outRow[cx] = camRow[cx + 2]
-                outRow[cx + 1] = camRow[cx + 1]
-                outRow[cx + 2] = camRow[cx]
-                outRow[cx + 3] = 255
-            }
-        }
-
-        logPremultipliedRGBASampleIfDebug(
-            outBase: outBase,
-            bytesPerRowOut: bytesPerRowOut,
-            width: origW,
-            height: origH,
-            x0: xStart,
-            x1: xEnd,
-            y0: yStart,
-            y1: yEnd,
-            tag: debugTag
-        )
-        return ctx.makeImage()
-    }
-
-    /// ONNX-style cutout driven by bilinearly upsampled YOLOE logits.
-    /// We upsample the 160×160 proto logits (align_corners=false semantics) to the
-    /// full camera resolution, apply a positive threshold to shrink the mask away
-    /// from thin gaps, and write fully opaque pixels wherever the upsampled logit
-    /// exceeds that threshold.
-    private func compositeCpuBilinearProtoMaskCutoutFromLogitsLegacy(
-        processBuffer: CVPixelBuffer,
-        maskProto: [UInt8],
-        maskLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        origW: Int,
-        origH: Int,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int,
-        debugTag: String
-    ) -> CGImage? {
-        let pw = protoW
-        let ph = protoH
-        guard pw > 0,
-              ph > 0,
-              maskProto.count >= pw * ph,
-              maskLogits.count >= pw * ph,
-              origW > 0, origH > 0 else { return nil }
-
-        let xStart = max(0, min(origW, x0))
-        let xEnd = max(0, min(origW, x1))
-        let yStart = max(0, min(origH, y0))
-        let yEnd = max(0, min(origH, y1))
-        guard xStart < xEnd, yStart < yEnd else { return nil }
-
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
-        guard let outData = ctx.data else { return nil }
-        let outBase = outData.assumingMemoryBound(to: UInt8.self)
-
-        fillCompositeBufferTransparent(
-            outBase: outBase,
-            height: origH,
-            bytesPerRowOut: bytesPerRowOut
-        )
-
-        let protoScaleX = Float(pw) / Float(origW)
-        let protoScaleY = Float(ph) / Float(origH)
-        let maxPx = pw - 1
-        let maxPy = ph - 1
-
-        // Ultralytics-style mask native: upsample full-res logits, then apply
-        // a fixed bias before a zero threshold, i.e. (logit - 1.2) > 0.
-        // Temporarily relax bias to 0.0 to test for left-handle erosion.
-        let logitBias: Float = 0.0
-
-        for y in yStart..<yEnd {
-            let outRow = outBase.advanced(by: y * bytesPerRowOut)
-            let camRow = origBase.advanced(by: y * camRowBytes)
-
-            // align_corners = false mapping for Y
-            let fy = (Float(y) + 0.5) * protoScaleY - 0.5
-            let py0 = max(0, min(maxPy, Int(floor(fy))))
-            let py1 = max(0, min(maxPy, py0 + 1))
-            let ty = fy - Float(py0)
-
-            for x in xStart..<xEnd {
-                // align_corners = false mapping for X
-                let fx = (Float(x) + 0.5) * protoScaleX - 0.5
-                let px0 = max(0, min(maxPx, Int(floor(fx))))
-                let px1 = max(0, min(maxPx, px0 + 1))
-                let tx = fx - Float(px0)
-
-                let idx00 = py0 * pw + px0
-                let idx10 = py0 * pw + px1
-                let idx01 = py1 * pw + px0
-                let idx11 = py1 * pw + px1
-
-                let v00 = maskLogits[idx00]
-                let v10 = maskLogits[idx10]
-                let v01 = maskLogits[idx01]
-                let v11 = maskLogits[idx11]
-
-                let rawLogit =
-                    v00 * (1 - tx) * (1 - ty) +
-                    v10 * tx * (1 - ty) +
-                    v01 * (1 - tx) * ty +
-                    v11 * tx * ty
-
-                // Apply negative bias as suggested, then require the biased
-                // logit to be strictly positive. This forces all logits in
-                // (0, logitBias] to become transparent, which helps clear the
-                // "grey wall" inside thin gaps like chair handles.
-                let biasedLogit = rawLogit - logitBias
-                guard biasedLogit > 0 else { continue }
-
-                let cx = x * 4
-                outRow[cx] = camRow[cx + 2]
-                outRow[cx + 1] = camRow[cx + 1]
-                outRow[cx + 2] = camRow[cx]
-                outRow[cx + 3] = 255
-            }
-        }
-
-        logPremultipliedRGBASampleIfDebug(
-            outBase: outBase,
-            bytesPerRowOut: bytesPerRowOut,
-            width: origW,
-            height: origH,
-            x0: xStart,
-            x1: xEnd,
-            y0: yStart,
-            y1: yEnd,
-            tag: debugTag
-        )
-        return ctx.makeImage()
     }
 
     /// ONNX / Ultralytics `process_mask` order on the composite path: fused proto
@@ -5565,17 +3957,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        logSampledMaskShapeIfDebug(
-            mask: upscaledPlanarMaskScratch,
-            width: origW,
-            height: origH,
-            x0: xStart,
-            x1: xEnd,
-            y0: yStart,
-            y1: yEnd,
-            tag: debugTag
-        )
-
         upscaledPlanarMaskScratch.withUnsafeBufferPointer { maskPtr in
             guard let maskBase = maskPtr.baseAddress else { return }
             compositeCpuCameraBandAccelerated(
@@ -5592,48 +3973,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
 
-        logPremultipliedRGBASampleIfDebug(
-            outBase: outBase,
-            bytesPerRowOut: bytesPerRowOut,
-            width: origW,
-            height: origH,
-            x0: xStart,
-            x1: xEnd,
-            y0: yStart,
-            y1: yEnd,
-            tag: debugTag
-        )
-        logPrimaryChairStageComparisonIfDebug(
-            primary: primary,
-            modelSide: modelSide,
-            protoMask: maskProto,
-            protoW: pw,
-            protoH: ph,
-            fullResMask: upscaledPlanarMaskScratch,
-            outBase: outBase,
-            bytesPerRowOut: bytesPerRowOut,
-            origW: origW,
-            origH: origH,
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2
-        )
-        logPrimaryChairContributorPixelsIfDebug(
-            primary: primary,
-            maskDetectionsForBuild: maskDetectionsForBuild,
-            planes: planes,
-            fusedMaskLogits: maskLogits,
-            protoW: pw,
-            protoH: ph,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            primaryBx1: primaryBx1,
-            primaryBy1: primaryBy1,
-            primaryBx2: primaryBx2,
-            primaryBy2: primaryBy2
-        )
         return ctx.makeImage()
     }
 
@@ -6476,137 +4815,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return ctx.makeImage()
     }
 
-    private enum SmallRegionCleanupMode {
-        case holes
-        case islands
-    }
-
-    /// SAM-style connected-component cleanup. In `.holes` mode, only enclosed background regions
-    /// below `areaThreshold` are filled. In `.islands` mode, only small foreground regions are removed.
-    private func removeSmallRegionsFromBinaryBandMask(
-        mask: inout [UInt8],
-        width: Int,
-        height: Int,
-        areaThreshold: Int,
-        mode: SmallRegionCleanupMode
-    ) {
-        let count = width * height
-        guard count == mask.count, width >= 1, height >= 1, areaThreshold > 0 else { return }
-
-        var visited = [Bool](repeating: false, count: count)
-        var queue: [Int] = []
-        queue.reserveCapacity(256)
-
-        for start in 0..<count {
-            guard !visited[start] else { continue }
-            let isForeground = mask[start] != 0
-            let matchesMode = (mode == .holes && !isForeground) || (mode == .islands && isForeground)
-            guard matchesMode else {
-                visited[start] = true
-                continue
-            }
-
-            queue.removeAll(keepingCapacity: true)
-            var component: [Int] = []
-            var touchesBorder = false
-            queue.append(start)
-            visited[start] = true
-
-            var head = 0
-            while head < queue.count {
-                let index = queue[head]
-                head += 1
-                component.append(index)
-
-                let x = index % width
-                let y = index / width
-                if x == 0 || x == width - 1 || y == 0 || y == height - 1 {
-                    touchesBorder = true
-                }
-
-                if x > 0 {
-                    let next = index - 1
-                    if !visited[next], (mask[next] != 0) == isForeground {
-                        visited[next] = true
-                        queue.append(next)
-                    }
-                }
-                if x + 1 < width {
-                    let next = index + 1
-                    if !visited[next], (mask[next] != 0) == isForeground {
-                        visited[next] = true
-                        queue.append(next)
-                    }
-                }
-                if y > 0 {
-                    let next = index - width
-                    if !visited[next], (mask[next] != 0) == isForeground {
-                        visited[next] = true
-                        queue.append(next)
-                    }
-                }
-                if y + 1 < height {
-                    let next = index + width
-                    if !visited[next], (mask[next] != 0) == isForeground {
-                        visited[next] = true
-                        queue.append(next)
-                    }
-                }
-            }
-
-            switch mode {
-            case .holes:
-                guard !touchesBorder, component.count <= areaThreshold else { continue }
-                for index in component { mask[index] = 255 }
-            case .islands:
-                guard component.count <= areaThreshold else { continue }
-                for index in component { mask[index] = 0 }
-            }
-        }
-    }
-
-    private func removeSmallRegionsFromFullMaskBandRegion(
-        fullMask: inout [UInt8],
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int,
-        areaThreshold: Int,
-        mode: SmallRegionCleanupMode
-    ) {
-        guard bandW >= 3, bandH >= 3, fullMask.count >= origW * origH, origW > 0, origH > 0 else { return }
-        var bandCompact = [UInt8](repeating: 0, count: bandW * bandH)
-        for by in 0..<bandH {
-            let y = yStart + by
-            guard y >= 0, y < origH else { continue }
-            let row = y * origW
-            for bx in 0..<bandW {
-                let x = xStart + bx
-                guard x >= 0, x < origW else { continue }
-                bandCompact[by * bandW + bx] = fullMask[row + x]
-            }
-        }
-        removeSmallRegionsFromBinaryBandMask(
-            mask: &bandCompact,
-            width: bandW,
-            height: bandH,
-            areaThreshold: areaThreshold,
-            mode: mode
-        )
-        for by in 0..<bandH {
-            let y = yStart + by
-            guard y >= 0, y < origH else { continue }
-            let row = y * origW
-            for bx in 0..<bandW {
-                let x = xStart + bx
-                guard x >= 0, x < origW else { continue }
-                fullMask[row + x] = bandCompact[by * bandW + bx]
-            }
-        }
-    }
-
     /// Draws bounding boxes for every detection whose mask logits are fused into the composite (expanded primary + overlapping contributors).
     private func drawCompositeContributorBboxesOnComposedImage(
         composed: CGImage,
@@ -6890,69 +5098,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return ctx.makeImage()
     }
 
-    private func compositeCpuMaskOnly(
-        processBuffer: CVPixelBuffer,
-        maskFull: [UInt8],
-        origW: Int,
-        origH: Int,
-        primaryBx1: Int,
-        primaryBy1: Int,
-        primaryBx2: Int,
-        primaryBy2: Int
-    ) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let bytesPerRowCam = CVPixelBufferGetBytesPerRow(processBuffer)
-        guard let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        let x0 = max(0, primaryBx1)
-        let x1 = min(origW, primaryBx2)
-        let y0 = max(0, primaryBy1)
-        let y1 = min(origH, primaryBy2)
-        fillCompositeBufferTransparent(
-            outBase: outBase,
-            height: origH,
-            bytesPerRowOut: bytesPerRowOut
-        )
-        maskFull.withUnsafeBufferPointer { maskBuf in
-            guard let maskBase = maskBuf.baseAddress else { return }
-            compositeCpuCameraBandAccelerated(
-                outBase: outBase,
-                origBase: origBase,
-                maskBase: maskBase,
-                origW: origW,
-                camRowBytes: bytesPerRowCam,
-                bytesPerRowOut: bytesPerRowOut,
-                x0: x0,
-                x1: x1,
-                y0: y0,
-                y1: y1
-            )
-        }
-        logPremultipliedRGBASampleIfDebug(
-            outBase: outBase,
-            bytesPerRowOut: bytesPerRowOut,
-            width: origW,
-            height: origH,
-            x0: x0,
-            x1: x1,
-            y0: y0,
-            y1: y1,
-            tag: "ONNX-style CPU composite"
-        )
-        return ctx.makeImage()
-    }
-
     private func squarePixelBufferAttributes() -> CFDictionary {
         let attrs: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [:],
@@ -7083,7 +5228,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Parse Prototypes (FIXED: Accelerate for Float16)
     // Reuses instance-level buffers and uses Accelerate for FP16 → FP32 conversion.
-    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], interleavedPlanes: [Float], count: Int, height: Int, width: Int, shape: [Int], strides: [Int], channelAxis: Int)? {
+    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int, shape: [Int], strides: [Int], channelAxis: Int)? {
         var normalizedStrides = proto.strides.map { $0.intValue }
         var shape = proto.shape.map { $0.intValue }
         if shape.count == 4 && shape[0] == 1 {
@@ -7119,16 +5264,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if protoPlanes.count != count * planeSize {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
         }
-        // Previously gated on `debugMode`, but the only consumers are
-        // `logChairDetectionMasksIfDebug` (a disabled stub) and `buildSingleDetectionMaskForDebug`
-        // (an orphan with no callers). The transpose was costing ~1,000 ms per frame in debug
-        // mode via a 3.3M-iteration cache-unfriendly strided loop. If either debug routine is
-        // ever resurrected, swap this for `vDSP_mtrans(src, 1, dst, 1, 32, planeSize)` — do NOT
-        // restore the scalar loop.
-        if !protoPlanesInterleaved.isEmpty {
-            protoPlanesInterleaved = []
-        }
-
         let channelFirstContiguous = cIdx == 0 &&
             normalizedStrides.count == 3 &&
             normalizedStrides[0] == planeSize &&
@@ -7192,7 +5327,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
+            return (protoPlanes, count, h, w, shape, normalizedStrides, cIdx)
         }
 
         if channelLastContiguous, proto.dataType == .float32 {
@@ -7210,7 +5345,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
+            return (protoPlanes, count, h, w, shape, normalizedStrides, cIdx)
         }
 
         if protoRawFloats.count != total {
@@ -7418,7 +5553,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
+        return (protoPlanes, count, h, w, shape, normalizedStrides, cIdx)
     }
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.
@@ -7466,52 +5601,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return morphologicalBinaryClose3x3(mask: mask, width: width, height: height)
         }
         return closed
-    }
-
-    /// Fill interior holes using horizontal ∩ vertical run-length fill.
-    /// A background pixel is filled when there is foreground both left and right
-    /// on the same row **and** both above and below in the same column. Bridges
-    /// structural gaps (armrest-to-backrest, slats, etc.) at proto resolution
-    /// without expanding the outer silhouette.
-    private func fillInteriorHolesHVIntersection(mask: inout [UInt8], width: Int, height: Int) {
-        let count = width * height
-        guard count == mask.count, width > 1, height > 1 else { return }
-
-        var hFill = [Bool](repeating: false, count: count)
-        var vFill = [Bool](repeating: false, count: count)
-
-        for y in 0..<height {
-            let row = y * width
-            var left = -1
-            var right = -1
-            for x in 0..<width {
-                if mask[row + x] > 0 {
-                    if left < 0 { left = x }
-                    right = x
-                }
-            }
-            if left >= 0 {
-                for x in left...right { hFill[row + x] = true }
-            }
-        }
-
-        for x in 0..<width {
-            var top = -1
-            var bottom = -1
-            for y in 0..<height {
-                if mask[y * width + x] > 0 {
-                    if top < 0 { top = y }
-                    bottom = y
-                }
-            }
-            if top >= 0 {
-                for y in top...bottom { vFill[y * width + x] = true }
-            }
-        }
-
-        for i in 0..<count where mask[i] == 0 {
-            if hFill[i] && vFill[i] { mask[i] = 255 }
-        }
     }
 
     /// 3×3 binary dilate (foreground = any > 0 in neighborhood).
@@ -7623,64 +5712,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Rotation Helpers
 
-    /// Rotates a CVPixelBuffer 90 degrees using vImage
-    private func rotatePixelBuffer90(_ pixelBuffer: CVPixelBuffer, clockwise: Bool) -> CVPixelBuffer? {
-        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
-        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
-
-        // After 90° rotation, dimensions swap
-        let dstWidth = srcHeight
-        let dstHeight = srcWidth
-
-        // Create destination buffer with proper attributes
-        let attrs: [String: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
-        ]
-        var dstBuffer: CVPixelBuffer?
-        let status = CVPixelBufferCreate(nil, dstWidth, dstHeight, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &dstBuffer)
-        guard status == kCVReturnSuccess, let dst = dstBuffer else { return nil }
-
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        CVPixelBufferLockBaseAddress(dst, [])
-        defer {
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
-            CVPixelBufferUnlockBaseAddress(dst, [])
-        }
-
-        guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer),
-              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
-
-        let srcBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(dst)
-
-        // Use vImage for efficient rotation
-        var srcBuffer = vImage_Buffer(
-            data: srcBase,
-            height: vImagePixelCount(srcHeight),
-            width: vImagePixelCount(srcWidth),
-            rowBytes: srcBytesPerRow
-        )
-        var dstBufferImg = vImage_Buffer(
-            data: dstBase,
-            height: vImagePixelCount(dstHeight),
-            width: vImagePixelCount(dstWidth),
-            rowBytes: dstBytesPerRow
-        )
-
-        // vImage rotation: kRotate90DegreesClockwise or kRotate90DegreesCounterClockwise
-        let rotationConstant: UInt8 = clockwise ? UInt8(kRotate90DegreesClockwise) : UInt8(kRotate90DegreesCounterClockwise)
-        let bgColor: [UInt8] = [0, 0, 0, 255]
-
-        let error = vImageRotate90_ARGB8888(&srcBuffer, &dstBufferImg, rotationConstant, bgColor, vImage_Flags(kvImageNoFlags))
-        guard error == kvImageNoError else { return nil }
-
-        return dst
-    }
-
-    /// Rotates a CGImage 90 degrees
     private func rotateCGImage90(_ image: CGImage, clockwise: Bool) -> CGImage? {
         let srcWidth = image.width
         let srcHeight = image.height
@@ -8018,35 +6049,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
     }
 
-    /// Check if a point in image coordinates is on a non-transparent pixel
-    private func isPointOnMask(point: CGPoint, in image: UIImage) -> Bool {
-        guard let cgImage = image.cgImage else { return false }
-
-        let width = cgImage.width
-        let height = cgImage.height
-
-        // Check bounds
-        let x = Int(point.x)
-        let y = Int(point.y)
-        guard x >= 0 && x < width && y >= 0 && y < height else { return false }
-
-        // Get pixel data
-        guard let dataProvider = cgImage.dataProvider,
-              let data = dataProvider.data,
-              let bytes = CFDataGetBytePtr(data) else { return false }
-
-        let bytesPerPixel = cgImage.bitsPerPixel / 8
-        let bytesPerRow = cgImage.bytesPerRow
-        let pixelOffset = y * bytesPerRow + x * bytesPerPixel
-
-        // Check alpha channel (assuming RGBA or BGRA format)
-        let alphaIndex = bytesPerPixel - 1  // Alpha is typically last byte
-        let alpha = bytes[pixelOffset + alphaIndex]
-
-        // Consider pixel "on mask" if alpha > 50
-        return alpha > 50
-    }
-    
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
         guard !isShowingLiveVideoIdentifications else { return }
