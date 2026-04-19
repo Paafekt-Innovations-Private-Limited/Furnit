@@ -256,7 +256,8 @@ enum FurnitureFitOnnxStylePipeline {
         protos: [Float],
         protoWidth: Int,
         protoHeight: Int,
-        modelSide: Int
+        modelSide: Int,
+        emitDebugLog: Bool = false
     ) -> [Float] {
         let spatialSize = protoWidth * protoHeight
         let coefficients = Array(detection.coeffs.prefix(32))
@@ -292,9 +293,11 @@ enum FurnitureFitOnnxStylePipeline {
 #if DEBUG
         var positiveLogitsBeforeCrop: Float = 0
         var positiveLogitsAfterCrop: Float = 0
-        for protoPixelIndex in 0..<spatialSize {
-            if logits[protoPixelIndex] > 0 {
-                positiveLogitsBeforeCrop += 1
+        if emitDebugLog {
+            for protoPixelIndex in 0..<spatialSize {
+                if logits[protoPixelIndex] > 0 {
+                    positiveLogitsBeforeCrop += 1
+                }
             }
         }
 #endif
@@ -302,24 +305,26 @@ enum FurnitureFitOnnxStylePipeline {
         vDSP_vmul(logits, 1, bboxMask, 1, &logits, 1, vDSP_Length(spatialSize))
 
 #if DEBUG
-        for protoPixelIndex in 0..<spatialSize {
-            if logits[protoPixelIndex] > 0 {
-                positiveLogitsAfterCrop += 1
+        if emitDebugLog {
+            for protoPixelIndex in 0..<spatialSize {
+                if logits[protoPixelIndex] > 0 {
+                    positiveLogitsAfterCrop += 1
+                }
             }
-        }
-        if let bbox = protoBounds(
-            for: detection,
-            protoWidth: protoWidth,
-            protoHeight: protoHeight,
-            modelSide: modelSide
-        ) {
-            print(
-                "🔲 BBOX CROP class=\(detection.classIdx) " +
-                "bbox=(\(bbox.left),\(bbox.top))-(\(bbox.right),\(bbox.bottom)) " +
-                "proto=\(protoWidth)x\(protoHeight) " +
-                "pixels before=\(Int(positiveLogitsBeforeCrop)) " +
-                "after=\(Int(positiveLogitsAfterCrop))"
-            )
+            if let bbox = protoBounds(
+                for: detection,
+                protoWidth: protoWidth,
+                protoHeight: protoHeight,
+                modelSide: modelSide
+            ) {
+                print(
+                    "🔲 BBOX CROP class=\(detection.classIdx) " +
+                    "bbox=(\(bbox.left),\(bbox.top))-(\(bbox.right),\(bbox.bottom)) " +
+                    "proto=\(protoWidth)x\(protoHeight) " +
+                    "pixels before=\(Int(positiveLogitsBeforeCrop)) " +
+                    "after=\(Int(positiveLogitsAfterCrop))"
+                )
+            }
         }
 #endif
 
@@ -329,6 +334,21 @@ enum FurnitureFitOnnxStylePipeline {
         vDSP_vthres(logits, 1, &zero, &binary, 1, vDSP_Length(spatialSize))
         vDSP_vclip(binary, 1, &zero, &one, &binary, 1, vDSP_Length(spatialSize))
         return binary
+    }
+
+    static func overlapFraction(
+        childBinary: [Float],
+        primaryBinary: [Float]
+    ) -> Float {
+        guard childBinary.count == primaryBinary.count, !childBinary.isEmpty else { return 0 }
+        var intersection = [Float](repeating: 0, count: childBinary.count)
+        vDSP_vmul(childBinary, 1, primaryBinary, 1, &intersection, 1, vDSP_Length(childBinary.count))
+
+        var childCount: Float = 0
+        var overlapCount: Float = 0
+        vDSP_sve(childBinary, 1, &childCount, vDSP_Length(childBinary.count))
+        vDSP_sve(intersection, 1, &overlapCount, vDSP_Length(intersection.count))
+        return childCount > 0 ? overlapCount / childCount : 0
     }
 
     static func protoBounds(
@@ -367,56 +387,14 @@ enum FurnitureFitOnnxStylePipeline {
         protoHeight: Int,
         modelSide: Int
     ) -> Float {
-        let spatialSize = protoWidth * protoHeight
-        let childCoefficients = Array(childDetection.coeffs.prefix(32))
-        let numProtos = childCoefficients.count
-        var childLogits = [Float](repeating: 0, count: spatialSize)
-
-        cblas_sgemv(
-            CblasRowMajor, CblasTrans,
-            Int32(numProtos), Int32(spatialSize),
-            1.0, protos, Int32(spatialSize),
-            childCoefficients, 1,
-            0.0, &childLogits, 1
-        )
-
-        guard let bbox = protoBounds(
-            for: childDetection,
+        let childBinary = buildCroppedBinaryMask(
+            detection: childDetection,
+            protos: protos,
             protoWidth: protoWidth,
             protoHeight: protoHeight,
             modelSide: modelSide
-        ) else { return 0 }
-
-        var bboxMask = [Float](repeating: 0, count: spatialSize)
-        for row in bbox.top...bbox.bottom {
-            let rowStart = row * protoWidth + bbox.left
-            let rowLength = bbox.right - bbox.left + 1
-            for columnOffset in 0..<rowLength {
-                bboxMask[rowStart + columnOffset] = 1.0
-            }
-        }
-        vDSP_vmul(childLogits, 1, bboxMask, 1, &childLogits, 1, vDSP_Length(spatialSize))
-
-        var childBinary = [Float](repeating: 0, count: spatialSize)
-        let childThreshold: Float = 0.0
-        var negativeChildThreshold = -childThreshold
-        var zero: Float = 0.0
-        var one: Float = 1.0
-        // Use the standard logit > 0 test after cropping the child mask to its own
-        // proto-space bbox so overlap is measured only within the detection region.
-        vDSP_vsadd(childLogits, 1, &negativeChildThreshold, &childBinary, 1, vDSP_Length(spatialSize))
-        vDSP_vthres(childBinary, 1, &zero, &childBinary, 1, vDSP_Length(spatialSize))
-        vDSP_vclip(childBinary, 1, &zero, &one, &childBinary, 1, vDSP_Length(spatialSize))
-
-        var intersection = [Float](repeating: 0, count: spatialSize)
-        vDSP_vmul(childBinary, 1, primaryBinary, 1, &intersection, 1, vDSP_Length(spatialSize))
-
-        var childCount: Float = 0
-        var overlapCount: Float = 0
-        vDSP_sve(childBinary, 1, &childCount, vDSP_Length(spatialSize))
-        vDSP_sve(intersection, 1, &overlapCount, vDSP_Length(spatialSize))
-
-        return childCount > 0 ? overlapCount / childCount : 0
+        )
+        return overlapFraction(childBinary: childBinary, primaryBinary: primaryBinary)
     }
 
     /// Returns the primary first, followed by detections whose proto masks overlap it.

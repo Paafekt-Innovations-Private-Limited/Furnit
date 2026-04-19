@@ -225,6 +225,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var primarySelectionByHighestConfidence: Bool = false
     /// Lower parse threshold used only for low-confidence secondary contributors.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.10
+    /// Keep only the most relevant non-primary contributors during mask fusion.
+    private let maximumMaskFusionContributorCount: Int = 6
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
@@ -3194,8 +3196,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             var selectedFusion = selectedCandidates.map {
                 onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
             }
+            let selectedBaseCount = selectedFusion.count
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &selectedFusion)
-            maskDetectionsForBuild = selectedFusion
+            let supplementalContributors = Array(selectedFusion.dropFirst(selectedBaseCount))
+            let limitedSupplementalContributors = limitedMaskFusionContributors(
+                primary: primary,
+                contributors: supplementalContributors
+            )
+            if debugMode, supplementalContributors.count > limitedSupplementalContributors.count {
+                logDebug(
+                    "🧵 ONNX-STYLE (\(stage2DebugLabel)) limited supplemental contributors " +
+                    "from \(supplementalContributors.count) to \(limitedSupplementalContributors.count)"
+                )
+            }
+            maskDetectionsForBuild = Array(selectedFusion.prefix(selectedBaseCount)) + limitedSupplementalContributors
         } else {
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
@@ -3211,33 +3225,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &maskSource)
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
             var fusion: [FurnitureFitDetection] = [expandedPrimary]
-            for det in maskSource {
-                // Drop the unexpanded primary (near-duplicate) while keeping
-                // genuinely distinct overlapping detections.
-                if FurnitureFitIoU.calculate(det, primary) < 0.999 {
-                    fusion.append(det)
-                }
+            let contributorCandidates = maskSource.filter { FurnitureFitIoU.calculate($0, primary) < 0.999 }
+            let limitedContributors = limitedMaskFusionContributors(
+                primary: primary,
+                contributors: contributorCandidates
+            )
+            if debugMode, contributorCandidates.count > limitedContributors.count {
+                logDebug(
+                    "🧵 ONNX-STYLE (\(stage2DebugLabel)) limited contributors " +
+                    "from \(contributorCandidates.count) to \(limitedContributors.count)"
+                )
             }
+            fusion.append(contentsOf: limitedContributors)
             maskDetectionsForBuild = fusion
         }
 
-        let maskFusionStart = Date()
-        let maskBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
-            planes: planes,
-            protoW: pW,
-            protoH: pH,
-            detections: maskDetectionsForBuild,
-            modelSide: onnxSide
-        )
-        var maskLogitsFused = maskBuilt.logits
-        var maskBinaryFused = maskBuilt.binary
-        if currentYoloInputVerticallyFlipped {
-            FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&maskLogitsFused, protoW: pW, protoH: pH)
-            FurnitureFitOnnxStylePipeline.flipProtoUInt8GridVertically(&maskBinaryFused, protoW: pW, protoH: pH)
-        }
-        let maskResult = (binary: maskBinaryFused, logits: maskLogitsFused)
-        let maskFusionMs = Date().timeIntervalSince(maskFusionStart) * 1000
-        let maskSmall = maskResult.binary
+        let maskFusionMs = 0.0
         let morphologyMs = 0.0
 
         let compositeDetectionsForBuild = maskDetectionsForBuild
@@ -3262,9 +3265,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
         let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
         let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        let maskSmallForComposite = maskSmall
-        let maskLogitsForComposite = maskResult.logits
-
         let clipModelRect = CGRect(
             x: CGFloat(clipLeftModel),
             y: CGFloat(clipTopModel),
@@ -3354,7 +3354,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             "ratioW=\(String(format: "%.3f", bboxWidthImagePx / Float(max(1, bufW)))) ratioH=\(String(format: "%.3f", bboxHeightImagePx / Float(max(1, bufH))))"
         )
 
-        let maskHasForeground = maskSmall.contains(where: { $0 > 0 })
         let firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)? = nil
 
         if isUsingARCameraPath {
@@ -3446,6 +3445,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryBy2: primaryBy2,
             )
             : nil
+        let maskHasForeground = composedImage != nil
 
         let withDebugOverlay: CGImage? = {
             guard let base = composedImage else { return composedImage }
@@ -3616,6 +3616,39 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 existing.append(addition)
             }
         }
+    }
+
+    private func limitedMaskFusionContributors(
+        primary: FurnitureFitDetection,
+        contributors: [FurnitureFitDetection]
+    ) -> [FurnitureFitDetection] {
+        guard !contributors.isEmpty else { return [] }
+
+        return contributors.enumerated()
+            .map { offset, detection -> (offset: Int, detection: FurnitureFitDetection, iou: Float, centerDistance: Float, area: Float) in
+                let iou = FurnitureFitIoU.calculate(primary, detection)
+                let dx = primary.x - detection.x
+                let dy = primary.y - detection.y
+                let centerDistance = hypotf(dx, dy)
+                return (offset, detection, iou, centerDistance, detection.w * detection.h)
+            }
+            .sorted { lhs, rhs in
+                if abs(lhs.iou - rhs.iou) > 1e-6 {
+                    return lhs.iou > rhs.iou
+                }
+                if abs(lhs.centerDistance - rhs.centerDistance) > 1e-6 {
+                    return lhs.centerDistance < rhs.centerDistance
+                }
+                if abs(lhs.detection.confidence - rhs.detection.confidence) > 1e-6 {
+                    return lhs.detection.confidence > rhs.detection.confidence
+                }
+                if abs(lhs.area - rhs.area) > 1e-6 {
+                    return lhs.area > rhs.area
+                }
+                return lhs.offset < rhs.offset
+            }
+            .prefix(maximumMaskFusionContributorCount)
+            .map(\.detection)
     }
 
     private func lowConfidenceInsidePrimaryContributors(
@@ -3980,7 +4013,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 protos: planes,
                 protoWidth: protoW,
                 protoHeight: protoH,
-                modelSide: modelSide
+                modelSide: modelSide,
+                emitDebugLog: debugMode
             )
             vDSP_vmax(
                 compositeBinary,
