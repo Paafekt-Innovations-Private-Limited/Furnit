@@ -25,11 +25,6 @@ struct FurnitureFitARDepthSnapshot {
 
 enum FurnitureFitARSupport {
 
-    /// AR world tracking supported on this device.
-    static var isWorldTrackingSupported: Bool {
-        ARWorldTrackingConfiguration.isSupported
-    }
-
     /// Copy `ARFrame.capturedImage` into a reusable BGRA buffer (ARKit buffers are only valid during delegate callbacks).
     ///
     /// For FurnitureFit, YOLO should see the **same orientation invariants** as the classic AVCapture path:
@@ -100,29 +95,6 @@ enum FurnitureFitARSupport {
             config.frameSemantics.insert(.smoothedSceneDepth)
         }
         return config
-    }
-
-    /// Distance from camera to first horizontal plane hit along ray through screen point (meters), or nil.
-    @available(iOS 14.0, *)
-    static func distanceToHorizontalPlaneMeters(
-        session: ARSession,
-        frame: ARFrame,
-        screenPoint: CGPoint,
-        in viewBounds: CGRect
-    ) -> Float? {
-        guard viewBounds.width > 1, viewBounds.height > 1 else { return nil }
-        let query = frame.raycastQuery(
-            from: screenPoint,
-            allowing: .estimatedPlane,
-            alignment: .horizontal
-        )
-        let results = session.raycast(query)
-        guard let first = results.first else { return nil }
-        let camT = frame.camera.transform
-        let camPos = SIMD3<Float>(camT.columns.3.x, camT.columns.3.y, camT.columns.3.z)
-        let hitT = first.worldTransform
-        let hitPos = SIMD3<Float>(hitT.columns.3.x, hitT.columns.3.y, hitT.columns.3.z)
-        return simd_distance(camPos, hitPos)
     }
 
     /// Raycast against any detected/estimated plane (horizontal + vertical).
@@ -329,38 +301,6 @@ enum FurnitureFitARSupport {
         return depthMetersFromDepthMap(depthMap, normalizedDepthPoint: CGPoint(x: uw, y: uh))
     }
 
-    /// Minimum scene depth (m) over a grid in **BGRA-normalized** coords (origin top-left), preferring the **nearest**
-    /// surface in the bbox. Reduces inflated sizes when a loose YOLO box spans object + far wall and the center hits the wall.
-    static func depthMetersMinInNormalizedBgraRect(
-        snapshot: FurnitureFitARDepthSnapshot,
-        nxMin: CGFloat,
-        nyMinTop: CGFloat,
-        nxMax: CGFloat,
-        nyMaxTop: CGFloat,
-        samplesPerAxis: Int = 5
-    ) -> Float? {
-        guard snapshot.depthMap != nil else { return nil }
-        guard samplesPerAxis >= 1 else { return nil }
-        let x0 = min(max(min(nxMin, nxMax), 0), 1)
-        let x1 = min(max(max(nxMin, nxMax), 0), 1)
-        let y0 = min(max(min(nyMinTop, nyMaxTop), 0), 1)
-        let y1 = min(max(max(nyMinTop, nyMaxTop), 0), 1)
-        var best: Float?
-        for iy in 0..<samplesPerAxis {
-            for ix in 0..<samplesPerAxis {
-                let tx = (CGFloat(ix) + 0.5) / CGFloat(samplesPerAxis)
-                let ty = (CGFloat(iy) + 0.5) / CGFloat(samplesPerAxis)
-                let nx = x0 + (x1 - x0) * tx
-                let ny = y0 + (y1 - y0) * ty
-                if let d = depthMeters(snapshot: snapshot, normalizedBgraNX: nx, normalizedBgraNY: ny),
-                   d > 0.1, d < 50, d.isFinite {
-                    if best == nil || d < best! { best = d }
-                }
-            }
-        }
-        return best
-    }
-
     /// Robust scene depth over a BGRA-normalized rect. Uses a low percentile instead of the strict minimum
     /// so a single spurious near pixel does not inflate measured object size.
     static func depthMetersPercentileInNormalizedBgraRect(
@@ -421,19 +361,4 @@ enum FurnitureFitARSupport {
         return (bboxWidthPixels / focalLengthXPixels) * distanceMeters
     }
 
-    /// Target overlay scale vs 1.0: AR-estimated height relative to standard catalog height, clamped.
-    static func overlayScaleFromMetricHeights(
-        standardHeightMeters: Float,
-        estimatedHeightMeters: Float,
-        minScale: Float = 0.08,
-        maxScale: Float = 2.5
-    ) -> Float? {
-        guard standardHeightMeters > 0.1, estimatedHeightMeters > 0.1 else { return nil }
-        // When the FurnitureFit overlay has already been scaled so that the standard height appears
-        // correct for the current room, this additional factor adjusts it so that the final visual
-        // height matches the AR-estimated height. If AR says the furniture is taller than the
-        // standard, we scale up (>1); if shorter, we scale down (<1).
-        let raw = estimatedHeightMeters / standardHeightMeters
-        return min(max(raw, minScale), maxScale)
-    }
 }

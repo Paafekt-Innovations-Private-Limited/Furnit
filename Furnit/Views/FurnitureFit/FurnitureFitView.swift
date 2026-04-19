@@ -22,51 +22,6 @@ fileprivate func blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLA
     BlasScopy(n, x, incx, y, incy)
 }
 
-// MARK: - SwiftUI Wrapper
-struct FurnitureFitViewSwiftUI: UIViewRepresentable {
-    let mlModel: MLModel?
-    var processInterval: TimeInterval = 0.07
-    var confidenceThreshold: Float = 0.15
-    var useBilinearUpscaling: Bool = true
-    var active: Bool = false
-
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
-    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-    @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
-
-    func makeUIView(context: Context) -> FurnitureFitContainerView {
-        let v = FurnitureFitContainerView()
-        v.processInterval = processInterval
-        v.confidenceThreshold = confidenceThreshold
-        v.primaryDetectionMinConfidence = clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
-        v.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
-        v.showFullVideoWithIdentifications = showFullVideoWithIdentifications
-        v.useBilinearUpscaling = useBilinearUpscaling
-        v.setModel(mlModel)
-        if active { v.startIfNeeded() }
-        return v
-    }
-
-    func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
-        uiView.setModel(mlModel)
-        uiView.processInterval = processInterval
-        uiView.confidenceThreshold = confidenceThreshold
-        uiView.primaryDetectionMinConfidence = clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
-        uiView.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
-        uiView.showFullVideoWithIdentifications = showFullVideoWithIdentifications
-        uiView.useBilinearUpscaling = useBilinearUpscaling
-        if active { uiView.startIfNeeded() } else { uiView.stop() }
-    }
-
-    private func clampPrimaryDetectionConfidence(_ raw: Double) -> Float {
-        Float(min(max(raw, 0.05), 0.99))
-    }
-
-    static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
-        uiView.stop()
-    }
-}
-
 // MARK: - Detection & Sizing Types
 /// High-level furniture size estimate surfaced to SharpRoom / viewers.
 struct FurnitureSizeEstimate {
@@ -300,9 +255,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var lastSegmentationMeanColorPublishAt: CFAbsoluteTime = 0
     private let segmentationMeanColorMinPublishInterval: CFTimeInterval = 0.25
 
-    // Sizing calculator (created when room dimensions are set)
-    private var sizingCalculator: FurnitureSizingCalculator?
-
     // Debug mode - read from settings
     var debugMode: Bool {
         return AppStateManager.shared.qualitySettings.debugMode
@@ -515,8 +467,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var processedStillImageScanRequestID: UUID?
 
     // MARK: - Overlay scale (room × AR when enabled × user pinch)
-    /// From `FurnitureSizingCalculator`; combined with a modest default baseline so large furniture
-    /// like beds and sofas do not start too small before AR/proportion sizing kicks in.
+    /// Room/AR-derived scale factor before the user's pinch multiplier.
     private var autoScaleFromRoom: CGFloat = 1.0
     /// User pinch multiplier (reset when primary class changes).
     private var userPinchScale: CGFloat = 1.0
@@ -1050,18 +1001,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             applyLockedOrientationVideoRotation()
         }
         cachedARViewportSize = bounds.size
-        updateSizingCalculator()
-    }
-
-    /// Update sizing calculator with current view dimensions
-    private func updateSizingCalculator() {
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        sizingCalculator = FurnitureSizingCalculator(
-            roomWidth: roomWidthMeters,
-            roomHeight: roomHeightMeters,
-            viewWidth: bounds.width,
-            viewHeight: bounds.height
-        )
     }
 
     /// When AR/LiDAR sizing is unavailable, fall back to the detected bbox pixel proportion
