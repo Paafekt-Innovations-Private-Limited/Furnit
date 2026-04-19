@@ -3817,12 +3817,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let detStrides = detArray.strides.map { $0.intValue }
             let dataTypeRaw = detArray.dataType.rawValue
             let dataTypeName: String
-            switch detArray.dataType {
-            case .float32: dataTypeName = "float32"
-            case .float16: dataTypeName = "float16"
-            case .float64: dataTypeName = "float64"
-            case .int32: dataTypeName = "int32"
-            default: dataTypeName = "unknown"
+            if detArray.dataType == .float32 {
+                dataTypeName = "float32"
+            } else if detArray.dataType == .float16 {
+                dataTypeName = "float16"
+            } else if detArray.dataType == .float64 {
+                dataTypeName = "float64"
+            } else if detArray.dataType == .int32 {
+                dataTypeName = "int32"
+            } else {
+                dataTypeName = "unknown"
             }
             // Replicate YoloEDetectionParser.isContiguous: standard C-contiguous strides?
             var expected = 1
@@ -5516,20 +5520,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
         }
-        // if furnitureFitCompositeRemoveSmallHoles {
-        //     removeSmallRegionsFromFullMaskBandRegion(
-        //         fullMask: &upscaledPlanarMaskScratch,
-        //         origW: origW,
-        //         origH: origH,
-        //         xStart: xStart,
-        //         yStart: yStart,
-        //         bandW: bandW,
-        //         bandH: bandH,
-        //         areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
-        //         mode: .holes
-        //     )
-        // }
-
         logSampledMaskShapeIfDebug(
             mask: upscaledPlanarMaskScratch,
             width: origW,
@@ -6396,16 +6386,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
             bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
         }
-        // if furnitureFitCompositeRemoveSmallHoles {
-        //     removeSmallRegionsFromBinaryBandMask(
-        //         mask: &bandMask,
-        //         width: bandW,
-        //         height: bandH,
-        //         areaThreshold: furnitureFitCompositeSmallHoleAreaThreshold,
-        //         mode: .holes
-        //     )
-        // }
-
         guard let ctx = CGContext(
             data: nil,
             width: origW,
@@ -7100,7 +7080,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         // mode via a 3.3M-iteration cache-unfriendly strided loop. If either debug routine is
         // ever resurrected, swap this for `vDSP_mtrans(src, 1, dst, 1, 32, planeSize)` — do NOT
         // restore the scalar loop.
-        let shouldBuildInterleavedPlanes = false
         if !protoPlanesInterleaved.isEmpty {
             protoPlanesInterleaved = []
         }
@@ -7120,12 +7099,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             didLogProtoLayoutDiagnostic = true
             let dataTypeRaw = proto.dataType.rawValue
             let dataTypeName: String
-            switch proto.dataType {
-            case .float32: dataTypeName = "float32"
-            case .float16: dataTypeName = "float16"
-            case .float64: dataTypeName = "float64"
-            case .int32: dataTypeName = "int32"
-            default: dataTypeName = "unknown"
+            if proto.dataType == .float32 {
+                dataTypeName = "float32"
+            } else if proto.dataType == .float16 {
+                dataTypeName = "float16"
+            } else if proto.dataType == .float64 {
+                dataTypeName = "float64"
+            } else if proto.dataType == .int32 {
+                dataTypeName = "int32"
+            } else {
+                dataTypeName = "unknown"
             }
             let chosenPath: String
             if channelFirstContiguous {
@@ -7164,21 +7147,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            if shouldBuildInterleavedPlanes {
-                protoPlanes.withUnsafeBufferPointer { src in
-                    protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
-                        guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
-                        for protoIndex in 0..<planeSize {
-                            let dstRowBase = protoIndex * count
-                            for channel in 0..<count {
-                                dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
-                            }
-                        }
-                    }
-                }
-            }
-
-            return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
+            return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
         }
 
         if channelLastContiguous, proto.dataType == .float32 {
@@ -7196,22 +7165,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            if shouldBuildInterleavedPlanes {
-                protoPlanes.withUnsafeBufferPointer { src in
-                    protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
-                        guard let contiguousPlanes = src.baseAddress,
-                              let interleavedBase = dst.baseAddress else { return }
-                        for protoIndex in 0..<planeSize {
-                            let dstRowBase = protoIndex * count
-                            for channel in 0..<count {
-                                interleavedBase[dstRowBase + channel] = contiguousPlanes[channel * planeSize + protoIndex]
-                            }
-                        }
-                    }
-                }
-            }
-
-            return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
+            return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
         }
 
         if protoRawFloats.count != total {
@@ -7419,22 +7373,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        if shouldBuildInterleavedPlanes {
-            // Debug-only chair logging prefers [pixel][32] so one pixel's prototype vector is contiguous.
-            protoPlanes.withUnsafeBufferPointer { src in
-                protoPlanesInterleaved.withUnsafeMutableBufferPointer { dst in
-                    guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
-                    for protoIndex in 0..<planeSize {
-                        let dstRowBase = protoIndex * count
-                        for channel in 0..<count {
-                            dstBase[dstRowBase + channel] = srcBase[channel * planeSize + protoIndex]
-                        }
-                    }
-                }
-            }
-        }
-
-        return (protoPlanes, shouldBuildInterleavedPlanes ? protoPlanesInterleaved : [], count, h, w, shape, normalizedStrides, cIdx)
+        return (protoPlanes, [], count, h, w, shape, normalizedStrides, cIdx)
     }
 
     /// 3×3 binary closing (dilate ∘ erode) on a planar mask using vImage max/min — same semantics as 0/255 neighborhood ops, SIMD-friendly at prototype size.

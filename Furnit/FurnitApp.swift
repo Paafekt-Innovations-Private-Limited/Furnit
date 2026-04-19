@@ -80,49 +80,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
-        if debugMode {
-            print("🔥 [AppDelegate] didFinishLaunching START")
-        }
+        logDebug("🔥 [AppDelegate] didFinishLaunching START")
 
         SHARPService.purgeTemporarySharpModelsDirectoryAtLaunch()
 
-        // ✅ Configure Firebase logging level based on debug mode
-        if debugMode {
-            // Debug mode ON: Show all Firebase logs
-            FirebaseConfiguration.shared.setLoggerLevel(.error)
-            print("🔥 [AppDelegate] Firebase logging: DEBUG (all logs enabled)")
-        } else {
-            // Debug mode OFF: Suppress all Firebase logs (including AppCheck)
-            FirebaseConfiguration.shared.setLoggerLevel(.error)
-        }
+        FirebaseConfiguration.shared.setLoggerLevel(.error)
+        logDebug("🔥 [AppDelegate] Firebase logging level set to .error")
 
-        // Configure Firebase here - proper place for swizzling to work
         if FirebaseApp.app() == nil {
-            if debugMode {
-                print("🔥 [AppDelegate] Configuring Firebase...")
-            }
+            logDebug("🔥 [AppDelegate] Configuring Firebase...")
             FirebaseApp.configure()
-            if debugMode {
-                print("🔥 [AppDelegate] Firebase configured. App: \(FirebaseApp.app()?.name ?? "nil")")
-            }
+            logDebug("🔥 [AppDelegate] Firebase configured. App: \(FirebaseApp.app()?.name ?? "nil")")
         } else {
-            if debugMode {
-                print("🔥 [AppDelegate] Firebase already configured")
-            }
+            logDebug("🔥 [AppDelegate] Firebase already configured")
         }
 
-        // Log Auth settings only in debug mode
-        if debugMode {
-            print("🔥 [AppDelegate] Auth settings: \(String(describing: Auth.auth().settings))")
-            print("🔥 [AppDelegate] didFinishLaunching END")
-        }
+        logDebug("🔥 [AppDelegate] Auth settings: \(String(describing: Auth.auth().settings))")
+        logDebug("🔥 [AppDelegate] didFinishLaunching END")
 
         application.registerForRemoteNotifications()
-        if debugMode {
-            print("🔥 [AppDelegate] Requested APNs registration for Firebase Phone Auth")
-        }
+        logDebug("🔥 [AppDelegate] Requested APNs registration for Firebase Phone Auth")
 
         return true
     }
@@ -142,47 +119,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     // Required by Firebase Auth - forward APNs token
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
-        if debugMode {
-            print("🔥 [AppDelegate] didRegisterForRemoteNotifications - token received")
-        }
-        
+        logDebug("🔥 [AppDelegate] didRegisterForRemoteNotifications - token received")
+
         // Forward to Firebase Auth - use safe method
         Auth.auth().setAPNSToken(deviceToken, type: .unknown)
-        
-        if debugMode {
-            print("🔥 [AppDelegate] APNs token forwarded to Firebase")
-        }
+
+        logDebug("🔥 [AppDelegate] APNs token forwarded to Firebase")
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
-        if debugMode {
-            print("🔥 [AppDelegate] didFailToRegisterForRemoteNotifications: \(error.localizedDescription)")
-        }
+        logDebug("🔥 [AppDelegate] didFailToRegisterForRemoteNotifications: \(error.localizedDescription)")
     }
 
     // Required by Firebase Auth - forward notifications
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
-        if debugMode {
-            print("🔥 [AppDelegate] didReceiveRemoteNotification")
-        }
-        
+        logDebug("🔥 [AppDelegate] didReceiveRemoteNotification")
+
         if Auth.auth().canHandleNotification(userInfo) {
-            if debugMode {
-                print("🔥 [AppDelegate] Firebase handled the notification")
-            }
+            logDebug("🔥 [AppDelegate] Firebase handled the notification")
             completionHandler(.noData)
             return
         }
-        
-        if debugMode {
-            print("🔥 [AppDelegate] Firebase did NOT handle the notification")
-        }
+
+        logDebug("🔥 [AppDelegate] Firebase did NOT handle the notification")
         completionHandler(.noData)
     }
 }

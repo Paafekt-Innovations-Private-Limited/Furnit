@@ -1,6 +1,6 @@
 import SwiftUI
 import PhotosUI
-import CoreML
+@preconcurrency import CoreML
 
 @MainActor
 struct SettingsFurnitureFitImageScanView: View {
@@ -12,8 +12,11 @@ struct SettingsFurnitureFitImageScanView: View {
     @State private var loadErrorMessage: String?
 
     var body: some View {
+        let currentSelectedImage = selectedImage
+        let currentScanRequestID = scanRequestID
         let loadedModel = yoloeService.model
         let isModelLoading = yoloeService.isLoadingModel
+        let currentStatusText = statusText
         let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
 
         ScrollView {
@@ -23,16 +26,16 @@ struct SettingsFurnitureFitImageScanView: View {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(Color.secondary.opacity(0.14))
 
-                        if let selectedImage {
-                            Image(uiImage: selectedImage)
+                        if let currentSelectedImage {
+                            Image(uiImage: currentSelectedImage)
                                 .resizable()
                                 .scaledToFit()
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                             if loadedModel != nil {
                                 SettingsFurnitureFitStillImageScannerRepresentable(
-                                    selectedImage: selectedImage,
-                                    scanRequestID: scanRequestID,
+                                    selectedImage: currentSelectedImage,
+                                    scanRequestID: currentScanRequestID,
                                     mlModel: loadedModel
                                 )
                                 .allowsHitTesting(false)
@@ -56,7 +59,7 @@ struct SettingsFurnitureFitImageScanView: View {
                         if shouldShowLoadingOverlay {
                             VStack(spacing: 10) {
                                 ProgressView()
-                                Text(statusText)
+                                Text(currentStatusText)
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }

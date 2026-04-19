@@ -380,7 +380,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
             // ── Metal basics ─────────────────────────────────────────────────
             guard let device = mtkView.device ?? MTLCreateSystemDefaultDevice() else {
-                print("❌ [GaussianSplatView] No Metal device")
+                AppLogger.error("[GaussianSplatView] No Metal device", category: AppLogger.scene)
                 return
             }
             self.device       = device

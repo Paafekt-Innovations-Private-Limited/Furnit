@@ -221,12 +221,9 @@ struct OverlayScale {
 }
 
 // MARK: - Internal logging
-
-private func logDebug(_ message: String) {
-    #if DEBUG
-    print("[RoomFitmentMeasurement] \(message)")
-    #endif
-}
+// Uses the global `logDebug` from `Utilities/Logger.swift`, which is gated by
+// Settings → Debug Mode. The previous local shadow always logged in DEBUG builds
+// regardless of the user toggle, which contributed to noise.
 
 // MARK: - RoomModel Extensions
 // Extensions below integrate with RoomModel (same module — no import required).

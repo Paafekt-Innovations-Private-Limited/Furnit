@@ -492,21 +492,21 @@ public struct EnhancedRoomMetadata: Codable, Equatable, Sendable {
     // MARK: - Diagnostics
 
     public func printSaveDiagnostics() {
-        print("[EnhancedRoomMetadata] schemaVersion   : \(schemaVersion)")
-        print("[EnhancedRoomMetadata] capturedAt       : \(capturedAt)")
-        print("[EnhancedRoomMetadata] sceneToMeters    : \(sceneToMeters)")
+        logDebug("[EnhancedRoomMetadata] schemaVersion   : \(schemaVersion)")
+        logDebug("[EnhancedRoomMetadata] capturedAt       : \(capturedAt)")
+        logDebug("[EnhancedRoomMetadata] sceneToMeters    : \(sceneToMeters)")
         if let dh = displayHeightMeters, let dd = displayDepthMeters {
-            print("[EnhancedRoomMetadata] display H×D m  : \(dh) × \(dd)")
+            logDebug("[EnhancedRoomMetadata] display H×D m  : \(dh) × \(dd)")
         } else {
-            print("[EnhancedRoomMetadata] display H×D m  : nil")
+            logDebug("[EnhancedRoomMetadata] display H×D m  : nil")
         }
-        print("[EnhancedRoomMetadata] walls            : \(walls.count)")
-        print("[EnhancedRoomMetadata] corners          : \(corners.count)")
-        print("[EnhancedRoomMetadata] freeFloorRegions : \(freeFloorRegions.count)")
+        logDebug("[EnhancedRoomMetadata] walls            : \(walls.count)")
+        logDebug("[EnhancedRoomMetadata] corners          : \(corners.count)")
+        logDebug("[EnhancedRoomMetadata] freeFloorRegions : \(freeFloorRegions.count)")
         for (i, region) in freeFloorRegions.enumerated() {
             let ratioStr = region.occupancyRatio.map { String(format: "%.2f", $0) } ?? "nil (legacy)"
-            print("[EnhancedRoomMetadata]   region[\(i)] areaSqM=\(region.areaSqM), occupancyRatio=\(ratioStr)")
+            logDebug("[EnhancedRoomMetadata]   region[\(i)] areaSqM=\(region.areaSqM), occupancyRatio=\(ratioStr)")
         }
-        print("[EnhancedRoomMetadata] surfacePalette   : floor=\(surfacePalette.floor != nil), walls=\(surfacePalette.walls != nil), ceiling=\(surfacePalette.ceiling != nil)")
+        logDebug("[EnhancedRoomMetadata] surfacePalette   : floor=\(surfacePalette.floor != nil), walls=\(surfacePalette.walls != nil), ceiling=\(surfacePalette.ceiling != nil)")
     }
 }

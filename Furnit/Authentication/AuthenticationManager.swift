@@ -126,19 +126,14 @@ class AuthenticationManager: ObservableObject {
         // Format phone number with country code
         let formattedPhone = formatPhoneForFirebase(phoneNumber)
 
-        // Debug logging
-        if AppStateManager.shared.qualitySettings.debugMode {
-            print("🔐 [Auth] Starting phone verification for: \(formattedPhone)")
-            print("🔐 [Auth] Firebase App: \(FirebaseApp.app()?.name ?? "nil")")
-            print("🔐 [Auth] Auth instance: \(Auth.auth())")
-            print("🔐 [Auth] Auth settings: \(String(describing: Auth.auth().settings))")
-            print("🔐 [Auth] Auth currentUser: \(String(describing: Auth.auth().currentUser))")
-        }
+        logDebug("🔐 [Auth] Starting phone verification for: \(formattedPhone)")
+        logDebug("🔐 [Auth] Firebase App: \(FirebaseApp.app()?.name ?? "nil")")
+        logDebug("🔐 [Auth] Auth instance: \(Auth.auth())")
+        logDebug("🔐 [Auth] Auth settings: \(String(describing: Auth.auth().settings))")
+        logDebug("🔐 [Auth] Auth currentUser: \(String(describing: Auth.auth().currentUser))")
 
         let provider = PhoneAuthProvider.provider()
-        if AppStateManager.shared.qualitySettings.debugMode {
-            print("🔐 [Auth] PhoneAuthProvider: \(provider)")
-        }
+        logDebug("🔐 [Auth] PhoneAuthProvider: \(provider)")
 
         // Firebase Phone Auth
         provider.verifyPhoneNumber(formattedPhone, uiDelegate: nil) { [weak self] verificationID, error in
@@ -147,30 +142,26 @@ class AuthenticationManager: ObservableObject {
 
                 if let error = error {
                     let nsError = error as NSError
-                    
-                    // ✅ Detailed error logging - ONLY when debug mode is ON
-                    if AppStateManager.shared.qualitySettings.debugMode {
-                        print("🔐 [Auth] ❌ ERROR DETAILS:")
-                        print("🔐 [Auth]   Code: \(nsError.code)")
-                        print("🔐 [Auth]   Domain: \(nsError.domain)")
-                        print("🔐 [Auth]   Description: \(nsError.localizedDescription)")
-                        print("🔐 [Auth]   UserInfo: \(nsError.userInfo)")
-                        print("🔐 [Auth]   Underlying error: \(String(describing: nsError.userInfo[NSUnderlyingErrorKey]))")
-                        
-                        // ✅ Additional Firebase App Check specific logging
-                        if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-                            print("🔐 [Auth]   --- Underlying Error Details ---")
-                            print("🔐 [Auth]   Underlying Code: \(underlyingError.code)")
-                            print("🔐 [Auth]   Underlying Domain: \(underlyingError.domain)")
-                            print("🔐 [Auth]   Underlying UserInfo: \(underlyingError.userInfo)")
-                            
-                            if let failureReason = underlyingError.userInfo[NSLocalizedFailureReasonErrorKey] as? String {
-                                print("🔐 [Auth]   Failure Reason: \(failureReason)")
-                            }
-                            
-                            if let responseBody = underlyingError.userInfo["FIRAppCheckErrorResponseBodyKey"] as? String {
-                                print("🔐 [Auth]   Response Body: \(responseBody)")
-                            }
+
+                    logDebug("🔐 [Auth] ❌ ERROR DETAILS:")
+                    logDebug("🔐 [Auth]   Code: \(nsError.code)")
+                    logDebug("🔐 [Auth]   Domain: \(nsError.domain)")
+                    logDebug("🔐 [Auth]   Description: \(nsError.localizedDescription)")
+                    logDebug("🔐 [Auth]   UserInfo: \(nsError.userInfo)")
+                    logDebug("🔐 [Auth]   Underlying error: \(String(describing: nsError.userInfo[NSUnderlyingErrorKey]))")
+
+                    if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                        logDebug("🔐 [Auth]   --- Underlying Error Details ---")
+                        logDebug("🔐 [Auth]   Underlying Code: \(underlyingError.code)")
+                        logDebug("🔐 [Auth]   Underlying Domain: \(underlyingError.domain)")
+                        logDebug("🔐 [Auth]   Underlying UserInfo: \(underlyingError.userInfo)")
+
+                        if let failureReason = underlyingError.userInfo[NSLocalizedFailureReasonErrorKey] as? String {
+                            logDebug("🔐 [Auth]   Failure Reason: \(failureReason)")
+                        }
+
+                        if let responseBody = underlyingError.userInfo["FIRAppCheckErrorResponseBodyKey"] as? String {
+                            logDebug("🔐 [Auth]   Response Body: \(responseBody)")
                         }
                     }
                     

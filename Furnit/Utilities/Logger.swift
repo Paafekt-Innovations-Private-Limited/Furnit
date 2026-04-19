@@ -2,54 +2,122 @@ import Foundation
 import os.log
 import Darwin
 
-// MARK: - Runtime Debug Mode Check
-/// Check if debug mode is enabled in Settings
-/// Reads directly from UserDefaults to avoid circular dependency with AppStateManager
+// MARK: - Runtime Debug Mode Check (cached)
+/// Cached mirror of `UserDefaults.standard.bool(forKey: "debug_mode")` so log gates
+/// don't pay a UserDefaults dictionary lookup on every call (matters in per-frame paths).
+///
+/// The cache is refreshed:
+///   * once at process start (cheap, lazy on first read)
+///   * whenever any UserDefaults key changes (`UserDefaults.didChangeNotification`)
+///
+/// We deliberately avoid coupling to `AppStateManager` / `QualitySettings` so this stays
+/// usable from initializers and background queues without circular dependencies.
+private final class DebugModeWatcher: @unchecked Sendable {
+    static let shared = DebugModeWatcher()
+
+    private let lock = NSLock()
+    private var cachedEnabled: Bool
+
+    private init() {
+        cachedEnabled = UserDefaults.standard.bool(forKey: "debug_mode")
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDefaultsChanged),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleDefaultsChanged() {
+        let value = UserDefaults.standard.bool(forKey: "debug_mode")
+        lock.lock()
+        cachedEnabled = value
+        lock.unlock()
+    }
+
+    var isEnabled: Bool {
+        lock.lock()
+        let value = cachedEnabled
+        lock.unlock()
+        return value
+    }
+}
+
+@inline(__always)
 private func isDebugModeEnabled() -> Bool {
-    // Read directly from UserDefaults (same key as QualitySettings uses)
-    // This avoids triggering AppStateManager.shared initialization
-    return UserDefaults.standard.bool(forKey: "debug_mode")
+    DebugModeWatcher.shared.isEnabled
 }
 
 // MARK: - Global Debug Print Function
-/// Use this instead of print() - only logs when debug mode is enabled in Settings
-/// Named 'logDebug' to avoid conflict with Swift's debugPrint
+/// Use this instead of `print()` — only logs when debug mode is enabled in Settings.
+///
+/// The message is `@autoclosure` so string interpolation is **not evaluated** when debug mode is off.
+/// This makes calls in hot paths (per-frame logging) effectively free in release / when toggled off.
+///
+/// Named `logDebug` to avoid conflict with Swift's `debugPrint`.
 @inline(__always)
-func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n") {
+func logDebug(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let output = items.map { "\($0)" }.joined(separator: separator)
-    print(output, terminator: terminator)
+    print(message())
+}
+
+// MARK: - Throttled debug logging
+/// Per-key throttle state for `logDebugThrottled`. Lives outside the function so calls accumulate state.
+private final class LogThrottleState: @unchecked Sendable {
+    static let shared = LogThrottleState()
+    private let lock = NSLock()
+    private var lastEmittedAt: [String: CFAbsoluteTime] = [:]
+
+    func shouldEmit(key: String, every interval: CFTimeInterval, now: CFAbsoluteTime) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let prev = lastEmittedAt[key], now - prev < interval {
+            return false
+        }
+        lastEmittedAt[key] = now
+        return true
+    }
+}
+
+/// Emit a debug log at most once per `interval` seconds for a given `key`.
+///
+/// Use in hot loops where the same diagnostic would otherwise flood the console
+/// (e.g. per-frame inference timings). Still gated by Settings → Debug Mode.
+@inline(__always)
+func logDebugThrottled(_ key: String, every interval: CFTimeInterval, _ message: @autoclosure () -> String) {
+    guard isDebugModeEnabled() else { return }
+    let now = CFAbsoluteTimeGetCurrent()
+    guard LogThrottleState.shared.shouldEmit(key: key, every: interval, now: now) else { return }
+    print(message())
 }
 
 // MARK: - Furniture Fit & PLY stdout (Settings → Debug mode only)
 /// PLY bounds / navigation. Filter: `PLY_BOUNDS`.
-func logPlyBoundsDiagnostic(_ message: String) {
+@inline(__always)
+func logPlyBoundsDiagnostic(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    print("[PLY_BOUNDS] \(message)")
+    print("[PLY_BOUNDS] \(message())")
 }
 
 /// AR-assisted FurnitureFit metrics. Filter: `FurnitureFitAR`.
-func logFurnitureFitAR(_ message: String) {
-    // Temporarily silenced to reduce per-frame logging overhead.
-    // Uncomment to re-enable:
-    // guard isDebugModeEnabled() else { return }
-    // print("[FurnitureFitAR] \(message)")
+///
+/// Permanently silenced (per-frame overhead): re-enable by uncommenting the body
+/// or by switching to `logDebugThrottled("FurnitureFitAR", every: 1.0, ...)`.
+@inline(__always)
+func logFurnitureFitAR(_ message: @autoclosure () -> String) {
+    _ = message  // intentionally unused
 }
 
 /// Furniture W×H estimate and pipeline tags. Filter: `FurnitureFitSize`.
-func logFurnitureFitSize(_ message: String) {
-    // Temporarily silenced to reduce per-frame logging overhead.
-    // Uncomment to re-enable:
-    // guard isDebugModeEnabled() else { return }
-    // print("[FurnitureFitSize] \(message)")
+@inline(__always)
+func logFurnitureFitSize(_ message: @autoclosure () -> String) {
+    _ = message  // intentionally unused (silenced; see logFurnitureFitAR)
 }
 
 /// Overlay scale assist. Filter: `FurnitureFitOverlay`.
-func logFurnitureFitOverlay(_ message: String) {
-    // Temporarily silenced to reduce per-frame logging overhead.
-    // Uncomment to re-enable:
-    // guard isDebugModeEnabled() else { return }
-    // print("[FurnitureFitOverlay] \(message)")
+@inline(__always)
+func logFurnitureFitOverlay(_ message: @autoclosure () -> String) {
+    _ = message  // intentionally unused (silenced; see logFurnitureFitAR)
 }
 
 // MARK: - Unified diagnostics (gated by Settings debug mode)
@@ -65,30 +133,34 @@ private enum AlwaysOnOSLog {
 }
 
 /// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
-func logWallMeasurement(_ message: String) {
+@inline(__always)
+func logWallMeasurement(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let line = "[WALL_MEAS] \(message)"
+    let line = "[WALL_MEAS] \(message())"
     AlwaysOnOSLog.wallMeas.notice("\(line, privacy: .public)")
 }
 
 /// SHARP Core ML / pipeline milestones. Filter: category `SHARP` or search `[SHARP]`.
-func logSharpMilestone(_ message: String) {
+@inline(__always)
+func logSharpMilestone(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let line = "[SHARP] \(message)"
+    let line = "[SHARP] \(message())"
     AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
 }
 
 /// Sharp Room: SHARP-derived room W×H×D diagnostics (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
-func logARRoomMeasure(_ message: String) {
+@inline(__always)
+func logARRoomMeasure(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let line = "[AR_ROOM_MEASURE] \(message)"
+    let line = "[AR_ROOM_MEASURE] \(message())"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
 }
 
 /// Depth Pro metric-depth pipeline. Filter: `DEPTH_PRO` or `[DEPTH_PRO]`.
-func logDepthPro(_ message: String) {
+@inline(__always)
+func logDepthPro(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let line = "[DEPTH_PRO] \(message.uppercased())"
+    let line = "[DEPTH_PRO] \(message().uppercased())"
     AlwaysOnOSLog.depthPro.notice("\(line, privacy: .public)")
 }
 
@@ -170,34 +242,40 @@ enum AppLogger {
 
     // MARK: - Debug Logging (only when debug mode enabled in Settings)
 
-    /// Debug log - only appears when debug mode is enabled in Settings
-    static func debug(_ message: String, category: Logger = general) {
+    /// Debug log - only appears when debug mode is enabled in Settings.
+    /// `message` is `@autoclosure` so interpolation is skipped when off.
+    static func debug(_ message: @autoclosure () -> String, category: Logger = general) {
         guard isDebugModeEnabled() else { return }
-        category.debug("\(message)")
+        let rendered = message()
+        category.debug("\(rendered, privacy: .public)")
     }
 
-    /// Info log - only appears when debug mode is enabled in Settings
-    static func info(_ message: String, category: Logger = general) {
+    /// Info log - only appears when debug mode is enabled in Settings.
+    static func info(_ message: @autoclosure () -> String, category: Logger = general) {
         guard isDebugModeEnabled() else { return }
-        category.info("\(message)")
+        let rendered = message()
+        category.info("\(rendered, privacy: .public)")
     }
 
-    /// Warning log - only appears when debug mode is enabled in Settings
-    static func warning(_ message: String, category: Logger = general) {
+    /// Warning log - only appears when debug mode is enabled in Settings.
+    static func warning(_ message: @autoclosure () -> String, category: Logger = general) {
         guard isDebugModeEnabled() else { return }
-        category.warning("\(message)")
+        let rendered = message()
+        category.warning("\(rendered, privacy: .public)")
     }
 
     // MARK: - Production Logging (always logged for crash reporting)
 
-    /// Error log - ALWAYS appears (for crash reporting)
-    static func error(_ message: String, category: Logger = general) {
-        category.error("\(message)")
+    /// Error log - ALWAYS appears (for crash reporting).
+    static func error(_ message: @autoclosure () -> String, category: Logger = general) {
+        let rendered = message()
+        category.error("\(rendered, privacy: .public)")
     }
 
-    /// Critical/Fault log - ALWAYS appears (for crash reporting)
-    static func critical(_ message: String, category: Logger = general) {
-        category.critical("\(message)")
+    /// Critical/Fault log - ALWAYS appears (for crash reporting).
+    static func critical(_ message: @autoclosure () -> String, category: Logger = general) {
+        let rendered = message()
+        category.critical("\(rendered, privacy: .public)")
     }
 }
 
@@ -205,44 +283,44 @@ enum AppLogger {
 
 extension AppLogger {
     /// Log authentication events
-    static func authDebug(_ message: String) {
-        debug(message, category: auth)
+    static func authDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: auth)
     }
 
-    static func authError(_ message: String) {
-        error(message, category: auth)
+    static func authError(_ message: @autoclosure () -> String) {
+        error(message(), category: auth)
     }
 
     /// Log UI events
-    static func uiDebug(_ message: String) {
-        debug(message, category: ui)
+    static func uiDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: ui)
     }
 
     /// Log model/file operations
-    static func modelDebug(_ message: String) {
-        debug(message, category: model)
+    static func modelDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: model)
     }
 
-    static func modelError(_ message: String) {
-        error(message, category: model)
+    static func modelError(_ message: @autoclosure () -> String) {
+        error(message(), category: model)
     }
 
     /// Log scene/3D operations
-    static func sceneDebug(_ message: String) {
-        debug(message, category: scene)
+    static func sceneDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: scene)
     }
 
     /// Log room processing
-    static func roomDebug(_ message: String) {
-        debug(message, category: room)
+    static func roomDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: room)
     }
 
-    static func roomError(_ message: String) {
-        error(message, category: room)
+    static func roomError(_ message: @autoclosure () -> String) {
+        error(message(), category: room)
     }
 
     /// Log camera operations
-    static func cameraDebug(_ message: String) {
-        debug(message, category: camera)
+    static func cameraDebug(_ message: @autoclosure () -> String) {
+        debug(message(), category: camera)
     }
 }
