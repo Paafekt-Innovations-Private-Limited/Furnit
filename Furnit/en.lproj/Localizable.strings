@@ -436,6 +436,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrate by wall";
 "roomViewer.enterWallDimensionsHint" = "Enter tape-measured front wall (meters), e.g. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "Tap to calibrate";
+"roomViewer.fullVideoSelectionHelper" = "If not happy with what you see, tap me and select furn of your choice";
 "roomViewer.detectedMeters" = "Detected: %.2f m";
 "roomViewer.roomMetersShort" = "Room: %.2f m";
 "roomViewer.furnitureMetersShort" = "Furn: %.2f m";
@@ -518,3 +519,17 @@
 
 "faq.pinchOverlaySize" = "What happens when I pinch the segmented furniture?";
 "faq.pinchOverlaySizeAnswer" = "Pinching makes the furniture overlay larger or smaller. If sizing mode is on and the Furni pill is visible, that pill updates to the current resized furniture estimate for the room. If sizing mode is off, pinch only changes the overlay visually on screen.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "On: choose the box with the highest score among those above the slider.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "Off: choose the largest box among those above the slider.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "Single Image Scan";
+

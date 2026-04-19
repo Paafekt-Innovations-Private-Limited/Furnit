@@ -46,9 +46,9 @@ struct SettingsFurnitureFitImageScanView: View {
                                 Image(systemName: "photo.badge.plus")
                                     .font(.system(size: 34))
                                     .foregroundStyle(.secondary)
-                                Text("Tap to choose a photo")
+                                Text(L10n.Settings.imageScanTapToChoose)
                                     .font(.headline)
-                                Text("The selected image is scanned with the Furniture Fit pipeline.")
+                                Text(L10n.Settings.imageScanTapToChooseSubtitle)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
@@ -73,7 +73,7 @@ struct SettingsFurnitureFitImageScanView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text("Tap the preview to pick a photo from your library. Bounding boxes on the preview include the class name, class ID, and confidence.")
+                Text(L10n.Settings.imageScanFootnote)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -85,7 +85,7 @@ struct SettingsFurnitureFitImageScanView: View {
             }
             .padding()
         }
-        .navigationTitle("Image Scan")
+        .navigationTitle(L10n.Settings.imageScan)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             yoloeService.ensureModelLoaded()
@@ -99,12 +99,12 @@ struct SettingsFurnitureFitImageScanView: View {
 
     private var statusText: String {
         if isLoadingSelectedPhoto {
-            return "Loading photo…"
+            return L10n.Settings.imageScanLoadingPhoto
         }
         if let message = yoloeService.statusMessage.nilIfEmpty {
             return message
         }
-        return "Preparing detection model…"
+        return L10n.Settings.imageScanPreparingModel
     }
 
     private func loadSelectedPhoto(from item: PhotosPickerItem?) async {
@@ -119,7 +119,7 @@ struct SettingsFurnitureFitImageScanView: View {
                   let uiImage = UIImage(data: imageData) else {
                 await MainActor.run {
                     isLoadingSelectedPhoto = false
-                    loadErrorMessage = "Could not load the selected photo."
+                    loadErrorMessage = L10n.Settings.imageScanLoadFailed
                 }
                 return
             }

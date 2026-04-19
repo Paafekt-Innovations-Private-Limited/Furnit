@@ -343,6 +343,7 @@
 "roomViewer.calibrateByWallTitle" = "দেয়াল দিয়ে ক্যালিব্রেট";
 "roomViewer.enterWallDimensionsHint" = "টেপ দিয়ে মাপা সামনের দেয়াল (মিটার) লিখুন, যেমন ৩.১৫ × ২.৮৬";
 "roomViewer.tapToCalibrate" = "ক্যালিব্রেট করতে ট্যাপ করুন";
+"roomViewer.fullVideoSelectionHelper" = "যা দেখছেন তাতে খুশি না হলে, আমাকে ট্যাপ করুন এবং আপনার পছন্দের ফার্নিচার বেছে নিন";
 "roomViewer.detectedMeters" = "সনাক্ত: %.2f মি";
 "roomViewer.roomMetersShort" = "রুম: %.2f মি";
 "roomViewer.furnitureMetersShort" = "ফার্নিচার: %.2f মি";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "সেগমেন্ট করা ফার্নিচারকে পিঞ্চ করলে কী হয়?";
 "faq.pinchOverlaySizeAnswer" = "পিঞ্চ করলে ফার্নিচার ওভারলে বড় বা ছোট হয়। যদি sizing mode চালু থাকে এবং Furni pill দেখা যায়, তাহলে সেই pill-এ রুম অনুযায়ী বর্তমান resized ফার্নিচারের মাপ আপডেট হবে। sizing mode বন্ধ থাকলে, পিঞ্চ শুধু স্ক্রিনে ওভারলের দৃশ্যমান আকার বদলাবে।";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "চালু: স্লাইডারের উপরে থাকা বক্সগুলির মধ্যে সর্বোচ্চ স্কোর সহ বক্সটি বেছে নিন।";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "বন্ধ: স্লাইডারের উপরে থাকা বক্সগুলির মধ্যে সবচেয়ে বড় বক্সটি বেছে নিন।";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "উভয় মোড শুধুমাত্র প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস স্লাইডারে বা তার উপরে থাকা সনাক্তকরণ বিবেচনা করে। পার্সার/NMS আচরণ অপরিবর্তিত।";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "একক ছবি স্ক্যান";
+

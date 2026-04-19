@@ -328,6 +328,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrar por pared";
 "roomViewer.enterWallDimensionsHint" = "Introduce la pared frontal medida con cinta (metros), p. ej. 3,15 × 2,86";
 "roomViewer.tapToCalibrate" = "Toca para calibrar";
+"roomViewer.fullVideoSelectionHelper" = "Si no te convence lo que ves, tócame y selecciona el mueble que prefieras";
 "roomViewer.detectedMeters" = "Detectado: %.2f m";
 "roomViewer.roomMetersShort" = "Habitación: %.2f m";
 "roomViewer.furnitureMetersShort" = "Mueble: %.2f m";
@@ -502,3 +503,17 @@
 
 "faq.pinchOverlaySize" = "¿Qué pasa cuando pellizco el mueble segmentado?";
 "faq.pinchOverlaySizeAnswer" = "El gesto de pellizco hace que la superposición del mueble sea más grande o más pequeña. Si el modo de tamaño está activado y la pastilla Furni está visible, esa pastilla se actualiza con la estimación redimensionada actual del mueble para la habitación. Si el modo de tamaño está desactivado, el pellizco solo cambia visualmente la superposición en pantalla.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "Activado: elige la caja con la puntuación más alta entre las que están sobre el control deslizante.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "Desactivado: elige la caja más grande entre las que están sobre el control deslizante.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "Ambos modos solo consideran detecciones en o por encima del control deslizante de confianza de detección primaria. El comportamiento del Parser/NMS no cambia.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "Escaneo de imagen única";
+

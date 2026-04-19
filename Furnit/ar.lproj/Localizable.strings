@@ -343,6 +343,7 @@
 "roomViewer.calibrateByWallTitle" = "معايرة بالجدار";
 "roomViewer.enterWallDimensionsHint" = "أدخل قياس الجدار الأمامي بالشريط (بالأمتار)، مثلاً 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "اضغط للمعايرة";
+"roomViewer.fullVideoSelectionHelper" = "إذا لم يعجبك ما تراه، اضغط عليّ واختر قطعة الأثاث التي تريدها";
 "roomViewer.detectedMeters" = "تم اكتشاف: %.2f م";
 "roomViewer.roomMetersShort" = "الغرفة: %.2f م";
 "roomViewer.furnitureMetersShort" = "أثاث: %.2f م";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "ماذا يحدث عندما أقرّب أو أبعّد الأثاث المُقسَّم بإصبعيّ؟";
 "faq.pinchOverlaySizeAnswer" = "التقريب أو الإبعاد يجعل طبقة الأثاث أكبر أو أصغر. إذا كان وضع تحديد الحجم مفعّلًا وكانت شارة Furni ظاهرة، فستتحدّث هذه الشارة إلى التقدير الحالي لحجم الأثاث بعد تغييره بالنسبة إلى الغرفة. وإذا كان وضع تحديد الحجم متوقفًا، فسيغيّر التقريب شكل الطبقة على الشاشة فقط.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "تشغيل: اختر المربع ذو أعلى نقاط من بين تلك الموجودة فوق المنزلق.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "إيقاف: اختر أكبر مربع من بين تلك الموجودة فوق المنزلق.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "يأخذ كلا الوضعين في الاعتبار فقط الاكتشافات عند أو أعلى من منزلق ثقة الكشف الأساسي. سلوك المحلل/NMS لم يتغير.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "مسح صورة واحدة";
+

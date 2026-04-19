@@ -325,6 +325,7 @@
 "roomViewer.calibrateByWallTitle" = "ചുവര്‍ ഉപയോഗിച്ച് കാലിബ്രേറ്റ്";
 "roomViewer.enterWallDimensionsHint" = "ടേപ്പ് അളന്ന മുൻചുവര്‍ (മീറ്റർ) നൽകുക, ഉദാ. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക";
+"roomViewer.fullVideoSelectionHelper" = "നിങ്ങള്‍ കാണുന്നതില്‍ സന്തോഷമില്ലെങ്കില്‍, എന്നെ ടാപ്പ് ചെയ്ത് നിങ്ങള്‍ക്ക് വേണ്ട ഫര്‍ണിച്ചര്‍ തിരഞ്ഞെടുക്കൂ";
 "roomViewer.detectedMeters" = "കണ്ടെത്തി: %.2f മീ";
 "roomViewer.roomMetersShort" = "മുറി: %.2f മീ";
 "roomViewer.furnitureMetersShort" = "ഫർണിച്ചർ: %.2f മീ";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "സെഗ്മെന്റ് ചെയ്ത ഫർണിച്ചർ pinch ചെയ്യുമ്പോൾ എന്ത് സംഭവിക്കും?";
 "faq.pinchOverlaySizeAnswer" = "pinch ചെയ്‌താൽ ഫർണിച്ചർ ഓവർലേ വലുതാകുകയോ ചെറുതാകുകയോ ചെയ്യും. sizing mode ഓണായിരിക്കുമ്പോഴും Furni pill കാണുമ്പോഴും ആ pill മുറിക്ക് അനുസരിച്ചുള്ള ഇപ്പോഴത്തെ resized ഫർണിച്ചർ അളവിലേക്ക് അപ്‌ഡേറ്റ് ചെയ്യും. sizing mode ഓഫ് ആണെങ്കിൽ pinch സ്ക്രീനിലെ ഓവർലേയുടെ ദൃശ്യ വലിപ്പം മാത്രം മാറ്റും.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "ഓൺ: സ്ലൈഡറിന് മുകളിലുള്ളവയിൽ ഏറ്റവും ഉയർന്ന സ്കോർ ഉള്ള ബോക്‌സ് തിരഞ്ഞെടുക്കുക.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "ഓഫ്: സ്ലൈഡറിന് മുകളിലുള്ളവയിൽ വലിയ ബോക്‌സ് തിരഞ്ഞെടുക്കുക.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "രണ്ട് മോഡുകളും പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസ സ്ലൈഡറിലോ അതിനു മുകളിലോ ഉള്ള കണ്ടെത്തലുകൾ മാത്രം പരിഗണിക്കുന്നു. പാഴ്‌സർ/NMS പെരുമാറ്റം മാറ്റമില്ലാതെ തുടരുന്നു.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "ഒറ്റ ചിത്ര സ്കാൻ";
+

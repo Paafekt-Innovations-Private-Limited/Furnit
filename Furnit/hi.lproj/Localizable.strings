@@ -325,6 +325,7 @@
 "roomViewer.calibrateByWallTitle" = "दीवार से कैलिब्रेट करें";
 "roomViewer.enterWallDimensionsHint" = "टेप से नापी सामने की दीवार (मीटर) दर्ज करें, जैसे 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "कैलिब्रेट करने के लिए टैप करें";
+"roomViewer.fullVideoSelectionHelper" = "अगर आप जो देख रहे हैं उससे खुश नहीं हैं, तो मुझे टैप करें और अपनी पसंद का फर्नीचर चुनें";
 "roomViewer.detectedMeters" = "पता चला: %.2f मी";
 "roomViewer.roomMetersShort" = "कमरा: %.2f मी";
 "roomViewer.furnitureMetersShort" = "फर्नीचर: %.2f मी";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "सेगमेंट किए गए फर्नीचर को पिंच करने पर क्या होता है?";
 "faq.pinchOverlaySizeAnswer" = "पिंच करने पर फर्नीचर ओवरले बड़ा या छोटा होता है। अगर sizing mode चालू है और Furni pill दिख रही है, तो वही pill कमरे के हिसाब से बदले हुए फर्नीचर आकार के अनुमान पर अपडेट हो जाती है। अगर sizing mode बंद है, तो पिंच केवल स्क्रीन पर ओवरले का दृश्य आकार बदलता है।";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "ऑन: स्लाइडर के ऊपर वाले बॉक्सों में से सबसे अधिक स्कोर वाले बॉक्स को चुनें।";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "ऑफ: स्लाइडर के ऊपर वाले बॉक्सों में से सबसे बड़े बॉक्स को चुनें।";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "दोनों मोड केवल प्राथमिक पहचान विश्वास स्लाइडर पर या उससे ऊपर की पहचान पर विचार करते हैं। पार्सर/NMS व्यवहार अपरिवर्तित रहता है।";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "एकल छवि स्कैन";
+

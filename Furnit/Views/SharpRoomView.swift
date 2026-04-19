@@ -281,58 +281,75 @@ struct SharpRoomView: View {
         .background(Color.gray)
     }
 
-    /// Center nav bar: tap the ruler to inspect the dimensions currently backing the room preview.
+    @ViewBuilder
     private var navigationBarRoomMeasurementPrincipal: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            Button {
+                if let activeDimensions = activeRoomMetersDimensions {
+                    logDebug(
+                        "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
+                        "SOURCE=\(activeRoomMetersDimensionsSource) " +
+                        "W=\(String(format: "%.4f", activeDimensions.width)) " +
+                        "H=\(String(format: "%.4f", activeDimensions.height)) " +
+                        "D=\(String(format: "%.4f", activeDimensions.depth))"
+                    )
+                } else {
+                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
+                }
+                guard canPresentRoomDimensionsAlert else {
+                    logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
+                    return
+                }
+                if hasCalculatedRoomMeasurements {
+                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
+                    onRoomDimensionsIconTapped()
+                } else {
+                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
+                    startAsyncRoomMeasurementForRuler()
+                }
+            } label: {
+                Image(systemName: "ruler.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
+            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+
+            Button(action: onPinchHintIconTapped) {
+                Image(systemName: "hand.pinch.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pinchHintAccessibilityLabel)
+
+            Button(action: displayAllGestureHelpers) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+
+            if !selectedFurnitureFitLabels.isEmpty {
                 Button {
-                    if let d = activeRoomMetersDimensions {
-                        logDebug(
-                            "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
-                            "SOURCE=\(activeRoomMetersDimensionsSource) " +
-                            "W=\(String(format: "%.4f", d.width)) " +
-                            "H=\(String(format: "%.4f", d.height)) " +
-                            "D=\(String(format: "%.4f", d.depth))"
-                        )
-                    } else {
-                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
-                    }
-                    guard canPresentRoomDimensionsAlert else {
-                        logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
-                        return
-                    }
-                    if hasCalculatedRoomMeasurements {
-                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
-                        onRoomDimensionsIconTapped()
-                    } else {
-                        logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
-                        startAsyncRoomMeasurementForRuler()
-                    }
+                    NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
                 } label: {
-                    Image(systemName: "ruler.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.primary)
+                    Text(selectedFurnitureChipTitle)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.black.opacity(0.72)))
                 }
                 .buttonStyle(.plain)
-                .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
-                .accessibilityLabel("Room dimensions")
-
-                if !selectedFurnitureFitLabels.isEmpty {
-                    Button {
-                        NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
-                    } label: {
-                        Text(selectedFurnitureChipTitle)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.black.opacity(0.72)))
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
-                }
+                .transition(.opacity)
             }
+        }
     }
 
     private var selectedFurnitureChipTitle: String {
@@ -408,6 +425,58 @@ struct SharpRoomView: View {
         .accessibilityLabel(L10n.RoomViewer.saveRoom)
     }
 
+    private var navigationBarTrailingControls: some View {
+        HStack(spacing: 14) {
+            navigationBarRecenterButton
+            if showingFurnitureFit {
+                navigationBarFullVideoIdentificationsButton
+            }
+            if canOfferBrainArAssist, showingFurnitureFit {
+                navigationBarARButton
+                    .fixedSize(horizontal: true, vertical: true)
+            }
+            if allowSave {
+                navigationBarSaveButton
+            }
+        }
+    }
+
+    private var fullVideoHelperButtonsToRight: Int {
+        let arButtons = (canOfferBrainArAssist && showingFurnitureFit) ? 1 : 0
+        let saveButtons = allowSave ? 1 : 0
+        return arButtons + saveButtons
+    }
+
+    private var fullVideoToolbarHelperOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.85))
+                        .frame(width: 2, height: 14)
+                        .padding(.trailing, 18)
+                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .leading)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                }
+                .padding(.top, 6)
+                .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))
+                .transition(.opacity)
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .allowsHitTesting(false)
+        .zIndex(106)
+    }
+
     private func toggleBrainArAssistedSizingOrShowHint() {
         guard showingFurnitureFit else { return }
         brainArAssistedSizingEnabled.toggle()
@@ -436,36 +505,13 @@ struct SharpRoomView: View {
         )
     }
 
-    /// Pinch + tap gesture helpers in the top-trailing corner (same spot the floating AR control used).
-    /// Optional pinch / AR sizing hint copy sits below the icon row when visible.
+    /// Optional pinch / AR sizing hint copy sits below the top toolbar row when visible.
     private var topTrailingPinchTapAndSizingHintsOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 8) {
-                    Button(action: onPinchHintIconTapped) {
-                        Image(systemName: "hand.pinch.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(pinchHintAccessibilityLabel)
-
-                    Button(action: displayAllGestureHelpers) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-                }
                 if pinchHintExplanationVisible {
                     Text(L10n.RoomViewer.pinchGestureHintExplanation)
                         .font(.caption2)
@@ -511,21 +557,7 @@ struct SharpRoomView: View {
             navigationBarRoomMeasurementPrincipal
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            navigationBarRecenterButton
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            navigationBarFullVideoIdentificationsButton
-        }
-        if canOfferBrainArAssist, showingFurnitureFit {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarARButton
-                    .fixedSize(horizontal: true, vertical: true)
-            }
-        }
-        if allowSave {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarSaveButton
-            }
+            navigationBarTrailingControls
         }
     }
 
@@ -2084,6 +2116,7 @@ struct SharpRoomView: View {
                 topTrailingPinchTapAndSizingHintsOverlay
                 roomDimensionsHintOverlay
                 fullVideoFurnitureTapHintOverlay
+                fullVideoToolbarHelperOverlay
             }
             if isLoading { loadingOverlayView }
             errorOverlayView

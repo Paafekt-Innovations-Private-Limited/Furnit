@@ -325,6 +325,7 @@
 "roomViewer.calibrateByWallTitle" = "ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.enterWallDimensionsHint" = "ಟೇಪ್‌ನಿಂದ ಅಳೆದ ಮುಂಭಾಗದ ಗೋಡೆ (ಮೀಟರ್) ನಮೂದಿಸಿ, ಉದಾ. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
+"roomViewer.fullVideoSelectionHelper" = "ನೀವು ನೋಡುತ್ತಿರುವುದು ಇಷ್ಟವಾಗದಿದ್ದರೆ, ನನ್ನನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ಮತ್ತು ನಿಮಗೆ ಬೇಕಾದ ಪೀಠೋಪಕರಣವನ್ನು ಆಯ್ಕೆಮಾಡಿ";
 "roomViewer.detectedMeters" = "ಪತ್ತೆ: %.2f ಮೀ";
 "roomViewer.roomMetersShort" = "ಕೊಠಡಿ: %.2f ಮೀ";
 "roomViewer.furnitureMetersShort" = "ಪೀಠೋ: %.2f ಮೀ";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿದ ಫರ್ನಿಚರ್ ಅನ್ನು pinch ಮಾಡಿದರೆ ಏನಾಗುತ್ತದೆ?";
 "faq.pinchOverlaySizeAnswer" = "pinch ಮಾಡಿದರೆ ಫರ್ನಿಚರ್ ಓವರ್‌ಲೆ ದೊಡ್ಡದಾಗಬಹುದು ಅಥವಾ ಚಿಕ್ಕದಾಗಬಹುದು. sizing mode ಆನ್ ಆಗಿ Furni pill ಕಾಣುತ್ತಿದ್ದರೆ, ಆ pill ಕೊಠಡಿಗೆ ಹೊಂದುವಂತೆ ಈಗಿನ resized ಫರ್ನಿಚರ್ ಅಂದಾಜಿಗೆ ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತದೆ. sizing mode ಆಫ್ ಆಗಿದ್ದರೆ, pinch ಸ್ಕ್ರೀನ್ ಮೇಲಿನ ಓವರ್‌ಲೆ ಗಾತ್ರವನ್ನೇ ಮಾತ್ರ ಬದಲಾಯಿಸುತ್ತದೆ.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "ಆನ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ಅತ್ಯಧಿಕ ಅಂಕಗಳನ್ನು ಹೊಂದಿರುವ ಪೆಟ್ಟಿಗೆಯನ್ನು ಆರಿಸಿ.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "ಆಫ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ದೊಡ್ಡ ಪೆಟ್ಟಿಗೆಯನ್ನು ಆರಿಸಿ.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "ಎರಡೂ ಮೋಡ್‌ಗಳು ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ ಸ್ಲೈಡರ್‌ನಲ್ಲಿ ಅಥವಾ ಅದಕ್ಕಿಂತ ಹೆಚ್ಚಿನ ಪತ್ತೆಗಳನ್ನು ಮಾತ್ರ ಪರಿಗಣಿಸುತ್ತವೆ. ಪಾರ್ಸರ್/NMS ನಡವಳಿಕೆ ಬದಲಾಗುವುದಿಲ್ಲ.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "ಏಕ ಚಿತ್ರ ಸ್ಕ್ಯಾನ್";
+

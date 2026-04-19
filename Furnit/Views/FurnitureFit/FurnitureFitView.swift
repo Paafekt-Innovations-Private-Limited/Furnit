@@ -2766,7 +2766,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
               !suppressARDepthCompanionAfterCaptureFailure,
               FurnitureFitARSupport.isWorldTrackingSupported,
               QualitySettings.supportsLiDARSceneDepth else {
-            if qs.furnitureFitARDepthCompanionEnabled,
+            if qs.furnitureFitARDepthCompanionRuntimeActive,
                FurnitureFitARSupport.isWorldTrackingSupported,
                !QualitySettings.supportsLiDARSceneDepth {
                 logFurnitureFitAR(

@@ -325,6 +325,7 @@
 "roomViewer.calibrateByWallTitle" = "గోడతో క్యాలిబ్రేట్";
 "roomViewer.enterWallDimensionsHint" = "టేపుతో కొలిచిన ముందు గోడ (మీటర్లు), ఉదా. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "క్యాలిబ్రేట్ చేయడానికి టాప్ చేయండి";
+"roomViewer.fullVideoSelectionHelper" = "మీకు కనిపిస్తున్నది నచ్చకపోతే, నన్ను ట్యాప్ చేసి మీకు నచ్చిన ఫర్నిచర్‌ను ఎంచుకోండి";
 "roomViewer.detectedMeters" = "గుర్తించబడింది: %.2f మీ";
 "roomViewer.roomMetersShort" = "గది: %.2f మీ";
 "roomViewer.furnitureMetersShort" = "ఫర్నిచర్: %.2f మీ";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "segmentation అయిన furniture ను pinch చేస్తే ఏమవుతుంది?";
 "faq.pinchOverlaySizeAnswer" = "pinch చేస్తే furniture overlay పెద్దది లేదా చిన్నది అవుతుంది. sizing mode ఆన్ అయి Furni pill కనిపిస్తే, ఆ pill గదికి సరిపోయే ప్రస్తుత resized furniture అంచనాకు అప్డేట్ అవుతుంది. sizing mode ఆఫ్‌లో ఉంటే, pinch స్క్రీన్ మీద overlay రూప పరిమాణాన్నే మాత్రమే మార్చుతుంది.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "ఆన్: స్లయిడర్ పైన ఉన్న వాటిలో అత్యధిక స్కోర్ ఉన్న బాక్స్‌ను ఎంచుకోండి.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "ఆఫ్: స్లయిడర్ పైన ఉన్న వాటిలో పెద్ద బాక్స్‌ను ఎంచుకోండి.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "రెండు మోడ్‌లు ప్రాథమిక గుర్తింపు విశ్వాసం స్లయిడర్ వద్ద లేదా అంతకంటే ఎక్కువగా ఉన్న గుర్తింపులను మాత్రమే పరిగణిస్తాయి. పార్సర్/NMS ప్రవర్తన మారదు.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "ఒకే చిత్ర స్కాన్";
+

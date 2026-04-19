@@ -328,6 +328,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrer par le mur";
 "roomViewer.enterWallDimensionsHint" = "Saisir le mur avant mesuré au ruban (mètres), ex. 3,15 × 2,86";
 "roomViewer.tapToCalibrate" = "Appuyer pour calibrer";
+"roomViewer.fullVideoSelectionHelper" = "Si ce que vous voyez ne vous plaît pas, touchez-moi et choisissez le meuble que vous voulez";
 "roomViewer.detectedMeters" = "Détecté : %.2f m";
 "roomViewer.roomMetersShort" = "Pièce : %.2f m";
 "roomViewer.furnitureMetersShort" = "Meuble : %.2f m";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "Que se passe-t-il quand je pince le meuble segmenté ?";
 "faq.pinchOverlaySizeAnswer" = "Le pincement rend la surcouche du meuble plus grande ou plus petite. Si le mode de taille est activé et que la pastille Furni est visible, cette pastille se met à jour avec l’estimation redimensionnée actuelle du meuble pour la pièce. Si le mode de taille est désactivé, le pincement ne change que l’apparence de la surcouche à l’écran.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "Activé : choisir la boîte avec le score le plus élevé parmi celles au-dessus du curseur.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "Désactivé : choisir la plus grande boîte parmi celles au-dessus du curseur.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "Les deux modes ne considèrent que les détections au niveau ou au-dessus du curseur de confiance de détection primaire. Le comportement du Parser/NMS reste inchangé.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "Analyse d'image unique";
+

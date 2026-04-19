@@ -127,9 +127,6 @@ enum AssetQuality: String, CaseIterable, Identifiable {
 // ObservableObject to manage quality settings across the app
 class QualitySettings: ObservableObject {
 
-    /// UserDefaults key: run ARKit scene-depth session alongside AVCapture in Furniture Fit (LiDAR-class devices).
-    static let furnitureFitARDepthCompanionEnabledKey = "furniture_fit_ar_depth_companion_enabled"
-
     /// `true` when this device can supply scene/smoothed scene depth for Furniture Fit’s AR companion.
     static var supportsLiDARSceneDepth: Bool {
         ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
@@ -173,17 +170,10 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    /// When `true` and the device supports scene depth, Furniture Fit runs an ARSession beside AVCapture for metric overlay sizing.
-    @Published var furnitureFitARDepthCompanionEnabled: Bool {
-        didSet {
-            saveFurnitureFitARDepthCompanionEnabled()
-        }
-    }
-
-    /// Effective companion: user preference plus ARKit world tracking hardware.
-    /// LiDAR devices get scene depth; non-LiDAR get plane-raycast distance (companion-only, no camera ownership).
+    /// Effective companion support for Furniture Fit metric sizing.
+    /// With the Settings toggle removed, this is now purely a hardware capability check.
     var furnitureFitARDepthCompanionRuntimeActive: Bool {
-        furnitureFitARDepthCompanionEnabled && Self.supportsFurnitureFitARAssisted
+        Self.supportsLiDARSceneDepth
     }
 
     // UserDefaults keys for persistence
@@ -222,11 +212,6 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-        if UserDefaults.standard.object(forKey: Self.furnitureFitARDepthCompanionEnabledKey) != nil {
-            self.furnitureFitARDepthCompanionEnabled = UserDefaults.standard.bool(forKey: Self.furnitureFitARDepthCompanionEnabledKey)
-        } else {
-            self.furnitureFitARDepthCompanionEnabled = true
-        }
     }
     
     // Save quality setting to UserDefaults
@@ -251,11 +236,6 @@ class QualitySettings: ObservableObject {
     private func saveBboxInMaskThreshold() {
         UserDefaults.standard.set(bboxInMaskThreshold, forKey: bboxInMaskThresholdKey)
         logDebug("💾 Saved bbox-in-mask threshold setting: \(bboxInMaskThreshold)")
-    }
-
-    private func saveFurnitureFitARDepthCompanionEnabled() {
-        UserDefaults.standard.set(furnitureFitARDepthCompanionEnabled, forKey: Self.furnitureFitARDepthCompanionEnabledKey)
-        logDebug("💾 Saved Furniture Fit AR depth companion: \(furnitureFitARDepthCompanionEnabled)")
     }
 
     // Get all available quality options for UI
@@ -296,7 +276,6 @@ class QualitySettings: ObservableObject {
         selectedMovementSpeed = .normal
         debugMode = false
         bboxInMaskThreshold = 0.30
-        furnitureFitARDepthCompanionEnabled = true
     }
 }
 

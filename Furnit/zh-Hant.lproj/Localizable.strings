@@ -326,6 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "依牆校準";
 "roomViewer.enterWallDimensionsHint" = "輸入捲尺測量的前牆尺寸（公尺），例如 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "點一下以校準";
+"roomViewer.fullVideoSelectionHelper" = "如果您不滿意目前顯示效果，請點我並選擇您想要的家具";
 "roomViewer.detectedMeters" = "偵測到：%.2f 公尺";
 "roomViewer.roomMetersShort" = "房間：%.2f 公尺";
 "roomViewer.furnitureMetersShort" = "家具：%.2f 公尺";
@@ -511,3 +512,17 @@
 
 "faq.pinchOverlaySize" = "雙指縮放已分割的家具時會發生什麼？";
 "faq.pinchOverlaySizeAnswer" = "雙指縮放會讓家具疊圖變大或變小。如果尺寸模式已開啟且 Furni 小標籤可見，這個小標籤會更新成目前依房間比例調整後的家具估計尺寸。如果尺寸模式未開啟，雙指縮放只會改變螢幕上疊圖的視覺大小。";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "開啟：在滑桿上方的框中選擇得分最高的框。";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "關閉：在滑桿上方的框中選擇最大的框。";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "兩種模式僅考慮位於或高於主檢測信心滑桿的檢測。解析器/NMS 行為保持不變.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "單圖像掃描";
+

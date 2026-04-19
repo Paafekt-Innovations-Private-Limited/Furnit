@@ -228,6 +228,7 @@ struct MeshRoomView: View {
             // Room dimensions chip (ruler) — same placement idea as ``SharpRoomView``.
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
+            fullVideoToolbarHelperOverlay
             if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
                 calibrationOverlayView
                     .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
@@ -264,30 +265,7 @@ struct MeshRoomView: View {
                 navigationBarRoomMeasurementPrincipal
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    NotificationCenter.default.post(name: NSNotification.Name("RecenterMeshCamera"), object: nil)
-                }) {
-                    Image(systemName: "viewfinder")
-                }
-                .disabled(isLoading)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarFullVideoIdentificationsButton
-            }
-            if canOfferBrainArAssist, showingFurnitureFit {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    navigationBarARButton
-                        .fixedSize(horizontal: true, vertical: true)
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    showRoomNameInput = true
-                }) {
-                    Image(systemName: "square.and.arrow.down")
-                }
-                .disabled(isLoading || isSavingRoom)
-                .accessibilityLabel(L10n.RoomViewer.saveRoom)
+                navigationBarTrailingControls
             }
         }
         .onAppear {
@@ -549,36 +527,53 @@ struct MeshRoomView: View {
     }
 
     private var navigationBarRoomMeasurementPrincipal: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            Button {
+                guard canPresentMeshRoomDimensionsAlert else { return }
+                onMeshRoomDimensionsRulerTapped()
+            } label: {
+                Image(systemName: "ruler.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canPresentMeshRoomDimensionsAlert || isLoading)
+            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+
+            Button(action: onPinchHintIconTapped) {
+                Image(systemName: "hand.pinch.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pinchHintAccessibilityLabel)
+
+            Button(action: displayAllGestureHelpers) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+
+            if !selectedFurnitureFitLabels.isEmpty {
                 Button {
-                    guard canPresentMeshRoomDimensionsAlert else { return }
-                    onMeshRoomDimensionsRulerTapped()
+                    NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
                 } label: {
-                    Image(systemName: "ruler.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.primary)
+                    Text(selectedFurnitureChipTitle)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.black.opacity(0.72)))
                 }
                 .buttonStyle(.plain)
-                .disabled(!canPresentMeshRoomDimensionsAlert || isLoading)
-                .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
-
-                if !selectedFurnitureFitLabels.isEmpty {
-                    Button {
-                        NotificationCenter.default.post(name: NSNotification.Name("FurnitureFitClearSelectedObjects"), object: nil)
-                    } label: {
-                        Text(selectedFurnitureChipTitle)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.black.opacity(0.72)))
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
-                }
+                .transition(.opacity)
             }
+        }
     }
 
     private var selectedFurnitureChipTitle: String {
@@ -640,35 +635,76 @@ struct MeshRoomView: View {
         )
     }
 
-    /// Pinch + tap gesture helpers in the top-trailing corner (same pattern as ``SharpRoomView``).
+    private var navigationBarTrailingControls: some View {
+        HStack(spacing: 14) {
+            Button(action: {
+                NotificationCenter.default.post(name: NSNotification.Name("RecenterMeshCamera"), object: nil)
+            }) {
+                Image(systemName: "viewfinder")
+            }
+            .disabled(isLoading)
+
+            if showingFurnitureFit {
+                navigationBarFullVideoIdentificationsButton
+            }
+
+            if canOfferBrainArAssist, showingFurnitureFit {
+                navigationBarARButton
+                    .fixedSize(horizontal: true, vertical: true)
+            }
+
+            Button(action: {
+                showRoomNameInput = true
+            }) {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .disabled(isLoading || isSavingRoom)
+            .accessibilityLabel(L10n.RoomViewer.saveRoom)
+        }
+    }
+
+    private var fullVideoHelperButtonsToRight: Int {
+        let arButtons = (canOfferBrainArAssist && showingFurnitureFit) ? 1 : 0
+        let saveButtons = 1
+        return arButtons + saveButtons
+    }
+
+    private var fullVideoToolbarHelperOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.85))
+                        .frame(width: 2, height: 14)
+                        .padding(.trailing, 18)
+                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .leading)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                }
+                .padding(.top, 6)
+                .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))
+                .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+        .zIndex(106)
+    }
+
+    /// Optional pinch / AR sizing hint copy sits below the top toolbar row when visible.
     private var topTrailingPinchTapAndSizingHintsOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 8) {
-                    Button(action: onPinchHintIconTapped) {
-                        Image(systemName: "hand.pinch.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(pinchHintAccessibilityLabel)
-
-                    Button(action: displayAllGestureHelpers) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-                }
                 if pinchHintExplanationVisible {
                     Text(L10n.RoomViewer.pinchGestureHintExplanation)
                         .font(.caption2)

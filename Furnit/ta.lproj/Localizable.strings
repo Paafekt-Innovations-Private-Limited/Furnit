@@ -325,6 +325,7 @@
 "roomViewer.calibrateByWallTitle" = "சுவரால் கேலிப்ரேட்";
 "roomViewer.enterWallDimensionsHint" = "டேப்பால் அளந்த முன் சுவர் (மீட்டர்), எ.கா. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "கேலிப்ரேட் செய்ய தட்டவும்";
+"roomViewer.fullVideoSelectionHelper" = "நீங்கள் பார்க்கும் விடயம் திருப்தியாக இல்லையெனில், என்னை தட்டி உங்களுக்கு வேண்டிய மரச்சாமானை தேர்வு செய்யுங்கள்";
 "roomViewer.detectedMeters" = "கண்டறியப்பட்டது: %.2f மீ";
 "roomViewer.roomMetersShort" = "அறை: %.2f மீ";
 "roomViewer.furnitureMetersShort" = "தளபாடம்: %.2f மீ";
@@ -510,3 +511,17 @@
 
 "faq.pinchOverlaySize" = "பிரிக்கப்பட்ட furniture-ஐ pinch செய்தால் என்ன ஆகும்?";
 "faq.pinchOverlaySizeAnswer" = "pinch செய்தால் furniture overlay பெரியதாகவும் சிறியதாகவும் மாறும். sizing mode on ஆகி Furni pill தெரிந்தால், அந்த pill அறைக்கு பொருந்தும் தற்போதைய resized furniture மதிப்பீட்டுக்கு புதுப்பிக்கும். sizing mode off ஆக இருந்தால், pinch திரையில் overlay-யின் தோற்ற அளவை மட்டும் மாற்றும்.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "ஆன்: ஸ்லைடருக்கு மேலே உள்ளவற்றில் அதிக மதிப்பெண் கொண்ட பெட்டியைத் தேர்ந்தெடுக்கவும்.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "ஆஃப்: ஸ்லைடருக்கு மேலே உள்ளவற்றில் பெரிய பெட்டியைத் தேர்ந்தெடுக்கவும்.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "இரண்டு முறைகளும் முதன்மை கண்டறிதல் நம்பிக்கை ஸ்லைடரில் அல்லது அதற்கு மேல் உள்ள கண்டறிதல்களை மட்டுமே கருத்தில் கொள்கின்றன. பார்சர்/NMS நடத்தை மாறாமல் உள்ளது.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "ஒற்றைப் படச் சோதனை";
+

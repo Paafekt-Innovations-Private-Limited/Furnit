@@ -172,27 +172,6 @@ struct SettingsView: View {
 
                 // Furniture segmentation (FurnitureFit)
                 Section {
-                    Toggle(isOn: $appState.qualitySettings.furnitureFitARDepthCompanionEnabled) {
-                        HStack {
-                            Image(systemName: "arkit")
-                                .foregroundColor(.cyan)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.furnitureFitARCompanion)
-                                    .font(.headline)
-                                Text(L10n.Settings.furnitureFitARCompanionDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                if !QualitySettings.supportsFurnitureFitARAssisted {
-                                    Text(L10n.Settings.furnitureFitARCompanionUnavailable)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .tint(.cyan)
-                    .disabled(!QualitySettings.supportsFurnitureFitARAssisted)
-
                     if QualitySettings.supportsLiDARSceneDepth {
                         Toggle(isOn: $showRoomFurnitureCalibrate) {
                             HStack {
@@ -234,7 +213,9 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.Settings.primarySelectionByHighestConfidence)
                                     .font(.headline)
-                                Text(L10n.Settings.primarySelectionByHighestConfidenceDescription)
+                                Text(primarySelectionByHighestConfidence 
+                                    ? L10n.Settings.primarySelectionByHighestConfidenceOn 
+                                    : L10n.Settings.primarySelectionByHighestConfidenceOff)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -247,6 +228,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.Settings.primaryDetectionConfidenceFooter)
                         Text(L10n.Settings.primarySelectionByHighestConfidenceFooter)
+                        Text(L10n.Settings.primarySelectionBehaviorNote)
                     }
                     .font(.footnote)
                 }
@@ -257,16 +239,16 @@ struct SettingsView: View {
                             Image(systemName: "photo.on.rectangle.angled")
                                 .foregroundColor(.pink)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Image Scan")
+                                Text(L10n.Settings.imageScan)
                                     .font(.headline)
-                                Text("Pick a gallery photo and run the Furniture Fit pipeline with class IDs on the preview.")
+                                Text(L10n.Settings.imageScanDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }
                     }
                 } header: {
-                    Text("Single Image Scan")
+                    Text(L10n.Settings.singleImageScanSection)
                 }
 
                 #if DEBUG
@@ -391,7 +373,7 @@ struct SettingsView: View {
                 } header: {
                     Text(L10n.Settings.account)
                 } footer: {
-                    Text("Delete Account removes your sign-in account and local account data from this device.")
+                    Text(L10n.Settings.accountDeleteFooter)
                         .font(.footnote)
                 }
             }

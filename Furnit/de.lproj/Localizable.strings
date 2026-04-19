@@ -355,6 +355,7 @@
 "roomViewer.calibrateByWallTitle" = "Über Wand kalibrieren";
 "roomViewer.enterWallDimensionsHint" = "Vordere Wand mit Bandmaß (Meter), z. B. 3,15 × 2,86";
 "roomViewer.tapToCalibrate" = "Tippen zum Kalibrieren";
+"roomViewer.fullVideoSelectionHelper" = "Wenn Ihnen das Gezeigte nicht gefällt, tippen Sie mich an und wählen Sie das Möbelstück Ihrer Wahl";
 "roomViewer.detectedMeters" = "Erkannt: %.2f m";
 "roomViewer.roomMetersShort" = "Raum: %.2f m";
 "roomViewer.furnitureMetersShort" = "Möbel: %.2f m";
@@ -524,3 +525,17 @@
 
 "faq.pinchOverlaySize" = "Was passiert, wenn ich die segmentierten Möbel per Pinch vergrößere oder verkleinere?";
 "faq.pinchOverlaySizeAnswer" = "Durch die Pinch-Geste wird die Möbelüberlagerung größer oder kleiner. Wenn der Größenmodus aktiv ist und die Furni-Anzeige sichtbar ist, wird diese Anzeige auf die aktuell angepasste Möbelschätzung für den Raum aktualisiert. Ist der Größenmodus aus, ändert Pinch nur die sichtbare Overlay-Größe auf dem Bildschirm.";
+
+// MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOn" = "Ein: Wähle die Box mit der höchsten Punktzahl unter denen über dem Schieberegler.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionByHighestConfidenceOff" = "Aus: Wähle die größte Box unter denen über dem Schieberegler.";
+
+/* Settings - Furniture Segmentation */
+"settings.primarySelectionBehaviorNote" = "Beide Modi berücksichtigen nur Erkennungen auf oder über dem Primären Erkennungs-Konfidenzschieberegler. Parser/NMS-Verhalten bleibt unverändert.";
+
+/* Settings - Single Image Scan */
+"settings.singleImageScanSection" = "Einzelbild-Scan";
+

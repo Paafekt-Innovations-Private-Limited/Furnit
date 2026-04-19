@@ -150,9 +150,6 @@ enum L10n {
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
         static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
-        static let furnitureFitARCompanion = "settings.furnitureFitARCompanion".localized
-        static let furnitureFitARCompanionDescription = "settings.furnitureFitARCompanionDescription".localized
-        static let furnitureFitARCompanionUnavailable = "settings.furnitureFitARCompanionUnavailable".localized
         static let fullVideoWithIdentifications = "settings.fullVideoWithIdentifications".localized
         static let fullVideoWithIdentificationsDescription = "settings.fullVideoWithIdentificationsDescription".localized
         static let primaryDetectionConfidence = "settings.primaryDetectionConfidence".localized
@@ -162,7 +159,10 @@ enum L10n {
         }
         static let primarySelectionByHighestConfidence = "settings.primarySelectionByHighestConfidence".localized
         static let primarySelectionByHighestConfidenceDescription = "settings.primarySelectionByHighestConfidenceDescription".localized
+        static let primarySelectionByHighestConfidenceOn = "settings.primarySelectionByHighestConfidenceOn".localized
+        static let primarySelectionByHighestConfidenceOff = "settings.primarySelectionByHighestConfidenceOff".localized
         static let primarySelectionByHighestConfidenceFooter = "settings.primarySelectionByHighestConfidenceFooter".localized
+        static let primarySelectionBehaviorNote = "settings.primarySelectionBehaviorNote".localized
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
         static let roomMeasurementSection = "settings.roomMeasurementSection".localized
@@ -171,6 +171,18 @@ enum L10n {
         static let wallAssumedDepthM = "settings.wallAssumedDepthM".localized
         static let wallAssumedCeilingM = "settings.wallAssumedCeilingM".localized
         static let roomMeasurementFooter = "settings.roomMeasurementFooter".localized
+        static let singleImageScanSection = "settings.singleImageScanSection".localized
+        
+        static let singleImageScan = "settings.singleImageScan".localized
+        static let imageScan = "settings.imageScan".localized
+        static let imageScanDescription = "settings.imageScanDescription".localized
+        static let imageScanTapToChoose = "settings.imageScanTapToChoose".localized
+        static let imageScanTapToChooseSubtitle = "settings.imageScanTapToChooseSubtitle".localized
+        static let imageScanFootnote = "settings.imageScanFootnote".localized
+        static let imageScanLoadingPhoto = "settings.imageScanLoadingPhoto".localized
+        static let imageScanPreparingModel = "settings.imageScanPreparingModel".localized
+        static let imageScanLoadFailed = "settings.imageScanLoadFailed".localized
+        static let accountDeleteFooter = "settings.accountDeleteFooter".localized
     }
 
     /// SHARP on-device status messages (model load + generation)
@@ -414,6 +426,7 @@ enum L10n {
         static let calibrateByWallTitle = "roomViewer.calibrateByWallTitle".localized
         static let enterWallDimensionsHint = "roomViewer.enterWallDimensionsHint".localized
         static let tapToCalibrate = "roomViewer.tapToCalibrate".localized
+        static let fullVideoSelectionHelper = "roomViewer.fullVideoSelectionHelper".localized
         static func detectedMeters(_ value: Float) -> String {
             String(format: "roomViewer.detectedMeters".localized, locale: .current, value)
         }
