@@ -81,26 +81,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: - Ignored Classes (loaded from blacklist.json)
-    private var clsToIgnore: Set<Int> = []
-    private var blacklistLoaded: Bool = false
-
-    private func loadBlacklist() {
-        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
-            clsToIgnore = []
-            return
-        }
-        clsToIgnore = Set(dict.keys.compactMap { Int($0) })
-        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes") }
-    }
-
-    private func loadBlacklistOnce() {
-        if blacklistLoaded { return }
-        loadBlacklist()
-        blacklistLoaded = true
-    }
+    private let classBlacklist = FurnitureFitClassBlacklist()
 
     func submitStillImageForScanning(_ image: UIImage, requestID: UUID) {
         pendingStillImageScanRequest = (image, requestID)
@@ -1719,7 +1700,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
             }
         }
-        // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
+        // Note: class blacklist is loaded in startIfNeeded() to avoid repeated calls from updateUIView
     }
 
     func startIfNeeded() {
@@ -1751,7 +1732,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
-        loadBlacklistOnce()
+        classBlacklist.loadBlacklistOnce(debugMode: debugMode) { logDebug($0) }
 
         if stillImageScanModeEnabled {
             setProgress(0.08, text: "Still image scan")
@@ -2689,7 +2670,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("🔬 parseDetections layout dtype=\(dataTypeName)(\(dataTypeRaw)) shape=\(detShape) strides=\(detStrides) contiguous=\(isCContiguous) path=\(parserPath)")
         }
 
-        let parseBlacklist: Set<Int> = (oneImageRunAwaitingSave || stillImageScanModeEnabled) ? clsToIgnore : []
+        let parseBlacklist: Set<Int> = (oneImageRunAwaitingSave || stillImageScanModeEnabled) ? classBlacklist.ignoredIndices : []
         let rawDetections = YoloEDetectionParser.parseDetections(
             detArray: detArray,
             confidenceThreshold: confidenceThreshold,
@@ -2739,7 +2720,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         let supportSurfaceHintCandidates = (oneImageRunAwaitingSave || stillImageScanModeEnabled)
-            ? FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
+            ? FurnitureFitFilter.excludingClasses(candidates, blacklist: classBlacklist.ignoredIndices)
             : candidates
         let supportSurfaceHintName = supportSurfaceHint(
             from: supportSurfaceHintCandidates,
@@ -2748,7 +2729,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
         let preferRoomRaycastSizing = supportSurfaceHintName != nil
 
-        candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: clsToIgnore)
+        candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: classBlacklist.ignoredIndices)
         if candidates.isEmpty {
             if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
             consecutiveEmptyMaskFrames += 1
@@ -2762,7 +2743,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         if debugMode {
-            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), class-aware NMS IoU≤0.5, blacklist.json \(clsToIgnore.count) ids)")
+            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), class-aware NMS IoU≤0.5, blacklist.json \(classBlacklist.ignoredIndices.count) ids)")
             for (i, d) in candidates.enumerated() {
                 logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
             }
@@ -2974,7 +2955,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let lowConfidencePrimaryContributors = lowConfidenceInsidePrimaryContributors(
             detArray: detArray,
             primary: primary,
-            blacklist: clsToIgnore,
+            blacklist: classBlacklist.ignoredIndices,
             protos: planes,
             protoHeight: pH,
             protoWidth: pW,
@@ -4966,7 +4947,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         let frameStart = Date()
         if debugMode { logMemory("FRAME START") }
-        loadBlacklistOnce()
+        classBlacklist.loadBlacklistOnce(debugMode: debugMode) { logDebug($0) }
         processFrameOnnxStyleCoreML(
             processBuffer: pixelBuffer,
             model: model,
@@ -6060,19 +6041,4 @@ extension FurnitureFitContainerView {
             startClassicCameraPathIfNeeded()
         }
     }
-}
-
-extension UIView {
-    var parentViewController: UIViewController? {
-        var responder: UIResponder? = self
-        while let r = responder {
-            if let vc = r as? UIViewController { return vc }
-            responder = r.next
-        }
-        return nil
-    }
-}
-
-extension CGRect {
-    var area: CGFloat { width * height }
 }
