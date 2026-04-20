@@ -22,106 +22,6 @@ fileprivate func blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLA
     BlasScopy(n, x, incx, y, incy)
 }
 
-// MARK: - Detection & Sizing Types
-/// High-level furniture size estimate surfaced to SharpRoom / viewers.
-struct FurnitureSizeEstimate {
-    /// Width from room-model intrinsics when available, else bbox × room width (no-LiDAR fallback).
-    let widthMeters: Float
-    /// Display height: AR when available, else bbox × room height (no-LiDAR fallback).
-    let heightMeters: Float
-    /// ARKit/LiDAR height when available.
-    let arHeightMeters: Float?
-}
-
-enum FurnitureFitSegmentationMode: Equatable {
-    case identifyOnly
-    case segmentSelected
-}
-
-private struct DetectionOverlayItem {
-    let rectInView: CGRect
-    let label: String
-    let confidence: Float
-    let isSelected: Bool
-}
-
-private final class DetectionBBoxOverlayView: UIView {
-    var items: [DetectionOverlayItem] = [] {
-        didSet { setNeedsDisplay() }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        commonInit()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        commonInit()
-    }
-
-    private func commonInit() {
-        backgroundColor = .clear
-        isOpaque = false
-        isUserInteractionEnabled = false
-        contentMode = .redraw
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.clear(rect)
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = .byTruncatingTail
-        for item in items {
-            let strokeColor: UIColor = item.isSelected ? .systemYellow : UIColor.white.withAlphaComponent(0.88)
-            let fillColor = UIColor.black.withAlphaComponent(item.isSelected ? 0.55 : 0.38)
-            let lineWidth: CGFloat = item.isSelected ? 2.5 : 1.2
-            let boxPath = UIBezierPath(roundedRect: item.rectInView, cornerRadius: 6)
-            fillColor.setFill()
-            strokeColor.setStroke()
-            boxPath.lineWidth = lineWidth
-            boxPath.stroke()
-
-            let scoreText = String(format: "%.2f", item.confidence)
-            let text = "\(item.label) \(scoreText)"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: item.isSelected ? 11 : 10, weight: item.isSelected ? .semibold : .medium),
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: paragraphStyle
-            ]
-            let maxLabelWidth = min(max(item.rectInView.width, 56), 140)
-            let textSize = (text as NSString).size(withAttributes: attributes)
-            let labelRect = CGRect(
-                x: item.rectInView.minX,
-                y: max(0, item.rectInView.minY - textSize.height - 8),
-                width: min(maxLabelWidth, textSize.width + 10),
-                height: textSize.height + 6
-            )
-            let labelPath = UIBezierPath(roundedRect: labelRect, cornerRadius: 6)
-            fillColor.setFill()
-            labelPath.fill()
-            (text as NSString).draw(
-                in: labelRect.insetBy(dx: 5, dy: 3),
-                withAttributes: attributes
-            )
-        }
-    }
-}
-
-private extension UIButton.Configuration {
-    static func furnitureSelectionChip() -> UIButton.Configuration {
-        var config = UIButton.Configuration.plain()
-        config.baseForegroundColor = .white
-        config.background.backgroundColor = UIColor.black.withAlphaComponent(0.72)
-        config.background.cornerRadius = 18
-        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
-        config.image = UIImage(systemName: "xmark.circle.fill")
-        config.imagePlacement = .trailing
-        config.imagePadding = 8
-        return config
-    }
-}
-
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
     private static let fullVideoWithIdentificationsKey = "furnitureFit.showFullVideoWithIdentifications"
@@ -1632,97 +1532,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
-    /// Ultralytics-style `scale_boxes` mapping from model space back to the
-    /// original image space. Supports both letterboxed-square inputs and the
-    /// current stretch-to-square camera path.
-    private func scaleBoxesFromModel(
-        box: CGRect,
-        modelShape: CGSize,
-        imageShape: CGSize,
-        usesLetterbox: Bool,
-        inputVerticallyFlipped: Bool
-    ) -> CGRect {
-        let edgeOffset: CGFloat = 0.0  // edge bias disabled
-        let x1: CGFloat
-        let y1: CGFloat
-        let x2: CGFloat
-        let y2: CGFloat
-
-        if usesLetterbox {
-            // Ultralytics-style gain for square letterbox inputs.
-            let gain = min(modelShape.width / imageShape.width, modelShape.height / imageShape.height)
-            let padX = (modelShape.width - imageShape.width * gain) / 2.0
-            let padY = (modelShape.height - imageShape.height * gain) / 2.0
-            x1 = (box.minX - edgeOffset - padX) / gain
-            y1 = (box.minY - edgeOffset - padY) / gain
-            x2 = (box.maxX + edgeOffset - padX) / gain
-            y2 = (box.maxY + edgeOffset - padY) / gain
-        } else {
-            // Stretch path: independent X/Y scaling, no padding.
-            let gainX = imageShape.width / modelShape.width
-            let gainY = imageShape.height / modelShape.height
-            x1 = (box.minX - edgeOffset) * gainX
-            y1 = (box.minY - edgeOffset) * gainY
-            x2 = (box.maxX + edgeOffset) * gainX
-            y2 = (box.maxY + edgeOffset) * gainY
-        }
-
-        // Ultralytics `Instances.flipud(height)`: y1' = H - y2, y2' = H - y1 in source space.
-        let fy1: CGFloat
-        let fy2: CGFloat
-        if inputVerticallyFlipped {
-            fy1 = imageShape.height - y2
-            fy2 = imageShape.height - y1
-        } else {
-            fy1 = y1
-            fy2 = y2
-        }
-
-        let clippedX1 = max(0, x1)
-        let clippedY1 = max(0, fy1)
-        let clippedX2 = min(imageShape.width, x2)
-        let clippedY2 = min(imageShape.height, fy2)
-        let mappedRect = CGRect(
-            x: clippedX1,
-            y: clippedY1,
-            width: max(1, clippedX2 - clippedX1),
-            height: max(1, clippedY2 - clippedY1)
-        )
-        return clipRectToImageBounds(
-            rect: mappedRect,
-            imageWidth: imageShape.width,
-            imageHeight: imageShape.height
-        )
-    }
-
-    private func clipRectToImageBounds(
-        rect: CGRect,
-        imageWidth: CGFloat,
-        imageHeight: CGFloat
-    ) -> CGRect {
-        let clippedMinX = max(0, min(rect.minX, imageWidth))
-        let clippedMinY = max(0, min(rect.minY, imageHeight))
-        let clippedMaxX = max(clippedMinX, min(rect.maxX, imageWidth))
-        let clippedMaxY = max(clippedMinY, min(rect.maxY, imageHeight))
-        return CGRect(
-            x: clippedMinX,
-            y: clippedMinY,
-            width: max(1, clippedMaxX - clippedMinX),
-            height: max(1, clippedMaxY - clippedMinY)
-        )
-    }
-
-    private func clipCompositedImageToBounds(
-        _ image: CGImage,
-        imageWidth: Int,
-        imageHeight: Int
-    ) -> CGImage {
-        let clippedWidth = max(1, min(image.width, imageWidth))
-        let clippedHeight = max(1, min(image.height, imageHeight))
-        let clipRect = CGRect(x: 0, y: 0, width: clippedWidth, height: clippedHeight)
-        return image.cropping(to: clipRect) ?? image
-    }
-
     private func bufferRect(
         for detection: FurnitureFitDetection,
         imageWidth: Int,
@@ -1740,7 +1549,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             width: CGFloat(detection.w),
             height: CGFloat(detection.h)
         )
-        let scaledBox = scaleBoxesFromModel(
+        let scaledBox = FurnitureFitGeometry.scaleBoxesFromModel(
             box: modelBox,
             modelShape: modelShape,
             imageShape: CGSize(width: imageWidth, height: imageHeight),
@@ -3320,7 +3129,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             scaleX: scaleX,
             scaleY: scaleY
         )
-        let clippedPrimaryBufferRect = clipRectToImageBounds(
+        let clippedPrimaryBufferRect = FurnitureFitGeometry.clipRectToImageBounds(
             rect: primaryBufferRect,
             imageWidth: CGFloat(bufW),
             imageHeight: CGFloat(bufH)
@@ -3344,14 +3153,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             width: CGFloat(max(clipRightModel - clipLeftModel, 1)),
             height: CGFloat(max(clipBottomModel - clipTopModel, 1))
         )
-        let clipBufferRect = scaleBoxesFromModel(
+        let clipBufferRect = FurnitureFitGeometry.scaleBoxesFromModel(
             box: clipModelRect,
             modelShape: CGSize(width: CGFloat(onnxSide), height: CGFloat(onnxSide)),
             imageShape: CGSize(width: bufW, height: bufH),
             usesLetterbox: currentYoloUsesLetterbox,
             inputVerticallyFlipped: currentYoloInputVerticallyFlipped
         )
-        let clippedCompositeBufferRect = clipRectToImageBounds(
+        let clippedCompositeBufferRect = FurnitureFitGeometry.clipRectToImageBounds(
             rect: clipBufferRect,
             imageWidth: CGFloat(bufW),
             imageHeight: CGFloat(bufH)
@@ -3568,10 +3377,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if let finalImage = withDebugOverlay {
             consecutiveEmptyMaskFrames = 0
             let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
-            var out: CGImage = clipCompositedImageToBounds(finalImage, imageWidth: bufW, imageHeight: bufH)
+            var out: CGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
+                finalImage,
+                imageWidth: bufW,
+                imageHeight: bufH
+            )
             if needsRotate {
                 if let r = self.rotateCGImage90(out, clockwise: true) {
-                    out = clipCompositedImageToBounds(r, imageWidth: bufH, imageHeight: bufW)
+                    out = FurnitureFitGeometry.clipCompositedImageToBounds(
+                        r,
+                        imageWidth: bufH,
+                        imageHeight: bufW
+                    )
                 }
             }
             if oneImageRunAwaitingSave {
