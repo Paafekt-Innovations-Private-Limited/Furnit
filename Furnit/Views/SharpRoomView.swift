@@ -618,6 +618,7 @@ struct SharpRoomView: View {
         .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: enhancedRoomMetadata) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: brainArAssistedSizingEnabled) { _, enabled in
@@ -1683,6 +1684,7 @@ struct SharpRoomView: View {
             },
             sharpRoomSplatMeasurementHost: splatMeasurementHost,
             arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+            manualFurnitureHeightOverrideMeters: realFurnitureHeight,
             segmentationMode: furnitureFitSegmentationMode,
             onSelectedClassLabelsChanged: { labels in
                 selectedFurnitureFitLabels = labels
@@ -1778,22 +1780,20 @@ struct SharpRoomView: View {
             showFurnitureDimensionsInput = false
             return
         }
+
+        if realHeight >= max(displayRoomHeight, 0.01) {
+            calibrationRejectMessage = String(
+                format: "Furniture height should be less than room height (%.2f m).",
+                locale: .current,
+                displayRoomHeight
+            )
+            showCalibrationRejectAlert = true
+            return
+        }
+
         let scaleFactor = realHeight / detectedHeight
-        let roomH = sourceRoomHeight
-        let roomW = sourceRoomWidth
         realFurnitureHeight = realHeight
-        NotificationCenter.default.post(
-            name: NSNotification.Name("WebGLScaleRoom"),
-            object: nil,
-            userInfo: ["factor": Double(scaleFactor)]
-        )
-        if savedRoomHeight != nil || jsFrontWallHeight != nil {
-            calibratedRoomHeight = roomH * scaleFactor
-        }
-        if savedRoomWidth != nil || jsFrontWallWidth != nil {
-            calibratedRoomWidth = roomW * scaleFactor
-        }
-        logDebug("📐 [Calibration] Real height: \(realHeight)m, Scale factor: \(scaleFactor)")
+        logDebug("📐 [Calibration] Real height: \(realHeight)m, overlay scale factor: \(scaleFactor)")
         inputFurnitureHeight = ""
         showFurnitureDimensionsInput = false
     }
@@ -2665,7 +2665,7 @@ struct SharpRoomView: View {
               width.isFinite,
               width > 0.05 else { return nil }
 
-        let height = detectedFurnitureHeightAR ?? furnitureProportionalHeightMeters
+        let height = realFurnitureHeight ?? detectedFurnitureHeightAR ?? furnitureProportionalHeightMeters
         guard let height,
               height.isFinite,
               height > 0.05 else { return nil }

@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.furnit.android.models.ModelManager
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -671,20 +672,38 @@ class GLBRoomActivity : AppCompatActivity() {
             setPadding(48, 32, 48, 32)
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Save Room")
             .setMessage("Enter a name for your room")
             .setView(input)
-            .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { RoomDisplayName.myRoomWithTimestamp() }
-                saveRoom(name)
-            }
+            .setPositiveButton("Save", null)
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val typedName = input.text.toString().trim()
+                if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
+                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val name = if (typedName.isEmpty()) {
+                    ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
+                } else {
+                    typedName
+                }
+                saveRoom(name)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun saveRoom(name: String) {
         val path = glbPath ?: return
+        if (!ModelManager.isRoomNameAvailable(this, name)) {
+            Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+            return
+        }
 
         try {
             val glbFile = File(path)

@@ -302,6 +302,14 @@ struct SettingsView: View {
                         }
                     }
 
+                    NavigationLink(destination: CreditsView()) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundColor(.blue)
+                            Text("Credits")
+                        }
+                    }
+
                     Link(destination: URL(string: "https://paafekt.com/support")!) {
                         HStack {
                             Image(systemName: "questionmark.circle.fill")

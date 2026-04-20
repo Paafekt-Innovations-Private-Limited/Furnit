@@ -656,24 +656,33 @@ class ContentActivity : AppCompatActivity() {
                 ),
             )
         }
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.home_rename_room_title)
             .setView(container)
-            .setPositiveButton(R.string.common_save) { _, _ ->
+            .setPositiveButton(R.string.common_save, null)
+            .setNegativeButton(R.string.common_cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = input.text?.toString()?.trim().orEmpty()
                 if (name.isEmpty()) {
                     Toast.makeText(this, getString(R.string.home_rename_room_empty), Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
+                    return@setOnClickListener
+                }
+                if (!modelManager.isRoomNameAvailable(name, excludeRoomId = model.id)) {
+                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
                 }
                 if (modelManager.renameUserRoom(model.id, name)) {
                     Toast.makeText(this, getString(R.string.home_room_renamed, name), Toast.LENGTH_SHORT).show()
                     refreshRoomsList()
+                    dialog.dismiss()
                 } else {
                     Toast.makeText(this, getString(R.string.home_rename_room_failed), Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton(R.string.common_cancel, null)
-            .show()
+        }
+        dialog.show()
     }
 
     private fun showDeleteDialog(model: Model) {

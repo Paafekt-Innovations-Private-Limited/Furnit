@@ -14,6 +14,20 @@ class ModelManager(private val context: Context) {
         private const val SHARP_ROOMS_DIR = "sharp_rooms"
         /** Built-in demo GLBs under `assets/bundled_rooms/` (SHARP `.pte` use assets/models_cpu + models_cpuvulkan_hybrid via Gradle). */
         const val BUNDLED_ROOM_ASSETS_DIR = "bundled_rooms"
+
+        private fun normalizeRoomName(roomName: String): String {
+            return roomName.trim()
+                .replace("\\s+".toRegex(), " ")
+                .lowercase()
+        }
+
+        fun isRoomNameAvailable(context: Context, candidateName: String, excludeRoomId: String? = null): Boolean {
+            return ModelManager(context).isRoomNameAvailable(candidateName, excludeRoomId)
+        }
+
+        fun findAvailableRoomName(context: Context, preferredName: String, excludeRoomId: String? = null): String {
+            return ModelManager(context).findAvailableRoomName(preferredName, excludeRoomId)
+        }
     }
 
     init {
@@ -142,6 +156,28 @@ class ModelManager(private val context: Context) {
         loadModels()
     }
 
+    fun isRoomNameAvailable(candidateName: String, excludeRoomId: String? = null): Boolean {
+        val normalizedCandidateName = normalizeRoomName(candidateName)
+        if (normalizedCandidateName.isEmpty()) return false
+        return models.none { model ->
+            model.id != excludeRoomId && normalizeRoomName(model.name) == normalizedCandidateName
+        }
+    }
+
+    fun findAvailableRoomName(preferredName: String, excludeRoomId: String? = null): String {
+        val baseRoomName = preferredName.trim().replace("\\s+".toRegex(), " ").ifEmpty { "Room" }
+        if (isRoomNameAvailable(baseRoomName, excludeRoomId)) return baseRoomName
+
+        var suffixIndex = 2
+        while (true) {
+            val candidateName = "$baseRoomName ($suffixIndex)"
+            if (isRoomNameAvailable(candidateName, excludeRoomId)) {
+                return candidateName
+            }
+            suffixIndex++
+        }
+    }
+
     fun deleteRoom(id: String): Boolean {
         val model = models.find { it.id == id && it.isUserCreated } ?: return false
         // assetPath may be a GLB file or a folder - get the parent folder if it's a file
@@ -165,6 +201,7 @@ class ModelManager(private val context: Context) {
     fun renameUserRoom(roomId: String, newName: String): Boolean {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return false
+        if (!isRoomNameAvailable(trimmed, excludeRoomId = roomId)) return false
         val model = models.find { it.id == roomId && it.isUserCreated } ?: return false
         val folder = File(model.assetPath).let { if (it.isFile) it.parentFile else it } ?: return false
         return try {

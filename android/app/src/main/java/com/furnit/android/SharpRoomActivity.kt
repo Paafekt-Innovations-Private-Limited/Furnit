@@ -54,6 +54,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
+import com.furnit.android.models.ModelManager
 import com.furnit.android.models.roomintelligence.AestheticAdvisor
 import com.furnit.android.models.roomintelligence.AestheticScore
 import com.furnit.android.models.roomintelligence.CornerPlacement
@@ -3653,22 +3654,40 @@ class SharpRoomActivity : AppCompatActivity() {
             setText(initialName)
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.room_viewer_save_room)
             .setMessage(R.string.room_viewer_enter_name)
             .setView(input)
-            .setPositiveButton("Save") { _, _ ->
-                val name = input.text.toString().ifEmpty { RoomDisplayName.aiRoomWithTimestamp() }
-                saveRoom(name)
-            }
+            .setPositiveButton("Save", null)
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val typedName = input.text.toString().trim()
+                if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
+                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val name = if (typedName.isEmpty()) {
+                    ModelManager.findAvailableRoomName(this, RoomDisplayName.aiRoomWithTimestamp())
+                } else {
+                    typedName
+                }
+                saveRoom(name)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun saveRoom(name: String) {
         val folderPath = roomFolder
         if (folderPath == null) {
             Toast.makeText(this, getString(R.string.sharp_room_cannot_save), Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!ModelManager.isRoomNameAvailable(this, name)) {
+            Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
             return
         }
 

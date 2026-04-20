@@ -252,6 +252,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
     /// Sharp Room uses this to opt into AR sizing explicitly instead of defaulting to it.
     var arAssistedSizingEnabled: Bool = true
+    /// Optional manual furniture height from the room viewers' calibrate sheet. When set, the overlay
+    /// uses this value for AR-assisted scaling instead of the raw depth-derived height.
+    var manualFurnitureHeightOverrideMeters: Float?
 
     private var lastSegmentationMeanColorPublishAt: CFAbsoluteTime = 0
     private let segmentationMeanColorMinPublishInterval: CFTimeInterval = 0.25
@@ -1361,9 +1364,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 distanceMeters: d,
                 focalLengthYPixels: fy
                ) {
-                let effectiveARHeight = arAssistedSizingEnabled
-                    ? max(estH, Self.minimumARFurnitureHeightMeters)
-                    : estH
+                let effectiveARHeight = resolvedAssistedFurnitureHeightMeters(
+                    estimatedHeightMeters: estH
+                ) ?? estH
                 let previousEstimatedHeightMeters = lastAREstimatedHeightMeters
                 lastAREstimatedHeightMeters = effectiveARHeight
                 let roomHeight = max(roomHeightMeters, 0.01)
@@ -5812,11 +5815,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         var finalWidth = widthMeters
         var finalHeight = heightMeters
         var finalARHeight = arHeightMeters
+        let resolvedAssistedHeight = resolvedAssistedFurnitureHeightMeters(
+            estimatedHeightMeters: arHeightMeters
+        )
 
-        if arAssistedSizingEnabled, let arHeightMeters, arHeightMeters.isFinite, arHeightMeters > 0 {
-            let clampedARHeight = max(arHeightMeters, Self.minimumARFurnitureHeightMeters)
-            finalARHeight = clampedARHeight
-            finalHeight = max(heightMeters, clampedARHeight)
+        if arAssistedSizingEnabled,
+           let resolvedAssistedHeight,
+           resolvedAssistedHeight.isFinite,
+           resolvedAssistedHeight > 0 {
+            finalARHeight = resolvedAssistedHeight
+            finalHeight = max(heightMeters, resolvedAssistedHeight)
             finalWidth = max(widthMeters, Self.minimumARFurnitureWidthMeters)
         }
 
@@ -6001,11 +6009,28 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    private func normalizedARFurnitureHeightMeters() -> Float? {
-        guard let value = lastAREstimatedHeightMeters,
+    private func normalizedManualFurnitureHeightOverrideMeters() -> Float? {
+        guard let value = manualFurnitureHeightOverrideMeters,
               value.isFinite,
               value > 0.05 else { return nil }
-        return arAssistedSizingEnabled ? max(value, Self.minimumARFurnitureHeightMeters) : value
+        return value
+    }
+
+    private func resolvedAssistedFurnitureHeightMeters(estimatedHeightMeters: Float?) -> Float? {
+        if let manualOverrideHeight = normalizedManualFurnitureHeightOverrideMeters() {
+            return manualOverrideHeight
+        }
+
+        guard let estimatedHeightMeters,
+              estimatedHeightMeters.isFinite,
+              estimatedHeightMeters > 0.05 else { return nil }
+        return arAssistedSizingEnabled
+            ? max(estimatedHeightMeters, Self.minimumARFurnitureHeightMeters)
+            : estimatedHeightMeters
+    }
+
+    private func normalizedARFurnitureHeightMeters() -> Float? {
+        resolvedAssistedFurnitureHeightMeters(estimatedHeightMeters: lastAREstimatedHeightMeters)
     }
 
     // MARK: - Gestures

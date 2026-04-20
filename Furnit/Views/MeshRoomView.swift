@@ -56,6 +56,8 @@ struct MeshRoomView: View {
     @State private var showFurnitureDimensionsInput = false
     @State private var inputFurnitureHeight: String = ""
     @State private var realFurnitureHeight: Float?
+    @State private var showCalibrationRejectAlert = false
+    @State private var calibrationRejectMessage = ""
     @State private var roomCalibrationScaleFactor: Float = 1.0
     @State private var calibrationBaselineDetectedHeight: Float?
 
@@ -246,6 +248,7 @@ struct MeshRoomView: View {
                         segmentedFurnitureMeanSRGB = meanSRGB
                     },
                     arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                    manualFurnitureHeightOverrideMeters: realFurnitureHeight,
                     segmentationMode: furnitureFitSegmentationMode,
                     onSelectedClassLabelsChanged: { labels in
                         selectedFurnitureFitLabels = labels
@@ -351,6 +354,7 @@ struct MeshRoomView: View {
         .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
         .onChange(of: roomCalibrationScaleFactor) { _, _ in updateRoomPlacementIntelligence() }
         .onDisappear {
             cancelPinchHintTasks()
@@ -386,6 +390,11 @@ struct MeshRoomView: View {
             }
         } message: {
             Text(L10n.RoomPreview.unsavedMessage)
+        }
+        .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) {
+            Button(L10n.Common.ok, role: .cancel) {}
+        } message: {
+            Text(calibrationRejectMessage)
         }
         .defersSystemGestures(on: .all)
         .disableBackSwipe()
@@ -548,17 +557,25 @@ struct MeshRoomView: View {
             return
         }
 
+        if realHeight >= currentRoomHeightForFurnitureCalibration {
+            calibrationRejectMessage = String(
+                format: "Furniture height should be less than room height (%.2f m).",
+                locale: .current,
+                currentRoomHeightForFurnitureCalibration
+            )
+            showCalibrationRejectAlert = true
+            return
+        }
+
         let scaleFactor = realHeight / detectedHeight
-        roomCalibrationScaleFactor = scaleFactor
         realFurnitureHeight = realHeight
-        NotificationCenter.default.post(
-            name: NSNotification.Name("MeshRoomScaleRoom"),
-            object: nil,
-            userInfo: ["factor": Double(scaleFactor)]
-        )
-        logDebug("📐 [Mesh calibration] Real height: \(realHeight)m, scale factor: \(scaleFactor)")
+        logDebug("📐 [Mesh calibration] Real height: \(realHeight)m, overlay scale factor: \(scaleFactor)")
         inputFurnitureHeight = ""
         showFurnitureDimensionsInput = false
+    }
+
+    private var currentRoomHeightForFurnitureCalibration: Float {
+        max(roomHeight, 0.01)
     }
 
     private func appendDigit(_ digit: String) {
@@ -1497,7 +1514,7 @@ struct MeshRoomView: View {
               width.isFinite,
               width > 0.05 else { return nil }
 
-        let height = detectedFurnitureHeightAR ?? furnitureProportionalHeightMeters
+        let height = realFurnitureHeight ?? detectedFurnitureHeightAR ?? furnitureProportionalHeightMeters
         guard let height,
               height.isFinite,
               height > 0.05 else { return nil }

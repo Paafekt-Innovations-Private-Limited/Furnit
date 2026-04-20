@@ -551,6 +551,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
     /// Per-view opt-in for AR-assisted sizing. Sharp Room keeps this off until the user taps the AR chip.
     var arAssistedSizingEnabled: Bool = true
+    /// Optional manual override from the room calibrate sheet. When present, AR overlay sizing uses this
+    /// height instead of the raw per-frame estimate so the mask scales to the user-confirmed furniture size.
+    var manualFurnitureHeightOverrideMeters: Float? = nil
     /// Brain now starts in identify-only mode; Segment enables selected-class masking.
     var segmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     var onSelectedClassLabelsChanged: (([String]) -> Void)? = nil
@@ -577,6 +580,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.onFirstSegmentationComplete = onFirstSegmentationComplete
         view.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
         view.arAssistedSizingEnabled = arAssistedSizingEnabled
+        view.manualFurnitureHeightOverrideMeters = manualFurnitureHeightOverrideMeters
         view.segmentationMode = segmentationMode
         view.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
         view.showIdentifyLivePreview = showIdentifyLivePreview
@@ -606,6 +610,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.onFirstSegmentationComplete = onFirstSegmentationComplete
             uiView.onSegmentationMaskMeanColorSRGB = onSegmentationMaskMeanColorSRGB
             uiView.arAssistedSizingEnabled = arAssistedSizingEnabled
+            uiView.manualFurnitureHeightOverrideMeters = manualFurnitureHeightOverrideMeters
             uiView.segmentationMode = segmentationMode
             uiView.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
             uiView.showIdentifyLivePreview = showIdentifyLivePreview

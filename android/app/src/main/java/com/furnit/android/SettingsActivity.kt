@@ -780,6 +780,17 @@ class SettingsActivity : AppCompatActivity() {
         }
         legalSection.addView(termsButton)
 
+        val creditsButton = TextView(this).apply {
+            text = getString(R.string.settings_credits)
+            textSize = 16f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 8, 0, 8)
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, CreditsActivity::class.java))
+            }
+        }
+        legalSection.addView(creditsButton)
+
         val licenseButton = TextView(this).apply {
             text = getString(R.string.settings_licenses)
             textSize = 16f
