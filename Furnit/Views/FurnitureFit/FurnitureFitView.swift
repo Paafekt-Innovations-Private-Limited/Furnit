@@ -28,92 +28,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private static let minimumARFurnitureHeightMeters: Float = 0.25
     private static let minimumARFurnitureWidthMeters: Float = 0.25
 
-    // MARK: - One-image debug pipeline (offline JPEG → full composite → PNG on disk)
-    /// Set to `true` to run one still image through the full composite path. Input is resolved by ``resolvedOneImageInputURL()``; output is written under the app Documents directory (and best-effort to the Mac repo path on Simulator). Default `false` restores normal live segmentation.
-    private static let oneImageRun = false
-    /// Optional: copy `alchair.jpeg` into the app target (e.g. `Furnit/test_images/alchair.jpeg`) or into Documents — see ``resolvedOneImageInputURL()``.
-    private static let oneImageInputPathMacDev = "/Users/al/Documents/tries01/Furnit/test_images/alchair.jpeg"
     private var oneImageRunAwaitingSave = false
     private var oneImageRunFinished = false
-
-    /// Bundle `test_images/alchair.{jpeg,jpg,png}` → bundle root → `Documents/test_images/` → `Documents/` → optional Mac dev path (Simulator/host only).
-    private static func resolvedOneImageInputURL() -> URL? {
-        let fm = FileManager.default
-        var candidates: [URL] = []
-        for ext in ["jpeg", "jpg", "png"] {
-            if let u = Bundle.main.url(forResource: "alchair", withExtension: ext, subdirectory: "test_images") {
-                candidates.append(u)
-            }
-            if let u = Bundle.main.url(forResource: "alchair", withExtension: ext) {
-                candidates.append(u)
-            }
-        }
-        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            candidates.append(docs.appendingPathComponent("test_images/alchair.jpeg"))
-            candidates.append(docs.appendingPathComponent("test_images/alchair.jpg"))
-            candidates.append(docs.appendingPathComponent("test_images/alchair.png"))
-            candidates.append(docs.appendingPathComponent("alchair.jpeg"))
-        }
-        candidates.append(URL(fileURLWithPath: oneImageInputPathMacDev))
-        var seen = Set<String>()
-        for u in candidates {
-            let p = u.path
-            guard !seen.contains(p) else { continue }
-            seen.insert(p)
-            if fm.fileExists(atPath: p) { return u }
-        }
-        return nil
-    }
-
-    private static func resolvedOneImageOutputPrimaryURL(filename: String = "alchair_furniturefit_result.png") -> URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent(filename)
-    }
-
-    private static func oneImageOutputURLMacRepo(filename: String = "alchair_furniturefit_result.png") -> URL {
-        URL(fileURLWithPath: oneImageInputPathMacDev).deletingLastPathComponent().appendingPathComponent(filename)
-    }
-
-    private static func logOneImageInputNotFound() {
-        logDebug(
-            "🖼️ oneImageRun: missing alchair image. Add `test_images/alchair.jpeg` to the Furnit target, " +
-            "or copy the file to the app Documents folder (Files app / container), " +
-            "or place at \(oneImageInputPathMacDev) when the sandbox allows (often Simulator only)."
-        )
-    }
-
-    private func writeOneImageOutputPNG(_ image: CGImage, filename: String, logLabel: String) {
-        let uiImage = UIImage(cgImage: image, scale: 1, orientation: .up)
-        guard let pngData = uiImage.pngData() else {
-            logDebug("🖼️ oneImageRun: failed to encode \(logLabel) PNG")
-            return
-        }
-
-        let primaryURL = Self.resolvedOneImageOutputPrimaryURL(filename: filename)
-        let repoURL = Self.oneImageOutputURLMacRepo(filename: filename)
-
-        do {
-            try FileManager.default.createDirectory(
-                at: primaryURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try pngData.write(to: primaryURL, options: .atomic)
-            logDebug("🖼️ oneImageRun: wrote \(logLabel) to \(primaryURL.path)")
-        } catch {
-            logDebug("🖼️ oneImageRun: failed writing \(logLabel) to Documents — \(error)")
-        }
-
-        do {
-            try FileManager.default.createDirectory(
-                at: repoURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try pngData.write(to: repoURL, options: .atomic)
-            logDebug("🖼️ oneImageRun: also wrote \(logLabel) to \(repoURL.path)")
-        } catch {
-            // Expected on-device; repo path is best-effort only.
-        }
-    }
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
@@ -1845,7 +1761,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
 
-        if Self.oneImageRun {
+        if FurnitureFitOneImageDebugSupport.runEnabled {
             setProgress(0.08, text: "One-image debug…")
             detectionQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.runSingleImageDebugPipelineIfNeeded()
@@ -1876,7 +1792,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Runs one resolved still image on ``detectionQueue`` (full ONNX-style composite). Skips camera; writes PNG on success.
     private func runSingleImageDebugPipelineIfNeeded() {
-        guard Self.oneImageRun, !oneImageRunFinished else { return }
+        guard FurnitureFitOneImageDebugSupport.runEnabled, !oneImageRunFinished else { return }
         for _ in 0..<80 {
             if mlModel != nil { break }
             Thread.sleep(forTimeInterval: 0.05)
@@ -1890,8 +1806,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             return
         }
-        guard let inputURL = Self.resolvedOneImageInputURL() else {
-            Self.logOneImageInputNotFound()
+        guard let inputURL = FurnitureFitOneImageDebugSupport.resolvedInputURL() else {
+            FurnitureFitOneImageDebugSupport.logInputNotFound()
             oneImageRunFinished = true
             DispatchQueue.main.async { [weak self] in
                 self?.setProgress(1.0, text: "One-image: missing file")
@@ -3336,7 +3252,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let withDebugOverlay: CGImage? = {
             guard let base = composedImage else { return composedImage }
-            if Self.oneImageRun, oneImageRunAwaitingSave {
+            if FurnitureFitOneImageDebugSupport.runEnabled, oneImageRunAwaitingSave {
                 return drawCompositeContributorBboxesOnComposedImage(
                     composed: base,
                     compositeDetections: compositeDetectionsForBuild,
@@ -3392,7 +3308,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
             if oneImageRunAwaitingSave {
-                writeOneImageOutputPNG(
+                FurnitureFitOneImageDebugSupport.writeOutputPNG(
                     out,
                     filename: "alchair_furniturefit_result.png",
                     logLabel: "composite result"
@@ -3417,7 +3333,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     } else {
                         rotatedAllDetectionsImage = allDetectionsImage
                     }
-                    writeOneImageOutputPNG(
+                    FurnitureFitOneImageDebugSupport.writeOutputPNG(
                         rotatedAllDetectionsImage,
                         filename: "alchair_furniturefit_all_detections.png",
                         logLabel: "all detections"
