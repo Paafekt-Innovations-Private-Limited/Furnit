@@ -394,4 +394,19 @@
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
+    <string name="settings_credits">நன்றிகள்</string>
+    <string name="credits_title">நன்றிகள்</string>
+    <string name="credits_intro">இந்த தயாரிப்பு மூன்றாம் தரப்பு AI மற்றும் மெஷின் லெர்னிங் கருவிகள் மற்றும் தளங்களின் உதவியுடன் உருவாக்கப்பட்டது. மேம்பாட்டு காலத்தில் ஆய்வு, முன்மாதிரி உருவாக்கம், பொறியியல் உதவி, காட்சி பரிசோதனைகள் மற்றும் மாடல் பணிப்பாசறைகளில் அவற்றின் பங்களிப்பை நாங்கள் அங்கீகரிக்கிறோம்.</string>
+    <string name="credits_disclaimer">இந்த அங்கீகாரங்கள் வெளிப்படைத்தன்மைக்காக மட்டுமே வழங்கப்படுகின்றன. மூன்றாம் தரப்பு நிறுவனங்கள், தயாரிப்புகள் அல்லது மாடல்களை குறிப்பிடுவது ஆதரவு, ஒப்புதல் அல்லது அதிகாரப்பூர்வ இணைப்பை குறிக்காது.</string>
+    <string name="credits_visit_website">இணையதளத்தைப் பார்வையிடவும்</string>
+    <string name="credits_apple_title">Apple</string>
+    <string name="credits_apple_body">Apple இன் frameworks, platforms மற்றும் technical references எங்கள் on-device 3D மற்றும் machine learning மேம்பாட்டு பணிச்சூழலின் சில பகுதிகளை வழிநடத்தியது; Apple platforms இல் Sharp ML தொடர்பான பணியும் இதில் அடங்கும்.</string>
+    <string name="credits_openai_title">OpenAI</string>
+    <string name="credits_openai_body">ChatGPT உட்பட OpenAI கருவிகள் தயாரிப்பு யோசனை, செயலாக்க உதவி, வரைவு தயாரித்தல் மற்றும் தொழில்நுட்ப ஆய்வுக்காக பயன்படுத்தப்பட்டன.</string>
+    <string name="credits_anthropic_title">Anthropic</string>
+    <string name="credits_anthropic_body">Anthropic கருவிகள் ஆய்வு, code assistance, செயலாக்க விவரங்களை ஆராய்தல் மற்றும் மேம்பாட்டு iteration க்கு ஆதரவாக பயன்படுத்தப்பட்டன.</string>
+    <string name="credits_luma_title">Luma AI</string>
+    <string name="credits_luma_body">Luma AI கருவிகள் மற்றும் product references எங்கள் visual AI மற்றும் 3D workflow exploration இன் சில பகுதிகளை வழிநடத்தியது.</string>
+    <string name="credits_ultralytics_title">Ultralytics</string>
+    <string name="credits_ultralytics_body">Ultralytics கருவிகள், documentation மற்றும் YOLO ecosystem எங்கள் object detection மற்றும் segmentation மேம்பாட்டு பணிச்சூழல்களுக்கு ஆதரவளித்தது.</string>
 </resources>

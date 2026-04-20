@@ -394,4 +394,19 @@
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
+    <string name="settings_credits">श्रेय</string>
+    <string name="credits_title">श्रेय</string>
+    <string name="credits_intro">इस उत्पाद को तृतीय-पक्ष AI और मशीन लर्निंग टूल्स और प्लेटफ़ॉर्म की सहायता से विकसित किया गया है। विकास के दौरान अनुसंधान, प्रोटोटाइपिंग, इंजीनियरिंग सहायता, विज़ुअल प्रयोग और मॉडल वर्कफ़्लो में उनकी भूमिका के लिए हम आभार व्यक्त करते हैं।</string>
+    <string name="credits_disclaimer">ये उल्लेख केवल पारदर्शिता के लिए दिए गए हैं। तृतीय-पक्ष कंपनियों, उत्पादों या मॉडलों का संदर्भ किसी प्रायोजन, समर्थन या औपचारिक संबद्धता का संकेत नहीं देता।</string>
+    <string name="credits_visit_website">वेबसाइट देखें</string>
+    <string name="credits_apple_title">Apple</string>
+    <string name="credits_apple_body">Apple के फ़्रेमवर्क, प्लेटफ़ॉर्म और तकनीकी संदर्भों ने हमारे ऑन-डिवाइस 3D और मशीन लर्निंग विकास वर्कफ़्लो के कुछ हिस्सों को प्रभावित किया, जिनमें Apple प्लेटफ़ॉर्म पर Sharp ML से संबंधित कार्य भी शामिल है।</string>
+    <string name="credits_openai_title">OpenAI</string>
+    <string name="credits_openai_body">OpenAI के टूल्स, जिनमें ChatGPT शामिल है, का उपयोग उत्पाद विचार, इम्प्लीमेंटेशन सहायता, ड्राफ्टिंग और तकनीकी अन्वेषण के लिए किया गया।</string>
+    <string name="credits_anthropic_title">Anthropic</string>
+    <string name="credits_anthropic_body">Anthropic के टूल्स का उपयोग शोध, कोड सहायता, इम्प्लीमेंटेशन विवरणों पर विचार और विकास पुनरावृत्ति में सहायता के लिए किया गया।</string>
+    <string name="credits_luma_title">Luma AI</string>
+    <string name="credits_luma_body">Luma AI के टूल्स और उत्पाद संदर्भों ने हमारे विज़ुअल AI और 3D वर्कफ़्लो अन्वेषण के कुछ हिस्सों को प्रभावित किया।</string>
+    <string name="credits_ultralytics_title">Ultralytics</string>
+    <string name="credits_ultralytics_body">Ultralytics के टूल्स, दस्तावेज़ और YOLO इकोसिस्टम ने ऑब्जेक्ट डिटेक्शन और सेगमेंटेशन विकास वर्कफ़्लो में सहायता की।</string>
 </resources>

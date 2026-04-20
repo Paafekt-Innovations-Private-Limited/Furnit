@@ -394,4 +394,19 @@
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
+    <string name="settings_credits">കൃതജ്ഞതകൾ</string>
+    <string name="credits_title">കൃതജ്ഞതകൾ</string>
+    <string name="credits_intro">ഈ ഉൽപ്പന്നം മൂന്നാം കക്ഷി AI, മെഷീൻ ലേണിംഗ് ഉപകരണങ്ങളും പ്ലാറ്റ്ഫോമുകളും ഉപയോഗിച്ചുള്ള സഹായത്തോടെ വികസിപ്പിച്ചതാണ്. വികസനകാലത്ത് ഗവേഷണം, പ്രോട്ടോടൈപ്പിംഗ്, എഞ്ചിനീയറിംഗ് സഹായം, ദൃശ്യ പരീക്ഷണങ്ങൾ, മോഡൽ പ്രവാഹങ്ങൾ എന്നിവയിൽ അവരുടെ പങ്ക് ഞങ്ങൾ അംഗീകരിക്കുന്നു.</string>
+    <string name="credits_disclaimer">ഈ അംഗീകാരങ്ങൾ പരസ്യതയ്ക്കായി മാത്രമാണ് നൽകുന്നത്. മൂന്നാം കക്ഷി കമ്പനികൾ, ഉൽപ്പന്നങ്ങൾ, മോഡലുകൾ എന്നിവയിലേക്കുള്ള പരാമർശങ്ങൾ പ്രായോജകത്വം, പിന്തുണ, അല്ലെങ്കിൽ ഔദ്യോഗിക ബന്ധം സൂചിപ്പിക്കുന്നതല്ല.</string>
+    <string name="credits_visit_website">വെബ്സൈറ്റ് സന്ദർശിക്കുക</string>
+    <string name="credits_apple_title">Apple</string>
+    <string name="credits_apple_body">Apple ഫ്രെയിംവർക്കുകളും പ്ലാറ്റ്ഫോങ്ങളും സാങ്കേതിക റഫറൻസുകളും ഞങ്ങളുടെ ഓൺ-ഡിവൈസ് 3D, മെഷീൻ ലേണിംഗ് വികസന പ്രവാഹത്തിലെ ചില ഭാഗങ്ങളെ സ്വാധീനിച്ചു; Apple പ്ലാറ്റ്ഫോമുകളിലെ Sharp ML സംബന്ധമായ പ്രവർത്തനവും ഇതിൽ ഉൾപ്പെടുന്നു.</string>
+    <string name="credits_openai_title">OpenAI</string>
+    <string name="credits_openai_body">ChatGPT ഉൾപ്പെടെയുള്ള OpenAI ഉപകരണങ്ങൾ ഉൽപ്പന്ന ആശയവത്കരണം, ഇംപ്ലിമെന്റേഷൻ സഹായം, കരട് തയ്യാറാക്കൽ, സാങ്കേതിക അന്വേഷണങ്ങൾ എന്നിവയിൽ ഉപയോഗിച്ചു.</string>
+    <string name="credits_anthropic_title">Anthropic</string>
+    <string name="credits_anthropic_body">Anthropic ഉപകരണങ്ങൾ ഗവേഷണം, കോഡ് സഹായം, ഇംപ്ലിമെന്റേഷൻ വിശദാംശങ്ങളെ കുറിച്ചുള്ള ചിന്ത, വികസന ആവർത്തനം എന്നിവയ്ക്ക് പിന്തുണയായി ഉപയോഗിച്ചു.</string>
+    <string name="credits_luma_title">Luma AI</string>
+    <string name="credits_luma_body">Luma AI ഉപകരണങ്ങളും ഉൽപ്പന്ന റഫറൻസുകളും ഞങ്ങളുടെ ദൃശ്യ AI, 3D പ്രവാഹാന്വേഷണത്തിന്റെ ചില ഭാഗങ്ങളെ സ്വാധീനിച്ചു.</string>
+    <string name="credits_ultralytics_title">Ultralytics</string>
+    <string name="credits_ultralytics_body">Ultralytics ഉപകരണങ്ങളും ഡോക്യുമെന്റേഷനും YOLO പരിസരവും വസ്തു കണ്ടെത്തൽ, സെഗ്മെന്റേഷൻ വികസന പ്രവാഹങ്ങൾക്ക് പിന്തുണ നൽകി.</string>
 </resources>

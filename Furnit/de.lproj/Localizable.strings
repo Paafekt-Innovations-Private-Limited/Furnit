@@ -549,3 +549,19 @@
 "settings.imageScanPreparingModel" = "Modell wird vorbereitet...";
 "settings.imageScanLoadFailed" = "Dieses Foto konnte nicht geladen werden.";
 
+
+"settings.credits" = "Danksagungen";
+"credits.title" = "Danksagungen";
+"credits.intro" = "Dieses Produkt wurde mithilfe von KI- und Machine-Learning-Tools und -Plattformen Dritter entwickelt. Wir erkennen ihren Beitrag zu Recherche, Prototyping, technischer Unterstützung, visuellen Experimenten und Modell-Workflows während der Entwicklung an.";
+"credits.disclaimer" = "Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.";
+"credits.visitWebsite" = "Website besuchen";
+"credits.appleTitle" = "Apple";
+"credits.appleBody" = "Apple-Frameworks, -Plattformen und technische Referenzen haben Teile unseres On-Device-3D- und Machine-Learning-Workflows beeinflusst, einschließlich Arbeiten rund um Sharp ML auf Apple-Plattformen.";
+"credits.openAITitle" = "OpenAI";
+"credits.openAIBody" = "OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.";
+"credits.anthropicTitle" = "Anthropic";
+"credits.anthropicBody" = "Anthropic-Tools wurden eingesetzt, um Recherche, Code-Unterstützung, das Durchdenken von Implementierungsdetails und die Entwicklungsiteration zu unterstützen.";
+"credits.lumaTitle" = "Luma AI";
+"credits.lumaBody" = "Luma-AI-Tools und Produktreferenzen haben Teile unserer visuellen KI- und 3D-Workflow-Erkundung während der Produktentwicklung geprägt.";
+"credits.ultralyticsTitle" = "Ultralytics";
+"credits.ultralyticsBody" = "Ultralytics-Tools, Dokumentation und das YOLO-Ökosystem haben unsere Entwicklungsabläufe für Objekterkennung und Segmentierung unterstützt.";

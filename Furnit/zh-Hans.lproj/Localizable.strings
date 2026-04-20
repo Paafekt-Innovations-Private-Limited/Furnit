@@ -536,3 +536,19 @@
 "settings.imageScanPreparingModel" = "正在准备模型...";
 "settings.imageScanLoadFailed" = "无法加载这张照片。";
 
+
+"settings.credits" = "鸣谢";
+"credits.title" = "鸣谢";
+"credits.intro" = "本产品在开发过程中使用了第三方 AI 与机器学习工具及平台。我们感谢它们在研究、原型设计、工程支持、视觉实验以及模型工作流中的帮助。";
+"credits.disclaimer" = "这些鸣谢仅用于透明说明。提及第三方公司、产品或模型，并不表示存在赞助、背书或正式关联。";
+"credits.visitWebsite" = "访问网站";
+"credits.appleTitle" = "Apple";
+"credits.appleBody" = "Apple 的框架、平台和技术资料为我们设备端 3D 与机器学习开发流程中的部分工作提供了参考，其中包括与 Apple 平台上的 Sharp ML 相关的工作。";
+"credits.openAITitle" = "OpenAI";
+"credits.openAIBody" = "OpenAI 工具（包括 ChatGPT）被用于支持产品构思、实现辅助、文稿起草和开发过程中的技术探索。";
+"credits.anthropicTitle" = "Anthropic";
+"credits.anthropicBody" = "Anthropic 工具被用于支持研究、代码辅助、实现细节推理以及开发迭代。";
+"credits.lumaTitle" = "Luma AI";
+"credits.lumaBody" = "Luma AI 工具及其产品参考为我们在产品开发期间进行视觉 AI 与 3D 工作流探索的部分工作提供了帮助。";
+"credits.ultralyticsTitle" = "Ultralytics";
+"credits.ultralyticsBody" = "Ultralytics 工具、文档以及 YOLO 生态为我们的目标检测与分割开发流程提供了支持。";

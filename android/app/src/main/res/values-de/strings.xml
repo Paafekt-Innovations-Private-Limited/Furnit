@@ -394,4 +394,19 @@
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
+    <string name="settings_credits">Danksagungen</string>
+    <string name="credits_title">Danksagungen</string>
+    <string name="credits_intro">Dieses Produkt wurde mithilfe von KI- und Machine-Learning-Tools und -Plattformen Dritter entwickelt. Wir erkennen ihren Beitrag zu Recherche, Prototyping, technischer Unterstützung, visuellen Experimenten und Modell-Workflows während der Entwicklung an.</string>
+    <string name="credits_disclaimer">Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.</string>
+    <string name="credits_visit_website">Website besuchen</string>
+    <string name="credits_apple_title">Apple</string>
+    <string name="credits_apple_body">Apple-Frameworks, -Plattformen und technische Referenzen haben Teile unseres On-Device-3D- und Machine-Learning-Workflows beeinflusst, einschließlich Arbeiten rund um Sharp ML auf Apple-Plattformen.</string>
+    <string name="credits_openai_title">OpenAI</string>
+    <string name="credits_openai_body">OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.</string>
+    <string name="credits_anthropic_title">Anthropic</string>
+    <string name="credits_anthropic_body">Anthropic-Tools wurden eingesetzt, um Recherche, Code-Unterstützung, das Durchdenken von Implementierungsdetails und die Entwicklungsiteration zu unterstützen.</string>
+    <string name="credits_luma_title">Luma AI</string>
+    <string name="credits_luma_body">Luma-AI-Tools und Produktreferenzen haben Teile unserer visuellen KI- und 3D-Workflow-Erkundung während der Produktentwicklung geprägt.</string>
+    <string name="credits_ultralytics_title">Ultralytics</string>
+    <string name="credits_ultralytics_body">Ultralytics-Tools, Dokumentation und das YOLO-Ökosystem haben unsere Entwicklungsabläufe für Objekterkennung und Segmentierung unterstützt.</string>
 </resources>

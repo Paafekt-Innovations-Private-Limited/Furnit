@@ -527,3 +527,19 @@
 "settings.imageScanPreparingModel" = "Preparando modelo...";
 "settings.imageScanLoadFailed" = "No se pudo cargar esta foto.";
 
+
+"settings.credits" = "Créditos";
+"credits.title" = "Créditos";
+"credits.intro" = "Este producto se desarrolló con ayuda de herramientas y plataformas de IA y aprendizaje automático de terceros. Reconocemos su papel en la investigación, el prototipado, la asistencia de ingeniería, la experimentación visual y los flujos de trabajo de modelos durante el desarrollo.";
+"credits.disclaimer" = "Estos reconocimientos se proporcionan únicamente por transparencia. Las referencias a empresas, productos o modelos de terceros no implican patrocinio, respaldo ni afiliación.";
+"credits.visitWebsite" = "Visitar sitio web";
+"credits.appleTitle" = "Apple";
+"credits.appleBody" = "Los frameworks, plataformas y referencias técnicas de Apple influyeron en partes de nuestro flujo de trabajo de desarrollo 3D y de aprendizaje automático en el dispositivo, incluido el trabajo relacionado con Sharp ML en plataformas Apple.";
+"credits.openAITitle" = "OpenAI";
+"credits.openAIBody" = "Las herramientas de OpenAI, incluido ChatGPT, se utilizaron para apoyar la ideación del producto, la ayuda de implementación, la redacción y la exploración técnica durante el desarrollo.";
+"credits.anthropicTitle" = "Anthropic";
+"credits.anthropicBody" = "Las herramientas de Anthropic se utilizaron para apoyar la investigación, la asistencia de código, el razonamiento sobre detalles de implementación y la iteración del desarrollo.";
+"credits.lumaTitle" = "Luma AI";
+"credits.lumaBody" = "Las herramientas de Luma AI y las referencias de producto ayudaron a orientar partes de nuestra exploración de flujos de trabajo visuales de IA y 3D durante el desarrollo del producto.";
+"credits.ultralyticsTitle" = "Ultralytics";
+"credits.ultralyticsBody" = "Las herramientas, la documentación y el ecosistema YOLO de Ultralytics respaldaron nuestros flujos de trabajo de desarrollo para detección de objetos y segmentación.";

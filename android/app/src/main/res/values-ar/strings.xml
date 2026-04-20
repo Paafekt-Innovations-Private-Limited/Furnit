@@ -394,4 +394,19 @@
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
+    <string name="settings_credits">الشكر والتقدير</string>
+    <string name="credits_title">الشكر والتقدير</string>
+    <string name="credits_intro">تم تطوير هذا المنتج بمساعدة أدوات ومنصات خارجية للذكاء الاصطناعي وتعلّم الآلة. ونقدّر دورها في البحث، وإعداد النماذج الأولية، والمساندة الهندسية، والتجارب البصرية، وسير عمل النماذج خلال عملية التطوير.</string>
+    <string name="credits_disclaimer">تُعرض هذه الإشارات لأغراض الشفافية فقط. ولا تعني الإشارة إلى شركات أو منتجات أو نماذج خارجية وجود رعاية أو تأييد أو ارتباط رسمي.</string>
+    <string name="credits_visit_website">زيارة الموقع</string>
+    <string name="credits_apple_title">Apple</string>
+    <string name="credits_apple_body">ساهمت أطر عمل Apple ومنصاتها ومراجعها التقنية في بعض أجزاء سير عملنا لتطوير الرسومات ثلاثية الأبعاد وتعلّم الآلة على الجهاز، بما في ذلك الأعمال المرتبطة بـ Sharp ML على منصات Apple.</string>
+    <string name="credits_openai_title">OpenAI</string>
+    <string name="credits_openai_body">استُخدمت أدوات OpenAI، بما في ذلك ChatGPT، لدعم تصور المنتج، والمساعدة في التنفيذ، والصياغة، والاستكشاف التقني أثناء التطوير.</string>
+    <string name="credits_anthropic_title">Anthropic</string>
+    <string name="credits_anthropic_body">استُخدمت أدوات Anthropic لدعم البحث، والمساعدة في الشفرة، والتفكير في تفاصيل التنفيذ، وتكرار التطوير.</string>
+    <string name="credits_luma_title">Luma AI</string>
+    <string name="credits_luma_body">أسهمت أدوات Luma AI ومراجع منتجاتها في توجيه أجزاء من استكشافنا لسير العمل البصري للذكاء الاصطناعي و3D أثناء تطوير المنتج.</string>
+    <string name="credits_ultralytics_title">Ultralytics</string>
+    <string name="credits_ultralytics_body">دعمت أدوات Ultralytics ووثائقها ومنظومة YOLO الخاصة بها سير عملنا لتطوير اكتشاف الأجسام والتجزئة.</string>
 </resources>

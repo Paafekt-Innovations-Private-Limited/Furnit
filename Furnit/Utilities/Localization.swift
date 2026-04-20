@@ -143,6 +143,7 @@ enum L10n {
         static let privacyPolicy = "settings.privacyPolicy".localized
         static let termsOfService = "settings.termsOfService".localized
         static let support = "settings.support".localized
+        static let credits = "settings.credits".localized
         static let licenses = "settings.licenses".localized
         static let roomViewerSection = "settings.roomViewerSection".localized
         static let autoOrbit = "settings.autoOrbit".localized
@@ -228,6 +229,23 @@ enum L10n {
         static let metalSplatter = "licenses.metalSplatter".localized
         static let firebaseTitle = "licenses.firebaseTitle".localized
         static let firebase = "licenses.firebase".localized
+    }
+
+    enum Credits {
+        static let title = "credits.title".localized
+        static let intro = "credits.intro".localized
+        static let disclaimer = "credits.disclaimer".localized
+        static let visitWebsite = "credits.visitWebsite".localized
+        static let appleTitle = "credits.appleTitle".localized
+        static let appleBody = "credits.appleBody".localized
+        static let openAITitle = "credits.openAITitle".localized
+        static let openAIBody = "credits.openAIBody".localized
+        static let anthropicTitle = "credits.anthropicTitle".localized
+        static let anthropicBody = "credits.anthropicBody".localized
+        static let lumaTitle = "credits.lumaTitle".localized
+        static let lumaBody = "credits.lumaBody".localized
+        static let ultralyticsTitle = "credits.ultralyticsTitle".localized
+        static let ultralyticsBody = "credits.ultralyticsBody".localized
     }
 
     // MARK: Help & Support

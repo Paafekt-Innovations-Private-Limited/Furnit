@@ -1259,28 +1259,28 @@ struct CreditsView: View {
     var body: some View {
         Form {
             Section {
-                Text("This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and model workflows during development.")
+                Text(L10n.Credits.intro)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             } header: {
-                Text("Credits")
+                Text(L10n.Credits.title)
             }
 
             Section {
-                Text("These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.")
+                Text(L10n.Credits.disclaimer)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Apple")
+                    Text(L10n.Credits.appleTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including work related to Sharp ML on Apple platforms.")
+                    Text(L10n.Credits.appleBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("Visit website", destination: CreditURL.apple)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.apple)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1288,13 +1288,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("OpenAI")
+                    Text(L10n.Credits.openAITitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("OpenAI tools, including ChatGPT, were used to support product ideation, implementation assistance, drafting, and technical exploration during development.")
+                    Text(L10n.Credits.openAIBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("Visit website", destination: CreditURL.openAI)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.openAI)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1302,13 +1302,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Anthropic")
+                    Text(L10n.Credits.anthropicTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("Anthropic tools were used to support research, code assistance, reasoning through implementation details, and development iteration.")
+                    Text(L10n.Credits.anthropicBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("Visit website", destination: CreditURL.anthropic)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.anthropic)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1316,13 +1316,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Luma AI")
+                    Text(L10n.Credits.lumaTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("Luma AI tools and product references informed parts of our visual AI and 3D workflow exploration during product development.")
+                    Text(L10n.Credits.lumaBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("Visit website", destination: CreditURL.luma)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.luma)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1330,19 +1330,19 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Ultralytics")
+                    Text(L10n.Credits.ultralyticsTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text("Ultralytics tools, documentation, and the YOLO ecosystem supported our object detection and segmentation development workflows.")
+                    Text(L10n.Credits.ultralyticsBody)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link("Visit website", destination: CreditURL.ultralytics)
+                    Link(L10n.Credits.visitWebsite, destination: CreditURL.ultralytics)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
             }
         }
-        .navigationTitle("Credits")
+        .navigationTitle(L10n.Credits.title)
         .navigationBarTitleDisplayMode(.inline)
     }
 }

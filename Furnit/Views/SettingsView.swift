@@ -306,7 +306,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "sparkles")
                                 .foregroundColor(.blue)
-                            Text("Credits")
+                            Text(L10n.Settings.credits)
                         }
                     }
 
