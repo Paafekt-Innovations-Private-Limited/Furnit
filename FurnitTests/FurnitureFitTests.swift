@@ -456,4 +456,73 @@ final class FurnitureFitTests: XCTestCase {
         XCTAssertEqual(PhotoOrientation(rawValue: "square"), .square)
         XCTAssertNil(PhotoOrientation(rawValue: "invalid"))
     }
+
+    // MARK: - Primary Selection Tests
+
+    func testPrimarySelectionPrefersBalancedAreaScoreInsideShortlist() {
+        let candidates = [
+            FurnitureFitDetection(x: 80, y: 80, w: 10, h: 10, confidence: 0.92, classIdx: 1),
+            FurnitureFitDetection(x: 120, y: 120, w: 20, h: 20, confidence: 0.80, classIdx: 1),
+            FurnitureFitDetection(x: 160, y: 160, w: 18, h: 18, confidence: 0.78, classIdx: 1)
+        ]
+        let config = FurnitureFitPrimarySelectionConfig(
+            minimumConfidence: 0.57,
+            preferHighestConfidence: false,
+            areaShortlistCount: 3,
+            persistenceIoUThreshold: 0.45,
+            switchRequiredFrames: 3,
+            confidenceSwitchGain: 1.08,
+            confidenceSwitchMargin: 0.03
+        )
+
+        let selectedIndex = FurnitureFitPrimarySelection.selectPrimaryIndex(
+            candidates: candidates,
+            config: config
+        )
+
+        XCTAssertEqual(selectedIndex, 1)
+    }
+
+    func testStableAutoPrimaryRequiresChallengerPersistenceBeforeSwitching() {
+        let config = FurnitureFitPrimarySelectionConfig(
+            minimumConfidence: 0.57,
+            preferHighestConfidence: true,
+            areaShortlistCount: 3,
+            persistenceIoUThreshold: 0.45,
+            switchRequiredFrames: 3,
+            confidenceSwitchGain: 1.08,
+            confidenceSwitchMargin: 0.03
+        )
+        var selectionState = FurnitureFitAutoPrimarySelectionState()
+        let stableCandidate = FurnitureFitDetection(x: 100, y: 100, w: 60, h: 60, confidence: 0.72, classIdx: 1)
+        let challengerCandidate = FurnitureFitDetection(x: 220, y: 220, w: 70, h: 70, confidence: 0.80, classIdx: 1)
+
+        let initialIndex = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+            candidates: [stableCandidate],
+            config: config,
+            state: &selectionState
+        )
+        XCTAssertEqual(initialIndex, 0)
+
+        let frameCandidates = [stableCandidate, challengerCandidate]
+        let firstChallengerIndex = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+            candidates: frameCandidates,
+            config: config,
+            state: &selectionState
+        )
+        let secondChallengerIndex = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+            candidates: frameCandidates,
+            config: config,
+            state: &selectionState
+        )
+        let thirdChallengerIndex = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+            candidates: frameCandidates,
+            config: config,
+            state: &selectionState
+        )
+
+        XCTAssertEqual(firstChallengerIndex, 0)
+        XCTAssertEqual(secondChallengerIndex, 0)
+        XCTAssertEqual(thirdChallengerIndex, 1)
+    }
 }

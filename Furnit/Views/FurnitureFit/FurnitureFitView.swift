@@ -359,9 +359,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Stored reference so bbox taps can coexist with pan/pinch.
     private weak var overlayTapGesture: UITapGestureRecognizer?
     /// Auto-primary hysteresis state for identify-only mode.
-    private var stableAutoPrimaryDetection: FurnitureFitDetection?
-    private var pendingAutoPrimaryDetection: FurnitureFitDetection?
-    private var pendingAutoPrimaryFrameCount: Int = 0
+    private var autoPrimarySelectionState = FurnitureFitAutoPrimarySelectionState()
     private let autoPrimaryPersistenceIoUThreshold: Float = 0.45
     private let autoPrimarySwitchRequiredFrames: Int = 3
     private let autoPrimaryConfidenceSwitchGain: Float = 1.08
@@ -442,6 +440,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private static let arSessionDelegateHeavyMinInterval: TimeInterval = 0.28
     /// Monotonic guard so we skip `didUpdate` **before** taking `frameLock` (cheap drops while inference is still running).
     private var lastARHeavyWorkFinishCAC: CFTimeInterval = 0
+    private var autoPrimarySelectionConfig: FurnitureFitPrimarySelectionConfig {
+        FurnitureFitPrimarySelectionConfig(
+            minimumConfidence: primaryDetectionMinConfidence,
+            preferHighestConfidence: primarySelectionByHighestConfidence,
+            areaShortlistCount: autoPrimaryAreaShortlistCount,
+            persistenceIoUThreshold: autoPrimaryPersistenceIoUThreshold,
+            switchRequiredFrames: autoPrimarySwitchRequiredFrames,
+            confidenceSwitchGain: autoPrimaryConfidenceSwitchGain,
+            confidenceSwitchMargin: autoPrimaryConfidenceSwitchMargin
+        )
+    }
 
     /// Serial queue for AR-assisted measurement (depth → height → overlay scale). This is
     /// coalesced rather than fully debounced so continuous segmentation frames do not starve
@@ -1296,7 +1305,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             lastStableOverlayHeightMeters = nil
             lastStableOverlayScale = nil
         }
-        resetAutoPrimarySelectionStability()
+        autoPrimarySelectionState.reset()
         primaryBboxInView = .zero
         if clearDetectedCandidates {
             candidateBboxesInView = []
@@ -2342,227 +2351,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    private func areaShortlistedPrimaryCandidateIndices(
-        candidates: [FurnitureFitDetection],
-        minConfidence: Float
-    ) -> [Int] {
-        Array(
-            candidates.enumerated()
-                .filter { _, detection in detection.confidence >= minConfidence }
-                .sorted { lhs, rhs in
-                    let lhsArea = lhs.element.w * lhs.element.h
-                    let rhsArea = rhs.element.w * rhs.element.h
-                    if abs(lhsArea - rhsArea) > 1e-6 {
-                        return lhsArea > rhsArea
-                    }
-                    if abs(lhs.element.confidence - rhs.element.confidence) > 1e-6 {
-                        return lhs.element.confidence > rhs.element.confidence
-                    }
-                    return lhs.offset < rhs.offset
-                }
-                .prefix(autoPrimaryAreaShortlistCount)
-                .map(\.offset)
-        )
-    }
-
-    private func weightedPrimarySelectionScore(
-        detection: FurnitureFitDetection,
-        areaNormalizationReference: Float
-    ) -> Float {
-        let normalizedArea = areaNormalizationReference > 1e-6
-            ? (detection.w * detection.h) / areaNormalizationReference
-            : 0
-        return 0.5 * detection.confidence + 0.5 * normalizedArea
-    }
-
-    /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence directly
-    /// or the best 50/50 confidence+area score inside the top-area shortlist (see ``primarySelectionByHighestConfidence``).
-    /// (`modelSide` unused; kept for call-site stability with the ONNX-style pipeline.)
-    private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide _: Int) -> Int? {
-        let minConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
-        if primarySelectionByHighestConfidence {
-            var bestIdx: Int?
-            var bestConfidence: Float = -1
-            var bestAreaAtBestConfidence: Float = 0
-            for (i, d) in candidates.enumerated() {
-                guard d.confidence >= minConfidence else { continue }
-                let area = d.w * d.h
-                if d.confidence > bestConfidence {
-                    bestConfidence = d.confidence
-                    bestAreaAtBestConfidence = area
-                    bestIdx = i
-                } else if abs(d.confidence - bestConfidence) <= 1e-6, area > bestAreaAtBestConfidence {
-                    bestAreaAtBestConfidence = area
-                    bestIdx = i
-                }
-            }
-            return bestIdx
-        }
-        let shortlistedIndices = areaShortlistedPrimaryCandidateIndices(
-            candidates: candidates,
-            minConfidence: minConfidence
-        )
-        let shortlistAreaReference = shortlistedIndices
-            .map { candidates[$0].w * candidates[$0].h }
-            .max() ?? 0
-        return shortlistedIndices.max { lhsIndex, rhsIndex in
-            let lhsDetection = candidates[lhsIndex]
-            let rhsDetection = candidates[rhsIndex]
-            let lhsScore = weightedPrimarySelectionScore(
-                detection: lhsDetection,
-                areaNormalizationReference: shortlistAreaReference
-            )
-            let rhsScore = weightedPrimarySelectionScore(
-                detection: rhsDetection,
-                areaNormalizationReference: shortlistAreaReference
-            )
-            if abs(lhsScore - rhsScore) > 1e-6 {
-                return lhsScore < rhsScore
-            }
-            if abs(lhsDetection.confidence - rhsDetection.confidence) > 1e-6 {
-                return lhsDetection.confidence < rhsDetection.confidence
-            }
-            let lhsArea = lhsDetection.w * lhsDetection.h
-            let rhsArea = rhsDetection.w * rhsDetection.h
-            if abs(lhsArea - rhsArea) > 1e-6 {
-                return lhsArea < rhsArea
-            }
-            return lhsIndex > rhsIndex
-        }
-    }
-
-    private func resetAutoPrimarySelectionStability() {
-        stableAutoPrimaryDetection = nil
-        pendingAutoPrimaryDetection = nil
-        pendingAutoPrimaryFrameCount = 0
-    }
-
-    private func matchedCandidateIndexForStableAutoPrimary(
-        reference: FurnitureFitDetection,
-        candidates: [FurnitureFitDetection]
-    ) -> Int? {
-        var bestIndex: Int?
-        var bestIoU: Float = 0
-        for (index, candidate) in candidates.enumerated() {
-            guard candidate.classIdx == reference.classIdx else { continue }
-            let iou = FurnitureFitIoU.calculate(candidate, reference)
-            if iou > bestIoU {
-                bestIoU = iou
-                bestIndex = index
-            }
-        }
-        guard let bestIndex, bestIoU >= autoPrimaryPersistenceIoUThreshold else { return nil }
-        return bestIndex
-    }
-
-    private func isSameStableAutoPrimaryTrack(_ lhs: FurnitureFitDetection, _ rhs: FurnitureFitDetection) -> Bool {
-        lhs.classIdx == rhs.classIdx && FurnitureFitIoU.calculate(lhs, rhs) >= autoPrimaryPersistenceIoUThreshold
-    }
-
-    /// Keep the current auto-primary unless a challenger is clearly better for several consecutive frames.
-    private func selectStablePrimaryIndexAutoFlow(candidates: [FurnitureFitDetection], modelSide: Int) -> Int? {
-        guard let preferredIndex = selectPrimaryIndexCoreFlow(candidates: candidates, modelSide: modelSide) else {
-            resetAutoPrimarySelectionStability()
-            return nil
-        }
-
-        let preferredCandidate = candidates[preferredIndex]
-        let minimumConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
-
-        guard let stableReference = stableAutoPrimaryDetection,
-              let stableIndex = matchedCandidateIndexForStableAutoPrimary(reference: stableReference, candidates: candidates) else {
-            stableAutoPrimaryDetection = preferredCandidate
-            pendingAutoPrimaryDetection = nil
-            pendingAutoPrimaryFrameCount = 0
-            return preferredIndex
-        }
-
-        let stableCandidate = candidates[stableIndex]
-        guard stableCandidate.confidence >= minimumConfidence else {
-            stableAutoPrimaryDetection = preferredCandidate
-            pendingAutoPrimaryDetection = nil
-            pendingAutoPrimaryFrameCount = 0
-            return preferredIndex
-        }
-
-        if !primarySelectionByHighestConfidence {
-            let shortlistedIndices = Set(
-                areaShortlistedPrimaryCandidateIndices(
-                    candidates: candidates,
-                    minConfidence: minimumConfidence
-                )
-            )
-            guard shortlistedIndices.contains(stableIndex) else {
-                stableAutoPrimaryDetection = preferredCandidate
-                pendingAutoPrimaryDetection = nil
-                pendingAutoPrimaryFrameCount = 0
-                return preferredIndex
-            }
-        }
-
-        if stableIndex == preferredIndex {
-            stableAutoPrimaryDetection = stableCandidate
-            pendingAutoPrimaryDetection = nil
-            pendingAutoPrimaryFrameCount = 0
-            return stableIndex
-        }
-
-        let shortlistAreaReference: Float
-        if primarySelectionByHighestConfidence {
-            shortlistAreaReference = 0
-        } else {
-            shortlistAreaReference = Set(
-                areaShortlistedPrimaryCandidateIndices(
-                    candidates: candidates,
-                    minConfidence: minimumConfidence
-                )
-            )
-            .map { candidates[$0].w * candidates[$0].h }
-            .max() ?? 0
-        }
-        let stableScore = primarySelectionByHighestConfidence
-            ? stableCandidate.confidence
-            : weightedPrimarySelectionScore(
-                detection: stableCandidate,
-                areaNormalizationReference: shortlistAreaReference
-            )
-        let preferredScore = primarySelectionByHighestConfidence
-            ? preferredCandidate.confidence
-            : weightedPrimarySelectionScore(
-                detection: preferredCandidate,
-                areaNormalizationReference: shortlistAreaReference
-            )
-        let switchThreshold = max(
-            stableScore * autoPrimaryConfidenceSwitchGain,
-            stableScore + autoPrimaryConfidenceSwitchMargin
-        )
-
-        guard preferredScore >= switchThreshold else {
-            stableAutoPrimaryDetection = stableCandidate
-            pendingAutoPrimaryDetection = nil
-            pendingAutoPrimaryFrameCount = 0
-            return stableIndex
-        }
-
-        if let pendingCandidate = pendingAutoPrimaryDetection,
-           isSameStableAutoPrimaryTrack(preferredCandidate, pendingCandidate) {
-            pendingAutoPrimaryFrameCount += 1
-        } else {
-            pendingAutoPrimaryDetection = preferredCandidate
-            pendingAutoPrimaryFrameCount = 1
-        }
-
-        if pendingAutoPrimaryFrameCount >= autoPrimarySwitchRequiredFrames {
-            stableAutoPrimaryDetection = preferredCandidate
-            pendingAutoPrimaryDetection = nil
-            pendingAutoPrimaryFrameCount = 0
-            return preferredIndex
-        }
-
-        stableAutoPrimaryDetection = stableCandidate
-        return stableIndex
-    }
-
     /// Shared postprocess after stretch + inference: detection list, NMS, primary selection, and Android-style bbox-limited proto mask (``FurnitureFitOnnxStylePipeline``).
     private func processFrameOnnxStyleCommon(
         processBuffer: CVPixelBuffer,
@@ -2737,7 +2525,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     origH: bufH
                 )
                 : nil
-            let primaryIdxOpt = selectStablePrimaryIndexAutoFlow(candidates: candidates, modelSide: onnxSide)
+            let primaryIdxOpt = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+                candidates: candidates,
+                config: autoPrimarySelectionConfig,
+                state: &autoPrimarySelectionState
+            )
             let liveDebugFusedMaskPayload: (logits: [Float], detections: [FurnitureFitDetection])? = {
                 guard debugMode,
                       let primaryIdx = primaryIdxOpt,
@@ -2834,7 +2626,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         if segmentationMode == .identifyOnly {
             // Full-video OFF: auto-select single primary by confidence/area (old behavior).
-            guard let autoIdx = selectStablePrimaryIndexAutoFlow(candidates: candidates, modelSide: onnxSide) else {
+            guard let autoIdx = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
+                candidates: candidates,
+                config: autoPrimarySelectionConfig,
+                state: &autoPrimarySelectionState
+            ) else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no auto-primary among candidates") }
                 consecutiveEmptyMaskFrames += 1
                 if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
@@ -2897,7 +2693,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 return
             }
 
-            guard let selectedPrimaryRelativeIndex = selectPrimaryIndexCoreFlow(candidates: matchedCandidates, modelSide: onnxSide) else {
+            guard let selectedPrimaryRelativeIndex = FurnitureFitPrimarySelection.selectPrimaryIndex(
+                candidates: matchedCandidates,
+                config: autoPrimarySelectionConfig
+            ) else {
                 if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
                 consecutiveEmptyMaskFrames += 1
                 if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
