@@ -358,6 +358,7 @@
 "roomViewer.tapToCalibrate" = "Tippen zum Kalibrieren";
 "roomViewer.fullVideoSelectionHelper" = "Wenn Ihnen das Gezeigte nicht gefällt, tippen Sie mich an und wählen Sie das Möbelstück Ihrer Wahl";
 "roomViewer.detectedMeters" = "Erkannt: %.2f m";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Die Möbelhöhe muss kleiner als die Raumhöhe sein (%.2f m).";
 "roomViewer.roomMetersShort" = "Raum: %.2f m";
 "roomViewer.furnitureMetersShort" = "Möbel: %.2f m";
 "roomViewer.wallWidthPlaceholder" = "Breite";

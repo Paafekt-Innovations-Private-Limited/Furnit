@@ -448,6 +448,13 @@ enum L10n {
         static func detectedMeters(_ value: Float) -> String {
             String(format: "roomViewer.detectedMeters".localized, locale: .current, value)
         }
+        static func furnitureHeightMustBeLessThanRoomHeight(_ value: Float) -> String {
+            String(
+                format: "roomViewer.furnitureHeightMustBeLessThanRoomHeight".localized,
+                locale: .current,
+                value
+            )
+        }
         static func roomMetersShort(_ value: Float) -> String {
             String(format: "roomViewer.roomMetersShort".localized, locale: .current, value)
         }

@@ -328,6 +328,7 @@
 "roomViewer.tapToCalibrate" = "கேலிப்ரேட் செய்ய தட்டவும்";
 "roomViewer.fullVideoSelectionHelper" = "நீங்கள் பார்க்கும் விடயம் திருப்தியாக இல்லையெனில், என்னை தட்டி உங்களுக்கு வேண்டிய மரச்சாமானை தேர்வு செய்யுங்கள்";
 "roomViewer.detectedMeters" = "கண்டறியப்பட்டது: %.2f மீ";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "மரச்சாமானின் உயரம் அறையின் உயரத்தைவிட குறைவாக இருக்க வேண்டும் (%.2f மீ).";
 "roomViewer.roomMetersShort" = "அறை: %.2f மீ";
 "roomViewer.furnitureMetersShort" = "தளபாடம்: %.2f மீ";
 "roomViewer.wallWidthPlaceholder" = "அகலம்";

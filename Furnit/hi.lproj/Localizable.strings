@@ -328,6 +328,7 @@
 "roomViewer.tapToCalibrate" = "कैलिब्रेट करने के लिए टैप करें";
 "roomViewer.fullVideoSelectionHelper" = "अगर आप जो देख रहे हैं उससे खुश नहीं हैं, तो मुझे टैप करें और अपनी पसंद का फर्नीचर चुनें";
 "roomViewer.detectedMeters" = "पता चला: %.2f मी";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "फर्नीचर की ऊंचाई कमरे की ऊंचाई से कम होनी चाहिए (%.2f मी).";
 "roomViewer.roomMetersShort" = "कमरा: %.2f मी";
 "roomViewer.furnitureMetersShort" = "फर्नीचर: %.2f मी";
 "roomViewer.wallWidthPlaceholder" = "चौड़ाई";

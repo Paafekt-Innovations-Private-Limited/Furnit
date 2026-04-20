@@ -396,7 +396,7 @@ struct MeshRoomView: View {
         } message: {
             Text(calibrationRejectMessage)
         }
-        .defersSystemGestures(on: .all)
+        .defersSystemGestures(on: [.top, .trailing])
         .disableBackSwipe()
     }
 
@@ -558,9 +558,7 @@ struct MeshRoomView: View {
         }
 
         if realHeight >= currentRoomHeightForFurnitureCalibration {
-            calibrationRejectMessage = String(
-                format: "Furniture height should be less than room height (%.2f m).",
-                locale: .current,
+            calibrationRejectMessage = L10n.RoomViewer.furnitureHeightMustBeLessThanRoomHeight(
                 currentRoomHeightForFurnitureCalibration
             )
             showCalibrationRejectAlert = true

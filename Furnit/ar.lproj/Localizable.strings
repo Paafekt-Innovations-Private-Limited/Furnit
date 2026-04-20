@@ -346,6 +346,7 @@
 "roomViewer.tapToCalibrate" = "اضغط للمعايرة";
 "roomViewer.fullVideoSelectionHelper" = "إذا لم يعجبك ما تراه، اضغط عليّ واختر قطعة الأثاث التي تريدها";
 "roomViewer.detectedMeters" = "تم اكتشاف: %.2f م";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "يجب أن يكون ارتفاع الأثاث أقل من ارتفاع الغرفة (%.2f م).";
 "roomViewer.roomMetersShort" = "الغرفة: %.2f م";
 "roomViewer.furnitureMetersShort" = "أثاث: %.2f م";
 "roomViewer.wallWidthPlaceholder" = "العرض";

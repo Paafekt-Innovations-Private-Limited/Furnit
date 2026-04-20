@@ -8,15 +8,15 @@
 #
 # Usage:
 #   ./deploy_sharp_v2_to_models_cpu.sh
-#   ./deploy_sharp_v2_to_models_cpu.sh /path/to/v2
+#   ./deploy_sharp_v2_to_models_cpu.sh /Volumes/LaCie/androidDevRefFromProject/models_cpu
 #   ./deploy_sharp_v2_to_models_cpu.sh "$(pwd)/models_cpu"   # local staging (see models_cpu/README.md)
 #   SKIP_CLEAR=1 ./deploy_sharp_v2_to_models_cpu.sh   # push only (device already clean)
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Default LaCie v2; use "$(pwd)/models_cpu" after copy_from_lacie or manual staging.
-SRC="${1:-/Volumes/LaCie/march10th2026/v2}"
+# Default external reference path; use "$(pwd)/models_cpu" after copy_from_lacie or manual staging.
+SRC="${1:-/Volumes/LaCie/androidDevRefFromProject/models_cpu}"
 PKG="com.furnit.android"
 DEST="/sdcard/Android/data/${PKG}/files/models_cpu"
 

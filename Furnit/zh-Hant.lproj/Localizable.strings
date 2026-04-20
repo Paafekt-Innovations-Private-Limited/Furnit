@@ -329,6 +329,7 @@
 "roomViewer.tapToCalibrate" = "點一下以校準";
 "roomViewer.fullVideoSelectionHelper" = "如果您不滿意目前顯示效果，請點我並選擇您想要的家具";
 "roomViewer.detectedMeters" = "偵測到：%.2f 公尺";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "家具高度必須小於房間高度（%.2f 公尺）。";
 "roomViewer.roomMetersShort" = "房間：%.2f 公尺";
 "roomViewer.furnitureMetersShort" = "家具：%.2f 公尺";
 "roomViewer.wallWidthPlaceholder" = "寬度";

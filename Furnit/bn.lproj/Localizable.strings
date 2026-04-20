@@ -346,6 +346,7 @@
 "roomViewer.tapToCalibrate" = "ক্যালিব্রেট করতে ট্যাপ করুন";
 "roomViewer.fullVideoSelectionHelper" = "যা দেখছেন তাতে খুশি না হলে, আমাকে ট্যাপ করুন এবং আপনার পছন্দের ফার্নিচার বেছে নিন";
 "roomViewer.detectedMeters" = "সনাক্ত: %.2f মি";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "আসবাবের উচ্চতা ঘরের উচ্চতার চেয়ে কম হতে হবে (%.2f মি)।";
 "roomViewer.roomMetersShort" = "রুম: %.2f মি";
 "roomViewer.furnitureMetersShort" = "ফার্নিচার: %.2f মি";
 "roomViewer.wallWidthPlaceholder" = "প্রস্থ";

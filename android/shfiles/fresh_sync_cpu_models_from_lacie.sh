@@ -6,13 +6,13 @@
 #
 # Usage:
 #   ./fresh_sync_cpu_models_from_lacie.sh
-#   ./fresh_sync_cpu_models_from_lacie.sh /Volumes/LaCie/march10th2026/v2
+#   ./fresh_sync_cpu_models_from_lacie.sh /Volumes/LaCie/androidDevRefFromProject/models_cpu
 #   ./fresh_sync_cpu_models_from_lacie.sh "$(pwd)/models_cpu"
 #   SKIP_CLEAR=1 ./fresh_sync_cpu_models_from_lacie.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
-SRC="${1:-/Volumes/LaCie/march10th2026/v2}"
+SRC="${1:-/Volumes/LaCie/androidDevRefFromProject/models_cpu}"
 
 ./deploy_sharp_v2_to_models_cpu.sh "$SRC"
 echo "fresh_sync: finished."

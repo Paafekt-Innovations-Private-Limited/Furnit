@@ -328,6 +328,7 @@
 "roomViewer.tapToCalibrate" = "ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.fullVideoSelectionHelper" = "ನೀವು ನೋಡುತ್ತಿರುವುದು ಇಷ್ಟವಾಗದಿದ್ದರೆ, ನನ್ನನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ಮತ್ತು ನಿಮಗೆ ಬೇಕಾದ ಪೀಠೋಪಕರಣವನ್ನು ಆಯ್ಕೆಮಾಡಿ";
 "roomViewer.detectedMeters" = "ಪತ್ತೆ: %.2f ಮೀ";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "ಪೀಠೋಪಕರಣದ ಎತ್ತರವು ಕೊಠಡಿಯ ಎತ್ತರಕ್ಕಿಂತ ಕಡಿಮೆಯಿರಬೇಕು (%.2f ಮೀ).";
 "roomViewer.roomMetersShort" = "ಕೊಠಡಿ: %.2f ಮೀ";
 "roomViewer.furnitureMetersShort" = "ಪೀಠೋ: %.2f ಮೀ";
 "roomViewer.wallWidthPlaceholder" = "ಅಗಲ";

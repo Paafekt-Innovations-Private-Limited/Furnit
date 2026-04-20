@@ -3,13 +3,13 @@
 # then push to device **models_cpu** (same name as the app uses on internal/external storage).
 #
 # Usage: ./copy_from_lacie_and_push_cpu_models.sh [SOURCE_DIR]
-# Default SOURCE_DIR: /Volumes/LaCie/march10th2026/v2
-# Alt (full INT8 set + single Part4b + all tiles): /Volumes/LaCie/BUModelsMar17th2026/executorch_int8_models
+# Default SOURCE_DIR: /Volumes/LaCie/androidDevRefFromProject/models_cpu
+# Alt: any compatible external model directory
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-LACIE="${1:-/Volumes/LaCie/march10th2026/v2}"
+LACIE="${1:-/Volumes/LaCie/androidDevRefFromProject/models_cpu}"
 LOCAL_DIR="models_cpu"
 
 # Must all exist on SOURCE_DIR (same export lineage).

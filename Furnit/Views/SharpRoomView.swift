@@ -717,7 +717,7 @@ struct SharpRoomView: View {
             }
         }
         // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
-        .defersSystemGestures(on: [.top, .bottom, .trailing])
+        .defersSystemGestures(on: [.top, .trailing])
         .disableBackSwipeIf(allowSave)
     }
 
@@ -1782,9 +1782,7 @@ struct SharpRoomView: View {
         }
 
         if realHeight >= max(displayRoomHeight, 0.01) {
-            calibrationRejectMessage = String(
-                format: "Furniture height should be less than room height (%.2f m).",
-                locale: .current,
+            calibrationRejectMessage = L10n.RoomViewer.furnitureHeightMustBeLessThanRoomHeight(
                 displayRoomHeight
             )
             showCalibrationRejectAlert = true

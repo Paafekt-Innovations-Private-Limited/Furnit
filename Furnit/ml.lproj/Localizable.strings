@@ -328,6 +328,7 @@
 "roomViewer.tapToCalibrate" = "കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക";
 "roomViewer.fullVideoSelectionHelper" = "നിങ്ങള്‍ കാണുന്നതില്‍ സന്തോഷമില്ലെങ്കില്‍, എന്നെ ടാപ്പ് ചെയ്ത് നിങ്ങള്‍ക്ക് വേണ്ട ഫര്‍ണിച്ചര്‍ തിരഞ്ഞെടുക്കൂ";
 "roomViewer.detectedMeters" = "കണ്ടെത്തി: %.2f മീ";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "ഫർണിച്ചറിന്റെ ഉയരം മുറിയുടെ ഉയരത്തേക്കാൾ കുറവായിരിക്കണം (%.2f മീ).";
 "roomViewer.roomMetersShort" = "മുറി: %.2f മീ";
 "roomViewer.furnitureMetersShort" = "ഫർണിച്ചർ: %.2f മീ";
 "roomViewer.wallWidthPlaceholder" = "വീതി";

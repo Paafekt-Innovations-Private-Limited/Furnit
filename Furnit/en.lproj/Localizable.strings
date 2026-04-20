@@ -439,6 +439,7 @@
 "roomViewer.tapToCalibrate" = "Tap to calibrate";
 "roomViewer.fullVideoSelectionHelper" = "If not happy with what you see, tap me and select furn of your choice";
 "roomViewer.detectedMeters" = "Detected: %.2f m";
+"roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Furniture height should be less than room height (%.2f m).";
 "roomViewer.roomMetersShort" = "Room: %.2f m";
 "roomViewer.furnitureMetersShort" = "Furn: %.2f m";
 "roomViewer.wallWidthPlaceholder" = "Width";
