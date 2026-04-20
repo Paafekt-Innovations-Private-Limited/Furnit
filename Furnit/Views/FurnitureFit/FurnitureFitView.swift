@@ -1681,13 +1681,45 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let clippedY1 = max(0, fy1)
         let clippedX2 = min(imageShape.width, x2)
         let clippedY2 = min(imageShape.height, fy2)
-
-        return CGRect(
+        let mappedRect = CGRect(
             x: clippedX1,
             y: clippedY1,
             width: max(1, clippedX2 - clippedX1),
             height: max(1, clippedY2 - clippedY1)
         )
+        return clipRectToImageBounds(
+            rect: mappedRect,
+            imageWidth: imageShape.width,
+            imageHeight: imageShape.height
+        )
+    }
+
+    private func clipRectToImageBounds(
+        rect: CGRect,
+        imageWidth: CGFloat,
+        imageHeight: CGFloat
+    ) -> CGRect {
+        let clippedMinX = max(0, min(rect.minX, imageWidth))
+        let clippedMinY = max(0, min(rect.minY, imageHeight))
+        let clippedMaxX = max(clippedMinX, min(rect.maxX, imageWidth))
+        let clippedMaxY = max(clippedMinY, min(rect.maxY, imageHeight))
+        return CGRect(
+            x: clippedMinX,
+            y: clippedMinY,
+            width: max(1, clippedMaxX - clippedMinX),
+            height: max(1, clippedMaxY - clippedMinY)
+        )
+    }
+
+    private func clipCompositedImageToBounds(
+        _ image: CGImage,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> CGImage {
+        let clippedWidth = max(1, min(image.width, imageWidth))
+        let clippedHeight = max(1, min(image.height, imageHeight))
+        let clipRect = CGRect(x: 0, y: 0, width: clippedWidth, height: clippedHeight)
+        return image.cropping(to: clipRect) ?? image
     }
 
     private func bufferRect(
@@ -3252,10 +3284,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             scaleX: scaleX,
             scaleY: scaleY
         )
-        let primaryBx1 = Int(primaryBufferRect.minX)
-        let primaryBy1 = Int(primaryBufferRect.minY)
-        let primaryBx2 = Int(primaryBufferRect.maxX)
-        let primaryBy2 = Int(primaryBufferRect.maxY)
+        let clippedPrimaryBufferRect = clipRectToImageBounds(
+            rect: primaryBufferRect,
+            imageWidth: CGFloat(bufW),
+            imageHeight: CGFloat(bufH)
+        )
+        let primaryBx1 = Int(clippedPrimaryBufferRect.minX)
+        let primaryBy1 = Int(clippedPrimaryBufferRect.minY)
+        let primaryBx2 = Int(clippedPrimaryBufferRect.maxX)
+        let primaryBy2 = Int(clippedPrimaryBufferRect.maxY)
 
         // Build the composite band from the fused detection boxes rather than the
         // thresholded small mask. This avoids cropping away weak thin parts (for
@@ -3278,13 +3315,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             usesLetterbox: currentYoloUsesLetterbox,
             inputVerticallyFlipped: currentYoloInputVerticallyFlipped
         )
+        let clippedCompositeBufferRect = clipRectToImageBounds(
+            rect: clipBufferRect,
+            imageWidth: CGFloat(bufW),
+            imageHeight: CGFloat(bufH)
+        )
         let bandMarginW: Float = 0  // edge band expansion disabled
         let bandMarginH: Float = 0  // edge band expansion disabled
         let cropMarginPx = FurnitureFitOnnxStylePipeline.nativeCompositeBandMarginPx
-        let compBx1 = max(0, Int(floor(Float(clipBufferRect.minX) - bandMarginW)) - cropMarginPx)
-        let compBy1 = max(0, Int(floor(Float(clipBufferRect.minY) - bandMarginH)) - cropMarginPx)
-        let compBx2 = min(bufW, Int(ceil(Float(clipBufferRect.maxX) + bandMarginW)) + cropMarginPx)
-        let compBy2 = min(bufH, Int(ceil(Float(clipBufferRect.maxY) + bandMarginH)) + cropMarginPx)
+        let compBx1 = max(0, Int(floor(Float(clippedCompositeBufferRect.minX) - bandMarginW)) - cropMarginPx)
+        let compBy1 = max(0, Int(floor(Float(clippedCompositeBufferRect.minY) - bandMarginH)) - cropMarginPx)
+        let compBx2 = min(bufW, Int(ceil(Float(clippedCompositeBufferRect.maxX) + bandMarginW)) + cropMarginPx)
+        let compBy2 = min(bufH, Int(ceil(Float(clippedCompositeBufferRect.maxY) + bandMarginH)) + cropMarginPx)
 
         if debugMode {
             let stage35Ms = Date().timeIntervalSince(t3) * 1000
@@ -3490,9 +3532,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if let finalImage = withDebugOverlay {
             consecutiveEmptyMaskFrames = 0
             let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
-            var out: CGImage = finalImage
+            var out: CGImage = clipCompositedImageToBounds(finalImage, imageWidth: bufW, imageHeight: bufH)
             if needsRotate {
-                if let r = self.rotateCGImage90(finalImage, clockwise: true) { out = r }
+                if let r = self.rotateCGImage90(out, clockwise: true) {
+                    out = clipCompositedImageToBounds(r, imageWidth: bufH, imageHeight: bufW)
+                }
             }
             if oneImageRunAwaitingSave {
                 writeOneImageOutputPNG(
