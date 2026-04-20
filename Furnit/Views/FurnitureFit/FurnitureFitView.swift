@@ -555,20 +555,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Class Names (localized: classes.json in each *.lproj; same keys as Android assets/classes.json)
     internal lazy var classNames: [Int: String] = {
-        guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load localized classes.json (check xx.lproj)") }
-            return [:]
-        }
-        var result: [Int: String] = [:]
-        for (key, value) in dict {
-            if let id = Int(key) {
-                result[id] = value
-            }
-        }
-        if debugMode { logDebug("✅ Loaded \(result.count) class names") }
-        return result
+        FurnitureFitClassNames.loadLocalizedTable(debugMode: debugMode) { logDebug($0) }
     }()
     
     private func className(_ id: Int) -> String {
