@@ -340,13 +340,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var latestDisplayedCandidates: [FurnitureFitDetection] = []
     private var latestDisplayedSelectedCandidateIndex: Int?
     /// Latest prototype mask state used to validate taps against per-candidate mask presence.
-    private let tapMaskStateLock = NSLock()
-    private var latestTapMaskPlanes: [Float] = []
-    private var latestTapMaskProtoWidth: Int = 0
-    private var latestTapMaskProtoHeight: Int = 0
-    private var latestTapMaskModelSide: Int = 0
-    private var latestTapMaskImageWidth: Int = 0
-    private var latestTapMaskImageHeight: Int = 0
+    private let tapMaskState = FurnitureFitTapMaskState()
     private let selectedClassStateLock = NSLock()
     /// User-tapped instances (geometry snapshots). Segmentation matches these to current-frame boxes by IoU — not by class alone (avoids segmenting every chair when one is chosen).
     private var selectedDetectionPins: [FurnitureFitDetection] = []
@@ -1525,138 +1519,30 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         imageWidth: Int,
         imageHeight: Int
     ) {
-        tapMaskStateLock.lock()
-        latestTapMaskPlanes = planes
-        latestTapMaskProtoWidth = protoWidth
-        latestTapMaskProtoHeight = protoHeight
-        latestTapMaskModelSide = modelSide
-        latestTapMaskImageWidth = imageWidth
-        latestTapMaskImageHeight = imageHeight
-        tapMaskStateLock.unlock()
+        tapMaskState.update(
+            planes: planes,
+            protoWidth: protoWidth,
+            protoHeight: protoHeight,
+            modelSide: modelSide,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        )
     }
 
     private func clearLatestTapMaskState() {
-        tapMaskStateLock.lock()
-        latestTapMaskPlanes = []
-        latestTapMaskProtoWidth = 0
-        latestTapMaskProtoHeight = 0
-        latestTapMaskModelSide = 0
-        latestTapMaskImageWidth = 0
-        latestTapMaskImageHeight = 0
-        tapMaskStateLock.unlock()
-    }
-
-    private func maskPresenceScoreForTap(
-        detection: FurnitureFitDetection,
-        pointInMaskView: CGPoint
-    ) -> Float? {
-        tapMaskStateLock.lock()
-        let planes = latestTapMaskPlanes
-        let protoWidth = latestTapMaskProtoWidth
-        let protoHeight = latestTapMaskProtoHeight
-        let modelSide = latestTapMaskModelSide
-        let imageWidth = latestTapMaskImageWidth
-        let imageHeight = latestTapMaskImageHeight
-        tapMaskStateLock.unlock()
-
-        guard !planes.isEmpty,
-              protoWidth > 0,
-              protoHeight > 0,
-              modelSide > 0,
-              imageWidth > 0,
-              imageHeight > 0,
-              detection.coeffs.count >= 32,
-              maskImageView.bounds.width > 0,
-              maskImageView.bounds.height > 0 else {
-            return nil
-        }
-
-        let imageX = Float(pointInMaskView.x / maskImageView.bounds.width) * Float(imageWidth)
-        let imageY = Float(pointInMaskView.y / maskImageView.bounds.height) * Float(imageHeight)
-        let modelX = imageX * Float(modelSide) / Float(imageWidth)
-        let modelY = imageY * Float(modelSide) / Float(imageHeight)
-
-        let bboxHalfWidth = detection.w * 0.5
-        let bboxHalfHeight = detection.h * 0.5
-        let bboxMinX = detection.x - bboxHalfWidth
-        let bboxMaxX = detection.x + bboxHalfWidth
-        let bboxMinY = detection.y - bboxHalfHeight
-        let bboxMaxY = detection.y + bboxHalfHeight
-        guard modelX >= bboxMinX,
-              modelX <= bboxMaxX,
-              modelY >= bboxMinY,
-              modelY <= bboxMaxY else {
-            return nil
-        }
-
-        let protoX = min(
-            protoWidth - 1,
-            max(0, Int(floor(modelX * Float(protoWidth) / Float(modelSide))))
-        )
-        let protoY = min(
-            protoHeight - 1,
-            max(0, Int(floor(modelY * Float(protoHeight) / Float(modelSide))))
-        )
-        let hwProto = protoWidth * protoHeight
-        let protoPixelIndex = protoY * protoWidth + protoX
-        guard planes.count >= 32 * hwProto else { return nil }
-
-        var sum: Float = 0
-        var coeffIndex = 0
-        while coeffIndex < 32 {
-            let planeIndex = coeffIndex * hwProto + protoPixelIndex
-            sum += detection.coeffs[coeffIndex] * planes[planeIndex]
-            coeffIndex += 1
-        }
-        return sum > 0 ? sum : nil
+        tapMaskState.clear()
     }
 
     private func candidateIndexForTap(_ pointInMaskView: CGPoint) -> Int? {
-        guard !candidateBboxesInView.isEmpty, candidateBboxesInView.count == latestDisplayedCandidates.count else {
-            return nil
-        }
-        tapMaskStateLock.lock()
-        let hasTapMaskState =
-            !latestTapMaskPlanes.isEmpty &&
-            latestTapMaskProtoWidth > 0 &&
-            latestTapMaskProtoHeight > 0 &&
-            latestTapMaskModelSide > 0 &&
-            latestTapMaskImageWidth > 0 &&
-            latestTapMaskImageHeight > 0
-        tapMaskStateLock.unlock()
-        let tapHitPadding: CGFloat = isShowingLiveVideoIdentifications ? 22 : 10
-        let paddedMatches = candidateBboxesInView.enumerated().filter { _, rect in
-            rect.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMaskView)
-        }
-        guard !paddedMatches.isEmpty else { return nil }
-        let maskMatches = paddedMatches.compactMap { match -> (offset: Int, rect: CGRect, score: Float)? in
-            guard match.offset < latestDisplayedCandidates.count else { return nil }
-            guard let score = maskPresenceScoreForTap(
-                detection: latestDisplayedCandidates[match.offset],
-                pointInMaskView: pointInMaskView
-            ) else {
-                return nil
-            }
-            return (offset: match.offset, rect: match.element, score: score)
-        }
-        let shouldRequireMaskHit = hasTapMaskState && !isShowingLiveVideoIdentifications
-        if shouldRequireMaskHit, maskMatches.isEmpty {
-            return nil
-        }
-        let candidatesForSelection = maskMatches.isEmpty
-            ? paddedMatches.map { (offset: $0.offset, rect: $0.element, score: Float.leastNormalMagnitude) }
-            : maskMatches
-        return candidatesForSelection.max { lhs, rhs in
-            if abs(lhs.score - rhs.score) > 0.0001 {
-                return lhs.score < rhs.score
-            }
-            let leftArea = lhs.rect.width * lhs.rect.height
-            let rightArea = rhs.rect.width * rhs.rect.height
-            if abs(leftArea - rightArea) > 1 {
-                return leftArea > rightArea
-            }
-            return latestDisplayedCandidates[lhs.offset].confidence < latestDisplayedCandidates[rhs.offset].confidence
-        }?.offset
+        let selectionContext = FurnitureFitTapSelectionContext(
+            pointInMaskView: pointInMaskView,
+            maskViewBounds: maskImageView.bounds,
+            candidateRectsInView: candidateBboxesInView,
+            candidates: latestDisplayedCandidates,
+            tapMaskSnapshot: tapMaskState.snapshot(),
+            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications
+        )
+        return FurnitureFitTapSelection.candidateIndex(context: selectionContext)
     }
     
     override func didMoveToSuperview() {

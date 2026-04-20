@@ -525,4 +525,69 @@ final class FurnitureFitTests: XCTestCase {
         XCTAssertEqual(secondChallengerIndex, 0)
         XCTAssertEqual(thirdChallengerIndex, 1)
     }
+
+    // MARK: - Tap Selection Tests
+
+    func testTapSelectionRequiresPositiveMaskHitWhenSnapshotExists() {
+        let tapPoint = CGPoint(x: 50, y: 50)
+        let positiveCandidate = FurnitureFitDetection(
+            x: 100, y: 100, w: 120, h: 120,
+            confidence: 0.8, classIdx: 1, coeffs: [Float](repeating: 1, count: 32)
+        )
+        let negativeCandidate = FurnitureFitDetection(
+            x: 100, y: 100, w: 120, h: 120,
+            confidence: 0.95, classIdx: 1, coeffs: [Float](repeating: -1, count: 32)
+        )
+        let snapshot = FurnitureFitTapMaskSnapshot(
+            planes: [Float](repeating: 1, count: 32),
+            protoWidth: 1,
+            protoHeight: 1,
+            modelSide: 200,
+            imageWidth: 100,
+            imageHeight: 100
+        )
+        let context = FurnitureFitTapSelectionContext(
+            pointInMaskView: tapPoint,
+            maskViewBounds: CGRect(x: 0, y: 0, width: 100, height: 100),
+            candidateRectsInView: [
+                CGRect(x: 0, y: 0, width: 100, height: 100),
+                CGRect(x: 0, y: 0, width: 100, height: 100)
+            ],
+            candidates: [negativeCandidate, positiveCandidate],
+            tapMaskSnapshot: snapshot,
+            isShowingLiveVideoIdentifications: false
+        )
+
+        let selectedIndex = FurnitureFitTapSelection.candidateIndex(context: context)
+
+        XCTAssertEqual(selectedIndex, 1)
+    }
+
+    func testTapSelectionFallsBackToSmallerBoxWithoutMaskSnapshot() {
+        let context = FurnitureFitTapSelectionContext(
+            pointInMaskView: CGPoint(x: 50, y: 50),
+            maskViewBounds: CGRect(x: 0, y: 0, width: 100, height: 100),
+            candidateRectsInView: [
+                CGRect(x: 0, y: 0, width: 80, height: 80),
+                CGRect(x: 10, y: 10, width: 40, height: 40)
+            ],
+            candidates: [
+                FurnitureFitDetection(x: 100, y: 100, w: 140, h: 140, confidence: 0.99, classIdx: 1),
+                FurnitureFitDetection(x: 100, y: 100, w: 80, h: 80, confidence: 0.6, classIdx: 1)
+            ],
+            tapMaskSnapshot: FurnitureFitTapMaskSnapshot(
+                planes: [],
+                protoWidth: 0,
+                protoHeight: 0,
+                modelSide: 0,
+                imageWidth: 0,
+                imageHeight: 0
+            ),
+            isShowingLiveVideoIdentifications: true
+        )
+
+        let selectedIndex = FurnitureFitTapSelection.candidateIndex(context: context)
+
+        XCTAssertEqual(selectedIndex, 1)
+    }
 }
