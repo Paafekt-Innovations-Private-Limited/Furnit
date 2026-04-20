@@ -10,8 +10,8 @@ def enableNative = (project.findProperty("furnit.enableNative") ?: "false").toBo
 // Legacy SHARP via NCNN (libsharp_ncnn). YOLOE only needs furnit.enableNative=true; keep this false for ExecuTorch + YOLOE.
 def enableNcnnSharp = (project.findProperty("furnit.enableNcnnSharp") ?: "false").toString().toBoolean()
 // Keep Android Studio Run APKs installable. These files are conversion/debug variants or non-Android
-// artifacts kept in src/main/assets for reference; runtime code loads yoloe-26l-seg-pf_seg_o2m.onnx
-// plus yoloe-11l-seg.param/bin, so those stay packaged.
+// artifacts kept in src/main/assets for reference; runtime code loads yoloe-11l-seg-pf.onnx
+// from generated assets plus yoloe-11l-seg.param/bin, so those stay packaged.
 def unusedRuntimeModelAssetExcludes = [
         "yoloe-26l-seg-pf_seg_o2m-fixed.onnx",
         "yoloe-26l-seg-pf_seg_o2m-nodil-source.onnx",
@@ -19,7 +19,6 @@ def unusedRuntimeModelAssetExcludes = [
         "yoloe-26l-seg-pf_seg_o2m-nodil-unsqfix.onnx",
         "yoloe-26l-seg-pf_seg_o2m.mlpackage",
         "yoloe-26l-seg-pf_seg_o2m.mlpackage/**",
-        "yoloe-11l-seg-pf.onnx",
         "yolo11l-seg.param",
         "yolo11l-seg.bin",
         "yoloe-pf.param",

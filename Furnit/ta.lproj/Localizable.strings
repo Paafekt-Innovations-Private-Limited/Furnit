@@ -319,6 +319,7 @@
 "roomViewer.measuringRoom" = "அறை அளவிடப்படுகிறது...";
 "roomViewer.goingBack" = "பின்செல்கிறது...";
 "roomViewer.savingRoomEllipsis" = "அறை சேமிக்கப்படுகிறது...";
+"roomViewer.exporting3DModelEllipsis" = "3D மாதிரி ஏற்றுமதி செய்யப்படுகிறது...";
 "roomViewer.calibrateRoomTitle" = "அறையை கேலிப்ரேட் செய்";
 "roomViewer.enterFurnitureHeightMeters" = "உண்மையான தளபாட உயரத்தை உள்ளிடவும் (மீட்டர்)";
 "roomViewer.furnitureFullHeightHint" = "முழு உயரம்: தரையிலிருந்து மேல் (எ.கா. நாற்காலி 0.9 மீ)";

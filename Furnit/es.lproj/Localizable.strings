@@ -322,6 +322,7 @@
 "roomViewer.measuringRoom" = "Midiendo la habitación…";
 "roomViewer.goingBack" = "Volviendo…";
 "roomViewer.savingRoomEllipsis" = "Guardando habitación…";
+"roomViewer.exporting3DModelEllipsis" = "Exportando modelo 3D…";
 "roomViewer.calibrateRoomTitle" = "Calibrar habitación";
 "roomViewer.enterFurnitureHeightMeters" = "Introduce la altura real del mueble (metros)";
 "roomViewer.furnitureFullHeightHint" = "Altura total: del suelo arriba (p. ej., 0,9 m para una silla)";

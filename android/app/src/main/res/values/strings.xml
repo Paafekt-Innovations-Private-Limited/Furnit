@@ -454,6 +454,7 @@
     <string name="home_total">Total</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">No rooms yet\nTap the image icon to get started</string>
+    <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="home_3d_room_model">3D Room Model</string>
     <string name="home_opening">Opening %s…</string>
     <string name="home_deleted">Deleted %s</string>

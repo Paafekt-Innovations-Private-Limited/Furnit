@@ -337,6 +337,7 @@
 "roomViewer.measuringRoom" = "جارٍ قياس الغرفة…";
 "roomViewer.goingBack" = "جارٍ الرجوع...";
 "roomViewer.savingRoomEllipsis" = "جارٍ حفظ الغرفة...";
+"roomViewer.exporting3DModelEllipsis" = "جارٍ تصدير النموذج ثلاثي الأبعاد...";
 "roomViewer.calibrateRoomTitle" = "معايرة الغرفة";
 "roomViewer.enterFurnitureHeightMeters" = "أدخل ارتفاع الأثاث الفعلي (بالأمتار)";
 "roomViewer.furnitureFullHeightHint" = "الارتفاع الكامل: من الأرض إلى الأعلى (مثلاً 0.9 م لكرسي)";

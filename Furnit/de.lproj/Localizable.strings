@@ -349,6 +349,7 @@
 "roomViewer.measuringRoom" = "Raum wird vermessen…";
 "roomViewer.goingBack" = "Zurück…";
 "roomViewer.savingRoomEllipsis" = "Raum wird gespeichert…";
+"roomViewer.exporting3DModelEllipsis" = "3D-Modell wird exportiert…";
 "roomViewer.calibrateRoomTitle" = "Raum kalibrieren";
 "roomViewer.enterFurnitureHeightMeters" = "Tatsächliche Möbelhöhe eingeben (Meter)";
 "roomViewer.furnitureFullHeightHint" = "Gesamthöhe: Boden bis oben (z. B. 0,9 m für einen Stuhl)";

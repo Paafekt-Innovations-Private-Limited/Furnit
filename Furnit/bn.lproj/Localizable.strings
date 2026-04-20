@@ -337,6 +337,7 @@
 "roomViewer.measuringRoom" = "ঘরের মাপ নেওয়া হচ্ছে...";
 "roomViewer.goingBack" = "ফিরে যাচ্ছি...";
 "roomViewer.savingRoomEllipsis" = "রুম সংরক্ষণ হচ্ছে...";
+"roomViewer.exporting3DModelEllipsis" = "৩ডি মডেল রপ্তানি করা হচ্ছে...";
 "roomViewer.calibrateRoomTitle" = "রুম ক্যালিব্রেট";
 "roomViewer.enterFurnitureHeightMeters" = "আসল ফার্নিচার উচ্চতা লিখুন (মিটার)";
 "roomViewer.furnitureFullHeightHint" = "সম্পূর্ণ উচ্চতা: মেঝে থেকে উপরে (যেমন চেয়ারের জন্য ০.৯ মি)";

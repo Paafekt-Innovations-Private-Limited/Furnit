@@ -319,6 +319,7 @@
 "roomViewer.measuringRoom" = "മുറി അളക്കുന്നു...";
 "roomViewer.goingBack" = "പിൻവാങ്ങുന്നു...";
 "roomViewer.savingRoomEllipsis" = "മുറി സേവ് ചെയ്യുന്നു...";
+"roomViewer.exporting3DModelEllipsis" = "3D മോഡൽ എക്സ്പോർട്ട് ചെയ്യുന്നു...";
 "roomViewer.calibrateRoomTitle" = "മുറി കാലിബ്രേറ്റ് ചെയ്യുക";
 "roomViewer.enterFurnitureHeightMeters" = "യഥാർത്ഥ ഫർണിച്ചർ ഉയരം നൽകുക (മീറ്റർ)";
 "roomViewer.furnitureFullHeightHint" = "മുഴുവൻ ഉയരം: നിലത്ത് നിന്ന് മുകളിലേക്ക് (ഉദാ. ചെയറിന് 0.9 മീ)";

@@ -33,6 +33,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.CircularProgressIndicator
@@ -42,6 +44,7 @@ import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpGenerationUiState
 import com.furnit.android.services.SharpService
+import com.furnit.android.services.FurnitureFitManager
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -76,6 +79,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var progressOverlayPulse: AnimatorSet? = null
     private var phaseStripViews: Array<TextView> = emptyArray()
     private lateinit var selectedImageView: ImageView
+    private lateinit var singleImageOverlayView: FurnitureFitOverlayView
+    private lateinit var singleImageScanStatusView: TextView
     private lateinit var orientationIndicator: LinearLayout
     private lateinit var orientationIcon: TextView
     private lateinit var orientationText: TextView
@@ -99,6 +104,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     /** Bumped on cancel/restart so stale [SharpService.ProgressCallback] completions are ignored and folders deleted. */
     private var aiSessionId: Int = 0
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
+    private val furnitureFitManager by lazy { FurnitureFitManager(this) }
+    private var furnitureFitInitialized = false
+    private var singleImageScanRequestId = 0
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -247,6 +255,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshGlobalAiProgressUi()
+    }
+
+    override fun onDestroy() {
+        if (furnitureFitInitialized) {
+            furnitureFitManager.close()
+        }
+        super.onDestroy()
     }
 
     /** Keeps the bottom strip visible and on top after navigation or window insets change. */
@@ -461,27 +476,138 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setPadding(32, 48, 32, 32)
+            setBackgroundColor(Color.BLACK)
 
-            // Back button
+            val previewContainer = FrameLayout(this@SinglePhotoRoomActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                )
+                setBackgroundColor(Color.BLACK)
+            }
+
+            selectedImageView = ImageView(this@SinglePhotoRoomActivity).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundColor(Color.BLACK)
+                adjustViewBounds = true
+            }
+            previewContainer.addView(
+                selectedImageView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+
+            singleImageOverlayView = FurnitureFitOverlayView(this@SinglePhotoRoomActivity).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                setDetectionBoxVisibility(true)
+            }
+            previewContainer.addView(
+                singleImageOverlayView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+
+            val topBar = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(16), dpToPx(18), dpToPx(16), dpToPx(12))
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(Color.argb(180, 0, 0, 0), Color.TRANSPARENT),
+                )
+            }
+
             val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
                 text = getString(R.string.photo_room_back)
                 textSize = 16f
-                setTextColor(Color.parseColor("#007AFF"))
-                setPadding(0, 0, 0, 16)
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(20).toFloat()
+                    setColor(Color.argb(150, 0, 0, 0))
+                }
                 setOnClickListener { showMethodPickerBackConfirmation() }
             }
-            addView(backBtn)
+            topBar.addView(backBtn)
 
-            // Image preview
-            selectedImageView = ImageView(this@SinglePhotoRoomActivity).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(Color.parseColor("#E0E0E0"))
+            topBar.addView(
+                Space(this@SinglePhotoRoomActivity),
+                LinearLayout.LayoutParams(0, 0, 1f),
+            )
+
+            val changePhotoBtn = TextView(this@SinglePhotoRoomActivity).apply {
+                text = "Choose Different Photo"
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(20).toFloat()
+                    setColor(Color.argb(150, 0, 0, 0))
+                }
+                setOnClickListener { openImagePicker() }
             }
-            addView(selectedImageView, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                400
-            ).apply { setMargins(0, 0, 0, 8) })
+            topBar.addView(changePhotoBtn)
+
+            previewContainer.addView(
+                topBar,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP,
+                ),
+            )
+
+            singleImageScanStatusView = TextView(this@SinglePhotoRoomActivity).apply {
+                text = "Scanning selected image…"
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(18).toFloat()
+                    setColor(Color.argb(170, 0, 0, 0))
+                }
+                visibility = View.GONE
+            }
+            previewContainer.addView(
+                singleImageScanStatusView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
+                ).apply {
+                    bottomMargin = dpToPx(18)
+                },
+            )
+
+            addView(previewContainer)
+
+            val controlsContainer = ScrollView(this@SinglePhotoRoomActivity).apply {
+                setBackgroundColor(Color.parseColor("#F5F5F5"))
+                overScrollMode = View.OVER_SCROLL_NEVER
+            }
+
+            val controlsContent = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(24, 20, 24, 24)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(Color.parseColor("#F5F5F5"))
+                    cornerRadii = floatArrayOf(
+                        dpToPx(24).toFloat(), dpToPx(24).toFloat(),
+                        dpToPx(24).toFloat(), dpToPx(24).toFloat(),
+                        0f, 0f, 0f, 0f,
+                    )
+                }
+            }
 
             // Orientation indicator (tap to override auto-detection)
             orientationIndicator = LinearLayout(this@SinglePhotoRoomActivity).apply {
@@ -502,7 +628,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
 
                 orientationIcon = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "\uD83D\uDCF1" // Phone icon
+                    text = "\uD83D\uDCF1"
                     textSize = 16f
                     setPadding(0, 0, 8, 0)
                 }
@@ -515,12 +641,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(orientationText)
             }
-            addView(orientationIndicator, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 8) })
+            controlsContent.addView(
+                orientationIndicator,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { setMargins(0, 0, 0, 8) },
+            )
 
-            // Wide angle (0.5x) toggle – tap to set if photo was taken with ultra-wide lens (fixes camera position in viewer)
             val wideAngleRow = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -561,12 +689,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(wideCheck)
             }
-            addView(wideAngleRow, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 16) })
+            controlsContent.addView(
+                wideAngleRow,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { setMargins(0, 0, 0, 16) },
+            )
 
-            // Title
             val title = TextView(this@SinglePhotoRoomActivity).apply {
                 text = "How would you like to create your room?"
                 textSize = 18f
@@ -574,7 +704,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setTextColor(Color.parseColor("#333333"))
                 gravity = Gravity.CENTER
             }
-            addView(title)
+            controlsContent.addView(title)
 
             val subtitle = TextView(this@SinglePhotoRoomActivity).apply {
                 text = "Tap an option below"
@@ -583,11 +713,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setPadding(0, 8, 0, 24)
             }
-            addView(subtitle)
+            controlsContent.addView(subtitle)
 
-            // AI Room option (Sharp) — idle subtitle stays static until user taps AI Room or Run in background.
             val aiOption = createOptionCard(
-                icon = "\uD83E\uDE84", // Magic wand
+                icon = "\uD83E\uDE84",
                 title = "AI Room",
                 subtitle = getString(R.string.single_photo_ai_room_subtitle_idle),
                 bgColor = "#F3E5F5",
@@ -597,31 +726,32 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ) {
                 onAIRoomSelected()
             }
-            addView(aiOption)
+            controlsContent.addView(aiOption)
 
-            // Manual Setup option
             val manualOption = createOptionCard(
-                icon = "\uD83D\uDCCF", // Ruler
+                icon = "\uD83D\uDCCF",
                 title = "Manual Setup",
                 subtitle = "Adjust room boundaries manually",
-                bgColor = "#FFF3E0"
+                bgColor = "#FFF3E0",
             ) {
                 onManualSetupSelected()
             }
-            addView(manualOption)
+            controlsContent.addView(manualOption)
 
-            // Change photo button
-            val changePhotoBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = "Choose Different Photo"
-                textSize = 14f
-                setTextColor(Color.parseColor("#666666"))
-                gravity = Gravity.CENTER
-                setPadding(0, 32, 0, 0)
-                setOnClickListener {
-                    openImagePicker()
-                }
-            }
-            addView(changePhotoBtn)
+            controlsContainer.addView(
+                controlsContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                controlsContainer,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
         }
     }
 
@@ -789,6 +919,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             if (bitmap != null) {
                 selectedBitmap = bitmap
                 selectedImageView.setImageBitmap(bitmap)
+                resetSingleImageOverlay()
                 orientationUserOverridden = false
                 photoWideAngle = false
 
@@ -802,6 +933,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
                 // Start AI generation in background immediately (ONNX or Native Pt)
                 startAIGenerationInBackground(bitmap)
+                startSingleImageOverlayScan(bitmap)
 
                 showMethodPicker()
                 DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
@@ -844,6 +976,66 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         initialView.visibility = View.GONE
         methodPickerView.visibility = View.VISIBLE
         rootLayout.post { refreshGlobalAiProgressUi() }
+    }
+
+    private fun resetSingleImageOverlay() {
+        if (::singleImageOverlayView.isInitialized) {
+            singleImageOverlayView.setMaskAndDetections(null, emptyList(), 640)
+            singleImageOverlayView.resetTransform()
+        }
+        if (::singleImageScanStatusView.isInitialized) {
+            singleImageScanStatusView.visibility = View.GONE
+            singleImageScanStatusView.text = "Scanning selected image…"
+        }
+    }
+
+    private fun startSingleImageOverlayScan(bitmap: Bitmap) {
+        if (!::singleImageOverlayView.isInitialized || !::singleImageScanStatusView.isInitialized) return
+        val requestId = ++singleImageScanRequestId
+        singleImageScanStatusView.text = "Scanning selected image…"
+        singleImageScanStatusView.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val initialized = if (furnitureFitInitialized) {
+                true
+            } else {
+                withContext(Dispatchers.IO) {
+                    furnitureFitManager.initializeAuto()
+                }.also { success ->
+                    furnitureFitInitialized = success
+                }
+            }
+
+            if (requestId != singleImageScanRequestId || isDestroyed) return@launch
+
+            if (!initialized) {
+                singleImageScanStatusView.text = "Overlay unavailable"
+                return@launch
+            }
+
+            furnitureFitManager.segmentWithDetectionsAsync(bitmap) { result ->
+                if (requestId != singleImageScanRequestId || isDestroyed) return@segmentWithDetectionsAsync
+                runOnUiThread {
+                    if (result == null) {
+                        singleImageOverlayView.setMaskAndDetections(null, emptyList(), 640)
+                        singleImageScanStatusView.text = "No overlay detected"
+                        return@runOnUiThread
+                    }
+                    singleImageOverlayView.setMaskAndDetections(
+                        result.mask,
+                        result.detections,
+                        result.inputSize,
+                    )
+                    singleImageScanStatusView.text =
+                        if (result.detections.isEmpty()) "No objects detected"
+                        else "Overlay ready: ${result.detections.first().label}"
+                    singleImageScanStatusView.postDelayed({
+                        if (requestId == singleImageScanRequestId && !isDestroyed) {
+                            singleImageScanStatusView.visibility = View.GONE
+                        }
+                    }, 1800L)
+                }
+            }
+        }
     }
 
     private fun deleteSharpRoomFolder(result: SharpService.GenerationResult?) {
@@ -1169,6 +1361,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     /** Returns to Create 3D Room photo selection and cancels AI unless already finished (e.g. after Sharp viewer). */
     private fun showInitialView() {
+        singleImageScanRequestId++
+        resetSingleImageOverlay()
         cancelAndReleaseAI()
         methodPickerView.visibility = View.GONE
         initialView.visibility = View.VISIBLE

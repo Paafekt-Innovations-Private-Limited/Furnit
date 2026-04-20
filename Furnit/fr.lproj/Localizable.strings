@@ -322,6 +322,7 @@
 "roomViewer.measuringRoom" = "Mesure de la pièce…";
 "roomViewer.goingBack" = "Retour…";
 "roomViewer.savingRoomEllipsis" = "Enregistrement de la pièce…";
+"roomViewer.exporting3DModelEllipsis" = "Exportation du modèle 3D…";
 "roomViewer.calibrateRoomTitle" = "Calibrer la pièce";
 "roomViewer.enterFurnitureHeightMeters" = "Saisir la hauteur réelle du meuble (mètres)";
 "roomViewer.furnitureFullHeightHint" = "Hauteur totale : du sol au sommet (ex. 0,9 m pour une chaise)";

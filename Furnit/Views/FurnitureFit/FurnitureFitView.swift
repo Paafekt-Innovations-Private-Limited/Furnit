@@ -225,8 +225,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var primarySelectionByHighestConfidence: Bool = false
     /// Lower parse threshold used only for low-confidence secondary contributors.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.10
-    /// Keep only the most relevant non-primary contributors during mask fusion.
-    private let maximumMaskFusionContributorCount: Int = 6
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
     /// Disabled so logits + threshold define the mask only (no morphology).
     private let furnitureFitNativeMaskMorphologicalClose: Bool = false
@@ -2679,8 +2677,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
+    private func weightedPrimarySelectionScore(
+        detection: FurnitureFitDetection,
+        areaNormalizationReference: Float
+    ) -> Float {
+        let normalizedArea = areaNormalizationReference > 1e-6
+            ? (detection.w * detection.h) / areaNormalizationReference
+            : 0
+        return 0.5 * detection.confidence + 0.5 * normalizedArea
+    }
+
     /// Primary index: among candidates with confidence ≥ ``primaryDetectionMinConfidence``, either highest confidence directly
-    /// or the highest confidence inside the top-area shortlist (see ``primarySelectionByHighestConfidence``).
+    /// or the best 50/50 confidence+area score inside the top-area shortlist (see ``primarySelectionByHighestConfidence``).
     /// (`modelSide` unused; kept for call-site stability with the ONNX-style pipeline.)
     private func selectPrimaryIndexCoreFlow(candidates: [FurnitureFitDetection], modelSide _: Int) -> Int? {
         let minConfidence = min(max(primaryDetectionMinConfidence, 0.05), 0.99)
@@ -2706,9 +2714,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             candidates: candidates,
             minConfidence: minConfidence
         )
+        let shortlistAreaReference = shortlistedIndices
+            .map { candidates[$0].w * candidates[$0].h }
+            .max() ?? 0
         return shortlistedIndices.max { lhsIndex, rhsIndex in
             let lhsDetection = candidates[lhsIndex]
             let rhsDetection = candidates[rhsIndex]
+            let lhsScore = weightedPrimarySelectionScore(
+                detection: lhsDetection,
+                areaNormalizationReference: shortlistAreaReference
+            )
+            let rhsScore = weightedPrimarySelectionScore(
+                detection: rhsDetection,
+                areaNormalizationReference: shortlistAreaReference
+            )
+            if abs(lhsScore - rhsScore) > 1e-6 {
+                return lhsScore < rhsScore
+            }
             if abs(lhsDetection.confidence - rhsDetection.confidence) > 1e-6 {
                 return lhsDetection.confidence < rhsDetection.confidence
             }
@@ -2725,10 +2747,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         stableAutoPrimaryDetection = nil
         pendingAutoPrimaryDetection = nil
         pendingAutoPrimaryFrameCount = 0
-    }
-
-    private func autoPrimarySelectionScore(_ detection: FurnitureFitDetection) -> Float {
-        detection.confidence
     }
 
     private func matchedCandidateIndexForStableAutoPrimary(
@@ -2801,8 +2819,31 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return stableIndex
         }
 
-        let stableScore = autoPrimarySelectionScore(stableCandidate)
-        let preferredScore = autoPrimarySelectionScore(preferredCandidate)
+        let shortlistAreaReference: Float
+        if primarySelectionByHighestConfidence {
+            shortlistAreaReference = 0
+        } else {
+            shortlistAreaReference = Set(
+                areaShortlistedPrimaryCandidateIndices(
+                    candidates: candidates,
+                    minConfidence: minimumConfidence
+                )
+            )
+            .map { candidates[$0].w * candidates[$0].h }
+            .max() ?? 0
+        }
+        let stableScore = primarySelectionByHighestConfidence
+            ? stableCandidate.confidence
+            : weightedPrimarySelectionScore(
+                detection: stableCandidate,
+                areaNormalizationReference: shortlistAreaReference
+            )
+        let preferredScore = primarySelectionByHighestConfidence
+            ? preferredCandidate.confidence
+            : weightedPrimarySelectionScore(
+                detection: preferredCandidate,
+                areaNormalizationReference: shortlistAreaReference
+            )
         let switchThreshold = max(
             stableScore * autoPrimaryConfidenceSwitchGain,
             stableScore + autoPrimaryConfidenceSwitchMargin
@@ -2958,11 +2999,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         var candidates: [FurnitureFitDetection]
         if rawDetections.count > 1 {
-            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }
+            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }.filter {
+                !parseBlacklist.contains($0.classIdx)
+            }
             let capped = Array(sorted.prefix(300))
             candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
         } else {
-            candidates = rawDetections
+            candidates = rawDetections.filter {
+                !parseBlacklist.contains($0.classIdx)
+            }
         }
 
         let supportSurfaceHintCandidates = (oneImageRunAwaitingSave || stillImageScanModeEnabled)
@@ -3231,17 +3276,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let selectedBaseCount = selectedFusion.count
             appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &selectedFusion)
             let supplementalContributors = Array(selectedFusion.dropFirst(selectedBaseCount))
-            let limitedSupplementalContributors = limitedMaskFusionContributors(
+            let deduplicatedSupplementalContributors = limitedMaskFusionContributors(
                 primary: primary,
                 contributors: supplementalContributors
             )
-            if debugMode, supplementalContributors.count > limitedSupplementalContributors.count {
-                logDebug(
-                    "🧵 ONNX-STYLE (\(stage2DebugLabel)) limited supplemental contributors " +
-                    "from \(supplementalContributors.count) to \(limitedSupplementalContributors.count)"
-                )
-            }
-            maskDetectionsForBuild = Array(selectedFusion.prefix(selectedBaseCount)) + limitedSupplementalContributors
+            maskDetectionsForBuild = Array(selectedFusion.prefix(selectedBaseCount)) + deduplicatedSupplementalContributors
         } else {
             // Auto primary: Android-style fusion of primary + supporting
             // detections that intersect it (monitor/table, overlapped props,
@@ -3258,17 +3297,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
             var fusion: [FurnitureFitDetection] = [expandedPrimary]
             let contributorCandidates = maskSource.filter { FurnitureFitIoU.calculate($0, primary) < 0.999 }
-            let limitedContributors = limitedMaskFusionContributors(
+            let deduplicatedContributors = limitedMaskFusionContributors(
                 primary: primary,
                 contributors: contributorCandidates
             )
-            if debugMode, contributorCandidates.count > limitedContributors.count {
-                logDebug(
-                    "🧵 ONNX-STYLE (\(stage2DebugLabel)) limited contributors " +
-                    "from \(contributorCandidates.count) to \(limitedContributors.count)"
-                )
-            }
-            fusion.append(contentsOf: limitedContributors)
+            fusion.append(contentsOf: deduplicatedContributors)
             maskDetectionsForBuild = fusion
         }
 
@@ -3691,7 +3724,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
                 return lhs.offset < rhs.offset
             }
-            .prefix(maximumMaskFusionContributorCount)
             .map(\.detection)
     }
 

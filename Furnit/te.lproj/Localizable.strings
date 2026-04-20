@@ -319,6 +319,7 @@
 "roomViewer.measuringRoom" = "గదిని కొలుస్తున్నారు...";
 "roomViewer.goingBack" = "వెనక్కి వెళ్తోంది...";
 "roomViewer.savingRoomEllipsis" = "గది సేవ్ అవుతోంది...";
+"roomViewer.exporting3DModelEllipsis" = "3D నమూనా ఎగుమతి అవుతోంది...";
 "roomViewer.calibrateRoomTitle" = "గది క్యాలిబ్రేట్";
 "roomViewer.enterFurnitureHeightMeters" = "నిజమైన ఫర్నిచర్ ఎత్తు నమోదు చేయండి (మీటర్లు)";
 "roomViewer.furnitureFullHeightHint" = "పూర్తి ఎత్తు: నేల నుంచి పైకి (ఉదా. కుర్చీకి 0.9 మీ)";

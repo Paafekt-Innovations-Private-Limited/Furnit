@@ -319,6 +319,7 @@
 "roomViewer.measuringRoom" = "कमरा मापा जा रहा है...";
 "roomViewer.goingBack" = "वापस जा रहे हैं...";
 "roomViewer.savingRoomEllipsis" = "कमरा सहेजा जा रहा है...";
+"roomViewer.exporting3DModelEllipsis" = "3D मॉडल निर्यात किया जा रहा है...";
 "roomViewer.calibrateRoomTitle" = "कमरा कैलिब्रेट करें";
 "roomViewer.enterFurnitureHeightMeters" = "वास्तविक फर्नीचर ऊँचाई दर्ज करें (मीटर)";
 "roomViewer.furnitureFullHeightHint" = "पूर्ण ऊँचाई: फर्श से शीर्ष तक (जैसे कुर्सी के लिए 0.9 मी)";

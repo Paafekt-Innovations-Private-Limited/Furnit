@@ -361,6 +361,7 @@ enum L10n {
         static let meshExportFailed = "roomViewer.meshExportFailed".localized
         /// Generic save failure when no server message (manual mesh room).
         static let meshSaveFailedGeneric = "roomViewer.meshSaveFailedGeneric".localized
+        static let exporting3DModelEllipsis = "roomViewer.exporting3DModelEllipsis".localized
         /// Shown when saving a Sharp/ML room and the chosen name collides with an existing saved room.
         static let duplicateRoomName = "roomViewer.duplicateRoomName".localized
         static let share = "roomViewer.share".localized

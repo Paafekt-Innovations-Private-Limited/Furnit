@@ -319,6 +319,7 @@
 "roomViewer.measuringRoom" = "ಕೊಠಡಿಯನ್ನು ಅಳತೆಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.goingBack" = "ಹಿಂದೆ ಹೋಗುತ್ತಿದೆ...";
 "roomViewer.savingRoomEllipsis" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ...";
+"roomViewer.exporting3DModelEllipsis" = "3D ಮಾದರಿಯನ್ನು ರಫ್ತು ಮಾಡಲಾಗುತ್ತಿದೆ...";
 "roomViewer.calibrateRoomTitle" = "ಕೊಠಡಿ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.enterFurnitureHeightMeters" = "ನಿಜವಾದ ಪೀಠೋಪಕರಣ ಎತ್ತರ ನಮೂದಿಸಿ (ಮೀಟರ್)";
 "roomViewer.furnitureFullHeightHint" = "ಪೂರ್ಣ ಎತ್ತರ: ನೆಲದಿಂದ ಮೇಲ್ಭಾಗ (ಉದಾ. ಕುರ್ಚಿಗೆ 0.9 ಮೀ)";

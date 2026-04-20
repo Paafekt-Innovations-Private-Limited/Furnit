@@ -402,7 +402,8 @@ class FurnitureFitControlsTest {
                 w = 500f,
                 h = 500f,
                 confidence = 0.9f,
-                label = "chair"
+                label = "chair",
+                classId = 0,
             )
 
             // Create a simple mask bitmap
@@ -472,7 +473,7 @@ class FurnitureFitControlsTest {
             // Create detection and mask so touch is recognized as on furniture
             val detection = DetectionResult(
                 x = 320f, y = 320f, w = 400f, h = 400f,
-                confidence = 0.9f, label = "couch"
+                confidence = 0.9f, label = "couch", classId = 0
             )
             val maskBitmap = android.graphics.Bitmap.createBitmap(640, 640, android.graphics.Bitmap.Config.ARGB_8888)
             overlay.setMaskAndDetections(maskBitmap, listOf(detection), 640)
@@ -569,9 +570,9 @@ class FurnitureFitControlsTest {
     fun testSingleDetectionOnly() {
         // Test that only one detection (highest confidence) is used
         val detections = listOf(
-            DetectionResult(100f, 100f, 50f, 50f, 0.7f, "chair"),
-            DetectionResult(200f, 200f, 60f, 60f, 0.95f, "couch"),  // Highest confidence
-            DetectionResult(300f, 300f, 40f, 40f, 0.8f, "table")
+            DetectionResult(100f, 100f, 50f, 50f, 0.7f, "chair", 0),
+            DetectionResult(200f, 200f, 60f, 60f, 0.95f, "couch", 1),  // Highest confidence
+            DetectionResult(300f, 300f, 40f, 40f, 0.8f, "table", 2)
         )
 
         // Simulate manager behavior - take highest confidence

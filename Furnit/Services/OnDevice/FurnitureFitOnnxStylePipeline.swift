@@ -405,7 +405,7 @@ enum FurnitureFitOnnxStylePipeline {
         protoHeight: Int,
         protoWidth: Int,
         modelSide: Int,
-        minOverlapFraction: Float = 0.15
+        minOverlapFraction: Float = 0.70
     ) -> [FurnitureFitDetection] {
         guard primaryIndex >= 0, primaryIndex < detections.count else { return [] }
         let primary = detections[primaryIndex]

@@ -430,6 +430,7 @@
 "roomViewer.measuringRoom" = "Measuring room…";
 "roomViewer.goingBack" = "Going back...";
 "roomViewer.savingRoomEllipsis" = "Saving Room...";
+"roomViewer.exporting3DModelEllipsis" = "Exporting 3D model...";
 "roomViewer.calibrateRoomTitle" = "Calibrate Room";
 "roomViewer.enterFurnitureHeightMeters" = "Enter real furniture height (meters)";
 "roomViewer.furnitureFullHeightHint" = "Full height: floor to top (e.g. 0.9 m for a chair)";

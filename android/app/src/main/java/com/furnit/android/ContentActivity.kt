@@ -113,12 +113,24 @@ class ContentActivity : AppCompatActivity() {
             setPadding(0, dpToPx(8), 0, dpToPx(16))
         }
 
-        // Create Room icon button (left)
-        val createRoomIcon = createIconButton("\uD83D\uDDBC") // Image icon
-        createRoomIcon.setOnClickListener {
-            startActivity(Intent(this@ContentActivity, SinglePhotoRoomActivity::class.java))
+        // Create Room entry (left): icon + helper text
+        val createRoomEntry = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setOnClickListener {
+                startActivity(Intent(this@ContentActivity, SinglePhotoRoomActivity::class.java))
+            }
         }
-        topBar.addView(createRoomIcon)
+        val createRoomIcon = createIconButton("\uD83D\uDDBC") // Image icon
+        createRoomEntry.addView(createRoomIcon)
+        val createRoomHelper = TextView(this).apply {
+            text = getString(R.string.home_create_room_helper)
+            textSize = 14f
+            setTextColor(primaryTextColor)
+            setPadding(dpToPx(8), 0, 0, 0)
+        }
+        createRoomEntry.addView(createRoomHelper)
+        topBar.addView(createRoomEntry)
 
         // Spacer
         val spacer = View(this).apply {
