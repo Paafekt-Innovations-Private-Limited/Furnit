@@ -1702,71 +1702,103 @@ struct SharpRoomView: View {
             Color.black.opacity(0.6)
                 .ignoresSafeArea()
                 .onTapGesture { showFurnitureDimensionsInput = false }
-            VStack(spacing: 16) {
-                Text(L10n.RoomViewer.calibrateRoomTitle).font(.headline).foregroundColor(.white)
-                Text(L10n.RoomViewer.enterFurnitureHeightMeters).font(.caption).foregroundColor(.gray)
-                Text(L10n.RoomViewer.furnitureFullHeightHint).font(.caption2).foregroundColor(.gray.opacity(0.9))
-                if let h = calibrationBaselineDetectedHeight ?? detectedFurnitureHeightAR {
-                    Text(L10n.RoomViewer.detectedMeters(h)).font(.caption2).foregroundColor(.orange)
-                }
-                Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
-                    .font(.system(size: 32, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .frame(width: 120, height: 44)
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(8)
-                calibrationNumberPadView
-                HStack(spacing: 16) {
-                    Button(L10n.Common.cancel) {
-                        inputFurnitureHeight = ""
-                        showFurnitureDimensionsInput = false
+            GeometryReader { geometry in
+                let isCompactHeight = geometry.size.height < 430
+                let popupWidth = min(geometry.size.width - 32, isCompactHeight ? 320 : 360)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: isCompactHeight ? 10 : 16) {
+                        Text(L10n.RoomViewer.calibrateRoomTitle)
+                            .font(isCompactHeight ? .subheadline.bold() : .headline)
+                            .foregroundColor(.white)
+                        Text(L10n.RoomViewer.enterFurnitureHeightMeters)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                        Text(L10n.RoomViewer.furnitureFullHeightHint)
+                            .font(.caption2)
+                            .foregroundColor(.gray.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                        if let h = calibrationBaselineDetectedHeight ?? detectedFurnitureHeightAR {
+                            Text(L10n.RoomViewer.detectedMeters(h))
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                        }
+                        Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
+                            .font(.system(size: isCompactHeight ? 28 : 32, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .frame(width: isCompactHeight ? 110 : 120, height: isCompactHeight ? 40 : 44)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(8)
+                        calibrationNumberPadView(compact: isCompactHeight)
+                        HStack(spacing: 16) {
+                            Button(L10n.Common.cancel) {
+                                inputFurnitureHeight = ""
+                                showFurnitureDimensionsInput = false
+                            }
+                            .font(.body.bold())
+                            .foregroundColor(.red)
+                            .frame(width: 80, height: 40)
+                            .background(Color.red.opacity(0.2))
+                            .cornerRadius(8)
+
+                            Button(L10n.Common.apply) { applyCalibration() }
+                                .font(.body.bold())
+                                .foregroundColor(.green)
+                                .frame(width: 80, height: 40)
+                                .background(Color.green.opacity(0.2))
+                                .cornerRadius(8)
+                                .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
+                        }
                     }
-                    .font(.body.bold()).foregroundColor(.red)
-                    .frame(width: 80, height: 40).background(Color.red.opacity(0.2)).cornerRadius(8)
-                    Button(L10n.Common.apply) { applyCalibration() }
-                    .font(.body.bold()).foregroundColor(.green)
-                    .frame(width: 80, height: 40).background(Color.green.opacity(0.2)).cornerRadius(8)
-                    .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
+                    .frame(maxWidth: .infinity)
+                    .padding(isCompactHeight ? 16 : 20)
+                    .background(Color.black.opacity(0.95))
+                    .cornerRadius(16)
+                    .padding(.horizontal, max(16, (geometry.size.width - popupWidth) * 0.5))
+                    .padding(.vertical, 16)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
-            .padding(20)
-            .background(Color.black.opacity(0.95))
-            .cornerRadius(16)
         }
         .zIndex(99999)
     }
 
-    private var calibrationNumberPadView: some View {
-        VStack(spacing: 8) {
+    private func calibrationNumberPadView(compact: Bool) -> some View {
+        let buttonWidth: CGFloat = compact ? 46 : 50
+        let buttonHeight: CGFloat = compact ? 40 : 44
+        let buttonSpacing: CGFloat = compact ? 6 : 8
+
+        return VStack(spacing: buttonSpacing) {
             ForEach(0..<3, id: \.self) { row in
-                HStack(spacing: 8) {
+                HStack(spacing: buttonSpacing) {
                     ForEach(1...3, id: \.self) { col in
                         let digit = row * 3 + col
                         Button(action: { appendDigit("\(digit)") }) {
                             Text("\(digit)")
                                 .font(.title2.bold()).foregroundColor(.white)
-                                .frame(width: 50, height: 44)
+                                .frame(width: buttonWidth, height: buttonHeight)
                                 .background(Color.gray.opacity(0.3)).cornerRadius(8)
                         }
                     }
                 }
             }
-            HStack(spacing: 8) {
+            HStack(spacing: buttonSpacing) {
                 Button(action: {
                     if !inputFurnitureHeight.contains(".") {
                         inputFurnitureHeight += inputFurnitureHeight.isEmpty ? "0." : "."
                     }
                 }) {
                     Text(".").font(.title2.bold()).foregroundColor(.white)
-                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                        .frame(width: buttonWidth, height: buttonHeight).background(Color.gray.opacity(0.3)).cornerRadius(8)
                 }
                 Button(action: { appendDigit("0") }) {
                     Text("0").font(.title2.bold()).foregroundColor(.white)
-                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                        .frame(width: buttonWidth, height: buttonHeight).background(Color.gray.opacity(0.3)).cornerRadius(8)
                 }
                 Button(action: { if !inputFurnitureHeight.isEmpty { inputFurnitureHeight.removeLast() } }) {
                     Image(systemName: "delete.left").font(.title3).foregroundColor(.white)
-                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                        .frame(width: buttonWidth, height: buttonHeight).background(Color.gray.opacity(0.3)).cornerRadius(8)
                 }
             }
         }

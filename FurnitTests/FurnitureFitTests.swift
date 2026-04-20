@@ -590,4 +590,79 @@ final class FurnitureFitTests: XCTestCase {
 
         XCTAssertEqual(selectedIndex, 1)
     }
+
+    // MARK: - Overlay Scaling Tests
+
+    func testOverlayScalingResolvesRoomScaleFromBBoxFractions() {
+        let resolvedScale = FurnitureFitOverlayScaling.resolvedRoomScale(
+            currentAutoScaleFromRoom: 1.0,
+            currentAutoScaleFromAR: 1.0,
+            arAssistedSizingEnabled: true,
+            hasARKitAssistedSizingPayload: false,
+            arAssistedScaleValid: false,
+            normalizedARFurnitureHeightMeters: nil,
+            allowRoomProportionFallback: true,
+            shouldFreezeAutomaticOverlaySizing: false,
+            primaryBboxInView: CGRect(x: 60, y: 40, width: 80, height: 40),
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 100),
+            primaryBx1: 0,
+            primaryBy1: 0,
+            primaryBx2: 50,
+            primaryBy2: 25,
+            imageWidth: 100,
+            imageHeight: 50
+        )
+
+        XCTAssertEqual(resolvedScale, 1.25, accuracy: 0.001)
+    }
+
+    func testOverlayScalingPresentationBecomesMeasuredAfterStableFrames() {
+        let firstUpdate = FurnitureFitOverlayScaling.updatedPresentation(
+            currentMode: .deferredCentered,
+            currentStableMeasurementFrameCount: 0,
+            currentLastStableHeightMeters: nil,
+            currentLastStableScale: nil,
+            primaryClassChanged: false,
+            shouldFreezeAutomaticOverlaySizing: false,
+            arSizingReady: true,
+            normalizedARFurnitureHeightMeters: 1.0,
+            autoScaleFromAR: 1.2,
+            requiredStableOverlayMeasurementFrames: 3,
+            maxStableOverlayHeightDriftFraction: 0.18,
+            maxStableOverlayScaleDrift: 0.18
+        )
+        let secondUpdate = FurnitureFitOverlayScaling.updatedPresentation(
+            currentMode: firstUpdate.mode,
+            currentStableMeasurementFrameCount: firstUpdate.stableMeasurementFrameCount,
+            currentLastStableHeightMeters: firstUpdate.lastStableHeightMeters,
+            currentLastStableScale: firstUpdate.lastStableScale,
+            primaryClassChanged: false,
+            shouldFreezeAutomaticOverlaySizing: false,
+            arSizingReady: true,
+            normalizedARFurnitureHeightMeters: 1.01,
+            autoScaleFromAR: 1.21,
+            requiredStableOverlayMeasurementFrames: 3,
+            maxStableOverlayHeightDriftFraction: 0.18,
+            maxStableOverlayScaleDrift: 0.18
+        )
+        let thirdUpdate = FurnitureFitOverlayScaling.updatedPresentation(
+            currentMode: secondUpdate.mode,
+            currentStableMeasurementFrameCount: secondUpdate.stableMeasurementFrameCount,
+            currentLastStableHeightMeters: secondUpdate.lastStableHeightMeters,
+            currentLastStableScale: secondUpdate.lastStableScale,
+            primaryClassChanged: false,
+            shouldFreezeAutomaticOverlaySizing: false,
+            arSizingReady: true,
+            normalizedARFurnitureHeightMeters: 1.02,
+            autoScaleFromAR: 1.22,
+            requiredStableOverlayMeasurementFrames: 3,
+            maxStableOverlayHeightDriftFraction: 0.18,
+            maxStableOverlayScaleDrift: 0.18
+        )
+
+        XCTAssertEqual(firstUpdate.mode, .deferredCentered)
+        XCTAssertEqual(secondUpdate.mode, .deferredCentered)
+        XCTAssertEqual(thirdUpdate.mode, .measuredPlacement)
+        XCTAssertEqual(thirdUpdate.stableMeasurementFrameCount, 3)
+    }
 }

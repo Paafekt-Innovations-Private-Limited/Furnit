@@ -311,11 +311,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var isShowingLiveVideoIdentifications: Bool {
         showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
     }
-    private enum OverlayPresentationMode {
-        case deferredCentered
-        case measuredPlacement
-    }
-    private var overlayPresentationMode: OverlayPresentationMode = .deferredCentered
+    private var overlayPresentationMode: FurnitureFitOverlayPresentationMode = .deferredCentered
     private var stableOverlayMeasurementFrameCount: Int = 0
     private var lastStableOverlayHeightMeters: Float?
     private var lastStableOverlayScale: CGFloat?
@@ -798,73 +794,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         arDepthSnapshot: FurnitureFitARDepthSnapshot?,
         preferRoomRaycastSizing: Bool
     ) {
-        _ = primaryBx1
-        _ = primaryBy1
-        _ = primaryBx2
-        _ = primaryBy2
         _ = arDepthSnapshot
         _ = preferRoomRaycastSizing
-
-        if shouldFreezeAutomaticOverlaySizing {
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-
-        let arSizingReady =
-            arAssistedSizingEnabled &&
-            hasARKitAssistedSizingPayload &&
-            arAssistedScaleValid &&
-            normalizedARFurnitureHeightMeters() != nil &&
-            autoScaleFromAR.isFinite &&
-            autoScaleFromAR > 0
-
-        guard !arSizingReady else {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-
-        guard arAssistedSizingEnabled, !QualitySettings.supportsLiDARSceneDepth else {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-
-        guard imageWidth > 0, imageHeight > 0,
-              bounds.width > 1, bounds.height > 1,
-              primaryBboxInView.width > 1, primaryBboxInView.height > 1 else {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-
-        let targetWidthFraction = CGFloat(max(1, primaryBx2 - primaryBx1)) / CGFloat(imageWidth)
-        let targetHeightFraction = CGFloat(max(1, primaryBy2 - primaryBy1)) / CGFloat(imageHeight)
-        let currentWidthFraction = primaryBboxInView.width / bounds.width
-        let currentHeightFraction = primaryBboxInView.height / bounds.height
-
-        var scaleCandidates: [CGFloat] = []
-        if currentWidthFraction > 0.0001, targetWidthFraction.isFinite {
-            let widthScale = targetWidthFraction / currentWidthFraction
-            if widthScale.isFinite, widthScale > 0 {
-                scaleCandidates.append(widthScale)
-            }
-        }
-        if currentHeightFraction > 0.0001, targetHeightFraction.isFinite {
-            let heightScale = targetHeightFraction / currentHeightFraction
-            if heightScale.isFinite, heightScale > 0 {
-                scaleCandidates.append(heightScale)
-            }
-        }
-
-        if scaleCandidates.isEmpty {
-            autoScaleFromRoom = 1.0
-            applyCurrentOverlayScaleTransform()
-            return
-        }
-
-        let proportionalScale = scaleCandidates.reduce(0, +) / CGFloat(scaleCandidates.count)
-        autoScaleFromRoom = min(max(proportionalScale, 0.25), 2.5)
+        autoScaleFromRoom = FurnitureFitOverlayScaling.resolvedRoomScale(
+            currentAutoScaleFromRoom: autoScaleFromRoom,
+            currentAutoScaleFromAR: autoScaleFromAR,
+            arAssistedSizingEnabled: arAssistedSizingEnabled,
+            hasARKitAssistedSizingPayload: hasARKitAssistedSizingPayload,
+            arAssistedScaleValid: arAssistedScaleValid,
+            normalizedARFurnitureHeightMeters: normalizedARFurnitureHeightMeters(),
+            allowRoomProportionFallback: arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth,
+            shouldFreezeAutomaticOverlaySizing: shouldFreezeAutomaticOverlaySizing,
+            primaryBboxInView: primaryBboxInView,
+            bounds: bounds,
+            primaryBx1: primaryBx1,
+            primaryBy1: primaryBy1,
+            primaryBx2: primaryBx2,
+            primaryBy2: primaryBy2,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        )
         applyCurrentOverlayScaleTransform()
     }
 
@@ -873,112 +822,61 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         metric: PrimaryBboxMetersResult?
     ) {
         _ = metric
-        if shouldFreezeAutomaticOverlaySizing {
-            return
-        }
-        if primaryClassIdx != lastOverlayPrimaryClassIdx {
-            overlayPresentationMode = .deferredCentered
-            stableOverlayMeasurementFrameCount = 0
-            lastStableOverlayHeightMeters = nil
-            lastStableOverlayScale = nil
-        }
-
-        let arSizingReady =
-            hasARKitAssistedSizingPayload &&
-            arAssistedScaleValid &&
-            normalizedARFurnitureHeightMeters() != nil &&
-            autoScaleFromAR.isFinite &&
-            autoScaleFromAR > 0
-
-        if arSizingReady, let arHeight = normalizedARFurnitureHeightMeters() {
-            let scaleDrift = lastStableOverlayScale.map { abs(autoScaleFromAR - $0) } ?? 0
-            let heightDriftFraction: Float
-            if let lastHeight = lastStableOverlayHeightMeters, lastHeight > 0 {
-                heightDriftFraction = abs(arHeight - lastHeight) / lastHeight
-            } else {
-                heightDriftFraction = 0
-            }
-
-            let isStable = scaleDrift <= maxStableOverlayScaleDrift &&
-                heightDriftFraction <= maxStableOverlayHeightDriftFraction
-
-            stableOverlayMeasurementFrameCount = isStable ? (stableOverlayMeasurementFrameCount + 1) : 1
-            lastStableOverlayHeightMeters = arHeight
-            lastStableOverlayScale = autoScaleFromAR
-
-            if stableOverlayMeasurementFrameCount >= requiredStableOverlayMeasurementFrames {
-                overlayPresentationMode = .measuredPlacement
-            } else {
-                overlayPresentationMode = .deferredCentered
-            }
-            return
-        }
-
-        // No usable AR metric: never enter AR-style measured placement.
-        // Non-AR stays on deferred/segmentation placement; pinch/pan are allowed separately.
-        overlayPresentationMode = .deferredCentered
+        let presentationUpdate = FurnitureFitOverlayScaling.updatedPresentation(
+            currentMode: overlayPresentationMode,
+            currentStableMeasurementFrameCount: stableOverlayMeasurementFrameCount,
+            currentLastStableHeightMeters: lastStableOverlayHeightMeters,
+            currentLastStableScale: lastStableOverlayScale,
+            primaryClassChanged: primaryClassIdx != lastOverlayPrimaryClassIdx,
+            shouldFreezeAutomaticOverlaySizing: shouldFreezeAutomaticOverlaySizing,
+            arSizingReady: hasARKitAssistedSizingPayload &&
+                arAssistedScaleValid &&
+                normalizedARFurnitureHeightMeters() != nil &&
+                autoScaleFromAR.isFinite &&
+                autoScaleFromAR > 0,
+            normalizedARFurnitureHeightMeters: normalizedARFurnitureHeightMeters(),
+            autoScaleFromAR: autoScaleFromAR,
+            requiredStableOverlayMeasurementFrames: requiredStableOverlayMeasurementFrames,
+            maxStableOverlayHeightDriftFraction: maxStableOverlayHeightDriftFraction,
+            maxStableOverlayScaleDrift: maxStableOverlayScaleDrift
+        )
+        overlayPresentationMode = presentationUpdate.mode
+        stableOverlayMeasurementFrameCount = presentationUpdate.stableMeasurementFrameCount
+        lastStableOverlayHeightMeters = presentationUpdate.lastStableHeightMeters
+        lastStableOverlayScale = presentationUpdate.lastStableScale
     }
 
     /// Combined overlay: AR metric scale when available, else room-proportion fallback, then user pinch.
     private func applyCurrentOverlayScaleTransform() {
-        let arOn = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid
-        let allowRoomProportionFallback = arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth
-        let roomFactor: CGFloat = arOn ? 1.0 : (allowRoomProportionFallback ? autoScaleFromRoom : defaultStaticOverlayScale)
-        let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0
-        let product = roomFactor * assistedScale * userPinchScale
-        let clamped = min(max(product, minCombinedOverlayScale), maxCombinedOverlayScale)
-        let finalTransform: CGAffineTransform
-        if isShowingLiveVideoIdentifications {
-            finalTransform = .identity
-        } else {
-            switch overlayPresentationMode {
-            case .deferredCentered:
-                // Scale around the maskImageView center, then translate so the
-                // primary bbox center aligns with the view center (plus user pan
-                // offset). Both room-proportion / static-default scaling AND user
-                // pinch are included via `clamped`.
-                let bboxCenter = CGPoint(x: primaryBboxInView.midX, y: primaryBboxInView.midY)
-                let viewCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-                let autoTX = primaryBboxInView.width > 0 ? (viewCenter.x - bboxCenter.x) : 0
-                let autoTY = primaryBboxInView.height > 0 ? (viewCenter.y - bboxCenter.y) : 0
-                finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
-                    .concatenating(CGAffineTransform(translationX: autoTX + userPanOffset.x,
-                                                     y: autoTY + userPanOffset.y))
-            case .measuredPlacement:
-                finalTransform = CGAffineTransform(scaleX: clamped, y: clamped)
-                    .concatenating(CGAffineTransform(translationX: userPanOffset.x,
-                                                     y: userPanOffset.y))
-            }
-        }
-        maskImageView.transform = finalTransform
-        detectionBBoxOverlayView.transform = finalTransform
+        let transformResult = FurnitureFitOverlayScaling.resolvedTransform(
+            currentLastAssistedLabel: overlayDebugLastAssistedLabel,
+            currentLastCombinedScale: overlayDebugLastCombined,
+            autoScaleFromRoom: autoScaleFromRoom,
+            autoScaleFromAR: autoScaleFromAR,
+            userPinchScale: userPinchScale,
+            userPanOffset: userPanOffset,
+            userLockedAssistedOverlayScale: userLockedAssistedOverlayScale,
+            arAssistedSizingEnabled: arAssistedSizingEnabled,
+            hasARKitAssistedSizingPayload: hasARKitAssistedSizingPayload,
+            arAssistedScaleValid: arAssistedScaleValid,
+            allowRoomProportionFallback: arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth,
+            defaultStaticOverlayScale: defaultStaticOverlayScale,
+            minCombinedOverlayScale: minCombinedOverlayScale,
+            maxCombinedOverlayScale: maxCombinedOverlayScale,
+            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
+            overlayPresentationMode: overlayPresentationMode,
+            bounds: bounds,
+            primaryBboxInView: primaryBboxInView
+        )
+        maskImageView.transform = transformResult.transform
+        detectionBBoxOverlayView.transform = transformResult.transform
 
-        let wantAR = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && !userLockedAssistedOverlayScale
-        let assistedLabel: String
-        if arOn {
-            assistedLabel = "AR"
-        } else if wantAR {
-            assistedLabel = "ROOM_PROP_AR_unavailable"
-        } else if abs(autoScaleFromRoom - 1.0) > 0.02 {
-            assistedLabel = "ROOM_PROP"
-        } else {
-            assistedLabel = "STATIC_DEFAULT"
-        }
-        let jump = overlayDebugLastCombined < 0 || abs(clamped - overlayDebugLastCombined) > 0.02
-        let labelChange = assistedLabel != overlayDebugLastAssistedLabel
-        if jump || labelChange {
-            let loggedOverlayScale = isShowingLiveVideoIdentifications ? CGFloat(1.0) : clamped
+        if let assistedLabel = transformResult.assistedLabel {
             overlayDebugLastAssistedLabel = assistedLabel
-            overlayDebugLastCombined = loggedOverlayScale
-            let modeLabel: String
-            if isShowingLiveVideoIdentifications {
-                modeLabel = "full_video_identifications"
-            } else {
-                modeLabel = overlayPresentationMode == .deferredCentered ? "centered_pending" : "measured"
-            }
-            logFurnitureFitOverlay(
-                "mode=\(modeLabel) assist=\(assistedLabel) roomStored=\(String(format: "%.3f", autoScaleFromRoom)) roomUsed=\(String(format: "%.3f", roomFactor)) ar=\(String(format: "%.3f", autoScaleFromAR)) pinch=\(String(format: "%.3f", userPinchScale)) → overlay=\(String(format: "%.3f", loggedOverlayScale)) wantAR=\(wantAR) arValid=\(arAssistedScaleValid)"
-            )
+            overlayDebugLastCombined = transformResult.loggedOverlayScale
+        }
+        if let logMessage = transformResult.logMessage {
+            logFurnitureFitOverlay(logMessage)
         }
     }
 
