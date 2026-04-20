@@ -14,14 +14,6 @@ import CoreText
 import MetalKit
 import simd
 
-// BLAS helpers using C wrapper (BLASWrapper.m) to avoid Swift deprecation warnings
-fileprivate typealias BLASInt = Int32
-
-@inline(__always)
-fileprivate func blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLASInt, _ y: UnsafeMutablePointer<Float>, _ incy: BLASInt) {
-    BlasScopy(n, x, incx, y, incy)
-}
-
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
     private static let fullVideoWithIdentificationsKey = "furnitureFit.showFullVideoWithIdentifications"
@@ -5066,10 +5058,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             protoPlanes.withUnsafeMutableBufferPointer { dst in
                 guard let dstBase = dst.baseAddress else { return }
                 for channel in 0..<count {
-                    blas_scopy(
-                        BLASInt(planeSize),
+                    FurnitureFitBlas.scopy(
+                        FurnitureFitBlas.Dim(planeSize),
                         srcBase.advanced(by: channel),
-                        BLASInt(count),
+                        FurnitureFitBlas.Dim(count),
                         dstBase.advanced(by: channel * planeSize),
                         1
                     )
@@ -5272,10 +5264,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     for k in 0..<count {
                         // src: every 32nd element starting at k (stride=count)
                         // dst: contiguous plane of size planeSize
-                        blas_scopy(
-                            BLASInt(planeSize),
+                        FurnitureFitBlas.scopy(
+                            FurnitureFitBlas.Dim(planeSize),
                             srcBase.advanced(by: k),
-                            BLASInt(count),
+                            FurnitureFitBlas.Dim(count),
                             dstBase.advanced(by: k * planeSize),
                             1
                         )

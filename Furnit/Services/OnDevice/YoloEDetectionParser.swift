@@ -2,14 +2,6 @@ import Foundation
 import CoreML
 import Accelerate
 
-// BLAS via C wrapper (same as FurnitureFitView.swift)
-fileprivate typealias BLASInt = Int32
-
-@inline(__always)
-fileprivate func yolo_blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLASInt, _ y: UnsafeMutablePointer<Float>, _ incy: BLASInt) {
-    BlasScopy(n, x, incx, y, incy)
-}
-
 /// Shared YOLO-E detection tensor decoding for still-image calibration and optional reuse.
 enum YoloEDetectionParser {
 
@@ -331,7 +323,7 @@ enum YoloEDetectionParser {
 
                 var coeffs = [Float](repeating: 0, count: 32)
                 let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                yolo_blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
+                FurnitureFitBlas.scopy(32, coeffBase, FurnitureFitBlas.Dim(stride), &coeffs, 1)
 
                 allDets.append(
                     FurnitureFitDetection(
