@@ -469,6 +469,7 @@ struct SharpRoomView: View {
                 }
                 .padding(.top, 6)
                 .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))
+                .offset(y: -34)
                 .transition(.opacity)
             }
         }
