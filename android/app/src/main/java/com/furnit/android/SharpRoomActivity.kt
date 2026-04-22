@@ -2770,12 +2770,23 @@ class SharpRoomActivity : AppCompatActivity() {
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-            val preview = Preview.Builder()
-                .setTargetResolution(brainAnalysisSize)
-                .setTargetRotation(displayRotationForCameraX())
-                .build()
+            val shouldBindLivePreview = shouldShowIdentifyLivePreview()
+            val preview = if (shouldBindLivePreview) {
+                if (::brainCameraPreviewView.isInitialized) {
+                    brainCameraPreviewView.visibility = View.VISIBLE
+                }
+                Preview.Builder()
+                    .setTargetResolution(brainAnalysisSize)
+                    .setTargetRotation(displayRotationForCameraX())
+                    .build()
+                    .also { it.setSurfaceProvider(brainCameraPreviewView.surfaceProvider) }
+            } else {
+                if (::brainCameraPreviewView.isInitialized) {
+                    brainCameraPreviewView.visibility = View.GONE
+                }
+                null
+            }
             cameraPreviewUseCase = preview
-            preview.setSurfaceProvider(brainCameraPreviewView.surfaceProvider)
             var frameCount = 0
             val hasFirstResult = BooleanArray(1) { false }
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -2817,7 +2828,11 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 brainSegmentationAcceptingUpdates = true
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                if (preview != null) {
+                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                } else {
+                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                }
                 updateBrainLivePreviewVisibility()
                 DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
