@@ -300,12 +300,12 @@
 "roomViewer.resetOverlayScale" = "ഓവർലേ സ്കേൽ റീസെറ്റ്";
 "roomViewer.pinchGestureHintAccessibility" = "മുറി സൂം ചെയ്യാൻ രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടുക. ഫർണിച്ചർ സെഗ്മെന്റേഷൻ ഓണായാൽ ചിമുട്ടൽ ഓവർലേയുടെ വലുപ്പവും മാറ്റും.";
 "roomViewer.pinchGestureHintExplanation" = "രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടി മുറി സൂം ചെയ്യുക. ഫർണിച്ചർ ഫിറ്റ് ഓണായാൽ ചിമുട്ടൽ സെഗ്മെന്റേഷൻ ഓവർലേയും മാറ്റും.";
-"roomViewer.brainGestureHintExplanation" = "തത്സമയ ഫർണിച്ചർ കണ്ടെത്തൽ തുടങ്ങാൻ മസ്തിഷ്കം തട്ടുക. ഒന്നിലധികം കണ്ടെത്തിയ ഇനങ്ങൾ തട്ടുക, തുടർന്ന് ആ തിരഞ്ഞെടുപ്പുകൾ മാത്രം മാസ്ക് ചെയ്യാൻ «സെഗ്മെന്റ്» തട്ടുക.";
+"roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ തിരിച്ചറിയാൻ 🧠 ടാപ്പ് ചെയ്യുക";
 "roomViewer.segmentFurnitureAction" = "സെഗ്മെന്റ്";
 "roomViewer.stopSegmentationAction" = "നിർത്തുക";
 "roomViewer.segmentFurnitureAccessibility" = "തിരഞ്ഞെടുത്ത ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്യുക";
-"roomViewer.snapshotGestureHintExplanation" = "മുറിയുടെ ചിത്രം ഫോട്ടോകളിൽ സേവ് ചെയ്യാൻ ക്യാമറ തട്ടുക.";
-"roomViewer.arFurnitureSizingHint" = "മുറിയുമായി ഫർണിച്ചർ വലുപ്പം കൂടുതൽ പൊരുത്തപ്പെടാൻ ക്യാമറ ഉപയോഗിക്കുന്നു. LiDAR ഉള്ള ഐഫോണുകളിൽ ഏറ്റവും നന്നായി പ്രവർത്തിക്കുന്നു. കാഴ്ച തടസ്സപ്പെടുകയോ അസ്ഥിരമായി തോന്നുകയോ ചെയ്താൽ ഇത് ഓഫ് ചെയ്യുക.";
+"roomViewer.snapshotGestureHintExplanation" = "സേവ് ചെയ്യാൻ 📷 ടാപ്പ് ചെയ്യുക";
+"roomViewer.arFurnitureSizingHint" = "മികച്ച പൊരുത്തത്തിന് 📷";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "മുറിയുടെ വലുപ്പത്തിന് അനുപാതമായി ഫർണിച്ചർ വയ്ക്കാൻ ഞാൻ സഹായിക്കും. ആദ്യം ബ്രെയിൻ ഐക്കണിൽ ടാപ്പ് ചെയ്യൂ, ശേഷം എന്നെ പരീക്ഷിക്കൂ.";
 "roomViewer.arSizingEnable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക";
 "roomViewer.arSizingDisable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓഫ് ചെയ്യുക";
@@ -326,7 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "ചുവര്‍ ഉപയോഗിച്ച് കാലിബ്രേറ്റ്";
 "roomViewer.enterWallDimensionsHint" = "ടേപ്പ് അളന്ന മുൻചുവര്‍ (മീറ്റർ) നൽകുക, ഉദാ. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക";
-"roomViewer.fullVideoSelectionHelper" = "നിങ്ങള്‍ കാണുന്നതില്‍ സന്തോഷമില്ലെങ്കില്‍, എന്നെ ടാപ്പ് ചെയ്ത് നിങ്ങള്‍ക്ക് വേണ്ട ഫര്‍ണിച്ചര്‍ തിരഞ്ഞെടുക്കൂ";
+"roomViewer.fullVideoSelectionHelper" = "ഇതല്ലേ? മറ്റൊന്ന് തിരഞ്ഞെടുക്കാൻ ടാപ്പ് ചെയ്യുക.";
 "roomViewer.detectedMeters" = "കണ്ടെത്തി: %.2f മീ";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "ഫർണിച്ചറിന്റെ ഉയരം മുറിയുടെ ഉയരത്തേക്കാൾ കുറവായിരിക്കണം (%.2f മീ).";
 "roomViewer.roomMetersShort" = "മുറി: %.2f മീ";

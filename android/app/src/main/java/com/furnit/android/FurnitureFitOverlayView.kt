@@ -75,14 +75,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     private val selectedBoxPaint = Paint().apply {
-        color = Color.parseColor("#34C759")
+        color = Color.parseColor("#FF9500")
         style = Paint.Style.STROKE
         strokeWidth = 6f
         isAntiAlias = true
     }
 
     private val selectedTextBgPaint = Paint().apply {
-        color = Color.parseColor("#CC34C759")
+        color = Color.parseColor("#DDFF9500")
         style = Paint.Style.FILL
     }
 

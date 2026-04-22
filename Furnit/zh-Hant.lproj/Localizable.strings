@@ -301,12 +301,12 @@
 "roomViewer.resetOverlayScale" = "重設疊加比例";
 "roomViewer.pinchGestureHintAccessibility" = "雙指捏合可縮放房間。開啟家具分割時，捏合亦可放大或縮小疊加層。";
 "roomViewer.pinchGestureHintExplanation" = "雙指捏合縮放房間。開啟家具偵測後，捏合亦可縮放分割疊加層。";
-"roomViewer.brainGestureHintExplanation" = "點大腦開始即時家具辨識。點一個或多個偵測到的項目，再點「分割」僅對這些選取套用遮罩。";
+"roomViewer.brainGestureHintExplanation" = "點按 🧠 識別家具";
 "roomViewer.segmentFurnitureAction" = "分割";
 "roomViewer.stopSegmentationAction" = "停止";
 "roomViewer.segmentFurnitureAccessibility" = "分割所選家具";
-"roomViewer.snapshotGestureHintExplanation" = "點按相機可將房間畫面儲存到「照片」。";
-"roomViewer.arFurnitureSizingHint" = "使用相機協助家具尺寸更貼合房間。配備 LiDAR 的 iPhone 上效果最佳。若畫面卡頓或不穩，可關閉此功能。";
+"roomViewer.snapshotGestureHintExplanation" = "點按 📷 儲存";
+"roomViewer.arFurnitureSizingHint" = "📷 更好匹配";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "我會依照房間大小比例擺放家具。請先點一下大腦圖示，然後再試我。";
 "roomViewer.arSizingEnable" = "開啟相機輔助家具尺寸";
 "roomViewer.arSizingDisable" = "關閉相機輔助家具尺寸";
@@ -327,7 +327,7 @@
 "roomViewer.calibrateByWallTitle" = "依牆校準";
 "roomViewer.enterWallDimensionsHint" = "輸入捲尺測量的前牆尺寸（公尺），例如 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "點一下以校準";
-"roomViewer.fullVideoSelectionHelper" = "如果您不滿意目前顯示效果，請點我並選擇您想要的家具";
+"roomViewer.fullVideoSelectionHelper" = "不是這個？點按選擇另一個。";
 "roomViewer.detectedMeters" = "偵測到：%.2f 公尺";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "家具高度必須小於房間高度（%.2f 公尺）。";
 "roomViewer.roomMetersShort" = "房間：%.2f 公尺";

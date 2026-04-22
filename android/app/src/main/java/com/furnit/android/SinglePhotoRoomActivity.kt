@@ -729,7 +729,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             controlsContent.addView(aiOption)
 
             val manualOption = createOptionCard(
-                icon = "\uD83D\uDCCF",
+                iconResId = R.drawable.ic_square_resize,
                 title = "Manual Setup",
                 subtitle = "Adjust room boundaries manually",
                 bgColor = "#FFF3E0",
@@ -756,7 +756,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun createOptionCard(
-        icon: String,
+        icon: String? = null,
+        iconResId: Int? = null,
         title: String,
         subtitle: String,
         bgColor: String,
@@ -776,13 +777,20 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ).apply { setMargins(0, 0, 0, 16) }
 
             // Icon
-            val iconView = TextView(this@SinglePhotoRoomActivity).apply {
-                text = icon
-                textSize = 32f
+            val iconView = if (iconResId != null) {
+                ImageView(this@SinglePhotoRoomActivity).apply {
+                    setImageResource(iconResId)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                }
+            } else {
+                TextView(this@SinglePhotoRoomActivity).apply {
+                    text = icon.orEmpty()
+                    textSize = 32f
+                }
             }
             addView(iconView, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                dpToPx(36),
+                dpToPx(36)
             ).apply { setMargins(0, 0, 24, 0) })
 
             // Text container

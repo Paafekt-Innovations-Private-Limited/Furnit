@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">इनिशियलाइज़ हो रहा है…</string>
     <string name="smartypants_drag_hint">फर्नीचर खिसकाने के लिए खींचें • आकार बदलने के लिए पिंच करें • रूम पैन करने के लिए बाहर खींचें</string>
     <string name="smartypants_tap_calibrate">कैलिब्रेट करने के लिए टैप करें</string>
+    <string name="smartypants_pick_another_hint">यह नहीं? दूसरा चुनने के लिए टैप करें।</string>
     <string name="smartypants_scanning">स्कैन हो रहा है…</string>
     <string name="smartypants_camera_error">कैमरा त्रुटि: %s</string>
     <string name="smartypants_screenshot_failed">स्क्रीनशॉट विफल: %s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">मॉडल</string>
     <string name="model_viewer_view_3d">3D देखें</string>
     <string name="model_viewer_ar">AR</string>
+    <string name="sharp_room_brain_gesture_hint">फर्नीचर पहचानने के लिए 🧠 टैप करें</string>
+    <string name="sharp_room_snapshot_gesture_hint">सेव करने के लिए 📷 टैप करें</string>
+    <string name="sharp_room_ar_sizing_hint">बेहतर मिलान के लिए 📷</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">इनफरेंस बैकएंड</string>

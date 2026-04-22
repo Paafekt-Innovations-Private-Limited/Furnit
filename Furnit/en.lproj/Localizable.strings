@@ -409,14 +409,14 @@
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
 "roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
 "roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
-"roomViewer.brainGestureHintExplanation" = "Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.";
+"roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
 "roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
 "roomViewer.displayAllHelpers" = "Display all helpers";
 "roomViewer.segmentFurnitureAction" = "Segment";
 "roomViewer.stopSegmentationAction" = "Stop";
 "roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";
-"roomViewer.snapshotGestureHintExplanation" = "Tap the camera to save a picture of the room to Photos.";
-"roomViewer.arFurnitureSizingHint" = "Uses the camera to better match furniture size to your room. Works best on iPhones with LiDAR. Turn this off if the view stutters or feels unstable.";
+"roomViewer.snapshotGestureHintExplanation" = "Tap 📷 to save";
+"roomViewer.arFurnitureSizingHint" = "📷 for better match";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "I place furniture in proportion to the room size. Tap the brain icon, then try me.";
 "roomViewer.arSizingEnable" = "Enable camera-assisted furniture sizing";
 "roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
@@ -437,7 +437,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrate by wall";
 "roomViewer.enterWallDimensionsHint" = "Enter tape-measured front wall (meters), e.g. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "Tap to calibrate";
-"roomViewer.fullVideoSelectionHelper" = "If not happy with what you see, tap me and select furn of your choice";
+"roomViewer.fullVideoSelectionHelper" = "Not this one? Tap to pick another.";
 "roomViewer.detectedMeters" = "Detected: %.2f m";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Furniture height should be less than room height (%.2f m).";
 "roomViewer.roomMetersShort" = "Room: %.2f m";

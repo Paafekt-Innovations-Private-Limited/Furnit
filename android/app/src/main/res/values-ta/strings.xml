@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">துவக்கப்படுகிறது…</string>
     <string name="smartypants_drag_hint">தளபாடங்களை நகர்த்த இழுக்கவும் • அளவு மாற்ற pinch செய்யவும் • அறையை பான் செய்ய வெளியே இழுக்கவும்</string>
     <string name="smartypants_tap_calibrate">அளவீடு செய்ய தட்டவும்</string>
+    <string name="smartypants_pick_another_hint">இது இல்லையா? மற்றொன்றைத் தேர்வு செய்ய தட்டவும்.</string>
     <string name="smartypants_scanning">ஸ்கேன் செய்யப்படுகிறது…</string>
     <string name="smartypants_camera_error">கேமரா பிழை: %s</string>
     <string name="smartypants_screenshot_failed">திரைப்பிடிப்பு தோல்வி: %s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">மாதிரிகள்</string>
     <string name="model_viewer_view_3d">3D பார்க்கவும்</string>
     <string name="model_viewer_ar">AR</string>
+    <string name="sharp_room_brain_gesture_hint">மரச்சாமானை அடையாளம் காண 🧠 தட்டவும்</string>
+    <string name="sharp_room_snapshot_gesture_hint">சேமிக்க 📷 தட்டவும்</string>
+    <string name="sharp_room_ar_sizing_hint">சிறந்த பொருத்தத்திற்கு 📷</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">ஊக பின்னணி</string>

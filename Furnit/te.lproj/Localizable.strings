@@ -300,12 +300,12 @@
 "roomViewer.resetOverlayScale" = "ఓవర్లే స్కేల్ రీసెట్";
 "roomViewer.pinchGestureHintAccessibility" = "గదిని జూమ్ చేయడానికి రెండు వేళ్లతో పించ్ చేయండి. ఫర్నిచర్ సెగ్మెంటేషన్ ఆన్‌లో ఉన్నప్పుడు పించ్ ఓవర్లే పరిమాణాన్నీ మారుస్తుంది.";
 "roomViewer.pinchGestureHintExplanation" = "రెండు వేళ్లతో పించ్ చేసి గదిని జూమ్ చేయండి. ఫర్నిచర్ ఫిట్ ఆన్‌లో ఉన్నప్పుడు పించ్ సెగ్మెంటేషన్ ఓవర్లేను కూడా మారుస్తుంది.";
-"roomViewer.brainGestureHintExplanation" = "ప్రత్యక్ష ఫర్నిచర్ గుర్తింపు ప్రారంభించడానికి మెదడును టాప్ చేయండి. గుర్తించబడిన ఒకటి లేదా అనేక అంశాలపై టాప్ చేయండి, తర్వాత ఆ ఎంపికలను మాత్రమే మాస్క్ చేయడానికి «సెగ్మెంట్» టాప్ చేయండి.";
+"roomViewer.brainGestureHintExplanation" = "ఫర్నిచర్ గుర్తించడానికి 🧠 ట్యాప్ చేయండి";
 "roomViewer.segmentFurnitureAction" = "సెగ్మెంట్";
 "roomViewer.stopSegmentationAction" = "ఆపు";
 "roomViewer.segmentFurnitureAccessibility" = "ఎంచుకున్న ఫర్నిచర్‌ను సెగ్మెంట్ చేయి";
-"roomViewer.snapshotGestureHintExplanation" = "గది ఫోటోను ఫోటోలకు సేవ్ చేయడానికి కెమెరాను టాప్ చేయండి.";
-"roomViewer.arFurnitureSizingHint" = "గదితో ఫర్నిచర్ పరిమాణాన్ని మెరుగ్గా సరిపోల్చడానికి కెమెరాను ఉపయోగిస్తుంది. LiDAR ఉన్న ఐఫోన్‌లలో ఉత్తమంగా పనిచేస్తుంది. వీక్షణ విరగడంగా ఉంటే లేదా అస్థిరంగా అనిపిస్తే ఆఫ్ చేయండి.";
+"roomViewer.snapshotGestureHintExplanation" = "సేవ్ చేయడానికి 📷 ట్యాప్ చేయండి";
+"roomViewer.arFurnitureSizingHint" = "మెరుగైన సరిపోలికకు 📷";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "నేను గది పరిమాణానికి తగిన నిష్పత్తిలో ఫర్నిచర్‌ను ఉంచేందుకు సహాయపడుతాను. ముందుగా బ్రెయిన్ ఐకాన్‌ను ట్యాప్ చేసి, తర్వాత నన్ను ప్రయత్నించండి.";
 "roomViewer.arSizingEnable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ప్రారంభించు";
 "roomViewer.arSizingDisable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ఆపు";
@@ -326,7 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "గోడతో క్యాలిబ్రేట్";
 "roomViewer.enterWallDimensionsHint" = "టేపుతో కొలిచిన ముందు గోడ (మీటర్లు), ఉదా. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "క్యాలిబ్రేట్ చేయడానికి టాప్ చేయండి";
-"roomViewer.fullVideoSelectionHelper" = "మీకు కనిపిస్తున్నది నచ్చకపోతే, నన్ను ట్యాప్ చేసి మీకు నచ్చిన ఫర్నిచర్‌ను ఎంచుకోండి";
+"roomViewer.fullVideoSelectionHelper" = "ఇది కాదా? మరొకదాన్ని ఎంచుకోవడానికి ట్యాప్ చేయండి.";
 "roomViewer.detectedMeters" = "గుర్తించబడింది: %.2f మీ";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "ఫర్నిచర్ ఎత్తు గది ఎత్తుకంటే తక్కువగా ఉండాలి (%.2f మీ).";
 "roomViewer.roomMetersShort" = "గది: %.2f మీ";

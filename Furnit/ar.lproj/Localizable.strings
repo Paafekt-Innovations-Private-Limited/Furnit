@@ -318,12 +318,12 @@
 "roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
 "roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
 "roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
-"roomViewer.brainGestureHintExplanation" = "اضغط الدماغ لبدء تحديد الأثاث المباشر. اضغط على عنصر أو أكثر من العناصر المكتشفة، ثم اضغط «تجزئة» لإظهار القناع لتلك الاختيارات فقط.";
+"roomViewer.brainGestureHintExplanation" = "اضغط 🧠 للتعرف على الأثاث";
 "roomViewer.segmentFurnitureAction" = "تجزئة";
 "roomViewer.stopSegmentationAction" = "إيقاف";
 "roomViewer.segmentFurnitureAccessibility" = "تجزئة الأثاث المحدد";
-"roomViewer.snapshotGestureHintExplanation" = "اضغط الكاميرا لحفظ صورة للغرفة في الصور.";
-"roomViewer.arFurnitureSizingHint" = "يستخدم الكاميرا لتحسين مطابقة حجم الأثاث مع الغرفة. يعمل أفضل على آيفون المزوّد بـ LiDAR. أوقف الميزة إذا كانت الصورة تتقطع أو تبدو غير ثابتة.";
+"roomViewer.snapshotGestureHintExplanation" = "اضغط 📷 للحفظ";
+"roomViewer.arFurnitureSizingHint" = "📷 لمطابقة أفضل";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "أقوم بوضع الأثاث بنسبة تتناسب مع حجم الغرفة. اضغط على أيقونة الدماغ ثم جرّبني.";
 "roomViewer.arSizingEnable" = "تفعيل قياس الأثاث بمساعدة الكاميرا";
 "roomViewer.arSizingDisable" = "إيقاف قياس الأثاث بمساعدة الكاميرا";
@@ -344,7 +344,7 @@
 "roomViewer.calibrateByWallTitle" = "معايرة بالجدار";
 "roomViewer.enterWallDimensionsHint" = "أدخل قياس الجدار الأمامي بالشريط (بالأمتار)، مثلاً 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "اضغط للمعايرة";
-"roomViewer.fullVideoSelectionHelper" = "إذا لم يعجبك ما تراه، اضغط عليّ واختر قطعة الأثاث التي تريدها";
+"roomViewer.fullVideoSelectionHelper" = "ليس هذا؟ اضغط لاختيار آخر.";
 "roomViewer.detectedMeters" = "تم اكتشاف: %.2f م";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "يجب أن يكون ارتفاع الأثاث أقل من ارتفاع الغرفة (%.2f م).";
 "roomViewer.roomMetersShort" = "الغرفة: %.2f م";

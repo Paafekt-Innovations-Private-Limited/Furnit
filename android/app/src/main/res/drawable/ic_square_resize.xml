@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Approximation of iOS SF Symbol square.resize -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M7,7H17V17H7Z"
+        android:strokeColor="#FF9500"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4,10V4H10M4,4L9.5,9.5"
+        android:strokeColor="#FF9500"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M20,14V20H14M20,20L14.5,14.5"
+        android:strokeColor="#FF9500"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

@@ -21,14 +21,11 @@ class YOLOEModelService: ObservableObject {
 
     // MARK: - On-Demand Resources
 
-    /// ODR tags for each YOLOE `.mlpackage` in the target (see `project.pbxproj` → Compile Sources → Asset Tags).
-    /// Split tags so 11L vs 26L caches invalidate independently; bump a tag when replacing that package.
+    /// ODR tag for the shipped YOLOE `.mlpackage` in the target (see `project.pbxproj` → Resources → Asset Tags).
     private static let yoloeOdrTag11l = "yoloe_11l_seg_pf"
-    private static let yoloeOdrTag26l = "yoloe_26l_seg_pf"
-    private static let yoloeOdrTag26lO2m = "yoloe_26l_seg_pf_o2m"
 
     private static var allYoloeOdrTags: Set<String> {
-        [yoloeOdrTag11l, yoloeOdrTag26l, yoloeOdrTag26lO2m]
+        [yoloeOdrTag11l]
     }
 
     /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource

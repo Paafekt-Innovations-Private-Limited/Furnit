@@ -284,6 +284,7 @@
     <string name="smartypants_initializing">Inicializando…</string>
     <string name="smartypants_drag_hint">Arrastra el mueble para mover • Pellizca para cambiar el tamaño • Arrastra fuera para desplazar la habitación</string>
     <string name="smartypants_tap_calibrate">Toca para calibrar</string>
+    <string name="smartypants_pick_another_hint">¿No es este? Toca para elegir otro.</string>
     <string name="smartypants_scanning">Escaneando…</string>
     <string name="smartypants_camera_error">Error de cámara: %s</string>
     <string name="smartypants_screenshot_failed">Error en captura: %s</string>
@@ -371,6 +372,9 @@
     <string name="model_viewer_title">Modelos</string>
     <string name="model_viewer_view_3d">Ver 3D</string>
     <string name="model_viewer_ar">RA</string>
+    <string name="sharp_room_brain_gesture_hint">Toca 🧠 para identificar muebles</string>
+    <string name="sharp_room_snapshot_gesture_hint">Toca 📷 para guardar</string>
+    <string name="sharp_room_ar_sizing_hint">📷 para mejor ajuste</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">Motor de inferencia</string>

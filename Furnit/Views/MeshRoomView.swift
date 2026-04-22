@@ -304,7 +304,8 @@ struct MeshRoomView: View {
             }
         }
         .onAppear {
-            // Do not load YOLOE eagerly here — keep manual room memory low until the user enables brain mode.
+            // Preload YOLOE when the room opens so the first brain tap can start segmentation without waiting.
+            yoloeService.ensureModelLoaded()
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
@@ -347,7 +348,6 @@ struct MeshRoomView: View {
                 segmentedFurnitureMeanSRGB = nil
                 isPlacementIntelligenceExpanded = false
                 showFurnitureDimensionsInput = false
-                yoloeService.releaseResources()
             }
         }
         .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }

@@ -300,12 +300,12 @@
 "roomViewer.resetOverlayScale" = "ஓவர்லே அளவை மீட்டமை";
 "roomViewer.pinchGestureHintAccessibility" = "அறையை பெரிதாக்க இரண்டு விரல்களால் சிமிட்டவும். தளபாடப் பிரிப்பு இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் மேலடுக்கின் அளவையும் மாற்றும்.";
 "roomViewer.pinchGestureHintExplanation" = "இரண்டு விரல்களால் சிமிட்டி அறையை பெரிதாக்கவும். தளபாடப் பொருத்தம் இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் பிரிப்பு மேலடுக்கையும் மாற்றும்.";
-"roomViewer.brainGestureHintExplanation" = "நேரடி தளபாடக் கண்டறிதலைத் தொடங்க மூளையைத் தட்டவும். ஒன்று அல்லது பல கண்டறியப்பட்ட உருப்படிகளைத் தட்டவும், பிறகு அந்தத் தேர்வுகளை மட்டும் முகமூடியிட «பிரித்தெடு» ஐத் தட்டவும்.";
+"roomViewer.brainGestureHintExplanation" = "மரச்சாமானை அடையாளம் காண 🧠 தட்டவும்";
 "roomViewer.segmentFurnitureAction" = "பிரித்தெடு";
 "roomViewer.stopSegmentationAction" = "நிறுத்து";
 "roomViewer.segmentFurnitureAccessibility" = "தேர்ந்தெடுத்த தளபாடத்தைப் பிரித்தெடு";
-"roomViewer.snapshotGestureHintExplanation" = "அறையின் படத்தை புகைப்படங்களில் சேமிக்க கேமராவைத் தட்டவும்.";
-"roomViewer.arFurnitureSizingHint" = "அறைக்கு ஏற்றவாறு தளபாட அளவைச் சீரமைக்க கேமராவைப் பயன்படுத்துகிறது. LiDAR உள்ள ஐபோன்களில் சிறப்பாக வேலை செய்கிறது. காட்சி தடுமாறினால் அல்லது நிலையற்றதாக இருந்தால் அணைக்கவும்.";
+"roomViewer.snapshotGestureHintExplanation" = "சேமிக்க 📷 தட்டவும்";
+"roomViewer.arFurnitureSizingHint" = "சிறந்த பொருத்தத்திற்கு 📷";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "அறை அளவுக்கு ஒப்பாக தளபாடத்தை அமைக்க நான் உதவுவேன். முதலில் பிரெயின் ஐகானைத் தட்டி, பிறகு என்னை முயற்சிக்கவும்.";
 "roomViewer.arSizingEnable" = "கேமரா உதவித் தளபாட அளவை இயக்கு";
 "roomViewer.arSizingDisable" = "கேமரா உதவித் தளபாட அளவை முடக்கு";
@@ -326,7 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "சுவரால் கேலிப்ரேட்";
 "roomViewer.enterWallDimensionsHint" = "டேப்பால் அளந்த முன் சுவர் (மீட்டர்), எ.கா. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "கேலிப்ரேட் செய்ய தட்டவும்";
-"roomViewer.fullVideoSelectionHelper" = "நீங்கள் பார்க்கும் விடயம் திருப்தியாக இல்லையெனில், என்னை தட்டி உங்களுக்கு வேண்டிய மரச்சாமானை தேர்வு செய்யுங்கள்";
+"roomViewer.fullVideoSelectionHelper" = "இது இல்லையா? மற்றொன்றைத் தேர்வு செய்ய தட்டவும்.";
 "roomViewer.detectedMeters" = "கண்டறியப்பட்டது: %.2f மீ";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "மரச்சாமானின் உயரம் அறையின் உயரத்தைவிட குறைவாக இருக்க வேண்டும் (%.2f மீ).";
 "roomViewer.roomMetersShort" = "அறை: %.2f மீ";

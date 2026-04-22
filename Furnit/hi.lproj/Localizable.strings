@@ -300,12 +300,12 @@
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
 "roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
 "roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
-"roomViewer.brainGestureHintExplanation" = "लाइव फर्नीचर पहचान शुरू करने के लिए मस्तिष्क पर टैप करें। एक या अधिक पहचाने गए आइटम पर टैप करें, फिर केवल उन्हीं चयनों को मास्क करने के लिए «सेगमेंट» पर टैप करें।";
+"roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचानने के लिए 🧠 टैप करें";
 "roomViewer.segmentFurnitureAction" = "सेगमेंट";
 "roomViewer.stopSegmentationAction" = "रोकें";
 "roomViewer.segmentFurnitureAccessibility" = "चयनित फर्नीचर सेगमेंट करें";
-"roomViewer.snapshotGestureHintExplanation" = "कमरे की तस्वीर फ़ोटो में सहेजने के लिए कैमरा पर टैप करें।";
-"roomViewer.arFurnitureSizingHint" = "कैमरे से फर्नीचर का आकार कमरे के अनुसार बेहतर मिलाने में मदद करता है। LiDAR वाले iPhone पर सबसे अच्छा काम करता है। अगर दृश्य रुक-रुक कर चले या अस्थिर लगे तो इसे बंद कर दें।";
+"roomViewer.snapshotGestureHintExplanation" = "सेव करने के लिए 📷 टैप करें";
+"roomViewer.arFurnitureSizingHint" = "बेहतर मिलान के लिए 📷";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "मैं कमरे के आकार के अनुपात में फर्नीचर रखता हूँ। पहले ब्रेन आइकन पर टैप करें, फिर मुझे आज़माएँ।";
 "roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
 "roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";
@@ -326,7 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "दीवार से कैलिब्रेट करें";
 "roomViewer.enterWallDimensionsHint" = "टेप से नापी सामने की दीवार (मीटर) दर्ज करें, जैसे 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "कैलिब्रेट करने के लिए टैप करें";
-"roomViewer.fullVideoSelectionHelper" = "अगर आप जो देख रहे हैं उससे खुश नहीं हैं, तो मुझे टैप करें और अपनी पसंद का फर्नीचर चुनें";
+"roomViewer.fullVideoSelectionHelper" = "यह नहीं? दूसरा चुनने के लिए टैप करें।";
 "roomViewer.detectedMeters" = "पता चला: %.2f मी";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "फर्नीचर की ऊंचाई कमरे की ऊंचाई से कम होनी चाहिए (%.2f मी).";
 "roomViewer.roomMetersShort" = "कमरा: %.2f मी";

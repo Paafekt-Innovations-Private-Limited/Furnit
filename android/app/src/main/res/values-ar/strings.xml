@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">جاري التهيئة…</string>
     <string name="smartypants_drag_hint">اسحب الأثاث للتحريك • قرّب أو أبعِد لتغيير الحجم • اسحب خارجاً لتحريك الغرفة</string>
     <string name="smartypants_tap_calibrate">انقر للمعايرة</string>
+    <string name="smartypants_pick_another_hint">ليس هذا؟ انقر لاختيار آخر.</string>
     <string name="smartypants_scanning">جاري المسح…</string>
     <string name="smartypants_camera_error">خطأ في الكاميرا: %s</string>
     <string name="smartypants_screenshot_failed">فشلت لقطة الشاشة: %s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">النماذج</string>
     <string name="model_viewer_view_3d">عرض 3D</string>
     <string name="model_viewer_ar">الواقع المعزز</string>
+    <string name="sharp_room_brain_gesture_hint">اضغط 🧠 للتعرف على الأثاث</string>
+    <string name="sharp_room_snapshot_gesture_hint">اضغط 📷 للحفظ</string>
+    <string name="sharp_room_ar_sizing_hint">📷 لمطابقة أفضل</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">محرك الاستدلال</string>

@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">正在初始化…</string>
     <string name="smartypants_drag_hint">拖动家具移动 • 双指缩放改大小 • 向外拖动平移房间</string>
     <string name="smartypants_tap_calibrate">点击校准</string>
+    <string name="smartypants_pick_another_hint">不是这个？点按选择另一个。</string>
     <string name="smartypants_scanning">正在扫描…</string>
     <string name="smartypants_camera_error">相机错误：%s</string>
     <string name="smartypants_screenshot_failed">截图失败：%s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">模型</string>
     <string name="model_viewer_view_3d">查看 3D</string>
     <string name="model_viewer_ar">AR</string>
+    <string name="sharp_room_brain_gesture_hint">点按 🧠 识别家具</string>
+    <string name="sharp_room_snapshot_gesture_hint">点按 📷 保存</string>
+    <string name="sharp_room_ar_sizing_hint">📷 更好匹配</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">推理后端</string>

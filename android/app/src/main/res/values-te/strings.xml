@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">ప్రారంభిస్తోంది…</string>
     <string name="smartypants_drag_hint">ఫర్నిచర్ కదిలించడానికి లాగండి • సైజ్ మార్చడానికి pinch చేయండి • గదిని పాన్ చేయడానికి బయట లాగండి</string>
     <string name="smartypants_tap_calibrate">క్యాలిబ్రేట్ చేయడానికి ట్యాప్ చేయండి</string>
+    <string name="smartypants_pick_another_hint">ఇది కాదా? మరొకదాన్ని ఎంచుకోవడానికి ట్యాప్ చేయండి.</string>
     <string name="smartypants_scanning">స్కాన్ చేస్తోంది…</string>
     <string name="smartypants_camera_error">కెమెరా లోపం: %s</string>
     <string name="smartypants_screenshot_failed">స్క్రీన్‌షాట్ విఫలం: %s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">మోడల్‌లు</string>
     <string name="model_viewer_view_3d">3D చూడండి</string>
     <string name="model_viewer_ar">AR</string>
+    <string name="sharp_room_brain_gesture_hint">ఫర్నిచర్ గుర్తించడానికి 🧠 ట్యాప్ చేయండి</string>
+    <string name="sharp_room_snapshot_gesture_hint">సేవ్ చేయడానికి 📷 ట్యాప్ చేయండి</string>
+    <string name="sharp_room_ar_sizing_hint">మెరుగైన సరిపోలికకు 📷</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">ఇన్ఫరెన్స్ బ్యాకెండ్</string>

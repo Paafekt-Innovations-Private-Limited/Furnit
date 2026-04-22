@@ -80,7 +80,7 @@ class FurnitureFitManager(private val context: Context) {
 
         fun isFullVideoWithIdentificationsEnabled(context: Context): Boolean {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                .getBoolean(KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, true)
+                .getBoolean(KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, false)
         }
     }
     private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()

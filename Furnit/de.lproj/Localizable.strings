@@ -330,12 +330,12 @@
 "roomViewer.resetOverlayScale" = "Overlay-Maßstab zurücksetzen";
 "roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
 "roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
-"roomViewer.brainGestureHintExplanation" = "Tippe auf das Gehirn, um die Live-Möbelerkennung zu starten. Tippe auf ein oder mehrere erkannte Objekte, dann auf Segmentieren, um nur diese Auswahl zu maskieren.";
+"roomViewer.brainGestureHintExplanation" = "Tippe auf 🧠, um Möbel zu erkennen";
 "roomViewer.segmentFurnitureAction" = "Segmentieren";
 "roomViewer.stopSegmentationAction" = "Stopp";
 "roomViewer.segmentFurnitureAccessibility" = "Ausgewählte Möbel segmentieren";
-"roomViewer.snapshotGestureHintExplanation" = "Tippe auf die Kamera, um ein Bild des Raums in „Fotos“ zu speichern.";
-"roomViewer.arFurnitureSizingHint" = "Nutzt die Kamera, damit Möbelgrößen besser zur Raumgröße passen. Am besten auf iPhones mit LiDAR. Schalte es aus, wenn die Ansicht ruckelt oder instabil wirkt.";
+"roomViewer.snapshotGestureHintExplanation" = "Zum Speichern 📷 tippen";
+"roomViewer.arFurnitureSizingHint" = "📷 für bessere Passung";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Ich platziere Möbel proportional zur Raumgröße. Tippe auf das Gehirn-Symbol und versuche es dann erneut.";
 "roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
 "roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
@@ -356,7 +356,7 @@
 "roomViewer.calibrateByWallTitle" = "Über Wand kalibrieren";
 "roomViewer.enterWallDimensionsHint" = "Vordere Wand mit Bandmaß (Meter), z. B. 3,15 × 2,86";
 "roomViewer.tapToCalibrate" = "Tippen zum Kalibrieren";
-"roomViewer.fullVideoSelectionHelper" = "Wenn Ihnen das Gezeigte nicht gefällt, tippen Sie mich an und wählen Sie das Möbelstück Ihrer Wahl";
+"roomViewer.fullVideoSelectionHelper" = "Nicht dieses? Tippen Sie, um ein anderes auszuwählen.";
 "roomViewer.detectedMeters" = "Erkannt: %.2f m";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "Die Möbelhöhe muss kleiner als die Raumhöhe sein (%.2f m).";
 "roomViewer.roomMetersShort" = "Raum: %.2f m";

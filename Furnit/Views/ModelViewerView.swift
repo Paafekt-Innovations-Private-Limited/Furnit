@@ -345,7 +345,6 @@ struct ModelViewerView: View {
                 roomSnapshot = nil
                 capturedImage = nil
                 furnitureFitEstimatedHeightM = nil
-                yoloeService.releaseResources()
             }
         }
         .onAppear {

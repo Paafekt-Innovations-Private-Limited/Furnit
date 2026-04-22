@@ -318,12 +318,12 @@
 "roomViewer.resetOverlayScale" = "ওভারলে স্কেল রিসেট";
 "roomViewer.pinchGestureHintAccessibility" = "রুম জুম করতে চিমটি দিন। ফার্নিচার সেগমেন্টেশন চালু থাকলে চিমটি ওভারলের আকারও ছোট বা বড় করে।";
 "roomViewer.pinchGestureHintExplanation" = "দুই আঙুলে চিমটি দিয়ে রুম জুম করুন। ফার্নিচার ফিট চালু থাকলে সেগমেন্টেশন ওভারলের আকারও চিমটি দিয়ে বদলান।";
-"roomViewer.brainGestureHintExplanation" = "লাইভ ফার্নিচার শনাক্তকরণ শুরুতে মস্তিষ্কে ট্যাপ করুন। এক বা একাধিক সনাক্ত আইটেমে ট্যাপ করুন, তারপর শুধু সেই বাছাইগুলো মাস্ক করতে «সেগমেন্ট»-এ ট্যাপ করুন।";
+"roomViewer.brainGestureHintExplanation" = "ফার্নিচার শনাক্ত করতে 🧠 ট্যাপ করুন";
 "roomViewer.segmentFurnitureAction" = "সেগমেন্ট";
 "roomViewer.stopSegmentationAction" = "থামুন";
 "roomViewer.segmentFurnitureAccessibility" = "নির্বাচিত ফার্নিচার সেগমেন্ট করুন";
-"roomViewer.snapshotGestureHintExplanation" = "ঘরের ছবি ফটোতে সেভ করতে ক্যামেরায় ট্যাপ করুন।";
-"roomViewer.arFurnitureSizingHint" = "ক্যামেরা ব্যবহার করে ফার্নিচারের আকার ঘরের সাথে ভালো মিল রাখতে সাহায্য করে। LiDAR সহ আইফোনে সবচেয়ে ভালো কাজ করে। ভিউ ঝাঁকুনি দিলে বা অস্থির মনে হলে বন্ধ করুন।";
+"roomViewer.snapshotGestureHintExplanation" = "সেভ করতে 📷 ট্যাপ করুন";
+"roomViewer.arFurnitureSizingHint" = "📷 আরও ভালো মিলের জন্য";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "আমি ঘরের আকারের অনুপাতে ফার্নিচার বসাই। আগে ব্রেন আইকনে ট্যাপ করুন, তারপর আমাকে ব্যবহার করুন।";
 "roomViewer.arSizingEnable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ চালু করুন";
 "roomViewer.arSizingDisable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ বন্ধ করুন";
@@ -344,7 +344,7 @@
 "roomViewer.calibrateByWallTitle" = "দেয়াল দিয়ে ক্যালিব্রেট";
 "roomViewer.enterWallDimensionsHint" = "টেপ দিয়ে মাপা সামনের দেয়াল (মিটার) লিখুন, যেমন ৩.১৫ × ২.৮৬";
 "roomViewer.tapToCalibrate" = "ক্যালিব্রেট করতে ট্যাপ করুন";
-"roomViewer.fullVideoSelectionHelper" = "যা দেখছেন তাতে খুশি না হলে, আমাকে ট্যাপ করুন এবং আপনার পছন্দের ফার্নিচার বেছে নিন";
+"roomViewer.fullVideoSelectionHelper" = "এটা নয়? অন্যটি বেছে নিতে ট্যাপ করুন।";
 "roomViewer.detectedMeters" = "সনাক্ত: %.2f মি";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "আসবাবের উচ্চতা ঘরের উচ্চতার চেয়ে কম হতে হবে (%.2f মি)।";
 "roomViewer.roomMetersShort" = "রুম: %.2f মি";

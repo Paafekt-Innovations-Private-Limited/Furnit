@@ -206,7 +206,7 @@ class SettingsActivity : AppCompatActivity() {
             },
         )
         val fullVideoSwitch = createStyledSwitch(
-            prefs.getBoolean(FurnitureFitManager.KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, true),
+            prefs.getBoolean(FurnitureFitManager.KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, false),
         ) { isChecked ->
             prefs.edit().putBoolean(FurnitureFitManager.KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, isChecked).apply()
         }

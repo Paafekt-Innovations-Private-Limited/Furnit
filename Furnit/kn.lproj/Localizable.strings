@@ -300,12 +300,12 @@
 "roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
 "roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
 "roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
-"roomViewer.brainGestureHintExplanation" = "ಲೈವ್ ಫರ್ಣಿಚರ್ ಪತ್ತೆಗಾಗಿ ಮೆದುಳನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಒಂದು ಅಥವಾ ಹೆಚ್ಚು ಪತ್ತೆಯಾದ ವಸ್ತುಗಳ ಮೇಲೆ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ಆಯ್ಕೆಗಳನ್ನು ಮಾತ್ರ ಮಾಸ್ಕ್ ಮಾಡಲು «ಸೆಗ್ಮೆಂಟ್» ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಗುರುತಿಸಲು 🧠 ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.segmentFurnitureAction" = "ಸೆಗ್ಮೆಂಟ್";
 "roomViewer.stopSegmentationAction" = "ನಿಲ್ಲಿಸಿ";
 "roomViewer.segmentFurnitureAccessibility" = "ಆಯ್ಕೆಮಾಡಿದ ಫರ್ಣಿಚರ್ ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿ";
-"roomViewer.snapshotGestureHintExplanation" = "ಕೊಠಡಿಯ ಚಿತ್ರವನ್ನು ಫೋಟೋಗಳಿಗೆ ಉಳಿಸಲು ಕ್ಯಾಮರಾವನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ.";
-"roomViewer.arFurnitureSizingHint" = "ಕ್ಯಾಮರಾವನ್ನು ಬಳಸಿ ಪೀಠೋಪಕರಣದ ಗಾತ್ರವನ್ನು ಕೊಠಡಿಗೆ ಹೆಚ್ಚು ಹೊಂದಿಕೊಳ್ಳುವಂತೆ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. LiDAR ಇರುವ ಐಫೋನ್‌ಗಳಲ್ಲಿ ಅತ್ಯುತ್ತಮ. ನೋಟ ನಿಧಾನವಾಗಿದ್ದರೆ ಅಥವಾ ಅಸ್ಥಿರವಾಗಿದ್ದರೆ ಇದನ್ನು ಆಫ್ ಮಾಡಿ.";
+"roomViewer.snapshotGestureHintExplanation" = "ಉಳಿಸಲು 📷 ಟ್ಯಾಪ್ ಮಾಡಿ";
+"roomViewer.arFurnitureSizingHint" = "ಉತ್ತಮ ಹೊಂದಾಣಿಕೆಗೆ 📷";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "ನಾನು ಕೊಠಡಿಯ ಗಾತ್ರಕ್ಕೆ ಅನುಪಾತವಾಗಿ ಪೀಠೋಪಕರಣವನ್ನು ಇಡುತ್ತೇನೆ. ಮೊದಲು ಬ್ರೇನ್ ಐಕಾನ್ ಒತ್ತಿ, ನಂತರ ನನ್ನನ್ನು ಪ್ರಯತ್ನಿಸಿ.";
 "roomViewer.arSizingEnable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.arSizingDisable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ";
@@ -326,7 +326,7 @@
 "roomViewer.calibrateByWallTitle" = "ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.enterWallDimensionsHint" = "ಟೇಪ್‌ನಿಂದ ಅಳೆದ ಮುಂಭಾಗದ ಗೋಡೆ (ಮೀಟರ್) ನಮೂದಿಸಿ, ಉದಾ. 3.15 × 2.86";
 "roomViewer.tapToCalibrate" = "ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ";
-"roomViewer.fullVideoSelectionHelper" = "ನೀವು ನೋಡುತ್ತಿರುವುದು ಇಷ್ಟವಾಗದಿದ್ದರೆ, ನನ್ನನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ ಮತ್ತು ನಿಮಗೆ ಬೇಕಾದ ಪೀಠೋಪಕರಣವನ್ನು ಆಯ್ಕೆಮಾಡಿ";
+"roomViewer.fullVideoSelectionHelper" = "ಇದು ಅಲ್ಲವೇ? ಮತ್ತೊಂದನ್ನು ಆಯ್ಕೆಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ.";
 "roomViewer.detectedMeters" = "ಪತ್ತೆ: %.2f ಮೀ";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "ಪೀಠೋಪಕರಣದ ಎತ್ತರವು ಕೊಠಡಿಯ ಎತ್ತರಕ್ಕಿಂತ ಕಡಿಮೆಯಿರಬೇಕು (%.2f ಮೀ).";
 "roomViewer.roomMetersShort" = "ಕೊಠಡಿ: %.2f ಮೀ";

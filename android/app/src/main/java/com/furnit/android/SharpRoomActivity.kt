@@ -338,7 +338,7 @@ class SharpRoomActivity : AppCompatActivity() {
     /** Tapped object instances (bbox snapshots); segmentation matches by class + IoU, not class id alone. */
     private val selectedBrainPins = mutableListOf<DetectionResult>()
     private var showIdentifyLivePreview: Boolean = true
-    private var showFullVideoWithIdentifications: Boolean = true
+    private var showFullVideoWithIdentifications: Boolean = false
     private var cameraPreviewUseCase: Preview? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
@@ -1219,7 +1219,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
-                contentDescription = getString(R.string.model_viewer_ar)
+                contentDescription = getString(R.string.sharp_room_ar_sizing_hint)
+                tooltipText = getString(R.string.sharp_room_ar_sizing_hint)
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(16).toFloat()
@@ -2378,6 +2379,15 @@ class SharpRoomActivity : AppCompatActivity() {
         actionButton.visibility = View.GONE
     }
 
+    private fun updateBrainSelectionHelperText() {
+        brainHintExplanationView?.text =
+            if (selectedBrainPins.isNotEmpty()) {
+                getString(R.string.smartypants_pick_another_hint)
+            } else {
+                getString(R.string.sharp_room_brain_gesture_hint)
+            }
+    }
+
     private fun shouldShowIdentifyLivePreview(): Boolean {
         return showFullVideoWithIdentifications &&
             showIdentifyLivePreview &&
@@ -2439,12 +2449,14 @@ class SharpRoomActivity : AppCompatActivity() {
         updateBrainLivePreviewVisibility()
         setBrainSegmentationButtonActive(brainOverlayVisible)
         updateBrainActionButton()
+        updateBrainSelectionHelperText()
         updatePlacementIntelligenceCard()
     }
 
     private fun clearBrainSelection() {
         selectedBrainPins.clear()
         updateBrainActionButton()
+        updateBrainSelectionHelperText()
         brainDetectionOverlayView.setIdentifySelectionState(
             enabled = brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY,
             selectedPins = selectedBrainPins.toList(),
@@ -2493,6 +2505,7 @@ class SharpRoomActivity : AppCompatActivity() {
             selectedBrainPins.add(detection)
         }
         brainDetectionOverlayView.setIdentifySelectionState(true, selectedBrainPins.toList())
+        updateBrainSelectionHelperText()
         updateBrainActionButton()
     }
 

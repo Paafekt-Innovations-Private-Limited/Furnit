@@ -303,12 +303,12 @@
 "roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
 "roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
 "roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
-"roomViewer.brainGestureHintExplanation" = "Touchez le cerveau pour lancer l’identification des meubles en direct. Touchez un ou plusieurs objets détectés, puis Segmenter pour ne masquer que cette sélection.";
+"roomViewer.brainGestureHintExplanation" = "Appuyez sur 🧠 pour identifier les meubles";
 "roomViewer.segmentFurnitureAction" = "Segmenter";
 "roomViewer.stopSegmentationAction" = "Arrêter";
 "roomViewer.segmentFurnitureAccessibility" = "Segmenter les meubles sélectionnés";
-"roomViewer.snapshotGestureHintExplanation" = "Touchez l’appareil photo pour enregistrer une image de la pièce dans Photos.";
-"roomViewer.arFurnitureSizingHint" = "Utilise la caméra pour mieux ajuster la taille des meubles à la pièce. Fonctionne mieux sur les iPhone avec LiDAR. Désactive si la vue saccade ou semble instable.";
+"roomViewer.snapshotGestureHintExplanation" = "Appuyez sur 📷 pour enregistrer";
+"roomViewer.arFurnitureSizingHint" = "📷 pour mieux ajuster";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Je place les meubles en proportion de la taille de la pièce. Touchez l’icône cerveau puis réessayez avec moi.";
 "roomViewer.arSizingEnable" = "Activer le dimensionnement assisté par la caméra";
 "roomViewer.arSizingDisable" = "Désactiver le dimensionnement assisté par la caméra";
@@ -329,7 +329,7 @@
 "roomViewer.calibrateByWallTitle" = "Calibrer par le mur";
 "roomViewer.enterWallDimensionsHint" = "Saisir le mur avant mesuré au ruban (mètres), ex. 3,15 × 2,86";
 "roomViewer.tapToCalibrate" = "Appuyer pour calibrer";
-"roomViewer.fullVideoSelectionHelper" = "Si ce que vous voyez ne vous plaît pas, touchez-moi et choisissez le meuble que vous voulez";
+"roomViewer.fullVideoSelectionHelper" = "Pas celui-ci ? Appuyez pour en choisir un autre.";
 "roomViewer.detectedMeters" = "Détecté : %.2f m";
 "roomViewer.furnitureHeightMustBeLessThanRoomHeight" = "La hauteur du meuble doit être inférieure à la hauteur de la pièce (%.2f m).";
 "roomViewer.roomMetersShort" = "Pièce : %.2f m";

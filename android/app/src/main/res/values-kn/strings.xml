@@ -285,6 +285,7 @@
     <string name="smartypants_initializing">ಪ್ರಾರಂಭಿಸುತ್ತಿದೆ…</string>
     <string name="smartypants_drag_hint">ಫರ್ನಿಚರ್ ಚಲಿಸಲು ಎಳೆಯಿರಿ • ಗಾತ್ರ ಬದಲಿಸಲು pinch ಮಾಡಿ • ಕೊಠಡಿ ಪ್ಯಾನ್ ಮಾಡಲು ಹೊರಗೆ ಎಳೆಯಿರಿ</string>
     <string name="smartypants_tap_calibrate">ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="smartypants_pick_another_hint">ಇದು ಅಲ್ಲವೇ? ಮತ್ತೊಂದನ್ನು ಆಯ್ಕೆಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
     <string name="smartypants_scanning">ಸ್ಕ್ಯಾನ್ ಆಗುತ್ತಿದೆ…</string>
     <string name="smartypants_camera_error">ಕ್ಯಾಮೆರಾ ದೋಷ: %s</string>
     <string name="smartypants_screenshot_failed">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ವಿಫಲ: %s</string>
@@ -372,6 +373,9 @@
     <string name="model_viewer_title">ಮಾದರಿಗಳು</string>
     <string name="model_viewer_view_3d">3D ನೋಡಿ</string>
     <string name="model_viewer_ar">AR</string>
+    <string name="sharp_room_brain_gesture_hint">ಪೀಠೋಪಕರಣ ಗುರುತಿಸಲು 🧠 ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="sharp_room_snapshot_gesture_hint">ಉಳಿಸಲು 📷 ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="sharp_room_ar_sizing_hint">ಉತ್ತಮ ಹೊಂದಾಣಿಕೆಗೆ 📷</string>
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">ಅನುಮಾನ ಬ್ಯಾಕ್‌ಎಂಡ್</string>

@@ -437,8 +437,9 @@
     <string name="sharp_room_menu_help">Help</string>
     <!-- Gesture hints (parity with iOS SharpRoomView) -->
     <string name="sharp_room_pinch_gesture_hint">Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.</string>
-    <string name="sharp_room_brain_gesture_hint">Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.</string>
-    <string name="sharp_room_snapshot_gesture_hint">Tap the camera to save a picture of the room to Photos.</string>
+    <string name="sharp_room_brain_gesture_hint">Tap 🧠 to identify furniture</string>
+    <string name="sharp_room_snapshot_gesture_hint">Tap 📷 to save</string>
+    <string name="sharp_room_ar_sizing_hint">📷 for better match</string>
     <string name="sharp_room_ruler_content_description">Room dimensions</string>
     <string name="sharp_room_display_all_helpers_content_description">Show all room controls help</string>
     <string name="sharp_room_dimensions_chip">W × H × D\n%.2f × %.2f × %.2f m</string>
@@ -449,6 +450,7 @@
     <string name="smartypants_initializing">Initializing…</string>
     <string name="smartypants_drag_hint">Drag furniture to move • Pinch to resize • Drag outside to pan room</string>
     <string name="smartypants_tap_calibrate">Tap to calibrate</string>
+    <string name="smartypants_pick_another_hint">Not this one? Tap to pick another.</string>
     <string name="smartypants_scanning">Scanning…</string>
     <string name="smartypants_camera_error">Camera error: %s</string>
     <string name="smartypants_screenshot_failed">Screenshot failed: %s</string>

@@ -510,7 +510,6 @@ struct GLBRoomView: View {
                 segmentedFurnitureMeanSRGB = nil
                 isPlacementIntelligenceExpanded = false
                 showFurnitureDimensionsInput = false
-                yoloeService.releaseResources()
             }
         }
         .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }

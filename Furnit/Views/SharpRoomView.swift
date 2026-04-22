@@ -611,7 +611,6 @@ struct SharpRoomView: View {
                 latestEstimatedFurnitureDepthMeters = nil
                 latestAestheticScore = nil
                 segmentedFurnitureMeanSRGB = nil
-                yoloeService.releaseResources()
             }
         }
         .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
