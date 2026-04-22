@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
+import com.furnit.android.R
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.utils.DebugLogger
@@ -236,11 +237,11 @@ class SharpService private constructor(private val context: Context) {
         )
 
         try {
-            callback.onProgress(0.1f, "Preparing...")
-            callback.onProgress(0.15f, "Loading SHARP model...")
+            callback.onProgress(0.1f, context.getString(R.string.sharp_inference_preparing))
+            callback.onProgress(0.15f, context.getString(R.string.sharp_inference_loading_model))
             val initialized = kotlinx.coroutines.runBlocking { initialize() }
             if (!initialized) {
-                callback.onError(lastInitFailureMessage ?: "SHARP model not available. Push model files to device.")
+                callback.onError(lastInitFailureMessage ?: context.getString(R.string.sharp_inference_model_unavailable))
                 return
             }
             if (isCancelled()) {
@@ -249,7 +250,7 @@ class SharpService private constructor(private val context: Context) {
             }
 
             LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
-            callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
+            callback.onProgress(0.2f, context.getString(R.string.sharp_inference_running))
             val result = kotlinx.coroutines.runBlocking {
                 executorchInt8Sharp.inferStreaming(
                     bitmap = image,

@@ -363,6 +363,14 @@
 "sharp.downloadingEnginePercent" = "Downloading 3D engine... %d%%";
 "sharp.downloadComplete" = "Download complete";
 "sharp.downloadFailed" = "Download failed";
+"yoloe.downloadingModel" = "Downloading detection model...";
+"yoloe.downloadingModelPercent" = "Downloading detection model... %d%%";
+"yoloe.downloadComplete" = "Download complete";
+"yoloe.downloadFailed" = "Download failed";
+"yoloe.preparingModel" = "Preparing detection model...";
+"yoloe.loadingModel" = "Loading detection model...";
+"yoloe.ready" = "Ready";
+"yoloe.unavailable" = "Detection model unavailable";
 "sharp.gettingReady" = "Getting ready...";
 "sharp.notEnoughSpace" = "Not enough space on device";
 "sharp.settingThingsUp" = "Setting things up...";
@@ -407,8 +415,8 @@
 "roomViewer.calibrateWall" = "Calibrate Wall";
 "roomViewer.recenterView" = "Recenter View";
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
-"roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom the room. With furniture segmentation on, pinch also scales the overlay in or out.";
-"roomViewer.pinchGestureHintExplanation" = "Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.";
+"roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
+"roomViewer.pinchGestureHintExplanation" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
 "roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
 "roomViewer.displayAllHelpers" = "Display all helpers";

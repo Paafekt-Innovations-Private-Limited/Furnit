@@ -366,6 +366,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private var brainTimeoutRunnable: Runnable? = null
     /** Progress bar inside the brain progress overlay (used only for simple animated feedback). */
     private var brainProgressBar: ProgressBar? = null
+    private var brainProgressLabel: TextView? = null
     /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
     private var statusBarInsetTop = 0
 
@@ -2310,6 +2311,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     textSize = 14f
                     setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(8))
                 }
+                brainProgressLabel = label
                 addView(label)
                 val progress = ProgressBar(
                     this@SharpRoomActivity,
@@ -2634,12 +2636,21 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun createInitializedFurnitureFitManager(): FurnitureFitManager? {
+        setBrainProgressText(R.string.yoloe_loading_model)
         val initializedManager = FurnitureFitManager(this)
         if (initializedManager.initializeAuto()) {
+            setBrainProgressText(R.string.smartypants_detecting_furniture)
             return initializedManager
         }
+        setBrainProgressText(R.string.yoloe_model_unavailable)
         initializedManager.close()
         return null
+    }
+
+    private fun setBrainProgressText(resId: Int) {
+        runOnUiThread {
+            brainProgressLabel?.text = getString(resId)
+        }
     }
 
     private fun prewarmBrainSegmentationIfNeeded() {

@@ -298,8 +298,8 @@
 "roomViewer.calibrateWall" = "ചുവര്‍ കാലിബ്രേറ്റ് ചെയ്യുക";
 "roomViewer.recenterView" = "കാഴ്ച മധ്യത്തിലാക്കുക";
 "roomViewer.resetOverlayScale" = "ഓവർലേ സ്കേൽ റീസെറ്റ്";
-"roomViewer.pinchGestureHintAccessibility" = "മുറി സൂം ചെയ്യാൻ രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടുക. ഫർണിച്ചർ സെഗ്മെന്റേഷൻ ഓണായാൽ ചിമുട്ടൽ ഓവർലേയുടെ വലുപ്പവും മാറ്റും.";
-"roomViewer.pinchGestureHintExplanation" = "രണ്ട് വിരലുകൾ കൊണ്ട് ചിമുട്ടി മുറി സൂം ചെയ്യുക. ഫർണിച്ചർ ഫിറ്റ് ഓണായാൽ ചിമുട്ടൽ സെഗ്മെന്റേഷൻ ഓവർലേയും മാറ്റും.";
+"roomViewer.pinchGestureHintAccessibility" = "സൂം ചെയ്യാൻ ചിമുട്ടുക. Furniture Fit ഓണെങ്കിൽ ഓവർലേയും വലുപ്പം മാറും.";
+"roomViewer.pinchGestureHintExplanation" = "സൂം ചെയ്യാൻ ചിമുട്ടുക. Furniture Fit ഓണെങ്കിൽ ഓവർലേയും വലുപ്പം മാറും.";
 "roomViewer.brainGestureHintExplanation" = "ഫർണിച്ചർ തിരിച്ചറിയാൻ 🧠 ടാപ്പ് ചെയ്യുക";
 "roomViewer.segmentFurnitureAction" = "സെഗ്മെന്റ്";
 "roomViewer.stopSegmentationAction" = "നിർത്തുക";
@@ -470,6 +470,14 @@
 "sharp.downloadingEnginePercent" = "3D എഞ്ചിൻ ഡൗൺലോഡ് ചെയ്യുന്നു... %d%%";
 "sharp.downloadComplete" = "ഡൗൺലോഡ് പൂർത്തിയായി";
 "sharp.downloadFailed" = "ഡൗൺലോഡ് പരാജയപ്പെട്ടു";
+"yoloe.downloadingModel" = "ഡിറ്റക്ഷൻ മോഡൽ ഡൗൺലോഡ് ചെയ്യുന്നു...";
+"yoloe.downloadingModelPercent" = "ഡിറ്റക്ഷൻ മോഡൽ ഡൗൺലോഡ് ചെയ്യുന്നു... %d%%";
+"yoloe.downloadComplete" = "ഡൗൺലോഡ് പൂർത്തിയായി";
+"yoloe.downloadFailed" = "ഡൗൺലോഡ് പരാജയപ്പെട്ടു";
+"yoloe.preparingModel" = "ഡിറ്റക്ഷൻ മോഡൽ തയ്യാറാക്കുന്നു...";
+"yoloe.loadingModel" = "ഡിറ്റക്ഷൻ മോഡൽ ലോഡ് ചെയ്യുന്നു...";
+"yoloe.ready" = "തയ്യാർ";
+"yoloe.unavailable" = "ഡിറ്റക്ഷൻ മോഡൽ ലഭ്യമല്ല";
 "sharp.gettingReady" = "തയ്യാറാക്കുന്നു...";
 "sharp.notEnoughSpace" = "ഉപകരണത്തിൽ മതിയായ സ്ഥലമില്ല";
 "sharp.settingThingsUp" = "സജ്ജമാക്കുന്നു...";

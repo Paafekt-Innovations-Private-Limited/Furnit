@@ -299,8 +299,8 @@
 "roomViewer.calibrateWall" = "校準牆面";
 "roomViewer.recenterView" = "檢視畫面置中";
 "roomViewer.resetOverlayScale" = "重設疊加比例";
-"roomViewer.pinchGestureHintAccessibility" = "雙指捏合可縮放房間。開啟家具分割時，捏合亦可放大或縮小疊加層。";
-"roomViewer.pinchGestureHintExplanation" = "雙指捏合縮放房間。開啟家具偵測後，捏合亦可縮放分割疊加層。";
+"roomViewer.pinchGestureHintAccessibility" = "捏合縮放。開啟 Furniture Fit 時也會調整疊加層。";
+"roomViewer.pinchGestureHintExplanation" = "捏合縮放。開啟 Furniture Fit 時也會調整疊加層。";
 "roomViewer.brainGestureHintExplanation" = "點按 🧠 識別家具";
 "roomViewer.segmentFurnitureAction" = "分割";
 "roomViewer.stopSegmentationAction" = "停止";
@@ -471,6 +471,14 @@
 "sharp.downloadingEnginePercent" = "正在下載3D引擎... %d%%";
 "sharp.downloadComplete" = "下載完成";
 "sharp.downloadFailed" = "下載失敗";
+"yoloe.downloadingModel" = "正在下載偵測模型...";
+"yoloe.downloadingModelPercent" = "正在下載偵測模型... %d%%";
+"yoloe.downloadComplete" = "下載完成";
+"yoloe.downloadFailed" = "下載失敗";
+"yoloe.preparingModel" = "正在準備偵測模型...";
+"yoloe.loadingModel" = "正在載入偵測模型...";
+"yoloe.ready" = "就緒";
+"yoloe.unavailable" = "偵測模型無法使用";
 "sharp.gettingReady" = "正在準備...";
 "sharp.notEnoughSpace" = "裝置儲存空間不足";
 "sharp.settingThingsUp" = "正在設定...";

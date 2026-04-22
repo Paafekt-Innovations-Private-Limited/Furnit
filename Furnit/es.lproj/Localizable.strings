@@ -301,8 +301,8 @@
 "roomViewer.calibrateWall" = "Calibrar pared";
 "roomViewer.recenterView" = "Recentrar vista";
 "roomViewer.resetOverlayScale" = "Restablecer escala de superposición";
-"roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom en la habitación. Con los muebles segmentados, el pellizco también escala la superposición.";
-"roomViewer.pinchGestureHintExplanation" = "Pellizca con dos dedos para hacer zoom en la habitación. Con Detección de muebles activa, el pellizco también escala la superposición de segmentación.";
+"roomViewer.pinchGestureHintAccessibility" = "Pellizca para hacer zoom. Con Furniture Fit, también redimensiona la superposición.";
+"roomViewer.pinchGestureHintExplanation" = "Pellizca para hacer zoom. Con Furniture Fit, también redimensiona la superposición.";
 "roomViewer.brainGestureHintExplanation" = "Toca 🧠 para identificar muebles";
 "roomViewer.segmentFurnitureAction" = "Segmentar";
 "roomViewer.stopSegmentationAction" = "Detener";
@@ -473,6 +473,14 @@
 "sharp.downloadingEnginePercent" = "Descargando motor 3D... %d%%";
 "sharp.downloadComplete" = "Descarga completada";
 "sharp.downloadFailed" = "Error en la descarga";
+"yoloe.downloadingModel" = "Descargando modelo de detección...";
+"yoloe.downloadingModelPercent" = "Descargando modelo de detección... %d%%";
+"yoloe.downloadComplete" = "Descarga completada";
+"yoloe.downloadFailed" = "Error en la descarga";
+"yoloe.preparingModel" = "Preparando modelo de detección...";
+"yoloe.loadingModel" = "Cargando modelo de detección...";
+"yoloe.ready" = "Listo";
+"yoloe.unavailable" = "Modelo de detección no disponible";
 "sharp.gettingReady" = "Preparando...";
 "sharp.notEnoughSpace" = "No hay espacio suficiente en el dispositivo";
 "sharp.settingThingsUp" = "Configurando...";

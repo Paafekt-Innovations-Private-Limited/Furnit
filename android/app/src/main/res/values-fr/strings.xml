@@ -335,6 +335,28 @@
     <string name="sharp_inference_loading_model">Chargement du modèle SHARP…</string>
     <string name="sharp_inference_running">Exécution de SHARP 3D…</string>
     <string name="sharp_inference_preparing">Préparation…</string>
+    <string name="sharp_room_pinch_gesture_hint">Pincez pour zoomer. Avec Furniture Fit, cela redimensionne aussi le calque.</string>
+    <string name="sharp_inference_model_unavailable">Modèle SHARP indisponible</string>
+    <string name="sharp_inference_writing_room_file">Préparation de l’aperçu…</string>
+    <string name="sharp_inference_room_ready">Votre pièce est prête !</string>
+    <string name="yoloe_loading_model">Chargement du modèle de détection…</string>
+    <string name="yoloe_model_ready">Prêt</string>
+    <string name="yoloe_model_unavailable">Modèle de détection indisponible</string>
+    <string name="single_image_scan_scanning">Analyse de l’image sélectionnée…</string>
+    <string name="single_image_scan_no_overlay">Aucune surcouche détectée</string>
+    <string name="ai_progress_getting_photo_ready">Préparation de votre photo…</string>
+    <string name="ai_progress_warming_up">Mise en route…</string>
+    <string name="ai_progress_building_room_step">Création de votre pièce… étape %1$s sur 35</string>
+    <string name="ai_progress_building_room">Création de votre pièce…</string>
+    <string name="ai_progress_understanding_picture">Analyse de toute l’image…</string>
+    <string name="ai_progress_adding_depth_shape">Ajout de la profondeur et de la forme…</string>
+    <string name="ai_progress_finishing_touches">Ajout des finitions…</string>
+    <string name="ai_progress_preparing_preview">Préparation de l’aperçu…</string>
+    <string name="ai_progress_getting_started">Démarrage…</string>
+    <string name="ai_progress_working_on_it">Traitement en cours…</string>
+    <string name="ai_progress_almost_there">Presque terminé…</string>
+    <string name="ai_progress_finishing_up">Finalisation…</string>
+    <string name="ai_progress_ready_tap_to_view">Prêt — appuyez pour voir</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 Retour</string>

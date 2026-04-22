@@ -316,8 +316,8 @@
 "roomViewer.calibrateWall" = "معايرة الجدار";
 "roomViewer.recenterView" = "إعادة تمركز العرض";
 "roomViewer.resetOverlayScale" = "إعادة تعيين حجم الطبقة";
-"roomViewer.pinchGestureHintAccessibility" = "قرّص بإصبعين للتكبير أو التصغير في الغرفة. عند تفعيل تجزئة الأثاث، يغيّر القرص أيضًا حجم الطبقة الفوقية.";
-"roomViewer.pinchGestureHintExplanation" = "قرّص بإصبعين لتكبير الغرفة أو تصغيرها. عند تفعيل ملاءمة الأثاث، يغيّر القرص أيضًا حجم طبقة التجزئة.";
+"roomViewer.pinchGestureHintAccessibility" = "قرّص للتكبير. مع ملاءمة الأثاث، يغيّر القرص حجم الطبقة.";
+"roomViewer.pinchGestureHintExplanation" = "قرّص للتكبير. مع ملاءمة الأثاث، يغيّر القرص حجم الطبقة.";
 "roomViewer.brainGestureHintExplanation" = "اضغط 🧠 للتعرف على الأثاث";
 "roomViewer.segmentFurnitureAction" = "تجزئة";
 "roomViewer.stopSegmentationAction" = "إيقاف";
@@ -470,6 +470,14 @@
 "sharp.downloadingEnginePercent" = "جاري تنزيل محرك ثلاثي الأبعاد... %d%%";
 "sharp.downloadComplete" = "اكتمل التنزيل";
 "sharp.downloadFailed" = "فشل التنزيل";
+"yoloe.downloadingModel" = "جاري تنزيل نموذج الكشف...";
+"yoloe.downloadingModelPercent" = "جاري تنزيل نموذج الكشف... %d%%";
+"yoloe.downloadComplete" = "اكتمل التنزيل";
+"yoloe.downloadFailed" = "فشل التنزيل";
+"yoloe.preparingModel" = "جاري تجهيز نموذج الكشف...";
+"yoloe.loadingModel" = "جاري تحميل نموذج الكشف...";
+"yoloe.ready" = "جاهز";
+"yoloe.unavailable" = "نموذج الكشف غير متاح";
 "sharp.gettingReady" = "جاري التجهيز...";
 "sharp.notEnoughSpace" = "لا توجد مساحة كافية على الجهاز";
 "sharp.settingThingsUp" = "جاري الإعداد...";

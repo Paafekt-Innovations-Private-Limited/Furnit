@@ -566,7 +566,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             )
 
             singleImageScanStatusView = TextView(this@SinglePhotoRoomActivity).apply {
-                text = "Scanning selected image…"
+                text = getString(R.string.single_image_scan_scanning)
                 textSize = 14f
                 setTextColor(Color.WHITE)
                 setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10))
@@ -993,14 +993,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
         if (::singleImageScanStatusView.isInitialized) {
             singleImageScanStatusView.visibility = View.GONE
-            singleImageScanStatusView.text = "Scanning selected image…"
+            singleImageScanStatusView.text = getString(R.string.single_image_scan_scanning)
         }
     }
 
     private fun startSingleImageOverlayScan(bitmap: Bitmap) {
         if (!::singleImageOverlayView.isInitialized || !::singleImageScanStatusView.isInitialized) return
         val requestId = ++singleImageScanRequestId
-        singleImageScanStatusView.text = "Scanning selected image…"
+        singleImageScanStatusView.text = getString(R.string.single_image_scan_scanning)
         singleImageScanStatusView.visibility = View.VISIBLE
         lifecycleScope.launch {
             val initialized = if (furnitureFitInitialized) {
@@ -1016,7 +1016,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             if (requestId != singleImageScanRequestId || isDestroyed) return@launch
 
             if (!initialized) {
-                singleImageScanStatusView.text = "Overlay unavailable"
+                singleImageScanStatusView.text = getString(R.string.yoloe_model_unavailable)
                 return@launch
             }
 
@@ -1025,7 +1025,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (result == null) {
                         singleImageOverlayView.setMaskAndDetections(null, emptyList(), 640)
-                        singleImageScanStatusView.text = "No overlay detected"
+                        singleImageScanStatusView.text = getString(R.string.single_image_scan_no_overlay)
                         return@runOnUiThread
                     }
                     singleImageOverlayView.setMaskAndDetections(
@@ -1090,7 +1090,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiOptionShowPercent = false
         lastAIGenerationRawMessage = ""
         lastAIGenerationProgress = 0f
-        lastAIGenerationMessage = "Getting started…"
+        lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
         aiSessionId++
         SharpService.getInstance(this).release()
         aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
@@ -1160,7 +1160,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         promoteSharpRoomToLibrary(result)
                     }
                     if (!isDestroyed) {
-                        updateAIOptionProgress(1f, "Ready")
+                        updateAIOptionProgress(1f, getString(R.string.yoloe_model_ready))
                         hideProgressOverlay()
                         if (aiRoomOverlayRequested) {
                             aiRoomOverlayRequested = false
@@ -1169,8 +1169,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         updateAiStopButtonVisibility()
                     } else {
                         lastAIGenerationProgress = 1f
-                        lastAIGenerationRawMessage = "Ready"
-                        lastAIGenerationMessage = toFriendlyMessage(1f, "Ready")
+                        lastAIGenerationRawMessage = getString(R.string.yoloe_model_ready)
+                        lastAIGenerationMessage = toFriendlyMessage(1f, getString(R.string.yoloe_model_ready))
                         updateGlobalAiProgressOverlay()
                     }
                     DebugLogger.d("SinglePhotoRoom", "AI generation completed in background")
@@ -1187,7 +1187,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         aiOptionShowPercent = false
                         lastAIGenerationRawMessage = ""
                         lastAIGenerationProgress = 0f
-                        lastAIGenerationMessage = "Getting started…"
+                        lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
                         if (!isDestroyed) {
                             hideProgressOverlay()
                             aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
@@ -1252,7 +1252,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
-    private var lastAIGenerationMessage: String = "Getting started…"
+    private var lastAIGenerationMessage: String = ""
     private var lastAIGenerationRawMessage: String = ""
 
     private fun updateAIOptionProgress(progress: Float, message: String) {
@@ -1264,7 +1264,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // Idle bluff only when nothing is running. While generating (or after Run in background), show % like before.
         if (!isDestroyed) {
             aiOptionSubtitleView?.text = when {
-                progress >= 1f -> "Ready — tap to view"
+                progress >= 1f -> getString(R.string.ai_progress_ready_tap_to_view)
                 aiGenerationRunning || aiOptionShowPercent -> "$friendly (${(progress * 100).toInt()}%)"
                 else -> idle
             }
@@ -1308,7 +1308,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // Not running and no result (failed or cancelled): start fresh
         logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "start fresh", mapOf())
         lastAIGenerationProgress = 0f
-        lastAIGenerationMessage = "Getting started…"
+        lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
         lastAIGenerationRawMessage = ""
         aiOptionShowPercent = false
         startAIGenerationInBackground(selectedBitmap!!)
@@ -1387,24 +1387,24 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun toFriendlyMessage(progress: Float, message: String): String {
         val m = message.lowercase()
         return when {
-            progress >= 1f -> "Your room is ready!"
-            m.contains("preprocess") || m.contains("1536") -> "Getting your photo ready…"
-            m.contains("loading") && (m.contains("encoder") || m.contains("model")) -> "Warming up…"
+            progress >= 1f -> getString(R.string.sharp_inference_room_ready)
+            m.contains("preprocess") || m.contains("1536") -> getString(R.string.ai_progress_getting_photo_ready)
+            m.contains("loading") && (m.contains("encoder") || m.contains("model")) -> getString(R.string.ai_progress_warming_up)
             m.contains("part 1") || m.contains("part 2") || m.contains("patch") -> {
                 val step = Regex("""(\d+)\s*/\s*35""").find(message)?.groupValues?.get(1)
-                if (step != null) "Building your room… step $step of 35" else "Building your room…"
+                if (step != null) getString(R.string.ai_progress_building_room_step, step) else getString(R.string.ai_progress_building_room)
             }
-            m.contains("part 3") || m.contains("image encoder") -> "Understanding the full picture…"
-            m.contains("part 4a") || m.contains("tokens") -> "Adding depth and shape…"
-            m.contains("part 4b") || m.contains("decoder") -> "Adding the finishing touches…"
+            m.contains("part 3") || m.contains("image encoder") -> getString(R.string.ai_progress_understanding_picture)
+            m.contains("part 4a") || m.contains("tokens") -> getString(R.string.ai_progress_adding_depth_shape)
+            m.contains("part 4b") || m.contains("decoder") -> getString(R.string.ai_progress_finishing_touches)
             m.contains("writing") || m.contains("room file") || m.contains("ply") || m.contains("gaussian") ->
-                "Preparing your preview…"
-            m.contains("done") -> "Your room is ready!"
+                getString(R.string.ai_progress_preparing_preview)
+            m.contains("done") -> getString(R.string.sharp_inference_room_ready)
             m.contains("error") || m.contains("failed") -> message
-            progress < 0.15f -> "Getting started…"
-            progress < 0.45f -> "Working on it…"
-            progress < 0.75f -> "Almost there…"
-            else -> "Finishing up…"
+            progress < 0.15f -> getString(R.string.ai_progress_getting_started)
+            progress < 0.45f -> getString(R.string.ai_progress_working_on_it)
+            progress < 0.75f -> getString(R.string.ai_progress_almost_there)
+            else -> getString(R.string.ai_progress_finishing_up)
         }
     }
 
@@ -1689,7 +1689,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ))
         } else {
             displayProgress = 0f
-            displayMessage = "Getting started…"
+            displayMessage = getString(R.string.ai_progress_getting_started)
             logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "reset to 0%", mapOf(
                 "preserveProgress" to preserveProgress, "reason" to if (preserveProgress) "lastProgress was 0" else "fresh start"
             ))

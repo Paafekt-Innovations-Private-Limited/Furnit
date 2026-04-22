@@ -298,8 +298,8 @@
 "roomViewer.calibrateWall" = "दीवार कैलिब्रेट करें";
 "roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";
 "roomViewer.resetOverlayScale" = "ओवरले स्केल रीसेट करें";
-"roomViewer.pinchGestureHintAccessibility" = "कमरे को ज़ूम करने के लिए चुटकी लें। फर्नीचर सेगमेंटेशन चालू होने पर चुटकी ओवरले का आकार भी बदलती है।";
-"roomViewer.pinchGestureHintExplanation" = "दो उंगलियों से चुटकी लेकर कमरा ज़ूम करें। फर्नीचर फिट चालू होने पर चुटकी सेगमेंटेशन ओवरले का आकार भी बदलती है।";
+"roomViewer.pinchGestureHintAccessibility" = "ज़ूम करने के लिए पिंच करें। Furniture Fit चालू हो तो ओवरले भी रीサイズ होता है।";
+"roomViewer.pinchGestureHintExplanation" = "ज़ूम करने के लिए पिंच करें। Furniture Fit चालू हो तो ओवरले भी रीサイズ होता है।";
 "roomViewer.brainGestureHintExplanation" = "फर्नीचर पहचानने के लिए 🧠 टैप करें";
 "roomViewer.segmentFurnitureAction" = "सेगमेंट";
 "roomViewer.stopSegmentationAction" = "रोकें";
@@ -470,6 +470,14 @@
 "sharp.downloadingEnginePercent" = "3D इंजन डाउनलोड हो रहा है... %d%%";
 "sharp.downloadComplete" = "डाउनलोड पूर्ण";
 "sharp.downloadFailed" = "डाउनलोड विफल";
+"yoloe.downloadingModel" = "डिटेक्शन मॉडल डाउनलोड हो रहा है...";
+"yoloe.downloadingModelPercent" = "डिटेक्शन मॉडल डाउनलोड हो रहा है... %d%%";
+"yoloe.downloadComplete" = "डाउनलोड पूर्ण";
+"yoloe.downloadFailed" = "डाउनलोड विफल";
+"yoloe.preparingModel" = "डिटेक्शन मॉडल तैयार हो रहा है...";
+"yoloe.loadingModel" = "डिटेक्शन मॉडल लोड हो रहा है...";
+"yoloe.ready" = "तैयार";
+"yoloe.unavailable" = "डिटेक्शन मॉडल उपलब्ध नहीं है";
 "sharp.gettingReady" = "तैयार हो रहा है...";
 "sharp.notEnoughSpace" = "डिवाइस पर पर्याप्त जगह नहीं";
 "sharp.settingThingsUp" = "सेटअप हो रहा है...";

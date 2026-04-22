@@ -298,8 +298,8 @@
 "roomViewer.calibrateWall" = "சுவரை கேலிப்ரேட் செய்";
 "roomViewer.recenterView" = "காட்சியை மையப்படுத்து";
 "roomViewer.resetOverlayScale" = "ஓவர்லே அளவை மீட்டமை";
-"roomViewer.pinchGestureHintAccessibility" = "அறையை பெரிதாக்க இரண்டு விரல்களால் சிமிட்டவும். தளபாடப் பிரிப்பு இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் மேலடுக்கின் அளவையும் மாற்றும்.";
-"roomViewer.pinchGestureHintExplanation" = "இரண்டு விரல்களால் சிமிட்டி அறையை பெரிதாக்கவும். தளபாடப் பொருத்தம் இயக்கத்தில் இருக்கும்போது சிமிட்டுதல் பிரிப்பு மேலடுக்கையும் மாற்றும்.";
+"roomViewer.pinchGestureHintAccessibility" = "பெரிதாக்க சிமிட்டவும். Furniture Fit on ஆக இருந்தால் overlay அளவும் மாறும்.";
+"roomViewer.pinchGestureHintExplanation" = "பெரிதாக்க சிமிட்டவும். Furniture Fit on ஆக இருந்தால் overlay அளவும் மாறும்.";
 "roomViewer.brainGestureHintExplanation" = "மரச்சாமானை அடையாளம் காண 🧠 தட்டவும்";
 "roomViewer.segmentFurnitureAction" = "பிரித்தெடு";
 "roomViewer.stopSegmentationAction" = "நிறுத்து";
@@ -470,6 +470,14 @@
 "sharp.downloadingEnginePercent" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது... %d%%";
 "sharp.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
 "sharp.downloadFailed" = "பதிவிறக்கம் தோல்வி";
+"yoloe.downloadingModel" = "கண்டறிதல் மாதிரி பதிவிறக்கப்படுகிறது...";
+"yoloe.downloadingModelPercent" = "கண்டறிதல் மாதிரி பதிவிறக்கப்படுகிறது... %d%%";
+"yoloe.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
+"yoloe.downloadFailed" = "பதிவிறக்கம் தோல்வி";
+"yoloe.preparingModel" = "கண்டறிதல் மாதிரி தயாராகிறது...";
+"yoloe.loadingModel" = "கண்டறிதல் மாதிரி ஏற்றப்படுகிறது...";
+"yoloe.ready" = "தயார்";
+"yoloe.unavailable" = "கண்டறிதல் மாதிரி கிடைக்கவில்லை";
 "sharp.gettingReady" = "தயாராகிறது...";
 "sharp.notEnoughSpace" = "சாதனத்தில் போதுமான இடமில்லை";
 "sharp.settingThingsUp" = "அமைக்கப்படுகிறது...";

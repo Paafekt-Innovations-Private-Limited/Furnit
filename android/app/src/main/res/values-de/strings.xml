@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">SHARP-Modell wird geladen…</string>
     <string name="sharp_inference_running">SHARP 3D läuft…</string>
     <string name="sharp_inference_preparing">Vorbereiten…</string>
+    <string name="sharp_room_pinch_gesture_hint">Zum Zoomen kneifen. Mit Furniture Fit skaliert Kneifen auch das Overlay.</string>
+    <string name="sharp_inference_model_unavailable">SHARP-Modell nicht verfügbar</string>
+    <string name="sharp_inference_writing_room_file">Vorschau wird vorbereitet…</string>
+    <string name="sharp_inference_room_ready">Ihr Raum ist bereit!</string>
+    <string name="yoloe_loading_model">Erkennungsmodell wird geladen…</string>
+    <string name="yoloe_model_ready">Bereit</string>
+    <string name="yoloe_model_unavailable">Erkennungsmodell nicht verfügbar</string>
+    <string name="single_image_scan_scanning">Ausgewähltes Bild wird gescannt…</string>
+    <string name="single_image_scan_no_overlay">Kein Overlay erkannt</string>
+    <string name="ai_progress_getting_photo_ready">Foto wird vorbereitet…</string>
+    <string name="ai_progress_warming_up">Wird aufgewärmt…</string>
+    <string name="ai_progress_building_room_step">Raum wird erstellt… Schritt %1$s von 35</string>
+    <string name="ai_progress_building_room">Raum wird erstellt…</string>
+    <string name="ai_progress_understanding_picture">Das ganze Bild wird verstanden…</string>
+    <string name="ai_progress_adding_depth_shape">Tiefe und Form werden hinzugefügt…</string>
+    <string name="ai_progress_finishing_touches">Letzte Details werden ergänzt…</string>
+    <string name="ai_progress_preparing_preview">Vorschau wird vorbereitet…</string>
+    <string name="ai_progress_getting_started">Los geht’s…</string>
+    <string name="ai_progress_working_on_it">In Arbeit…</string>
+    <string name="ai_progress_almost_there">Fast fertig…</string>
+    <string name="ai_progress_finishing_up">Abschluss läuft…</string>
+    <string name="ai_progress_ready_tap_to_view">Bereit — zum Anzeigen tippen</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 Zurück</string>

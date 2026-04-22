@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">正在加载 SHARP 模型…</string>
     <string name="sharp_inference_running">正在运行 SHARP 3D…</string>
     <string name="sharp_inference_preparing">准备中…</string>
+    <string name="sharp_room_pinch_gesture_hint">捏合缩放。开启 Furniture Fit 时也会调整叠加层。</string>
+    <string name="sharp_inference_model_unavailable">SHARP 模型不可用</string>
+    <string name="sharp_inference_writing_room_file">正在准备预览…</string>
+    <string name="sharp_inference_room_ready">房间已就绪！</string>
+    <string name="yoloe_loading_model">正在加载检测模型…</string>
+    <string name="yoloe_model_ready">就绪</string>
+    <string name="yoloe_model_unavailable">检测模型不可用</string>
+    <string name="single_image_scan_scanning">正在扫描所选图片…</string>
+    <string name="single_image_scan_no_overlay">未检测到叠加层</string>
+    <string name="ai_progress_getting_photo_ready">正在准备照片…</string>
+    <string name="ai_progress_warming_up">正在预热…</string>
+    <string name="ai_progress_building_room_step">正在生成房间…第 %1$s/35 步</string>
+    <string name="ai_progress_building_room">正在生成房间…</string>
+    <string name="ai_progress_understanding_picture">正在理解完整画面…</string>
+    <string name="ai_progress_adding_depth_shape">正在添加深度和形状…</string>
+    <string name="ai_progress_finishing_touches">正在添加最后细节…</string>
+    <string name="ai_progress_preparing_preview">正在准备预览…</string>
+    <string name="ai_progress_getting_started">正在开始…</string>
+    <string name="ai_progress_working_on_it">正在处理…</string>
+    <string name="ai_progress_almost_there">快完成了…</string>
+    <string name="ai_progress_finishing_up">正在收尾…</string>
+    <string name="ai_progress_ready_tap_to_view">已就绪 — 点按查看</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 返回</string>

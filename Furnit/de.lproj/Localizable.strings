@@ -328,8 +328,8 @@
 "roomViewer.calibrateWall" = "Wand kalibrieren";
 "roomViewer.recenterView" = "Ansicht zentrieren";
 "roomViewer.resetOverlayScale" = "Overlay-Maßstab zurücksetzen";
-"roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen der Ansicht kneifen. Bei aktiver Möbel-Erkennung skaliert Kneifen auch die Einblendung.";
-"roomViewer.pinchGestureHintExplanation" = "Mit zwei Fingern kneifen, um den Raum zu zoomen. Wenn Möbel-Erkennung aktiv ist, skaliert Kneifen auch die Segmentierungs-Einblendung.";
+"roomViewer.pinchGestureHintAccessibility" = "Zum Zoomen kneifen. Mit Furniture Fit skaliert Kneifen auch das Overlay.";
+"roomViewer.pinchGestureHintExplanation" = "Zum Zoomen kneifen. Mit Furniture Fit skaliert Kneifen auch das Overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tippe auf 🧠, um Möbel zu erkennen";
 "roomViewer.segmentFurnitureAction" = "Segmentieren";
 "roomViewer.stopSegmentationAction" = "Stopp";
@@ -482,6 +482,14 @@
 "sharp.downloadingEnginePercent" = "3D-Engine wird heruntergeladen... %d%%";
 "sharp.downloadComplete" = "Download abgeschlossen";
 "sharp.downloadFailed" = "Download fehlgeschlagen";
+"yoloe.downloadingModel" = "Erkennungsmodell wird heruntergeladen...";
+"yoloe.downloadingModelPercent" = "Erkennungsmodell wird heruntergeladen... %d%%";
+"yoloe.downloadComplete" = "Download abgeschlossen";
+"yoloe.downloadFailed" = "Download fehlgeschlagen";
+"yoloe.preparingModel" = "Erkennungsmodell wird vorbereitet...";
+"yoloe.loadingModel" = "Erkennungsmodell wird geladen...";
+"yoloe.ready" = "Bereit";
+"yoloe.unavailable" = "Erkennungsmodell nicht verfügbar";
 "sharp.gettingReady" = "Wird vorbereitet...";
 "sharp.notEnoughSpace" = "Nicht genug Speicher auf dem Gerät";
 "sharp.settingThingsUp" = "Einrichtung läuft...";

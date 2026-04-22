@@ -214,6 +214,20 @@ enum L10n {
         static let cameraModeToggleAccessibilityHint = "sharp.cameraModeToggleAccessibilityHint".localized
     }
 
+    /// YOLOE on-demand resource status messages (furniture detection model download + load)
+    enum YOLOE {
+        static let downloadingModel = "yoloe.downloadingModel".localized
+        static func downloadingModelPercent(_ percent: Int) -> String {
+            String(format: "yoloe.downloadingModelPercent".localized, locale: .current, percent)
+        }
+        static let downloadComplete = "yoloe.downloadComplete".localized
+        static let downloadFailed = "yoloe.downloadFailed".localized
+        static let preparingModel = "yoloe.preparingModel".localized
+        static let loadingModel = "yoloe.loadingModel".localized
+        static let ready = "yoloe.ready".localized
+        static let unavailable = "yoloe.unavailable".localized
+    }
+
     // MARK: Licenses & Attributions
     enum Licenses {
         static let title = "licenses.title".localized

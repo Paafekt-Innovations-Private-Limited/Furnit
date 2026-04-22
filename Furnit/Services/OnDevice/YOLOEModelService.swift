@@ -130,7 +130,7 @@ class YOLOEModelService: ObservableObject {
         logDebug("YOLOE: Starting ODR download…")
         isDownloadingResources = true
         downloadProgress = 0.0
-        statusMessage = "Downloading detection model…"
+        statusMessage = L10n.YOLOE.downloadingModel
 
         let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
         request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
@@ -139,7 +139,7 @@ class YOLOEModelService: ObservableObject {
             Task { @MainActor in
                 self?.downloadProgress = progress.fractionCompleted
                 let percent = Int(progress.fractionCompleted * 100)
-                self?.statusMessage = "Downloading detection model… \(percent)%"
+                self?.statusMessage = L10n.YOLOE.downloadingModelPercent(percent)
             }
         }
 
@@ -150,7 +150,7 @@ class YOLOEModelService: ObservableObject {
             resourcesAvailable = true
             isDownloadingResources = false
             downloadProgress = 1.0
-            statusMessage = "Download complete"
+            statusMessage = L10n.YOLOE.downloadComplete
             self.resourceRequest = request
             progressObservation = nil
             return true
@@ -158,7 +158,7 @@ class YOLOEModelService: ObservableObject {
             logDebug("YOLOE: ODR download failed: \(error)")
             isDownloadingResources = false
             downloadProgress = 0.0
-            statusMessage = "Download failed"
+            statusMessage = L10n.YOLOE.downloadFailed
             progressObservation = nil
             throw error
         }
@@ -172,7 +172,7 @@ class YOLOEModelService: ObservableObject {
         logDebug("YOLOE: Loading CoreML model…")
 
         isLoadingModel = true
-        statusMessage = "Preparing detection model…"
+        statusMessage = L10n.YOLOE.preparingModel
 
         // Best-effort ODR download. Debug/Xcode installs still need this now that the model
         // lives in tagged asset packs instead of the app bundle.
@@ -194,7 +194,7 @@ class YOLOEModelService: ObservableObject {
             }
         }
 
-        statusMessage = "Loading detection model…"
+        statusMessage = L10n.YOLOE.loadingModel
 
         // Prefer the single shipped YOLOE package: `yoloe-11l-seg-pf.mlpackage`.
         let candidateNames = [
@@ -214,7 +214,7 @@ class YOLOEModelService: ObservableObject {
                     let loadedModel = try MLModel(contentsOf: url, configuration: config)
                     self.model = loadedModel
                     logDebug("YOLOE: Loaded '\(name).\(ext)' successfully")
-                    statusMessage = "Ready"
+                    statusMessage = L10n.YOLOE.ready
                     isLoadingModel = false
                     return
                 } catch {
@@ -224,7 +224,7 @@ class YOLOEModelService: ObservableObject {
         }
 
         logDebug("YOLOE: No model variant could be loaded")
-        statusMessage = "Detection model unavailable"
+        statusMessage = L10n.YOLOE.unavailable
         isLoadingModel = false
     }
 }

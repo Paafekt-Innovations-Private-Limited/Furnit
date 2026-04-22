@@ -335,6 +335,28 @@
     <string name="sharp_inference_loading_model">Cargando modelo SHARP…</string>
     <string name="sharp_inference_running">Ejecutando SHARP 3D…</string>
     <string name="sharp_inference_preparing">Preparando…</string>
+    <string name="sharp_room_pinch_gesture_hint">Pellizca para hacer zoom. Con Furniture Fit, también redimensiona la superposición.</string>
+    <string name="sharp_inference_model_unavailable">Modelo SHARP no disponible</string>
+    <string name="sharp_inference_writing_room_file">Preparando tu vista previa…</string>
+    <string name="sharp_inference_room_ready">¡Tu habitación está lista!</string>
+    <string name="yoloe_loading_model">Cargando modelo de detección…</string>
+    <string name="yoloe_model_ready">Listo</string>
+    <string name="yoloe_model_unavailable">Modelo de detección no disponible</string>
+    <string name="single_image_scan_scanning">Escaneando imagen seleccionada…</string>
+    <string name="single_image_scan_no_overlay">No se detectó superposición</string>
+    <string name="ai_progress_getting_photo_ready">Preparando tu foto…</string>
+    <string name="ai_progress_warming_up">Preparando motores…</string>
+    <string name="ai_progress_building_room_step">Creando tu habitación… paso %1$s de 35</string>
+    <string name="ai_progress_building_room">Creando tu habitación…</string>
+    <string name="ai_progress_understanding_picture">Entendiendo toda la imagen…</string>
+    <string name="ai_progress_adding_depth_shape">Agregando profundidad y forma…</string>
+    <string name="ai_progress_finishing_touches">Agregando los últimos detalles…</string>
+    <string name="ai_progress_preparing_preview">Preparando tu vista previa…</string>
+    <string name="ai_progress_getting_started">Empezando…</string>
+    <string name="ai_progress_working_on_it">Trabajando en ello…</string>
+    <string name="ai_progress_almost_there">Ya casi…</string>
+    <string name="ai_progress_finishing_up">Terminando…</string>
+    <string name="ai_progress_ready_tap_to_view">Listo — toca para ver</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 Atrás</string>

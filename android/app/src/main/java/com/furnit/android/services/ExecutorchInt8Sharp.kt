@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import com.furnit.android.R
 import com.furnit.android.BuildConfig
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.utils.DebugLogger
@@ -1479,7 +1480,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val isPortrait = originalHeight > originalWidth
             LogUtil.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
 
-            report(0f, "Preparing…", progressCallback)
+            report(0f, context.getString(R.string.sharp_inference_preparing), progressCallback)
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
 
@@ -1646,9 +1647,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     LogUtil.d(TAG, "[C++ FULL] ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
                     // Native Part4b ends ~0.90; keep PLY phase 0.91–1.0 so UI does not jump after long decoder.
                     // Wires PLY to preview folder only — "Save" in the app means Save from the viewer (library).
-                    report(0.91f, "Writing your room file…", progressCallback)
+                    report(0.91f, context.getString(R.string.sharp_inference_writing_room_file), progressCallback)
                     val result = writePly(cppResult, progressCallback, isPortrait, originalWidth, originalHeight, metricAnchors)
-                    report(1f, "Your room is ready!", progressCallback)
+                    report(1f, context.getString(R.string.sharp_inference_room_ready), progressCallback)
                     return@withContext result
                 }
                 inferStreamingFailureDetail = buildString {
@@ -1851,7 +1852,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
                 for (i in 0 until count) {
                     if (i > 0 && i % progressReportEvery == 0) {
-                        report(0.91f + 0.09f * (i.toFloat() / count), "Writing your room file…", progressCallback)
+                        report(0.91f + 0.09f * (i.toFloat() / count), context.getString(R.string.sharp_inference_writing_room_file), progressCallback)
                     }
                     val off = i * PARAMS_PER_GAUSSIAN
                     val rawX = params[off]

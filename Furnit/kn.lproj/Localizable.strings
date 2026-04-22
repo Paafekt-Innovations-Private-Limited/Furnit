@@ -298,8 +298,8 @@
 "roomViewer.calibrateWall" = "ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್";
 "roomViewer.recenterView" = "ನೋಟ ಮಧ್ಯಕ್ಕೆ";
 "roomViewer.resetOverlayScale" = "ಓವರ್ಲೇ ಪ್ರಮಾಣ ಮರುಹೊಂದಿಸಿ";
-"roomViewer.pinchGestureHintAccessibility" = "ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಲು ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ. ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
-"roomViewer.pinchGestureHintExplanation" = "ಎರಡು ಬೆರಳುಗಳಿಂದ ಚಿಮುಡಿಸಿ ಕೊಠಡಿಯನ್ನು ಜೂಮ್ ಮಾಡಿ. ಫರ್ನಿಚರ್ ಫಿಟ್ ಆನ್‌ನಲ್ಲಿ ಚಿಮುಡಿಸುವಿಕೆ ವಿಭಜನೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವನ್ನೂ ಬದಲಿಸುತ್ತದೆ.";
+"roomViewer.pinchGestureHintAccessibility" = "ಜೂಮ್ ಮಾಡಲು ಚಿಮುಡಿಸಿ. Furniture Fit ಆನ್ ಇದ್ದರೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವೂ ಬದಲಾಗುತ್ತದೆ.";
+"roomViewer.pinchGestureHintExplanation" = "ಜೂಮ್ ಮಾಡಲು ಚಿಮುಡಿಸಿ. Furniture Fit ಆನ್ ಇದ್ದರೆ ಓವರ್‌ಲೇಯ ಗಾತ್ರವೂ ಬದಲಾಗುತ್ತದೆ.";
 "roomViewer.brainGestureHintExplanation" = "ಪೀಠೋಪಕರಣ ಗುರುತಿಸಲು 🧠 ಟ್ಯಾಪ್ ಮಾಡಿ";
 "roomViewer.segmentFurnitureAction" = "ಸೆಗ್ಮೆಂಟ್";
 "roomViewer.stopSegmentationAction" = "ನಿಲ್ಲಿಸಿ";
@@ -470,6 +470,14 @@
 "sharp.downloadingEnginePercent" = "3D ಎಂಜಿನ್ ಡೌನ್‌ಲೋಡ್... %d%%";
 "sharp.downloadComplete" = "ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣ";
 "sharp.downloadFailed" = "ಡೌನ್‌ಲೋಡ್ ವಿಫಲ";
+"yoloe.downloadingModel" = "ಪತ್ತೆ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+"yoloe.downloadingModelPercent" = "ಪತ್ತೆ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ... %d%%";
+"yoloe.downloadComplete" = "ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣ";
+"yoloe.downloadFailed" = "ಡೌನ್‌ಲೋಡ್ ವಿಫಲ";
+"yoloe.preparingModel" = "ಪತ್ತೆ ಮಾದರಿ ಸಿದ್ಧವಾಗುತ್ತಿದೆ...";
+"yoloe.loadingModel" = "ಪತ್ತೆ ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
+"yoloe.ready" = "ಸಿದ್ಧ";
+"yoloe.unavailable" = "ಪತ್ತೆ ಮಾದರಿ ಲಭ್ಯವಿಲ್ಲ";
 "sharp.gettingReady" = "ಸಿದ್ಧವಾಗುತ್ತಿದೆ...";
 "sharp.notEnoughSpace" = "ಸಾಧನದಲ್ಲಿ ಸಾಕಷ್ಟು ಸ್ಥಳವಿಲ್ಲ";
 "sharp.settingThingsUp" = "ಹೊಂದಿಸಲಾಗುತ್ತಿದೆ...";

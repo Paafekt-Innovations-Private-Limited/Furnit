@@ -301,8 +301,8 @@
 "roomViewer.calibrateWall" = "Calibrer le mur";
 "roomViewer.recenterView" = "Recentrer la vue";
 "roomViewer.resetOverlayScale" = "Réinitialiser l’échelle de la surcouche";
-"roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer la pièce. Avec la segmentation du mobilier, pincer agrandit ou réduit aussi le calque.";
-"roomViewer.pinchGestureHintExplanation" = "Pincez avec deux doigts pour zoomer la pièce. Avec la détection de meubles activée, pincer redimensionne aussi le calque de segmentation.";
+"roomViewer.pinchGestureHintAccessibility" = "Pincez pour zoomer. Avec Furniture Fit, cela redimensionne aussi le calque.";
+"roomViewer.pinchGestureHintExplanation" = "Pincez pour zoomer. Avec Furniture Fit, cela redimensionne aussi le calque.";
 "roomViewer.brainGestureHintExplanation" = "Appuyez sur 🧠 pour identifier les meubles";
 "roomViewer.segmentFurnitureAction" = "Segmenter";
 "roomViewer.stopSegmentationAction" = "Arrêter";
@@ -473,6 +473,14 @@
 "sharp.downloadingEnginePercent" = "Téléchargement du moteur 3D... %d%%";
 "sharp.downloadComplete" = "Téléchargement terminé";
 "sharp.downloadFailed" = "Échec du téléchargement";
+"yoloe.downloadingModel" = "Téléchargement du modèle de détection...";
+"yoloe.downloadingModelPercent" = "Téléchargement du modèle de détection... %d%%";
+"yoloe.downloadComplete" = "Téléchargement terminé";
+"yoloe.downloadFailed" = "Échec du téléchargement";
+"yoloe.preparingModel" = "Préparation du modèle de détection...";
+"yoloe.loadingModel" = "Chargement du modèle de détection...";
+"yoloe.ready" = "Prêt";
+"yoloe.unavailable" = "Modèle de détection indisponible";
 "sharp.gettingReady" = "Préparation...";
 "sharp.notEnoughSpace" = "Espace insuffisant sur l'appareil";
 "sharp.settingThingsUp" = "Configuration...";

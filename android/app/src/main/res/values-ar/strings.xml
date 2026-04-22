@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">جاري تحميل نموذج SHARP…</string>
     <string name="sharp_inference_running">جاري تشغيل SHARP 3D…</string>
     <string name="sharp_inference_preparing">جاري التحضير…</string>
+    <string name="sharp_room_pinch_gesture_hint">قرّص للتكبير. مع ملاءمة الأثاث، يغيّر القرص حجم الطبقة.</string>
+    <string name="sharp_inference_model_unavailable">نموذج SHARP غير متاح</string>
+    <string name="sharp_inference_writing_room_file">جاري تجهيز المعاينة…</string>
+    <string name="sharp_inference_room_ready">غرفتك جاهزة!</string>
+    <string name="yoloe_loading_model">جاري تحميل نموذج الكشف…</string>
+    <string name="yoloe_model_ready">جاهز</string>
+    <string name="yoloe_model_unavailable">نموذج الكشف غير متاح</string>
+    <string name="single_image_scan_scanning">جاري مسح الصورة المحددة…</string>
+    <string name="single_image_scan_no_overlay">لم يتم اكتشاف طبقة</string>
+    <string name="ai_progress_getting_photo_ready">جاري تجهيز صورتك…</string>
+    <string name="ai_progress_warming_up">جاري الإحماء…</string>
+    <string name="ai_progress_building_room_step">جاري بناء غرفتك… الخطوة %1$s من 35</string>
+    <string name="ai_progress_building_room">جاري بناء غرفتك…</string>
+    <string name="ai_progress_understanding_picture">جاري فهم الصورة كاملة…</string>
+    <string name="ai_progress_adding_depth_shape">جاري إضافة العمق والشكل…</string>
+    <string name="ai_progress_finishing_touches">جاري إضافة اللمسات الأخيرة…</string>
+    <string name="ai_progress_preparing_preview">جاري تجهيز المعاينة…</string>
+    <string name="ai_progress_getting_started">جاري البدء…</string>
+    <string name="ai_progress_working_on_it">نعمل على ذلك…</string>
+    <string name="ai_progress_almost_there">اقتربنا…</string>
+    <string name="ai_progress_finishing_up">جاري الإنهاء…</string>
+    <string name="ai_progress_ready_tap_to_view">جاهز — اضغط للعرض</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 رجوع</string>

@@ -436,7 +436,7 @@
     <string name="sharp_room_menu_reset_overlay">Reset overlay scale</string>
     <string name="sharp_room_menu_help">Help</string>
     <!-- Gesture hints (parity with iOS SharpRoomView) -->
-    <string name="sharp_room_pinch_gesture_hint">Pinch with two fingers to zoom the room. When Furniture Fit is on, pinch also scales the segmentation overlay.</string>
+    <string name="sharp_room_pinch_gesture_hint">Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.</string>
     <string name="sharp_room_brain_gesture_hint">Tap 🧠 to identify furniture</string>
     <string name="sharp_room_snapshot_gesture_hint">Tap 📷 to save</string>
     <string name="sharp_room_ar_sizing_hint">📷 for better match</string>
@@ -508,6 +508,27 @@
     <string name="sharp_inference_loading_model">Loading SHARP model…</string>
     <string name="sharp_inference_running">Running SHARP 3D…</string>
     <string name="sharp_inference_preparing">Preparing…</string>
+    <string name="sharp_inference_model_unavailable">SHARP model unavailable</string>
+    <string name="sharp_inference_writing_room_file">Preparing your preview…</string>
+    <string name="sharp_inference_room_ready">Your room is ready!</string>
+    <string name="yoloe_loading_model">Loading detection model…</string>
+    <string name="yoloe_model_ready">Ready</string>
+    <string name="yoloe_model_unavailable">Detection model unavailable</string>
+    <string name="single_image_scan_scanning">Scanning selected image…</string>
+    <string name="single_image_scan_no_overlay">No overlay detected</string>
+    <string name="ai_progress_getting_photo_ready">Getting your photo ready…</string>
+    <string name="ai_progress_warming_up">Warming up…</string>
+    <string name="ai_progress_building_room_step">Building your room… step %1$s of 35</string>
+    <string name="ai_progress_building_room">Building your room…</string>
+    <string name="ai_progress_understanding_picture">Understanding the full picture…</string>
+    <string name="ai_progress_adding_depth_shape">Adding depth and shape…</string>
+    <string name="ai_progress_finishing_touches">Adding the finishing touches…</string>
+    <string name="ai_progress_preparing_preview">Preparing your preview…</string>
+    <string name="ai_progress_getting_started">Getting started…</string>
+    <string name="ai_progress_working_on_it">Working on it…</string>
+    <string name="ai_progress_almost_there">Almost there…</string>
+    <string name="ai_progress_finishing_up">Finishing up…</string>
+    <string name="ai_progress_ready_tap_to_view">Ready — tap to view</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 Back</string>

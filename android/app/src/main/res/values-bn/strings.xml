@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">SHARP মডেল লোড হচ্ছে…</string>
     <string name="sharp_inference_running">SHARP 3D চালু হচ্ছে…</string>
     <string name="sharp_inference_preparing">প্রস্তুত হচ্ছে…</string>
+    <string name="sharp_room_pinch_gesture_hint">জুম করতে চিমটি দিন। Furniture Fit চালু থাকলে ওভারলের আকারও বদলায়।</string>
+    <string name="sharp_inference_model_unavailable">SHARP মডেল উপলভ্য নয়</string>
+    <string name="sharp_inference_writing_room_file">প্রিভিউ প্রস্তুত হচ্ছে…</string>
+    <string name="sharp_inference_room_ready">আপনার রুম প্রস্তুত!</string>
+    <string name="yoloe_loading_model">ডিটেকশন মডেল লোড হচ্ছে…</string>
+    <string name="yoloe_model_ready">প্রস্তুত</string>
+    <string name="yoloe_model_unavailable">ডিটেকশন মডেল উপলভ্য নয়</string>
+    <string name="single_image_scan_scanning">নির্বাচিত ছবি স্ক্যান হচ্ছে…</string>
+    <string name="single_image_scan_no_overlay">কোনও ওভারলে শনাক্ত হয়নি</string>
+    <string name="ai_progress_getting_photo_ready">আপনার ছবি প্রস্তুত হচ্ছে…</string>
+    <string name="ai_progress_warming_up">ওয়ার্ম আপ হচ্ছে…</string>
+    <string name="ai_progress_building_room_step">আপনার রুম তৈরি হচ্ছে… ধাপ %1$s / 35</string>
+    <string name="ai_progress_building_room">আপনার রুম তৈরি হচ্ছে…</string>
+    <string name="ai_progress_understanding_picture">পুরো ছবিটি বোঝা হচ্ছে…</string>
+    <string name="ai_progress_adding_depth_shape">গভীরতা ও আকৃতি যোগ হচ্ছে…</string>
+    <string name="ai_progress_finishing_touches">শেষ কাজগুলো হচ্ছে…</string>
+    <string name="ai_progress_preparing_preview">প্রিভিউ প্রস্তুত হচ্ছে…</string>
+    <string name="ai_progress_getting_started">শুরু হচ্ছে…</string>
+    <string name="ai_progress_working_on_it">কাজ চলছে…</string>
+    <string name="ai_progress_almost_there">প্রায় হয়ে গেছে…</string>
+    <string name="ai_progress_finishing_up">শেষ করা হচ্ছে…</string>
+    <string name="ai_progress_ready_tap_to_view">প্রস্তুত — দেখতে ট্যাপ করুন</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 পিছনে</string>

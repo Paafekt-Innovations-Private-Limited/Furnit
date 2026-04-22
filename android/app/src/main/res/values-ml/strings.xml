@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">SHARP മോഡൽ ലോഡ് ചെയ്യുന്നു…</string>
     <string name="sharp_inference_running">SHARP 3D പ്രവർത്തിപ്പിക്കുന്നു…</string>
     <string name="sharp_inference_preparing">തയ്യാറാക്കുന്നു…</string>
+    <string name="sharp_room_pinch_gesture_hint">സൂം ചെയ്യാൻ ചിമുട്ടുക. Furniture Fit ഓണെങ്കിൽ ഓവർലേയും വലുപ്പം മാറും.</string>
+    <string name="sharp_inference_model_unavailable">SHARP മോഡൽ ലഭ്യമല്ല</string>
+    <string name="sharp_inference_writing_room_file">നിങ്ങളുടെ പ്രിവ്യൂ തയ്യാറാക്കുന്നു…</string>
+    <string name="sharp_inference_room_ready">നിങ്ങളുടെ മുറി തയ്യാറായി!</string>
+    <string name="yoloe_loading_model">ഡിറ്റക്ഷൻ മോഡൽ ലോഡ് ചെയ്യുന്നു…</string>
+    <string name="yoloe_model_ready">തയ്യാർ</string>
+    <string name="yoloe_model_unavailable">ഡിറ്റക്ഷൻ മോഡൽ ലഭ്യമല്ല</string>
+    <string name="single_image_scan_scanning">തിരഞ്ഞെടുത്ത ചിത്രം സ്കാൻ ചെയ്യുന്നു…</string>
+    <string name="single_image_scan_no_overlay">ഓവർലേ കണ്ടെത്തിയില്ല</string>
+    <string name="ai_progress_getting_photo_ready">നിങ്ങളുടെ ഫോട്ടോ തയ്യാറാക്കുന്നു…</string>
+    <string name="ai_progress_warming_up">വാർം അപ്പ് ചെയ്യുന്നു…</string>
+    <string name="ai_progress_building_room_step">നിങ്ങളുടെ മുറി നിർമ്മിക്കുന്നു… ഘട്ടം %1$s / 35</string>
+    <string name="ai_progress_building_room">നിങ്ങളുടെ മുറി നിർമ്മിക്കുന്നു…</string>
+    <string name="ai_progress_understanding_picture">മുഴുവൻ ചിത്രം മനസ്സിലാക്കുന്നു…</string>
+    <string name="ai_progress_adding_depth_shape">ആഴവും ആകൃതിയും ചേർക്കുന്നു…</string>
+    <string name="ai_progress_finishing_touches">അവസാന മെരുക്കുകൾ ചേർക്കുന്നു…</string>
+    <string name="ai_progress_preparing_preview">നിങ്ങളുടെ പ്രിവ്യൂ തയ്യാറാക്കുന്നു…</string>
+    <string name="ai_progress_getting_started">തുടങ്ങുന്നു…</string>
+    <string name="ai_progress_working_on_it">പ്രവർത്തിക്കുന്നു…</string>
+    <string name="ai_progress_almost_there">ഇനി കുറച്ച് മാത്രം…</string>
+    <string name="ai_progress_finishing_up">പൂർത്തിയാക്കുന്നു…</string>
+    <string name="ai_progress_ready_tap_to_view">തയ്യാർ — കാണാൻ ടാപ്പ് ചെയ്യുക</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 പിന്നോട്ട്</string>

@@ -336,6 +336,28 @@
     <string name="sharp_inference_loading_model">SHARP మోడల్ లోడ్ అవుతోంది…</string>
     <string name="sharp_inference_running">SHARP 3D అమలు అవుతోంది…</string>
     <string name="sharp_inference_preparing">సిద్ధం చేస్తోంది…</string>
+    <string name="sharp_room_pinch_gesture_hint">జూమ్ చేయడానికి పించ్ చేయండి. Furniture Fit ఆన్‌లో ఉంటే ఓవర్లే పరిమాణమూ మారుతుంది.</string>
+    <string name="sharp_inference_model_unavailable">SHARP మోడల్ అందుబాటులో లేదు</string>
+    <string name="sharp_inference_writing_room_file">మీ ప్రివ్యూ సిద్ధమవుతోంది…</string>
+    <string name="sharp_inference_room_ready">మీ గది సిద్ధం!</string>
+    <string name="yoloe_loading_model">డిటెక్షన్ మోడల్ లోడ్ అవుతోంది…</string>
+    <string name="yoloe_model_ready">సిద్ధం</string>
+    <string name="yoloe_model_unavailable">డిటెక్షన్ మోడల్ అందుబాటులో లేదు</string>
+    <string name="single_image_scan_scanning">ఎంచుకున్న చిత్రం స్కాన్ అవుతోంది…</string>
+    <string name="single_image_scan_no_overlay">ఓవర్లే గుర్తించబడలేదు</string>
+    <string name="ai_progress_getting_photo_ready">మీ ఫోటో సిద్ధమవుతోంది…</string>
+    <string name="ai_progress_warming_up">వార్మ్ అవుతోంది…</string>
+    <string name="ai_progress_building_room_step">మీ గది నిర్మిస్తోంది… దశ %1$s / 35</string>
+    <string name="ai_progress_building_room">మీ గది నిర్మిస్తోంది…</string>
+    <string name="ai_progress_understanding_picture">మొత్తం చిత్రాన్ని అర్థం చేసుకుంటోంది…</string>
+    <string name="ai_progress_adding_depth_shape">లోతు మరియు ఆకారం జోడిస్తోంది…</string>
+    <string name="ai_progress_finishing_touches">చివరి మెరుగులు జోడిస్తోంది…</string>
+    <string name="ai_progress_preparing_preview">మీ ప్రివ్యూ సిద్ధమవుతోంది…</string>
+    <string name="ai_progress_getting_started">ప్రారంభిస్తోంది…</string>
+    <string name="ai_progress_working_on_it">పని జరుగుతోంది…</string>
+    <string name="ai_progress_almost_there">దాదాపు పూర్తయింది…</string>
+    <string name="ai_progress_finishing_up">పూర్తి చేస్తోంది…</string>
+    <string name="ai_progress_ready_tap_to_view">సిద్ధం — చూడడానికి ట్యాప్ చేయండి</string>
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 వెనుక</string>
