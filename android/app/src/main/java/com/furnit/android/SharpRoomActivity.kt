@@ -2400,7 +2400,7 @@ class SharpRoomActivity : AppCompatActivity() {
         val shouldShowLivePreview = shouldShowIdentifyLivePreview()
         if (::brainCameraPreviewView.isInitialized) {
             brainCameraPreviewView.visibility =
-                if (shouldShowLivePreview && brainArController == null) View.VISIBLE else View.GONE
+                if (shouldShowLivePreview && brainArController == null && cameraPreviewUseCase != null) View.VISIBLE else View.GONE
         }
         brainArController?.let { controller ->
             val layoutParams = controller.glSurfaceView.layoutParams as? FrameLayout.LayoutParams
@@ -2770,23 +2770,12 @@ class SharpRoomActivity : AppCompatActivity() {
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-            val shouldBindLivePreview = shouldShowIdentifyLivePreview()
-            val preview = if (shouldBindLivePreview) {
-                if (::brainCameraPreviewView.isInitialized) {
-                    brainCameraPreviewView.visibility = View.VISIBLE
-                }
-                Preview.Builder()
-                    .setTargetResolution(brainAnalysisSize)
-                    .setTargetRotation(displayRotationForCameraX())
-                    .build()
-                    .also { it.setSurfaceProvider(brainCameraPreviewView.surfaceProvider) }
-            } else {
-                if (::brainCameraPreviewView.isInitialized) {
-                    brainCameraPreviewView.visibility = View.GONE
-                }
-                null
+            // Bind analysis only. Some devices time out completing CameraX Preview surfaces
+            // while the room viewer is layered underneath overlays, which blocks segmentation.
+            if (::brainCameraPreviewView.isInitialized) {
+                brainCameraPreviewView.visibility = View.GONE
             }
-            cameraPreviewUseCase = preview
+            cameraPreviewUseCase = null
             var frameCount = 0
             val hasFirstResult = BooleanArray(1) { false }
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -2828,11 +2817,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 brainSegmentationAcceptingUpdates = true
-                if (preview != null) {
-                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-                } else {
-                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
-                }
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
                 updateBrainLivePreviewVisibility()
                 DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
