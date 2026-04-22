@@ -1061,6 +1061,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun restartBrainGestureHint() {
         brainHintExplanationView?.let { v ->
             v.text = getString(R.string.sharp_room_brain_gesture_hint)
+            v.translationY = 0f
             v.visibility = View.VISIBLE
             gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
             gestureHintHideHandler.postDelayed(hideBrainHintRunnable, 3000L)
@@ -2382,12 +2383,15 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun updateBrainSelectionHelperText() {
-        brainHintExplanationView?.text =
+        brainHintExplanationView?.let { hint ->
             if (selectedBrainPins.isNotEmpty()) {
-                getString(R.string.smartypants_pick_another_hint)
+                hint.text = getString(R.string.smartypants_pick_another_hint)
+                hint.translationY = -dpToPx(34).toFloat()
             } else {
-                getString(R.string.sharp_room_brain_gesture_hint)
+                hint.text = getString(R.string.sharp_room_brain_gesture_hint)
+                hint.translationY = 0f
             }
+        }
     }
 
     private fun shouldShowIdentifyLivePreview(): Boolean {
