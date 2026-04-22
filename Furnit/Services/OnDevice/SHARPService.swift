@@ -19,8 +19,8 @@ struct SHARPGenerationResult: Sendable {
     let roomDepth: Float?
 }
 
-/// On-device 3D Gaussian generation using Apple's SHARP model
-/// Replaces remote Jarvis-based Room3DGenerationService with local CoreML inference
+/// On-device 3D Gaussian generation using Apple's SHARP model.
+/// Runs local Core ML inference and writes temporary preview files without uploading room photos.
 @MainActor
 class SHARPService: ObservableObject {
 
@@ -180,25 +180,8 @@ class SHARPService: ObservableObject {
 
     // MARK: - On-Demand Resources
 
-    /// Check if running from Xcode (development) vs App Store
-    private var isRunningFromXcode: Bool {
-        #if DEBUG
-        // Debug builds are always from Xcode - ODR only works in App Store/TestFlight
-        return true
-        #else
-        return false
-        #endif
-    }
-
     /// Check if SHARP model resources are available locally
     func checkResourceAvailability() async {
-        // When running from Xcode, model is bundled - skip ODR
-        if isRunningFromXcode {
-            logDebug("SHARP: Running from Xcode - model bundled locally, skipping ODR")
-            resourcesAvailable = true
-            return
-        }
-
         let tags: Set<String> = [Self.sharpModelTag]
 
         // Check if resources are already downloaded
@@ -222,13 +205,6 @@ class SHARPService: ObservableObject {
     /// Download SHARP model resources if not available
     /// - Returns: true if resources are available after this call
     func downloadResourcesIfNeeded() async throws -> Bool {
-        // When running from Xcode, model is bundled - no download needed
-        if isRunningFromXcode {
-            logDebug("SHARP: Running from Xcode - model bundled, no download needed")
-            resourcesAvailable = true
-            return true
-        }
-
         // Already available
         if resourcesAvailable {
             logDebug("SHARP: Resources already available")
@@ -353,8 +329,9 @@ class SHARPService: ObservableObject {
             return
         }
 
-        // Best-effort ODR download — model may already be compiled into the bundle
-        if !resourcesAvailable && !isRunningFromXcode {
+        // Best-effort ODR download. Debug/Xcode installs still need this now that the model
+        // lives in tagged asset packs instead of the app bundle.
+        if !resourcesAvailable {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
                 if Task.isCancelled {
@@ -367,7 +344,7 @@ class SHARPService: ObservableObject {
                     logDebug("SHARP: ODR download returned false — will try bundle load anyway")
                 }
             } catch {
-                logDebug("SHARP: ODR download failed (\(error)) — model may be in app bundle, proceeding...")
+                logDebug("SHARP: ODR download failed (\(error)) — trying app-bundle fallback")
             }
         }
 
@@ -379,13 +356,36 @@ class SHARPService: ObservableObject {
             let config = MLModelConfiguration()
             config.computeUnits = .cpuOnly
 
-            logDebug("SHARP: Loading via auto-generated model class (async) - FP32, computeUnits=cpuOnly")
-            let sharpModel = try await SHARP_fp32_1536.load(configuration: config)
+            logDebug("SHARP: Loading bundled/ODR model dynamically - FP32, computeUnits=cpuOnly")
+            let candidateModels = [
+                ("SHARP_fp32_1536", "mlmodelc"),
+                ("SHARP_fp32_1536", "mlpackage"),
+            ]
+
+            var loadedModel: MLModel?
+            for (name, ext) in candidateModels {
+                guard let url = Bundle.main.url(forResource: name, withExtension: ext) else { continue }
+                let loadURL: URL
+                if ext == "mlpackage" {
+                    loadURL = try await MLModel.compileModel(at: url)
+                } else {
+                    loadURL = url
+                }
+                loadedModel = try MLModel(contentsOf: loadURL, configuration: config)
+                logDebug("SHARP: Loaded '\(name).\(ext)' successfully")
+                break
+            }
+
             if Task.isCancelled {
                 isLoadingModel = false
                 return
             }
-            model = sharpModel.model
+
+            guard let loadedModel else {
+                throw GenerationError.serverError("SHARP model resource is missing")
+            }
+
+            model = loadedModel
             logDebug("SHARP: Model loaded successfully with computeUnits=cpuOnly")
 
             progress = 1.0
@@ -426,9 +426,9 @@ class SHARPService: ObservableObject {
         }
 
         guard model != nil else {
-            status = .failed("SHARP model failed to load. Check device memory.")
+            status = .failed("SHARP model failed to load. Check model download, storage, or device memory.")
             statusMessage = L10n.Sharp.somethingWentWrong
-            throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
+            throw GenerationError.serverError("SHARP model failed to load. Check model download, storage, or device memory.")
         }
 
         // Reset state

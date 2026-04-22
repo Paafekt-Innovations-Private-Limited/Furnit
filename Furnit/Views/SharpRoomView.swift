@@ -1542,7 +1542,6 @@ struct SharpRoomView: View {
             !showCalibrationRejectAlert &&
             !showWallCalibration &&
             !showFurnitureDimensionsInput &&
-            !showRoomFurnitureCalibrate &&
             !isCapturingSnapshot
     }
 

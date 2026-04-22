@@ -440,6 +440,7 @@
     <string name="sharp_room_brain_gesture_hint">Tap the brain to start live furniture identification. Tap one or more detected items, then tap Segment to mask only those selections.</string>
     <string name="sharp_room_snapshot_gesture_hint">Tap the camera to save a picture of the room to Photos.</string>
     <string name="sharp_room_ruler_content_description">Room dimensions</string>
+    <string name="sharp_room_display_all_helpers_content_description">Show all room controls help</string>
     <string name="sharp_room_dimensions_chip">W × H × D\n%.2f × %.2f × %.2f m</string>
     <string name="sharp_room_dimensions_unavailable">Room dimensions unavailable</string>
     <string name="sharp_room_measuring">Measuring room…</string>

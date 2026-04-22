@@ -1063,7 +1063,7 @@ struct PrivacySettingsView: View {
     var body: some View {
         Form {
             Section("Privacy") {
-                Text("Paafekt uses your verified phone number for sign-in, stores basic account details on-device, and may upload room photos when you request server-based room generation.")
+                Text("Paafekt uses your verified phone number for sign-in and stores basic account details on-device. Room photos are processed on-device for room generation in this build and are not retained by Paafekt.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }

@@ -133,6 +133,7 @@ class SharpRoomActivity : AppCompatActivity() {
         private const val OV_RECENTER = 10004
         private const val OV_RESET_OVERLAY = 10005
         private const val OV_HELP = 10006
+        private const val OV_FULL_VIDEO_IDENTIFICATIONS = 10007
     }
 
     /** Persist latest Spark/Box3 dimensions into room_meta.json so list screen shows accurate width/height. */
@@ -1080,6 +1081,17 @@ class SharpRoomActivity : AppCompatActivity() {
         restartSnapshotGestureHint()
     }
 
+    private fun displayAllGestureHelpers() {
+        restartTransientGestureHints()
+        roomDimensionsHintView?.let { hint ->
+            updateRoomDimensionsHintText()
+            hint.visibility = View.VISIBLE
+            updateRoomDimensionsHintPosition()
+            gestureHintHideHandler.removeCallbacks(hideRoomDimensionsHintRunnable)
+            gestureHintHideHandler.postDelayed(hideRoomDimensionsHintRunnable, 3000L)
+        }
+    }
+
     private fun createTopBar(): FrameLayout {
         return FrameLayout(this).apply {
             setPadding(dpToPx(16), dpToPx(48), dpToPx(16), dpToPx(12))
@@ -1153,6 +1165,11 @@ class SharpRoomActivity : AppCompatActivity() {
                 },
             )
 
+            val centerCluster = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
             roomRulerButton = AppCompatImageButton(this@SharpRoomActivity).apply {
                 setImageResource(R.drawable.ic_ruler)
                 ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
@@ -1164,11 +1181,29 @@ class SharpRoomActivity : AppCompatActivity() {
                 contentDescription = getString(R.string.sharp_room_ruler_content_description)
                 setOnClickListener { onRoomRulerTapped() }
             }
-            barContainer.addView(
+            centerCluster.addView(
                 roomRulerButton,
+                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
+            )
+            centerCluster.addView(
+                AppCompatImageButton(this@SharpRoomActivity).apply {
+                    setImageResource(R.drawable.ic_gesture_tap)
+                    ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+                    val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
+                    val ripple = typedArray.getDrawable(0)
+                    typedArray.recycle()
+                    background = ripple
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    contentDescription = getString(R.string.sharp_room_display_all_helpers_content_description)
+                    setOnClickListener { displayAllGestureHelpers() }
+                },
+                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
+            )
+            barContainer.addView(
+                centerCluster,
                 FrameLayout.LayoutParams(
-                    dpToPx(44),
-                    dpToPx(44),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.CENTER,
                 ),
             )
@@ -1237,6 +1272,13 @@ class SharpRoomActivity : AppCompatActivity() {
         if (FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(this)) {
             menu.add(Menu.NONE, OV_CALIBRATE, Menu.NONE, R.string.sharp_room_menu_calibrate)
         }
+        if (brainOverlayVisible) {
+            menu.add(Menu.NONE, OV_FULL_VIDEO_IDENTIFICATIONS, Menu.NONE, R.string.settings_full_video_with_identifications)
+                .apply {
+                    isCheckable = true
+                    isChecked = showFullVideoWithIdentifications
+                }
+        }
         menu.add(Menu.NONE, OV_RECENTER, Menu.NONE, R.string.sharp_room_menu_recenter)
         menu.add(Menu.NONE, OV_RESET_OVERLAY, Menu.NONE, R.string.sharp_room_menu_reset_overlay)
         menu.add(Menu.NONE, OV_HELP, Menu.NONE, R.string.sharp_room_menu_help)
@@ -1245,6 +1287,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 OV_SHARE -> sharePlyFile()
                 OV_SAVE -> showSaveDialog()
                 OV_CALIBRATE -> showRoomCalibrationDialog()
+                OV_FULL_VIDEO_IDENTIFICATIONS -> toggleFullVideoIdentifications()
                 OV_RECENTER -> recenterCamera()
                 OV_RESET_OVERLAY -> brainDetectionOverlayView.resetTransform()
                 OV_HELP -> showHelpDialog()
@@ -1253,6 +1296,20 @@ class SharpRoomActivity : AppCompatActivity() {
             true
         }
         popup.show()
+    }
+
+    private fun toggleFullVideoIdentifications() {
+        showFullVideoWithIdentifications = !showFullVideoWithIdentifications
+        if (!showFullVideoWithIdentifications && brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+            stopBrainSegmentationOnly()
+        } else {
+            if (showFullVideoWithIdentifications) {
+                showIdentifyLivePreview = true
+            }
+            updateBrainLivePreviewVisibility()
+            showBrainDetectionOverlay()
+        }
+        DebugLogger.d(TAG, "Full video with identifications toggled: $showFullVideoWithIdentifications")
     }
 
     private fun setBrainCalibrationPillVisible(visible: Boolean) {
@@ -2121,10 +2178,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun takeScreenshot() {
         try {
-            // Capture WebView content
-            val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            webView.draw(canvas)
+            val bitmap = captureSharpRoomSnapshotBitmap()
 
             // Save to Pictures folder
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
@@ -2152,6 +2206,44 @@ class SharpRoomActivity : AppCompatActivity() {
             DebugLogger.eDebugMode(TAG, "Failed to take screenshot", e)
             Toast.makeText(this, getString(R.string.sharp_room_screenshot_failed), Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * WebView.draw() only captures the room renderer. When Brain/Furniture Fit is active, mirror
+     * iOS by compositing the live segmentation/selection overlay into the exported snapshot too.
+     */
+    private fun captureSharpRoomSnapshotBitmap(): Bitmap {
+        val captureWidth = webView.width.takeIf { it > 0 } ?: sharpRoomContentRoot.width
+        val captureHeight = webView.height.takeIf { it > 0 } ?: sharpRoomContentRoot.height
+        require(captureWidth > 0 && captureHeight > 0) { "Sharp room view is not laid out" }
+
+        val bitmap = Bitmap.createBitmap(captureWidth, captureHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.rgb(128, 128, 128))
+        drawViewIntoSnapshot(webView, canvas)
+
+        if (::brainDetectionOverlay.isInitialized && brainDetectionOverlay.visibility == View.VISIBLE) {
+            drawViewIntoSnapshot(brainDetectionOverlay, canvas)
+            DebugLogger.d(TAG, "Screenshot composited with Brain/Furniture Fit overlay")
+        }
+
+        return bitmap
+    }
+
+    private fun drawViewIntoSnapshot(view: View, canvas: Canvas) {
+        if (view.width <= 0 || view.height <= 0 || view.visibility != View.VISIBLE) return
+        val rootLocation = IntArray(2)
+        val viewLocation = IntArray(2)
+        webView.getLocationInWindow(rootLocation)
+        view.getLocationInWindow(viewLocation)
+
+        val saveCount = canvas.save()
+        canvas.translate(
+            (viewLocation[0] - rootLocation[0]).toFloat(),
+            (viewLocation[1] - rootLocation[1]).toFloat(),
+        )
+        view.draw(canvas)
+        canvas.restoreToCount(saveCount)
     }
 
     private fun createLoadingOverlay(): FrameLayout {

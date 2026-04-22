@@ -63,16 +63,6 @@ class YOLOEModelService: ObservableObject {
         // Don't eagerly load — the model is only needed when a room view appears
     }
 
-    // MARK: - Development vs Release
-
-    private var isRunningFromXcode: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
-        #endif
-    }
-
     // MARK: - Public API
 
     /// Ensure the model is loaded; safe to call repeatedly (no-op when already loaded).
@@ -115,12 +105,6 @@ class YOLOEModelService: ObservableObject {
 
     /// Check whether the YOLOE resource tag is already on-device
     func checkResourceAvailability() async {
-        if isRunningFromXcode {
-            logDebug("YOLOE: Running from Xcode — model bundled locally, skipping ODR")
-            resourcesAvailable = true
-            return
-        }
-
         let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
         request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
 
@@ -136,12 +120,6 @@ class YOLOEModelService: ObservableObject {
     /// Download the YOLOE model via ODR if not yet available.
     /// - Returns: `true` when the resource is available after this call.
     func downloadResourcesIfNeeded() async throws -> Bool {
-        if isRunningFromXcode {
-            logDebug("YOLOE: Running from Xcode — model bundled, no download needed")
-            resourcesAvailable = true
-            return true
-        }
-
         if resourcesAvailable { return true }
 
         if isDownloadingResources {
@@ -199,8 +177,9 @@ class YOLOEModelService: ObservableObject {
         isLoadingModel = true
         statusMessage = "Preparing detection model…"
 
-        // Best-effort ODR download (same pattern as SHARPService)
-        if !resourcesAvailable && !isRunningFromXcode {
+        // Best-effort ODR download. Debug/Xcode installs still need this now that the model
+        // lives in tagged asset packs instead of the app bundle.
+        if !resourcesAvailable {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
                 if downloaded {

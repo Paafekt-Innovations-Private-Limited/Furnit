@@ -13,7 +13,5 @@
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<true/>
-	<key>Room3DAPIBaseURL</key>
-	<string>https://cf45ae3674750.notebooks.jarvislabs.net/proxy/8000</string>
 </dict>
 </plist>

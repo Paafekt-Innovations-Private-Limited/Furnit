@@ -7,12 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
+		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
 		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
-		71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_11l_seg_pf, ); }; };
+		71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_11l_seg_pf, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -216,6 +216,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Resources */,
+				71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -233,8 +235,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */,
-				71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
