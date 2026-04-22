@@ -48,8 +48,8 @@ class FurnitureFitManager(private val context: Context) {
     private val bboxExpandMargin = 0.08f
     private val includeSupportingTableForMonitorScene = true
     private val enableMorphCloseForMask = false
-    private val monitorLikeClassIds = setOf(1063, 2675, 4105)
-    private val supportingTableClassIds = setOf(1061, 1301, 1325, 1503, 1885, 2324, 2836, 4564)
+    private val monitorLikeClassIds = setOf(62, 63) // COCO: tv, laptop
+    private val supportingTableClassIds = setOf(60) // COCO: dining table
     private val classNames: Map<Int, String> by lazy(LazyThreadSafetyMode.NONE) { loadClassNames() }
     private val ignoredClassIds: Set<Int> by lazy(LazyThreadSafetyMode.NONE) { loadIgnoredClassIds() }
 
@@ -1813,6 +1813,25 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun labelForClassId(classId: Int): String {
+        // yoloe-11l-seg-pf.onnx exports 80 COCO classes (4 box + 80 class + 32 mask coeffs).
+        // classes.json is a larger Furnit taxonomy, so using it for class IDs 0..79 maps chairs to
+        // unrelated labels like "almond".
+        if (classId in COCO_CLASS_NAMES.indices) {
+            return COCO_CLASS_NAMES[classId]
+        }
         return classNames[classId]?.takeIf { it.isNotBlank() } ?: "class_$classId"
     }
 }
+
+private val COCO_CLASS_NAMES = arrayOf(
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+    "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+    "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+    "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+    "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+    "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+    "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
+    "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+)

@@ -2428,14 +2428,8 @@ class SharpRoomActivity : AppCompatActivity() {
             } else {
                 emptyList()
             }
-        val maskForOverlay =
-            if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
-                latestBrainMask
-            } else {
-                null
-            }
         brainDetectionOverlayView.setMaskAndDetections(
-            maskForOverlay,
+            latestBrainMask,
             detectionsForOverlay,
             latestBrainInputSize,
             latestBrainOverlayScale,
@@ -2536,7 +2530,7 @@ class SharpRoomActivity : AppCompatActivity() {
         if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED && selectedBrainPins.isNotEmpty()) {
             manager.segmentSelectedInstancesAsync(bitmap, selectedBrainPins.toList(), callback)
         } else {
-            manager.detectWithDetectionsAsync(bitmap, callback)
+            manager.segmentWithDetectionsAsync(bitmap, callback)
         }
     }
 
@@ -2551,7 +2545,7 @@ class SharpRoomActivity : AppCompatActivity() {
             segmentedFurnitureMeanSrgb = null
         }
         latestBrainDetections = result?.detections ?: emptyList()
-        latestBrainMask = if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) result?.mask else null
+        latestBrainMask = result?.mask
         latestBrainInputSize = result?.inputSize ?: 640
         latestBrainPrimaryDetection = result?.primaryDetection ?: latestBrainDetections.firstOrNull()
         val currentHeightMeters =
