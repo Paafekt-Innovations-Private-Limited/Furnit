@@ -19,7 +19,7 @@ struct SettingsFurnitureFitImageScanView: View {
         let currentStatusText = statusText
         let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
 
-        ScrollView {
+        GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 16) {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     ZStack {
@@ -30,6 +30,7 @@ struct SettingsFurnitureFitImageScanView: View {
                             Image(uiImage: currentSelectedImage)
                                 .resizable()
                                 .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                             if loadedModel != nil {
@@ -69,7 +70,7 @@ struct SettingsFurnitureFitImageScanView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 320)
+                    .frame(minHeight: 360, idealHeight: proxy.size.height * 0.7)
                 }
                 .buttonStyle(.plain)
 
@@ -84,6 +85,7 @@ struct SettingsFurnitureFitImageScanView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .navigationTitle(L10n.Settings.imageScan)
         .navigationBarTitleDisplayMode(.inline)
