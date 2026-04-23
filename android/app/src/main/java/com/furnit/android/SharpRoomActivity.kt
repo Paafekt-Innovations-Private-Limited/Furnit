@@ -3124,9 +3124,9 @@ class SharpRoomActivity : AppCompatActivity() {
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-            "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
+            "three": "https://appassets.androidplatform.net/assets/vendor/three/build/three.module.js",
+            "three/addons/": "https://appassets.androidplatform.net/assets/vendor/three/examples/jsm/",
+            "@sparkjsdev/spark": "https://appassets.androidplatform.net/assets/vendor/spark/spark.module.js"
         }
     }
     </script>
@@ -3485,14 +3485,9 @@ class SharpRoomActivity : AppCompatActivity() {
             framingSource = frameSource;
 
             const size = box.getSize(new THREE.Vector3());
-            let roomWidth, roomHeight, roomDepth;
-            if (isPortrait) {
-                roomWidth = size.x;
-                roomHeight = size.y;
-            } else {
-                roomWidth = size.y;
-                roomHeight = size.x;
-            }
+            let roomWidth = size.x;
+            let roomHeight = size.y;
+            let roomDepth;
             roomDepth = size.z;
 
             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
@@ -3540,6 +3535,11 @@ class SharpRoomActivity : AppCompatActivity() {
 
             // Initial camera: thin Z slab (rotated splat AABB) needs distance from floor span, not 9mm depth.
             const thinZSlab = zSpanRaw < 0.08;
+            const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+            const horizontalFov = 2.0 * Math.atan(Math.tan(verticalFov * 0.5) * camera.aspect);
+            const fitDistanceForWidth = (roomWidth * 0.5) / Math.max(0.001, Math.tan(horizontalFov * 0.5));
+            const fitDistanceForHeight = (roomHeight * 0.5) / Math.max(0.001, Math.tan(verticalFov * 0.5));
+            const landscapeFitDistance = Math.max(fitDistanceForWidth, fitDistanceForHeight);
             let entranceZ, cameraZ;
             let wallSide;
             let distInFront;
@@ -3547,7 +3547,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 // Match SharpRoomView.swift when Z span is tiny: still put camera outside maxZ (front wall), any orientation.
                 wallSide = isPortrait ? 'thinZ_portrait_maxZ_swift' : 'thinZ_landscape_maxZ_swift';
                 const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
-                distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                distInFront = isPortrait
+                    ? Math.max(0.75, Math.min(2.0, 0.56 * roomSpan))
+                    : Math.max(0.22, Math.min(1.10, landscapeFitDistance * 0.72));
                 const frontWallZ = maxZ;
                 entranceZ = frontWallZ;
                 cameraZ = frontWallZ + distInFront;
@@ -3556,7 +3558,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 const FRONT_DIST_CAP = 1.2;
                 const depthForStandoff = Math.max(roomDepth, fallbackRoomDepth, zSpanRaw, 0.15);
                 const depthProduct = depthForStandoff * FRONT_DIST_K;
-                distInFront = Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP));
+                distInFront = isPortrait
+                    ? Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP))
+                    : Math.max(0.22, Math.min(1.10, landscapeFitDistance * 0.72));
                 wallSide = isPortrait ? 'maxZ_front_swift_portrait' : 'maxZ_front_swift_landscape';
                 entranceZ = maxZ;
                 cameraZ = maxZ + distInFront;
