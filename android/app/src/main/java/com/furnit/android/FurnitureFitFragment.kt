@@ -1193,8 +1193,10 @@ class FurnitureFitFragment : Fragment() {
                     val h = bboxExtents.y
                     val d = bboxExtents.z
                     boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraCenteredView CALLED (bbox ${w}x${h}x${d})")
-                    val cameraSetup = boundaryManager.getCameraCenteredView()
+                    // Match iOS FurnitureFit room framing: start near the back wall looking toward the
+                    // front wall instead of sitting at room center, which can end up inside geometry.
+                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                    val cameraSetup = boundaryManager.getCameraAtBackCenter()
                     initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position

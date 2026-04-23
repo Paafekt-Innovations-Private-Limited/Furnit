@@ -3393,6 +3393,10 @@ class SharpRoomActivity : AppCompatActivity() {
         const maxFrameAttempts = 150;  // 150 * 200ms = 30s for large PLY (e.g. 292MB)
         /** Stops duplicate work when multiple setTimeout(autoFrameRoom) chains run (onLoad + initial poll). */
         let framingComplete = false;
+        let framingSource = '';
+        function isActualFrameSource(source) {
+            return source === 'spark_getBoundingBox' || source === 'splat_load_hint';
+        }
 
         // Load PLY using SparkJS SplatMesh (matching iOS exactly)
         // URL served by WebViewAssetLoader; onLoad runs when PLY is loaded and decoded
@@ -3425,6 +3429,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         function giveUpDefaultCamera() {
             framingComplete = true;
+            framingSource = 'default_camera_fallback';
             camera.position.set(0, 0, 4);
             controls.target.set(0, 0, 0);
             controls.update();
@@ -3469,10 +3474,15 @@ class SharpRoomActivity : AppCompatActivity() {
          */
         function frameFromWorldBox(box, frameSource) {
             if (framingComplete) {
-                sharpAndroidLog('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource);
-                return;
+                const upgradingFallbackFrame = framingSource === 'metadata_fallback' && isActualFrameSource(frameSource);
+                if (!upgradingFallbackFrame) {
+                    sharpAndroidLog('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource + ' existing=' + framingSource);
+                    return;
+                }
+                sharpAndroidLog('[SharpRoom] frameFromWorldBox UPGRADING metadata fallback -> ' + frameSource);
             }
             framingComplete = true; // block duplicate onLoad + poll (recenter clears this first)
+            framingSource = frameSource;
 
             const size = box.getSize(new THREE.Vector3());
             let roomWidth, roomHeight, roomDepth;
@@ -3636,6 +3646,7 @@ class SharpRoomActivity : AppCompatActivity() {
         function autoFrameRoom(fromRecenter) {
             if (fromRecenter) {
                 framingComplete = false;
+                framingSource = '';
                 frameAttempts = 0;
             }
             if (framingComplete) return;
