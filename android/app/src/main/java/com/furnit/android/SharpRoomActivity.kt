@@ -251,7 +251,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private lateinit var brainModeButton: AppCompatImageButton
     private var brainActionButton: TextView? = null
     /** Top-right AR sizing control; active when the current brain session requested AR-assisted sizing. */
-    private var brainArAssistButton: TextView? = null
+    private var brainArAssistButton: AppCompatImageButton? = null
+    private var fullVideoIdentificationsButton: AppCompatImageButton? = null
     private lateinit var roomRulerButton: AppCompatImageButton
     /** Top chrome (back pill + ruler); used to position the room-dimensions hint below the bar. */
     private lateinit var sharpRoomTopBar: FrameLayout
@@ -638,6 +639,12 @@ class SharpRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.TOP })
 
+        val topHelperOverlay = createTopHelperOverlay()
+        rootLayout.addView(topHelperOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
         roomDimensionsHintView = buildRoomDimensionsHintView()
         rootLayout.addView(
             roomDimensionsHintView,
@@ -709,12 +716,15 @@ class SharpRoomActivity : AppCompatActivity() {
                 topBar.paddingBottom
             )
             updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+            updateTopHelperOverlayTop(topBar, topHelperOverlay)
             updateRoomDimensionsHintPosition()
             cameraArrowOverlay.post { updateCameraArrowOverlayTop(topBar, cameraArrowOverlay) }
+            topHelperOverlay.post { updateTopHelperOverlayTop(topBar, topHelperOverlay) }
             cameraArrowOverlay.post { updateRoomDimensionsHintPosition() }
             topBar.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+                    updateTopHelperOverlayTop(topBar, topHelperOverlay)
                     updateRoomDimensionsHintPosition()
                 }
             })
@@ -885,6 +895,10 @@ class SharpRoomActivity : AppCompatActivity() {
         arrowOverlay.setPadding(0, top, 0, 0)
     }
 
+    private fun updateTopHelperOverlayTop(topBar: View, helperOverlay: View) {
+        helperOverlay.setPadding(0, statusBarInsetTop + topBar.height, 0, 0)
+    }
+
     private fun buildGestureHintBubble(): TextView {
         return TextView(this).apply {
             visibility = View.GONE
@@ -914,6 +928,44 @@ class SharpRoomActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(hintSize, hintSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun buildToolbarIconButton(
+        iconRes: Int,
+        contentDescriptionText: String,
+        onClick: () -> Unit,
+    ): AppCompatImageButton {
+        return AppCompatImageButton(this).apply {
+            setImageResource(iconRes)
+            ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+            val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
+            val ripple = typedArray.getDrawable(0)
+            typedArray.recycle()
+            background = ripple
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = contentDescriptionText
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun buildCircularToolbarIconButton(
+        iconRes: Int,
+        contentDescriptionText: String,
+        backgroundColor: String = "#3A3A3C",
+        onClick: () -> Unit,
+    ): AppCompatImageButton {
+        return AppCompatImageButton(this).apply {
+            setImageResource(iconRes)
+            ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor(backgroundColor))
+            }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = contentDescriptionText
+            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
             setOnClickListener { onClick() }
         }
     }
@@ -1137,7 +1189,56 @@ class SharpRoomActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
             }
 
-            // Single overflow (⋮): share, save, calibrate, recenter, reset overlay, pan arrows, help — keeps title centered.
+            rightCluster.addView(
+                buildToolbarIconButton(
+                    R.drawable.ic_viewfinder,
+                    getString(R.string.sharp_room_menu_recenter),
+                ) { recenterCamera() },
+                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)),
+            )
+
+            val fullVideoBtn = buildToolbarIconButton(
+                R.drawable.ic_text_viewfinder,
+                getString(R.string.settings_full_video_with_identifications),
+            ) { toggleFullVideoIdentifications() }.apply {
+                visibility = View.GONE
+            }
+            fullVideoIdentificationsButton = fullVideoBtn
+            rightCluster.addView(
+                fullVideoBtn,
+                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                    marginStart = dpToPx(4)
+                },
+            )
+
+            val arBtn = buildCircularToolbarIconButton(
+                R.drawable.ic_square_resize,
+                getString(R.string.sharp_room_ar_sizing_hint),
+            ) { launchBrainMode(arAssistedRequested = true) }.apply {
+                tooltipText = getString(R.string.sharp_room_ar_sizing_hint)
+            }
+            brainArAssistButton = arBtn
+            setBrainArAssistButtonActive(false)
+            rightCluster.addView(
+                arBtn,
+                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                    marginStart = dpToPx(4)
+                },
+            )
+
+            if (allowSave) {
+                rightCluster.addView(
+                    buildToolbarIconButton(
+                        R.drawable.ic_download,
+                        getString(R.string.room_viewer_save_room),
+                    ) { showSaveDialog() },
+                    LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                        marginStart = dpToPx(4)
+                    },
+                )
+            }
+
+            // Keep secondary actions in ⋮ so the primary toolbar mirrors iOS without getting crowded.
             val overflowBtn = TextView(this@SharpRoomActivity).apply {
                 text = "\u22EE" // vertical ellipsis
                 textSize = 22f
@@ -1151,7 +1252,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 background = bg
                 val size = dpToPx(40)
                 val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
+                params.setMargins(dpToPx(4), 0, 0, 0)
                 layoutParams = params
                 setOnClickListener { showSharpRoomOverflowMenu(this) }
             }
@@ -1188,17 +1289,17 @@ class SharpRoomActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
             )
             centerCluster.addView(
-                AppCompatImageButton(this@SharpRoomActivity).apply {
-                    setImageResource(R.drawable.ic_gesture_tap)
-                    ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(Color.WHITE))
-                    val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
-                    val ripple = typedArray.getDrawable(0)
-                    typedArray.recycle()
-                    background = ripple
-                    scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    contentDescription = getString(R.string.sharp_room_display_all_helpers_content_description)
-                    setOnClickListener { displayAllGestureHelpers() }
-                },
+                buildToolbarIconButton(
+                    R.drawable.ic_gesture_pinch,
+                    getString(R.string.sharp_room_pinch_gesture_hint),
+                ) { onPinchHintIconTapped() },
+                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
+            )
+            centerCluster.addView(
+                buildToolbarIconButton(
+                    R.drawable.ic_gesture_tap,
+                    getString(R.string.sharp_room_display_all_helpers_content_description),
+                ) { displayAllGestureHelpers() },
                 LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
             )
             barContainer.addView(
@@ -1215,33 +1316,28 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
 
-            val arBtn = TextView(this@SharpRoomActivity).apply {
-                text = getString(R.string.model_viewer_ar)
-                textSize = 13f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                contentDescription = getString(R.string.sharp_room_ar_sizing_hint)
-                tooltipText = getString(R.string.sharp_room_ar_sizing_hint)
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(16).toFloat()
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
-                setOnClickListener { launchBrainMode(arAssistedRequested = true) }
-            }
-            brainArAssistButton = arBtn
-            setBrainArAssistButtonActive(false)
+        }
+    }
+
+    private fun createTopHelperOverlay(): FrameLayout {
+        pinchHintExplanationView = buildGestureHintBubble().apply {
+            text = getString(R.string.sharp_room_pinch_gesture_hint)
+            gravity = Gravity.END
+        }
+        return FrameLayout(this).apply {
+            isClickable = false
+            elevation = 19f
+            clipChildren = false
+            clipToPadding = false
             addView(
-                arBtn,
+                pinchHintExplanationView,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    gravity = Gravity.END or Gravity.TOP
-                    topMargin = dpToPx(68)
+                    gravity = Gravity.TOP or Gravity.END
+                    topMargin = dpToPx(6)
+                    rightMargin = dpToPx(16)
                 },
             )
         }
@@ -1303,6 +1399,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun toggleFullVideoIdentifications() {
         showFullVideoWithIdentifications = !showFullVideoWithIdentifications
+        updateFullVideoToolbarButton()
         if (!showFullVideoWithIdentifications && brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
             stopBrainSegmentationOnly()
         } else {
@@ -2122,23 +2219,6 @@ class SharpRoomActivity : AppCompatActivity() {
         container.addView(upDownColumn)
         container.addView(makeArrowButton("\u2192") { runMoveCamera(8.0, 0.0) })
 
-        pinchHintExplanationView = buildGestureHintBubble().apply {
-            text = getString(R.string.sharp_room_pinch_gesture_hint)
-        }
-        val pinchColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-        }
-        pinchColumn.addView(
-            pinchHintExplanationView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dpToPx(6) },
-        )
-        pinchColumn.addView(
-            buildHintIconButton(R.drawable.ic_gesture_pinch) { onPinchHintIconTapped() },
-        )
         return FrameLayout(this).apply {
             isClickable = false
             elevation = 18f
@@ -2153,17 +2233,6 @@ class SharpRoomActivity : AppCompatActivity() {
                     gravity = Gravity.TOP or Gravity.START
                     leftMargin = dpToPx(12)
                     topMargin = dpToPx(12)
-                },
-            )
-            addView(
-                pinchColumn,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.START
-                    leftMargin = dpToPx(12)
-                    topMargin = dpToPx(12 + 44 + 44 + 18)
                 },
             )
         }
@@ -2342,6 +2411,7 @@ class SharpRoomActivity : AppCompatActivity() {
         updateBrainCalibrationPill()
         updatePlacementIntelligenceCard()
         restartBrainGestureHint()
+        updateFullVideoToolbarButton()
     }
 
     private fun showBrainProgressOverlay() {
@@ -2448,6 +2518,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainDetectionOverlay.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
         updateBrainLivePreviewVisibility()
         setBrainSegmentationButtonActive(brainOverlayVisible)
+        updateFullVideoToolbarButton()
         updateBrainActionButton()
         updateBrainSelectionHelperText()
         updatePlacementIntelligenceCard()
@@ -2592,6 +2663,14 @@ class SharpRoomActivity : AppCompatActivity() {
         (brainArAssistButton?.background as? GradientDrawable)?.setColor(Color.parseColor(color))
     }
 
+    private fun updateFullVideoToolbarButton() {
+        fullVideoIdentificationsButton?.let { button ->
+            button.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
+            val tint = if (showFullVideoWithIdentifications) Color.parseColor("#34C759") else Color.WHITE
+            ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(tint))
+        }
+    }
+
     private fun launchBrainMode(arAssistedRequested: Boolean) {
         showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
         pendingBrainStartArAssist = arAssistedRequested
@@ -2621,6 +2700,7 @@ class SharpRoomActivity : AppCompatActivity() {
         setBrainSegmentationButtonActive(false)
         setBrainArAssistButtonActive(false)
         brainOverlayVisible = false
+        updateFullVideoToolbarButton()
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
         brainDetectionOverlayView.setDetectionBoxVisibility(false)

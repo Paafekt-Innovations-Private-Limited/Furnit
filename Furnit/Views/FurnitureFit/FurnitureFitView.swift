@@ -5436,37 +5436,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return false
         }
 
-        // Pinch should be easy to start anywhere over the active segmented overlay.
-        // Don't over-filter it touch-by-touch or the second finger frequently gets rejected.
-        if gestureRecognizer is UIPinchGestureRecognizer {
-            guard maskImageView.image != nil else {
-                logDebug("👆 [shouldReceive pinch] No mask image")
-                return false
-            }
-            guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
-                logDebug("👆 [shouldReceive pinch] No valid bbox")
-                return false
-            }
-            return true
-        }
-
-        // Pan: accept touches inside or near the primary bbox so the overlay is easy to grab.
         guard maskImageView.image != nil else {
-            logDebug("👆 [shouldReceive pan] No mask image")
-            return false
-        }
-        guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
-            logDebug("👆 [shouldReceive pan] No valid bbox")
+            logDebug("👆 [shouldReceive overlay gesture] No mask image")
             return false
         }
 
-        let touchPoint = touch.location(in: maskImageView)
-        let expandedBbox = primaryBboxInView.insetBy(dx: -Self.pinchHitTestPadding,
-                                                     dy: -Self.pinchHitTestPadding)
-        let contains = expandedBbox.contains(touchPoint)
+        if gestureRecognizer is UIPinchGestureRecognizer || gestureRecognizer is UIPanGestureRecognizer {
+            let touchPoint = touch.location(in: maskImageView)
+            let containsVisibleFurniture = touchIsOnVisibleMaskFurniture(touchPoint)
+            logDebug("👆 [shouldReceive overlay gesture] touchPoint=\(touchPoint) visibleMask=\(containsVisibleFurniture)")
+            return containsVisibleFurniture
+        }
 
-        logDebug("👆 [shouldReceive pan] touchPoint=\(touchPoint) bbox=\(primaryBboxInView) expanded=\(expandedBbox) contains=\(contains)")
-        return contains
+        return false
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -5476,10 +5458,105 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Hit Testing
 
-    /// Extra padding around `primaryBboxInView` so that the second pinch finger
-    /// (which typically lands outside the tight detection box) still hit-tests to
-    /// this view, allowing `UIPinchGestureRecognizer` to receive both touches.
-    private static let pinchHitTestPadding: CGFloat = 100
+    private static let maskFurnitureHitAlphaThreshold: UInt8 = 24
+    private static let maskFurnitureHitSampleRadius: CGFloat = 5
+
+    private func touchIsOnVisibleMaskFurniture(_ pointInMaskView: CGPoint) -> Bool {
+        guard let image = maskImageView.image,
+              maskImageView.bounds.contains(pointInMaskView) else {
+            return false
+        }
+
+        let radius = Self.maskFurnitureHitSampleRadius
+        let samplePoints = [
+            pointInMaskView,
+            CGPoint(x: pointInMaskView.x - radius, y: pointInMaskView.y),
+            CGPoint(x: pointInMaskView.x + radius, y: pointInMaskView.y),
+            CGPoint(x: pointInMaskView.x, y: pointInMaskView.y - radius),
+            CGPoint(x: pointInMaskView.x, y: pointInMaskView.y + radius)
+        ]
+
+        return samplePoints.contains { samplePoint in
+            maskAlpha(atMaskViewPoint: samplePoint, image: image) >= Self.maskFurnitureHitAlphaThreshold
+        }
+    }
+
+    private func maskAlpha(atMaskViewPoint point: CGPoint, image: UIImage) -> UInt8 {
+        guard let cgImage = image.cgImage,
+              let pixelPoint = imagePixelPoint(forMaskViewPoint: point, image: image) else {
+            return 0
+        }
+
+        let x = Int(pixelPoint.x.rounded(.down))
+        let y = Int(pixelPoint.y.rounded(.down))
+        guard x >= 0, y >= 0, x < cgImage.width, y < cgImage.height else { return 0 }
+        guard let data = cgImage.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            return 0
+        }
+
+        let bytesPerPixel = max(1, cgImage.bitsPerPixel / 8)
+        guard cgImage.bitsPerComponent == 8,
+              bytesPerPixel >= 4 else {
+            return 0
+        }
+
+        let offset = y * cgImage.bytesPerRow + x * bytesPerPixel
+        guard offset + bytesPerPixel <= CFDataGetLength(data) else { return 0 }
+        switch cgImage.alphaInfo {
+        case .premultipliedFirst, .first:
+            return bytes[offset]
+        case .premultipliedLast, .last:
+            return bytes[offset + min(3, bytesPerPixel - 1)]
+        case .noneSkipFirst, .noneSkipLast, .none:
+            return 255
+        @unknown default:
+            return bytes[offset + min(3, bytesPerPixel - 1)]
+        }
+    }
+
+    private func imagePixelPoint(forMaskViewPoint point: CGPoint, image: UIImage) -> CGPoint? {
+        let bounds = maskImageView.bounds
+        let imageSize = image.size
+        guard bounds.width > 0,
+              bounds.height > 0,
+              imageSize.width > 0,
+              imageSize.height > 0 else {
+            return nil
+        }
+
+        let scale: CGFloat
+        switch maskImageView.contentMode {
+        case .scaleAspectFit:
+            scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        case .scaleAspectFill:
+            scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        case .scaleToFill, .redraw:
+            let imageX = point.x / bounds.width * CGFloat(image.cgImage?.width ?? 0)
+            let imageY = point.y / bounds.height * CGFloat(image.cgImage?.height ?? 0)
+            return CGPoint(x: imageX, y: imageY)
+        default:
+            scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        }
+
+        guard scale > 0 else { return nil }
+        let drawnSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let drawnOrigin = CGPoint(
+            x: (bounds.width - drawnSize.width) * 0.5,
+            y: (bounds.height - drawnSize.height) * 0.5
+        )
+        let imagePoint = CGPoint(
+            x: (point.x - drawnOrigin.x) / scale,
+            y: (point.y - drawnOrigin.y) / scale
+        )
+        guard imagePoint.x >= 0,
+              imagePoint.y >= 0,
+              imagePoint.x < imageSize.width,
+              imagePoint.y < imageSize.height else {
+            return nil
+        }
+        return CGPoint(x: imagePoint.x * image.scale, y: imagePoint.y * image.scale)
+    }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if !selectedObjectChipButton.isHidden {
@@ -5507,17 +5584,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
-        let hasActivePrimary = primaryBboxInView.width > 0 && primaryBboxInView.height > 0
-
-        guard hasActivePrimary || candidateContains else {
-            logDebug("👆 [hitTest] No valid bbox / candidate at point, passing through")
-            return nil
-        }
-
-        logDebug("👆 [hitTest] point=\(point) pointInMask=\(pointInMask) bbox=\(primaryBboxInView)")
-
-        // If a pinch or pan is already in flight, accept touches anywhere so the
-        // gesture isn't interrupted when a finger drifts outside the box.
+        // Once the overlay gesture begins, keep receiving moved touches even if a
+        // finger drifts outside the transparent mask edge.
         if let pinch = overlayPinchGesture,
            pinch.state == .began || pinch.state == .changed {
             logDebug("👆 [hitTest] Pinch in progress – accepting")
@@ -5529,25 +5597,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return super.hitTest(point, with: event)
         }
 
-        // Tight bbox: pan and tap
-        if hasActivePrimary && primaryBboxInView.contains(pointInMask) {
-            logDebug("👆 [hitTest] INSIDE bbox - handling touch")
+        if touchIsOnVisibleMaskFurniture(pointInMask) {
+            logDebug("👆 [hitTest] INSIDE visible mask - handling touch")
             return super.hitTest(point, with: event)
         }
 
-        if candidateContains {
-            logDebug("👆 [hitTest] INSIDE candidate bbox - handling touch")
-            return super.hitTest(point, with: event)
-        }
-
-        // Expanded bbox: allow pinch initiation when fingers straddle the edge
-        let expanded = primaryBboxInView.insetBy(dx: -Self.pinchHitTestPadding, dy: -Self.pinchHitTestPadding)
-        if hasActivePrimary && expanded.contains(pointInMask) {
-            logDebug("👆 [hitTest] INSIDE expanded bbox (pinch margin) - handling touch")
-            return super.hitTest(point, with: event)
-        }
-
-        logDebug("👆 [hitTest] OUTSIDE expanded bbox - passing through")
+        logDebug("👆 [hitTest] OUTSIDE visible mask - passing through")
         return nil
     }
 }
