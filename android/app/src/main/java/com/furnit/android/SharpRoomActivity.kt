@@ -2412,6 +2412,11 @@ class SharpRoomActivity : AppCompatActivity() {
             brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY
     }
 
+    private fun shouldShowIdentifyMaskOverlay(): Boolean {
+        return brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY &&
+            !shouldShowIdentifyLivePreview()
+    }
+
     private fun updateBrainLivePreviewVisibility() {
         val shouldShowLivePreview = shouldShowIdentifyLivePreview()
         if (::brainCameraPreviewView.isInitialized) {
@@ -2438,6 +2443,12 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun showBrainDetectionOverlay() {
+        val maskForOverlay =
+            if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED || shouldShowIdentifyMaskOverlay()) {
+                latestBrainMask
+            } else {
+                null
+            }
         val detectionsForOverlay =
             if (brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY) {
                 latestBrainDetections
@@ -2445,7 +2456,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 emptyList()
             }
         brainDetectionOverlayView.setMaskAndDetections(
-            latestBrainMask,
+            maskForOverlay,
             detectionsForOverlay,
             latestBrainInputSize,
             latestBrainOverlayScale,
