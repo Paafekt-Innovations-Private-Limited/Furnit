@@ -1679,6 +1679,10 @@ struct GLBWebGLView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.setURLSchemeHandler(
+            BundledWebViewAssetSchemeHandler(),
+            forURLScheme: BundledWebViewAsset.scheme
+        )
 
         // Add message handler for JS -> Swift communication
         config.userContentController.add(context.coordinator, name: "glbViewer")
@@ -1721,8 +1725,9 @@ struct GLBWebGLView: UIViewRepresentable {
 
         if let glbData = try? Data(contentsOf: glbURL) {
             let html = generateGLBViewerHTML(glbData: glbData)
-            logDebug("📄 [GLBViewer] loadHTMLString (CDN three.js) htmlBytes=\(html.utf8.count)")
-            webView.loadHTMLString(html, baseURL: nil)
+            let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
+            logDebug("📄 [GLBViewer] loadHTMLString (bundled three.js) htmlBytes=\(html.utf8.count)")
+            webView.loadHTMLString(html, baseURL: baseURL)
         } else {
             logDebug("❌ [GLBRoomView] Failed to load GLB file: \(glbURL.path)")
             DispatchQueue.main.async {
@@ -1878,8 +1883,8 @@ struct GLBWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+                    "three": "\(BundledWebViewAsset.assetURLString(for: "three/build/three.module.js"))",
+                    "three/addons/": "\(BundledWebViewAsset.assetURLString(for: "three/examples/jsm/"))"
                 }
             }
             </script>

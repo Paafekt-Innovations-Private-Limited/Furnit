@@ -1673,6 +1673,10 @@ struct MeshWebGLView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.setURLSchemeHandler(
+            BundledWebViewAssetSchemeHandler(),
+            forURLScheme: BundledWebViewAsset.scheme
+        )
 
         // Add message handler for JS -> Swift communication
         config.userContentController.add(context.coordinator, name: "meshViewer")
@@ -1718,11 +1722,10 @@ struct MeshWebGLView: UIViewRepresentable {
             webViewRef = webView
         }
 
-        // Historical manual-room path: Three.js from jsDelivr + loadHTMLString (requires network).
-        // This matches the pre–App Store review bundling flow (~Apr 2026) that users relied on.
         let html = generateMeshViewerHTML()
-        logDebug("📄 [MeshViewer] loadHTMLString (CDN three.js) htmlBytes=\(html.utf8.count)")
-        webView.loadHTMLString(html, baseURL: nil)
+        let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
+        logDebug("📄 [MeshViewer] loadHTMLString (bundled three.js) htmlBytes=\(html.utf8.count)")
+        webView.loadHTMLString(html, baseURL: baseURL)
 
         return webView
     }
@@ -1882,8 +1885,8 @@ struct MeshWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+                    "three": "\(BundledWebViewAsset.assetURLString(for: "three/build/three.module.js"))",
+                    "three/addons/": "\(BundledWebViewAsset.assetURLString(for: "three/examples/jsm/"))"
                 }
             }
             </script>
