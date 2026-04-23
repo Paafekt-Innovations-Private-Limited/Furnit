@@ -418,13 +418,28 @@ class ContentActivity : AppCompatActivity() {
         }
 
         if (model.isUserCreated) {
-            // Purple 3x3 grid icon for user-created rooms (matching iOS circle.grid.3x3.fill)
-            val gridIcon = ImageView(this).apply {
-                setImageResource(R.drawable.ic_grid_3x3)
+            val isSharpRoom = model.assetPath.endsWith(".ply", ignoreCase = true)
+            val isManualRoom = model.assetPath.endsWith(".glb", ignoreCase = true)
+            (iconContainer.background as? GradientDrawable)?.setColor(
+                when {
+                    isSharpRoom -> cardBackgroundColor
+                    isManualRoom -> Color.parseColor("#4A3318")
+                    else -> cardBackgroundColor
+                },
+            )
+
+            val userRoomIcon = ImageView(this).apply {
+                setImageResource(
+                    when {
+                        isSharpRoom -> R.drawable.ic_grid_3x3
+                        isManualRoom -> R.drawable.ic_square_grid_3x3
+                        else -> R.drawable.ic_grid_3x3
+                    },
+                )
                 val iconSize = dpToPx(28)
                 layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
             }
-            iconContainer.addView(gridIcon)
+            iconContainer.addView(userRoomIcon)
         } else {
             // Green 3D box icon for bundled models
             val boxIcon = TextView(this).apply {

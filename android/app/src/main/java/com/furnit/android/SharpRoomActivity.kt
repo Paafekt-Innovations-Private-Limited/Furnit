@@ -253,6 +253,7 @@ class SharpRoomActivity : AppCompatActivity() {
     /** Top-right AR sizing control; active when the current brain session requested AR-assisted sizing. */
     private var brainArAssistButton: AppCompatImageButton? = null
     private var fullVideoIdentificationsButton: AppCompatImageButton? = null
+    private var saveRoomToolbarButton: AppCompatImageButton? = null
     private lateinit var roomRulerButton: AppCompatImageButton
     /** Top chrome (back pill + ruler); used to position the room-dimensions hint below the bar. */
     private lateinit var sharpRoomTopBar: FrameLayout
@@ -1192,6 +1193,14 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             fullVideoIdentificationsButton = fullVideoBtn
 
+            val saveBtn = buildToolbarIconButton(
+                R.drawable.ic_download,
+                getString(R.string.sharp_room_menu_save),
+            ) { showSaveDialog() }.apply {
+                visibility = if (allowSave) View.VISIBLE else View.GONE
+            }
+            saveRoomToolbarButton = saveBtn
+
             val arBtn = buildCircularToolbarIconButton(
                 R.drawable.ic_square_resize,
                 getString(R.string.sharp_room_ar_sizing_hint),
@@ -1224,6 +1233,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     R.drawable.ic_gesture_tap,
                     getString(R.string.sharp_room_display_all_helpers_content_description),
                 ) { displayAllGestureHelpers() },
+                saveBtn,
                 buildToolbarIconButton(
                     R.drawable.ic_viewfinder,
                     getString(R.string.sharp_room_menu_recenter),
@@ -2623,6 +2633,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun updateFullVideoToolbarButton() {
+        saveRoomToolbarButton?.visibility = if (allowSave && !brainOverlayVisible) View.VISIBLE else View.GONE
         fullVideoIdentificationsButton?.let { button ->
             button.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
             val tint = if (showFullVideoWithIdentifications) Color.parseColor("#34C759") else Color.WHITE
