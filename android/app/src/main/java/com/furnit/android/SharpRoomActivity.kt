@@ -1337,6 +1337,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 showIdentifyLivePreview = true
             }
             updateBrainLivePreviewVisibility()
+            ensureCameraPreviewBoundForFullVideoIfNeeded()
             showBrainDetectionOverlay()
         }
         DebugLogger.d(TAG, "Full video with identifications toggled: $showFullVideoWithIdentifications")
@@ -1357,6 +1358,11 @@ class SharpRoomActivity : AppCompatActivity() {
         return brainRealFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
             ?: brainArController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
             ?: brainArController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+            ?: latestBrainPrimaryDetection?.let { detection ->
+                val input = latestBrainInputSize.takeIf { it > 0 }?.toFloat() ?: return@let null
+                val roomH = effRoomHeight().takeIf { it.isFinite() && it > 0.1f } ?: return@let null
+                (roomH * (detection.h / input)).coerceIn(0.05f, roomH * 0.95f)
+            }
             ?: brainLockedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
     }
 
@@ -1365,6 +1371,12 @@ class SharpRoomActivity : AppCompatActivity() {
             val scale = brainCalibrationScaleFactor.takeIf { it.isFinite() && it > 0f } ?: 1f
             if (brainRealFurnitureHeightMeters != null) baseWidth * scale else baseWidth
         }
+            ?: run {
+                val detection = latestBrainPrimaryDetection ?: return@run null
+                val displayHeight = effectiveBrainFurnitureHeightDisplayMeters() ?: return@run null
+                if (detection.h <= 1e-3f) return@run null
+                (displayHeight * (detection.w / detection.h)).coerceAtLeast(0.05f)
+            }
 
     private fun brainOverlayScaleForDetection(
         det: DetectionResult?,
@@ -1450,32 +1462,32 @@ class SharpRoomActivity : AppCompatActivity() {
             val detectedWidth = effectiveBrainFurnitureWidthDisplayMeters()
             val detected = effectiveBrainFurnitureHeightDisplayMeters()
             if (container == null || line1 == null || line2 == null) return@runOnUiThread
+            val roomH = effRoomHeight().takeIf { it.isFinite() && it > 0.05f }
+            line1.text = roomH?.let { "Room: ${String.format(Locale.US, "%.2f", it)}m" } ?: "Room:"
+            line1.setTextColor(0xFFFFFFFF.toInt())
             val realH = brainRealFurnitureHeightMeters
-            if (realH != null && realH > 0f) {
-                val roomH = effRoomHeight()
-                val text = String.format(Locale.US, "%.2f", roomH)
-                line1.text = "Room: ${text}m"
-                line1.setTextColor(0xFF4CAF50.toInt())
+            line2.text = if (detectedWidth != null && detected != null) {
+                "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
+            } else if (detected != null) {
+                "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
             } else {
-                line1.text = if (detectedWidth != null && detected != null) {
-                    "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
-                } else if (detected != null) {
-                    "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
-                } else {
-                    "Furn:"
-                }
-                line1.setTextColor(0xFFFFFFFF.toInt())
+                getString(R.string.smartypants_tap_calibrate)
             }
+            line2.setTextColor(
+                when {
+                    realH != null && realH > 0f -> 0xFF4CAF50.toInt()
+                    detected != null -> 0xFFFFFFFF.toInt()
+                    else -> 0xFFAAAAAA.toInt()
+                },
+            )
             if (calibrateUi && detected != null) {
-                line2.visibility = View.VISIBLE
-                line2.text = getString(R.string.smartypants_tap_calibrate)
                 container.isClickable = true
                 container.setOnClickListener { showBrainCalibrationDialog() }
             } else {
-                line2.visibility = View.GONE
                 container.setOnClickListener(null)
                 container.isClickable = false
             }
+            line2.visibility = View.VISIBLE
         }
     }
 
@@ -2599,11 +2611,19 @@ class SharpRoomActivity : AppCompatActivity() {
             val tint = if (showFullVideoWithIdentifications) Color.parseColor("#34C759") else Color.WHITE
             ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(tint))
         }
-        brainArAssistButton?.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
+        brainArAssistButton?.let { button ->
+            button.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
+            ImageViewCompat.setImageTintList(
+                button,
+                ColorStateList.valueOf(if (brainArAssistRequested) Color.parseColor("#34C759") else Color.WHITE),
+            )
+        }
     }
 
     private fun launchBrainMode(arAssistedRequested: Boolean) {
-        showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
+        if (!brainOverlayVisible && brainProgressOverlay.visibility != View.VISIBLE) {
+            showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
+        }
         pendingBrainStartArAssist = arAssistedRequested
         if (brainDetectionOverlay.visibility == View.VISIBLE) {
             if (brainArAssistRequested == arAssistedRequested) {
@@ -2624,6 +2644,23 @@ class SharpRoomActivity : AppCompatActivity() {
             showBrainProgressOverlayIfNeeded()
             startBrainDetection(arAssistedRequested)
         }
+    }
+
+    private fun ensureCameraPreviewBoundForFullVideoIfNeeded() {
+        if (!brainOverlayVisible ||
+            !showFullVideoWithIdentifications ||
+            !showIdentifyLivePreview ||
+            brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY ||
+            brainArController != null ||
+            cameraPreviewUseCase != null
+        ) {
+            return
+        }
+        val manager = furnitureFitManager ?: return
+        val nextGeneration = brainSessionGeneration.incrementAndGet()
+        brainSegmentationAcceptingUpdates = false
+        isBrainInferenceRunning.set(false)
+        bindBrainCamera(manager, nextGeneration)
     }
 
     private fun hideBrainDetectionOverlay() {
@@ -2779,12 +2816,25 @@ class SharpRoomActivity : AppCompatActivity() {
                 .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-            // Bind analysis only. Some devices time out completing CameraX Preview surfaces
-            // while the room viewer is layered underneath overlays, which blocks segmentation.
+            val shouldBindPreview =
+                showFullVideoWithIdentifications &&
+                    showIdentifyLivePreview &&
+                    brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY
+            val preview =
+                if (shouldBindPreview) {
+                    Preview.Builder()
+                        .setTargetResolution(brainAnalysisSize)
+                        .setTargetRotation(displayRotationForCameraX())
+                        .build().also { previewUseCase ->
+                            previewUseCase.setSurfaceProvider(brainCameraPreviewView.surfaceProvider)
+                        }
+                } else {
+                    null
+                }
             if (::brainCameraPreviewView.isInitialized) {
                 brainCameraPreviewView.visibility = View.GONE
             }
-            cameraPreviewUseCase = null
+            cameraPreviewUseCase = preview
             var frameCount = 0
             val hasFirstResult = BooleanArray(1) { false }
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -2826,7 +2876,11 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 brainSegmentationAcceptingUpdates = true
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                if (preview != null) {
+                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                } else {
+                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                }
                 updateBrainLivePreviewVisibility()
                 DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {

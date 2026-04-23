@@ -260,18 +260,18 @@
     <string name="faq_sample_room">Can I use a sample room instead of my own?</string>
     <string name="faq_sample_room_answer">Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.</string>
     <string name="faq_accuracy">How accurate is the 3D model?</string>
-    <string name="faq_accuracy_answer">The 3D model provides a visual approximation of your room\'s layout. The dimensions shown are relative units from the AI model, not exact real-world measurements.</string>
+    <string name="faq_accuracy_answer">The 3D room is an estimate from one photo. Room dimensions can be useful as guidance, but they are not survey-grade. Furniture measurement is most reliable on phones with AR/depth support.</string>
     <string name="faq_adjust_dimensions">Can I adjust room dimensions?</string>
-    <string name="faq_adjust_dimensions_answer">For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.</string>
+    <string name="faq_adjust_dimensions_answer">Not directly for AI-generated SHARP rooms. Use the ruler in the room viewer to inspect the current estimated width, height, and depth. For better results, capture a clear room photo with visible corners; manual rooms follow the boundaries you set.</string>
 
     <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">How is furniture overlay size estimated?</string>
     <string name="faq_ar_assisted_sizing_answer">First tap the brain icon, select detected items, then tap Segment. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
-    <string name="faq_measurement_pill_answer">The Furni size pill appears only when sizing mode is on and the app has a usable live height estimate. Room measurements may also appear in the room viewer. On phones without AR, these readings are less reliable, especially for furniture.</string>
+    <string name="faq_measurement_pill_answer">The furniture size pill appears only when sizing mode is on and the app has a usable live height estimate. The ruler button shows the current room width, height, and depth in a small card. On non-AR phones, these readings are less reliable, especially for furniture.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
-    <string name="faq_reset_overlay_scale_answer">There is no overflow reset now. If the overlay looks off, turn the brain icon off and on again, or pinch the furniture manually to fine-tune its size.</string>
+    <string name="faq_reset_overlay_scale_answer">There is no overflow menu now. If the overlay looks off, turn the brain icon off and on again, or pinch the furniture manually to fine-tune its size.</string>
     <string name="faq_pinch_overlay_size">What happens when I pinch the segmented furniture?</string>
     <string name="faq_pinch_overlay_size_answer">Pinching makes the furniture overlay larger or smaller. If sizing mode is on and the Furni pill is visible, that pill updates to the current resized furniture estimate for the room. If sizing mode is off, pinch only changes the overlay visually on screen.</string>
     <string name="faq_depth_aware_room_photo">Does taking a photo in the app help room quality?</string>
@@ -406,12 +406,12 @@
     <string name="faq_room_fitment_answer">After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.</string>
     <string name="faq_placement_intelligence">Placement intelligence &amp; aesthetic</string>
     <string name="faq_what_is_placement_intelligence">What is Placement Intelligence?</string>
-    <string name="faq_what_is_placement_intelligence_answer">While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card summarizes whether the detected object\'s size fits your room bounds, shows floor-fit hints and corner suggestions when available, and notes when depth is estimated. Tap the header to expand full details, or leave it collapsed to save space.</string>
+    <string name="faq_what_is_placement_intelligence_answer">While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.</string>
     <string name="faq_furniture_color_aesthetic">How does the app pick a color for aesthetic scoring?</string>
     <string name="faq_furniture_color_aesthetic_answer">The app averages the RGB color of visible pixels inside the AI furniture cutout (the same segmented overlay you see on camera). That mean color is compared to colors sampled from your room\'s floor, walls, and ceiling. If the cutout is not ready yet, a fallback color is taken from the room palette until segmentation supplies a real sample.</string>
     <string name="faq_what_do_harmony_contrast_mean">What do harmony, contrast, and style fit mean?</string>
     <string name="faq_what_do_harmony_contrast_mean_answer">These are simple design heuristics, not a judgment of taste. Harmony describes how the furniture color relates to the room palette (for example analogous or complementary hues). Contrast is how different the brightness is from typical floor or wall colors. Style fit compares broad style labels inferred for the room with a default modern profile, so it is approximate.</string>
-    <string name="faq_when_does_aesthetic_score_low">When might aesthetic scores look low or show \"clash\"?</string>
+    <string name="faq_when_does_aesthetic_score_low">When might aesthetic scores look low or show "clash"?</string>
     <string name="faq_when_does_aesthetic_score_low_answer">Bright, saturated objects often score worse when their hue does not line up with the app\'s harmonious color schemes against your room—for example acid green, magenta, purple, or safety-orange props against warm beige or tan rooms, or loud primaries in a room sampled as mostly one hue family. Very similar brightness to the floor or wall (brown-on-brown, gray-on-gray) can lower contrast even if you like the look. Rooms inferred as rustic or traditional can show lower style fit because the furniture profile uses default modern/minimal tags. Dull gray or muddy averages from busy backgrounds may land in a neutral band instead of clash. Treat scores as guides only and trust your eye for real decor.</string>
     <string name="crash_report_submit_report">Submit Report</string>
     <string name="faq_furniture_segmentation">Furniture Segmentation</string>
