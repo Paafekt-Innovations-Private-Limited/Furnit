@@ -86,6 +86,7 @@ class SceneKitGestureHandlers: NSObject {
         }
 
         logDebug("🎮 [SceneKitGesture] Gesture recognizers set up")
+        logDebug("🎮 [SceneKitGesture] view frame=\(view.frame) bounds=\(view.bounds) interaction=\(view.isUserInteractionEnabled)")
         logDebug("   Single finger: rotate (look around)")
         logDebug("   Two fingers: strafe (move left/right/up/down)")
         logDebug("   Pinch: zoom (forward/backward)")
@@ -106,7 +107,7 @@ class SceneKitGestureHandlers: NSObject {
         case .began:
             lastPanTranslation = translation
             initialCameraPosition = camera.position
-            logDebug("🚨 [SceneKitGesture] Rotation pan BEGAN")
+            logDebug("🚨 [SceneKitGesture] Rotation pan BEGAN touches=\(gesture.numberOfTouches) translation=\(translation) pos=\(camera.position) euler=\(camera.eulerAngles)")
 
         case .changed:
             // Calculate delta
@@ -126,10 +127,11 @@ class SceneKitGestureHandlers: NSObject {
 
             // Keep position locked during rotation
             camera.position = initialCameraPosition
+            logDebug("🚨 [SceneKitGesture] Rotation CHANGED dx=\(deltaX) dy=\(deltaY) yaw=\(accumulatedYaw) pitch=\(accumulatedPitch)")
 
         case .ended, .cancelled:
             lastPanTranslation = .zero
-            logDebug("🚨 [SceneKitGesture] Rotation pan ENDED")
+            logDebug("🚨 [SceneKitGesture] Rotation pan ENDED pos=\(camera.position) euler=\(camera.eulerAngles)")
 
         default:
             break
@@ -148,7 +150,7 @@ class SceneKitGestureHandlers: NSObject {
         switch gesture.state {
         case .began:
             lastPositionPanTranslation = translation
-            logDebug("🖐️ [SceneKitGesture] Strafe pan BEGAN")
+            logDebug("🖐️ [SceneKitGesture] Strafe pan BEGAN touches=\(gesture.numberOfTouches) translation=\(translation) pos=\(camera.position)")
 
         case .changed:
             // Calculate delta
@@ -169,10 +171,11 @@ class SceneKitGestureHandlers: NSObject {
                 camera.position.y + rightMovement.y + upMovement.y,
                 camera.position.z + rightMovement.z + upMovement.z
             )
+            logDebug("🖐️ [SceneKitGesture] Strafe CHANGED dx=\(deltaX) dy=\(deltaY) right=\(right) pos=\(camera.position)")
 
         case .ended, .cancelled:
             lastPositionPanTranslation = .zero
-            logDebug("🖐️ [SceneKitGesture] Strafe pan ENDED")
+            logDebug("🖐️ [SceneKitGesture] Strafe pan ENDED pos=\(camera.position)")
 
         default:
             break
@@ -189,7 +192,7 @@ class SceneKitGestureHandlers: NSObject {
         switch gesture.state {
         case .began:
             initialCameraPosition = camera.position
-            logDebug("🔍 [SceneKitGesture] Pinch BEGAN")
+            logDebug("🔍 [SceneKitGesture] Pinch BEGAN touches=\(gesture.numberOfTouches) scale=\(gesture.scale) pos=\(camera.position)")
 
         case .changed:
             let scale = gesture.scale
@@ -206,9 +209,10 @@ class SceneKitGestureHandlers: NSObject {
                 initialCameraPosition.y,
                 initialCameraPosition.z + forwardXZ.z * zoomDelta
             )
+            logDebug("🔍 [SceneKitGesture] Pinch CHANGED scale=\(scale) zoomDelta=\(zoomDelta) forward=\(forward) pos=\(camera.position)")
 
         case .ended, .cancelled:
-            logDebug("🔍 [SceneKitGesture] Pinch ENDED")
+            logDebug("🔍 [SceneKitGesture] Pinch ENDED pos=\(camera.position)")
 
         default:
             break
@@ -269,11 +273,23 @@ class SceneKitGestureOverlayView: UIView {
         backgroundColor = .clear
         isUserInteractionEnabled = true
         gestureHandler = SceneKitGestureHandlers(containerView: self)
+        logDebug("🪟 [SceneKitGesture] Overlay setup frame=\(frame) bounds=\(bounds)")
     }
 
     /// Set the camera node to control
     func setCameraNode(_ node: SCNNode) {
         gestureHandler?.setCameraNode(node)
+        logDebug("🪟 [SceneKitGesture] Overlay setCameraNode pos=\(node.position) euler=\(node.eulerAngles)")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        logDebug("🪟 [SceneKitGesture] Overlay layout frame=\(frame) bounds=\(bounds)")
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        logDebug("🪟 [SceneKitGesture] Overlay touchesBegan count=\(touches.count)")
     }
 
     deinit {

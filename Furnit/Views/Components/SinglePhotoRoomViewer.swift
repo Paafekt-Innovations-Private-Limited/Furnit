@@ -2440,6 +2440,7 @@ struct SceneKitViewer: View {
     let photoOrientation: PhotoOrientation
     let roomWidth: Float
     let roomHeight: Float
+    var allowSave: Bool = true
     @Environment(\.dismiss) private var dismiss
     @State private var cameraNode: SCNNode?
 
@@ -2468,6 +2469,7 @@ struct SceneKitViewer: View {
             .onAppear {
                 logDebug("🎬 [Viewer] SceneKit viewer appeared")
                 logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
+                logDebug("🎬 [SceneKitViewer] orientation=\(photoOrientation.rawValue) allowSave=\(allowSave) room=\(roomWidth)x\(roomHeight)")
                 Task {
                     setupCamera()
                     // Small delay to ensure camera is ready
@@ -2510,8 +2512,12 @@ struct SceneKitViewer: View {
 
             // ✅ UNIFIED GESTURE HANDLER - same gestures as RealityKit rooms
             SceneKitGestureOverlay(cameraNode: cameraNode)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(true)
                 .zIndex(99996)
+                .onAppear {
+                    logDebug("🪟 [SceneKitViewer] Gesture overlay appeared")
+                }
 
             // Custom back button (top-left) - matches SharpRoomView style
             VStack {
@@ -2566,13 +2572,13 @@ struct SceneKitViewer: View {
         .navigationTitle(String(format: "%.1f m × %.1f m", roomWidth, roomHeight))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-
-            // Save Room button
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showRoomNameInput = true
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
+            if allowSave {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showRoomNameInput = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
                 }
             }
         }
@@ -2849,6 +2855,7 @@ struct SceneKitViewer: View {
 
         // Point camera at front wall (without constraint for joystick movement)
         camNode.look(at: SCNVector3(lookAtX, lookAtY, lookAtZ))
+        logDebug("   🎛️ Camera euler after lookAt: \(camNode.eulerAngles)")
 
         scene.rootNode.addChildNode(camNode)
         cameraNode = camNode

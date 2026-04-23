@@ -1683,6 +1683,7 @@ struct MeshWebGLView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         context.coordinator.webView = webView
+        webView.navigationDelegate = context.coordinator
 
         // Completely disable WebView scrolling - let Three.js handle all touch
         webView.scrollView.isScrollEnabled = false
@@ -1724,8 +1725,12 @@ struct MeshWebGLView: UIViewRepresentable {
 
         let html = generateMeshViewerHTML()
         let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
-        logDebug("📄 [MeshViewer] loadHTMLString (bundled three.js) htmlBytes=\(html.utf8.count)")
-        webView.loadHTMLString(html, baseURL: baseURL)
+        if BundledWebViewAsset.bundledBaseURL() != nil {
+            logDebug("📄 [MeshViewer] loadHTMLString (bundled scheme URLs) htmlBytes=\(html.utf8.count)")
+            webView.loadHTMLString(html, baseURL: baseURL)
+        } else {
+            logDebug("❌ [MeshViewer] Missing bundled WebView vendor assets")
+        }
 
         return webView
     }
@@ -1736,7 +1741,7 @@ struct MeshWebGLView: UIViewRepresentable {
         Coordinator(onLoaded: onLoaded, onGLBExported: onGLBExported)
     }
 
-    class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate {
+    class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate, WKNavigationDelegate {
         let onLoaded: () -> Void
         let onGLBExported: (Data) -> Void
         weak var webView: WKWebView?
@@ -1789,6 +1794,26 @@ struct MeshWebGLView: UIViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            logDebug("🌐 [MeshViewer] WK didStartProvisionalNavigation url=\(webView.url?.absoluteString ?? "nil")")
+        }
+
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            logDebug("🌐 [MeshViewer] WK didCommit url=\(webView.url?.absoluteString ?? "nil")")
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            logDebug("🌐 [MeshViewer] WK didFinish url=\(webView.url?.absoluteString ?? "nil")")
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            logDebug("❌ [MeshViewer] WK didFail error=\(error.localizedDescription)")
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            logDebug("❌ [MeshViewer] WK didFailProvisionalNavigation error=\(error.localizedDescription)")
+        }
+
         @objc private func recenterCamera() {
             webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
         }
@@ -1830,9 +1855,25 @@ struct MeshWebGLView: UIViewRepresentable {
 
             switch event {
             case "loaded":
+                logDebug("✅ [MeshViewer] JS reported loaded")
                 DispatchQueue.main.async {
                     self.onLoaded()
                 }
+            case "jsLog":
+                let parts = body
+                    .filter { $0.key != "event" }
+                    .map { "\($0.key)=\($0.value)" }
+                    .sorted()
+                    .joined(separator: " ")
+                logDebug("🧩 [MeshViewer] JS \(parts)")
+            case "jsError":
+                let message = body["message"] as? String ?? "unknown"
+                let parts = body
+                    .filter { $0.key != "event" && $0.key != "message" }
+                    .map { "\($0.key)=\($0.value)" }
+                    .sorted()
+                    .joined(separator: " ")
+                logDebug("❌ [MeshViewer] JS error message=\(message) \(parts)")
             case "glbExported":
                 // Receive base64-encoded GLB data
                 if let base64Data = body["data"] as? String,
@@ -1857,6 +1898,9 @@ struct MeshWebGLView: UIViewRepresentable {
         let base64Image = imageData.base64EncodedString()
 
         let isPortrait = photoOrientation == .portrait
+        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
+        let orbitControlsURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/controls/OrbitControls.js")
+        let gltfExporterURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/exporters/GLTFExporter.js")
 
         return """
         <!DOCTYPE html>
@@ -1885,7 +1929,7 @@ struct MeshWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "\(BundledWebViewAsset.assetURLString(for: "three/build/three.module.js"))",
+                    "three": "\(threeModuleURL)",
                     "three/addons/": "\(BundledWebViewAsset.assetURLString(for: "three/examples/jsm/"))"
                 }
             }
@@ -1893,7 +1937,20 @@ struct MeshWebGLView: UIViewRepresentable {
             <script type="module">
                 import * as THREE from 'three';
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-                import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+                window.addEventListener('error', function (event) {
+                    meshPost('jsError', {
+                        message: 'window.error: ' + (event && event.message ? event.message : 'unknown'),
+                        filename: event && event.filename ? event.filename : '',
+                        lineno: event && event.lineno ? event.lineno : 0,
+                        colno: event && event.colno ? event.colno : 0
+                    });
+                });
+                window.addEventListener('unhandledrejection', function (event) {
+                    let reason = event && event.reason;
+                    let message = (reason && reason.message) ? reason.message : String(reason);
+                    meshPost('jsError', { message: 'unhandledrejection: ' + message });
+                });
 
                 function meshPost(event, extra) {
                     try {
@@ -2292,8 +2349,20 @@ struct MeshWebGLView: UIViewRepresentable {
                 }
 
                 // GLTF Export function - called from Swift
-                window.exportGLB = function() {
+                window.exportGLB = async function() {
                     console.log('[MeshViewer] Starting GLB export...');
+
+                    let GLTFExporter;
+                    try {
+                        ({ GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js'));
+                    } catch (error) {
+                        console.error('[MeshViewer] Failed to load GLTFExporter:', error);
+                        window.webkit.messageHandlers.meshViewer.postMessage({
+                            event: 'exportError',
+                            message: (error && error.message) ? error.message : 'Failed to load export module'
+                        });
+                        return;
+                    }
 
                     const exporter = new GLTFExporter();
 

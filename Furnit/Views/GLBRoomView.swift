@@ -1726,8 +1726,15 @@ struct GLBWebGLView: UIViewRepresentable {
         if let glbData = try? Data(contentsOf: glbURL) {
             let html = generateGLBViewerHTML(glbData: glbData)
             let baseURL = URL(string: BundledWebViewAsset.assetURLString(for: ""))!
-            logDebug("📄 [GLBViewer] loadHTMLString (bundled three.js) htmlBytes=\(html.utf8.count)")
-            webView.loadHTMLString(html, baseURL: baseURL)
+            if BundledWebViewAsset.bundledBaseURL() != nil {
+                logDebug("📄 [GLBViewer] loadHTMLString (bundled scheme URLs) htmlBytes=\(html.utf8.count)")
+                webView.loadHTMLString(html, baseURL: baseURL)
+            } else {
+                logDebug("❌ [GLBRoomView] Missing bundled WebView vendor assets")
+                DispatchQueue.main.async {
+                    onError("Failed to load viewer assets")
+                }
+            }
         } else {
             logDebug("❌ [GLBRoomView] Failed to load GLB file: \(glbURL.path)")
             DispatchQueue.main.async {
@@ -1856,6 +1863,8 @@ struct GLBWebGLView: UIViewRepresentable {
     private func generateGLBViewerHTML(glbData: Data) -> String {
         let base64GLB = glbData.base64EncodedString()
         let isPortrait = photoOrientation == .portrait
+        let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
+        let gltfLoaderURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/loaders/GLTFLoader.js")
         return """
         <!DOCTYPE html>
         <html>
@@ -1883,7 +1892,7 @@ struct GLBWebGLView: UIViewRepresentable {
             <script type="importmap">
             {
                 "imports": {
-                    "three": "\(BundledWebViewAsset.assetURLString(for: "three/build/three.module.js"))",
+                    "three": "\(threeModuleURL)",
                     "three/addons/": "\(BundledWebViewAsset.assetURLString(for: "three/examples/jsm/"))"
                 }
             }

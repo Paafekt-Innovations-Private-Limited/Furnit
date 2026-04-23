@@ -535,7 +535,7 @@ struct HomeTab: View {
                         }
                     }
                 } else if model.fileType == .meshroom {
-                    // Meshroom files - navigate to MeshRoomView (WebGL box room)
+                    // Meshroom files - navigate to MeshRoomView
                     NavigationLink {
                         LazyView {
                             // Load image from .meshroom file
@@ -1259,28 +1259,28 @@ struct CreditsView: View {
     var body: some View {
         Form {
             Section {
-                Text(L10n.Credits.intro)
+                Text("credits.intro".localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             } header: {
-                Text(L10n.Credits.title)
+                Text("credits.title".localized)
             }
 
             Section {
-                Text(L10n.Credits.disclaimer)
+                Text("credits.disclaimer".localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.appleTitle)
+                    Text("credits.appleTitle".localized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Credits.appleBody)
+                    Text("credits.appleBody".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.apple)
+                    Link("credits.visitWebsite".localized, destination: CreditURL.apple)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1288,13 +1288,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.openAITitle)
+                    Text("credits.openAITitle".localized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Credits.openAIBody)
+                    Text("credits.openAIBody".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.openAI)
+                    Link("credits.visitWebsite".localized, destination: CreditURL.openAI)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1302,13 +1302,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.anthropicTitle)
+                    Text("credits.anthropicTitle".localized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Credits.anthropicBody)
+                    Text("credits.anthropicBody".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.anthropic)
+                    Link("credits.visitWebsite".localized, destination: CreditURL.anthropic)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1316,13 +1316,13 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.lumaTitle)
+                    Text("credits.lumaTitle".localized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Credits.lumaBody)
+                    Text("credits.lumaBody".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.luma)
+                    Link("credits.visitWebsite".localized, destination: CreditURL.luma)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
@@ -1330,19 +1330,19 @@ struct CreditsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Credits.ultralyticsTitle)
+                    Text("credits.ultralyticsTitle".localized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Credits.ultralyticsBody)
+                    Text("credits.ultralyticsBody".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Credits.visitWebsite, destination: CreditURL.ultralytics)
+                    Link("credits.visitWebsite".localized, destination: CreditURL.ultralytics)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)
             }
         }
-        .navigationTitle(L10n.Credits.title)
+        .navigationTitle("credits.title".localized)
         .navigationBarTitleDisplayMode(.inline)
     }
 }

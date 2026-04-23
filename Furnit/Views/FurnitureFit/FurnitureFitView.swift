@@ -426,6 +426,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// While inference is running, camera frames are dropped; when set, next completion clears `lastProcessTime` so the following frame is not delayed by `processInterval`.
     private var preferImmediateNextInference = false
     private let frameLock = NSLock() // Protects lastProcessTime, isProcessing, preferImmediateNextInference
+    /// Older devices can finish segmentation too slowly for the UI to feel live if every in-flight frame is dropped.
+    /// Keep only the newest BGRA camera frame so the next inference jumps to the freshest view instead of sticking
+    /// on the first completed mask.
+    private struct PendingSegmentationFrame {
+        let pixelBuffer: CVPixelBuffer
+        let arDepthSnapshot: FurnitureFitARDepthSnapshot?
+    }
+    private let pendingFrameLock = NSLock()
+    private var pendingLatestSegmentationFrame: PendingSegmentationFrame?
     /// ARKit holds `ARFrame`s until `session(_:didUpdate:)` returns; CI BGRA + depth copy must stay well below camera FPS.
     private static let arSessionDelegateHeavyMinInterval: TimeInterval = 0.28
     /// Monotonic guard so we skip `didUpdate` **before** taking `frameLock` (cheap drops while inference is still running).
@@ -483,6 +492,77 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             preferImmediateNextInference = false
         }
         frameLock.unlock()
+        processPendingLatestSegmentationFrameIfNeeded()
+    }
+
+    private var shouldKeepLatestDroppedClassicCameraFrame: Bool {
+        segmentationMode == .identifyOnly &&
+            !showFullVideoWithIdentifications &&
+            !stillImageScanModeEnabled &&
+            !oneImageRunAwaitingSave
+    }
+
+    private func processPendingLatestSegmentationFrameIfNeeded() {
+        pendingFrameLock.lock()
+        guard let pending = pendingLatestSegmentationFrame else {
+            pendingFrameLock.unlock()
+            return
+        }
+        pendingLatestSegmentationFrame = nil
+        pendingFrameLock.unlock()
+
+        frameLock.lock()
+        guard !isProcessing else {
+            frameLock.unlock()
+            pendingFrameLock.lock()
+            pendingLatestSegmentationFrame = pending
+            pendingFrameLock.unlock()
+            return
+        }
+        isProcessing = true
+        lastProcessTime = Date()
+        frameLock.unlock()
+
+        detectionQueue.async { [weak self] in
+            self?.processFrame(pending.pixelBuffer, arDepthSnapshot: pending.arDepthSnapshot)
+        }
+    }
+
+    private func storePendingLatestSegmentationFrame(pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot?) {
+        guard let copiedBuffer = copyPixelBufferForDeferredProcessing(pixelBuffer) else { return }
+        pendingFrameLock.lock()
+        pendingLatestSegmentationFrame = PendingSegmentationFrame(
+            pixelBuffer: copiedBuffer,
+            arDepthSnapshot: arDepthSnapshot
+        )
+        pendingFrameLock.unlock()
+    }
+
+    private func copyPixelBufferForDeferredProcessing(_ src: CVPixelBuffer) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
+        let width = CVPixelBufferGetWidth(src)
+        let height = CVPixelBufferGetHeight(src)
+        let format = CVPixelBufferGetPixelFormatType(src)
+        var dst: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferPixelFormatTypeKey: format,
+            kCVPixelBufferWidthKey: width,
+            kCVPixelBufferHeightKey: height,
+            kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, format, attrs as CFDictionary, &dst) == kCVReturnSuccess,
+              let out = dst else { return nil }
+        CVPixelBufferLockBaseAddress(out, [])
+        defer { CVPixelBufferUnlockBaseAddress(out, []) }
+        guard let srcBase = CVPixelBufferGetBaseAddress(src), let dstBase = CVPixelBufferGetBaseAddress(out) else { return nil }
+        let srcRowBytes = CVPixelBufferGetBytesPerRow(src)
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(out)
+        let rowCopyBytes = min(srcRowBytes, dstRowBytes)
+        for row in 0..<height {
+            memcpy(dstBase.advanced(by: row * dstRowBytes), srcBase.advanced(by: row * srcRowBytes), rowCopyBytes)
+        }
+        return out
     }
 
     private func invalidatePendingAssistedMeasurement() {
@@ -1902,10 +1982,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         // Drop every frame while segmentation is in flight (do not queue work on `detectionQueue`).
         let now = Date()
+        let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
         frameLock.lock()
         if isProcessing {
             preferImmediateNextInference = true
             frameLock.unlock()
+            if shouldKeepLatestDroppedClassicCameraFrame, let pixelBuffer {
+                storePendingLatestSegmentationFrame(pixelBuffer: pixelBuffer, arDepthSnapshot: nil)
+            }
             return
         }
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval
@@ -1916,7 +2000,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         frameLock.unlock()
 
         guard shouldProcess else { return }
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+        guard let pixelBuffer else {
             resetProcessingFlag()
             return
         }

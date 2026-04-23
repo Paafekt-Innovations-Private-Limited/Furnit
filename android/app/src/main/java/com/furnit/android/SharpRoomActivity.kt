@@ -3262,9 +3262,12 @@ class SharpRoomActivity : AppCompatActivity() {
         // Orbit controls (low sensitivity: higher damping = less oscillation, low rotateSpeed = slow, comfortable drag)
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
-        controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
-        controls.screenSpacePanning = false;
+        controls.dampingFactor = 0.18;   // Slightly tighter than Android default; closer to iOS settle.
+        controls.rotateSpeed = 0.18;     // Reduce touch sensitivity so one-finger orbit feels less jumpy.
+        controls.screenSpacePanning = true;
+        controls.panSpeed = 0.75;
+        controls.touches.ONE = THREE.TOUCH.ROTATE;
+        controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
         // Portrait: small minDistance + capped max (room stays framed). Landscape: infinite dolly — minDistance 0 lets
         // pinch-zoom pass through the target / walls along the view axis (matches iOS INFINITE_ZOOM idea).
         const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
@@ -3329,10 +3332,47 @@ class SharpRoomActivity : AppCompatActivity() {
             }, 500);
         });
 
+        function panCameraInViewPlane(deltaXPx, deltaYPx) {
+            if (!isFinite(deltaXPx) || !isFinite(deltaYPx)) return;
+            const viewportW = Math.max(1, window.innerWidth);
+            const viewportH = Math.max(1, window.innerHeight);
+            const distance = Math.max(0.05, camera.position.distanceTo(controls.target));
+            const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+            const worldScreenHeight = 2.0 * Math.tan(verticalFov * 0.5) * distance;
+            const worldScreenWidth = worldScreenHeight * camera.aspect;
+
+            const right = new THREE.Vector3();
+            camera.getWorldDirection(right);
+            right.cross(camera.up).normalize();
+
+            const up = new THREE.Vector3().copy(camera.up).normalize();
+            const moveRight = (-deltaXPx / viewportW) * worldScreenWidth;
+            const moveUp = (deltaYPx / viewportH) * worldScreenHeight;
+            const delta = new THREE.Vector3()
+                .addScaledVector(right, moveRight)
+                .addScaledVector(up, moveUp);
+
+            camera.position.add(delta);
+            controls.target.add(delta);
+
+            if (roomBoundsForClamping) {
+                const m = 0.05;
+                camera.position.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, camera.position.x));
+                controls.target.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, controls.target.x));
+                camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+            }
+
+            controls.update();
+            needsRender = true;
+            autoOrbitEnabled = false;
+        }
+
         if (!isPortrait) {
             const LANDSCAPE_DOLLY_SENS = 4.0;
             const LANDSCAPE_DOLLY_STEP = 0.22;
             const PINCH_THRESHOLD = 0.012;
+            const PAN_THRESHOLD_PX = 3.0;
             function landscapeDollyAlongView(scale) {
                 if (typeof scale !== 'number' || !isFinite(scale) || scale <= 0) return;
                 let forward = new THREE.Vector3().subVectors(controls.target, camera.position);
@@ -3356,12 +3396,16 @@ class SharpRoomActivity : AppCompatActivity() {
                 sharpAndroidLog(line);
             }
             let lastPinchDist = 0;
+            let lastCenterX = 0;
+            let lastCenterY = 0;
             const canvas = renderer.domElement;
             canvas.addEventListener('touchstart', function(ev) {
                 if (ev.touches.length === 2) {
                     const dx = ev.touches[0].clientX - ev.touches[1].clientX;
                     const dy = ev.touches[0].clientY - ev.touches[1].clientY;
                     lastPinchDist = Math.hypot(dx, dy);
+                    lastCenterX = (ev.touches[0].clientX + ev.touches[1].clientX) * 0.5;
+                    lastCenterY = (ev.touches[0].clientY + ev.touches[1].clientY) * 0.5;
                 }
             }, { passive: true });
             canvas.addEventListener('touchmove', function(ev) {
@@ -3370,14 +3414,27 @@ class SharpRoomActivity : AppCompatActivity() {
                 const dy = ev.touches[0].clientY - ev.touches[1].clientY;
                 const dist = Math.hypot(dx, dy);
                 const scale = dist / lastPinchDist;
-                lastPinchDist = dist;
-                if (Math.abs(scale - 1) < PINCH_THRESHOLD) return;
+                const centerX = (ev.touches[0].clientX + ev.touches[1].clientX) * 0.5;
+                const centerY = (ev.touches[0].clientY + ev.touches[1].clientY) * 0.5;
+                const panDx = centerX - lastCenterX;
+                const panDy = centerY - lastCenterY;
                 ev.preventDefault();
                 ev.stopPropagation();
-                landscapeDollyAlongView(scale);
+                if (Math.abs(scale - 1) >= PINCH_THRESHOLD) {
+                    landscapeDollyAlongView(scale);
+                } else if (Math.hypot(panDx, panDy) >= PAN_THRESHOLD_PX) {
+                    panCameraInViewPlane(panDx, panDy);
+                }
+                lastPinchDist = dist;
+                lastCenterX = centerX;
+                lastCenterY = centerY;
             }, { passive: false, capture: true });
             canvas.addEventListener('touchend', function(ev) {
-                if (ev.touches.length < 2) lastPinchDist = 0;
+                if (ev.touches.length < 2) {
+                    lastPinchDist = 0;
+                    lastCenterX = 0;
+                    lastCenterY = 0;
+                }
             }, { passive: true });
             canvas.addEventListener('wheel', function(ev) {
                 ev.preventDefault();

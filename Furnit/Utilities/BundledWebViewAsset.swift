@@ -8,9 +8,57 @@ enum BundledWebViewAsset {
         "Resources/WebViewVendor",
         "WebViewVendor",
     ]
+    private static let probeRelativePath = "three/build/three.module.js"
 
     static func assetURLString(for relativePath: String) -> String {
         "\(scheme)://\(host)/\(relativePath)"
+    }
+
+    static func bundledBaseURL() -> URL? {
+        let fileManager = FileManager.default
+        let roots = [Bundle.main.resourceURL, Bundle.main.bundleURL].compactMap { $0 }
+
+        for root in roots {
+            for subdirectory in bundleSubdirectoryCandidates {
+                let candidateURL = root.appendingPathComponent(subdirectory, isDirectory: true)
+                let probeURL = candidateURL.appendingPathComponent(probeRelativePath)
+                if fileManager.fileExists(atPath: probeURL.path) {
+                    logDebug("✅ [BundledWebViewAsset] Found vendor base at \(candidateURL.path)")
+                    return candidateURL
+                }
+            }
+        }
+
+        // Fall back to a recursive search in case Xcode flattened/moved resources inside the app bundle.
+        for root in roots {
+            if let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for case let fileURL as URL in enumerator {
+                    if fileURL.lastPathComponent == "three.module.js",
+                       fileURL.path.contains("/three/build/three.module.js") {
+                        let baseURL = fileURL
+                            .deletingLastPathComponent() // build
+                            .deletingLastPathComponent() // three
+                        logDebug("✅ [BundledWebViewAsset] Found vendor base via recursive search at \(baseURL.path)")
+                        return baseURL
+                    }
+                }
+            }
+        }
+
+        logDebug("❌ [BundledWebViewAsset] Could not locate bundled vendor assets under resourceURL=\(Bundle.main.resourceURL?.path ?? "nil") bundleURL=\(Bundle.main.bundleURL.path)")
+        return nil
+    }
+
+    static func bundledFileURL(for relativePath: String) -> URL? {
+        bundledBaseURL()?.appendingPathComponent(relativePath)
+    }
+
+    static func bundledFileURLString(for relativePath: String) -> String? {
+        bundledFileURL(for: relativePath)?.absoluteString
     }
 }
 
@@ -56,15 +104,8 @@ final class BundledWebViewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func bundledFileURL(for relativePath: String) -> URL? {
-        for subdirectory in BundledWebViewAsset.bundleSubdirectoryCandidates {
-            let candidateURL = Bundle.main.bundleURL
-                .appendingPathComponent(subdirectory, isDirectory: true)
-                .appendingPathComponent(relativePath)
-            if fileManager.fileExists(atPath: candidateURL.path) {
-                return candidateURL
-            }
-        }
-        return nil
+        BundledWebViewAsset.bundledBaseURL()?
+            .appendingPathComponent(relativePath)
     }
 
     private func contentType(for pathExtension: String) -> String {
