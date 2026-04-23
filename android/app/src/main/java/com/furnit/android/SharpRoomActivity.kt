@@ -2349,10 +2349,11 @@ class SharpRoomActivity : AppCompatActivity() {
         setBrainSegmentationButtonActive(true)
         updateBrainActionButton()
         updateBrainLivePreviewVisibility()
+        updateBrainSelectionHelperText()
+        brainHintExplanationView?.post { updateBrainSelectionHelperText() }
         setBrainCalibrationPillVisible(true)
         updateBrainCalibrationPill()
         updatePlacementIntelligenceCard()
-        restartBrainGestureHint()
         updateFullVideoToolbarButton()
     }
 
@@ -2396,9 +2397,14 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun updateBrainSelectionHelperText() {
         brainHintExplanationView?.let { hint ->
-            if (selectedBrainPins.isNotEmpty()) {
+            if (shouldShowIdentifyLivePreview() || selectedBrainPins.isNotEmpty()) {
                 hint.text = getString(R.string.smartypants_pick_another_hint)
                 hint.translationY = -dpToPx(34).toFloat()
+                hint.visibility = View.VISIBLE
+                gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
+                if (selectedBrainPins.isEmpty()) {
+                    gestureHintHideHandler.postDelayed(hideBrainHintRunnable, 3000L)
+                }
             } else {
                 hint.text = getString(R.string.sharp_room_brain_gesture_hint)
                 hint.translationY = 0f

@@ -143,6 +143,17 @@
     <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
     <string name="settings_full_video_with_identifications">Full video with identifications</string>
     <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="settings_image_scan">Image Scan</string>
+    <string name="settings_image_scan_description">Scan a photo for furniture cutouts and detections.</string>
+    <string name="settings_image_scan_tap_to_choose">Tap to choose an image</string>
+    <string name="settings_image_scan_tap_to_choose_subtitle">Pick a room photo from your library to scan it.</string>
+    <string name="settings_image_scan_footnote">Uses the on-device furniture model to scan the selected photo.</string>
+    <string name="settings_image_scan_loading_photo">Loading photo…</string>
+    <string name="settings_image_scan_preparing_model">Preparing model…</string>
+    <string name="settings_image_scan_load_failed">Couldn\'t load the selected image</string>
+    <string name="settings_image_scan_change_photo">Choose another image</string>
+    <string name="single_image_scan_no_objects">No objects detected</string>
+    <string name="single_image_scan_overlay_ready">Overlay ready: %1$s</string>
     <string name="settings_licenses">Licenses</string>
     <string name="licenses_title">Licenses &amp; Attributions</string>
     <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>

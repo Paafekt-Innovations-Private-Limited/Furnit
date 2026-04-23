@@ -214,6 +214,44 @@ class SettingsActivity : AppCompatActivity() {
         fullVideoRow.addView(fullVideoSwitch)
         furnitureFitSection.addView(fullVideoRow)
 
+        val imageScanRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 8)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, SettingsImageScanActivity::class.java))
+            }
+        }
+        val imageScanLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        imageScanLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_image_scan)
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+            },
+        )
+        imageScanLabel.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_image_scan_description)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+            },
+        )
+        val imageScanChevron = TextView(this).apply {
+            text = ">"
+            textSize = 18f
+            setTextColor(Color.parseColor("#999999"))
+            setPadding(24, 0, 0, 0)
+        }
+        imageScanRow.addView(imageScanLabel)
+        imageScanRow.addView(imageScanChevron)
+        furnitureFitSection.addView(imageScanRow)
+
         layout.addView(furnitureFitSection)
 
         // Room Viewer settings section
