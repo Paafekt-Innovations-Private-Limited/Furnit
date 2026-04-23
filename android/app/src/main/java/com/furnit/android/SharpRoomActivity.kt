@@ -1150,9 +1150,9 @@ class SharpRoomActivity : AppCompatActivity() {
         return FrameLayout(this).apply {
             setPadding(dpToPx(16), dpToPx(48), dpToPx(16), dpToPx(12))
 
-            // Rounded pill: FrameLayout so the title can stay truly centered; LinearLayout+weight=1
-            // between back and many icons often leaves 0dp for the title on narrow screens.
-            val barContainer = FrameLayout(this@SharpRoomActivity).apply {
+            val barContainer = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(25).toFloat()
@@ -1177,24 +1177,11 @@ class SharpRoomActivity : AppCompatActivity() {
                 background = bg
                 setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             }
+            barContainer.addView(backBtn, LinearLayout.LayoutParams(iconSize, iconSize))
+
             barContainer.addView(
-                backBtn,
-                FrameLayout.LayoutParams(iconSize, iconSize).apply {
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                },
-            )
-
-            val rightCluster = LinearLayout(this@SharpRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            rightCluster.addView(
-                buildToolbarIconButton(
-                    R.drawable.ic_viewfinder,
-                    getString(R.string.sharp_room_menu_recenter),
-                ) { recenterCamera() },
-                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)),
+                Space(this@SharpRoomActivity),
+                LinearLayout.LayoutParams(0, 1, 1f),
             )
 
             val fullVideoBtn = buildToolbarIconButton(
@@ -1204,74 +1191,16 @@ class SharpRoomActivity : AppCompatActivity() {
                 visibility = View.GONE
             }
             fullVideoIdentificationsButton = fullVideoBtn
-            rightCluster.addView(
-                fullVideoBtn,
-                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
-                    marginStart = dpToPx(4)
-                },
-            )
 
             val arBtn = buildCircularToolbarIconButton(
                 R.drawable.ic_square_resize,
                 getString(R.string.sharp_room_ar_sizing_hint),
             ) { launchBrainMode(arAssistedRequested = true) }.apply {
                 tooltipText = getString(R.string.sharp_room_ar_sizing_hint)
+                visibility = View.GONE
             }
             brainArAssistButton = arBtn
             setBrainArAssistButtonActive(false)
-            rightCluster.addView(
-                arBtn,
-                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
-                    marginStart = dpToPx(4)
-                },
-            )
-
-            if (allowSave) {
-                rightCluster.addView(
-                    buildToolbarIconButton(
-                        R.drawable.ic_download,
-                        getString(R.string.room_viewer_save_room),
-                    ) { showSaveDialog() },
-                    LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
-                        marginStart = dpToPx(4)
-                    },
-                )
-            }
-
-            // Keep secondary actions in ⋮ so the primary toolbar mirrors iOS without getting crowded.
-            val overflowBtn = TextView(this@SharpRoomActivity).apply {
-                text = "\u22EE" // vertical ellipsis
-                textSize = 22f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                contentDescription = getString(R.string.sharp_room_overflow_content_description)
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(4), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { showSharpRoomOverflowMenu(this) }
-            }
-            rightCluster.addView(overflowBtn)
-
-            barContainer.addView(
-                rightCluster,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                },
-            )
-
-            val centerCluster = LinearLayout(this@SharpRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
 
             roomRulerButton = AppCompatImageButton(this@SharpRoomActivity).apply {
                 setImageResource(R.drawable.ic_ruler)
@@ -1284,32 +1213,33 @@ class SharpRoomActivity : AppCompatActivity() {
                 contentDescription = getString(R.string.sharp_room_ruler_content_description)
                 setOnClickListener { onRoomRulerTapped() }
             }
-            centerCluster.addView(
+
+            val toolbarButtons = listOf(
                 roomRulerButton,
-                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
-            )
-            centerCluster.addView(
                 buildToolbarIconButton(
                     R.drawable.ic_gesture_pinch,
                     getString(R.string.sharp_room_pinch_gesture_hint),
                 ) { onPinchHintIconTapped() },
-                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
-            )
-            centerCluster.addView(
                 buildToolbarIconButton(
                     R.drawable.ic_gesture_tap,
                     getString(R.string.sharp_room_display_all_helpers_content_description),
                 ) { displayAllGestureHelpers() },
-                LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)),
+                buildToolbarIconButton(
+                    R.drawable.ic_viewfinder,
+                    getString(R.string.sharp_room_menu_recenter),
+                ) { recenterCamera() },
+                fullVideoBtn,
+                arBtn,
             )
-            barContainer.addView(
-                centerCluster,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER,
-                ),
-            )
+
+            toolbarButtons.forEachIndexed { index, button ->
+                barContainer.addView(
+                    button,
+                    LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                        if (index > 0) marginStart = dpToPx(4)
+                    },
+                )
+            }
 
             addView(barContainer, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2669,6 +2599,7 @@ class SharpRoomActivity : AppCompatActivity() {
             val tint = if (showFullVideoWithIdentifications) Color.parseColor("#34C759") else Color.WHITE
             ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(tint))
         }
+        brainArAssistButton?.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
     }
 
     private fun launchBrainMode(arAssistedRequested: Boolean) {

@@ -75,14 +75,14 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     private val selectedBoxPaint = Paint().apply {
-        color = Color.parseColor("#FF9500")
+        color = Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = 6f
         isAntiAlias = true
     }
 
     private val selectedTextBgPaint = Paint().apply {
-        color = Color.parseColor("#DDFF9500")
+        color = Color.argb(230, 255, 255, 255)
         style = Paint.Style.FILL
     }
 
@@ -93,6 +93,13 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
+        textSize = 36f
+        isAntiAlias = true
+        typeface = Typeface.DEFAULT_BOLD
+    }
+
+    private val selectedTextPaint = Paint().apply {
+        color = Color.BLACK
         textSize = 36f
         isAntiAlias = true
         typeface = Typeface.DEFAULT_BOLD
@@ -504,14 +511,15 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 }
                 val activeBoxPaint = if (isSelected) selectedBoxPaint else boxPaint
                 val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
+                val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
 
                 // Draw bounding box
                 canvas.drawRect(left, top, right, bottom, activeBoxPaint)
 
                 // Prepare label text
                 val label = "${det.label} ${String.format("%.0f%%", det.confidence * 100)}"
-                val textWidth = textPaint.measureText(label)
-                val textHeight = textPaint.textSize
+                val textWidth = activeTextPaint.measureText(label)
+                val textHeight = activeTextPaint.textSize
 
                 // Draw label background
                 val bgLeft = left
@@ -521,7 +529,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 canvas.drawRect(bgLeft, bgTop, bgRight, bgBottom, activeTextBgPaint)
 
                 // Draw label text
-                canvas.drawText(label, left + 8, top - 8, textPaint)
+                canvas.drawText(label, left + 8, top - 8, activeTextPaint)
             }
         }
     }
