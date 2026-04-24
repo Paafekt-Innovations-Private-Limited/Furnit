@@ -2,63 +2,6 @@ import ARKit
 import Foundation
 import SwiftUI
 
-// Movement speed levels for camera navigation
-enum MovementSpeed: String, CaseIterable, Identifiable {
-    case slow = "slow"
-    case normal = "normal"
-    case fast = "fast"
-
-    var id: String { rawValue }
-
-    // Display names for UI (localized)
-    var displayName: String {
-        switch self {
-        case .slow:
-            return L10n.Speed.slow
-        case .normal:
-            return L10n.Speed.normal
-        case .fast:
-            return L10n.Speed.fast
-        }
-    }
-
-    // Description for each speed level (localized)
-    var description: String {
-        switch self {
-        case .slow:
-            return L10n.Speed.slowDescription
-        case .normal:
-            return L10n.Speed.normalDescription
-        case .fast:
-            return L10n.Speed.fastDescription
-        }
-    }
-
-    // Icon for each speed level
-    var icon: String {
-        switch self {
-        case .slow:
-            return "tortoise.fill"
-        case .normal:
-            return "figure.walk"
-        case .fast:
-            return "hare.fill"
-        }
-    }
-
-    // Actual speed value in units per frame
-    var speedValue: Float {
-        switch self {
-        case .slow:
-            return 0.001     // Extremely precise control for detailed exploration
-        case .normal:
-            return 0.0015    // Comfortable but controlled navigation
-        case .fast:
-            return 0.002     // Responsive but still very controllable
-        }
-    }
-}
-
 // Quality levels for 3D asset rendering
 enum AssetQuality: String, CaseIterable, Identifiable {
     case standard = "standard"
@@ -138,22 +81,11 @@ class QualitySettings: ObservableObject {
     static var supportsFurnitureFitARAssisted: Bool {
         ARWorldTrackingConfiguration.isSupported
     }
-    // Current selected quality (published for UI updates)
-    @Published var selectedQuality: AssetQuality {
-        didSet {
-            // Only save if the quality is actually available
-            if selectedQuality.isAvailable {
-                saveQuality()
-            }
-        }
-    }
 
-    // Current selected movement speed (published for UI updates)
-    @Published var selectedMovementSpeed: MovementSpeed {
-        didSet {
-            saveMovementSpeed()
-        }
-    }
+    /// Fixed rendering profile for the RealityKit/USDZ path.
+    /// The Settings surface for asset quality has been removed because it did not
+    /// apply consistently across the app.
+    @Published var selectedQuality: AssetQuality = .standard
 
     // Debug mode toggle (published for UI updates)
     @Published var debugMode: Bool {
@@ -177,30 +109,11 @@ class QualitySettings: ObservableObject {
     }
 
     // UserDefaults keys for persistence
-    private let qualityKey = "selected_asset_quality"
-    private let movementSpeedKey = "selected_movement_speed"
     private let debugModeKey = "debug_mode"
     private let bboxInMaskThresholdKey = "bbox_in_mask_threshold"
 
-    // Initialize with saved quality or default to high
+    // Initialize settings with stable defaults
     init() {
-        if let savedQuality = UserDefaults.standard.string(forKey: qualityKey),
-           let quality = AssetQuality(rawValue: savedQuality),
-           quality.isAvailable {
-            self.selectedQuality = quality
-        } else {
-            // Default to standard quality if no saved preference
-            self.selectedQuality = .standard
-        }
-
-        if let savedMovementSpeed = UserDefaults.standard.string(forKey: movementSpeedKey),
-           let speed = MovementSpeed(rawValue: savedMovementSpeed) {
-            self.selectedMovementSpeed = speed
-        } else {
-            // Default to normal speed if no saved preference
-            self.selectedMovementSpeed = .normal
-        }
-
         #if DEBUG
         self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
         #else
@@ -212,18 +125,6 @@ class QualitySettings: ObservableObject {
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
 
-    }
-    
-    // Save quality setting to UserDefaults
-    private func saveQuality() {
-        UserDefaults.standard.set(selectedQuality.rawValue, forKey: qualityKey)
-        logDebug("💾 Saved quality setting: \(selectedQuality.displayName)")
-    }
-
-    // Save movement speed setting to UserDefaults
-    private func saveMovementSpeed() {
-        UserDefaults.standard.set(selectedMovementSpeed.rawValue, forKey: movementSpeedKey)
-        logDebug("💾 Saved movement speed setting: \(selectedMovementSpeed.displayName)")
     }
 
     // Save debug mode setting to UserDefaults
@@ -238,42 +139,9 @@ class QualitySettings: ObservableObject {
         logDebug("💾 Saved bbox-in-mask threshold setting: \(bboxInMaskThreshold)")
     }
 
-    // Get all available quality options for UI
-    var availableQualities: [AssetQuality] {
-        return AssetQuality.allCases
-    }
-    
-    // Check if a specific quality is selected
-    func isSelected(_ quality: AssetQuality) -> Bool {
-        return selectedQuality == quality
-    }
-    
-    // Attempt to select a quality (only works if available)
-    func selectQuality(_ quality: AssetQuality) {
-        guard quality.isAvailable else {
-            logDebug("⚠️ Attempted to select unavailable quality: \(quality.displayName)")
-            return
-        }
-
-        selectedQuality = quality
-        logDebug("🎨 Quality changed to: \(quality.displayName)")
-    }
-
-    // Select movement speed
-    func selectMovementSpeed(_ speed: MovementSpeed) {
-        selectedMovementSpeed = speed
-        logDebug("🏃 Movement speed changed to: \(speed.displayName)")
-    }
-
-    // Check if a specific movement speed is selected
-    func isMovementSpeedSelected(_ speed: MovementSpeed) -> Bool {
-        return selectedMovementSpeed == speed
-    }
-    
     // Reset to default quality
     func resetToDefault() {
-        selectedQuality = .high
-        selectedMovementSpeed = .normal
+        selectedQuality = .standard
         debugMode = false
         bboxInMaskThreshold = 0.30
     }

@@ -30,24 +30,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                // Quality Settings Section
-                Section {
-                    ForEach(appState.qualitySettings.availableQualities) { quality in
-                        QualityOptionView(
-                            quality: quality,
-                            isSelected: appState.qualitySettings.isSelected(quality),
-                            onSelect: {
-                                appState.updateQuality(quality)
-                            }
-                        )
-                    }
-                } header: {
-                    Text(L10n.Settings.quality)
-                } footer: {
-                    Text(L10n.Settings.qualityFooter)
-                        .font(.footnote)
-                }
-                
                 // App Info Section
                 Section {
                     HStack {
@@ -56,33 +38,8 @@ struct SettingsView: View {
                         Text(appState.formattedVersion)
                             .foregroundColor(.secondary)
                     }
-
-                    HStack {
-                        Text(L10n.Settings.currentQuality)
-                        Spacer()
-                        Text(appState.currentQuality.displayName)
-                            .foregroundColor(.secondary)
-                    }
                 } header: {
                     Text(L10n.Settings.appInfo)
-                }
-                
-                // Movement Speed Settings Section
-                Section {
-                    ForEach(MovementSpeed.allCases) { speed in
-                        MovementSpeedOptionView(
-                            speed: speed,
-                            isSelected: appState.qualitySettings.isMovementSpeedSelected(speed),
-                            onSelect: {
-                                appState.updateMovementSpeed(speed)
-                            }
-                        )
-                    }
-                } header: {
-                    Text(L10n.Settings.movementSpeed)
-                } footer: {
-                    Text(L10n.Settings.movementSpeedFooter)
-                        .font(.footnote)
                 }
                 
                 // Single Photo Room Dimensions Section
@@ -441,110 +398,6 @@ struct SettingsView: View {
                 deleteErrorMessage = error.localizedDescription
                 showDeleteError = true
             }
-        }
-    }
-}
-
-// Custom view for each quality option
-struct QualityOptionView: View {
-    let quality: AssetQuality
-    let isSelected: Bool
-    let onSelect: () -> Void
-    
-    var body: some View {
-        HStack {
-            // Quality icon
-            Image(systemName: quality.icon)
-                .foregroundColor(quality.isAvailable ? .blue : .gray)
-                .font(.title2)
-                .frame(width: 24, height: 24)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(quality.displayName)
-                        .font(.headline)
-                        .foregroundColor(quality.isAvailable ? .primary : .secondary)
-                    
-                    // Premium badge for best quality
-                    if quality == .best {
-                        Image(systemName: "lock.fill")
-                            .foregroundColor(.orange)
-                            .font(.caption)
-                    }
-                    
-                    Spacer()
-                    
-                    // Selection indicator
-                    if isSelected && quality.isAvailable {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.title3)
-                    }
-                }
-                
-                Text(quality.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                // Special message for unavailable options
-                if let message = quality.unavailableMessage {
-                    Text(message)
-                        .font(.caption2)
-                        .foregroundColor(.orange)
-                        .fontWeight(.medium)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle()) // Make entire area tappable
-        .onTapGesture {
-            if quality.isAvailable {
-                onSelect()
-            }
-        }
-        .opacity(quality.isAvailable ? 1.0 : 0.6)
-    }
-}
-
-// Custom view for each movement speed option
-struct MovementSpeedOptionView: View {
-    let speed: MovementSpeed
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    var body: some View {
-        HStack {
-            // Speed icon
-            Image(systemName: speed.icon)
-                .foregroundColor(.blue)
-                .font(.title2)
-                .frame(width: 24, height: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(speed.displayName)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    // Selection indicator
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.title3)
-                    }
-                }
-
-                Text(speed.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle()) // Make entire area tappable
-        .onTapGesture {
-            onSelect()
         }
     }
 }

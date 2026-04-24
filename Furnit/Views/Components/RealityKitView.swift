@@ -97,18 +97,9 @@ struct RealityKitView: UIViewRepresentable {
         let currentQuality = appState.currentQuality
         configureRenderingQuality(arView: uiView, quality: currentQuality)
 
-        // Update movement speed if settings changed (only when actually different)
-        // ✅ FIXED: Defer to avoid "Publishing changes from within view updates" warning
-        let currentMovementSpeed = appState.currentMovementSpeed
+        // Keep RealityKit camera movement on the stable default speed.
         DispatchQueue.main.async { [weak cameraMovementManager] in
-            switch currentMovementSpeed {
-            case .slow:
-                cameraMovementManager?.setSpeed(.slow)
-            case .normal:
-                cameraMovementManager?.setSpeed(.normal)
-            case .fast:
-                cameraMovementManager?.setSpeed(.fast)
-            }
+            cameraMovementManager?.setSpeed(.normal)
         }
         
         // ✅ Handle camera reset requests (triggered on view appear)
@@ -479,18 +470,9 @@ struct RealityKitView: UIViewRepresentable {
                 self.cameraMovementManager.setupARView(arView)
                 self.cameraMovementManager.setBoundaryManager(boundaryManager)
                 
-                // Set initial movement speed from settings
-                // ✅ FIXED: Defer to avoid "Publishing changes from within view updates" warning
-                let initialSpeed = appState.currentMovementSpeed
+                // Keep RealityKit camera movement on the stable default speed.
                 DispatchQueue.main.async { [weak cameraMovementManager = self.cameraMovementManager] in
-                    switch initialSpeed {
-                    case .slow:
-                        cameraMovementManager?.setSpeed(.slow)
-                    case .normal:
-                        cameraMovementManager?.setSpeed(.normal)
-                    case .fast:
-                        cameraMovementManager?.setSpeed(.fast)
-                    }
+                    cameraMovementManager?.setSpeed(.normal)
                 }
                 
                 // Position custom camera inside the room bounds
@@ -740,4 +722,3 @@ struct RealityKitView: UIViewRepresentable {
 }
 
 // MARK: - Extensions for SIMD math operations are defined in RealityKitObjectPlacementManager.swift
-

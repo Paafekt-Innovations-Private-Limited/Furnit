@@ -23,7 +23,6 @@ class AppStateManager: ObservableObject {
         
         logDebug("🚀 AppStateManager initialized")
         logDebug("   App Version: \(appVersion) (\(buildNumber))")
-        logDebug("   Quality Setting: \(qualitySettings.selectedQuality.displayName)")
     }
     
     // Convenience method to get current quality
@@ -31,25 +30,6 @@ class AppStateManager: ObservableObject {
         return qualitySettings.selectedQuality
     }
 
-    // Convenience method to get current movement speed
-    var currentMovementSpeed: MovementSpeed {
-        return qualitySettings.selectedMovementSpeed
-    }
-    
-    // Update quality setting with validation
-    func updateQuality(_ quality: AssetQuality) {
-        // Ensure UI updates by sending change notification
-        objectWillChange.send()
-        qualitySettings.selectQuality(quality)
-    }
-
-    // Update movement speed setting with UI notifications
-    func updateMovementSpeed(_ speed: MovementSpeed) {
-        // Ensure UI updates by sending change notification
-        objectWillChange.send()
-        qualitySettings.selectMovementSpeed(speed)
-    }
-    
     // Get formatted app version string
     var formattedVersion: String {
         return "Version \(appVersion) (\(buildNumber))"

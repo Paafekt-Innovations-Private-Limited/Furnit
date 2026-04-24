@@ -115,12 +115,7 @@ enum L10n {
     // MARK: Settings
     enum Settings {
         static let title = "settings.title".localized
-        static let quality = "settings.quality".localized
-        static let qualityFooter = "settings.qualityFooter".localized
         static let appInfo = "settings.appInfo".localized
-        static let currentQuality = "settings.currentQuality".localized
-        static let movementSpeed = "settings.movementSpeed".localized
-        static let movementSpeedFooter = "settings.movementSpeedFooter".localized
         static let roomDimensions = "settings.roomDimensions".localized
         static let roomDimensionsFooter = "settings.roomDimensionsFooter".localized
         static func width(_ value: Double) -> String {

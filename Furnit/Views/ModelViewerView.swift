@@ -44,10 +44,22 @@ struct ModelViewerView: View {
     // Furniture hint
     @State private var showFurnitureHint = true
     @State private var showFullVideoWithIdentifications = false
+    @State private var brainArAssistedSizingEnabled = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
     @State private var tapHintColorTimer: Timer?
+    @State private var pinchHintExplanationVisible = false
+    @State private var pinchHintHideTextTask: Task<Void, Never>?
+    @State private var brainHintExplanationVisible = false
+    @State private var brainHintHideTextTask: Task<Void, Never>?
+    @State private var snapshotHintExplanationVisible = false
+    @State private var snapshotHintHideTextTask: Task<Void, Never>?
+    @State private var roomDimensionsHintVisible = false
+    @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    @State private var arSizingHintExplanationVisible = false
+    @State private var arSizingHintHideTextTask: Task<Void, Never>?
+    @State private var arSizingHintRequiresBrain = false
 
     @State private var isCapturingSnapshot = false
 
@@ -57,6 +69,11 @@ struct ModelViewerView: View {
 
     private var canSegmentSelectedFurniture: Bool {
         showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
+    }
+
+    private var canOfferBrainArAssist: Bool {
+        QualitySettings.supportsLiDARSceneDepth &&
+        AppStateManager.shared.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 
     var body: some View {
@@ -91,6 +108,7 @@ struct ModelViewerView: View {
                             },
                             suppressStartupProgress: furnitureFitInitialSegmentationDone,
                             onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                            arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
                             segmentationMode: furnitureFitSegmentationMode,
                             onSelectedClassLabelsChanged: { labels in
                                 selectedFurnitureFitLabels = labels
@@ -121,6 +139,10 @@ struct ModelViewerView: View {
                     Color.clear
                 }
 
+                roomDimensionsHintOverlay
+                fullVideoToolbarHelperOverlay
+                topTrailingPinchAndSizingHintsOverlay
+
                 if fullVideoFurnitureTapHintVisible {
                     VStack {
                         Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
@@ -143,12 +165,13 @@ struct ModelViewerView: View {
                     .zIndex(9002)
                 }
                 
-                // TOPMOST BACK BUTTON - ALWAYS ON TOP
+                // Top controls
                 VStack {
                     HStack {
                         backButton
                             .allowsHitTesting(true)
                         Spacer()
+                        topToolbarContent
                     }
                     .padding()
                     Spacer()
@@ -182,80 +205,8 @@ struct ModelViewerView: View {
                     Spacer()
                     HStack {
                         VStack(spacing: 16) {
-                            Button {
-                                showFullVideoWithIdentifications.toggle()
-                                if showFullVideoWithIdentifications {
-                                    if showingFurnitureFit {
-                                        presentFullVideoFurnitureTapHintIfNeeded()
-                                    }
-                                } else {
-                                    dismissFullVideoFurnitureTapHint()
-                                    if furnitureFitSegmentationMode == .segmentSelected {
-                                        furnitureFitSegmentationMode = .identifyOnly
-                                        furnitureFitShowIdentifyLivePreview = true
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "text.viewfinder")
-                                    .font(.system(size: 22, weight: .medium))
-                                    .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                                    .foregroundStyle(.white)
-                                    .frame(width: 52, height: 52)
-                                    .background(
-                                        Circle().fill(
-                                            showFullVideoWithIdentifications
-                                                ? Color.cyan.opacity(0.88)
-                                                : Color.black.opacity(0.45)
-                                        )
-                                    )
-                                    .shadow(radius: 4)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
-                            .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
-                            .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
-
                             HStack(alignment: .bottom, spacing: 8) {
-                                // Brain button
-                                Button(action: {
-                                    logDebug("BRAIN FLOW: tap received")
-                                    // Dismiss hint on first touch
-                                    showFurnitureHint = false
-                                    
-                                    if showingFurnitureFit {
-                                        dismissFullVideoFurnitureTapHint()
-                                        showingFurnitureFit = false
-                                    } else {
-                                        logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
-                                        yoloeService.ensureModelLoaded()
-                                        showFullVideoWithIdentifications = false
-                                        furnitureFitSegmentationMode = .identifyOnly
-                                        furnitureFitShowIdentifyLivePreview = true
-                                        selectedFurnitureFitLabels = []
-
-                                        // Hide other overlays
-                                        showingCameraPreview = false
-                                        showingSegmentExamine = false
-                                        showingSegmentForeground = false
-                                        showingSegmentFurniture = false
-                                        
-                                        // Open after the current UI update cycle; no AR snapshot needed here.
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                            logDebug("BRAIN FLOW: showing FurnitureFit overlay")
-                                            self.furnitureFitInitialSegmentationDone = false
-                                            self.showingFurnitureFit = true
-                                        }
-                                    }
-                                }) {
-                                    Image(systemName: "brain.head.profile")
-                                        .font(.system(size: 28))
-                                        .foregroundColor(.white)
-                                        .frame(width: 60, height: 60)
-                                        .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                                }
-                                .contentShape(Circle())
-                                .frame(width: 76, height: 76)
-
+                                brainButtonWithHintAbove
                             }
 
                             if showingFurnitureFit && showFullVideoWithIdentifications {
@@ -307,17 +258,7 @@ struct ModelViewerView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        // Snapshot button - always visible (green share button removed; retain blue camera only)
-                        Button(action: {
-                            saveFurnitureFitSnapshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                        }
-                        .disabled(isCapturingSnapshot)
+                        snapshotButtonWithHintAbove
                         .padding(.trailing, 20)
                         .padding(.bottom, 20)
                     }
@@ -337,6 +278,9 @@ struct ModelViewerView: View {
             manageARSessionForOverlays()
             if isOn {
                 yoloeService.ensureModelLoaded()
+                restartBrainGestureHint()
+                restartSnapshotGestureHint()
+                restartPinchGestureHint()
             } else {
                 dismissFullVideoFurnitureTapHint()
                 furnitureFitSegmentationMode = .identifyOnly
@@ -345,6 +289,9 @@ struct ModelViewerView: View {
                 roomSnapshot = nil
                 capturedImage = nil
                 furnitureFitEstimatedHeightM = nil
+                brainArAssistedSizingEnabled = false
+                cancelARSizingHintTasks()
+                arSizingHintExplanationVisible = false
             }
         }
         .onAppear {
@@ -360,9 +307,17 @@ struct ModelViewerView: View {
             } else {
                 OrientationLockManager.shared.lockToPortrait()
             }
+            restartBrainGestureHint()
+            restartSnapshotGestureHint()
+            restartPinchGestureHint()
         }
         .onDisappear {
             dismissFullVideoFurnitureTapHint()
+            cancelPinchHintTasks()
+            cancelBrainHintTasks()
+            cancelSnapshotHintTasks()
+            cancelRoomDimensionsHintTasks()
+            cancelARSizingHintTasks()
             OrientationLockManager.shared.unlock()
         }
     }
@@ -406,6 +361,422 @@ struct ModelViewerView: View {
             .background(Color.black.opacity(0.7))
             .cornerRadius(20)
         }
+    }
+
+    private var topToolbarContent: some View {
+        HStack(spacing: 12) {
+            Button(action: onRoomDimensionsRulerTapped) {
+                Image(systemName: "ruler.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+
+            Button(action: onPinchHintIconTapped) {
+                Image(systemName: "hand.pinch.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pinchHintAccessibilityLabel)
+
+            Button(action: displayAllGestureHelpers) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
+
+            Button(action: {
+                shouldResetCamera = true
+            }) {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.RoomViewer.recenterView)
+
+            if showingFurnitureFit {
+                Button(action: toggleFullVideoIdentifications) {
+                    Image(systemName: "text.viewfinder")
+                        .font(.system(size: 18, weight: .medium))
+                        .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                        .foregroundStyle(showFullVideoWithIdentifications ? Color.cyan : .white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+                .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+                .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+            }
+
+            if showingFurnitureFit && canOfferBrainArAssist {
+                Button(action: toggleBrainArAssistedSizingOrShowHint) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            Circle().fill(
+                                brainArAssistedSizingEnabled
+                                    ? Color.green.opacity(0.9)
+                                    : Color.white.opacity(0.18)
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+                )
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.72))
+        .clipShape(Capsule())
+    }
+
+    private var roomDimensionsHintText: String {
+        if let w = model.roomWidth, let h = model.roomHeight, let d = model.roomDepth,
+           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
+            return L10n.RoomViewer.roomDimensionsWHDAIChip(width: w, height: h, depth: d)
+        }
+        if let w = model.roomWidth, let h = model.roomHeight,
+           w > 0.05, h > 0.05, w.isFinite, h.isFinite {
+            return L10n.RoomViewer.roomDimensionsWHManualChip(width: w, height: h)
+        }
+        return "3D Room"
+    }
+
+    private var roomDimensionsHintOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if roomDimensionsHintVisible {
+                    Text(roomDimensionsHintText)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 12)
+        }
+        .allowsHitTesting(false)
+        .zIndex(104)
+    }
+
+    private var fullVideoToolbarHelperOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit && showFullVideoWithIdentifications {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.85))
+                        .frame(width: 2, height: 14)
+                        .padding(.trailing, 18)
+                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .leading)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                }
+                .padding(.top, 6)
+                .padding(.trailing, 52)
+                .offset(y: -24)
+            }
+        }
+        .allowsHitTesting(false)
+        .zIndex(106)
+    }
+
+    private var topTrailingPinchAndSizingHintsOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .trailing, spacing: 6) {
+                if pinchHintExplanationVisible {
+                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                }
+                if arSizingHintExplanationVisible, showingFurnitureFit || arSizingHintRequiresBrain {
+                    Text(arSizingHintText)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 200)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                }
+            }
+            .padding(.top, 52)
+            .padding(.trailing, 16)
+        }
+        .allowsHitTesting(false)
+        .zIndex(101)
+    }
+
+    private var brainGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if brainHintExplanationVisible {
+                Text(L10n.RoomViewer.brainGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var snapshotGestureHintColumn: some View {
+        VStack(alignment: .center, spacing: 6) {
+            if snapshotHintExplanationVisible {
+                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var brainButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            brainGestureHintColumn
+            Button(action: toggleFurnitureFit) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+            }
+            .contentShape(Circle())
+            .frame(width: 76, height: 76)
+        }
+    }
+
+    private var snapshotButtonWithHintAbove: some View {
+        VStack(alignment: .center, spacing: 6) {
+            snapshotGestureHintColumn
+            Button(action: saveFurnitureFitSnapshot) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(Color.blue).shadow(radius: 5))
+            }
+            .disabled(isCapturingSnapshot)
+        }
+    }
+
+    private var pinchHintAccessibilityLabel: String {
+        L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private func toggleFurnitureFit() {
+        logDebug("BRAIN FLOW: tap received")
+        showFurnitureHint = false
+        if showingFurnitureFit {
+            dismissFullVideoFurnitureTapHint()
+            showingFurnitureFit = false
+        } else {
+            logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
+            yoloeService.ensureModelLoaded()
+            showFullVideoWithIdentifications = false
+            brainArAssistedSizingEnabled = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            showingCameraPreview = false
+            showingSegmentExamine = false
+            showingSegmentForeground = false
+            showingSegmentFurniture = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                self.furnitureFitInitialSegmentationDone = false
+                self.showingFurnitureFit = true
+            }
+        }
+    }
+
+    private func toggleFullVideoIdentifications() {
+        showFullVideoWithIdentifications.toggle()
+        if showFullVideoWithIdentifications {
+            if showingFurnitureFit {
+                presentFullVideoFurnitureTapHintIfNeeded()
+            }
+        } else {
+            dismissFullVideoFurnitureTapHint()
+            if furnitureFitSegmentationMode == .segmentSelected {
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
+            }
+        }
+    }
+
+    private func toggleBrainArAssistedSizingOrShowHint() {
+        guard showingFurnitureFit else {
+            showARSizingHint(requiresBrain: true)
+            return
+        }
+        brainArAssistedSizingEnabled.toggle()
+        showARSizingHint(requiresBrain: false)
+    }
+
+    private func displayAllGestureHelpers() {
+        onRoomDimensionsRulerTapped()
+        restartPinchGestureHint()
+        restartBrainGestureHint()
+        restartSnapshotGestureHint()
+        if canOfferBrainArAssist {
+            showARSizingHint(requiresBrain: !showingFurnitureFit)
+        }
+    }
+
+    private func onRoomDimensionsRulerTapped() {
+        cancelRoomDimensionsHintTasks()
+        roomDimensionsHintVisible.toggle()
+        if roomDimensionsHintVisible {
+            scheduleRoomDimensionsHintAutoHide(seconds: 3)
+        }
+    }
+
+    private var arSizingHintText: String {
+        arSizingHintRequiresBrain
+            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
+            : L10n.RoomViewer.arFurnitureSizingHint
+    }
+
+    private func cancelPinchHintTasks() {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = nil
+    }
+
+    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 3) {
+        pinchHintHideTextTask?.cancel()
+        pinchHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            pinchHintExplanationVisible = false
+        }
+    }
+
+    private func restartPinchGestureHint() {
+        cancelPinchHintTasks()
+        pinchHintExplanationVisible = true
+        schedulePinchHintTextAutoHide(seconds: 3)
+    }
+
+    private func onPinchHintIconTapped() {
+        cancelPinchHintTasks()
+        pinchHintExplanationVisible.toggle()
+        if pinchHintExplanationVisible {
+            schedulePinchHintTextAutoHide(seconds: 3)
+        }
+    }
+
+    private func cancelBrainHintTasks() {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = nil
+    }
+
+    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
+        brainHintHideTextTask?.cancel()
+        brainHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            brainHintExplanationVisible = false
+        }
+    }
+
+    private func restartBrainGestureHint() {
+        cancelBrainHintTasks()
+        brainHintExplanationVisible = true
+        scheduleBrainHintTextAutoHide(seconds: 3)
+    }
+
+    private func cancelSnapshotHintTasks() {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = nil
+    }
+
+    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
+        snapshotHintHideTextTask?.cancel()
+        snapshotHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            snapshotHintExplanationVisible = false
+        }
+    }
+
+    private func restartSnapshotGestureHint() {
+        cancelSnapshotHintTasks()
+        snapshotHintExplanationVisible = true
+        scheduleSnapshotHintTextAutoHide(seconds: 3)
+    }
+
+    private func cancelRoomDimensionsHintTasks() {
+        roomDimensionsHintHideTask?.cancel()
+        roomDimensionsHintHideTask = nil
+    }
+
+    private func scheduleRoomDimensionsHintAutoHide(seconds: UInt64 = 3) {
+        roomDimensionsHintHideTask?.cancel()
+        roomDimensionsHintHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            roomDimensionsHintVisible = false
+        }
+    }
+
+    private func cancelARSizingHintTasks() {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = nil
+    }
+
+    private func scheduleARSizingHintTextAutoHide(seconds: UInt64 = 3) {
+        arSizingHintHideTextTask?.cancel()
+        arSizingHintHideTextTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            arSizingHintExplanationVisible = false
+        }
+    }
+
+    private func showARSizingHint(requiresBrain: Bool) {
+        cancelARSizingHintTasks()
+        arSizingHintRequiresBrain = requiresBrain
+        arSizingHintExplanationVisible = true
+        scheduleARSizingHintTextAutoHide(seconds: 3)
     }
 
     private func manageARSessionForOverlays() {
