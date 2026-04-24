@@ -73,8 +73,12 @@
     <string name="settings_current_quality">നിലവിലെ ഗുണനിലവാരം</string>
     <string name="settings_movement_speed">ചലന വേഗത</string>
     <string name="settings_movement_speed_footer">ജോയ്സ്റ്റിക്കിലൂടെ ക്യാമറ ചലന വേഗത നിയന്ത്രിക്കുന്നു. നിങ്ങൾക്ക് അനുയോജ്യമായ വേഗത തിരഞ്ഞെടുക്കുക.</string>
-    <string name="settings_room_dimensions">സിംഗിൾ ഫോട്ടോ റൂം അളവുകൾ</string>
-    <string name="settings_room_dimensions_footer">സിംഗിൾ ഫോട്ടോകളിൽ നിന്ന് സൃഷ്ടിച്ച മുറികൾക്കുള്ള ഡിഫോൾട്ട് അളവുകൾ ക്രമീകരിക്കുക. മുറി അതിർത്തികൾ കണ്ടെത്തുമ്പോൾ ഇവ ആരംഭ പോയിന്റുകളായി പ്രവർത്തിക്കും.</string>
+    <string name="settings_room_dimensions">മാനുവൽ സെറ്റപ്പ് / ഡെമോ റൂം അളവുകൾ</string>
+    <string name="settings_room_dimensions_footer">മാനുവൽ സെറ്റപ്പിനും ഡെമോ റൂമുകൾക്കും ഉള്ള ഡിഫോൾട്ട് അളവുകൾ. ഇവ ആരംഭ മൂല്യങ്ങളാണ്, യഥാർത്ഥമായി അളന്ന മുറിയുടെ അളവുകൾ അല്ല.</string>
+    <string name="settings_width_label">വീതി</string>
+    <string name="settings_height_label">ഉയരം</string>
+    <string name="settings_depth_label">ആഴം</string>
+    <string name="settings_dimension_value_meters">%.1f മീ</string>
     <string name="settings_width">വീതി: %.1f മീ</string>
     <string name="settings_depth">ആഴം: %.1f മീ</string>
     <string name="settings_height">ഉയരം: %.1f മീ</string>

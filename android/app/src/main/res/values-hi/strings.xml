@@ -73,8 +73,12 @@
     <string name="settings_current_quality">वर्तमान गुणवत्ता</string>
     <string name="settings_movement_speed">गति की रफ्तार</string>
     <string name="settings_movement_speed_footer">जॉयस्टिक उपयोग करते समय कैमरा कितनी तेज़ी से चलता है इसे नियंत्रित करता है। अपने लिए सबसे आरामदायक गति चुनें।</string>
-    <string name="settings_room_dimensions">सिंगल फोटो कमरे के आयाम</string>
-    <string name="settings_room_dimensions_footer">एकल फोटो से बनाए गए कमरों के लिए डिफ़ॉल्ट आयाम समायोजित करें। ये मान कमरे की सीमाओं का पता लगाते समय प्रारंभिक बिंदुओं के रूप में उपयोग किए जाएंगे।</string>
+    <string name="settings_room_dimensions">मैनुअल सेटअप / डेमो रूम आयाम</string>
+    <string name="settings_room_dimensions_footer">मैनुअल सेटअप और डेमो रूम के लिए डिफ़ॉल्ट आयाम। ये शुरुआती मान हैं, मापे गए वास्तविक कमरे के आयाम नहीं।</string>
+    <string name="settings_width_label">चौड़ाई</string>
+    <string name="settings_height_label">ऊंचाई</string>
+    <string name="settings_depth_label">गहराई</string>
+    <string name="settings_dimension_value_meters">%.1f मी</string>
     <string name="settings_width">चौड़ाई: %.1f मी</string>
     <string name="settings_depth">गहराई: %.1f मी</string>
     <string name="settings_height">ऊंचाई: %.1f मी</string>

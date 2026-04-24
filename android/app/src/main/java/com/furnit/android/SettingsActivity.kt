@@ -20,7 +20,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
-import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
 import com.furnit.android.services.ExecutorchFixedSettings
 import com.furnit.android.services.ExecutorchInt8Sharp
@@ -98,55 +97,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         userSection.addView(userInfo)
         layout.addView(userSection)
-
-        // Quality settings section
-        val qualitySection = createSection(getString(R.string.settings_rendering_quality))
-
-        val rg = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-        val lowId = View.generateViewId()
-        val medId = View.generateViewId()
-        val highId = View.generateViewId()
-
-        val low = RadioButton(this).apply {
-            text = "${getString(R.string.quality_low)} - ${getString(R.string.quality_low_description)}"
-            id = lowId
-            setTextColor(Color.parseColor("#333333"))
-        }
-        val med = RadioButton(this).apply {
-            text = "${getString(R.string.quality_medium)} - ${getString(R.string.quality_medium_description)}"
-            id = medId
-            setTextColor(Color.parseColor("#333333"))
-        }
-        val high = RadioButton(this).apply {
-            text = "${getString(R.string.quality_high)} - ${getString(R.string.quality_high_description)}"
-            id = highId
-            setTextColor(Color.parseColor("#333333"))
-        }
-        rg.addView(low)
-        rg.addView(med)
-        rg.addView(high)
-
-        val current = prefs.getString("quality", QualitySettings.MEDIUM)
-        when (current) {
-            QualitySettings.LOW -> rg.check(lowId)
-            QualitySettings.MEDIUM -> rg.check(medId)
-            QualitySettings.HIGH -> rg.check(highId)
-        }
-
-        rg.setOnCheckedChangeListener { _, checkedId ->
-            val v = when (checkedId) {
-                lowId -> QualitySettings.LOW
-                medId -> QualitySettings.MEDIUM
-                highId -> QualitySettings.HIGH
-                else -> QualitySettings.MEDIUM
-            }
-            prefs.edit().putString("quality", v).apply()
-        }
-
-        qualitySection.addView(rg)
-        layout.addView(qualitySection)
 
         val furnitureFitSection = createSection(getString(R.string.settings_furniture_segmentation))
 
@@ -289,6 +239,44 @@ class SettingsActivity : AppCompatActivity() {
         autoOrbitLayout.addView(autoOrbitSwitch)
         viewerSection.addView(autoOrbitLayout)
         layout.addView(viewerSection)
+
+        val roomDefaultsSection = createSection(getString(R.string.settings_room_dimensions))
+        roomDefaultsSection.addView(
+            TextView(this).apply {
+                text = getString(R.string.settings_room_dimensions_footer)
+                textSize = 12f
+                setTextColor(Color.parseColor("#666666"))
+                setPadding(0, 4, 0, 12)
+            },
+        )
+        roomDefaultsSection.addView(
+            createDimensionSliderRow(
+                label = getString(R.string.settings_width_label),
+                initialValue = RoomDefaults.widthMeters(prefs),
+                min = 2.0f,
+                max = 10.0f,
+                onValueChanged = { RoomDefaults.setWidthMeters(prefs, it) },
+            ),
+        )
+        roomDefaultsSection.addView(
+            createDimensionSliderRow(
+                label = getString(R.string.settings_height_label),
+                initialValue = RoomDefaults.heightMeters(prefs),
+                min = 2.0f,
+                max = 5.0f,
+                onValueChanged = { RoomDefaults.setHeightMeters(prefs, it) },
+            ),
+        )
+        roomDefaultsSection.addView(
+            createDimensionSliderRow(
+                label = getString(R.string.settings_depth_label),
+                initialValue = RoomDefaults.depthMeters(prefs),
+                min = 2.0f,
+                max = 10.0f,
+                onValueChanged = { RoomDefaults.setDepthMeters(prefs, it) },
+            ),
+        )
+        layout.addView(roomDefaultsSection)
 
         // Developer Settings section (matches iOS)
         val developerSection = createSection(getString(R.string.settings_developer))
@@ -970,6 +958,61 @@ class SettingsActivity : AppCompatActivity() {
                 )
             )
             setOnCheckedChangeListener { _, isChecked -> onChanged(isChecked) }
+        }
+    }
+
+    private fun createDimensionSliderRow(
+        label: String,
+        initialValue: Float,
+        min: Float,
+        max: Float,
+        onValueChanged: (Float) -> Unit,
+    ): LinearLayout {
+        val step = 0.1f
+        val maxSteps = ((max - min) / step).toInt()
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8, 0, 8)
+
+            val titleRow = LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val labelView = TextView(this@SettingsActivity).apply {
+                text = label
+                textSize = 16f
+                setTextColor(Color.parseColor("#333333"))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val valueView = TextView(this@SettingsActivity).apply {
+                text = getString(R.string.settings_dimension_value_meters, initialValue)
+                textSize = 14f
+                setTextColor(Color.parseColor("#666666"))
+            }
+
+            titleRow.addView(labelView)
+            titleRow.addView(valueView)
+            addView(titleRow)
+
+            val seekBar = SeekBar(this@SettingsActivity).apply {
+                this.max = maxSteps
+                progress = (((initialValue - min) / step).toInt()).coerceIn(0, maxSteps)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val value = (min + progress * step).coerceIn(min, max)
+                        valueView.text = getString(R.string.settings_dimension_value_meters, value)
+                        onValueChanged(value)
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                })
+            }
+            addView(seekBar)
         }
     }
 

@@ -73,8 +73,12 @@
     <string name="settings_current_quality">বর্তমান কোয়ালিটি</string>
     <string name="settings_movement_speed">চলাচলের গতি</string>
     <string name="settings_movement_speed_footer">জয়স্টিক দিয়ে ক্যামেরা চলাচলের গতি নিয়ন্ত্রণ করে। আপনার জন্য উপযুক্ত গতি বেছে নিন।</string>
-    <string name="settings_room_dimensions">একক ছবি রুম মাত্রা</string>
-    <string name="settings_room_dimensions_footer">একক ছবি থেকে তৈরি রুমের ডিফল্ট মাত্রা সামঞ্জস্য করুন। এগুলো রুমের সীমানা শনাক্ত করার সময় শুরুর পয়েন্ট হিসেবে কাজ করবে।</string>
+    <string name="settings_room_dimensions">ম্যানুয়াল সেটআপ / ডেমো রুম মাত্রা</string>
+    <string name="settings_room_dimensions_footer">ম্যানুয়াল সেটআপ ও ডেমো রুমের ডিফল্ট মাত্রা। এগুলো শুরুর মান, প্রকৃত মাপা রুমের মাত্রা নয়।</string>
+    <string name="settings_width_label">প্রস্থ</string>
+    <string name="settings_height_label">উচ্চতা</string>
+    <string name="settings_depth_label">গভীরতা</string>
+    <string name="settings_dimension_value_meters">%.1f মি</string>
     <string name="settings_width">প্রস্থ: %.1f মি</string>
     <string name="settings_depth">গভীরতা: %.1f মি</string>
     <string name="settings_height">উচ্চতা: %.1f মি</string>

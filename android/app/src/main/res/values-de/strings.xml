@@ -73,8 +73,12 @@
     <string name="settings_current_quality">Aktuelle Qualität</string>
     <string name="settings_movement_speed">Bewegungsgeschwindigkeit</string>
     <string name="settings_movement_speed_footer">Steuert, wie schnell sich die Kamera bei Verwendung des Joysticks bewegt. Wählen Sie die Geschwindigkeit, die sich für Sie am angenehmsten anfühlt.</string>
-    <string name="settings_room_dimensions">Einzelfoto-Raummaße</string>
-    <string name="settings_room_dimensions_footer">Passen Sie die Standardmaße für Räume an, die aus Einzelfotos erstellt werden. Diese Werte werden als Ausgangspunkte bei der Erkennung von Raumgrenzen verwendet.</string>
+    <string name="settings_room_dimensions">Maße für manuelle / Demo-Räume</string>
+    <string name="settings_room_dimensions_footer">Standardmaße für manuelle und Demo-Räume. Dies sind Startwerte, keine real gemessenen Raummaße.</string>
+    <string name="settings_width_label">Breite</string>
+    <string name="settings_height_label">Höhe</string>
+    <string name="settings_depth_label">Tiefe</string>
+    <string name="settings_dimension_value_meters">%.1f m</string>
     <string name="settings_width">Breite: %.1fm</string>
     <string name="settings_depth">Tiefe: %.1fm</string>
     <string name="settings_height">Höhe: %.1fm</string>

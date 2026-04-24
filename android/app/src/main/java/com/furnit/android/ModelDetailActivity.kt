@@ -190,6 +190,9 @@ class ModelDetailActivity : AppCompatActivity() {
                 val roomFolder = java.io.File(model.assetPath).let { f ->
                     if (f.isFile) f.parent else f.absolutePath
                 }
+                val defaultRoomWidth = model.roomWidth ?: RoomDefaults.widthMeters(this)
+                val defaultRoomHeight = model.roomHeight ?: RoomDefaults.heightMeters(this)
+                val defaultRoomDepth = model.roomDepth ?: RoomDefaults.depthMeters(this)
                 // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
                 // Bundled assets (bundled_rooms/vintage.glb) use a relative asset path — no room folder; omit ROOM_FOLDER to use ROOM_ID.
                 val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
@@ -198,6 +201,10 @@ class ModelDetailActivity : AppCompatActivity() {
                 intent.putExtra("ROOM_ID", model.id)
                 intent.putExtra("ROOM_NAME", model.name)
                 if (absoluteFolder != null) intent.putExtra("ROOM_FOLDER", absoluteFolder)
+                intent.putExtra("ROOM_WIDTH", defaultRoomWidth)
+                intent.putExtra("ROOM_HEIGHT", defaultRoomHeight)
+                intent.putExtra("ROOM_DEPTH", defaultRoomDepth)
+                intent.putExtra("PHOTO_ORIENTATION", model.photoOrientation)
                 startActivity(intent)
             }
 

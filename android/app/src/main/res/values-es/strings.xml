@@ -73,8 +73,12 @@
     <string name="settings_current_quality">Calidad actual</string>
     <string name="settings_movement_speed">Velocidad de movimiento</string>
     <string name="settings_movement_speed_footer">Controla la velocidad de la cámara al usar el joystick. Elige la velocidad que te resulte más cómoda.</string>
-    <string name="settings_room_dimensions">Dimensiones de habitación de foto única</string>
-    <string name="settings_room_dimensions_footer">Ajusta las dimensiones predeterminadas para habitaciones creadas a partir de fotos individuales. Estos valores se usarán como puntos de partida al detectar los límites de la habitación.</string>
+    <string name="settings_room_dimensions">Dimensiones de configuración manual / sala demo</string>
+    <string name="settings_room_dimensions_footer">Dimensiones predeterminadas para la configuración manual y las salas demo. Son valores iniciales, no medidas reales de la sala.</string>
+    <string name="settings_width_label">Ancho</string>
+    <string name="settings_height_label">Alto</string>
+    <string name="settings_depth_label">Profundidad</string>
+    <string name="settings_dimension_value_meters">%.1f m</string>
     <string name="settings_width">Ancho: %.1fm</string>
     <string name="settings_depth">Profundidad: %.1fm</string>
     <string name="settings_height">Altura: %.1fm</string>

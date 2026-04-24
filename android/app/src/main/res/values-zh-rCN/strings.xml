@@ -73,8 +73,12 @@
     <string name="settings_current_quality">目前品质</string>
     <string name="settings_movement_speed">移动速度</string>
     <string name="settings_movement_speed_footer">控制使用摇杆时相机的移动速度。选择最适合你的速度。</string>
-    <string name="settings_room_dimensions">单张照片房间尺寸</string>
-    <string name="settings_room_dimensions_footer">调整从单张照片建立的房间的预设尺寸。这些值将作为侦测房间边界时的起始点。</string>
+    <string name="settings_room_dimensions">手动设置 / 演示房间尺寸</string>
+    <string name="settings_room_dimensions_footer">手动设置和演示房间的默认尺寸。这些只是起始值，不是真实测量的房间尺寸。</string>
+    <string name="settings_width_label">宽度</string>
+    <string name="settings_height_label">高度</string>
+    <string name="settings_depth_label">深度</string>
+    <string name="settings_dimension_value_meters">%.1f 米</string>
     <string name="settings_width">宽度：%.1f公尺</string>
     <string name="settings_depth">深度：%.1f公尺</string>
     <string name="settings_height">高度：%.1f公尺</string>

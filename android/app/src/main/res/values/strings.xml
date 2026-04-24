@@ -107,8 +107,12 @@
     <string name="settings_current_quality">Current Quality</string>
     <string name="settings_movement_speed">Movement Speed</string>
     <string name="settings_movement_speed_footer">Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.</string>
-    <string name="settings_room_dimensions">Single Photo Room Dimensions</string>
-    <string name="settings_room_dimensions_footer">Adjust the default dimensions for rooms created from single photos. These values will be used as starting points when detecting room boundaries.</string>
+    <string name="settings_room_dimensions">Manual Setup / Demo Room Dimensions</string>
+    <string name="settings_room_dimensions_footer">Default dimensions for manual setup and demo rooms. These are starting values, not measured room dimensions.</string>
+    <string name="settings_width_label">Width</string>
+    <string name="settings_height_label">Height</string>
+    <string name="settings_depth_label">Depth</string>
+    <string name="settings_dimension_value_meters">%.1f m</string>
     <string name="settings_width">Width: %.1fm</string>
     <string name="settings_depth">Depth: %.1fm</string>
     <string name="settings_height">Height: %.1fm</string>

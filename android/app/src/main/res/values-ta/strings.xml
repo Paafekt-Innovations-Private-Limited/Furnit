@@ -73,8 +73,12 @@
     <string name="settings_current_quality">தற்போதைய தரம்</string>
     <string name="settings_movement_speed">நகர்வு வேகம்</string>
     <string name="settings_movement_speed_footer">ஜாய்ஸ்டிக் கேமரா நகர்வு வேகத்தை கட்டுப்படுத்துகிறது. உங்களுக்கு ஏற்ற வேகத்தை தேர்வு செய்யவும்.</string>
-    <string name="settings_room_dimensions">ஒற்றை புகைப்பட அறை பரிமாணங்கள்</string>
-    <string name="settings_room_dimensions_footer">ஒற்றை புகைப்படங்களிலிருந்து உருவாக்கப்பட்ட அறைகளுக்கான இயல்புநிலை பரிமாணங்களை சரிசெய்யவும். இவை அறை எல்லைகளை கண்டறியும் போது தொடக்க புள்ளிகளாக செயல்படும்.</string>
+    <string name="settings_room_dimensions">கைமுறை அமைப்பு / டெமோ அறை அளவுகள்</string>
+    <string name="settings_room_dimensions_footer">கைமுறை அமைப்பும் டெமோ அறைகளும் பயன்படுத்தும் இயல்புநிலை அளவுகள். இவை தொடக்க மதிப்புகள் மட்டுமே; உண்மையாக அளந்த அறை அளவுகள் அல்ல.</string>
+    <string name="settings_width_label">அகலம்</string>
+    <string name="settings_height_label">உயரம்</string>
+    <string name="settings_depth_label">ஆழம்</string>
+    <string name="settings_dimension_value_meters">%.1f மீ</string>
     <string name="settings_width">அகலம்: %.1f மீ</string>
     <string name="settings_depth">ஆழம்: %.1f மீ</string>
     <string name="settings_height">உயரம்: %.1f மீ</string>

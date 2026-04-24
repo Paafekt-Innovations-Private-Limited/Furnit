@@ -67,9 +67,9 @@ class FurnitureFitActivity : AppCompatActivity() {
         var roomId = intent.getStringExtra("ROOM_ID")
         val roomName = intent.getStringExtra("ROOM_NAME")
         var roomFolder = intent.getStringExtra("ROOM_FOLDER")
-        val roomWidth = intent.getFloatExtra("ROOM_WIDTH", 4f)
-        val roomHeight = intent.getFloatExtra("ROOM_HEIGHT", 3f)
-        val roomDepth = intent.getFloatExtra("ROOM_DEPTH", 4.5f)
+        val roomWidth = intent.getFloatExtra("ROOM_WIDTH", RoomDefaults.widthMeters(this))
+        val roomHeight = intent.getFloatExtra("ROOM_HEIGHT", RoomDefaults.heightMeters(this))
+        val roomDepth = intent.getFloatExtra("ROOM_DEPTH", RoomDefaults.depthMeters(this))
         val photoOrientation = intent.getStringExtra("PHOTO_ORIENTATION") ?: "portrait"
         val enableArAssistedSizing = intent.getBooleanExtra(EXTRA_ENABLE_AR_ASSISTED_SIZING, false)
         if (roomFolder != null && roomFolder.isNotBlank()) {

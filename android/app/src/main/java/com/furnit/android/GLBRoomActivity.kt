@@ -89,8 +89,8 @@ class GLBRoomActivity : AppCompatActivity() {
         roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: "3D Room"
         roomId = intent.getStringExtra(EXTRA_ROOM_ID)
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
-        roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 4.0f)
-        roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 3.0f)
+        roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, RoomDefaults.widthMeters(this))
+        roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, RoomDefaults.heightMeters(this))
         photoOrientation = intent.getStringExtra(EXTRA_PHOTO_ORIENTATION) ?: "portrait"
 
         // Lock orientation based on room's photo orientation (no auto-rotate)

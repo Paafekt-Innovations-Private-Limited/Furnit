@@ -73,8 +73,12 @@
     <string name="settings_current_quality">ప్రస్తుత క్వాలిటీ</string>
     <string name="settings_movement_speed">కదలిక వేగం</string>
     <string name="settings_movement_speed_footer">జాయ్‌స్టిక్‌తో కెమెరా కదలిక వేగాన్ని నియంత్రిస్తుంది. మీకు సరిపోయే వేగాన్ని ఎంచుకోండి.</string>
-    <string name="settings_room_dimensions">సింగిల్ ఫోటో రూమ్ కొలతలు</string>
-    <string name="settings_room_dimensions_footer">సింగిల్ ఫోటోల నుండి సృష్టించిన గదులకు డిఫాల్ట్ కొలతలను సర్దుబాటు చేయండి. ఇవి గది సరిహద్దులను గుర్తించేటప్పుడు ప్రారంభ పాయింట్లుగా పని చేస్తాయి.</string>
+    <string name="settings_room_dimensions">మాన్యువల్ సెటప్ / డెమో రూమ్ కొలతలు</string>
+    <string name="settings_room_dimensions_footer">మాన్యువల్ సెటప్ మరియు డెమో రూమ్‌ల కోసం డిఫాల్ట్ కొలతలు. ఇవి ప్రారంభ విలువలు మాత్రమే, నిజంగా కొలిచిన గది కొలతలు కావు.</string>
+    <string name="settings_width_label">వెడల్పు</string>
+    <string name="settings_height_label">ఎత్తు</string>
+    <string name="settings_depth_label">లోతు</string>
+    <string name="settings_dimension_value_meters">%.1f మీ</string>
     <string name="settings_width">వెడల్పు: %.1f మీ</string>
     <string name="settings_depth">లోతు: %.1f మీ</string>
     <string name="settings_height">ఎత్తు: %.1f మీ</string>

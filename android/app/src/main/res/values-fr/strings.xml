@@ -73,8 +73,12 @@
     <string name="settings_current_quality">Qualité actuelle</string>
     <string name="settings_movement_speed">Vitesse de déplacement</string>
     <string name="settings_movement_speed_footer">Contrôle la vitesse de déplacement de la caméra avec le joystick. Choisissez la vitesse qui vous convient le mieux.</string>
-    <string name="settings_room_dimensions">Dimensions de la pièce photo unique</string>
-    <string name="settings_room_dimensions_footer">Ajustez les dimensions par défaut des pièces créées à partir de photos uniques. Ces valeurs serviront de points de départ lors de la détection des limites de la pièce.</string>
+    <string name="settings_room_dimensions">Dimensions des pièces manuelles / démo</string>
+    <string name="settings_room_dimensions_footer">Dimensions par défaut pour les pièces manuelles et de démonstration. Ce sont des valeurs de départ, pas des mesures réelles de la pièce.</string>
+    <string name="settings_width_label">Largeur</string>
+    <string name="settings_height_label">Hauteur</string>
+    <string name="settings_depth_label">Profondeur</string>
+    <string name="settings_dimension_value_meters">%.1f m</string>
     <string name="settings_width">Largeur : %.1f m</string>
     <string name="settings_depth">Profondeur : %.1f m</string>
     <string name="settings_height">Hauteur : %.1f m</string>

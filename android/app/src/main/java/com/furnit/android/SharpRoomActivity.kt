@@ -573,10 +573,6 @@ class SharpRoomActivity : AppCompatActivity() {
                     super.onPageFinished(view, url)
                     DebugLogger.d(TAG, "WebView page loaded")
                     logSharpLoadTiming("webview_page_finished")
-                    // Hide loading after a delay for splat rendering
-                    postDelayed({
-                        loadingOverlay.visibility = View.GONE
-                    }, 2000)
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {

@@ -73,8 +73,12 @@
     <string name="settings_current_quality">الجودة الحالية</string>
     <string name="settings_movement_speed">سرعة الحركة</string>
     <string name="settings_movement_speed_footer">يتحكم في سرعة حركة الكاميرا باستخدام عصا التحكم. اختر السرعة المناسبة لك.</string>
-    <string name="settings_room_dimensions">أبعاد غرفة الصورة الواحدة</string>
-    <string name="settings_room_dimensions_footer">اضبط الأبعاد الافتراضية للغرف المنشأة من صور فردية. ستكون هذه نقاط البداية عند اكتشاف حدود الغرفة.</string>
+    <string name="settings_room_dimensions">أبعاد الإعداد اليدوي / الغرف التجريبية</string>
+    <string name="settings_room_dimensions_footer">الأبعاد الافتراضية لغرف الإعداد اليدوي والغرف التجريبية. هذه قيم ابتدائية وليست قياسات حقيقية للغرفة.</string>
+    <string name="settings_width_label">العرض</string>
+    <string name="settings_height_label">الارتفاع</string>
+    <string name="settings_depth_label">العمق</string>
+    <string name="settings_dimension_value_meters">%.1f م</string>
     <string name="settings_width">العرض: %.1f م</string>
     <string name="settings_depth">العمق: %.1f م</string>
     <string name="settings_height">الارتفاع: %.1f م</string>
