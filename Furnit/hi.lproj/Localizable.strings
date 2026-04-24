@@ -111,8 +111,8 @@
 "settings.currentQuality" = "वर्तमान गुणवत्ता";
 "settings.movementSpeed" = "गति की रफ्तार";
 "settings.movementSpeedFooter" = "जॉयस्टिक उपयोग करते समय कैमरा कितनी तेज़ी से चलता है इसे नियंत्रित करता है। अपने लिए सबसे आरामदायक गति चुनें।";
-"settings.roomDimensions" = "सिंगल फोटो कमरे के आयाम";
-"settings.roomDimensionsFooter" = "एकल फोटो से बनाए गए कमरों के लिए डिफ़ॉल्ट आयाम समायोजित करें। ये मान कमरे की सीमाओं का पता लगाते समय प्रारंभिक बिंदुओं के रूप में उपयोग किए जाएंगे।";
+"settings.roomDimensions" = "मैनुअल सेटअप / डेमो रूम आयाम";
+"settings.roomDimensionsFooter" = "मैनुअल सेटअप और डेमो रूम के लिए डिफ़ॉल्ट आयाम। ये शुरुआती मान हैं, मापे हुए वास्तविक रूम आयाम नहीं।";
 "settings.width" = "चौड़ाई: %.1f मी";
 "settings.depth" = "गहराई: %.1f मी";
 "settings.height" = "ऊंचाई: %.1f मी";

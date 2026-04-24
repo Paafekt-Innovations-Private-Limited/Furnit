@@ -111,8 +111,8 @@
 "settings.currentQuality" = "Calidad actual";
 "settings.movementSpeed" = "Velocidad de movimiento";
 "settings.movementSpeedFooter" = "Controla qué tan rápido se mueve la cámara al usar el joystick. Elige la velocidad que te resulte más cómoda.";
-"settings.roomDimensions" = "Dimensiones de cuarto de foto única";
-"settings.roomDimensionsFooter" = "Ajusta las dimensiones predeterminadas para cuartos creados a partir de fotos individuales. Estos valores se usarán como puntos de partida al detectar los límites del cuarto.";
+"settings.roomDimensions" = "Dimensiones de configuración manual / cuarto demo";
+"settings.roomDimensionsFooter" = "Dimensiones predeterminadas para cuartos de configuración manual y demo. Son valores iniciales, no medidas reales del cuarto.";
 "settings.width" = "Ancho: %.1fm";
 "settings.depth" = "Profundidad: %.1fm";
 "settings.height" = "Altura: %.1fm";

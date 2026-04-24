@@ -111,8 +111,8 @@
 "settings.currentQuality" = "الجودة الحالية";
 "settings.movementSpeed" = "سرعة الحركة";
 "settings.movementSpeedFooter" = "يتحكم في سرعة حركة الكاميرا باستخدام عصا التحكم. اختر السرعة المناسبة لك.";
-"settings.roomDimensions" = "أبعاد غرفة الصورة الواحدة";
-"settings.roomDimensionsFooter" = "اضبط الأبعاد الافتراضية للغرف المنشأة من صور فردية. ستكون هذه نقاط البداية عند اكتشاف حدود الغرفة.";
+"settings.roomDimensions" = "أبعاد الغرفة للإعداد اليدوي / العرض التجريبي";
+"settings.roomDimensionsFooter" = "أبعاد افتراضية لغرف الإعداد اليدوي وغرف العرض التجريبي. هذه قيم بداية وليست أبعادًا حقيقية مقاسة للغرفة.";
 "settings.width" = "العرض: %.1f م";
 "settings.depth" = "العمق: %.1f م";
 "settings.height" = "الارتفاع: %.1f م";

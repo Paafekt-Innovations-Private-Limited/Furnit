@@ -180,26 +180,6 @@ struct ModelViewerView: View {
                 .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
                 .allowsHitTesting(true)
 
-                // Memory info HUD (top-left, below back button)
-                if model.hasFileSize && !showingFurnitureFit {
-                    VStack {
-                        HStack {
-                            Text(model.fileSizeFormatted)
-                                .font(.caption.monospacedDigit())
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(Color.black.opacity(0.5))
-                                .cornerRadius(8)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.top, 60)
-                        Spacer()
-                    }
-                    .opacity(isCapturingSnapshot ? 0 : 1)
-                    .zIndex(99998)
-                }
-                
                 // TOPMOST BRAIN ICON - ALWAYS ON TOP
                 VStack {
                     Spacer()

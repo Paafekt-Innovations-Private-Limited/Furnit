@@ -111,8 +111,8 @@
 "settings.currentQuality" = "Aktuelle Qualität";
 "settings.movementSpeed" = "Bewegungsgeschwindigkeit";
 "settings.movementSpeedFooter" = "Steuert, wie schnell sich die Kamera bei Verwendung des Joysticks bewegt. Wählen Sie die Geschwindigkeit, die sich für Sie am angenehmsten anfühlt.";
-"settings.roomDimensions" = "Einzelfoto-Raummaße";
-"settings.roomDimensionsFooter" = "Passen Sie die Standardmaße für Räume an, die aus Einzelfotos erstellt werden. Diese Werte werden als Ausgangspunkte bei der Erkennung von Raumgrenzen verwendet.";
+"settings.roomDimensions" = "Maße für manuelles Setup / Demo-Raum";
+"settings.roomDimensionsFooter" = "Standardmaße für manuelle Setup- und Demo-Räume. Das sind Startwerte, keine real gemessenen Raummaße.";
 "settings.width" = "Breite: %.1fm";
 "settings.depth" = "Tiefe: %.1fm";
 "settings.height" = "Höhe: %.1fm";

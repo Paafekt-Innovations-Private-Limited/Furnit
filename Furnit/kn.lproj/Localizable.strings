@@ -111,8 +111,8 @@
 "settings.currentQuality" = "ಪ್ರಸ್ತುತ ಗುಣಮಟ್ಟ";
 "settings.movementSpeed" = "ಚಲನೆಯ ವೇಗ";
 "settings.movementSpeedFooter" = "ಜಾಯ್‌ಸ್ಟಿಕ್‌ನೊಂದಿಗೆ ಕ್ಯಾಮೆರಾ ಚಲನೆಯ ವೇಗವನ್ನು ನಿಯಂತ್ರಿಸುತ್ತದೆ. ನಿಮಗೆ ಸರಿಹೊಂದುವ ವೇಗವನ್ನು ಆಯ್ಕೆಮಾಡಿ.";
-"settings.roomDimensions" = "ಏಕ ಫೋಟೋ ಕೊಠಡಿ ಆಯಾಮಗಳು";
-"settings.roomDimensionsFooter" = "ಏಕ ಫೋಟೋಗಳಿಂದ ರಚಿಸಲಾದ ಕೊಠಡಿಗಳಿಗೆ ಡೀಫಾಲ್ಟ್ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಿ. ಇವು ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ಪತ್ತೆಹಚ್ಚುವಾಗ ಆರಂಭಿಕ ಬಿಂದುಗಳಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ.";
+"settings.roomDimensions" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ / ಡೆಮೊ ರೂಮ್ ಆಯಾಮಗಳು";
+"settings.roomDimensionsFooter" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಮತ್ತು ಡೆಮೊ ರೂಮ್‌ಗಳ ಡೀಫಾಲ್ಟ್ ಆಯಾಮಗಳು. ಇವು ಆರಂಭಿಕ ಮೌಲ್ಯಗಳು, ನಿಜವಾಗಿ ಅಳೆಯಲಾದ ರೂಮ್ ಆಯಾಮಗಳಲ್ಲ.";
 "settings.width" = "ಅಗಲ: %.1f ಮೀ";
 "settings.depth" = "ಆಳ: %.1f ಮೀ";
 "settings.height" = "ಎತ್ತರ: %.1f ಮೀ";

@@ -111,8 +111,8 @@
 "settings.currentQuality" = "বর্তমান কোয়ালিটি";
 "settings.movementSpeed" = "চলাচলের গতি";
 "settings.movementSpeedFooter" = "জয়স্টিক দিয়ে ক্যামেরা চলাচলের গতি নিয়ন্ত্রণ করে। আপনার জন্য উপযুক্ত গতি বেছে নিন।";
-"settings.roomDimensions" = "একক ছবি রুম মাত্রা";
-"settings.roomDimensionsFooter" = "একক ছবি থেকে তৈরি রুমের ডিফল্ট মাত্রা সামঞ্জস্য করুন। এগুলো রুমের সীমানা শনাক্ত করার সময় শুরুর পয়েন্ট হিসেবে কাজ করবে।";
+"settings.roomDimensions" = "ম্যানুয়াল সেটআপ / ডেমো রুমের মাত্রা";
+"settings.roomDimensionsFooter" = "ম্যানুয়াল সেটআপ ও ডেমো রুমের জন্য ডিফল্ট মাত্রা। এগুলো শুরুর মান, মাপা বাস্তব রুমের মাত্রা নয়।";
 "settings.width" = "প্রস্থ: %.1f মি";
 "settings.depth" = "গভীরতা: %.1f মি";
 "settings.height" = "উচ্চতা: %.1f মি";

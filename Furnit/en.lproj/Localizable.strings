@@ -121,8 +121,8 @@
 "settings.currentQuality" = "Current Quality";
 "settings.movementSpeed" = "Movement Speed";
 "settings.movementSpeedFooter" = "Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.";
-"settings.roomDimensions" = "Single Photo Room Dimensions";
-"settings.roomDimensionsFooter" = "Adjust the default dimensions for rooms created from single photos. These values will be used as starting points when detecting room boundaries.";
+"settings.roomDimensions" = "Manual Setup / Demo Room Dimensions";
+"settings.roomDimensionsFooter" = "Default dimensions for manual setup and demo rooms. These are starting values, not measured room dimensions.";
 "settings.width" = "Width: %.1fm";
 "settings.depth" = "Depth: %.1fm";
 "settings.height" = "Height: %.1fm";

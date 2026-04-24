@@ -111,8 +111,8 @@
 "settings.currentQuality" = "目前品质";
 "settings.movementSpeed" = "移动速度";
 "settings.movementSpeedFooter" = "控制使用摇杆时相机的移动速度。选择最适合你的速度。";
-"settings.roomDimensions" = "单张照片房间尺寸";
-"settings.roomDimensionsFooter" = "调整从单张照片建立的房间的预设尺寸。这些值将作为侦测房间边界时的起始点。";
+"settings.roomDimensions" = "手动设置 / 演示房间尺寸";
+"settings.roomDimensionsFooter" = "手动设置和演示房间的默认尺寸。这些只是起始值，不是真实测量的房间尺寸。";
 "settings.width" = "宽度：%.1f公尺";
 "settings.depth" = "深度：%.1f公尺";
 "settings.height" = "高度：%.1f公尺";

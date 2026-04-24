@@ -111,8 +111,8 @@
 "settings.currentQuality" = "Qualité actuelle";
 "settings.movementSpeed" = "Vitesse de déplacement";
 "settings.movementSpeedFooter" = "Contrôle la vitesse de déplacement de la caméra avec le joystick. Choisissez la vitesse qui vous convient le mieux.";
-"settings.roomDimensions" = "Dimensions de la pièce photo unique";
-"settings.roomDimensionsFooter" = "Ajustez les dimensions par défaut des pièces créées à partir de photos uniques. Ces valeurs serviront de points de départ lors de la détection des limites de la pièce.";
+"settings.roomDimensions" = "Dimensions configuration manuelle / pièce démo";
+"settings.roomDimensionsFooter" = "Dimensions par défaut pour les pièces en configuration manuelle et les pièces démo. Ce sont des valeurs de départ, pas des dimensions réelles mesurées.";
 "settings.width" = "Largeur : %.1f m";
 "settings.depth" = "Profondeur : %.1f m";
 "settings.height" = "Hauteur : %.1f m";
