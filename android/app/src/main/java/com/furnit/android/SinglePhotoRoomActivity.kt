@@ -939,9 +939,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 )
                 updateOrientationIndicator()
 
-                // Start AI generation in background immediately (ONNX or Native Pt)
+                // Start SHARP generation immediately. Do not start FurnitureFit/YOLOE here:
+                // loading yoloe-11l-seg-pf.onnx in parallel with SHARP can spike memory during room creation.
                 startAIGenerationInBackground(bitmap)
-                startSingleImageOverlayScan(bitmap)
 
                 showMethodPicker()
                 DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
@@ -1206,11 +1206,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         hideProgressOverlay()
                         Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
                         DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
-                        CrashReporter.report(
-                            this@SinglePhotoRoomActivity,
-                            RuntimeException(message),
-                            "Single photo room — AI / SHARP generation",
-                        )
+                        if (isMissingAiRoomModelsError(message)) {
+                            showMissingAiRoomModelsDialog(message)
+                        } else {
+                            CrashReporter.report(
+                                this@SinglePhotoRoomActivity,
+                                RuntimeException(message),
+                                "Single photo room — AI / SHARP generation",
+                            )
+                        }
                         updateAiStopButtonVisibility()
                     } else {
                         SharpGenerationUiState.clear()
@@ -1226,6 +1230,28 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         )
         updateAiStopButtonVisibility()
         updateGlobalAiProgressOverlay()
+    }
+
+    private fun isMissingAiRoomModelsError(message: String): Boolean {
+        return message.contains("Missing models:", ignoreCase = true) ||
+            message.contains("models_cpu", ignoreCase = true) ||
+            message.contains("models_cpuvulkan_hybrid", ignoreCase = true)
+    }
+
+    private fun showMissingAiRoomModelsDialog(details: String) {
+        val setupHint = getString(R.string.ai_models_missing_message)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ai_models_missing_title)
+            .setMessage("$setupHint\n\n$details")
+            .setPositiveButton(R.string.ai_models_missing_use_manual) { _, _ ->
+                onManualSetupSelected()
+            }
+            .setNeutralButton(R.string.crash_report_copy_details) { _, _ ->
+                CrashReporter.copyReportToClipboard(this, details)
+                Toast.makeText(this, getString(R.string.crash_report_copy_details), Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.ok, null)
+            .show()
     }
 
     /** Cancel AI generation, delete any room folder on disk, and release model memory. */

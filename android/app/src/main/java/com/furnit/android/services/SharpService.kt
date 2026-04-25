@@ -273,9 +273,6 @@ class SharpService private constructor(private val context: Context) {
             }
 
             LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
-            var resolvedRoomWidth = 0f
-            var resolvedRoomHeight = 0f
-            var resolvedRoomDepth = 0f
             DebugLogger.i(
                 "SHARP_ROOM_MEAS",
                 "[ROOM_DIMS_APP] PENDING source=room_dims_v7_android " +
@@ -314,34 +311,11 @@ class SharpService private constructor(private val context: Context) {
                 sourcePhotoPath = sourcePhotoPath,
             )
 
-            SharpRoomDimensionsV7.measureBest(
+            scheduleRoomDimensionsV7Measurement(
+                roomFolder = result.plyFile.parentFile!!,
                 plyFile = result.classicPlyFile,
                 sourceImageWidthPx = image.width,
                 sourceImageHeightPx = image.height,
-                cameraExifFile = File(result.plyFile.parentFile!!, "camera_exif.json"),
-            )?.let { roomDimsV7 ->
-                val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(
-                    roomDimsV7.width,
-                    roomDimsV7.height,
-                    roomDimsV7.depth,
-                )
-                resolvedRoomWidth = sanitized.first
-                resolvedRoomHeight = sanitized.second
-                resolvedRoomDepth = sanitized.third
-                persistRoomDimensionsV7(result.plyFile.parentFile!!, roomDimsV7, sanitized)
-                DebugLogger.i(
-                    "SHARP_ROOM_MEAS",
-                    "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 APPROACH=${roomDimsV7.approach} " +
-                        "SHOT=${roomDimsV7.shotType} HAS_FOCAL=${roomDimsV7.usedFocal} " +
-                        "W=${resolvedRoomWidth} H=${resolvedRoomHeight} D=${resolvedRoomDepth} " +
-                        "SCENE_WHD=(${roomDimsV7.sceneWidth},${roomDimsV7.sceneHeight},${roomDimsV7.sceneDepth}) " +
-                        "RAW_WH=(${roomDimsV7.rawWidth},${roomDimsV7.rawHeight}) " +
-                        "folder=${result.plyFile.parentFile?.absolutePath}",
-                )
-            } ?: DebugLogger.i(
-                "SHARP_ROOM_MEAS",
-                "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 unavailable; viewer will keep deferred Box3 fallback " +
-                    "folder=${result.plyFile.parentFile?.absolutePath}",
             )
 
             if (isCancelled()) {
@@ -354,9 +328,9 @@ class SharpService private constructor(private val context: Context) {
                 GenerationResult(
                     plyFile = result.plyFile,
                     classicPlyFile = result.classicPlyFile,
-                    roomWidth = resolvedRoomWidth,
-                    roomHeight = resolvedRoomHeight,
-                    roomDepth = resolvedRoomDepth,
+                    roomWidth = 0f,
+                    roomHeight = 0f,
+                    roomDepth = 0f,
                     roomCenterX = result.roomCenterX,
                     roomCenterY = result.roomCenterY,
                     roomCenterZ = result.roomCenterZ
@@ -371,6 +345,46 @@ class SharpService private constructor(private val context: Context) {
             LogUtil.e(TAG, "Generation failed", e)
             callback.onError("Failed: ${e.message}")
         }
+    }
+
+    private fun scheduleRoomDimensionsV7Measurement(
+        roomFolder: File,
+        plyFile: File,
+        sourceImageWidthPx: Int,
+        sourceImageHeightPx: Int,
+    ) {
+        Thread({
+            val measured = SharpRoomDimensionsV7.measureBest(
+                plyFile = plyFile,
+                sourceImageWidthPx = sourceImageWidthPx,
+                sourceImageHeightPx = sourceImageHeightPx,
+                cameraExifFile = File(roomFolder, "camera_exif.json"),
+            )
+            if (measured == null) {
+                DebugLogger.i(
+                    "SHARP_ROOM_MEAS",
+                    "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 unavailable; viewer will keep deferred Box3 fallback " +
+                        "folder=${roomFolder.absolutePath}",
+                )
+                return@Thread
+            }
+
+            val sanitized = SharpRoomDimensionSanitizer.sanitizeMeters(
+                measured.width,
+                measured.height,
+                measured.depth,
+            )
+            persistRoomDimensionsV7(roomFolder, measured, sanitized)
+            DebugLogger.i(
+                "SHARP_ROOM_MEAS",
+                "[ROOM_DIMS_APP] SOURCE=ROOM_DIMS_V7 ASYNC APPROACH=${measured.approach} " +
+                    "SHOT=${measured.shotType} HAS_FOCAL=${measured.usedFocal} " +
+                    "W=${sanitized.first} H=${sanitized.second} D=${sanitized.third} " +
+                    "SCENE_WHD=(${measured.sceneWidth},${measured.sceneHeight},${measured.sceneDepth}) " +
+                    "RAW_WH=(${measured.rawWidth},${measured.rawHeight}) " +
+                    "folder=${roomFolder.absolutePath}",
+            )
+        }, "sharp-room-dims-v7").start()
     }
 
     /**

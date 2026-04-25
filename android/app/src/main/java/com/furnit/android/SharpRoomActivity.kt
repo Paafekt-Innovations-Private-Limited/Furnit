@@ -325,6 +325,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private var isPlacementIntelligenceExpanded = false
     private var lastBrainOverlayScaleLogMs: Long = 0L
     private var lastBrainArBridgeLogMs: Long = 0L
+    private val fullVideoHelperAccentColor: Int = Color.parseColor("#00BCD4")
     private var roomPlacementModel: RoomModel? = null
     private var latestFitCheckResult: FitCheckResult? = null
     private var latestCornerPlacementSuggestions: List<CornerPlacementSuggestion> = emptyList()
@@ -908,6 +909,25 @@ class SharpRoomActivity : AppCompatActivity() {
                 cornerRadius = dpToPx(8).toFloat()
                 setColor(Color.argb((255 * 0.78f).toInt(), 0, 0, 0))
             }
+        }
+    }
+
+    private fun styleGestureHintBubble(hint: TextView, accent: Boolean) {
+        hint.setTextColor(if (accent) fullVideoHelperAccentColor else Color.WHITE)
+        val topArrow = if (accent) {
+            ContextCompat.getDrawable(this, R.drawable.ic_arrow_up)?.mutate()?.apply {
+                setTint(fullVideoHelperAccentColor)
+                setBounds(0, 0, dpToPx(14), dpToPx(14))
+            }
+        } else {
+            null
+        }
+        hint.setCompoundDrawables(null, topArrow, null, null)
+        hint.compoundDrawablePadding = if (accent) dpToPx(4) else 0
+        hint.background = GradientDrawable().apply {
+            cornerRadius = dpToPx(8).toFloat()
+            setColor(Color.argb((255 * 0.78f).toInt(), 0, 0, 0))
+            if (accent) setStroke(dpToPx(1), fullVideoHelperAccentColor)
         }
     }
 
@@ -2405,6 +2425,7 @@ class SharpRoomActivity : AppCompatActivity() {
         brainHintExplanationView?.let { hint ->
             if (shouldShowIdentifyLivePreview() || selectedBrainPins.isNotEmpty()) {
                 hint.text = getString(R.string.smartypants_pick_another_hint)
+                styleGestureHintBubble(hint, accent = true)
                 hint.translationY = -dpToPx(34).toFloat()
                 hint.visibility = View.VISIBLE
                 gestureHintHideHandler.removeCallbacks(hideBrainHintRunnable)
@@ -2413,6 +2434,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
             } else {
                 hint.text = getString(R.string.sharp_room_brain_gesture_hint)
+                styleGestureHintBubble(hint, accent = false)
                 hint.translationY = 0f
             }
         }
@@ -2632,7 +2654,7 @@ class SharpRoomActivity : AppCompatActivity() {
         saveRoomToolbarButton?.visibility = if (allowSave && !brainOverlayVisible) View.VISIBLE else View.GONE
         fullVideoIdentificationsButton?.let { button ->
             button.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
-            val tint = if (showFullVideoWithIdentifications) Color.parseColor("#34C759") else Color.WHITE
+            val tint = if (brainOverlayVisible) fullVideoHelperAccentColor else Color.WHITE
             ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(tint))
         }
         brainArAssistButton?.let { button ->
