@@ -14,8 +14,6 @@ import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.utils.SharpRoomDimensionsV7
 import com.furnit.android.utils.SharpRoomDimensionsV7Result
 import com.furnit.android.utils.SharpRoomDimensionSanitizer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.File
@@ -71,20 +69,6 @@ class SharpService private constructor(private val context: Context) {
     /** Handle to cancel a background generation and release resources when user chooses non-AI path. */
     interface GenerationHandle {
         fun cancel()
-    }
-
-    /**
-     * Preload / sync ExecuTorch models when user opens the SHARP screen.
-     */
-    suspend fun preloadSharpModels() = withContext(Dispatchers.IO) {
-        if (!BackendConfig.ENABLE_EXECUTORCH_INT8) return@withContext
-        val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-        val backend = prefs.getString("inference_backend", "executorch_int8") ?: "executorch_int8"
-        val effective = BackendConfig.normalize(backend)
-        if (effective == "executorch_int8") {
-            LogUtil.d(TAG, "ExecuTorch INT8 – hydrate APK assets + sync external models if present")
-            executorchInt8Sharp.hydrateBundledAndExternalModels()
-        }
     }
 
     fun isModelReady(): Boolean = BackendConfig.ENABLE_EXECUTORCH_INT8
@@ -662,6 +646,7 @@ class SharpService private constructor(private val context: Context) {
      * Release native caches only (e.g. ExecuTorch INT8 Part1+Part2 cache). Call on trim memory to reduce pressure.
      */
     fun releaseNativeCaches() {
+        if (!isInitialized) return
         try {
             executorchInt8Sharp.releaseNativeCaches()
         } catch (_: Throwable) { }
