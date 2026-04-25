@@ -368,6 +368,7 @@
 "roomViewer.styleTag.nordic" = "నార్డిక్";
 "roomViewer.styleTag.classic" = "క్లాసిక్";
 "roomViewer.fullVideoFurnitureTapHint" = "గదితో తనిఖీ చేయాలనుకునే అన్ని వస్తువులను ట్యాప్ చేయండి";
+"sharp.runInBackground" = "బ్యాక్‌గ్రౌండ్‌లో నడపండి";
 "roomViewer.displayAllHelpers" = "అన్ని సహాయ సూచనలను చూపించు";
 
 // MARK: - Crash Report

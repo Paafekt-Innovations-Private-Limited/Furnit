@@ -371,6 +371,7 @@
 "roomViewer.styleTag.nordic" = "nórdico";
 "roomViewer.styleTag.classic" = "clásico";
 "roomViewer.fullVideoFurnitureTapHint" = "Toca todos los objetos que quieras comprobar con la habitación";
+"sharp.runInBackground" = "Ejecutar en segundo plano";
 "roomViewer.displayAllHelpers" = "Mostrar todas las ayudas";
 
 // MARK: - Crash Report

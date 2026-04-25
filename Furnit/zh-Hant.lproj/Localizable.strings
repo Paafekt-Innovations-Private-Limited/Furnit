@@ -369,6 +369,7 @@
 "roomViewer.styleTag.nordic" = "北歐";
 "roomViewer.styleTag.classic" = "經典";
 "roomViewer.fullVideoFurnitureTapHint" = "點擊所有您想要與房間對比的物品";
+"sharp.runInBackground" = "在背景執行";
 "roomViewer.displayAllHelpers" = "顯示所有提示";
 
 // MARK: - Crash Report

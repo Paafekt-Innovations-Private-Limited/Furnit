@@ -340,6 +340,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let selectedClassStateLock = NSLock()
     /// User-tapped instances (geometry snapshots). Segmentation matches these to current-frame boxes by IoU — not by class alone (avoids segmenting every chair when one is chosen).
     private var selectedDetectionPins: [FurnitureFitDetection] = []
+    /// Consecutive frames where a selected pinned object is absent from the live detections.
+    /// Used to prune stale per-object selections when the camera moves to a different scene.
+    private var selectedPinMissingFrameCounts: [String: Int] = [:]
     /// Minimum IoU between a live detection and a stored pin to treat as the same instance.
     private let pinMatchIoUThreshold: Float = 0.45
     /// Stored reference so `hitTest` can check whether a pinch is already in flight.
@@ -1374,6 +1377,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func clearSelectedClassSelections() {
         selectedClassStateLock.lock()
         selectedDetectionPins.removeAll()
+        selectedPinMissingFrameCounts.removeAll()
         selectedClassStateLock.unlock()
         publishSelectedClassState()
     }
@@ -1381,12 +1385,76 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func toggleSelectedDetection(_ detection: FurnitureFitDetection) {
         selectedClassStateLock.lock()
         if let idx = selectedDetectionPins.firstIndex(where: { FurnitureFitIoU.calculate($0, detection) >= 0.5 }) {
-            selectedDetectionPins.remove(at: idx)
+            let removed = selectedDetectionPins.remove(at: idx)
+            selectedPinMissingFrameCounts[selectionPinKey(for: removed)] = nil
         } else {
             selectedDetectionPins.append(detection)
         }
+        let selectedPinKeys = Set(selectedDetectionPins.map(selectionPinKey(for:)))
+        selectedPinMissingFrameCounts = selectedPinMissingFrameCounts.filter { selectedPinKeys.contains($0.key) }
         selectedClassStateLock.unlock()
         publishSelectedClassState()
+    }
+
+    private func selectionPinKey(for detection: FurnitureFitDetection) -> String {
+        let qx = Int((detection.x * 1000).rounded())
+        let qy = Int((detection.y * 1000).rounded())
+        let qw = Int((detection.width * 1000).rounded())
+        let qh = Int((detection.height * 1000).rounded())
+        return "\(detection.classIdx):\(qx):\(qy):\(qw):\(qh)"
+    }
+
+    /// Drops selected pinned objects that have disappeared from the live scene for several consecutive frames.
+    private func pruneSelectedPinsMissingFromCurrentCandidates(_ candidates: [FurnitureFitDetection]) {
+        selectedClassStateLock.lock()
+        guard !selectedDetectionPins.isEmpty else {
+            selectedPinMissingFrameCounts.removeAll()
+            selectedClassStateLock.unlock()
+            return
+        }
+
+        var usedCandidateIndices = Set<Int>()
+        var didChange = false
+
+        selectedDetectionPins.removeAll { pin in
+            let pinKey = selectionPinKey(for: pin)
+            var bestIdx: Int?
+            var bestIoU: Float = 0
+            for (idx, candidate) in candidates.enumerated() {
+                guard !usedCandidateIndices.contains(idx), candidate.classIdx == pin.classIdx else { continue }
+                let iou = FurnitureFitIoU.calculate(candidate, pin)
+                if iou > bestIoU {
+                    bestIoU = iou
+                    bestIdx = idx
+                }
+            }
+
+            if let idx = bestIdx, bestIoU >= pinMatchIoUThreshold {
+                usedCandidateIndices.insert(idx)
+                selectedPinMissingFrameCounts[pinKey] = nil
+                return false
+            }
+
+            let nextMissCount = (selectedPinMissingFrameCounts[pinKey] ?? 0) + 1
+            if nextMissCount > maskGraceFrameLimit {
+                selectedPinMissingFrameCounts[pinKey] = nil
+                didChange = true
+                return true
+            }
+
+            selectedPinMissingFrameCounts[pinKey] = nextMissCount
+            return false
+        }
+
+        let remainingPinKeys = Set(selectedDetectionPins.map(selectionPinKey(for:)))
+        selectedPinMissingFrameCounts = selectedPinMissingFrameCounts.filter { remainingPinKeys.contains($0.key) }
+        selectedClassStateLock.unlock()
+
+        guard didChange else { return }
+        publishSelectedClassState()
+        DispatchQueue.main.async {
+            self.updateDetectionOverlaySelectionHighlights()
+        }
     }
 
     private func bufferRect(
@@ -2524,6 +2592,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         } else {
             // segmentSelected: user-pinned selections.
+            pruneSelectedPinsMissingFromCurrentCandidates(candidates)
             DispatchQueue.main.async {
                 self.updateDetectionOverlay(
                     candidates: candidates,

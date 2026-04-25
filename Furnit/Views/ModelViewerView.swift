@@ -672,9 +672,7 @@ struct ModelViewerView: View {
     private func toggleFullVideoIdentifications() {
         showFullVideoWithIdentifications.toggle()
         if showFullVideoWithIdentifications {
-            if showingFurnitureFit {
-                presentFullVideoFurnitureTapHintIfNeeded()
-            }
+            dismissFullVideoFurnitureTapHint()
         } else {
             dismissFullVideoFurnitureTapHint()
             if furnitureFitSegmentationMode == .segmentSelected {

@@ -386,6 +386,7 @@
 "roomViewer.styleTag.nordic" = "شمالي";
 "roomViewer.styleTag.classic" = "كلاسيكي";
 "roomViewer.fullVideoFurnitureTapHint" = "اضغط على جميع الأشياء التي تريد التحقق منها مع الغرفة";
+"sharp.runInBackground" = "تشغيل في الخلفية";
 "roomViewer.displayAllHelpers" = "عرض جميع المساعدات";
 
 // MARK: - Crash Report

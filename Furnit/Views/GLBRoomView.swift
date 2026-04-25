@@ -803,9 +803,7 @@ struct GLBRoomView: View {
         Button {
             showFullVideoWithIdentifications.toggle()
             if showFullVideoWithIdentifications {
-                if showingFurnitureFit {
-                    presentFullVideoFurnitureTapHintIfNeeded()
-                }
+                dismissFullVideoFurnitureTapHint()
             } else {
                 dismissFullVideoFurnitureTapHint()
                 if furnitureFitSegmentationMode == .segmentSelected {

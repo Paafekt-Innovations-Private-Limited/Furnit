@@ -419,6 +419,7 @@
 "roomViewer.pinchGestureHintExplanation" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
 "roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
+"sharp.runInBackground" = "Run in Background";
 "roomViewer.displayAllHelpers" = "Display all helpers";
 "roomViewer.segmentFurnitureAction" = "Segment";
 "roomViewer.stopSegmentationAction" = "Stop";

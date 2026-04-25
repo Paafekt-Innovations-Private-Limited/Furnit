@@ -398,6 +398,7 @@
 "roomViewer.styleTag.nordic" = "Nordisch";
 "roomViewer.styleTag.classic" = "Klassisch";
 "roomViewer.fullVideoFurnitureTapHint" = "Tippen Sie auf alle Objekte, die Sie mit dem Raum prüfen möchten";
+"sharp.runInBackground" = "Im Hintergrund ausführen";
 "roomViewer.displayAllHelpers" = "Alle Hilfen anzeigen";
 
 // MARK: - Crash Report
