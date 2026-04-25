@@ -457,7 +457,7 @@
     <string name="sharp_room_ar_sizing_hint">📷 for better match</string>
     <string name="sharp_room_ruler_content_description">Room dimensions</string>
     <string name="sharp_room_display_all_helpers_content_description">Show all room controls help</string>
-    <string name="sharp_room_dimensions_chip">W × H × D\n%.2f × %.2f × %.2f m</string>
+    <string name="sharp_room_dimensions_chip">W × H × D\n%1$.2f × %2$.2f × %3$.2f m</string>
     <string name="sharp_room_dimensions_unavailable">Room dimensions unavailable</string>
     <string name="sharp_room_measuring">Measuring room…</string>
 
@@ -657,4 +657,7 @@
     <string name="placement_harmony_split_complementary">Split complementary</string>
     <string name="placement_harmony_neutral">Neutral</string>
     <string name="placement_harmony_clash">Clash</string>
+    <string name="ai_models_missing_title">AI room models are not installed</string>
+    <string name="ai_models_missing_message">AI Room needs SHARP model files on this device. Install the model files or use Manual Setup for this photo.</string>
+    <string name="ai_models_missing_use_manual">Use Manual Setup</string>
 </resources>

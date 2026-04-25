@@ -19,10 +19,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=friend_tester_bundle/adb_common.sh
-source "$SCRIPT_DIR/friend_tester_bundle/adb_common.sh"
+source "$REPO_ROOT/friend_tester_bundle/adb_common.sh"
 
-MODEL_DIR="${1:-$SCRIPT_DIR/models_cpuvulkan_hybrid}"
+MODEL_DIR="${1:-$REPO_ROOT/models_cpuvulkan_hybrid}"
 DEST="/sdcard/Android/data/com.furnit.android/files/models_cpuvulkan_hybrid"
 
 # Full-Vulkan Part1/2 only — hybrid path uses sharp_split_part1_int8.pte + sharp_split_part2_int8.pte on CPU.

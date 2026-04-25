@@ -72,9 +72,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         /** Use Lanczos3 for center-crop resize when true; bilinear when false. Set false if Lanczos is too slow or causes issues. */
         @JvmField
         var USE_LANCZOS_RESIZE: Boolean = true
-        /** When true, stretch full image to 1536x1536 (like Swift; no crop). When false, center-crop to square then resize. Set false if stretch causes jagged output on INT8. */
+        /** When true, stretch full image to 1536x1536. When false, center-crop to square then resize. */
         @JvmField
-        var USE_STRETCH_TO_SQUARE: Boolean = true
+        var USE_STRETCH_TO_SQUARE: Boolean = false
         // Image + merged spatial sizes (must match Python export)
         private const val IMAGE_SIZE = 1536
         private const val IMAGE_SIZE_1280 = 1280

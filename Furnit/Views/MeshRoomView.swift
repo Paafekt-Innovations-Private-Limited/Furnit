@@ -664,6 +664,7 @@ struct MeshRoomView: View {
         } label: {
             Image(systemName: "text.viewfinder")
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                .foregroundStyle(showingFurnitureFit ? Color.cyan : .primary)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
@@ -735,18 +736,22 @@ struct MeshRoomView: View {
                 .allowsHitTesting(false)
             if showingFurnitureFit {
                 VStack(alignment: .trailing, spacing: 4) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.85))
-                        .frame(width: 2, height: 14)
+                    Image(systemName: "arrow.up")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.cyan)
                         .padding(.trailing, 18)
                     Text(L10n.RoomViewer.fullVideoSelectionHelper)
                         .font(.caption2)
-                        .foregroundColor(.white)
+                        .foregroundColor(.cyan)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 220, alignment: .leading)
                         .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.black.opacity(0.78))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
+                        )
                 }
                 .padding(.top, 6)
                 .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))

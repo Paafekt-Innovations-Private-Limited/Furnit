@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Copy hybrid tree: INT8 Part1+2 + Vulkan Part3/4a + **fine-split tile_00** Part4b (strategy A, 5 files).
-# Defaults: VK from android/sharp_vulkan_only, INT8 from /Volumes/LaCie/androidDevRefFromProject/models_cpu. Override: VK_SRC= CPU_SRC= DEST=
+# Defaults: VK from android/sharp_vulkan_only, INT8 from /Volumes/LaCie/Backup21stApr2026/android/executorch_models_cpu_from_lacie.
+# Override: VK_SRC= CPU_SRC= DEST=
 # Precision policy: prefer Vulkan FP16 Part3 when available; fall back to FP32 only if FP16 is absent.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST="${DEST:-$SCRIPT_DIR/models_cpuvulkan_hybrid}"
-VK_SRC="${VK_SRC:-$SCRIPT_DIR/sharp_vulkan_only}"
-CPU_SRC="${CPU_SRC:-/Volumes/LaCie/androidDevRefFromProject/models_cpu}"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEST="${DEST:-$REPO_ROOT/models_cpuvulkan_hybrid}"
+VK_SRC="${VK_SRC:-$REPO_ROOT/sharp_vulkan_only}"
+CPU_SRC="${CPU_SRC:-/Volumes/LaCie/Backup21stApr2026/android/executorch_models_cpu_from_lacie}"
 
 die() { echo "Error: $*" >&2; exit 1; }
 
