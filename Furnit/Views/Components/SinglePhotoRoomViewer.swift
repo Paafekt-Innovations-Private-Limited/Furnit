@@ -294,7 +294,7 @@ struct RoomBoundaryDetectionView: View {
 
     // MARK: - Progress Overlay
     private var progressOverlay: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             Color.black.opacity(0.7)
                 .ignoresSafeArea()
 
@@ -1118,7 +1118,6 @@ struct SinglePhotoRoomView: View {
                     onRunInBackground: {
                         sharpService.isBackgroundGenerationActive = true
                         showSharpProgressOverlay = false
-                        NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                     },
                     onCancel: {
                         sharpService.cancelGeneration()
@@ -1162,6 +1161,11 @@ struct SinglePhotoRoomView: View {
                 .background(Color(.systemBackground).opacity(0.95))
                 .cornerRadius(16)
                 .shadow(radius: 10)
+            }
+
+            if sharpService.isBackgroundGenerationActive || (!showSharpProgressOverlay && sharpService.hasActiveSharpWork) {
+                SharpGenerationBottomBar()
+                    .zIndex(100)
             }
         }
         .navigationTitle(L10n.PhotoRoom.title)
