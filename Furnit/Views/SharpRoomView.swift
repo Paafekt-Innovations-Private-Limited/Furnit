@@ -419,9 +419,7 @@ struct SharpRoomView: View {
 
     private var navigationBarSaveButton: some View {
         Button(action: {
-            if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                roomName = RoomDisplayName.aiRoomWithTimestamp()
-            }
+            roomName = ""
             showRoomNameInput = true
         }) {
             Image(systemName: "square.and.arrow.down")
@@ -678,7 +676,9 @@ struct SharpRoomView: View {
         .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
             TextField(L10n.RoomViewer.roomName, text: $roomName)
                 .autocorrectionDisabled(true)
-            Button(L10n.Common.cancel, role: .cancel) { }
+            Button(L10n.Common.cancel, role: .cancel) {
+                roomName = ""
+            }
             Button(L10n.Common.save) { startSavingRoom() }
                 .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: { Text(L10n.RoomViewer.enterName) }
