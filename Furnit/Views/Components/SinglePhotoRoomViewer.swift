@@ -1116,8 +1116,10 @@ struct SinglePhotoRoomView: View {
                 SharpGenerationProgressOverlay(
                     sharpService: sharpService,
                     onRunInBackground: {
+                        sharpService.clearProgressFooterNotice()
                         sharpService.isBackgroundGenerationActive = true
                         showSharpProgressOverlay = false
+                        NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                     },
                     onCancel: {
                         sharpService.cancelGeneration()
@@ -1458,6 +1460,7 @@ struct SinglePhotoRoomView: View {
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
         logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
 
+        sharpService.clearProgressFooterNotice()
         sharpService.isBackgroundGenerationActive = false
         splatViewerDestination = nil
         let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
@@ -1519,8 +1522,12 @@ struct SinglePhotoRoomView: View {
             } catch {
                 logDebug("❌ [View] Generation failed: \(error)")
                 await MainActor.run {
+                    let wasBackgroundGenerationActive = sharpService.isBackgroundGenerationActive
                     showSharpProgressOverlay = false
                     sharpService.isBackgroundGenerationActive = false
+                    if wasBackgroundGenerationActive {
+                        sharpService.showProgressFooterNotice(L10n.Sharp.couldNotCreateRoom, autoHideAfter: 4.0)
+                    }
                 }
             }
         }
@@ -1546,8 +1553,18 @@ struct SinglePhotoRoomView: View {
             Task { @MainActor in
                 logDebug(success ? "✅ [View] Background SHARP room saved: \(roomName)" : "❌ [View] Background SHARP save failed: \(error ?? "unknown")")
                 sharpService.isBackgroundGenerationActive = false
-                sharpService.statusMessage = success ? L10n.Sharp.done : L10n.Sharp.couldNotCreateRoom
-                NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
+                sharpService.progress = 1.0
+                if success {
+                    sharpService.status = .completed(fileURL: gen.plyURL)
+                    sharpService.statusMessage = L10n.RoomViewer.roomSavedAlertTitle
+                    sharpService.showProgressFooterNotice(L10n.RoomViewer.roomSavedAlertTitle, autoHideAfter: 2.5)
+                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
+                } else {
+                    let failureMessage = error ?? L10n.Sharp.couldNotCreateRoom
+                    sharpService.status = .failed(failureMessage)
+                    sharpService.statusMessage = failureMessage
+                    sharpService.showProgressFooterNotice(failureMessage, autoHideAfter: 4.0)
+                }
                 sharpService.releaseResources()
             }
         }

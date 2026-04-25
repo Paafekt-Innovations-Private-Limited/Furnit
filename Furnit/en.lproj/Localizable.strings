@@ -63,7 +63,7 @@
 "home.renameRoomMessage" = "This name appears in your room list. The saved file name stays the same.";
 "home.roomNamePlaceholder" = "Room name";
 "home.roomModel" = "3D Room Model";
-"home.aiBased3DRoom" = "AI based 3D room";
+"home.aiBased3DRoom" = "AI-based 3D Room";
 "home.manualBased3DRoom" = "Manual based 3D room";
 
 // MARK: - Room Limit
@@ -322,7 +322,7 @@
 "photoRoom.quickPhotoSubtitle" = "Single photo capture";
 "photoRoom.howToCreate" = "How do you want to create your 3D room?";
 "photoRoom.tapOption" = "Tap an option below to continue";
-"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.aiPowered" = "AI-Powered 3D Construction";
 "photoRoom.manualSetup" = "Manual Setup";
 "photoRoom.manualSetupDesc" = "Drag to adjust room walls";
 "photoRoom.selectPhoto" = "Select Photo";

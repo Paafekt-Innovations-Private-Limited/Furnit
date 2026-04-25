@@ -279,12 +279,29 @@ class USDZModelManager: ObservableObject {
         return fileName
     }
 
+    private func normalizedSavedRoomDisplayName(_ rawName: String) -> String {
+        let trimmedName = rawName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " \\((Classic |3DGS )?PLY\\)$", with: "", options: .regularExpression)
+
+        let normalizedAIRoomPrefix = trimmedName.replacingOccurrences(
+            of: #"^Ai Room\b"#,
+            with: "AI Room",
+            options: .regularExpression
+        )
+
+        return normalizedAIRoomPrefix.replacingOccurrences(
+            of: #"^(AI Room .+,\s)(\d{2})(\d{2})$"#,
+            with: "$1$2:$3",
+            options: .regularExpression
+        )
+    }
+
     private func displayNameForSavedRoom(fileName: String, fileType: ModelFileType, metadataDisplayName: String?) -> String? {
         guard fileType == .ply else { return metadataDisplayName }
         let canonicalStem = canonicalPlyStem(for: fileName)
-        let baseName = (metadataDisplayName ?? canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized)
-            .replacingOccurrences(of: " \\((Classic |3DGS )?PLY\\)$", with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackDisplayName = canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized
+        let baseName = normalizedSavedRoomDisplayName(metadataDisplayName ?? fallbackDisplayName)
         if fileName.hasSuffix("_classic") {
             return "\(baseName) (Classic PLY)"
         }

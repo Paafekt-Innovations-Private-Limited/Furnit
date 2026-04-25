@@ -68,23 +68,24 @@ struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                if authManager.isAuthenticated {
-                    HomeViewWithBottomBar(authManager: authManager)
-                        .onAppear {
-                            logDebug("✅ [ContentView] User is authenticated")
-                        }
-                } else {
-                    LoginView()
-                        .onAppear {
-                            logDebug("❌ [ContentView] User is NOT authenticated")
-                        }
-                }
+        Group {
+            if authManager.isAuthenticated {
+                HomeViewWithBottomBar(authManager: authManager)
+                    .onAppear {
+                        logDebug("✅ [ContentView] User is authenticated")
+                    }
+            } else {
+                LoginView()
+                    .onAppear {
+                        logDebug("❌ [ContentView] User is NOT authenticated")
+                    }
             }
-
+        }
+        .overlay(alignment: .bottom) {
             SharpGenerationBottomBar()
-                .zIndex(100)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .zIndex(1000)
         }
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
     }
@@ -110,6 +111,7 @@ struct HomeTab: View {
     @ObservedObject var authManager: AuthenticationManager
     @StateObject private var modelManager = USDZModelManager()
     @StateObject private var limitManager = RoomLimitManager.shared
+    @State private var savedRoomsListRefreshToken = UUID()
     @State private var showingSettings = false
     @State private var showingPhotoRoomCreator = false
     @State private var showDeleteAlert = false
@@ -231,6 +233,7 @@ struct HomeTab: View {
                     }
                 }
             }
+            .id(savedRoomsListRefreshToken)
             .navigationTitle(L10n.Home.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -273,13 +276,14 @@ struct HomeTab: View {
             }
             // Photo Room Creator Sheet
             .sheet(isPresented: $showingPhotoRoomCreator) {
-                ZStack(alignment: .bottom) {
-                    NavigationStack {
-                        SinglePhotoRoomView()
-                    }
-
+                NavigationStack {
+                    SinglePhotoRoomView()
+                }
+                .overlay(alignment: .bottom) {
                     SharpGenerationBottomBar()
-                        .zIndex(100)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .zIndex(1000)
                 }
             }
             // Refresh models when sheet closes
@@ -292,8 +296,7 @@ struct HomeTab: View {
                         }
                         YOLOEModelService.shared.releaseResources()
                     }
-                    modelManager.refreshModels()
-                    limitManager.updateRoomCount()
+                    refreshSavedRoomsList(forceUIReload: true)
                     restartCreateRoomHint()
                 } else {
                     cancelCreateRoomHintTasks()
@@ -306,8 +309,7 @@ struct HomeTab: View {
                 limitManager.updateRoomCount()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SharpBackgroundRoomSaved"))) { _ in
-                modelManager.refreshModels()
-                limitManager.updateRoomCount()
+                refreshSavedRoomsList(forceUIReload: true)
             }
             // Settings Sheet
             .sheet(isPresented: $showingSettings) {
@@ -379,7 +381,7 @@ struct HomeTab: View {
                 logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
                 logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
             }
-            limitManager.updateRoomCount()
+            refreshSavedRoomsList()
             restartCreateRoomHint()
         }
         .onDisappear {
@@ -416,6 +418,14 @@ struct HomeTab: View {
         cancelCreateRoomHintTasks()
         createRoomHintExplanationVisible = true
         scheduleCreateRoomHintTextAutoHide(seconds: 3)
+    }
+
+    private func refreshSavedRoomsList(forceUIReload: Bool = false) {
+        modelManager.refreshModels()
+        limitManager.updateRoomCount()
+        if forceUIReload {
+            savedRoomsListRefreshToken = UUID()
+        }
     }
 
     private func onCreateRoomHintIconTapped() {

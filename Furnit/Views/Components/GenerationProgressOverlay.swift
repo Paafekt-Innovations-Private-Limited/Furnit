@@ -270,43 +270,66 @@ struct SharpGenerationBottomBar: View {
     @ObservedObject private var sharpService = SHARPService.shared
 
     private var shouldShow: Bool {
-        sharpService.hasActiveSharpWork || sharpService.isBackgroundGenerationActive
+        sharpService.shouldShowProgressFooter
     }
 
     private var progressValue: Double {
-        sharpService.unifiedProgress
+        sharpService.progressFooterValue
     }
 
     private var statusLine: String {
-        "\(sharpService.statusMessage) · \(Int(progressValue * 100))%"
+        sharpService.progressFooterMessage
+    }
+
+    private var isCompletionState: Bool {
+        !sharpService.canCancelProgressFooter
     }
 
     var body: some View {
         if shouldShow {
-            HStack(spacing: 12) {
-                Text(statusLine)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(statusLine)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button {
-                    sharpService.cancelGeneration()
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 34, height: 26)
-                        .background(Color(red: 0.90, green: 0.22, blue: 0.21))
-                        .cornerRadius(4)
+                        Text("\(Int(progressValue * 100))%")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.84))
+                    }
+
+                    if sharpService.canCancelProgressFooter {
+                        Button {
+                            sharpService.cancelGeneration()
+                        } label: {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 34, height: 26)
+                                .background(Color(red: 0.90, green: 0.22, blue: 0.21))
+                                .cornerRadius(6)
+                        }
+                        .accessibilityLabel(NSLocalizedString("sharp.stopGeneration", value: "Stop generation", comment: "Stop SHARP room generation"))
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .accessibilityHidden(true)
+                    }
                 }
-                .accessibilityLabel(NSLocalizedString("sharp.stopGeneration", value: "Stop generation", comment: "Stop SHARP room generation"))
+
+                ProgressView(value: progressValue)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                    .opacity(isCompletionState ? 0.95 : 1.0)
             }
             .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 14)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(red: 0.37, green: 0.21, blue: 0.69))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: -4)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }

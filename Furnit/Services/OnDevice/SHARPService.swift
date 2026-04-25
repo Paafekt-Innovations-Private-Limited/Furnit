@@ -58,6 +58,9 @@ class SHARPService: ObservableObject {
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
 
+    /// Transient footer message that can remain visible after background generation completes.
+    @Published private(set) var footerNoticeMessage: String?
+
     // MARK: - Model Configuration
 
     /// Input image size expected by SHARP model
@@ -145,6 +148,9 @@ class SHARPService: ObservableObject {
 
     /// Progress observation for ODR download
     private var progressObservation: NSKeyValueObservation?
+
+    /// Auto-hide task for the transient footer notice.
+    private var footerAutoHideTask: Task<Void, Never>?
 
     // MARK: - File Management
 
@@ -304,6 +310,45 @@ class SHARPService: ObservableObject {
         return min(max(Double(progress), 0.0), 1.0)
     }
 
+    var shouldShowProgressFooter: Bool {
+        hasActiveSharpWork || isBackgroundGenerationActive || footerNoticeMessage != nil
+    }
+
+    var progressFooterMessage: String {
+        footerNoticeMessage ?? statusMessage
+    }
+
+    var progressFooterValue: Double {
+        footerNoticeMessage == nil ? unifiedProgress : 1.0
+    }
+
+    var canCancelProgressFooter: Bool {
+        footerNoticeMessage == nil && (hasActiveSharpWork || isBackgroundGenerationActive)
+    }
+
+    func clearProgressFooterNotice() {
+        footerAutoHideTask?.cancel()
+        footerAutoHideTask = nil
+        footerNoticeMessage = nil
+    }
+
+    func showProgressFooterNotice(_ message: String, autoHideAfter delaySeconds: TimeInterval? = nil) {
+        footerAutoHideTask?.cancel()
+        footerAutoHideTask = nil
+        footerNoticeMessage = message
+
+        guard let delaySeconds, delaySeconds > 0 else { return }
+        let delayNanoseconds = UInt64(delaySeconds * 1_000_000_000)
+        footerAutoHideTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.footerNoticeMessage = nil
+                self?.footerAutoHideTask = nil
+            }
+        }
+    }
+
     /// Ensure model is loaded — call from view's onAppear to re-trigger loading
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
@@ -429,6 +474,7 @@ class SHARPService: ObservableObject {
     ) async throws -> SHARPGenerationResult {
         logDebug("SHARP: Starting Gaussian generation")
         logMemorySnapshot("SHARPService.generateGaussians", details: "phase=start")
+        clearProgressFooterNotice()
 
         // Load model on-demand if not already loaded
         if model == nil {
@@ -577,6 +623,7 @@ class SHARPService: ObservableObject {
     /// Cancel current generation (if any)
     func cancelGeneration() {
         isBackgroundGenerationActive = false
+        clearProgressFooterNotice()
         status = .failed(L10n.Sharp.cancelled)
         statusMessage = L10n.Sharp.cancelled
         releaseInferenceMemoryAfterGeneration()

@@ -180,5 +180,11 @@ struct RootView: View {
                 LoginView()
             }
         }
+        .overlay(alignment: .bottom) {
+            SharpGenerationBottomBar()
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .zIndex(1000)
+        }
     }
 }
