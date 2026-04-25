@@ -3,6 +3,23 @@ import UIKit
 import SceneKit
 import simd
 
+enum RoomDisplayName {
+    private static func formattedSuffix(date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy, HH:mm"
+        formatter.locale = Locale.current
+        return formatter.string(from: date)
+    }
+
+    static func aiRoomWithTimestamp(date: Date = Date()) -> String {
+        "AI Room \(formattedSuffix(date: date))"
+    }
+
+    static func myRoomWithTimestamp(date: Date = Date()) -> String {
+        "My Room \(formattedSuffix(date: date))"
+    }
+}
+
 // MARK: - Saved room .meta JSON (room dims + optional YOLO ratios)
 
 private struct SavedRoomDiskMetadata {

@@ -714,6 +714,9 @@ struct MeshRoomView: View {
             }
 
             Button(action: {
+                if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    roomName = RoomDisplayName.myRoomWithTimestamp()
+                }
                 showRoomNameInput = true
             }) {
                 Image(systemName: "square.and.arrow.down")

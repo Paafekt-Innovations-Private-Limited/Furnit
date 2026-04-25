@@ -273,8 +273,13 @@ struct HomeTab: View {
             }
             // Photo Room Creator Sheet
             .sheet(isPresented: $showingPhotoRoomCreator) {
-                NavigationStack {
-                    SinglePhotoRoomView()
+                ZStack(alignment: .bottom) {
+                    NavigationStack {
+                        SinglePhotoRoomView()
+                    }
+
+                    SharpGenerationBottomBar()
+                        .zIndex(100)
                 }
             }
             // Refresh models when sheet closes

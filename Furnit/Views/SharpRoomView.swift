@@ -418,7 +418,12 @@ struct SharpRoomView: View {
     }
 
     private var navigationBarSaveButton: some View {
-        Button(action: { showRoomNameInput = true }) {
+        Button(action: {
+            if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                roomName = RoomDisplayName.aiRoomWithTimestamp()
+            }
+            showRoomNameInput = true
+        }) {
             Image(systemName: "square.and.arrow.down")
                 .font(.title3)
         }

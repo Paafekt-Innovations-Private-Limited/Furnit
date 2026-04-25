@@ -1163,10 +1163,6 @@ struct SinglePhotoRoomView: View {
                 .shadow(radius: 10)
             }
 
-            if sharpService.isBackgroundGenerationActive || (!showSharpProgressOverlay && sharpService.hasActiveSharpWork) {
-                SharpGenerationBottomBar()
-                    .zIndex(100)
-            }
         }
         .navigationTitle(L10n.PhotoRoom.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -1536,9 +1532,7 @@ struct SinglePhotoRoomView: View {
         roomMeters: (Float, Float, Float)?
     ) {
         sharpService.statusMessage = NSLocalizedString("sharp.savingRoom", value: "Saving room...", comment: "Saving generated room in the background")
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let roomName = "AI Room \(formatter.string(from: Date()))"
+        let roomName = RoomDisplayName.aiRoomWithTimestamp()
         let manager = USDZModelManager()
         manager.savePLY(
             from: gen.plyURL,
@@ -2569,6 +2563,9 @@ struct SceneKitViewer: View {
             if allowSave {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
+                        if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            roomName = RoomDisplayName.myRoomWithTimestamp()
+                        }
                         showRoomNameInput = true
                     } label: {
                         Image(systemName: "square.and.arrow.down")
