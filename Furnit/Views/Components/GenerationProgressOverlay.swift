@@ -277,49 +277,37 @@ struct SharpGenerationBottomBar: View {
         sharpService.unifiedProgress
     }
 
-    private var title: String {
-        if sharpService.isDownloadingResources {
-            return L10n.GenerationProgress.downloadingModel
-        }
-        if sharpService.isLoadingModel {
-            return L10n.GenerationProgress.preparing
-        }
-        return L10n.GenerationProgress.generating3DModel
+    private var statusLine: String {
+        "\(sharpService.statusMessage) · \(Int(progressValue * 100))%"
     }
 
     var body: some View {
         if shouldShow {
-            VStack(spacing: 6) {
-                HStack(spacing: 10) {
-                    Image(systemName: "wand.and.stars")
-                        .foregroundColor(.purple)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        Text(sharpService.statusMessage)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Text("\(Int(progressValue * 100))%")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.purple)
-                }
+            HStack(spacing: 12) {
+                Text(statusLine)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                ProgressView(value: progressValue)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                Button {
+                    sharpService.cancelGeneration()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 34, height: 26)
+                        .background(Color(red: 0.90, green: 0.22, blue: 0.21))
+                        .cornerRadius(4)
+                }
+                .accessibilityLabel(NSLocalizedString("sharp.stopGeneration", value: "Stop generation", comment: "Stop SHARP room generation"))
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.regularMaterial)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color.purple.opacity(0.22))
-                    .frame(height: 1)
-            }
+            .padding(.top, 10)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
+            .background(Color(red: 0.37, green: 0.21, blue: 0.69))
+            .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: -4)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

@@ -68,21 +68,23 @@ struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
 
     var body: some View {
-        Group {
-            if authManager.isAuthenticated {
-                HomeViewWithBottomBar(authManager: authManager)
-                    .onAppear {
-                        logDebug("✅ [ContentView] User is authenticated")
-                    }
-            } else {
-                LoginView()
-                    .onAppear {
-                        logDebug("❌ [ContentView] User is NOT authenticated")
-                    }
+        ZStack(alignment: .bottom) {
+            Group {
+                if authManager.isAuthenticated {
+                    HomeViewWithBottomBar(authManager: authManager)
+                        .onAppear {
+                            logDebug("✅ [ContentView] User is authenticated")
+                        }
+                } else {
+                    LoginView()
+                        .onAppear {
+                            logDebug("❌ [ContentView] User is NOT authenticated")
+                        }
+                }
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+
             SharpGenerationBottomBar()
+                .zIndex(100)
         }
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
     }
