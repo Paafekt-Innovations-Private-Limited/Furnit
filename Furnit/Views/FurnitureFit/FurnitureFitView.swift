@@ -1399,8 +1399,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func selectionPinKey(for detection: FurnitureFitDetection) -> String {
         let qx = Int((detection.x * 1000).rounded())
         let qy = Int((detection.y * 1000).rounded())
-        let qw = Int((detection.width * 1000).rounded())
-        let qh = Int((detection.height * 1000).rounded())
+        let qw = Int((detection.w * 1000).rounded())
+        let qh = Int((detection.h * 1000).rounded())
         return "\(detection.classIdx):\(qx):\(qy):\(qw):\(qh)"
     }
 
