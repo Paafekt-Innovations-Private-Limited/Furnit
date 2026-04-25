@@ -81,6 +81,9 @@ struct ContentView: View {
                     }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SharpGenerationBottomBar()
+        }
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
     }
 }
@@ -277,7 +280,9 @@ struct HomeTab: View {
                 if !isShowing {
                     // Photo room sheet fully closed — safe to drop heavy singletons (not during in-sheet navigation).
                     Task { @MainActor in
-                        SHARPService.shared.releaseResources()
+                        if !SHARPService.shared.isBackgroundGenerationActive {
+                            SHARPService.shared.releaseResources()
+                        }
                         YOLOEModelService.shared.releaseResources()
                     }
                     modelManager.refreshModels()
@@ -291,6 +296,10 @@ struct HomeTab: View {
             // Listen for room save completion to dismiss sheet
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissPhotoRoomSheet"))) { _ in
                 showingPhotoRoomCreator = false
+                limitManager.updateRoomCount()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SharpBackgroundRoomSaved"))) { _ in
+                modelManager.refreshModels()
                 limitManager.updateRoomCount()
             }
             // Settings Sheet

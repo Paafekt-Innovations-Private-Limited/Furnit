@@ -895,6 +895,7 @@ struct SinglePhotoRoomView: View {
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
     @State private var showBackMethodAlert = false
+    @State private var showSharpProgressOverlay = false
     @Environment(\.dismiss) private var dismiss
     /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
     @State private var sharpSourceImageURL: URL?
@@ -933,6 +934,7 @@ struct SinglePhotoRoomView: View {
                         logDebug("🤖 [View] SHARP method selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
+                        showSharpProgressOverlay = true
                         startSHARPGeneration(image: image)
                     }) {
                         HStack(spacing: 16) {
@@ -1110,71 +1112,18 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
-            // Progress overlay for ODR downloading
-            if sharpService.isDownloadingResources {
-                VStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.purple.opacity(0.3), lineWidth: 8)
-                            .frame(width: 60, height: 60)
-                        Circle()
-                            .trim(from: 0, to: sharpService.downloadProgress)
-                            .stroke(Color.purple, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                            .frame(width: 60, height: 60)
-                            .rotationEffect(.degrees(-90))
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.purple)
+            if showSharpProgressOverlay && sharpService.hasActiveSharpWork && !sharpService.isBackgroundGenerationActive {
+                SharpGenerationProgressOverlay(
+                    sharpService: sharpService,
+                    onRunInBackground: {
+                        sharpService.isBackgroundGenerationActive = true
+                        showSharpProgressOverlay = false
+                        NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                    },
+                    onCancel: {
+                        sharpService.cancelGeneration()
+                        showSharpProgressOverlay = false
                     }
-
-                    Text(sharpService.statusMessage)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    Text("\(Int(sharpService.downloadProgress * 100))%")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.purple)
-
-                    Text(L10n.PhotoRoom.odrOneTimeDownload)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(32)
-                .background(Color(.systemBackground).opacity(0.95))
-                .cornerRadius(16)
-                .shadow(radius: 10)
-            }
-
-            // Progress overlay for model loading
-            if sharpService.isLoadingModel && !sharpService.isDownloadingResources {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.purple)
-
-                    Text(sharpService.statusMessage)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    ProgressView(value: Double(sharpService.progress))
-                        .progressViewStyle(LinearProgressViewStyle(tint: .purple))
-                        .frame(width: 200)
-                }
-                .padding(32)
-                .background(Color(.systemBackground).opacity(0.95))
-                .cornerRadius(16)
-                .shadow(radius: 10)
-            }
-
-            // Progress overlay for on-device SHARP generation
-            if case .processing = sharpService.status {
-                GenerationProgressOverlay(
-                    status: sharpService.status,
-                    uploadProgress: sharpService.progress,
-                    downloadProgress: sharpService.progress,
-                    statusMessage: sharpService.statusMessage,
-                    onCancel: { sharpService.cancelGeneration() }
                 )
             }
 
@@ -1229,6 +1178,7 @@ struct SinglePhotoRoomView: View {
                 guard let image = selectedImage else { return }
                 logDebug("🤖 [View] Back alert: AI SHARP selected")
                 showMethodPicker = false
+                showSharpProgressOverlay = true
                 startSHARPGeneration(image: image)
             }
             Button(L10n.PhotoRoom.backAlertManual) {
@@ -1289,11 +1239,7 @@ struct SinglePhotoRoomView: View {
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
-            // Preload SHARP only on 6GB+ devices — on 4GB class, model + decoded photo peaks RAM (Jetsam).
-            let sixGiB: UInt64 = 6 * 1024 * 1024 * 1024
-            if ProcessInfo.processInfo.physicalMemory >= sixGiB {
-                SHARPService.shared.ensureModelLoaded()
-            }
+            logDebug("🤖 [View] SHARP model load deferred until Photo to 3D Room is tapped")
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
             selectedOrientation = detectedOrientation
@@ -1512,6 +1458,7 @@ struct SinglePhotoRoomView: View {
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
         logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
 
+        sharpService.isBackgroundGenerationActive = false
         splatViewerDestination = nil
         let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
         let pxH = max(1, Int(ceil(Double(image.size.height * image.scale))))
@@ -1547,20 +1494,63 @@ struct SinglePhotoRoomView: View {
                 logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
                 logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_generate ply=\(gen.plyURL.lastPathComponent)")
                 await MainActor.run {
-                    splatViewerDestination = SplatViewerDestination(
-                        plyURL: gen.plyURL,
-                        sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
-                        roomMeters: {
-                            if let width = gen.roomWidth, let height = gen.roomHeight, let depth = gen.roomDepth {
-                                return (width, height, depth)
-                            }
-                            return nil
-                        }(),
-                        sourcePhotoPixels: (pxW, pxH)
-                    )
+                    showSharpProgressOverlay = false
+                    let roomMeters: (Float, Float, Float)? = {
+                        if let width = gen.roomWidth, let height = gen.roomHeight, let depth = gen.roomDepth {
+                            return (width, height, depth)
+                        }
+                        return nil
+                    }()
+                    if sharpService.isBackgroundGenerationActive {
+                        saveGeneratedSharpRoomInBackground(
+                            gen,
+                            orientation: orientation,
+                            roomMeters: roomMeters
+                        )
+                    } else {
+                        splatViewerDestination = SplatViewerDestination(
+                            plyURL: gen.plyURL,
+                            sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
+                            roomMeters: roomMeters,
+                            sourcePhotoPixels: (pxW, pxH)
+                        )
+                    }
                 }
             } catch {
                 logDebug("❌ [View] Generation failed: \(error)")
+                await MainActor.run {
+                    showSharpProgressOverlay = false
+                    sharpService.isBackgroundGenerationActive = false
+                }
+            }
+        }
+    }
+
+    private func saveGeneratedSharpRoomInBackground(
+        _ gen: SHARPGenerationResult,
+        orientation: PhotoOrientation,
+        roomMeters: (Float, Float, Float)?
+    ) {
+        sharpService.statusMessage = NSLocalizedString("sharp.savingRoom", value: "Saving room...", comment: "Saving generated room in the background")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let roomName = "AI Room \(formatter.string(from: Date()))"
+        let manager = USDZModelManager()
+        manager.savePLY(
+            from: gen.plyURL,
+            name: roomName,
+            photoOrientation: orientation,
+            roomWidth: roomMeters?.0,
+            roomHeight: roomMeters?.1,
+            roomDepth: roomMeters?.2,
+            roomDimsApproach: roomMeters == nil ? nil : "room_dims_v7_sharp"
+        ) { success, error in
+            Task { @MainActor in
+                logDebug(success ? "✅ [View] Background SHARP room saved: \(roomName)" : "❌ [View] Background SHARP save failed: \(error ?? "unknown")")
+                sharpService.isBackgroundGenerationActive = false
+                sharpService.statusMessage = success ? L10n.Sharp.done : L10n.Sharp.couldNotCreateRoom
+                NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
+                sharpService.releaseResources()
             }
         }
     }

@@ -291,6 +291,18 @@ class SHARPService: ObservableObject {
 
     /// Whether model is currently loading
     @Published var isLoadingModel: Bool = false
+    @Published var isBackgroundGenerationActive: Bool = false
+
+    var hasActiveSharpWork: Bool {
+        if isDownloadingResources || isLoadingModel { return true }
+        if case .processing = status { return true }
+        return false
+    }
+
+    var unifiedProgress: Double {
+        if isDownloadingResources { return min(max(downloadProgress, 0.0), 1.0) }
+        return min(max(Double(progress), 0.0), 1.0)
+    }
 
     /// Ensure model is loaded — call from view's onAppear to re-trigger loading
     /// after releaseResources() has cleared the model.
@@ -564,6 +576,7 @@ class SHARPService: ObservableObject {
 
     /// Cancel current generation (if any)
     func cancelGeneration() {
+        isBackgroundGenerationActive = false
         status = .failed(L10n.Sharp.cancelled)
         statusMessage = L10n.Sharp.cancelled
         releaseInferenceMemoryAfterGeneration()

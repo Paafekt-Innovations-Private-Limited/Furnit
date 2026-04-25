@@ -184,6 +184,147 @@ struct GenerationProgressOverlay: View {
     }
 }
 
+struct SharpGenerationProgressOverlay: View {
+    @ObservedObject var sharpService: SHARPService
+    let onRunInBackground: () -> Void
+    let onCancel: () -> Void
+
+    private var progressValue: Double {
+        sharpService.unifiedProgress
+    }
+
+    private var title: String {
+        if sharpService.isDownloadingResources {
+            return L10n.GenerationProgress.downloadingModel
+        }
+        if sharpService.isLoadingModel {
+            return L10n.GenerationProgress.preparing
+        }
+        return L10n.GenerationProgress.generating3DModel
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color.purple.opacity(0.16))
+                        .frame(width: 72, height: 72)
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .purple))
+                        .scaleEffect(1.35)
+                }
+
+                VStack(spacing: 8) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text(sharpService.statusMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 8) {
+                    ProgressView(value: progressValue)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                    Text("\(Int(progressValue * 100))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 12) {
+                    Button(action: onCancel) {
+                        Text(L10n.Common.cancel)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(action: onRunInBackground) {
+                        Text(NSLocalizedString("sharp.runInBackground", value: "Run in Background", comment: "Continue room generation after leaving this screen"))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                }
+            }
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(.systemBackground).opacity(0.96))
+            )
+            .padding(.horizontal, 32)
+        }
+    }
+}
+
+struct SharpGenerationBottomBar: View {
+    @ObservedObject private var sharpService = SHARPService.shared
+
+    private var shouldShow: Bool {
+        sharpService.hasActiveSharpWork || sharpService.isBackgroundGenerationActive
+    }
+
+    private var progressValue: Double {
+        sharpService.unifiedProgress
+    }
+
+    private var title: String {
+        if sharpService.isDownloadingResources {
+            return L10n.GenerationProgress.downloadingModel
+        }
+        if sharpService.isLoadingModel {
+            return L10n.GenerationProgress.preparing
+        }
+        return L10n.GenerationProgress.generating3DModel
+    }
+
+    var body: some View {
+        if shouldShow {
+            VStack(spacing: 6) {
+                HStack(spacing: 10) {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundColor(.purple)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text(sharpService.statusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("\(Int(progressValue * 100))%")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.purple)
+                }
+
+                ProgressView(value: progressValue)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.regularMaterial)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color.purple.opacity(0.22))
+                    .frame(height: 1)
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview("Uploading") {
