@@ -246,10 +246,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             },
         )
 
-        // Preload ExecuTorch Part1 when backend is ExecuTorch (hides "stuck at 5%" stall at Generate)
-        lifecycleScope.launch {
-            SharpService.getInstance(this@SinglePhotoRoomActivity).preloadSharpModels()
-        }
+        // Do not preload SHARP here. Keep the heavy model load tied to the AI Room choice.
     }
 
     override fun onResume() {
@@ -939,12 +936,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 )
                 updateOrientationIndicator()
 
-                // Start SHARP generation immediately. Do not start FurnitureFit/YOLOE here:
-                // loading yoloe-11l-seg-pf.onnx in parallel with SHARP can spike memory during room creation.
-                startAIGenerationInBackground(bitmap)
-
                 showMethodPicker()
-                DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
+                DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, waiting for room creation choice")
             } else {
                 DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
