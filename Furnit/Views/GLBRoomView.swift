@@ -447,17 +447,19 @@ struct GLBRoomView: View {
         .background(Color.gray)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(savedRoomModel == nil)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                if savedRoomModel == nil {
-                    Button {
+                Button {
+                    if savedRoomModel == nil {
                         showDiscardUnsavedAlert = true
-                    } label: {
-                        Image(systemName: "chevron.left")
+                    } else {
+                        dismiss()
                     }
-                    .accessibilityLabel(L10n.Common.back)
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
+                .accessibilityLabel(L10n.Common.back)
             }
             ToolbarItem(placement: .principal) {
                 navigationBarRoomMeasurementPrincipal
@@ -542,8 +544,8 @@ struct GLBRoomView: View {
         } message: {
             Text(calibrationRejectMessage)
         }
-        .defersSystemGestures(on: [.top, .trailing])
-        .disableBackSwipeIf(savedRoomModel == nil)
+        .defersSystemGestures(on: [.top, .leading, .trailing])
+        .disableBackSwipe()
     }
 
     // MARK: - Ruler + tap helpers (MeshRoomView parity for saved GLB from Home)
@@ -1929,11 +1931,10 @@ struct GLBWebGLView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // Orbit controls
+                // Orbit controls - single-finger rotate matches Sharp room feel (no inertia, ~0.005 rad/px).
                 const controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;  // Quick response
-                controls.rotateSpeed = 3.0;     // Fast rotation for touch
+                controls.enableDamping = false;
+                controls.rotateSpeed = 0.7;
                 controls.zoomSpeed = 2.5;       // Fast zoom
                 controls.enableZoom = true;
                 controls.enablePan = false;
@@ -2052,7 +2053,8 @@ struct GLBWebGLView: UIViewRepresentable {
 
                             const eyeHeight = roomHeight * 0.5;
                             const cameraZ = roomDepth * 0.2;
-                            const targetZ = -roomDepth * 0.2;
+                            // Target on the front wall so single-finger rotate orbits around it (matches Sharp room).
+                            const targetZ = -roomDepth * 0.5;
 
                             initialCameraPos.set(0, eyeHeight, cameraZ);
                             initialTarget.set(0, eyeHeight, targetZ);

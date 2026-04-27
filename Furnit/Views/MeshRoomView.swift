@@ -2033,11 +2033,10 @@ struct MeshWebGLView: UIViewRepresentable {
                     }
                 } catch (e0) {}
 
-                // Orbit controls - smooth touch interactions
+                // Orbit controls - single-finger rotate matches Sharp room feel (no inertia, ~0.005 rad/px).
                 const controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;  // Quick response
-                controls.rotateSpeed = 3.0;     // Fast rotation for touch
+                controls.enableDamping = false;
+                controls.rotateSpeed = 0.7;
                 controls.zoomSpeed = 2.5;       // Fast zoom
                 controls.panSpeed = 1.5;        // Fast pan
                 controls.enableZoom = true;
@@ -2053,9 +2052,10 @@ struct MeshWebGLView: UIViewRepresentable {
                     TWO: THREE.TOUCH.DOLLY_PAN
                 };
 
-                // Set initial camera position - back center of room looking at front wall
+                // Set initial camera position - back center of room looking at front wall.
+                // Target placed on the front wall so single-finger rotate orbits around it (matches Sharp room).
                 const targetY = roomHeight * 0.5;
-                controls.target.set(0, targetY, 0);
+                controls.target.set(0, targetY, -roomDepth * 0.5);
                 camera.position.set(0, targetY, roomDepth * 0.35);
                 controls.update();
 
@@ -2082,7 +2082,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     controls.maxDistance = Math.max(roomWidth, roomDepth) * 1.5 * factor;
                     const targetYScaled = roomHeight * 0.5 * factor;
                     const cameraZScaled = roomDepth * 0.35 * factor;
-                    initialTarget.set(0, targetYScaled, 0);
+                    initialTarget.set(0, targetYScaled, -roomDepth * 0.5 * factor);
                     initialCameraPos.set(0, targetYScaled, cameraZScaled);
                     camera.position.copy(initialCameraPos);
                     controls.target.copy(initialTarget);
