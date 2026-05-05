@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">Pourquoi ma génération de pièce échoue-t-elle ?</string>
     <string name="faq_generation_failing_answer">La génération de pièce peut échouer si la photo est trop sombre, floue ou ne montre pas assez de caractéristiques de la pièce. Essayez de prendre une nouvelle photo avec un meilleur éclairage et un angle plus large.</string>
     <string name="faq_how_many_rooms">Combien de pièces puis-je créer ?</string>
-    <string name="faq_how_many_rooms_answer">Vous pouvez créer jusqu\'à 1000 pièces. Supprimez les anciennes pièces pour libérer de l\'espace. Le nombre de pièces et le stockage utilisé s\'affichent en haut de l\'écran d\'accueil.</string>
+    <string name="faq_how_many_rooms_answer">Vous pouvez créer jusqu\'à 20 pièces. Supprimez les anciennes pièces pour libérer de l\'espace. Le nombre de pièces et le stockage utilisé s\'affichent en haut de l\'écran d\'accueil.</string>
     <string name="faq_furniture_segmentation">Segmentation de meubles</string>
     <string name="faq_what_is_segmentation">Qu\'est-ce que la segmentation de meubles ?</string>
     <string name="faq_what_is_segmentation_answer">La segmentation de meubles fonctionne maintenant depuis le visualiseur de pièce en direct. Sélectionnez d’abord les étiquettes détectées ; Segmenter crée ensuite un calque découpé uniquement pour ces meubles sélectionnés afin d’évaluer leur place dans la pièce 3D.</string>
@@ -305,7 +305,7 @@
     <string name="smartypants_real_height_hint">Hauteur réelle (m)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">%1$d sur 1000 pièces restantes</string>
+    <string name="home_rooms_remaining_short">%1$d sur %2$d pièces restantes</string>
     <string name="home_total">Total</string>
     <string name="home_zero_mb">0 Mo</string>
     <string name="home_no_rooms_yet">Pas encore de pièces\nAppuyez sur l\'icône image pour commencer</string>

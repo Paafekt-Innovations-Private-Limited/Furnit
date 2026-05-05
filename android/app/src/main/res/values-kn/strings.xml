@@ -169,7 +169,7 @@
     <string name="faq_generation_failing">ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?</string>
     <string name="faq_generation_failing_answer">ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.</string>
     <string name="faq_how_many_rooms">ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?</string>
-    <string name="faq_how_many_rooms_answer">ನೀವು 1000 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.</string>
+    <string name="faq_how_many_rooms_answer">ನೀವು 20 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.</string>
     <string name="faq_furniture_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ</string>
     <string name="faq_what_is_segmentation">ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?</string>
     <string name="faq_what_is_segmentation_answer">Furniture segmentation ಈಗ live room viewer ನಿಂದಲೇ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ಮೊದಲು detected labels ಆಯ್ಕೆ ಮಾಡಿ; ನಂತರ Segment ಆಯ್ದ furniture items ಗಾಗಿ ಮಾತ್ರ cut-out overlay ರಚಿಸುತ್ತದೆ, ಆದ್ದರಿಂದ 3D room ನಲ್ಲಿ fit ಹೇಗಿದೆ ಎಂದು ನೋಡಬಹುದು.</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">ನಿಜ ಎತ್ತರ (ಮೀ)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000ರಲ್ಲಿ %1$d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ</string>
+    <string name="home_rooms_remaining_short">%2$dರಲ್ಲಿ %1$d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ</string>
     <string name="home_total">ಒಟ್ಟು</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">ಇನ್ನೂ ಕೊಠಡಿಗಳಿಲ್ಲ\nಪ್ರಾರಂಭಿಸಲು ಚಿತ್ರ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ</string>

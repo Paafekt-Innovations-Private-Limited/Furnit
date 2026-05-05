@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">¿Por qué falla la generación de mi habitación?</string>
     <string name="faq_generation_failing_answer">La generación de habitación puede fallar si la foto es demasiado oscura, borrosa o no muestra suficientes características de la habitación. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.</string>
     <string name="faq_how_many_rooms">¿Cuántas habitaciones puedo crear?</string>
-    <string name="faq_how_many_rooms_answer">Puedes crear hasta 1000 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.</string>
+    <string name="faq_how_many_rooms_answer">Puedes crear hasta 20 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.</string>
     <string name="faq_furniture_segmentation">Segmentación de muebles</string>
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
     <string name="faq_what_is_segmentation_answer">La segmentación de muebles ahora funciona desde el visor de habitación en vivo. Primero selecciona las etiquetas detectadas; luego Segmentar crea una superposición recortada solo para esos muebles seleccionados para que evalúes cómo quedan en la habitación 3D.</string>
@@ -305,7 +305,7 @@
     <string name="smartypants_real_height_hint">Altura real (m)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">%1$d de 1000 habitaciones restantes</string>
+    <string name="home_rooms_remaining_short">%1$d de %2$d habitaciones restantes</string>
     <string name="home_total">Total</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">Aún no hay habitaciones\nToca el icono de imagen para empezar</string>

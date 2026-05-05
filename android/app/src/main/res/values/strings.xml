@@ -243,7 +243,7 @@
     <string name="faq_generation_failing">Why is my room generation failing?</string>
     <string name="faq_generation_failing_answer">Room generation may fail if the photo is too dark, blurry, or doesn\'t show enough room features. Try taking a new photo with better lighting and a wider angle.</string>
     <string name="faq_how_many_rooms">How many rooms can I create?</string>
-    <string name="faq_how_many_rooms_answer">You can create up to 1000 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.</string>
+    <string name="faq_how_many_rooms_answer">You can create up to 20 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.</string>
     <string name="faq_how_to_save_room">How do I save a room?</string>
     <string name="faq_how_to_save_room_answer">After generating a 3D room, tap the save icon (download arrow) in the toolbar to save it with a custom name. Rooms that aren\'t saved will be deleted when you tap Back.</string>
 
@@ -484,7 +484,7 @@
     <string name="smartypants_real_height_hint">Real height (m)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">%1$d of 1000 rooms remaining</string>
+    <string name="home_rooms_remaining_short">%1$d of %2$d rooms remaining</string>
     <string name="home_total">Total</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">No rooms yet\nTap the image icon to get started</string>

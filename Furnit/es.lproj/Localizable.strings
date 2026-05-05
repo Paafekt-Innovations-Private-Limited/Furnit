@@ -201,7 +201,7 @@
 "faq.generationFailing" = "¿Por qué falla la generación de mi habitación?";
 "faq.generationFailingAnswer" = "La generación de habitación puede fallar si la foto es demasiado oscura, borrosa o no muestra suficientes características de la habitación. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.";
 "faq.howManyRooms" = "¿Cuántas habitaciones puedo crear?";
-"faq.howManyRoomsAnswer" = "Puedes crear hasta 1000 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.";
+"faq.howManyRoomsAnswer" = "Puedes crear hasta 20 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentación de muebles";

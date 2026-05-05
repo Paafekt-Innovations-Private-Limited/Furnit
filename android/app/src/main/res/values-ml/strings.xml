@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">എന്റെ മുറി ജനറേഷൻ എന്തുകൊണ്ട് പരാജയപ്പെടുന്നു?</string>
     <string name="faq_generation_failing_answer">ഫോട്ടോ വളരെ ഇരുണ്ടതോ, മങ്ങിയതോ, അല്ലെങ്കിൽ മതിയായ മുറി സവിശേഷതകൾ കാണിക്കുന്നില്ലെങ്കിലോ മുറി ജനറേഷൻ പരാജയപ്പെട്ടേക്കാം. മെച്ചപ്പെട്ട വെളിച്ചവും വീതിയേറിയ കോണും ഉപയോഗിച്ച് പുതിയ ഫോട്ടോ എടുക്കാൻ ശ്രമിക്കുക.</string>
     <string name="faq_how_many_rooms">എനിക്ക് എത്ര മുറികൾ സൃഷ്ടിക്കാം?</string>
-    <string name="faq_how_many_rooms_answer">നിങ്ങൾക്ക് 1000 മുറികൾ വരെ സൃഷ്ടിക്കാം. പുതിയതിനായി ഇടം ഉണ്ടാക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക. മുറി എണ്ണവും ഉപയോഗിച്ച സ്റ്റോറേജും ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണാം.</string>
+    <string name="faq_how_many_rooms_answer">നിങ്ങൾക്ക് 20 മുറികൾ വരെ സൃഷ്ടിക്കാം. പുതിയതിനായി ഇടം ഉണ്ടാക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക. മുറി എണ്ണവും ഉപയോഗിച്ച സ്റ്റോറേജും ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണാം.</string>
     <string name="faq_furniture_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ</string>
     <string name="faq_what_is_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?</string>
     <string name="faq_what_is_segmentation_answer">ഫർണിച്ചർ segmentation ഇപ്പോൾ live room viewer-ൽ നിന്നാണ് പ്രവർത്തിക്കുന്നത്. ആദ്യം detected labels തിരഞ്ഞെടുക്കുക; തുടർന്ന് Segment തിരഞ്ഞെടുത്ത furniture items-ിനായി മാത്രം cut-out overlay സൃഷ്ടിക്കും, 3D മുറിയിൽ fit പരിശോധിക്കാൻ.</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">യഥാർത്ഥ ഉയരം (മീ)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000-ൽ %1$d മുറികൾ ശേഷിക്കുന്നു</string>
+    <string name="home_rooms_remaining_short">%2$d-ൽ %1$d മുറികൾ ശേഷിക്കുന്നു</string>
     <string name="home_total">ആകെ</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">ഇതുവരെ മുറികളില്ല\nആരംഭിക്കാൻ ഇമേജ് ഐക്കൺ ടാപ്പ് ചെയ്യുക</string>

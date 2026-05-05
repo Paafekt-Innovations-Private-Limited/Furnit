@@ -199,7 +199,7 @@
 "faq.generationFailing" = "为什么我的房间产生失败？";
 "faq.generationFailingAnswer" = "如果照片太暗、模糊或没有显示足够的房间特征，房间产生可能会失败。请尝试在更好的光线下以更宽的角度拍摄新照片。";
 "faq.howManyRooms" = "我可以建立多少个房间？";
-"faq.howManyRoomsAnswer" = "你最多可以创建1000个房间。删除旧房间以腾出空间。主屏幕顶部会显示房间数量和已用存储空间。";
+"faq.howManyRoomsAnswer" = "你最多可以创建20个房间。删除旧房间以腾出空间。主屏幕顶部会显示房间数量和已用存储空间。";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "家具分割";

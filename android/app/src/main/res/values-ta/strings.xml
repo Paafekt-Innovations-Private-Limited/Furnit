@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">என் அறை உருவாக்கம் ஏன் தோல்வியடைகிறது?</string>
     <string name="faq_generation_failing_answer">புகைப்படம் மிகவும் இருட்டாகவோ, மங்கலாகவோ, அல்லது போதுமான அறை அம்சங்களைக் காட்டவில்லை என்றால் அறை உருவாக்கம் தோல்வியடையலாம். சிறந்த வெளிச்சம் மற்றும் அகலமான கோணத்துடன் புதிய புகைப்படம் எடுக்க முயற்சிக்கவும்.</string>
     <string name="faq_how_many_rooms">எத்தனை அறைகளை உருவாக்க முடியும்?</string>
-    <string name="faq_how_many_rooms_answer">நீங்கள் 1000 அறைகள் வரை உருவாக்கலாம். புதியவற்றுக்கு இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை மற்றும் பயன்படுத்திய சேமிப்பு முகப்புத் திரையின் மேலே காட்டப்படும்.</string>
+    <string name="faq_how_many_rooms_answer">நீங்கள் 20 அறைகள் வரை உருவாக்கலாம். புதியவற்றுக்கு இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை மற்றும் பயன்படுத்திய சேமிப்பு முகப்புத் திரையின் மேலே காட்டப்படும்.</string>
     <string name="faq_furniture_segmentation">தளபாட பிரிப்பு</string>
     <string name="faq_what_is_segmentation">தளபாட பிரிப்பு என்றால் என்ன?</string>
     <string name="faq_what_is_segmentation_answer">Furniture segmentation இப்போது live room viewer-இலிருந்தே செயல்படுகிறது. முதலில் detected labels-ஐ தேர்வு செய்யுங்கள்; பிறகு Segment தேர்ந்தெடுத்த furniture items-க்கு மட்டும் cut-out overlay உருவாக்கும், 3D அறையில் பொருத்தத்தை பார்க்க.</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">உண்மையான உயரம் (மீ)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000-இல் %1$d அறைகள் மீதம்</string>
+    <string name="home_rooms_remaining_short">%2$d-இல் %1$d அறைகள் மீதம்</string>
     <string name="home_total">மொத்தம்</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">இன்னும் அறைகள் இல்லை\nதொடங்க படத்தின் ஐகானை தட்டவும்</string>

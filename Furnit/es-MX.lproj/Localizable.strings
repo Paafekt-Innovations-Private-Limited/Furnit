@@ -201,7 +201,7 @@
 "faq.generationFailing" = "¿Por qué falla la generación de mi cuarto?";
 "faq.generationFailingAnswer" = "La generación de cuarto puede fallar si la foto es muy oscura, borrosa o no muestra suficientes características del cuarto. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.";
 "faq.howManyRooms" = "¿Cuántos cuartos puedo crear?";
-"faq.howManyRoomsAnswer" = "Puedes crear hasta 1000 cuartos. Elimina cuartos viejos para liberar espacio. Arriba verás el número de cuartos y el almacenamiento usado.";
+"faq.howManyRoomsAnswer" = "Puedes crear hasta 20 cuartos. Elimina cuartos viejos para liberar espacio. Arriba verás el número de cuartos y el almacenamiento usado.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentación de muebles";

@@ -233,7 +233,7 @@
 "faq.generationFailing" = "Why is my room generation failing?";
 "faq.generationFailingAnswer" = "Room generation may fail if the photo is too dark, blurry, or doesn't show enough room features. Try taking a new photo with better lighting and a wider angle.";
 "faq.howManyRooms" = "How many rooms can I create?";
-"faq.howManyRoomsAnswer" = "You can create up to 1000 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.";
+"faq.howManyRoomsAnswer" = "You can create up to 20 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.";
 "faq.howToSaveRoom" = "How do I save a room?";
 "faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the save icon (download arrow) in the toolbar to save it with a custom name. Rooms that aren't saved will be deleted when you tap Back.";
 

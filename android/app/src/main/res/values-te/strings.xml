@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">నా గది జనరేషన్ ఎందుకు విఫలమవుతోంది?</string>
     <string name="faq_generation_failing_answer">ఫోటో చాలా చీకటిగా, బ్లర్‌గా ఉంటే, లేదా తగినంత గది లక్షణాలు చూపించకపోతే గది జనరేషన్ విఫలం కావచ్చు. మెరుగైన వెలుతురు మరియు విశాల కోణంతో కొత్త ఫోటో తీయడానికి ప్రయత్నించండి.</string>
     <string name="faq_how_many_rooms">నేను ఎన్ని గదులు సృష్టించగలను?</string>
-    <string name="faq_how_many_rooms_answer">మీరు 1000 గదుల వరకు సృష్టించవచ్చు. కొత్త గదుల కోసం స్థలం కోసం పాత గదులను తొలగించండి. గది సంఖ్య మరియు ఉపయోగించిన నిల్వ మీ హోమ్ స్క్రీన్ పైభాగంలో చూపబడుతుంది.</string>
+    <string name="faq_how_many_rooms_answer">మీరు 20 గదుల వరకు సృష్టించవచ్చు. కొత్త గదుల కోసం స్థలం కోసం పాత గదులను తొలగించండి. గది సంఖ్య మరియు ఉపయోగించిన నిల్వ మీ హోమ్ స్క్రీన్ పైభాగంలో చూపబడుతుంది.</string>
     <string name="faq_furniture_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్</string>
     <string name="faq_what_is_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?</string>
     <string name="faq_what_is_segmentation_answer">Furniture segmentation ఇప్పుడు live room viewer నుంచే పనిచేస్తుంది. ముందుగా detected labels ఎంచుకోండి; తర్వాత Segment ఎంచుకున్న furniture items కోసం మాత్రమే cut-out overlay సృష్టిస్తుంది, 3D గదిలో fit ఎలా ఉందో చూడడానికి.</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">నిజమైన ఎత్తు (మీ)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000లో %1$d గదులు మిగిలివి</string>
+    <string name="home_rooms_remaining_short">%2$dలో %1$d గదులు మిగిలివి</string>
     <string name="home_total">మొత్తం</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">ఇంకా గదులు లేవు\nప్రారంభించడానికి ఇమేజ్ ఐకాన్ ట్యాప్ చేయండి</string>

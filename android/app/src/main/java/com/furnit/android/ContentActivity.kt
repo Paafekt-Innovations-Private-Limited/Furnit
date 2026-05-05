@@ -48,6 +48,10 @@ class ContentActivity : AppCompatActivity() {
     private val accentPurple = Color.parseColor("#AF52DE")
     private val dividerColor = Color.parseColor("#3A3A3C")
 
+    companion object {
+        private const val MAX_SAVED_ROOMS = 20
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -118,6 +122,15 @@ class ContentActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setOnClickListener {
+                modelManager.refresh()
+                if (modelManager.listModels().size >= MAX_SAVED_ROOMS) {
+                    AlertDialog.Builder(this@ContentActivity)
+                        .setTitle(R.string.room_limit_title)
+                        .setMessage(getString(R.string.room_limit_message, MAX_SAVED_ROOMS))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                    return@setOnClickListener
+                }
                 startActivity(Intent(this@ContentActivity, SinglePhotoRoomActivity::class.java))
             }
         }
@@ -165,7 +178,7 @@ class ContentActivity : AppCompatActivity() {
         }
 
         statsText = TextView(this).apply {
-            text = getString(R.string.home_rooms_remaining_short, 0, 1000)
+            text = getString(R.string.home_rooms_remaining_short, MAX_SAVED_ROOMS, MAX_SAVED_ROOMS)
             textSize = 14f
             setTextColor(primaryTextColor)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -344,8 +357,8 @@ class ContentActivity : AppCompatActivity() {
 
         // Update stats
         val roomCount = models.size
-        val remaining = 1000 - roomCount
-        statsText.text = getString(R.string.home_rooms_remaining_short, remaining, 1000)
+        val remaining = (MAX_SAVED_ROOMS - roomCount).coerceAtLeast(0)
+        statsText.text = getString(R.string.home_rooms_remaining_short, remaining, MAX_SAVED_ROOMS)
 
         // Calculate total size
         var totalBytes = 0L

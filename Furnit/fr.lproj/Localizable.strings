@@ -201,7 +201,7 @@
 "faq.generationFailing" = "Pourquoi ma génération de pièce échoue-t-elle ?";
 "faq.generationFailingAnswer" = "La génération de pièce peut échouer si la photo est trop sombre, floue ou ne montre pas assez de caractéristiques de la pièce. Essayez de prendre une nouvelle photo avec un meilleur éclairage et un angle plus large.";
 "faq.howManyRooms" = "Combien de pièces puis-je créer ?";
-"faq.howManyRoomsAnswer" = "Vous pouvez créer jusqu'à 1000 pièces. Supprimez les anciennes pièces pour libérer de l'espace. Le nombre de pièces et le stockage utilisé s'affichent en haut de l'écran d'accueil.";
+"faq.howManyRoomsAnswer" = "Vous pouvez créer jusqu'à 20 pièces. Supprimez les anciennes pièces pour libérer de l'espace. Le nombre de pièces et le stockage utilisé s'affichent en haut de l'écran d'accueil.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Segmentation de meubles";

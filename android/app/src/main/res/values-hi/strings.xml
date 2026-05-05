@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">मेरा कमरा जनरेशन क्यों विफल हो रहा है?</string>
     <string name="faq_generation_failing_answer">यदि फोटो बहुत अंधेरी, धुंधली है या पर्याप्त कमरे की विशेषताएं नहीं दिखाती है तो कमरा जनरेशन विफल हो सकता है। बेहतर रोशनी और व्यापक कोण के साथ नई फोटो लेने का प्रयास करें।</string>
     <string name="faq_how_many_rooms">मैं कितने कमरे बना सकता हूं?</string>
-    <string name="faq_how_many_rooms_answer">आप 1000 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।</string>
+    <string name="faq_how_many_rooms_answer">आप 20 कमरों तक बना सकते हैं। नए कमरों के लिए जगह बनाने हेतु पुराने हटाएं। कमरों की संख्या और उपयोग किया स्टोरेज होम स्क्रीन के शीर्ष पर दिखता है।</string>
     <string name="faq_furniture_segmentation">फर्नीचर सेगमेंटेशन</string>
     <string name="faq_what_is_segmentation">फर्नीचर सेगमेंटेशन क्या है?</string>
     <string name="faq_what_is_segmentation_answer">फर्नीचर सेगमेंटेशन अब लाइव रूम व्यूअर से काम करता है। पहले detected labels चुनें, फिर Segment सिर्फ चुने हुए फर्नीचर आइटम के लिए cut-out overlay बनाता है ताकि आप 3D कमरे में फिट देख सकें।</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">वास्तविक ऊँचाई (मी)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000 में से %1$d रूम शेष</string>
+    <string name="home_rooms_remaining_short">%2$d में से %1$d रूम शेष</string>
     <string name="home_total">कुल</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">अभी तक कोई रूम नहीं\nशुरू करने के लिए इमेज आइकन टैप करें</string>

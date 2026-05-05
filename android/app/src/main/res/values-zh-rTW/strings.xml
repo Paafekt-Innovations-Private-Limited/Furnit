@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">為什麼我的房間產生失敗？</string>
     <string name="faq_generation_failing_answer">如果照片太暗、模糊或沒有顯示足夠的房間特徵，房間產生可能會失敗。請嘗試在更好的光線下以更寬的角度拍攝新照片。</string>
     <string name="faq_how_many_rooms">我可以建立多少個房間？</string>
-    <string name="faq_how_many_rooms_answer">你最多可以建立1000個房間。刪除舊房間以騰出新空間。主畫面頂部會顯示房間數量與已使用的儲存空間。</string>
+    <string name="faq_how_many_rooms_answer">你最多可以建立20個房間。刪除舊房間以騰出新空間。主畫面頂部會顯示房間數量與已使用的儲存空間。</string>
     <string name="faq_furniture_segmentation">傢俱分割</string>
     <string name="faq_what_is_segmentation">什麼是傢俱分割？</string>
     <string name="faq_what_is_segmentation_answer">家具分割現在從即時房間檢視器中完成。先選擇偵測到的標籤，然後分割只會為這些選取的家具產生去背疊圖，方便你判斷它們在 3D 房間裡的效果。</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">實際高度（公尺）</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">剩餘 %1$d / 1000 間房間</string>
+    <string name="home_rooms_remaining_short">剩餘 %1$d / %2$d 間房間</string>
     <string name="home_total">總計</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">尚無房間\n點擊圖片圖示開始</string>

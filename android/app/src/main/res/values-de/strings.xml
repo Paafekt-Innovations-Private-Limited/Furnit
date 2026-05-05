@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">Warum schlägt meine Raumerstellung fehl?</string>
     <string name="faq_generation_failing_answer">Die Raumerstellung kann fehlschlagen, wenn das Foto zu dunkel, unscharf ist oder nicht genügend Raummerkmale zeigt. Versuchen Sie, ein neues Foto mit besserer Beleuchtung und einem weiteren Winkel aufzunehmen.</string>
     <string name="faq_how_many_rooms">Wie viele Räume kann ich erstellen?</string>
-    <string name="faq_how_many_rooms_answer">Sie können bis zu 1000 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.</string>
+    <string name="faq_how_many_rooms_answer">Sie können bis zu 20 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.</string>
     <string name="faq_how_to_save_room">Wie speichere ich einen Raum?</string>
     <string name="faq_how_to_save_room_answer">Nach dem Erstellen eines 3D-Raums tippen Sie in der Symbolleiste auf das Speichern-Symbol (Download-Pfeil), um ihn mit einem eigenen Namen zu speichern. Nicht gespeicherte Räume werden gelöscht, wenn Sie Zurück tippen.</string>
     <string name="faq_ai_features">KI-Funktionen</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">Echte Höhe (m)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">%1$d von 1000 Räumen übrig</string>
+    <string name="home_rooms_remaining_short">%1$d von %2$d Räumen übrig</string>
     <string name="home_total">Gesamt</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">Noch keine Räume\nTippen Sie auf das Bildsymbol zum Starten</string>

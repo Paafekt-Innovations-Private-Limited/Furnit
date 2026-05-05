@@ -158,7 +158,7 @@
     <string name="faq_generation_failing">আমার রুম তৈরি কেন ব্যর্থ হচ্ছে?</string>
     <string name="faq_generation_failing_answer">ছবি খুব অন্ধকার, ঝাপসা, বা পর্যাপ্ত রুমের বৈশিষ্ট্য না দেখালে রুম তৈরি ব্যর্থ হতে পারে। ভালো আলো এবং প্রশস্ত কোণে নতুন ছবি তোলার চেষ্টা করুন।</string>
     <string name="faq_how_many_rooms">কতগুলো রুম তৈরি করতে পারি?</string>
-    <string name="faq_how_many_rooms_answer">আপনি ১০০০টি পর্যন্ত রুম তৈরি করতে পারেন। নতুন রুমের জন্য জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা ও ব্যবহৃত স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।</string>
+    <string name="faq_how_many_rooms_answer">আপনি ২০টি পর্যন্ত রুম তৈরি করতে পারেন। নতুন রুমের জন্য জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা ও ব্যবহৃত স্টোরেজ হোম স্ক্রিনের শীর্ষে দেখানো হয়।</string>
     <string name="faq_ai_features">AI বৈশিষ্ট্য</string>
     <string name="faq_what_is_brain_icon">ব্রেইন আইকন কী করে?</string>
     <string name="faq_what_is_brain_icon_answer">ব্রেইন আইকন SmartyPants identify mode শুরু করে। এটি লাইভ ক্যামেরা দিয়ে ফার্নিচার ও বস্তু খুঁজে, লেবেল ও বক্স দেখায়, এবং Segment চাপার আগে এক বা একাধিক লেবেল নির্বাচন করতে দেয়।</string>
@@ -306,7 +306,7 @@
     <string name="smartypants_real_height_hint">প্রকৃত উচ্চতা (মি)</string>
 
     <!-- Content / Home -->
-    <string name="home_rooms_remaining_short">1000-এর মধ্যে %1$d রুম বাকি</string>
+    <string name="home_rooms_remaining_short">%2$d-এর মধ্যে %1$d রুম বাকি</string>
     <string name="home_total">মোট</string>
     <string name="home_zero_mb">0 MB</string>
     <string name="home_no_rooms_yet">এখনও কোনো রুম নেই\nশুরু করতে ছবির আইকনে ট্যাপ করুন</string>

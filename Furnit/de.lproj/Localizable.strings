@@ -199,7 +199,7 @@
 "faq.generationFailing" = "Warum schlägt meine Raumerstellung fehl?";
 "faq.generationFailingAnswer" = "Die Raumerstellung kann fehlschlagen, wenn das Foto zu dunkel, unscharf ist oder nicht genügend Raummerkmale zeigt. Versuchen Sie, ein neues Foto mit besserer Beleuchtung und einem weiteren Winkel aufzunehmen.";
 "faq.howManyRooms" = "Wie viele Räume kann ich erstellen?";
-"faq.howManyRoomsAnswer" = "Sie können bis zu 1000 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.";
+"faq.howManyRoomsAnswer" = "Sie können bis zu 20 Räume erstellen. Löschen Sie ältere Räume, um Platz zu schaffen. Oben auf dem Startbildschirm sehen Sie die Raumanzahl und den belegten Speicher.";
 
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "Möbel-Segmentierung";
