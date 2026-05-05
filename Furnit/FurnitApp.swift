@@ -104,13 +104,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    /// Best-effort unload of heavy Core ML + ODR before Jetsam; restart also clears RAM, but this helps mid-session peaks.
+    /// Best-effort unload of heavy Core ML before Jetsam.
+    /// Important: do **not** call ``SHARPService/releaseResources()`` here — that ends ODR access
+    /// (`endAccessingResources`) for the ~1.2 GB tagged SHARP pack. Stopping Xcode often triggers a
+    /// memory warning; releasing ODR makes the next standalone room creation fail until remount
+    /// succeeds. Unloading only the in-memory ``MLModel`` keeps the pack mounted and avoids that trap.
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         Task { @MainActor in
-            logDebug("⚠️ [AppDelegate] Memory warning — releasing SHARP + YOLOE")
+            logDebug("⚠️ [AppDelegate] Memory warning — unloading SHARP/YOLOE Core ML (keeping ODR mounts)")
             YoloEDetectionParser.trimScratchBuffers()
-            SHARPService.shared.releaseResources()
-            YOLOEModelService.shared.releaseResources()
+            SHARPService.shared.releaseInferenceMemoryAfterGeneration()
+            YOLOEModelService.shared.releaseLoadedModelOnlyPreservingODR()
         }
     }
 

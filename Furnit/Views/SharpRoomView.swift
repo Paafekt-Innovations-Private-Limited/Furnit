@@ -579,154 +579,232 @@ struct SharpRoomView: View {
             .toolbar { sharpRoomToolbarContent }
     }
 
-    private var sharpRoomSheetAndLifecycleView: some View {
-        sharpRoomNavigationView
-        .onAppear {
-            // Preload YOLOE when the room opens (async; not at app startup). First brain tap stays snappy.
+    private func sharpRoomPerformOnAppear() {
+        // Preload YOLOE when the room opens (async; not at app startup). First brain tap stays snappy.
+        yoloeService.ensureModelLoaded()
+        if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
+        logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
+        loadPersistedRoomMetadataIfNeeded()
+        syncModalHeavyWorkPauseForSharpRoomUI()
+        warmRoomMeasurementInBackgroundIfNeeded()
+    }
+
+    private func sharpRoomPerformOnDisappear() {
+        autoEnableARTask?.cancel()
+        autoEnableARTask = nil
+        roomMeasurementTask?.cancel()
+        roomMeasurementTask = nil
+        backgroundRoomMeasurementTask?.cancel()
+        backgroundRoomMeasurementTask = nil
+        isMeasuringRoomDimensions = false
+        saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+        cancelPinchHintTasks()
+        cancelBrainHintTasks()
+        cancelCameraSizingHintTasks()
+        cancelRoomDimensionsHintTasks()
+        dismissFullVideoFurnitureTapHint()
+        OrientationLockManager.shared.unlock()
+        splatMeasurementHost.setModalHeavyWorkPaused(false)
+        SHARPService.shared.releaseResources()
+        yoloeService.releaseResources()
+    }
+
+    private func sharpRoomHandleShowingFurnitureFitChange(isOn: Bool) {
+        logFurnitureFitSize(
+            "phase=toggle active=\(isOn) suppressStartupProgress=\(furnitureFitInitialSegmentationDone) " +
+            "room_m=\(String(format: "%.2f", furnitureFitRoomWidth))×\(String(format: "%.2f", furnitureFitRoomHeight))×\(String(format: "%.2f", displayRoomDepth))"
+        )
+        if isOn {
             yoloeService.ensureModelLoaded()
-            if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
-            logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
-            loadPersistedRoomMetadataIfNeeded()
-            syncModalHeavyWorkPauseForSharpRoomUI()
-            warmRoomMeasurementInBackgroundIfNeeded()
-        }
-        .onChange(of: sharpRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSharpRoomUI() }
-        .onChange(of: showingFurnitureFit) { _, isOn in
-            logFurnitureFitSize(
-                "phase=toggle active=\(isOn) suppressStartupProgress=\(furnitureFitInitialSegmentationDone) " +
-                "room_m=\(String(format: "%.2f", furnitureFitRoomWidth))×\(String(format: "%.2f", furnitureFitRoomHeight))×\(String(format: "%.2f", displayRoomDepth))"
-            )
-            if isOn {
-                yoloeService.ensureModelLoaded()
-                updateRoomPlacementIntelligence()
-                if canOfferBrainArAssist {
-                    showCameraSizingHint(requiresBrain: false)
-                }
-            } else {
-                dismissFullVideoFurnitureTapHint()
-                cancelCameraSizingHintTasks()
-                cameraSizingHintExplanationVisible = false
-                brainArAssistedSizingEnabled = false
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-                selectedFurnitureFitLabels = []
-                detectedFurnitureWidth = nil
-                detectedFurnitureHeightAR = nil
-                furnitureProportionalHeightMeters = nil
-                latestFitCheckResult = nil
-                latestCornerPlacementSuggestions = []
-                latestEstimatedFurnitureDepthMeters = nil
-                latestAestheticScore = nil
-                segmentedFurnitureMeanSRGB = nil
+            updateRoomPlacementIntelligence()
+            if canOfferBrainArAssist {
+                showCameraSizingHint(requiresBrain: false)
             }
-        }
-        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: enhancedRoomMetadata) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: brainArAssistedSizingEnabled) { _, enabled in
-            if !enabled {
-                detectedFurnitureHeightAR = nil
-            }
-            logFurnitureFitSize("phase=sharp_room_ar_opt_in enabled=\(enabled) active=\(showingFurnitureFit)")
-        }
-        .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
-            if !enabled {
-                showFurnitureDimensionsInput = false
-                showWallCalibration = false
-            }
-        }
-        .onChange(of: isLoading) { _, loading in
-            guard !loading, !didEnableDefaultARCamera else { return }
-            didEnableDefaultARCamera = true
-            if allowSave {
-                logDebug("📱 [SharpRoomView] Fresh SHARP room loaded")
-            } else {
-                logDebug("📱 [SharpRoomView] Saved room loaded")
-            }
-        }
-        .onDisappear {
-            autoEnableARTask?.cancel()
-            autoEnableARTask = nil
-            roomMeasurementTask?.cancel()
-            roomMeasurementTask = nil
-            backgroundRoomMeasurementTask?.cancel()
-            backgroundRoomMeasurementTask = nil
-            isMeasuringRoomDimensions = false
-            saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-            cancelPinchHintTasks()
-            cancelBrainHintTasks()
-            cancelCameraSizingHintTasks()
-            cancelRoomDimensionsHintTasks()
+        } else {
             dismissFullVideoFurnitureTapHint()
-            OrientationLockManager.shared.unlock()
-            splatMeasurementHost.setModalHeavyWorkPaused(false)
-            SHARPService.shared.releaseResources()
-            yoloeService.releaseResources()
+            cancelCameraSizingHintTasks()
+            cameraSizingHintExplanationVisible = false
+            brainArAssistedSizingEnabled = false
+            showFullVideoWithIdentifications = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            detectedFurnitureWidth = nil
+            detectedFurnitureHeightAR = nil
+            furnitureProportionalHeightMeters = nil
+            latestFitCheckResult = nil
+            latestCornerPlacementSuggestions = []
+            latestEstimatedFurnitureDepthMeters = nil
+            latestAestheticScore = nil
+            segmentedFurnitureMeanSRGB = nil
         }
     }
 
-    private var sharpRoomAlertsAndOverlayView: some View {
+    private func sharpRoomHandleBrainArAssistedSizingChange(enabled: Bool) {
+        if !enabled {
+            detectedFurnitureHeightAR = nil
+        }
+        logFurnitureFitSize("phase=sharp_room_ar_opt_in enabled=\(enabled) active=\(showingFurnitureFit)")
+    }
+
+    private func sharpRoomHandleShowRoomFurnitureCalibrateChange(enabled: Bool) {
+        if !enabled {
+            showFurnitureDimensionsInput = false
+            showWallCalibration = false
+        }
+    }
+
+    private func sharpRoomHandleIsLoadingForDefaultARCamera(loading: Bool) {
+        guard !loading, !didEnableDefaultARCamera else { return }
+        didEnableDefaultARCamera = true
+        if allowSave {
+            logDebug("📱 [SharpRoomView] Fresh SHARP room loaded")
+        } else {
+            logDebug("📱 [SharpRoomView] Saved room loaded")
+        }
+    }
+
+    private func sharpRoomHandleIsLoadingForHints(loading: Bool) {
+        if loading {
+            cancelPinchHintTasks()
+            cancelBrainHintTasks()
+            cancelSnapshotHintTasks()
+            cancelCameraSizingHintTasks()
+            cancelRoomDimensionsHintTasks()
+        } else {
+            restartBrainGestureHint()
+            restartSnapshotGestureHint()
+        }
+    }
+
+    // MARK: - Navigation chrome + lifecycle (split for Swift compiler type-check)
+
+    private var sharpRoomLifecycleStageAppear: some View {
+        sharpRoomNavigationView
+            .onAppear {
+                sharpRoomPerformOnAppear()
+            }
+            .onChange(of: sharpRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSharpRoomUI() }
+    }
+
+    private var sharpRoomLifecycleStageFurnitureFit: some View {
+        sharpRoomLifecycleStageAppear
+            .onChange(of: showingFurnitureFit) { _, isOn in
+                sharpRoomHandleShowingFurnitureFitChange(isOn: isOn)
+            }
+    }
+
+    private var sharpRoomLifecycleStageLabels: some View {
+        sharpRoomLifecycleStageFurnitureFit
+            .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
+                restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
+            }
+    }
+
+    private var sharpRoomLifecycleStagePlacementSignals: some View {
+        sharpRoomLifecycleStageLabels
+            .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: roomModel) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: enhancedRoomMetadata) { _, _ in updateRoomPlacementIntelligence() }
+    }
+
+    private var sharpRoomLifecycleStageBrainAr: some View {
+        sharpRoomLifecycleStagePlacementSignals
+            .onChange(of: brainArAssistedSizingEnabled) { _, enabled in
+                sharpRoomHandleBrainArAssistedSizingChange(enabled: enabled)
+            }
+    }
+
+    private var sharpRoomLifecycleStageCalibratePref: some View {
+        sharpRoomLifecycleStageBrainAr
+            .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
+                sharpRoomHandleShowRoomFurnitureCalibrateChange(enabled: enabled)
+            }
+    }
+
+    private var sharpRoomLifecycleStageLoadingLog: some View {
+        sharpRoomLifecycleStageCalibratePref
+            .onChange(of: isLoading) { _, loading in
+                sharpRoomHandleIsLoadingForDefaultARCamera(loading: loading)
+            }
+    }
+
+    private var sharpRoomSheetAndLifecycleView: some View {
+        sharpRoomLifecycleStageLoadingLog
+            .onDisappear {
+                sharpRoomPerformOnDisappear()
+            }
+    }
+
+    private var sharpRoomAfterSaveRoomAlert: some View {
         sharpRoomSheetAndLifecycleView
-        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-            TextField(L10n.RoomViewer.roomName, text: $roomName)
-                .autocorrectionDisabled(true)
-            Button(L10n.Common.cancel, role: .cancel) {
-                roomName = ""
+            .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+                TextField(L10n.RoomViewer.roomName, text: $roomName)
+                    .autocorrectionDisabled(true)
+                Button(L10n.Common.cancel, role: .cancel) {
+                    roomName = ""
+                }
+                Button(L10n.Common.save) { startSavingRoom() }
+                    .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } message: { Text(L10n.RoomViewer.enterName) }
+    }
+
+    private var sharpRoomAfterSaveResultAlert: some View {
+        sharpRoomAfterSaveRoomAlert
+            .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
+                Button(L10n.Common.ok, role: .cancel) {
+                    if saveWasSuccessful {
+                        isDismissing = true
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            DispatchQueue.main.async { SHARPService.shared.releaseResources() }
+                            Thread.sleep(forTimeInterval: 0.1)
+                            DispatchQueue.main.async { NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil) }
+                        }
+                    }
+                }
+            } message: { Text(saveAlertMessage) }
+    }
+
+    private var sharpRoomAfterCalibrationRejectAlert: some View {
+        sharpRoomAfterSaveResultAlert
+            .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) { Button(L10n.Common.ok, role: .cancel) { } } message: { Text(calibrationRejectMessage) }
+    }
+
+    private var sharpRoomAfterDiscardAlert: some View {
+        sharpRoomAfterCalibrationRejectAlert
+            .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+                Button(L10n.RoomPreview.stay, role: .cancel) {}
+                Button(L10n.RoomPreview.leave, role: .destructive) {
+                    dismiss()
+                }
+            } message: {
+                Text(L10n.RoomPreview.unsavedMessage)
             }
-            Button(L10n.Common.save) { startSavingRoom() }
-                .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        } message: { Text(L10n.RoomViewer.enterName) }
-        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
-            Button(L10n.Common.ok, role: .cancel) {
-                if saveWasSuccessful {
-                    isDismissing = true
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        DispatchQueue.main.async { SHARPService.shared.releaseResources() }
-                        Thread.sleep(forTimeInterval: 0.1)
-                        DispatchQueue.main.async { NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil) }
+    }
+
+    private var sharpRoomAlertsAndOverlayView: some View {
+        sharpRoomAfterDiscardAlert
+            .overlay {
+                if isDismissing {
+                    ZStack {
+                        Color.black.opacity(0.7).ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            ProgressView().scaleEffect(1.5).tint(.white)
+                            Text(L10n.RoomViewer.goingBack).foregroundColor(.white).font(.headline)
+                        }
                     }
                 }
             }
-        } message: { Text(saveAlertMessage) }
-        .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) { Button(L10n.Common.ok, role: .cancel) { } } message: { Text(calibrationRejectMessage) }
-        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
-            Button(L10n.RoomPreview.stay, role: .cancel) {}
-            Button(L10n.RoomPreview.leave, role: .destructive) {
-                dismiss()
+            .onChange(of: isLoading) { _, loading in
+                sharpRoomHandleIsLoadingForHints(loading: loading)
             }
-        } message: {
-            Text(L10n.RoomPreview.unsavedMessage)
-        }
-        .overlay {
-            if isDismissing {
-                ZStack {
-                    Color.black.opacity(0.7).ignoresSafeArea()
-                    VStack(spacing: 16) {
-                        ProgressView().scaleEffect(1.5).tint(.white)
-                        Text(L10n.RoomViewer.goingBack).foregroundColor(.white).font(.headline)
-                    }
-                }
-            }
-        }
-        .onChange(of: isLoading) { _, loading in
-            if loading {
-                cancelPinchHintTasks()
-                cancelBrainHintTasks()
-                cancelSnapshotHintTasks()
-                cancelCameraSizingHintTasks()
-                cancelRoomDimensionsHintTasks()
-            } else {
-                restartBrainGestureHint()
-                restartSnapshotGestureHint()
-            }
-        }
-        // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
-        .defersSystemGestures(on: [.top, .trailing])
-        .disableBackSwipeIf(allowSave)
+            // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
+            .defersSystemGestures(on: [.top, .trailing])
+            .disableBackSwipeIf(allowSave)
     }
 
     private var sharpRoomBody: some View {
@@ -829,6 +907,17 @@ struct SharpRoomView: View {
         tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             DispatchQueue.main.async { tapHintColorIndex += 1 }
         }
+    }
+
+    private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
+        guard showingFurnitureFit else { return }
+        guard furnitureFitSegmentationMode == .segmentSelected else { return }
+        guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
+        dismissFullVideoFurnitureTapHint()
+        showFullVideoWithIdentifications = true
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func activateSelectedFurnitureSegmentation() {

@@ -404,7 +404,6 @@ class SharpRoomActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sharpLoadStartMs = SystemClock.elapsedRealtime()
-        showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
 
         // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -2523,6 +2522,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun resetBrainSessionUiState() {
         brainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+        showFullVideoWithIdentifications = false
         showIdentifyLivePreview = true
         latestBrainDetections = emptyList()
         latestBrainMask = null
@@ -2667,9 +2667,6 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun launchBrainMode(arAssistedRequested: Boolean) {
-        if (!brainOverlayVisible && brainProgressOverlay.visibility != View.VISIBLE) {
-            showFullVideoWithIdentifications = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
-        }
         pendingBrainStartArAssist = arAssistedRequested
         if (brainDetectionOverlay.visibility == View.VISIBLE) {
             if (brainArAssistRequested == arAssistedRequested) {

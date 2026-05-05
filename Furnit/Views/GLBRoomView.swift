@@ -333,9 +333,115 @@ struct GLBRoomView: View {
         )
     }
 
-    var body: some View {
+    // MARK: - Main layout (split for Swift compiler type-check)
+
+    @ViewBuilder
+    private var glbRoomLoadingOverlay: some View {
+        if isLoading {
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text(NSLocalizedString("photoRoom.loading", comment: ""))
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var glbRoomErrorOverlay: some View {
+        if let error = error {
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundColor(.orange)
+                Text(error)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var glbRoomCameraChromeWhenReady: some View {
+        if !isLoading {
+            cameraButtonsOverlay
+            topTrailingPinchTapAndSizingHintsOverlay
+        }
+    }
+
+    @ViewBuilder
+    private var glbFurnitureFitCameraOverlay: some View {
+        if showingFurnitureFit {
+            FurnitureFitUIView(
+                capturedImage: .constant(nil),
+                roomImage: nil,
+                mlModel: yoloeService.model,
+                processInterval: 0.07,
+                active: true,
+                lockedOrientation: photoOrientation,
+                roomWidthMeters: calibratedRoomWidth ?? roomWidth ?? 4.0,
+                roomHeightMeters: calibratedRoomHeight ?? roomHeight ?? 3.0,
+                roomDepthMeters: calibratedRoomDepth ?? roomDepth ?? 4.0,
+                onFurnitureSizeEstimated: { estimate in
+                    detectedFurnitureWidth = estimate.widthMeters > 0.05 ? estimate.widthMeters : nil
+                    if let arHeight = estimate.arHeightMeters,
+                       arHeight.isFinite,
+                       arHeight > 0.05 {
+                        detectedFurnitureHeightAR = arHeight
+                        furnitureProportionalHeightMeters = nil
+                    } else {
+                        detectedFurnitureHeightAR = nil
+                        furnitureProportionalHeightMeters = estimate.heightMeters > 0.05 ? estimate.heightMeters : nil
+                    }
+                },
+                suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                    segmentedFurnitureMeanSRGB = meanSRGB
+                },
+                arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                manualFurnitureHeightOverrideMeters: realFurnitureHeight,
+                segmentationMode: furnitureFitSegmentationMode,
+                onSelectedClassLabelsChanged: { labels in
+                    selectedFurnitureFitLabels = labels
+                },
+                showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
+            )
+            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+            .zIndex(100)
+        }
+    }
+
+    @ViewBuilder
+    private var glbRoomCalibrationGateOverlay: some View {
+        if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+            calibrationOverlayView
+                .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
+                .onDisappear { calibrationBaselineDetectedHeight = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var glbRoomOrientationControls: some View {
+        if photoOrientation == .landscape {
+            landscapeControls
+        } else {
+            portraitControls
+        }
+    }
+
+    private var glbRoomMainZStack: some View {
         ZStack {
-            // WebGL GLB viewer - OrbitControls in Three.js handles touch directly
             GLBWebGLView(
                 glbURL: glbURL,
                 photoOrientation: photoOrientation,
@@ -350,203 +456,168 @@ struct GLBRoomView: View {
             .ignoresSafeArea()
             .allowsHitTesting(!isLoading)
 
-            // Loading overlay
-            if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.white)
-
-                    Text(NSLocalizedString("photoRoom.loading", comment: ""))
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            // Error overlay
-            if let error = error {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text(error)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            if !isLoading {
-                cameraButtonsOverlay
-                topTrailingPinchTapAndSizingHintsOverlay
-            }
-
-            // FurnitureFit overlay (when active) - full screen camera for furniture detection
-            if showingFurnitureFit {
-                FurnitureFitUIView(
-                    capturedImage: .constant(nil),
-                    roomImage: nil,
-                    mlModel: yoloeService.model,
-                    processInterval: 0.07,
-                    active: true,
-                    lockedOrientation: photoOrientation,
-                    roomWidthMeters: calibratedRoomWidth ?? roomWidth ?? 4.0,
-                    roomHeightMeters: calibratedRoomHeight ?? roomHeight ?? 3.0,
-                    roomDepthMeters: calibratedRoomDepth ?? roomDepth ?? 4.0,
-                    onFurnitureSizeEstimated: { estimate in
-                        detectedFurnitureWidth = estimate.widthMeters > 0.05 ? estimate.widthMeters : nil
-                        if let arHeight = estimate.arHeightMeters,
-                           arHeight.isFinite,
-                           arHeight > 0.05 {
-                            detectedFurnitureHeightAR = arHeight
-                            furnitureProportionalHeightMeters = nil
-                        } else {
-                            detectedFurnitureHeightAR = nil
-                            furnitureProportionalHeightMeters = estimate.heightMeters > 0.05 ? estimate.heightMeters : nil
-                        }
-                    },
-                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
-                    onSegmentationMaskMeanColorSRGB: { meanSRGB in
-                        segmentedFurnitureMeanSRGB = meanSRGB
-                    },
-                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
-                    manualFurnitureHeightOverrideMeters: realFurnitureHeight,
-                    segmentationMode: furnitureFitSegmentationMode,
-                    onSelectedClassLabelsChanged: { labels in
-                        selectedFurnitureFitLabels = labels
-                    },
-                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
-                    showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
-                )
-                .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
-                .zIndex(100)
-            }
+            glbRoomLoadingOverlay
+            glbRoomErrorOverlay
+            glbRoomCameraChromeWhenReady
+            glbFurnitureFitCameraOverlay
 
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
             fullVideoToolbarHelperOverlay
-            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
-                calibrationOverlayView
-                    .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
-                    .onDisappear { calibrationBaselineDetectedHeight = nil }
-            }
+            glbRoomCalibrationGateOverlay
+            glbRoomOrientationControls
+        }
+    }
 
-            // Controls based on orientation
-            if photoOrientation == .landscape {
-                landscapeControls
-            } else {
-                portraitControls
-            }
-        }
-        .background(Color.gray)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    if savedRoomModel == nil {
-                        showDiscardUnsavedAlert = true
-                    } else {
-                        dismiss()
+    private var glbRoomWithNavigationChrome: some View {
+        glbRoomMainZStack
+            .background(Color.gray)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if savedRoomModel == nil {
+                            showDiscardUnsavedAlert = true
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
                     }
-                } label: {
-                    Image(systemName: "chevron.left")
+                    .accessibilityLabel(L10n.Common.back)
                 }
-                .accessibilityLabel(L10n.Common.back)
-            }
-            ToolbarItem(placement: .principal) {
-                navigationBarRoomMeasurementPrincipal
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarTrailingControls
-            }
-        }
-        .onAppear {
-            // Preload YOLOE when the room opens (async; not at app startup).
-            yoloeService.ensureModelLoaded()
-            if photoOrientation == .landscape {
-                OrientationLockManager.shared.lockToLandscape()
-            } else {
-                OrientationLockManager.shared.lockToPortrait()
-            }
-        }
-        .onChange(of: isLoading) { _, loading in
-            if loading {
-                cancelPinchHintTasks()
-                cancelBrainHintTasks()
-                cancelSnapshotHintTasks()
-                cancelARSizingHintTasks()
-                cancelRoomDimensionsHintTasks()
-            } else {
-                restartPinchGestureHint()
-                restartBrainGestureHint()
-                restartSnapshotGestureHint()
-            }
-        }
-        .onChange(of: showingFurnitureFit) { _, isOn in
-            if isOn {
-                yoloeService.ensureModelLoaded()
-                if canOfferBrainArAssist {
-                    showARSizingHint(requiresBrain: false)
+                ToolbarItem(placement: .principal) {
+                    navigationBarRoomMeasurementPrincipal
                 }
-            } else {
-                dismissFullVideoFurnitureTapHint()
-                cancelARSizingHintTasks()
-                arSizingHintExplanationVisible = false
-                brainArAssistedSizingEnabled = false
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-                selectedFurnitureFitLabels = []
-                detectedFurnitureWidth = nil
-                detectedFurnitureHeightAR = nil
-                furnitureProportionalHeightMeters = nil
-                latestFitCheckResult = nil
-                latestAestheticScore = nil
-                segmentedFurnitureMeanSRGB = nil
-                isPlacementIntelligenceExpanded = false
-                showFurnitureDimensionsInput = false
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    navigationBarTrailingControls
+                }
             }
+    }
+
+    private var glbRoomAfterAppearAndLoading: some View {
+        glbRoomWithNavigationChrome
+            .onAppear {
+                glbRoomPerformOnAppear()
+            }
+            .onChange(of: isLoading) { _, loading in
+                glbRoomHandleIsLoadingChange(loading: loading)
+            }
+            .onChange(of: showingFurnitureFit) { _, isOn in
+                glbRoomHandleShowingFurnitureFitChange(isOn: isOn)
+            }
+    }
+
+    private var glbRoomAfterSelectionObserver: some View {
+        glbRoomAfterAppearAndLoading
+            .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
+                restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
+            }
+    }
+
+    private var glbRoomAfterPlacementObservers: some View {
+        glbRoomAfterSelectionObserver
+            .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
+    }
+
+    private var glbRoomAfterCalibrationObservers: some View {
+        glbRoomAfterPlacementObservers
+            .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: roomCalibrationScaleFactor) { _, _ in updateRoomPlacementIntelligence() }
+            .onDisappear {
+                glbRoomPerformOnDisappear()
+            }
+    }
+
+    private func glbRoomPerformOnAppear() {
+        yoloeService.ensureModelLoaded()
+        if photoOrientation == .landscape {
+            OrientationLockManager.shared.lockToLandscape()
+        } else {
+            OrientationLockManager.shared.lockToPortrait()
         }
-        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: roomCalibrationScaleFactor) { _, _ in updateRoomPlacementIntelligence() }
-        .onDisappear {
+    }
+
+    private func glbRoomPerformOnDisappear() {
+        cancelPinchHintTasks()
+        cancelBrainHintTasks()
+        cancelSnapshotHintTasks()
+        cancelARSizingHintTasks()
+        cancelRoomDimensionsHintTasks()
+        dismissFullVideoFurnitureTapHint()
+        brainArAssistedSizingEnabled = false
+        yoloeService.releaseResources()
+        OrientationLockManager.shared.unlock()
+    }
+
+    private func glbRoomHandleIsLoadingChange(loading: Bool) {
+        if loading {
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             cancelSnapshotHintTasks()
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
-            dismissFullVideoFurnitureTapHint()
-            brainArAssistedSizingEnabled = false
-            yoloeService.releaseResources()
-            OrientationLockManager.shared.unlock()
+        } else {
+            restartPinchGestureHint()
+            restartBrainGestureHint()
+            restartSnapshotGestureHint()
         }
-        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
-            Button(L10n.RoomPreview.stay, role: .cancel) {}
-            Button(L10n.RoomPreview.leave, role: .destructive) {
-                dismiss()
-            }
-        } message: {
-            Text(L10n.RoomPreview.unsavedMessage)
-        }
-        .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) {
-            Button(L10n.Common.ok, role: .cancel) {}
-        } message: {
-            Text(calibrationRejectMessage)
-        }
-        .defersSystemGestures(on: [.top, .leading, .trailing])
-        .disableBackSwipe()
     }
+
+    private func glbRoomHandleShowingFurnitureFitChange(isOn: Bool) {
+        if isOn {
+            yoloeService.ensureModelLoaded()
+            if canOfferBrainArAssist {
+                showARSizingHint(requiresBrain: false)
+            }
+        } else {
+            dismissFullVideoFurnitureTapHint()
+            cancelARSizingHintTasks()
+            arSizingHintExplanationVisible = false
+            brainArAssistedSizingEnabled = false
+            showFullVideoWithIdentifications = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            detectedFurnitureWidth = nil
+            detectedFurnitureHeightAR = nil
+            furnitureProportionalHeightMeters = nil
+            latestFitCheckResult = nil
+            latestAestheticScore = nil
+            segmentedFurnitureMeanSRGB = nil
+            isPlacementIntelligenceExpanded = false
+            showFurnitureDimensionsInput = false
+        }
+    }
+
+    private var glbRoomWithSystemAlerts: some View {
+        glbRoomAfterCalibrationObservers
+            .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+                Button(L10n.RoomPreview.stay, role: .cancel) {}
+                Button(L10n.RoomPreview.leave, role: .destructive) {
+                    dismiss()
+                }
+            } message: {
+                Text(L10n.RoomPreview.unsavedMessage)
+            }
+            .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) {
+                Button(L10n.Common.ok, role: .cancel) {}
+            } message: {
+                Text(calibrationRejectMessage)
+            }
+    }
+
+    var body: some View {
+        glbRoomWithSystemAlerts
+            .defersSystemGestures(on: [.top, .leading, .trailing])
+            .disableBackSwipe()
+    }
+
 
     // MARK: - Ruler + tap helpers (MeshRoomView parity for saved GLB from Home)
 
@@ -1219,6 +1290,17 @@ struct GLBRoomView: View {
             }
             .disabled(isLoading)
         }
+    }
+
+    private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
+        guard showingFurnitureFit else { return }
+        guard furnitureFitSegmentationMode == .segmentSelected else { return }
+        guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
+        dismissFullVideoFurnitureTapHint()
+        showFullVideoWithIdentifications = true
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func activateSelectedFurnitureSegmentation() {

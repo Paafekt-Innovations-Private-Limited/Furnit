@@ -208,6 +208,22 @@ class SHARPService: ObservableObject {
         }
     }
 
+    /// Remount SHARP ODR without starting a hosted download when assets are already on device.
+    /// Important after `releaseResources()` / memory warnings / debugger teardown: `resourcesAvailable`
+    /// is false but the tagged pack may still be local from the Xcode install or a finished ODR fetch.
+    private func ensureSharpODRMountedIfPossible() async {
+        guard !resourcesAvailable else { return }
+        let tags: Set<String> = [Self.sharpModelTag]
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+        let mounted = await request.conditionallyBeginAccessingResources()
+        if mounted {
+            resourceRequest = request
+            resourcesAvailable = true
+            logDebug("SHARP: ODR assets remounted (conditionallyBeginAccessingResources)")
+        }
+    }
+
     /// Download SHARP model resources if not available
     /// - Returns: true if resources are available after this call
     func downloadResourcesIfNeeded() async throws -> Bool {
@@ -222,6 +238,7 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Download already in progress")
             // Wait for existing download to complete
             while isDownloadingResources {
+                try Task.checkCancellation()
                 try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
             return resourcesAvailable
@@ -229,42 +246,87 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: Starting ODR download...")
         isDownloadingResources = true
+        defer { isDownloadingResources = false }
+
         downloadProgress = 0.0
         statusMessage = L10n.Sharp.downloadingEngine
 
         let tags: Set<String> = [Self.sharpModelTag]
-        let request = NSBundleResourceRequest(tags: tags)
-        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
-
-        // Observe download progress
-        progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
-            Task { @MainActor in
-                self?.downloadProgress = progress.fractionCompleted
-                let percent = Int(progress.fractionCompleted * 100)
-                self?.statusMessage = L10n.Sharp.downloadingEnginePercent(percent)
-            }
-        }
 
         do {
-            try await request.beginAccessingResources()
-            logDebug("SHARP: ODR download complete")
+            // Each retry must use a new `NSBundleResourceRequest`; calling `beginAccessingResources`
+            // twice on the same instance throws ("more than once or at the wrong time").
+            let maxAttempts = 5
+            for attempt in 1...maxAttempts {
+                progressObservation?.invalidate()
+                progressObservation = nil
 
-            resourcesAvailable = true
-            isDownloadingResources = false
-            downloadProgress = 1.0
-            statusMessage = L10n.Sharp.downloadComplete
+                let request = NSBundleResourceRequest(tags: tags)
+                request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
 
-            // Keep the request alive
-            self.resourceRequest = request
-            progressObservation = nil
+                progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress.fractionCompleted
+                        let percent = Int(progress.fractionCompleted * 100)
+                        self?.statusMessage = L10n.Sharp.downloadingEnginePercent(percent)
+                    }
+                }
 
-            return true
+                do {
+                    // Local/tag cache hit avoids the streaming-unzip path that often fails on Simulator (4099 / code -1).
+                    if await request.conditionallyBeginAccessingResources() {
+                        logDebug("SHARP: ODR resources available (conditionallyBeginAccessingResources)")
+                        resourcesAvailable = true
+                        downloadProgress = 1.0
+                        statusMessage = L10n.Sharp.downloadComplete
+                        self.resourceRequest = request
+                        progressObservation?.invalidate()
+                        progressObservation = nil
+                        return true
+                    }
+
+                    try await FurnitODRBeginAccessing.beginAccessingResources(request)
+                    logDebug("SHARP: ODR download complete")
+
+                    resourcesAvailable = true
+                    downloadProgress = 1.0
+                    statusMessage = L10n.Sharp.downloadComplete
+
+                    self.resourceRequest = request
+                    progressObservation?.invalidate()
+                    progressObservation = nil
+
+                    return true
+                } catch {
+                    progressObservation?.invalidate()
+                    progressObservation = nil
+
+                    let ns = error as NSError
+                    // Cocoa -1 with empty description appears from ODR begin when unzip daemon is wedged (often Simulator).
+                    let retryableODRFailure =
+                        (ns.domain == NSCocoaErrorDomain && ns.code == 4099)
+                        || (ns.domain == NSCocoaErrorDomain && ns.code == -1)
+                        || error.localizedDescription.localizedCaseInsensitiveContains("streaming unzip")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("connection invalidated")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("more than once")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("wrong time")
+                    if retryableODRFailure, attempt < maxAttempts {
+                        logDebug(
+                            "SHARP: ODR attempt \(attempt)/\(maxAttempts) failed — \(error) domain=\(ns.domain) code=\(ns.code) — retrying",
+                        )
+                        try await Task.sleep(nanoseconds: 500_000_000)
+                        continue
+                    }
+                    throw error
+                }
+            }
+            return resourcesAvailable
         } catch {
             logDebug("SHARP: ODR download failed: \(error)")
 
-            isDownloadingResources = false
             downloadProgress = 0.0
             statusMessage = L10n.Sharp.downloadFailed
+            progressObservation?.invalidate()
             progressObservation = nil
 
             throw error
@@ -275,6 +337,10 @@ class SHARPService: ObservableObject {
     func releaseResources() {
         modelLoadTask?.cancel()
         modelLoadTask = nil
+        progressObservation?.invalidate()
+        progressObservation = nil
+        isDownloadingResources = false
+        downloadProgress = 0.0
         resourceRequest?.endAccessingResources()
         resourceRequest = nil
         resourcesAvailable = false
@@ -352,22 +418,32 @@ class SHARPService: ObservableObject {
     /// Ensure model is loaded — call from view's onAppear to re-trigger loading
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
-        guard model == nil && !isLoadingModel else { return }
-        modelLoadTask?.cancel()
-        modelLoadTask = Task { [weak self] in
-            guard let self else { return }
-            await loadModel()
-        }
+        guard model == nil else { return }
+        Task { await loadModel() }
     }
 
-    /// Load the SHARP CoreML model
+    /// Loads Core ML once; concurrent callers await the same in-flight task.
+    /// Without this, `generateGaussians` could call `loadModel` while `ensureModelLoaded`'s load
+    /// still runs (`isLoadingModel == true`), hit the old early-return guard, and falsely report
+    /// "SHARP model failed to load" even though loading was merely in progress.
     private func loadModel() async {
-        // Prevent double-loading if another Task already started
-        guard !isLoadingModel && model == nil else { return }
-        defer { modelLoadTask = nil }
+        if model != nil { return }
+        if let inFlight = modelLoadTask {
+            await inFlight.value
+            return
+        }
+        let task = Task { await executeModelLoadBody() }
+        modelLoadTask = task
+        await task.value
+        modelLoadTask = nil
+    }
+
+    private func executeModelLoadBody() async {
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
+        defer { isLoadingModel = false }
+
         statusMessage = L10n.Sharp.gettingReady
         progress = 0.1
 
@@ -381,20 +457,23 @@ class SHARPService: ObservableObject {
 
         if physicalMemory < minimumSupportedRam {
             logDebug("SHARP: Device has <2GB RAM — skipping on-device SHARP to avoid memory termination during inference")
-            isLoadingModel = false
             statusMessage = L10n.Sharp.notEnoughSpace
             return
         }
 
-        // Best-effort ODR download. Debug/Xcode installs still need this now that the model
-        // lives in tagged asset packs instead of the app bundle.
-        if !resourcesAvailable {
+        // When `SHARP_fp32_1536` ships inside the main bundle (no asset tag), skip ODR entirely — Simulator’s
+        // streaming-unzip daemon often fails (4099) even though no download is needed.
+        let sharpBundledURL = Bundle.main.url(forResource: "SHARP_fp32_1536", withExtension: "mlmodelc")
+            ?? Bundle.main.url(forResource: "SHARP_fp32_1536", withExtension: "mlpackage")
+        if let url = sharpBundledURL {
+            logDebug("SHARP: Model embedded in app bundle (\(url.lastPathComponent)) — skipping ODR")
+        } else if !resourcesAvailable {
+            await ensureSharpODRMountedIfPossible()
+        }
+        if sharpBundledURL == nil && !resourcesAvailable {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
-                if Task.isCancelled {
-                    isLoadingModel = false
-                    return
-                }
+                if Task.isCancelled { return }
                 if downloaded {
                     logDebug("SHARP: ODR download succeeded")
                 } else {
@@ -433,10 +512,7 @@ class SHARPService: ObservableObject {
                 break
             }
 
-            if Task.isCancelled {
-                isLoadingModel = false
-                return
-            }
+            if Task.isCancelled { return }
 
             guard let loadedModel else {
                 throw GenerationError.serverError("SHARP model resource is missing")
@@ -451,8 +527,6 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Failed to load model: \(error)")
             statusMessage = L10n.Sharp.couldNotGetReady
         }
-
-        isLoadingModel = false
     }
 
     // MARK: - Main Generation API

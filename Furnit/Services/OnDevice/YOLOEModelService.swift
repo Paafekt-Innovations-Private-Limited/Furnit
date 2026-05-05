@@ -4,9 +4,10 @@ import CoreML
 /// Centralized YOLOE model manager with On-Demand Resources (ODR) support.
 ///
 /// The YOLOE model (~60 MB compiled) is used for furniture detection across all room
-/// views (SharpRoomView, MeshRoomView, GLBRoomView, ModelViewerView). Delivering it
-/// via ODR keeps it out of the initial app download and lets the OS purge it when
-/// disk space is tight.
+/// views (SharpRoomView, MeshRoomView, GLBRoomView, ModelViewerView).
+/// It is embedded in the **main app bundle** by default so loading does not depend on
+/// ODR’s streaming-unzip service (which can fail with error 4099 on Simulator).
+/// ODR remains as a fallback path if a build tags the model pack as on-demand only.
 ///
 /// Usage:
 ///   let service = YOLOEModelService.shared
@@ -98,6 +99,15 @@ class YOLOEModelService: ObservableObject {
         logDebug("YOLOE: Released model + ODR resources (memory)")
     }
 
+    /// Unload Core ML from RAM but keep the ODR request alive (no `endAccessingResources`).
+    /// Use on memory warnings so the next `ensureModelLoaded()` does not pay for a full ODR remount.
+    func releaseLoadedModelOnlyPreservingODR() {
+        model = nil
+        isLoadingModel = false
+        YoloEDetectionParser.trimScratchBuffers()
+        logDebug("YOLOE: Unloaded Core ML model (ODR mount preserved)")
+    }
+
     // MARK: - ODR
 
     /// Check whether the YOLOE resource tag is already on-device
@@ -129,36 +139,80 @@ class YOLOEModelService: ObservableObject {
 
         logDebug("YOLOE: Starting ODR download…")
         isDownloadingResources = true
+        defer { isDownloadingResources = false }
+
         downloadProgress = 0.0
         statusMessage = L10n.YOLOE.downloadingModel
 
-        let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
-        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
-
-        progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
-            Task { @MainActor in
-                self?.downloadProgress = progress.fractionCompleted
-                let percent = Int(progress.fractionCompleted * 100)
-                self?.statusMessage = L10n.YOLOE.downloadingModelPercent(percent)
-            }
-        }
+        let tags = Self.allYoloeOdrTags
 
         do {
-            try await request.beginAccessingResources()
-            logDebug("YOLOE: ODR download complete")
+            // Fresh `NSBundleResourceRequest` per attempt — cannot call `beginAccessingResources` twice on one instance.
+            let maxAttempts = 5
+            for attempt in 1...maxAttempts {
+                progressObservation?.invalidate()
+                progressObservation = nil
 
-            resourcesAvailable = true
-            isDownloadingResources = false
-            downloadProgress = 1.0
-            statusMessage = L10n.YOLOE.downloadComplete
-            self.resourceRequest = request
-            progressObservation = nil
-            return true
+                let request = NSBundleResourceRequest(tags: tags)
+                request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+
+                progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress.fractionCompleted
+                        let percent = Int(progress.fractionCompleted * 100)
+                        self?.statusMessage = L10n.YOLOE.downloadingModelPercent(percent)
+                    }
+                }
+
+                do {
+                    if await request.conditionallyBeginAccessingResources() {
+                        logDebug("YOLOE: ODR resources available (conditionallyBeginAccessingResources)")
+                        resourcesAvailable = true
+                        downloadProgress = 1.0
+                        statusMessage = L10n.YOLOE.downloadComplete
+                        self.resourceRequest = request
+                        progressObservation?.invalidate()
+                        progressObservation = nil
+                        return true
+                    }
+
+                    try await FurnitODRBeginAccessing.beginAccessingResources(request)
+                    logDebug("YOLOE: ODR download complete")
+                    resourcesAvailable = true
+                    downloadProgress = 1.0
+                    statusMessage = L10n.YOLOE.downloadComplete
+                    self.resourceRequest = request
+                    progressObservation?.invalidate()
+                    progressObservation = nil
+                    return true
+                } catch {
+                    progressObservation?.invalidate()
+                    progressObservation = nil
+
+                    let ns = error as NSError
+                    let retryableODRFailure = (ns.domain == NSCocoaErrorDomain && ns.code == 4099)
+                        || (ns.domain == NSCocoaErrorDomain && ns.code == -1)
+                        || error.localizedDescription.localizedCaseInsensitiveContains("streaming unzip")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("connection invalidated")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("more than once")
+                        || error.localizedDescription.localizedCaseInsensitiveContains("wrong time")
+                    if retryableODRFailure, attempt < maxAttempts {
+                        logDebug(
+                            "YOLOE: ODR attempt \(attempt)/\(maxAttempts) failed — \(error) domain=\(ns.domain) code=\(ns.code) — retrying",
+                        )
+                        try await Task.sleep(nanoseconds: 500_000_000)
+                        continue
+                    }
+                    throw error
+                }
+            }
+            // Fallback for the compiler: the loop should always `return true` or `throw`.
+            return resourcesAvailable
         } catch {
             logDebug("YOLOE: ODR download failed: \(error)")
-            isDownloadingResources = false
             downloadProgress = 0.0
             statusMessage = L10n.YOLOE.downloadFailed
+            progressObservation?.invalidate()
             progressObservation = nil
             throw error
         }
@@ -166,7 +220,29 @@ class YOLOEModelService: ObservableObject {
 
     // MARK: - Model Loading
 
-    /// Internal load routine — handles ODR download then CoreML compilation.
+    private static let yoloeBundledCandidates: [(name: String, ext: String)] = [
+        ("yoloe-11l-seg-pf", "mlmodelc"),
+        ("yoloe-11l-seg-pf", "mlpackage"),
+    ]
+
+    /// Loads YOLOE from the main bundle if present (`mlmodelc` first, then `mlpackage`).
+    /// - Returns: `true` if ``model`` was assigned.
+    private func loadBundledYoloEIfAvailable(configuration config: MLModelConfiguration) -> Bool {
+        for (name, ext) in Self.yoloeBundledCandidates {
+            guard let url = Bundle.main.url(forResource: name, withExtension: ext) else { continue }
+            do {
+                let loadedModel = try MLModel(contentsOf: url, configuration: config)
+                model = loadedModel
+                logDebug("YOLOE: Loaded '\(name).\(ext)' successfully")
+                return true
+            } catch {
+                logDebug("YOLOE: Failed to load \(name).\(ext): \(error)")
+            }
+        }
+        return false
+    }
+
+    /// Internal load routine — prefers the app bundle (reliable); ODR only when the model is hosted as tagged resources.
     private func loadModel() async {
         guard !isLoadingModel && model == nil else { return }
         logDebug("YOLOE: Loading CoreML model…")
@@ -174,8 +250,18 @@ class YOLOEModelService: ObservableObject {
         isLoadingModel = true
         statusMessage = L10n.YOLOE.preparingModel
 
-        // Best-effort ODR download. Debug/Xcode installs still need this now that the model
-        // lives in tagged asset packs instead of the app bundle.
+        let config = MLModelConfiguration()
+        config.computeUnits = .cpuOnly
+        logDebug("YOLOE: Core ML computeUnits=cpuOnly (stable)")
+
+        // 1) Main bundle (shipping default after removing ODR-only tags — avoids flaky streaming unzip).
+        if loadBundledYoloEIfAvailable(configuration: config) {
+            statusMessage = L10n.YOLOE.ready
+            isLoadingModel = false
+            return
+        }
+
+        // 2) On-demand resources when the model is still delivered only via asset tags.
         if !resourcesAvailable {
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
@@ -186,41 +272,20 @@ class YOLOEModelService: ObservableObject {
                 }
             } catch {
                 let ns = error as NSError
-                if ns.domain == "NSCocoaErrorDomain", ns.code == 4994 {
+                if ns.domain == NSCocoaErrorDomain, ns.code == 4994 {
                     logDebug("YOLOE: ODR not configured for this bundle, using app bundle")
                 } else {
-                    logDebug("YOLOE: ODR download failed (\(error)) — using app bundle")
+                    logDebug("YOLOE: ODR download failed (\(error)) — will try bundle load anyway")
                 }
             }
         }
 
         statusMessage = L10n.YOLOE.loadingModel
 
-        // Prefer the single shipped YOLOE package: `yoloe-11l-seg-pf.mlpackage`.
-        let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
-            ("yoloe-11l-seg-pf", "mlpackage"),
-        ]
-
-        let config = MLModelConfiguration()
-        // Keep YOLO-E on CPU only: the shipped Core ML export has previously SIGABRTed during
-        // prediction on accelerated paths, and that crash is outside Swift error handling.
-        config.computeUnits = .cpuOnly
-        logDebug("YOLOE: Core ML computeUnits=cpuOnly (stable)")
-
-        for (name, ext) in candidateNames {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                do {
-                    let loadedModel = try MLModel(contentsOf: url, configuration: config)
-                    self.model = loadedModel
-                    logDebug("YOLOE: Loaded '\(name).\(ext)' successfully")
-                    statusMessage = L10n.YOLOE.ready
-                    isLoadingModel = false
-                    return
-                } catch {
-                    logDebug("YOLOE: Failed to load \(name).\(ext): \(error)")
-                }
-            }
+        if loadBundledYoloEIfAvailable(configuration: config) {
+            statusMessage = L10n.YOLOE.ready
+            isLoadingModel = false
+            return
         }
 
         logDebug("YOLOE: No model variant could be loaded")

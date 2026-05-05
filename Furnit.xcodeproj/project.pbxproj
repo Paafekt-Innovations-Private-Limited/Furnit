@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
+		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
 		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
-		61WV00022F01000000000002 /* WebViewVendor in Resources */ = {isa = PBXBuildFile; fileRef = 61WV00032F01000000000003 /* WebViewVendor */; };
-		71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */; settings = {ASSET_TAGS = (yoloe_11l_seg_pf, ); }; };
+		61WV00022F01000000000002 /* Furnit/Resources/WebViewVendor in Resources */ = {isa = PBXBuildFile; fileRef = 61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */; };
+		71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,7 +30,7 @@
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp32_1536.mlpackage; sourceTree = "<group>"; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		61WV00032F01000000000003 /* WebViewVendor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Furnit/Resources/WebViewVendor; sourceTree = SOURCE_ROOT; };
+		61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Furnit/Resources/WebViewVendor; sourceTree = SOURCE_ROOT; };
 		71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -90,7 +90,7 @@
 				045F5BDA2E6D302900C5585D /* Products */,
 				71B8315C3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage */,
 				613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */,
-				61WV00032F01000000000003 /* WebViewVendor */,
+				61WV00032F01000000000003 /* Furnit/Resources/WebViewVendor */,
 			);
 			sourceTree = "<group>";
 		};
@@ -160,10 +160,6 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				KnownAssetTags = (
-					SHARPModel,
-					yoloe_11l_seg_pf,
-				);
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
@@ -220,7 +216,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Resources */,
-				61WV00022F01000000000002 /* WebViewVendor in Resources */,
+				61WV00022F01000000000002 /* Furnit/Resources/WebViewVendor in Resources */,
 				71B8315D3F28D19801FE866A /* yoloe-11l-seg-pf.mlpackage in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

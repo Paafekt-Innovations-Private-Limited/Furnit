@@ -142,7 +142,132 @@ struct MeshRoomView: View {
         return false
     }
 
-    var body: some View {
+    // MARK: - Main layout (split for Swift compiler type-check)
+
+    @ViewBuilder
+    private var meshRoomLoadingOverlay: some View {
+        if isLoading {
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text(NSLocalizedString("photoRoom.loading", comment: ""))
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var meshRoomSavingOverlay: some View {
+        if isSavingRoom {
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text(L10n.RoomViewer.exporting3DModelEllipsis)
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var meshRoomErrorOverlay: some View {
+        if let error = error {
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundColor(.orange)
+                Text(error)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var meshRoomCameraChromeWhenReady: some View {
+        if !isLoading {
+            cameraButtonsOverlay
+            topTrailingPinchTapAndSizingHintsOverlay
+        }
+    }
+
+    @ViewBuilder
+    private var meshFurnitureFitCameraOverlay: some View {
+        if showingFurnitureFit {
+            FurnitureFitUIView(
+                capturedImage: .constant(nil),
+                roomImage: nil,
+                mlModel: yoloeService.model,
+                processInterval: 0.07,
+                active: true,
+                lockedOrientation: photoOrientation,
+                roomWidthMeters: calibratedRoomWidth,
+                roomHeightMeters: calibratedRoomHeight,
+                roomDepthMeters: calibratedRoomDepth,
+                onFurnitureSizeEstimated: { estimate in
+                    detectedFurnitureWidth = estimate.widthMeters > 0.05 ? estimate.widthMeters : nil
+                    if let arHeight = estimate.arHeightMeters,
+                       arHeight.isFinite,
+                       arHeight > 0.05 {
+                        detectedFurnitureHeightAR = arHeight
+                        furnitureProportionalHeightMeters = nil
+                    } else {
+                        detectedFurnitureHeightAR = nil
+                        furnitureProportionalHeightMeters = estimate.heightMeters > 0.05 ? estimate.heightMeters : nil
+                    }
+                },
+                suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                    segmentedFurnitureMeanSRGB = meanSRGB
+                },
+                arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                manualFurnitureHeightOverrideMeters: realFurnitureHeight,
+                segmentationMode: furnitureFitSegmentationMode,
+                onSelectedClassLabelsChanged: { labels in
+                    selectedFurnitureFitLabels = labels
+                },
+                showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
+            )
+            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+            .zIndex(100)
+        }
+    }
+
+    @ViewBuilder
+    private var meshRoomCalibrationGateOverlay: some View {
+        if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+            calibrationOverlayView
+                .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
+                .onDisappear { calibrationBaselineDetectedHeight = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var meshRoomOrientationControls: some View {
+        if photoOrientation == .landscape {
+            landscapeControls
+        } else {
+            portraitControls
+        }
+    }
+
+    private var meshRoomMainZStack: some View {
         ZStack {
             // WebGL mesh viewer - OrbitControls in Three.js handles touch directly
             MeshWebGLView(
@@ -166,238 +291,187 @@ struct MeshRoomView: View {
             .ignoresSafeArea()
             .allowsHitTesting(!isLoading)
 
-            // Loading overlay
-            if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.white)
+            meshRoomLoadingOverlay
+            meshRoomSavingOverlay
+            meshRoomErrorOverlay
+            meshRoomCameraChromeWhenReady
+            meshFurnitureFitCameraOverlay
 
-                    Text(NSLocalizedString("photoRoom.loading", comment: ""))
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            // Saving overlay
-            if isSavingRoom {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.white)
-
-                    Text(L10n.RoomViewer.exporting3DModelEllipsis)
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            // Error overlay
-            if let error = error {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text(error)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            if !isLoading {
-                cameraButtonsOverlay
-                topTrailingPinchTapAndSizingHintsOverlay
-            }
-
-            // FurnitureFit overlay (when active) - full screen camera for furniture detection
-            if showingFurnitureFit {
-                FurnitureFitUIView(
-                    capturedImage: .constant(nil),
-                    roomImage: nil,
-                    mlModel: yoloeService.model,
-                    processInterval: 0.07,
-                    active: true,
-                    lockedOrientation: photoOrientation,
-                    roomWidthMeters: calibratedRoomWidth,
-                    roomHeightMeters: calibratedRoomHeight,
-                    roomDepthMeters: calibratedRoomDepth,
-                    onFurnitureSizeEstimated: { estimate in
-                        detectedFurnitureWidth = estimate.widthMeters > 0.05 ? estimate.widthMeters : nil
-                        if let arHeight = estimate.arHeightMeters,
-                           arHeight.isFinite,
-                           arHeight > 0.05 {
-                            detectedFurnitureHeightAR = arHeight
-                            furnitureProportionalHeightMeters = nil
-                        } else {
-                            detectedFurnitureHeightAR = nil
-                            furnitureProportionalHeightMeters = estimate.heightMeters > 0.05 ? estimate.heightMeters : nil
-                        }
-                    },
-                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
-                    onSegmentationMaskMeanColorSRGB: { meanSRGB in
-                        segmentedFurnitureMeanSRGB = meanSRGB
-                    },
-                    arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
-                    manualFurnitureHeightOverrideMeters: realFurnitureHeight,
-                    segmentationMode: furnitureFitSegmentationMode,
-                    onSelectedClassLabelsChanged: { labels in
-                        selectedFurnitureFitLabels = labels
-                    },
-                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
-                    showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
-                )
-                .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
-                .zIndex(100)
-            }
-
-            // Room dimensions chip (ruler) — same placement idea as ``SharpRoomView``.
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
             fullVideoToolbarHelperOverlay
-            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
-                calibrationOverlayView
-                    .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
-                    .onDisappear { calibrationBaselineDetectedHeight = nil }
-            }
+            meshRoomCalibrationGateOverlay
+            meshRoomOrientationControls
+        }
+    }
 
-            // Controls based on orientation
-            if photoOrientation == .landscape {
-                landscapeControls
-            } else {
-                portraitControls
-            }
-        }
-        .background(Color.gray)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(savedRoomModel == nil)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                if savedRoomModel == nil {
-                    Button {
-                        if saveWasSuccessful {
-                            dismiss()
-                        } else {
-                            showDiscardUnsavedAlert = true
+    private var meshRoomWithNavigationChrome: some View {
+        meshRoomMainZStack
+            .background(Color.gray)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(savedRoomModel == nil)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if savedRoomModel == nil {
+                        Button {
+                            if saveWasSuccessful {
+                                dismiss()
+                            } else {
+                                showDiscardUnsavedAlert = true
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
                         }
-                    } label: {
-                        Image(systemName: "chevron.left")
+                        .accessibilityLabel(L10n.Common.back)
                     }
-                    .accessibilityLabel(L10n.Common.back)
+                }
+                ToolbarItem(placement: .principal) {
+                    navigationBarRoomMeasurementPrincipal
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    navigationBarTrailingControls
                 }
             }
-            ToolbarItem(placement: .principal) {
-                navigationBarRoomMeasurementPrincipal
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                navigationBarTrailingControls
-            }
+    }
+
+    private func meshRoomPerformOnAppear() {
+        // Preload YOLOE when the room opens so the first brain tap can start segmentation without waiting.
+        yoloeService.ensureModelLoaded()
+        if photoOrientation == .landscape {
+            OrientationLockManager.shared.lockToLandscape()
+        } else {
+            OrientationLockManager.shared.lockToPortrait()
         }
-        .onAppear {
-            // Preload YOLOE when the room opens so the first brain tap can start segmentation without waiting.
-            yoloeService.ensureModelLoaded()
-            if photoOrientation == .landscape {
-                OrientationLockManager.shared.lockToLandscape()
-            } else {
-                OrientationLockManager.shared.lockToPortrait()
-            }
-        }
-        .onChange(of: isLoading) { _, loading in
-            if loading {
-                cancelPinchHintTasks()
-                cancelBrainHintTasks()
-                cancelSnapshotHintTasks()
-                cancelARSizingHintTasks()
-                cancelRoomDimensionsHintTasks()
-            } else {
-                restartPinchGestureHint()
-                restartBrainGestureHint()
-                restartSnapshotGestureHint()
-            }
-        }
-        .onChange(of: showingFurnitureFit) { _, isOn in
-            if isOn {
-                yoloeService.ensureModelLoaded()
-                if canOfferBrainArAssist {
-                    showARSizingHint(requiresBrain: false)
-                }
-                updateRoomPlacementIntelligence()
-            } else {
-                dismissFullVideoFurnitureTapHint()
-                cancelARSizingHintTasks()
-                arSizingHintExplanationVisible = false
-                brainArAssistedSizingEnabled = false
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-                selectedFurnitureFitLabels = []
-                detectedFurnitureWidth = nil
-                detectedFurnitureHeightAR = nil
-                furnitureProportionalHeightMeters = nil
-                latestFitCheckResult = nil
-                latestAestheticScore = nil
-                segmentedFurnitureMeanSRGB = nil
-                isPlacementIntelligenceExpanded = false
-                showFurnitureDimensionsInput = false
-            }
-        }
-        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: roomCalibrationScaleFactor) { _, _ in updateRoomPlacementIntelligence() }
-        .onDisappear {
+    }
+
+    private func meshRoomPerformOnDisappear() {
+        cancelPinchHintTasks()
+        cancelBrainHintTasks()
+        cancelSnapshotHintTasks()
+        cancelARSizingHintTasks()
+        cancelRoomDimensionsHintTasks()
+        dismissFullVideoFurnitureTapHint()
+        brainArAssistedSizingEnabled = false
+        yoloeService.releaseResources()
+        OrientationLockManager.shared.unlock()
+    }
+
+    private func meshRoomHandleIsLoadingChange(loading: Bool) {
+        if loading {
             cancelPinchHintTasks()
             cancelBrainHintTasks()
             cancelSnapshotHintTasks()
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
+        } else {
+            restartPinchGestureHint()
+            restartBrainGestureHint()
+            restartSnapshotGestureHint()
+        }
+    }
+
+    private func meshRoomHandleShowingFurnitureFitChange(isOn: Bool) {
+        if isOn {
+            yoloeService.ensureModelLoaded()
+            if canOfferBrainArAssist {
+                showARSizingHint(requiresBrain: false)
+            }
+            updateRoomPlacementIntelligence()
+        } else {
             dismissFullVideoFurnitureTapHint()
+            cancelARSizingHintTasks()
+            arSizingHintExplanationVisible = false
             brainArAssistedSizingEnabled = false
-            yoloeService.releaseResources()
-            OrientationLockManager.shared.unlock()
+            showFullVideoWithIdentifications = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            detectedFurnitureWidth = nil
+            detectedFurnitureHeightAR = nil
+            furnitureProportionalHeightMeters = nil
+            latestFitCheckResult = nil
+            latestAestheticScore = nil
+            segmentedFurnitureMeanSRGB = nil
+            isPlacementIntelligenceExpanded = false
+            showFurnitureDimensionsInput = false
         }
-        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-            TextField("", text: $roomName, prompt: Text(L10n.RoomViewer.roomName))
-                .autocorrectionDisabled(true)
-            Button(L10n.Common.cancel, role: .cancel) {
-                roomName = ""
+    }
+
+    private var meshRoomAfterAppearAndLoading: some View {
+        meshRoomWithNavigationChrome
+            .onAppear {
+                meshRoomPerformOnAppear()
             }
-            Button(L10n.Common.save) {
-                requestGLBExport()
+            .onChange(of: isLoading) { _, loading in
+                meshRoomHandleIsLoadingChange(loading: loading)
             }
-            .disabled(roomName.isEmpty)
-        }
-        .alert(L10n.RoomViewer.roomSavedAlertTitle, isPresented: $showSaveAlert) {
-            Button(L10n.Common.ok, role: .cancel) {}
-        } message: {
-            Text(saveAlertMessage)
-        }
-        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
-            Button(L10n.RoomPreview.stay, role: .cancel) {}
-            Button(L10n.RoomPreview.leave, role: .destructive) {
-                dismiss()
+            .onChange(of: showingFurnitureFit) { _, isOn in
+                meshRoomHandleShowingFurnitureFitChange(isOn: isOn)
             }
-        } message: {
-            Text(L10n.RoomPreview.unsavedMessage)
-        }
-        .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) {
-            Button(L10n.Common.ok, role: .cancel) {}
-        } message: {
-            Text(calibrationRejectMessage)
-        }
-        .defersSystemGestures(on: [.top, .trailing])
-        .disableBackSwipe()
+    }
+
+    private var meshRoomAfterSelectionObserver: some View {
+        meshRoomAfterAppearAndLoading
+            .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
+                restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
+            }
+    }
+
+    private var meshRoomAfterPlacementObservers: some View {
+        meshRoomAfterSelectionObserver
+            .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: furnitureProportionalHeightMeters) { _, _ in updateRoomPlacementIntelligence() }
+    }
+
+    private var meshRoomAfterCalibrationObservers: some View {
+        meshRoomAfterPlacementObservers
+            .onChange(of: realFurnitureHeight) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: roomCalibrationScaleFactor) { _, _ in updateRoomPlacementIntelligence() }
+            .onDisappear {
+                meshRoomPerformOnDisappear()
+            }
+    }
+
+    private var meshRoomWithSystemAlerts: some View {
+        meshRoomAfterCalibrationObservers
+            .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+                TextField("", text: $roomName, prompt: Text(L10n.RoomViewer.roomName))
+                    .autocorrectionDisabled(true)
+                Button(L10n.Common.cancel, role: .cancel) {
+                    roomName = ""
+                }
+                Button(L10n.Common.save) {
+                    requestGLBExport()
+                }
+                .disabled(roomName.isEmpty)
+            }
+            .alert(L10n.RoomViewer.roomSavedAlertTitle, isPresented: $showSaveAlert) {
+                Button(L10n.Common.ok, role: .cancel) {}
+            } message: {
+                Text(saveAlertMessage)
+            }
+            .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+                Button(L10n.RoomPreview.stay, role: .cancel) {}
+                Button(L10n.RoomPreview.leave, role: .destructive) {
+                    dismiss()
+                }
+            } message: {
+                Text(L10n.RoomPreview.unsavedMessage)
+            }
+            .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) {
+                Button(L10n.Common.ok, role: .cancel) {}
+            } message: {
+                Text(calibrationRejectMessage)
+            }
+    }
+
+    var body: some View {
+        meshRoomWithSystemAlerts
+            .defersSystemGestures(on: [.top, .trailing])
+            .disableBackSwipe()
     }
 
     // MARK: - Ruler + hint tasks (matches SharpRoomView)
@@ -1085,6 +1159,18 @@ struct MeshRoomView: View {
             }
             .disabled(isLoading)
         }
+    }
+
+    /// After pinned segment targets leave the scene, labels become empty; reopen full-video tap-to-pick flow.
+    private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
+        guard showingFurnitureFit else { return }
+        guard furnitureFitSegmentationMode == .segmentSelected else { return }
+        guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
+        dismissFullVideoFurnitureTapHint()
+        showFullVideoWithIdentifications = true
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func activateSelectedFurnitureSegmentation() {

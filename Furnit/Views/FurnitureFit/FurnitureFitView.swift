@@ -16,7 +16,6 @@ import simd
 
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, ARSessionDelegate, UIGestureRecognizerDelegate {
-    private static let fullVideoWithIdentificationsKey = "furnitureFit.showFullVideoWithIdentifications"
     private static let minimumARFurnitureHeightMeters: Float = 0.25
     private static let minimumARFurnitureWidthMeters: Float = 0.25
 
@@ -278,13 +277,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let minCombinedOverlayScale: CGFloat = 0.08
     private let maxCombinedOverlayScale: CGFloat = 3.0
     private let defaultStaticOverlayScale: CGFloat = 1.28
-    var showFullVideoWithIdentifications: Bool = {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey) != nil {
-            return defaults.bool(forKey: FurnitureFitContainerView.fullVideoWithIdentificationsKey)
-        }
-        return false
-    }() {
+    /// Default off; use the room toolbar full-video button to enable during a session.
+    var showFullVideoWithIdentifications: Bool = false {
         didSet {
             guard oldValue != showFullVideoWithIdentifications else { return }
             updateVideoIdentificationPresentation()

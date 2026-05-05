@@ -106,250 +106,312 @@ struct ModelViewerView: View {
         )
     }
 
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Main content ZStack
-                ZStack {
-                    RealityKitView(
-                        model: model,
-                        cameraMovementManager: cameraMovementManager,
-                        arObjectPlacementManager: arObjectPlacementManager,
-                        isARActive: isARActive,
-                        shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
-                        capturedSnapshot: $roomSnapshot,
-                        shouldResetCamera: $shouldResetCamera  // ✅ Camera reset trigger
+    @ViewBuilder
+    private var furnitureFitCameraOverlay: some View {
+        if showingFurnitureFit {
+            FurnitureFitUIView(
+                capturedImage: $capturedImage,
+                roomImage: nil,
+                mlModel: yoloeService.model,
+                processInterval: 0.07,
+                active: true,
+                lockedOrientation: model.photoOrientation,
+                roomWidthMeters: effectiveRoomDimensions.width,
+                roomHeightMeters: effectiveRoomDimensions.height,
+                roomDepthMeters: effectiveRoomDimensions.depth,
+                onFurnitureSizeEstimated: { estimate in
+                    detectedFurnitureWidth = estimate.widthMeters
+                    furnitureFitEstimatedHeightM = estimate.heightMeters
+                    detectedFurnitureHeightAR = estimate.arHeightMeters
+                },
+                suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                    segmentedFurnitureMeanSRGB = meanSRGB
+                },
+                arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
+                segmentationMode: furnitureFitSegmentationMode,
+                onSelectedClassLabelsChanged: { labels in
+                    selectedFurnitureFitLabels = labels
+                },
+                showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .zIndex(9000)
+        }
+    }
+
+    @ViewBuilder
+    private var furnitureHeightEstimateOverlay: some View {
+        if showingFurnitureFit, let fh = furnitureFitEstimatedHeightM {
+            VStack {
+                Spacer()
+                Text(String(format: "Furniture height ~ %.2f m", fh))
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.55))
+                    .cornerRadius(8)
+                    .padding(.bottom, 96)
+            }
+            .zIndex(9001)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var modelViewerRealityAndFurnitureUnderlay: some View {
+        ZStack {
+            RealityKitView(
+                model: model,
+                cameraMovementManager: cameraMovementManager,
+                arObjectPlacementManager: arObjectPlacementManager,
+                isARActive: isARActive,
+                shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
+                capturedSnapshot: $roomSnapshot,
+                shouldResetCamera: $shouldResetCamera  // ✅ Camera reset trigger
+            )
+            .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
+            .ignoresSafeArea(.all)
+            furnitureFitCameraOverlay
+            furnitureHeightEstimateOverlay
+            Color.clear
+        }
+    }
+
+    private var fullVideoFurnitureTapBubbleOverlay: some View {
+        Group {
+            if fullVideoFurnitureTapHintVisible {
+                VStack {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 260)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+                        .padding(.top, 12)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+                .opacity(isCapturingSnapshot ? 0 : 1)
+                .zIndex(9002)
+            }
+        }
+    }
+
+    private var modelViewerTopChrome: some View {
+        VStack {
+            HStack {
+                backButton
+                    .allowsHitTesting(true)
+                Spacer()
+                topToolbarContent
+            }
+            .padding()
+            Spacer()
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
+        .allowsHitTesting(true)
+    }
+
+    private var segmentModeToggleChrome: some View {
+        Group {
+            if showingFurnitureFit && showFullVideoWithIdentifications {
+                Button(action: {
+                    if furnitureFitSegmentationMode == .segmentSelected {
+                        furnitureFitSegmentationMode = .identifyOnly
+                        furnitureFitShowIdentifyLivePreview = true
+                    } else {
+                        guard canSegmentSelectedFurniture else { return }
+                        furnitureFitSegmentationMode = .segmentSelected
+                        dismissFullVideoFurnitureTapHint()
+                    }
+                }) {
+                    Text(
+                        furnitureFitSegmentationMode == .segmentSelected
+                            ? L10n.RoomViewer.stopSegmentationAction
+                            : L10n.RoomViewer.segmentFurnitureAction
                     )
-                    .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
-                    .ignoresSafeArea(.all)
-                    // FurnitureFit overlay (YOLOE Core ML)
-                    if showingFurnitureFit {
-                        FurnitureFitUIView(
-                            capturedImage: $capturedImage,
-                            roomImage: nil,
-                            mlModel: yoloeService.model,
-                            processInterval: 0.07,
-                            active: true,
-                            lockedOrientation: model.photoOrientation,
-                            roomWidthMeters: effectiveRoomDimensions.width,
-                            roomHeightMeters: effectiveRoomDimensions.height,
-                            roomDepthMeters: effectiveRoomDimensions.depth,
-                            onFurnitureSizeEstimated: { estimate in
-                                detectedFurnitureWidth = estimate.widthMeters
-                                furnitureFitEstimatedHeightM = estimate.heightMeters
-                                detectedFurnitureHeightAR = estimate.arHeightMeters
-                            },
-                            suppressStartupProgress: furnitureFitInitialSegmentationDone,
-                            onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
-                            onSegmentationMaskMeanColorSRGB: { meanSRGB in
-                                segmentedFurnitureMeanSRGB = meanSRGB
-                            },
-                            arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
-                            segmentationMode: furnitureFitSegmentationMode,
-                            onSelectedClassLabelsChanged: { labels in
-                                selectedFurnitureFitLabels = labels
-                            },
-                            showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
-                            showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .frame(height: 44)
+                        .background(
+                            Capsule().fill(
+                                canSegmentSelectedFurniture
+                                    ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                    : Color.black.opacity(0.45)
+                            )
                         )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .zIndex(9000)
-                    }
-
-                    if showingFurnitureFit, let fh = furnitureFitEstimatedHeightM {
-                        VStack {
-                            Spacer()
-                            Text(String(format: "Furniture height ~ %.2f m", fh))
-                                .font(.caption.bold())
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.black.opacity(0.55))
-                                .cornerRadius(8)
-                                .padding(.bottom, 96)
-                        }
-                        .zIndex(9001)
-                        .allowsHitTesting(false)
-                    }
-
-                    Color.clear
+                        .shadow(radius: 4)
                 }
-
-                roomDimensionsHintOverlay
-                fullVideoToolbarHelperOverlay
-                topTrailingPinchAndSizingHintsOverlay
-
-                if fullVideoFurnitureTapHintVisible {
-                    VStack {
-                        Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 260)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                            .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-                            .padding(.top, 12)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)
-                    .opacity(isCapturingSnapshot ? 0 : 1)
-                    .zIndex(9002)
-                }
-                
-                // Top controls
-                VStack {
-                    HStack {
-                        backButton
-                            .allowsHitTesting(true)
-                        Spacer()
-                        topToolbarContent
-                    }
-                    .padding()
-                    Spacer()
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
-                .allowsHitTesting(true)
-
-                // TOPMOST BRAIN ICON - ALWAYS ON TOP
-                VStack {
-                    Spacer()
-                    HStack {
-                        VStack(spacing: 16) {
-                            HStack(alignment: .bottom, spacing: 8) {
-                                brainButtonWithHintAbove
-                            }
-
-                            if showingFurnitureFit && showFullVideoWithIdentifications {
-                                Button(action: {
-                                    if furnitureFitSegmentationMode == .segmentSelected {
-                                        furnitureFitSegmentationMode = .identifyOnly
-                                        furnitureFitShowIdentifyLivePreview = true
-                                    } else {
-                                        guard canSegmentSelectedFurniture else { return }
-                                        furnitureFitSegmentationMode = .segmentSelected
-                                        dismissFullVideoFurnitureTapHint()
-                                    }
-                                }) {
-                                    Text(
-                                        furnitureFitSegmentationMode == .segmentSelected
-                                            ? L10n.RoomViewer.stopSegmentationAction
-                                            : L10n.RoomViewer.segmentFurnitureAction
-                                    )
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 16)
-                                        .frame(height: 44)
-                                        .background(
-                                            Capsule().fill(
-                                                canSegmentSelectedFurniture
-                                                    ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
-                                                    : Color.black.opacity(0.45)
-                                            )
-                                        )
-                                        .shadow(radius: 4)
-                                }
-                                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
-                                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
-                            }
-                        }
-                        .padding(.leading, 16)
-                        .padding(.bottom, 20)
-                        Spacer()
-                        roomIntelligencePlacementCardResetOnExit
-                            .padding(.bottom, 26)
-                        Spacer()
-                    }
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99998) // SECOND HIGHEST Z-INDEX
-                .allowsHitTesting(true)
-                
-                // Camera controls handled by RealityKitGestureHandlers in RealityKitView
-
-                // Screenshot button - ALWAYS VISIBLE (bottom-right, matching SharpRoomView)
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        snapshotButtonWithHintAbove
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
-                    }
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99996)
+                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
+                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
             }
         }
-        .navigationBarHidden(true)
-        .statusBarHidden(true)
-        .preferredColorScheme(.dark)
-        .onChange(of: showingCameraPreview) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingFurnitureFit) { _, isOn in
-            manageARSessionForOverlays()
-            if isOn {
-                yoloeService.ensureModelLoaded()
-                restartBrainGestureHint()
-                restartSnapshotGestureHint()
-                restartPinchGestureHint()
-                updateRoomPlacementIntelligence()
-            } else {
-                dismissFullVideoFurnitureTapHint()
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-                selectedFurnitureFitLabels = []
-                roomSnapshot = nil
-                capturedImage = nil
-                detectedFurnitureWidth = nil
-                furnitureFitEstimatedHeightM = nil
-                detectedFurnitureHeightAR = nil
-                latestFitCheckResult = nil
-                latestAestheticScore = nil
-                segmentedFurnitureMeanSRGB = nil
-                isPlacementIntelligenceExpanded = false
-                brainArAssistedSizingEnabled = false
-                cancelARSizingHintTasks()
-                arSizingHintExplanationVisible = false
+    }
+
+    private var modelViewerBrainAndPlacementChrome: some View {
+        VStack {
+            Spacer()
+            HStack {
+                VStack(spacing: 16) {
+                    HStack(alignment: .bottom, spacing: 8) {
+                        brainButtonWithHintAbove
+                    }
+                    segmentModeToggleChrome
+                }
+                .padding(.leading, 16)
+                .padding(.bottom, 20)
+                Spacer()
+                roomIntelligencePlacementCardResetOnExit
+                    .padding(.bottom, 26)
+                Spacer()
             }
         }
-        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
-        .onChange(of: furnitureFitEstimatedHeightM) { _, _ in updateRoomPlacementIntelligence() }
-        .onAppear {
-            isARActive = true
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(99998) // SECOND HIGHEST Z-INDEX
+        .allowsHitTesting(true)
+    }
+
+    private var modelViewerSnapshotChrome: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                snapshotButtonWithHintAbove
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(99996)
+    }
+
+    private var modelViewerInteractiveStack: some View {
+        ZStack {
+            modelViewerRealityAndFurnitureUnderlay
+            roomDimensionsHintOverlay
+            fullVideoToolbarHelperOverlay
+            topTrailingPinchAndSizingHintsOverlay
+            fullVideoFurnitureTapBubbleOverlay
+            modelViewerTopChrome
+            modelViewerBrainAndPlacementChrome
+            modelViewerSnapshotChrome
+        }
+    }
+
+    private var modelViewerInGeometry: some View {
+        GeometryReader { (_: GeometryProxy) in
+            modelViewerInteractiveStack
+        }
+    }
+
+    private var modelViewerNavigationChrome: some View {
+        modelViewerInGeometry
+            .navigationBarHidden(true)
+            .statusBarHidden(true)
+            .preferredColorScheme(.dark)
+    }
+
+    private var modelViewerWithSessionObservers: some View {
+        modelViewerNavigationChrome
+            .onChange(of: showingCameraPreview) { _, _ in manageARSessionForOverlays() }
+            .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
+            .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
+            .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
+    }
+
+    private var modelViewerWithFurnitureObservers: some View {
+        modelViewerWithSessionObservers
+            .onChange(of: showingFurnitureFit) { _, isOn in
+                modelViewerHandleShowingFurnitureFitChanged(isOn: isOn)
+            }
+            .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
+                restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
+            }
+    }
+
+    private func modelViewerHandleShowingFurnitureFitChanged(isOn: Bool) {
+        manageARSessionForOverlays()
+        if isOn {
             yoloeService.ensureModelLoaded()
-            // ✅ Reset camera to optimal position every time view appears
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                shouldResetCamera = true
-            }
-            // Lock orientation based on photo orientation
-            if model.photoOrientation == .landscape {
-                OrientationLockManager.shared.lockToLandscape()
-            } else {
-                OrientationLockManager.shared.lockToPortrait()
-            }
             restartBrainGestureHint()
             restartSnapshotGestureHint()
             restartPinchGestureHint()
-        }
-        .onDisappear {
+            updateRoomPlacementIntelligence()
+        } else {
             dismissFullVideoFurnitureTapHint()
-            cancelPinchHintTasks()
-            cancelBrainHintTasks()
-            cancelSnapshotHintTasks()
-            cancelRoomDimensionsHintTasks()
+            showFullVideoWithIdentifications = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            roomSnapshot = nil
+            capturedImage = nil
+            detectedFurnitureWidth = nil
+            furnitureFitEstimatedHeightM = nil
+            detectedFurnitureHeightAR = nil
+            latestFitCheckResult = nil
+            latestAestheticScore = nil
+            segmentedFurnitureMeanSRGB = nil
+            isPlacementIntelligenceExpanded = false
+            brainArAssistedSizingEnabled = false
             cancelARSizingHintTasks()
-            OrientationLockManager.shared.unlock()
+            arSizingHintExplanationVisible = false
         }
+    }
+
+    private var modelViewerRoot: some View {
+        modelViewerWithFurnitureObservers
+            .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+            .onChange(of: furnitureFitEstimatedHeightM) { _, _ in updateRoomPlacementIntelligence() }
+    }
+
+    var body: some View {
+        modelViewerRoot
+            .onAppear {
+                modelViewerPerformOnAppear()
+            }
+            .onDisappear {
+                modelViewerPerformOnDisappear()
+            }
+    }
+
+    private func modelViewerPerformOnAppear() {
+        isARActive = true
+        yoloeService.ensureModelLoaded()
+        // Deferred reset so RealityKit has a frame to settle before reframing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            shouldResetCamera = true
+        }
+        if model.photoOrientation == .landscape {
+            OrientationLockManager.shared.lockToLandscape()
+        } else {
+            OrientationLockManager.shared.lockToPortrait()
+        }
+        restartBrainGestureHint()
+        restartSnapshotGestureHint()
+        restartPinchGestureHint()
+    }
+
+    private func modelViewerPerformOnDisappear() {
+        dismissFullVideoFurnitureTapHint()
+        cancelPinchHintTasks()
+        cancelBrainHintTasks()
+        cancelSnapshotHintTasks()
+        cancelRoomDimensionsHintTasks()
+        cancelARSizingHintTasks()
+        OrientationLockManager.shared.unlock()
     }
 
     private func dismissFullVideoFurnitureTapHint() {
@@ -641,6 +703,17 @@ struct ModelViewerView: View {
 
     private var pinchHintAccessibilityLabel: String {
         L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
+    }
+
+    private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
+        guard showingFurnitureFit else { return }
+        guard furnitureFitSegmentationMode == .segmentSelected else { return }
+        guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
+        dismissFullVideoFurnitureTapHint()
+        showFullVideoWithIdentifications = true
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func toggleFurnitureFit() {
