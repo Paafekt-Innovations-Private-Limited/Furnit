@@ -11,8 +11,10 @@
         android:name=".FurnitApplication"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
         android:label="Furnit"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
 
