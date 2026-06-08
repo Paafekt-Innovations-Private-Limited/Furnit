@@ -4,7 +4,16 @@ import PhotosUI
 
 @MainActor
 struct SettingsFurnitureFitImageScanView: View {
+    private enum ScanBackend: String, CaseIterable, Identifiable {
+        case rtmdetInsM = "RTMDet-Ins-m"
+        case yoloe = "YOLOE"
+
+        var id: String { rawValue }
+    }
+
     @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
+    @State private var selectedBackend: ScanBackend = .rtmdetInsM
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var scanRequestID = UUID()
@@ -14,13 +23,20 @@ struct SettingsFurnitureFitImageScanView: View {
     var body: some View {
         let currentSelectedImage = selectedImage
         let currentScanRequestID = scanRequestID
-        let loadedModel = yoloeService.model
-        let isModelLoading = yoloeService.isLoadingModel
+        let loadedModel = currentModel
+        let isModelLoading = currentIsModelLoading
         let currentStatusText = statusText
         let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
 
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 16) {
+                Picker("Backend", selection: $selectedBackend) {
+                    ForEach(ScanBackend.allCases) { backend in
+                        Text(backend.rawValue).tag(backend)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -34,12 +50,11 @@ struct SettingsFurnitureFitImageScanView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                             if loadedModel != nil {
-                                SettingsFurnitureFitStillImageScannerRepresentable(
-                                    selectedImage: currentSelectedImage,
+                                overlayView(
+                                    image: currentSelectedImage,
                                     scanRequestID: currentScanRequestID,
                                     mlModel: loadedModel
                                 )
-                                .allowsHitTesting(false)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                         } else {
@@ -90,7 +105,10 @@ struct SettingsFurnitureFitImageScanView: View {
         .navigationTitle(L10n.Settings.imageScan)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            yoloeService.ensureModelLoaded()
+            ensureSelectedModelLoaded()
+        }
+        .onChange(of: selectedBackend) { _, _ in
+            ensureSelectedModelLoaded()
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             Task {
@@ -99,14 +117,68 @@ struct SettingsFurnitureFitImageScanView: View {
         }
     }
 
+    @ViewBuilder
+    private func overlayView(image: UIImage, scanRequestID: UUID, mlModel: MLModel?) -> some View {
+        switch selectedBackend {
+        case .yoloe:
+            SettingsFurnitureFitStillImageScannerRepresentable(
+                selectedImage: image,
+                scanRequestID: scanRequestID,
+                mlModel: mlModel
+            )
+            .allowsHitTesting(false)
+        case .rtmdetInsM:
+            RTMDetStillImageOverlay(
+                image: image,
+                scanRequestID: scanRequestID,
+                mlModel: mlModel
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var currentModel: MLModel? {
+        switch selectedBackend {
+        case .yoloe:
+            return yoloeService.model
+        case .rtmdetInsM:
+            return rtmdetService.model
+        }
+    }
+
+    private var currentIsModelLoading: Bool {
+        switch selectedBackend {
+        case .yoloe:
+            return yoloeService.isLoadingModel
+        case .rtmdetInsM:
+            return rtmdetService.isLoadingModel
+        }
+    }
+
     private var statusText: String {
         if isLoadingSelectedPhoto {
             return L10n.Settings.imageScanLoadingPhoto
         }
-        if let message = yoloeService.statusMessage.nilIfEmpty {
+        let serviceMessage: String?
+        switch selectedBackend {
+        case .yoloe:
+            serviceMessage = yoloeService.statusMessage.nilIfEmpty
+        case .rtmdetInsM:
+            serviceMessage = rtmdetService.statusMessage.nilIfEmpty
+        }
+        if let message = serviceMessage {
             return message
         }
         return L10n.Settings.imageScanPreparingModel
+    }
+
+    private func ensureSelectedModelLoaded() {
+        switch selectedBackend {
+        case .yoloe:
+            yoloeService.ensureModelLoaded()
+        case .rtmdetInsM:
+            rtmdetService.ensureModelLoaded()
+        }
     }
 
     private func loadSelectedPhoto(from item: PhotosPickerItem?) async {
@@ -137,6 +209,133 @@ struct SettingsFurnitureFitImageScanView: View {
                 loadErrorMessage = error.localizedDescription
             }
         }
+    }
+}
+
+private struct RTMDetStillImageOverlay: View {
+    let image: UIImage
+    let scanRequestID: UUID
+    let mlModel: MLModel?
+
+    @State private var result: RTMDetInferenceResult?
+    @State private var errorMessage: String?
+    @State private var isRunning = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                if let overlayMaskImage = result?.overlayMaskImage {
+                    Image(uiImage: overlayMaskImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+
+                if let detections = result?.detections {
+                    let layout = imageLayout(in: proxy.size)
+                    ForEach(Array(detections.enumerated()), id: \.offset) { index, detection in
+                        let rect = mappedRect(for: detection, layout: layout)
+                        Rectangle()
+                            .path(in: rect)
+                            .stroke(index == 0 ? Color.green : Color.orange, lineWidth: index == 0 ? 3 : 2)
+
+                        Text(labelText(for: detection))
+                            .font(.caption2.monospacedDigit())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .position(x: rect.minX + 52, y: max(layout.origin.y + 10, rect.minY - 10))
+                    }
+                }
+
+                if isRunning {
+                    ProgressView()
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(12)
+                } else if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(12)
+                } else if let result {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Detections: \(result.detections.count)")
+                            .font(.caption.bold())
+                        ForEach(result.outputSummary.prefix(3), id: \.self) { line in
+                            Text(line)
+                                .font(.caption2.monospaced())
+                        }
+                    }
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(12)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .task(id: scanRequestID) {
+            await runInference()
+        }
+    }
+
+    private func runInference() async {
+        guard let mlModel else {
+            await MainActor.run {
+                result = nil
+                errorMessage = "RTMDet model not loaded"
+                isRunning = false
+            }
+            return
+        }
+
+        await MainActor.run {
+            isRunning = true
+            errorMessage = nil
+        }
+
+        do {
+            let inferenceResult = try RTMDetImageInference.runInstanceSegmentation(image: image, model: mlModel)
+            await MainActor.run {
+                result = inferenceResult
+                errorMessage = nil
+                isRunning = false
+            }
+        } catch {
+            await MainActor.run {
+                result = nil
+                errorMessage = error.localizedDescription
+                isRunning = false
+            }
+        }
+    }
+
+    private func imageLayout(in containerSize: CGSize) -> (origin: CGPoint, size: CGSize) {
+        guard image.size.width > 0, image.size.height > 0 else {
+            return (.zero, containerSize)
+        }
+        let scale = min(containerSize.width / image.size.width, containerSize.height / image.size.height)
+        let width = image.size.width * scale
+        let height = image.size.height * scale
+        let origin = CGPoint(
+            x: (containerSize.width - width) * 0.5,
+            y: (containerSize.height - height) * 0.5
+        )
+        return (origin, CGSize(width: width, height: height))
+    }
+
+    private func mappedRect(for detection: FurnitureFitDetection, layout: (origin: CGPoint, size: CGSize)) -> CGRect {
+        let x = layout.origin.x + CGFloat(detection.x - detection.w * 0.5) * layout.size.width / image.size.width
+        let y = layout.origin.y + CGFloat(detection.y - detection.h * 0.5) * layout.size.height / image.size.height
+        let width = CGFloat(detection.w) * layout.size.width / image.size.width
+        let height = CGFloat(detection.h) * layout.size.height / image.size.height
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func labelText(for detection: FurnitureFitDetection) -> String {
+        "#\(detection.classIdx) \(Int(detection.confidence * 100))%"
     }
 }
 

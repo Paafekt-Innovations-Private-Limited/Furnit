@@ -8,7 +8,7 @@ import UIKit
 import simd
 
 struct ModelViewerView: View {
-    @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @EnvironmentObject var authManager: AuthenticationManager
@@ -32,7 +32,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentExamine = false
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
-    @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
+    @State private var showingFurnitureFit = false  // FurnitureFit: RTMDet segmentation
     @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     @State private var furnitureFitShowIdentifyLivePreview = true
     @State private var selectedFurnitureFitLabels: [String] = []
@@ -112,7 +112,7 @@ struct ModelViewerView: View {
             FurnitureFitUIView(
                 capturedImage: $capturedImage,
                 roomImage: nil,
-                mlModel: yoloeService.model,
+                mlModel: rtmdetService.model,
                 processInterval: 0.07,
                 active: true,
                 lockedOrientation: model.photoOrientation,
@@ -343,7 +343,7 @@ struct ModelViewerView: View {
     private func modelViewerHandleShowingFurnitureFitChanged(isOn: Bool) {
         manageARSessionForOverlays()
         if isOn {
-            yoloeService.ensureModelLoaded()
+            rtmdetService.ensureModelLoaded()
             restartBrainGestureHint()
             restartSnapshotGestureHint()
             restartPinchGestureHint()
@@ -389,7 +389,7 @@ struct ModelViewerView: View {
 
     private func modelViewerPerformOnAppear() {
         isARActive = true
-        yoloeService.ensureModelLoaded()
+        rtmdetService.ensureModelLoaded()
         // Deferred reset so RealityKit has a frame to settle before reframing.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             shouldResetCamera = true
@@ -723,8 +723,8 @@ struct ModelViewerView: View {
             dismissFullVideoFurnitureTapHint()
             showingFurnitureFit = false
         } else {
-            logDebug("BRAIN FLOW: loading YOLOE and opening FurnitureFit")
-            yoloeService.ensureModelLoaded()
+            logDebug("BRAIN FLOW: loading RTMDet and opening FurnitureFit")
+            rtmdetService.ensureModelLoaded()
             showFullVideoWithIdentifications = false
             brainArAssistedSizingEnabled = false
             furnitureFitSegmentationMode = .identifyOnly
@@ -1196,7 +1196,7 @@ struct ModelViewerView: View {
         return image
     }
     
-    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
+    // MARK: - RTMDet model loaded via RTMDetModelService
 
 }
 
@@ -1209,7 +1209,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
 
     var roomImage: UIImage?
-    var mlModel: MLModel?  // yoloe-11l-seg-pf via YOLOEModelService
+    var mlModel: MLModel?
     var processInterval: Double = 0.07
     /// Minimum detector confidence (0…1) for parsing YOLOE candidates.
     /// Matches the updated iOS Core ML path (was 0.25).
@@ -1243,6 +1243,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     /// Brain now starts in identify-only mode; Segment enables selected-class masking.
     var segmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     var onSelectedClassLabelsChanged: (([String]) -> Void)? = nil
+    var onSegmentationModeChangeRequested: ((FurnitureFitSegmentationMode) -> Void)? = nil
     var showIdentifyLivePreview: Bool = true
     var showFullVideoWithIdentificationsOverride: Bool? = nil
 
@@ -1269,6 +1270,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.manualFurnitureHeightOverrideMeters = manualFurnitureHeightOverrideMeters
         view.segmentationMode = segmentationMode
         view.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
+        view.onSegmentationModeChangeRequested = onSegmentationModeChangeRequested
         view.showIdentifyLivePreview = showIdentifyLivePreview
         return view
     }
@@ -1299,11 +1301,16 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.manualFurnitureHeightOverrideMeters = manualFurnitureHeightOverrideMeters
             uiView.segmentationMode = segmentationMode
             uiView.onSelectedClassLabelsChanged = onSelectedClassLabelsChanged
+            uiView.onSegmentationModeChangeRequested = onSegmentationModeChangeRequested
             uiView.showIdentifyLivePreview = showIdentifyLivePreview
         }
 
         applyConfiguration()
         if active {
+            guard mlModel != nil else {
+                uiView.showModelUnavailable()
+                return
+            }
             if needsCameraPathRestart {
                 uiView.reconfigureAssistedSizingModeIfNeeded()
             }

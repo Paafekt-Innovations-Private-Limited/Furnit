@@ -8,12 +8,14 @@ import CoreGraphics
 
 final class SharpRoomTests: XCTestCase {
 
+    @MainActor
     func testSharpAspectCorrectionIsIdentityForSquareImage() {
         let factors = SHARPService.sharpAspectCorrectionFactors(for: CGSize(width: 1536, height: 1536))
         XCTAssertEqual(factors.x, 1.0, accuracy: 0.0001)
         XCTAssertEqual(factors.y, 1.0, accuracy: 0.0001)
     }
 
+    @MainActor
     func testSharpAspectCorrectionMatchesImageAspectRatio() {
         let size = CGSize(width: 1170, height: 2532)
         let factors = SHARPService.sharpAspectCorrectionFactors(for: size)

@@ -20,6 +20,10 @@ class YOLOEModelService: ObservableObject {
 
     static let shared = YOLOEModelService()
 
+    /// YOLO-E has been removed from the app bundle. Keep the service as a no-op
+    /// compatibility shim for screens that still accept an optional YOLO model.
+    private static let isYoloeRuntimeEnabled = false
+
     // MARK: - On-Demand Resources
 
     /// ODR tag for the shipped YOLOE `.mlpackage` in the target (see `project.pbxproj` → Resources → Asset Tags).
@@ -66,6 +70,14 @@ class YOLOEModelService: ObservableObject {
     /// Ensure the model is loaded; safe to call repeatedly (no-op when already loaded).
     /// Call from each room view's `.onAppear`.
     func ensureModelLoaded() {
+        guard Self.isYoloeRuntimeEnabled else {
+            model = nil
+            isLoadingModel = false
+            isDownloadingResources = false
+            resourcesAvailable = false
+            statusMessage = L10n.YOLOE.unavailable
+            return
+        }
         guard model == nil && !isLoadingModel else { return }
         Task {
             await loadModel()
@@ -74,6 +86,7 @@ class YOLOEModelService: ObservableObject {
 
     /// Wait until `model` is non-nil or `maxWaitSeconds` elapses (for one-shot room calibration after ODR).
     func waitForModelReady(maxWaitSeconds: TimeInterval = 45) async {
+        guard Self.isYoloeRuntimeEnabled else { return }
         if model != nil { return }
         ensureModelLoaded()
         let deadline = Date().addingTimeInterval(maxWaitSeconds)
@@ -112,6 +125,10 @@ class YOLOEModelService: ObservableObject {
 
     /// Check whether the YOLOE resource tag is already on-device
     func checkResourceAvailability() async {
+        guard Self.isYoloeRuntimeEnabled else {
+            resourcesAvailable = false
+            return
+        }
         let request = NSBundleResourceRequest(tags: Self.allYoloeOdrTags)
         request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
 
@@ -127,6 +144,7 @@ class YOLOEModelService: ObservableObject {
     /// Download the YOLOE model via ODR if not yet available.
     /// - Returns: `true` when the resource is available after this call.
     func downloadResourcesIfNeeded() async throws -> Bool {
+        guard Self.isYoloeRuntimeEnabled else { return false }
         if resourcesAvailable { return true }
 
         if isDownloadingResources {
@@ -244,6 +262,14 @@ class YOLOEModelService: ObservableObject {
 
     /// Internal load routine — prefers the app bundle (reliable); ODR only when the model is hosted as tagged resources.
     private func loadModel() async {
+        guard Self.isYoloeRuntimeEnabled else {
+            model = nil
+            isLoadingModel = false
+            isDownloadingResources = false
+            resourcesAvailable = false
+            statusMessage = L10n.YOLOE.unavailable
+            return
+        }
         guard !isLoadingModel && model == nil else { return }
         logDebug("YOLOE: Loading CoreML model…")
 

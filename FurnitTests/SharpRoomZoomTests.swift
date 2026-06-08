@@ -136,7 +136,7 @@ final class SharpRoomZoomTests: XCTestCase {
         let after = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: 1.5, roomBounds: nil)
         XCTAssertNotNil(after)
         let dist = ZoomCameraMath.distance(after!, target)
-        XCTAssertGreaterThanOrEqual(dist, 0.01, accuracy: 0.001, "Distance should be clamped to min 0.01")
+        XCTAssertGreaterThanOrEqual(dist, 0.009, "Distance should be clamped to min 0.01")
     }
 
     func testDistanceClampMax() {
@@ -145,7 +145,7 @@ final class SharpRoomZoomTests: XCTestCase {
         let after = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: 0.5, roomBounds: nil)
         XCTAssertNotNil(after)
         let dist = ZoomCameraMath.distance(after!, target)
-        XCTAssertLessThanOrEqual(dist, 50, accuracy: 0.1, "Distance should be clamped to max 50")
+        XCTAssertLessThanOrEqual(dist, 50.1, "Distance should be clamped to max 50")
     }
 
     func testRoomBoundsClamp() {

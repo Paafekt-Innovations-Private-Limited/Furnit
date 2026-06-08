@@ -162,7 +162,7 @@ struct SharpRoomView: View {
     @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
     @State private var furnitureFitShowIdentifyLivePreview = true
     @State private var selectedFurnitureFitLabels: [String] = []
-    @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
 
     // JS-measured front wall dimensions (from actual splat bounds)
     @State private var jsFrontWallWidth: Float?
@@ -580,8 +580,8 @@ struct SharpRoomView: View {
     }
 
     private func sharpRoomPerformOnAppear() {
-        // Preload YOLOE when the room opens (async; not at app startup). First brain tap stays snappy.
-        yoloeService.ensureModelLoaded()
+        // Preload RTMDet when the room opens (async; not at app startup). First brain tap stays snappy.
+        rtmdetService.ensureModelLoaded()
         if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
         logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
         loadPersistedRoomMetadataIfNeeded()
@@ -606,7 +606,7 @@ struct SharpRoomView: View {
         OrientationLockManager.shared.unlock()
         splatMeasurementHost.setModalHeavyWorkPaused(false)
         SHARPService.shared.releaseResources()
-        yoloeService.releaseResources()
+        rtmdetService.releaseResources()
     }
 
     private func sharpRoomHandleShowingFurnitureFitChange(isOn: Bool) {
@@ -615,7 +615,7 @@ struct SharpRoomView: View {
             "room_m=\(String(format: "%.2f", furnitureFitRoomWidth))×\(String(format: "%.2f", furnitureFitRoomHeight))×\(String(format: "%.2f", displayRoomDepth))"
         )
         if isOn {
-            yoloeService.ensureModelLoaded()
+            rtmdetService.ensureModelLoaded()
             updateRoomPlacementIntelligence()
             if canOfferBrainArAssist {
                 showCameraSizingHint(requiresBrain: false)
@@ -1745,7 +1745,7 @@ struct SharpRoomView: View {
         FurnitureFitUIView(
             capturedImage: .constant(nil),
             roomImage: nil,
-            mlModel: yoloeService.model,
+            mlModel: rtmdetService.model,
             processInterval: 0.07,
             active: true,
             lockedOrientation: photoOrientation,
@@ -1784,6 +1784,10 @@ struct SharpRoomView: View {
             segmentationMode: furnitureFitSegmentationMode,
             onSelectedClassLabelsChanged: { labels in
                 selectedFurnitureFitLabels = labels
+            },
+            onSegmentationModeChangeRequested: { mode in
+                logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
+                furnitureFitSegmentationMode = mode
             },
             showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
             showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
@@ -2425,7 +2429,7 @@ struct SharpRoomView: View {
         return nil
     }
 
-    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
+    // MARK: - RTMDet model loaded via RTMDetModelService
 
     // MARK: - Save Room Progress Overlay
     private var saveRoomProgressOverlay: some View {

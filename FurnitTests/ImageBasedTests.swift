@@ -320,7 +320,7 @@ final class ImageBasedTests: XCTestCase {
         }
 
         let coverage = FurnitureFitMask.coverage(mask)
-        let expectedCoverage = Float(couchWidth * couchHeight) / Float(maskSize)
+        let expectedCoverage = Double(couchWidth * couchHeight) / Double(maskSize)
 
         XCTAssertEqual(coverage, expectedCoverage, accuracy: 0.01)
         XCTAssertTrue(FurnitureFitMask.hasContent(mask))

@@ -24,6 +24,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
+    private let rtmdetLiveMinimumProcessInterval: TimeInterval = 1.0
     var confidenceThreshold: Float = 0.10
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
@@ -251,6 +252,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var onFirstSegmentationComplete: (() -> Void)?
     /// Reports the currently selected classes for multi-tap segmentation.
     var onSelectedClassLabelsChanged: (([String]) -> Void)?
+    /// Requests a parent-owned segmentation mode change. SwiftUI owns the source of truth,
+    /// so local mode changes must be reflected there or the next update pass overwrites them.
+    var onSegmentationModeChangeRequested: ((FurnitureFitSegmentationMode) -> Void)?
     /// Controls whether identify-only mode should show the full live preview layer.
     var showIdentifyLivePreview: Bool = true
     /// When enabled, skip camera startup and run the selected still image through the same segmentation pipeline.
@@ -304,6 +308,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
     private var isShowingLiveVideoIdentifications: Bool {
         showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
+    }
+    private var shouldShowLiveCameraPreview: Bool {
+        isShowingLiveVideoIdentifications || (currentModelIsRTMDet && showIdentifyLivePreview)
     }
     private var overlayPresentationMode: FurnitureFitOverlayPresentationMode = .deferredCentered
     private var stableOverlayMeasurementFrameCount: Int = 0
@@ -416,7 +423,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     // MARK: Model & State
-    private var mlModel: MLModel?  // yoloe-11l-seg-pf via YOLOEModelService
+    private var mlModel: MLModel?
+    private var hasSuppliedModel = false
+    private var suppliedModelIsRTMDet = false
+    private var currentModelIsRTMDet: Bool {
+        if suppliedModelIsRTMDet { return true }
+        guard let model = mlModel else { return false }
+        return isRTMDetInstanceSegmentationModel(model)
+    }
+    private static let rtmDetFurnitureClassIndices: Set<Int> = [
+        56, // chair
+        57, // couch
+        59, // bed
+        60, // dining table
+    ]
+    private static let rtmDetCOCOClassNames: [Int: String] = [
+        56: "chair",
+        57: "couch",
+        59: "bed",
+        60: "dining table",
+    ]
+    private static let rtmDetLiveConfidenceThreshold: Float = 0.55
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
@@ -477,6 +504,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Thread-safe reset of isProcessing flag.
     private func resetProcessingFlag() {
+        let isRTMDetModel = currentModelIsRTMDet
         if oneImageRunAwaitingSave {
             oneImageRunAwaitingSave = false
             oneImageRunFinished = true
@@ -484,11 +512,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         frameLock.lock()
         isProcessing = false
-        if preferImmediateNextInference {
+        if preferImmediateNextInference && !isRTMDetModel {
             lastProcessTime = .distantPast
             preferImmediateNextInference = false
         }
+        if isRTMDetModel {
+            preferImmediateNextInference = false
+        }
         frameLock.unlock()
+        if isRTMDetModel {
+            pendingFrameLock.lock()
+            pendingLatestSegmentationFrame = nil
+            pendingFrameLock.unlock()
+            return
+        }
         processPendingLatestSegmentationFrameIfNeeded()
     }
 
@@ -496,10 +533,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         segmentationMode == .identifyOnly &&
             !showFullVideoWithIdentifications &&
             !stillImageScanModeEnabled &&
-            !oneImageRunAwaitingSave
+            !oneImageRunAwaitingSave &&
+            !currentModelIsRTMDet
     }
 
     private func processPendingLatestSegmentationFrameIfNeeded() {
+        guard !currentModelIsRTMDet else { return }
         pendingFrameLock.lock()
         guard let pending = pendingLatestSegmentationFrame else {
             pendingFrameLock.unlock()
@@ -526,6 +565,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func storePendingLatestSegmentationFrame(pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot?) {
+        guard !currentModelIsRTMDet else { return }
         guard let copiedBuffer = copyPixelBufferForDeferredProcessing(pixelBuffer) else { return }
         pendingFrameLock.lock()
         pendingLatestSegmentationFrame = PendingSegmentationFrame(
@@ -640,7 +680,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func displayClassName(_ id: Int) -> String {
-        classNames[id] ?? "unknown"
+        if currentModelIsRTMDet {
+            return Self.rtmDetCOCOClassNames[id] ?? "coco-\(id)"
+        }
+        return classNames[id] ?? "unknown"
     }
 
     private func supportSurfaceHint(
@@ -695,7 +738,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         
         previewLayer.session = captureSession
         previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.isHidden = !isShowingLiveVideoIdentifications
+        previewLayer.isHidden = !shouldShowLiveCameraPreview
+        logDebug("📺 [FurnitureFit] previewLayer initial hidden=\(previewLayer.isHidden) rtmDet=\(currentModelIsRTMDet) showLivePreview=\(showIdentifyLivePreview)")
         layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
@@ -959,8 +1003,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func updateVideoIdentificationPresentation() {
         DispatchQueue.main.async {
-            self.previewLayer.isHidden = !self.isShowingLiveVideoIdentifications
-            if self.isShowingLiveVideoIdentifications {
+            self.previewLayer.isHidden = !self.shouldShowLiveCameraPreview
+            logDebug("📺 [FurnitureFit] previewLayer hidden=\(self.previewLayer.isHidden) rtmDet=\(self.currentModelIsRTMDet) identify=\(self.segmentationMode == .identifyOnly) fullVideo=\(self.showFullVideoWithIdentifications)")
+            if self.shouldShowLiveCameraPreview {
                 self.maskImageView.image = nil
             }
             self.applyLockedOrientationVideoRotation()
@@ -1523,7 +1568,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestDisplayedCandidates = candidates
         latestDisplayedSelectedCandidateIndex = selectedIndex
 
-        if segmentationMode == .segmentSelected || !showFullVideoWithIdentifications {
+        let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
+        if segmentationMode == .segmentSelected || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
             candidateBboxesInView = []
             detectionBBoxOverlayView.items = []
             return
@@ -1602,22 +1648,42 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Public
     func setModel(_ model: MLModel?) {
+        let isRTMDetModel = model.map(isRTMDetInstanceSegmentationModel) ?? false
+        hasSuppliedModel = model != nil
+        frameLock.lock()
+        suppliedModelIsRTMDet = isRTMDetModel
+        frameLock.unlock()
+        if isRTMDetModel {
+            pendingFrameLock.lock()
+            pendingLatestSegmentationFrame = nil
+            pendingFrameLock.unlock()
+        }
         // Must not `sync` onto `detectionQueue` from the main thread: SwiftUI calls this from
         // `updateUIView` while `processFrameInner` can run for hundreds of ms — main would freeze (“hung” UI).
         detectionQueue.async { [weak self] in
             guard let self else { return }
             if model === self.mlModel { return }
             self.mlModel = model
+            if isRTMDetModel {
+                self.pendingFrameLock.lock()
+                self.pendingLatestSegmentationFrame = nil
+                self.pendingFrameLock.unlock()
+            }
             if let model = model {
                 let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
                 let outputNames = model.modelDescription.outputDescriptionsByName.keys
                 logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
             }
+            self.updateVideoIdentificationPresentation()
         }
         // Note: class blacklist is loaded in startIfNeeded() to avoid repeated calls from updateUIView
     }
 
     func startIfNeeded() {
+        guard hasSuppliedModel else {
+            showModelUnavailable()
+            return
+        }
         // SwiftUI calls this on many `updateUIView` passes; only run setup once until `stop()`.
         if captureSession.isRunning { return }
         if stillImageScanModeEnabled, furnitureFitCameraStartupInitiated {
@@ -1682,6 +1748,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             guard let self = self else { return }
             self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
             self.updateProgressOrientationOnMain(self.currentDeviceOrientation)
+        }
+    }
+
+    func showModelUnavailable() {
+        stop()
+        startupProgressActive = false
+        hasFirstDetection = false
+        DispatchQueue.main.async {
+            self.progressContainer.isHidden = false
+            self.progressContainer.alpha = 1
+            self.progressView.progress = 1.0
+            self.progressLabel.text = "  Live segmentation model unavailable  "
         }
     }
 
@@ -2054,7 +2132,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             return
         }
-        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval
+        let effectiveInterval = currentModelIsRTMDet
+            ? max(processInterval, rtmdetLiveMinimumProcessInterval)
+            : processInterval
+        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= effectiveInterval
         if shouldProcess {
             isProcessing = true
             lastProcessTime = now
@@ -4657,12 +4738,355 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let frameStart = Date()
         if debugMode { logMemory("FRAME START") }
         classBlacklist.loadBlacklistOnce(debugMode: debugMode) { logDebug($0) }
+        if isRTMDetInstanceSegmentationModel(model) {
+            processFrameRTMDetLive(
+                processBuffer: pixelBuffer,
+                model: model,
+                arDepthSnapshot: arDepthSnapshot,
+                frameStart: frameStart
+            )
+            return
+        }
         processFrameOnnxStyleCoreML(
             processBuffer: pixelBuffer,
             model: model,
             arDepthSnapshot: arDepthSnapshot,
             frameStart: frameStart
         )
+    }
+
+    private func isRTMDetInstanceSegmentationModel(_ model: MLModel) -> Bool {
+        let outputs = model.modelDescription.outputDescriptionsByName
+        return outputs["dets"] != nil && outputs["masks"] != nil
+    }
+
+    private struct RTMDetMaskQualityStats {
+        let pixelCount: Int
+        let bounds: CGRect
+        let fillRatio: CGFloat
+    }
+
+    private func rtmDetMaskQualityStats(for cgImage: CGImage) -> RTMDetMaskQualityStats? {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        var rgba = [UInt8](repeating: 0, count: height * bytesPerRow)
+        guard let context = CGContext(
+            data: &rgba,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        var pixelCount = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let alpha = rgba[y * bytesPerRow + x * bytesPerPixel + 3]
+                guard alpha > 0 else { continue }
+                pixelCount += 1
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+
+        guard pixelCount > 0, maxX >= minX, maxY >= minY else { return nil }
+        let boundsWidth = maxX - minX + 1
+        let boundsHeight = maxY - minY + 1
+        let boundsArea = max(1, boundsWidth * boundsHeight)
+        return RTMDetMaskQualityStats(
+            pixelCount: pixelCount,
+            bounds: CGRect(x: minX, y: minY, width: boundsWidth, height: boundsHeight),
+            fillRatio: CGFloat(pixelCount) / CGFloat(boundsArea)
+        )
+    }
+
+    private func shouldAcceptRTMDetMask(_ cgImage: CGImage, for detection: FurnitureFitDetection) -> (accepted: Bool, reason: String) {
+        guard let stats = rtmDetMaskQualityStats(for: cgImage) else {
+            return (false, "empty_or_unreadable")
+        }
+
+        let imageArea = CGFloat(max(1, cgImage.width * cgImage.height))
+        let maskAreaFraction = CGFloat(stats.pixelCount) / imageArea
+        let fillLimit: CGFloat = detection.classIdx == 56 ? 0.72 : 0.88
+        let tooRectangular = stats.fillRatio > fillLimit
+        let tooHuge = maskAreaFraction > 0.35
+        let accepted = !tooRectangular && !tooHuge
+        let reason = "pixels=\(stats.pixelCount) bounds=(\(Int(stats.bounds.minX)),\(Int(stats.bounds.minY)),\(Int(stats.bounds.width))x\(Int(stats.bounds.height))) fill=\(String(format: "%.2f", stats.fillRatio)) area=\(String(format: "%.2f", maskAreaFraction)) limit=\(String(format: "%.2f", fillLimit))"
+        return (accepted, accepted ? reason : "rejected_rect_or_huge \(reason)")
+    }
+
+    private func processFrameRTMDetLive(
+        processBuffer: CVPixelBuffer,
+        model: MLModel,
+        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
+        frameStart: Date
+    ) {
+        let bufW = CVPixelBufferGetWidth(processBuffer)
+        let bufH = CVPixelBufferGetHeight(processBuffer)
+        let isLandscape = bufW > bufH
+
+        if debugMode {
+            logDebug("\n⏱️ ═══════════════════════════════════════════")
+            logDebug("⏱️ RTMDET LIVE @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
+            logDebug("⏱️ Buffer: \(bufW)x\(bufH) → RTMDet final dets/masks")
+            logDebug("⏱️ ═══════════════════════════════════════════")
+        }
+
+        setProgress(0.35, text: "Running segmentation…")
+        do {
+            let rtmDetThreshold = max(Self.rtmDetLiveConfidenceThreshold, confidenceThreshold)
+            let result = try RTMDetImageInference.runInstanceSegmentation(
+                pixelBuffer: processBuffer,
+                model: model,
+                confidenceThreshold: rtmDetThreshold,
+                classBlacklist: classBlacklist.ignoredIndices,
+                allowedClassIndices: Self.rtmDetFurnitureClassIndices,
+                maxMaskCount: segmentationMode == .segmentSelected ? 6 : 1,
+                maxDetectionCount: 6,
+                buildInstanceMasks: segmentationMode == .segmentSelected
+            )
+            let candidates = result.detections
+                .filter { $0.confidence >= rtmDetThreshold }
+                .sorted { lhs, rhs in
+                    if lhs.confidence == rhs.confidence {
+                        return lhs.w * lhs.h > rhs.w * rhs.h
+                    }
+                    return lhs.confidence > rhs.confidence
+                }
+            if debugMode {
+                let summary = candidates.prefix(8).enumerated().map { index, detection in
+                    "#\(index) cls=\(detection.classIdx) conf=\(String(format: "%.2f", detection.confidence)) bbox=(\(Int(detection.x - detection.w * 0.5)),\(Int(detection.y - detection.h * 0.5)),\(Int(detection.w))x\(Int(detection.h)))"
+                }.joined(separator: " | ")
+                logDebug("🧠 [RTMDet candidates] \(summary.isEmpty ? "none" : summary)")
+            }
+
+            guard !candidates.isEmpty else {
+                consecutiveEmptyMaskFrames += 1
+                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.maskImageView.image = nil
+                        self?.updateDetectionOverlay(
+                            candidates: [],
+                            selectedIndex: nil,
+                            imageWidth: bufW,
+                            imageHeight: bufH,
+                            scaleX: 1,
+                            scaleY: 1
+                        )
+                        self?.setProgress(0.70, text: "Looking for furniture…")
+                    }
+                }
+                logRTMDetLiveFrameFooter(
+                    frameStart: frameStart,
+                    candidatesCount: 0,
+                    outputSummary: result.outputSummary
+                )
+                resetProcessingFlag()
+                return
+            }
+
+            consecutiveEmptyMaskFrames = 0
+            pruneSelectedPinsMissingFromCurrentCandidates(candidates)
+
+            var primaryIdx = 0
+            var primary = candidates[primaryIdx]
+
+            if segmentationMode == .identifyOnly {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.maskImageView.image = nil
+                    self.primaryBboxInView = self.viewRect(
+                        for: primary,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: 1,
+                        scaleY: 1
+                    )
+                    self.updateDetectionOverlay(
+                        candidates: candidates,
+                        selectedIndex: nil,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: 1,
+                        scaleY: 1
+                    )
+                    self.setProgress(0.90, text: "Tap a detected item")
+                }
+                logRTMDetLiveFrameFooter(
+                    frameStart: frameStart,
+                    candidatesCount: candidates.count,
+                    outputSummary: result.outputSummary
+                )
+                resetProcessingFlag()
+                return
+            }
+
+            let pins = selectedPinsSnapshot()
+            if segmentationMode == .segmentSelected && pins.isEmpty {
+                DispatchQueue.main.async { [weak self] in
+                    self?.maskImageView.image = nil
+                    self?.updateDetectionOverlay(
+                        candidates: candidates,
+                        selectedIndex: nil,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: 1,
+                        scaleY: 1
+                    )
+                    self?.setProgress(0.70, text: "Tap a detected item")
+                }
+                logRTMDetLiveFrameFooter(
+                    frameStart: frameStart,
+                    candidatesCount: candidates.count,
+                    outputSummary: result.outputSummary
+                )
+                resetProcessingFlag()
+                return
+            }
+            if segmentationMode == .segmentSelected && !pins.isEmpty {
+                let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
+                guard let selected = matchedCandidates.first,
+                      let selectedIndex = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, selected) >= 0.99 }) else {
+                    if debugMode {
+                        logDebug("🧠 [RTMDet segment] no selected candidate matched current frame pins=\(pins.count) candidates=\(candidates.count)")
+                    }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.maskImageView.image = nil
+                        self?.updateDetectionOverlay(
+                            candidates: candidates,
+                            selectedIndex: nil,
+                            imageWidth: bufW,
+                            imageHeight: bufH,
+                            scaleX: 1,
+                            scaleY: 1
+                        )
+                        self?.setProgress(0.70, text: "Selected item not visible")
+                    }
+                    logRTMDetLiveFrameFooter(
+                        frameStart: frameStart,
+                        candidatesCount: candidates.count,
+                        outputSummary: result.outputSummary
+                    )
+                    resetProcessingFlag()
+                    return
+                }
+                primary = selected
+                primaryIdx = selectedIndex
+                if debugMode {
+                    let hasMask = primaryIdx < result.instanceMaskImages.count && result.instanceMaskImages[primaryIdx] != nil
+                    logDebug(
+                        "🧠 [RTMDet segment] selectedIndex=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
+                        "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no")"
+                    )
+                }
+            }
+
+            let selectedMaskImage = primaryIdx < result.instanceMaskImages.count
+                ? result.instanceMaskImages[primaryIdx]
+                : result.overlayMaskImage
+            var finalCGImage = selectedMaskImage?.cgImage
+            let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
+            if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
+                finalCGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
+                    rotated,
+                    imageWidth: bufH,
+                    imageHeight: bufW
+                )
+            }
+            if let image = finalCGImage {
+                let quality = shouldAcceptRTMDetMask(image, for: primary)
+                if debugMode {
+                    logDebug("🧠 [RTMDet mask quality] class=\(displayClassName(primary.classIdx)) \(quality.reason)")
+                }
+                if !quality.accepted {
+                    finalCGImage = nil
+                }
+            }
+
+            let bboxWidthPx = Int(max(1, primary.w))
+            let bboxHeightPx = Int(max(1, primary.h))
+            let maskHasForeground = finalCGImage != nil
+            let arSnapAttached = arDepthSnapshot != nil
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.primaryBboxInView = self.viewRect(
+                    for: primary,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: primaryIdx,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+                if let finalCGImage {
+                    self.maskImageView.image = UIImage(cgImage: finalCGImage, scale: 1.0, orientation: .up)
+                    self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: finalCGImage)
+                } else {
+                    self.maskImageView.image = nil
+                }
+                self.commitFurnitureSizeAfterSegmentationMaskApplied(
+                    maskHasForeground: maskHasForeground,
+                    primaryMetricResult: nil,
+                    firstFrameMeters: nil,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    bboxWidthPx: bboxWidthPx,
+                    bboxHeightPx: bboxHeightPx,
+                    arDepthSnapshotAttached: arSnapAttached
+                )
+            }
+
+            logRTMDetLiveFrameFooter(
+                frameStart: frameStart,
+                candidatesCount: candidates.count,
+                outputSummary: result.outputSummary
+            )
+            resetProcessingFlag()
+        } catch {
+            if debugMode {
+                logDebug("❌ RTMDET LIVE failed: \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.setProgress(1.0, text: "Segmentation failed")
+            }
+            resetProcessingFlag()
+        }
+    }
+
+    private func logRTMDetLiveFrameFooter(
+        frameStart: Date,
+        candidatesCount: Int,
+        outputSummary: [String]
+    ) {
+        guard debugMode else { return }
+        let frameTotalMs = Date().timeIntervalSince(frameStart) * 1000
+        logDebug(
+            "⏱️ RTMDET LIVE FRAME TOTAL: \(String(format: "%.2f", frameTotalMs)) ms " +
+            "candidates=\(candidatesCount) outputs=\(outputSummary.joined(separator: ", "))"
+        )
+        logDebug("⏱️ ═══════════════════════════════════════════\n")
     }
 
 
@@ -5533,8 +5957,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     @objc private func handleBoundingBoxTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
         let pointInMask = gesture.location(in: maskImageView)
-        guard let tappedIndex = candidateIndexForTap(pointInMask) else { return }
-        guard tappedIndex < latestDisplayedCandidates.count else { return }
+        guard let tappedIndex = candidateIndexForTap(pointInMask) else {
+            logDebug("👆 [TAP_SELECT] miss point=(\(Int(pointInMask.x)),\(Int(pointInMask.y))) boxes=\(candidateBboxesInView.count)")
+            return
+        }
+        guard tappedIndex < latestDisplayedCandidates.count else {
+            logDebug("👆 [TAP_SELECT] invalid index=\(tappedIndex) candidates=\(latestDisplayedCandidates.count)")
+            return
+        }
         let tappedDetection = latestDisplayedCandidates[tappedIndex]
         toggleSelectedDetection(tappedDetection)
         latestDisplayedSelectedCandidateIndex = tappedIndex
@@ -5552,6 +5982,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logDebug(
             "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex)"
         )
+        if currentModelIsRTMDet && segmentationMode == .identifyOnly {
+            logDebug("👆 [TAP_SELECT] requesting segmentSelected mode for RTMDet mask render")
+            segmentationMode = .segmentSelected
+            DispatchQueue.main.async { [weak self] in
+                self?.onSegmentationModeChangeRequested?(.segmentSelected)
+            }
+        }
     }
 
     @objc private func handleClearSelectedObjectTapped() {
@@ -5713,21 +6150,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         let pointInMask = convert(point, to: maskImageView)
-        let tapHitPadding: CGFloat = isShowingLiveVideoIdentifications ? 22 : 10
+        let tapHitPadding: CGFloat = shouldShowLiveCameraPreview ? 22 : 10
         let candidateContains = candidateBboxesInView.contains {
             $0.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMask)
         }
 
         if candidateContains && maskImageView.image == nil {
-            return super.hitTest(point, with: event)
+            logDebug("👆 [hitTest] INSIDE candidate bbox - handling tap without mask boxes=\(candidateBboxesInView.count)")
+            return maskImageView
         }
 
-        if isShowingLiveVideoIdentifications {
-            return candidateContains ? super.hitTest(point, with: event) : nil
+        if shouldShowLiveCameraPreview {
+            if candidateContains {
+                logDebug("👆 [hitTest] INSIDE identify candidate bbox - handling")
+                return maskImageView
+            }
+            logDebug("👆 [hitTest] OUTSIDE identify candidate bbox boxes=\(candidateBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
+            return nil
         }
 
         guard maskImageView.image != nil else {
-            logDebug("👆 [hitTest] No mask image, passing through")
+            logDebug("👆 [hitTest] No mask image, passing through boxes=\(candidateBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
             return nil
         }
 

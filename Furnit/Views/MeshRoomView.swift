@@ -43,7 +43,7 @@ struct MeshRoomView: View {
     @State private var selectedFurnitureFitLabels: [String] = []
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
-    @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
     @ObservedObject private var appState = AppStateManager.shared
     @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
     @State private var detectedFurnitureHeightAR: Float?
@@ -211,7 +211,7 @@ struct MeshRoomView: View {
             FurnitureFitUIView(
                 capturedImage: .constant(nil),
                 roomImage: nil,
-                mlModel: yoloeService.model,
+                mlModel: rtmdetService.model,
                 processInterval: 0.07,
                 active: true,
                 lockedOrientation: photoOrientation,
@@ -336,8 +336,8 @@ struct MeshRoomView: View {
     }
 
     private func meshRoomPerformOnAppear() {
-        // Preload YOLOE when the room opens so the first brain tap can start segmentation without waiting.
-        yoloeService.ensureModelLoaded()
+        // Preload RTMDet when the room opens so the first brain tap can start segmentation without waiting.
+        rtmdetService.ensureModelLoaded()
         if photoOrientation == .landscape {
             OrientationLockManager.shared.lockToLandscape()
         } else {
@@ -353,7 +353,7 @@ struct MeshRoomView: View {
         cancelRoomDimensionsHintTasks()
         dismissFullVideoFurnitureTapHint()
         brainArAssistedSizingEnabled = false
-        yoloeService.releaseResources()
+        rtmdetService.releaseResources()
         OrientationLockManager.shared.unlock()
     }
 
@@ -373,7 +373,7 @@ struct MeshRoomView: View {
 
     private func meshRoomHandleShowingFurnitureFitChange(isOn: Bool) {
         if isOn {
-            yoloeService.ensureModelLoaded()
+            rtmdetService.ensureModelLoaded()
             if canOfferBrainArAssist {
                 showARSizingHint(requiresBrain: false)
             }
@@ -1694,7 +1694,7 @@ struct MeshRoomView: View {
         )
     }
 
-    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
+    // MARK: - RTMDet model loaded via RTMDetModelService
 }
 
 private enum MeshPlacementIntelligenceRoomStub {

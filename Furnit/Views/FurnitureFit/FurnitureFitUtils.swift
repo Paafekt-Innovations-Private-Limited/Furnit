@@ -72,6 +72,59 @@ public struct FurnitureFitIoU {
     }
 }
 
+// MARK: - Bounding Box Geometry
+public enum FurnitureFitBBox {
+    public typealias Box = (x1: Float, y1: Float, x2: Float, y2: Float)
+
+    public static func intersects(_ a: Box, _ b: Box) -> Bool {
+        !(a.x2 < b.x1 || b.x2 < a.x1 || a.y2 < b.y1 || b.y2 < a.y1)
+    }
+
+    public static func encompasses(candidate: Box, primary: Box) -> Bool {
+        candidate.x1 <= primary.x1 &&
+            candidate.y1 <= primary.y1 &&
+            candidate.x2 >= primary.x2 &&
+            candidate.y2 >= primary.y2
+    }
+}
+
+// MARK: - Mask Utilities
+public enum FurnitureFitMask {
+    public static func hasContent(_ mask: [UInt8]) -> Bool {
+        mask.contains { $0 > 0 }
+    }
+
+    public static func positivePixelCount(_ mask: [UInt8]) -> Int {
+        mask.reduce(into: 0) { count, value in
+            if value > 0 { count += 1 }
+        }
+    }
+
+    public static func coverage(_ mask: [UInt8]) -> Double {
+        guard !mask.isEmpty else { return 0 }
+        return Double(positivePixelCount(mask)) / Double(mask.count)
+    }
+
+    public static func threshold(_ mask: [Float], threshold: Float = 0.5) -> [UInt8] {
+        mask.map { $0 >= threshold ? 255 : 0 }
+    }
+}
+
+// MARK: - Rotation Utilities
+public enum FurnitureFitRotation {
+    public static func shouldRotateForPortrait(isLandscapeBuffer: Bool, isLandscapeRoom: Bool) -> Bool {
+        isLandscapeBuffer && !isLandscapeRoom
+    }
+
+    public static func isLandscape(width: Int, height: Int) -> Bool {
+        width > height
+    }
+
+    public static func rotateClockwise(deviceOrientationRawValue: Int) -> Bool {
+        deviceOrientationRawValue == 4
+    }
+}
+
 // MARK: - NMS (Non-Maximum Suppression)
 /// Utility class for Non-Maximum Suppression operations
 public struct FurnitureFitNMS {

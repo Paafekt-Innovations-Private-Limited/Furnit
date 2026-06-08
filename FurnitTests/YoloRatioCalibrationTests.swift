@@ -35,7 +35,7 @@ final class YoloRatioCalibrationTests: XCTestCase {
         ]
         let map = YoloRatioCalibration.furnitureHeightFractionsByLabel(imageHeight: imageHeight, boxes: boxes)
         // 75th percentile of [0.2, 0.4] clamped fractions → upper sample
-        XCTAssertEqual(map["chair"], 0.4, accuracy: 0.02)
+        XCTAssertEqual(map["chair"] ?? -1, 0.4, accuracy: 0.02)
     }
 
     func testCropRectForTargetFurnitureFraction() {

@@ -211,9 +211,18 @@ android/app/src/main/assets/bundled_rooms/*.glb
 
 # iOS mlpackage models (large, stored locally)
 *.mlpackage/
+*.mlmodelc/
+Furnit/Models/RTMDet/*.mlpackage/
+Furnit/Models/RTMDet/*.mlmodelc/
 
 # ML Experiments folder (scripts, outputs, models for development)
 ml_experiments/
+
+# Local RTMDet export/build caches
+.artifacts/
+.modelcache/
+.wheelcache/
+android/.gradle-home/
 
 # NCNN model files (stored on Google Drive)
 android/sharp_ncnn_models/

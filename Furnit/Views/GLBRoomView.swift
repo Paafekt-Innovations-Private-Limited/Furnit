@@ -245,7 +245,7 @@ struct GLBRoomView: View {
     @State private var selectedFurnitureFitLabels: [String] = []
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var brainArAssistedSizingEnabled = false
-    @ObservedObject private var yoloeService = YOLOEModelService.shared
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
     @ObservedObject private var appState = AppStateManager.shared
     @StateObject private var savedRoomsModelManager = USDZModelManager()
     @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
@@ -384,7 +384,7 @@ struct GLBRoomView: View {
             FurnitureFitUIView(
                 capturedImage: .constant(nil),
                 roomImage: nil,
-                mlModel: yoloeService.model,
+                mlModel: rtmdetService.model,
                 processInterval: 0.07,
                 active: true,
                 lockedOrientation: photoOrientation,
@@ -535,7 +535,7 @@ struct GLBRoomView: View {
     }
 
     private func glbRoomPerformOnAppear() {
-        yoloeService.ensureModelLoaded()
+        rtmdetService.ensureModelLoaded()
         if photoOrientation == .landscape {
             OrientationLockManager.shared.lockToLandscape()
         } else {
@@ -551,7 +551,7 @@ struct GLBRoomView: View {
         cancelRoomDimensionsHintTasks()
         dismissFullVideoFurnitureTapHint()
         brainArAssistedSizingEnabled = false
-        yoloeService.releaseResources()
+        rtmdetService.releaseResources()
         OrientationLockManager.shared.unlock()
     }
 
@@ -571,7 +571,7 @@ struct GLBRoomView: View {
 
     private func glbRoomHandleShowingFurnitureFitChange(isOn: Bool) {
         if isOn {
-            yoloeService.ensureModelLoaded()
+            rtmdetService.ensureModelLoaded()
             if canOfferBrainArAssist {
                 showARSizingHint(requiresBrain: false)
             }
@@ -1621,7 +1621,7 @@ struct GLBRoomView: View {
         .zIndex(102)
     }
 
-    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
+    // MARK: - RTMDet model loaded via RTMDetModelService
 
     // MARK: - Portrait Controls
     private var portraitControls: some View {
