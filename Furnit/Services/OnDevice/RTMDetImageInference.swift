@@ -13,6 +13,7 @@ struct RTMDetInferenceResult {
 }
 
 enum RTMDetImageInference {
+    private static var lastInputTensorStats = "input=unavailable"
 
     private struct BoxRecord {
         let rowIndex: Int
@@ -257,6 +258,13 @@ enum RTMDetImageInference {
             classIndices = Array(0..<80)
         }
 
+        let rawProbe = rawDecodeProbe(
+            levels: [
+                (cls: cls80, side: 80),
+                (cls: cls40, side: 40),
+                (cls: cls20, side: 20),
+            ]
+        )
         let rawCandidates = decodeRawCandidates(
             levels: [
                 (cls: cls80, bbox: bbox80, kernel: kernel80, side: 80, stride: Float(modelSide) / 80),
@@ -320,8 +328,39 @@ enum RTMDetImageInference {
             detections: mappedDetections,
             overlayMaskImage: combinedMask,
             instanceMaskImages: instanceMaskImages,
-            outputSummary: outputSummary + ["rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)"]
+            outputSummary: outputSummary + [
+                "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
+                "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
+            ]
         )
+    }
+
+    private static func rawDecodeProbe(levels: [(cls: MLMultiArray, side: Int)]) -> String {
+        var bestScore: Float = -1
+        var bestClass = -1
+        var bestSide = -1
+        var bestX = -1
+        var bestY = -1
+
+        for level in levels {
+            let clsAt = nchwReader(for: level.cls)
+            for classIdx in 0..<80 {
+                for y in 0..<level.side {
+                    for x in 0..<level.side {
+                        let score = sigmoid(clsAt(0, classIdx, y, x))
+                        if score.isFinite, score > bestScore {
+                            bestScore = score
+                            bestClass = classIdx
+                            bestSide = level.side
+                            bestX = x
+                            bestY = y
+                        }
+                    }
+                }
+            }
+        }
+
+        return "globalBest score=\(String(format: "%.4f", bestScore)) class=\(bestClass) head=\(bestSide) xy=(\(bestX),\(bestY))"
     }
 
     private static func decodeRawCandidates(
@@ -625,6 +664,17 @@ enum RTMDetImageInference {
         let stdB: Float = 57.375
         let stdG: Float = 57.12
         let stdR: Float = 58.395
+        var minValue = Float.greatestFiniteMagnitude
+        var maxValue = -Float.greatestFiniteMagnitude
+        var sumValue: Double = 0
+        var valueCount = 0
+
+        func record(_ value: Float) {
+            minValue = min(minValue, value)
+            maxValue = max(maxValue, value)
+            sumValue += Double(value)
+            valueCount += 1
+        }
 
         for y in 0..<height {
             let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
@@ -634,10 +684,21 @@ enum RTMDetImageInference {
                 let b = Float(row[source])
                 let g = Float(row[source + 1])
                 let r = Float(row[source + 2])
-                writeNormalizedInputValue((b - meanB) / stdB, offset: dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
-                writeNormalizedInputValue((g - meanG) / stdG, offset: channelStride + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
-                writeNormalizedInputValue((r - meanR) / stdR, offset: channelStride * 2 + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
+                let bNorm = (b - meanB) / stdB
+                let gNorm = (g - meanG) / stdG
+                let rNorm = (r - meanR) / stdR
+                record(bNorm)
+                record(gNorm)
+                record(rNorm)
+                writeNormalizedInputValue(bNorm, offset: dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
+                writeNormalizedInputValue(gNorm, offset: channelStride + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
+                writeNormalizedInputValue(rNorm, offset: channelStride * 2 + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
             }
+        }
+
+        if valueCount > 0 {
+            let meanValue = sumValue / Double(valueCount)
+            lastInputTensorStats = "input[min=\(String(format: "%.3f", minValue)) max=\(String(format: "%.3f", maxValue)) mean=\(String(format: "%.3f", meanValue))]"
         }
 
         return array
