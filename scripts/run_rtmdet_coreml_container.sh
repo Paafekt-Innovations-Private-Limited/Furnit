@@ -84,38 +84,6 @@ docker run --rm -i --platform linux/amd64 \
     mkdir -p /opt/openmmlab
     cd /opt/openmmlab
     git clone --depth 1 --branch v3.3.0 https://github.com/open-mmlab/mmdetection.git
-    git clone --depth 1 --branch v1.3.1 --recursive https://github.com/open-mmlab/mmdeploy.git
-
-    python - <<'PY'
-from pathlib import Path
-import re
-
-path = Path("/opt/openmmlab/mmdeploy/mmdeploy/codebase/mmdet/models/dense_heads/rtmdet_ins_head.py")
-text = path.read_text(encoding="utf-8")
-if "device=mask_feats.device" in text:
-    patched = text
-else:
-    patched = re.sub(
-        r"(single_level_grid_priors\(\s*\(\s*feat_h\s*,\s*feat_w\s*\)\s*,\s*level_idx=0\s*)(\)\s*\.reshape)",
-        r"\1, device=mask_feats.device\2",
-        text,
-        count=1,
-    )
-    if patched == text:
-        patched = re.sub(
-            r"(single_level_grid_priors\(\s*hw\s*,\s*level_idx=0\s*)(\)\s*\.to\(mask_feat\.device\))",
-            r"\1, device=mask_feat.device\2",
-            text,
-            count=1,
-        )
-if patched == text and "device=mask_feats.device" not in text:
-    marker = "single_level_grid_priors"
-    pos = text.find(marker)
-    context = text[max(0, pos - 500):pos + 800] if pos >= 0 else "marker not found"
-    raise SystemExit(f"Did not patch CPU grid prior device in {path}\n--- context ---\n{context}")
-path.write_text(patched, encoding="utf-8")
-print("Patched RTMDet-Ins grid priors to use mask_feats.device")
-PY
 
     python -m pip install --upgrade pip "setuptools<70" wheel ninja
 
@@ -218,61 +186,7 @@ PY
         }
     fi
     export RTMDET_CKPT="$MODELCACHE/$CKPT"
-    export Torch_DIR=$(python -c "import torch;print(torch.utils.cmake_prefix_path)")/Torch
-    cd /opt/openmmlab/mmdeploy
-    grep -rl "CXX_STANDARD 14\|c++14\|gnu++14\|cxx_std_14" . \
-      --include=*.cmake --include=CMakeLists.txt 2>/dev/null | while read -r f; do
-        sed -i \
-          -e "s/CXX_STANDARD 14/CXX_STANDARD 17/g" \
-          -e "s/c++14/c++17/g" \
-          -e "s/gnu++14/gnu++17/g" \
-          -e "s/cxx_std_14/cxx_std_17/g" "$f"
-      done
-    OPS_CML=/opt/openmmlab/mmdeploy/csrc/mmdeploy/backend_ops/torchscript/ops/CMakeLists.txt
-    OPS_TGT=$(
-      grep -hoE "add_library\\(\\s*[A-Za-z0-9_]+" "$OPS_CML" \
-        | sed -E "s/add_library\\(\\s*//" \
-        | grep -E "torchscript|ops" \
-        | head -n1 || true
-    )
-    OPS_TGT=${OPS_TGT:-mmdeploy_torchscript_ops}
-    if ! grep -q "C++17 hardening block" "$OPS_CML"; then
-      cat >> "$OPS_CML" <<EOF
-
-# --- C++17 hardening block (injected by runner) ---
-if(TARGET $OPS_TGT)
-set_target_properties($OPS_TGT PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF)
-target_compile_features($OPS_TGT PUBLIC cxx_std_17)
-endif()
-EOF
-    fi
-    rm -rf build
-    mkdir -p build
-    cd build
-    cmake .. \
-      -DCMAKE_C_COMPILER=gcc-12 \
-      -DCMAKE_CXX_COMPILER=g++-12 \
-      -DCMAKE_CXX_STANDARD=17 \
-      -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-      -DCMAKE_CXX_EXTENSIONS=OFF \
-      -DMMDEPLOY_TARGET_BACKENDS="torchscript;coreml" \
-      -DTorch_DIR="$Torch_DIR" \
-      -DMMDEPLOY_BUILD_SDK=OFF
-    make -j"$(nproc)" VERBOSE=1 2>&1 | tee /tmp/mmdeploy_build.log
-    if grep -qE "\\-std=(gnu|c)\\+\\+14" /tmp/mmdeploy_build.log; then
-      echo "A -std=c++14 flag is still being emitted. Offending line(s):"
-      grep -nE "\\-std=(gnu|c)\\+\\+14" /tmp/mmdeploy_build.log | head
-      exit 1
-    fi
-    cd /opt/openmmlab/mmdeploy
-    python -m pip uninstall -y mmdeploy >/dev/null 2>&1 || true
-    python -m pip install --no-build-isolation -e /opt/openmmlab/mmdeploy
-    python -m pip install "numpy<2"
-    python -c "from mmdeploy.backend.torchscript import ops_available; print(ops_available())"
 
     cd /work
-    python scripts/rtmdet_ins_coreml_export.py
+    python scripts/rtmdet_ins_coreml_raw_export.py
 CONTAINER_SCRIPT
