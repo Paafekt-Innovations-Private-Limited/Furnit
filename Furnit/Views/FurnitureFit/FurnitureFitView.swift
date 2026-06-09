@@ -1565,6 +1565,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard imageWidth > 0, imageHeight > 0 else { return .zero }
         let viewWidth = maskImageView.bounds.width
         let viewHeight = maskImageView.bounds.height
+        guard viewWidth > 0, viewHeight > 0 else { return .zero }
+        if currentModelIsRTMDet && previewLayer.videoGravity == .resizeAspectFill {
+            let fillScale = max(viewWidth / CGFloat(imageWidth), viewHeight / CGFloat(imageHeight))
+            let offsetX = (viewWidth - CGFloat(imageWidth) * fillScale) * 0.5
+            let offsetY = (viewHeight - CGFloat(imageHeight) * fillScale) * 0.5
+            return CGRect(
+                x: bufferRect.minX * fillScale + offsetX,
+                y: bufferRect.minY * fillScale + offsetY,
+                width: bufferRect.width * fillScale,
+                height: bufferRect.height * fillScale
+            )
+        }
         return CGRect(
             x: bufferRect.minX / CGFloat(imageWidth) * viewWidth,
             y: bufferRect.minY / CGFloat(imageHeight) * viewHeight,

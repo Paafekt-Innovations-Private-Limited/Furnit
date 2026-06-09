@@ -333,8 +333,36 @@ enum RTMDetImageInference {
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
                 "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
                 cls80Probe,
-            ]
+            ] + rawMaskPlaneStats(rawMaskPlanes, selected: selected)
         )
+    }
+
+    private static func rawMaskPlaneStats(_ planes: [[Float]?], selected: [RawCandidate]) -> [String] {
+        planes.enumerated().compactMap { index, plane in
+            guard let plane, plane.count == 80 * 80 else { return nil }
+            var minValue = Float.greatestFiniteMagnitude
+            var maxValue = -Float.greatestFiniteMagnitude
+            var sum: Double = 0
+            var overThreshold = 0
+            var finiteCount = 0
+
+            for value in plane where value.isFinite {
+                minValue = min(minValue, value)
+                maxValue = max(maxValue, value)
+                sum += Double(value)
+                finiteCount += 1
+                if value > 0.5 {
+                    overThreshold += 1
+                }
+            }
+
+            guard finiteCount > 0 else { return "rawMaskPlane[\(index)] empty" }
+            let mean = sum / Double(finiteCount)
+            let stride = index < selected.count ? selected[index].stride : -1
+            let classIdx = index < selected.count ? selected[index].box.classIdx ?? -1 : -1
+            let score = index < selected.count ? selected[index].box.score : 0
+            return "rawMaskPlane[\(index)] min=\(String(format: "%.4f", minValue)) max=\(String(format: "%.4f", maxValue)) mean=\(String(format: "%.4f", mean)) gt0.5=\(overThreshold)/6400 stride=\(String(format: "%.1f", stride)) cls=\(classIdx) score=\(String(format: "%.3f", score))"
+        }
     }
 
     private static func rawDecodeProbe(levels: [(cls: MLMultiArray, side: Int)]) -> String {
