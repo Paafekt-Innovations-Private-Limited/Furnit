@@ -4757,7 +4757,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func isRTMDetInstanceSegmentationModel(_ model: MLModel) -> Bool {
         let outputs = model.modelDescription.outputDescriptionsByName
-        return outputs["dets"] != nil && outputs["masks"] != nil
+        if outputs["dets"] != nil && outputs["masks"] != nil {
+            return true
+        }
+        return outputs["cls_80"] != nil
+            && outputs["bbox_80"] != nil
+            && outputs["kernel_80"] != nil
+            && outputs["mask_feat"] != nil
     }
 
     private struct RTMDetMaskQualityStats {

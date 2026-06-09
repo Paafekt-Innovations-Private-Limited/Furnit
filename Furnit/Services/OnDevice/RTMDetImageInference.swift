@@ -289,7 +289,7 @@ enum RTMDetImageInference {
         }
 
         let rawMaskPlanes: [[Float]?]
-        if buildInstanceMasks || maxMaskCount > 1 {
+        if maxMaskCount > 0 || buildInstanceMasks {
             rawMaskPlanes = selected.map { buildRawMaskPlane(candidate: $0, maskFeat: maskFeat) }
         } else {
             rawMaskPlanes = []
