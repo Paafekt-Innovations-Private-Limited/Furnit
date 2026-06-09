@@ -265,6 +265,7 @@ enum RTMDetImageInference {
                 (cls: cls20, side: 20),
             ]
         )
+        let cls80Probe = multiArrayReadProbe(name: "cls_80", array: cls80)
         let rawCandidates = decodeRawCandidates(
             levels: [
                 (cls: cls80, bbox: bbox80, kernel: kernel80, side: 80, stride: Float(modelSide) / 80),
@@ -331,6 +332,7 @@ enum RTMDetImageInference {
             outputSummary: outputSummary + [
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
                 "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
+                cls80Probe,
             ]
         )
     }
@@ -361,6 +363,34 @@ enum RTMDetImageInference {
         }
 
         return "globalBest score=\(String(format: "%.4f", bestScore)) class=\(bestClass) head=\(bestSide) xy=(\(bestX),\(bestY))"
+    }
+
+    private static func multiArrayReadProbe(name: String, array: MLMultiArray) -> String {
+        let shape = array.shape.map(\.intValue).map(String.init).joined(separator: "x")
+        let strides = array.strides.map(\.intValue).map(String.init).joined(separator: "x")
+        let valueAtOffset = floatReader(for: array)
+
+        var fastMin = Float.greatestFiniteMagnitude
+        var fastMax = -Float.greatestFiniteMagnitude
+        var boxedMin = Double.greatestFiniteMagnitude
+        var boxedMax = -Double.greatestFiniteMagnitude
+        let sampleCount = min(array.count, 4096)
+
+        for index in 0..<sampleCount {
+            let fast = valueAtOffset(index)
+            if fast.isFinite {
+                fastMin = min(fastMin, fast)
+                fastMax = max(fastMax, fast)
+            }
+
+            let boxed = array[index].doubleValue
+            if boxed.isFinite {
+                boxedMin = min(boxedMin, boxed)
+                boxedMax = max(boxedMax, boxed)
+            }
+        }
+
+        return "\(name)ReadProbe dtype=\(array.dataType.rawValue) shape=\(shape) strides=\(strides) count=\(array.count) sample=\(sampleCount) fast[min=\(String(format: "%.4f", fastMin)) max=\(String(format: "%.4f", fastMax))] boxed[min=\(String(format: "%.4f", boxedMin)) max=\(String(format: "%.4f", boxedMax))]"
     }
 
     private static func decodeRawCandidates(
@@ -1130,25 +1160,25 @@ enum RTMDetImageInference {
         let count = array.count
         switch array.dataType {
         case .float32:
-            let ptr = array.dataPointer.bindMemory(to: Float.self, capacity: count)
+            let ptr = array.dataPointer.assumingMemoryBound(to: Float.self)
             return { index in
                 guard index >= 0, index < count else { return 0 }
                 return ptr[index]
             }
         case .float16:
-            let ptr = array.dataPointer.bindMemory(to: UInt16.self, capacity: count)
+            let ptr = array.dataPointer.assumingMemoryBound(to: UInt16.self)
             return { index in
                 guard index >= 0, index < count else { return 0 }
                 return Float(Float16(bitPattern: ptr[index]))
             }
         case .double:
-            let ptr = array.dataPointer.bindMemory(to: Double.self, capacity: count)
+            let ptr = array.dataPointer.assumingMemoryBound(to: Double.self)
             return { index in
                 guard index >= 0, index < count else { return 0 }
                 return Float(ptr[index])
             }
         case .int32:
-            let ptr = array.dataPointer.bindMemory(to: Int32.self, capacity: count)
+            let ptr = array.dataPointer.assumingMemoryBound(to: Int32.self)
             return { index in
                 guard index >= 0, index < count else { return 0 }
                 return Float(ptr[index])
