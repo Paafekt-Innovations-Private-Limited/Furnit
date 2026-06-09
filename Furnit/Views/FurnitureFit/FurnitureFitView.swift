@@ -185,6 +185,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var didPublishARRefinedFurnitureMetersEstimate = false
 
     // MARK: UI
+    private let previewContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .clear
+        view.clipsToBounds = true
+        view.layer.masksToBounds = true
+        return view
+    }()
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
@@ -741,31 +749,36 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         previewLayer.videoGravity = .resizeAspectFill
         previewLayer.isHidden = !shouldShowLiveCameraPreview
         logDebug("📺 [FurnitureFit] previewLayer initial hidden=\(previewLayer.isHidden) rtmDet=\(currentModelIsRTMDet) showLivePreview=\(showIdentifyLivePreview)")
-        layer.addSublayer(previewLayer)
+        addSubview(previewContainerView)
+        previewContainerView.layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
         detectionBBoxOverlayView.clipsToBounds = true
         detectionBBoxOverlayView.layer.masksToBounds = true
-        addSubview(arSCNView)
-        addSubview(maskImageView)
-        addSubview(detectionBBoxOverlayView)
+        previewContainerView.addSubview(arSCNView)
+        previewContainerView.addSubview(maskImageView)
+        previewContainerView.addSubview(detectionBBoxOverlayView)
         addSubview(selectedObjectChipButton)
         arSCNView.session = arSession
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
         detectionBBoxOverlayView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            arSCNView.topAnchor.constraint(equalTo: topAnchor),
-            arSCNView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            arSCNView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            arSCNView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            maskImageView.topAnchor.constraint(equalTo: topAnchor),
-            maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            maskImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            maskImageView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            detectionBBoxOverlayView.topAnchor.constraint(equalTo: topAnchor),
-            detectionBBoxOverlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            detectionBBoxOverlayView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            detectionBBoxOverlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            previewContainerView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            previewContainerView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            previewContainerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            previewContainerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            arSCNView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
+            arSCNView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
+            arSCNView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            arSCNView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            maskImageView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
+            maskImageView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
+            maskImageView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            maskImageView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            detectionBBoxOverlayView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
+            detectionBBoxOverlayView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
+            detectionBBoxOverlayView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            detectionBBoxOverlayView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
             selectedObjectChipButton.centerXAnchor.constraint(equalTo: centerXAnchor),
             selectedObjectChipButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 10)
         ])
@@ -899,11 +912,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        previewLayer.frame = bounds
+        previewLayer.frame = previewContainerView.bounds
         if isShowingLiveVideoIdentifications {
             applyLockedOrientationVideoRotation()
         }
-        cachedARViewportSize = bounds.size
+        cachedARViewportSize = previewContainerView.bounds.size
     }
 
     /// When AR/LiDAR sizing is unavailable, fall back to the detected bbox pixel proportion
