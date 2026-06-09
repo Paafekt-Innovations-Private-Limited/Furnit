@@ -192,6 +192,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true
+        iv.layer.masksToBounds = true
         iv.layer.minificationFilter = .linear
         iv.layer.magnificationFilter = .linear
         return iv
@@ -743,6 +744,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         layer.addSublayer(previewLayer)
         
         maskImageView.isUserInteractionEnabled = true
+        detectionBBoxOverlayView.clipsToBounds = true
+        detectionBBoxOverlayView.layer.masksToBounds = true
         addSubview(arSCNView)
         addSubview(maskImageView)
         addSubview(detectionBBoxOverlayView)
@@ -1595,6 +1598,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 isSelected: isSel
             )
         }
+    }
+
+    private func clearLiveDetectionOverlay(clearCandidates: Bool) {
+        maskImageView.image = nil
+        maskImageView.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
+        primaryBboxInView = .zero
+        if clearCandidates {
+            candidateBboxesInView = []
+            latestDisplayedCandidates = []
+            latestDisplayedSelectedCandidateIndex = nil
+        }
+        detectionBBoxOverlayView.items = []
+        clearLatestTapMaskState()
     }
 
     private func updateLatestTapMaskState(
@@ -4883,19 +4899,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             guard !candidates.isEmpty else {
                 consecutiveEmptyMaskFrames += 1
-                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.maskImageView.image = nil
-                        self?.updateDetectionOverlay(
-                            candidates: [],
-                            selectedIndex: nil,
-                            imageWidth: bufW,
-                            imageHeight: bufH,
-                            scaleX: 1,
-                            scaleY: 1
-                        )
-                        self?.setProgress(0.70, text: "Looking for furniture…")
-                    }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.clearLiveDetectionOverlay(clearCandidates: true)
+                    self.setProgress(0.70, text: "Looking for furniture…")
                 }
                 logRTMDetLiveFrameFooter(
                     frameStart: frameStart,
