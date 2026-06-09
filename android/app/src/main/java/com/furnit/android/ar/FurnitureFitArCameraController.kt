@@ -36,7 +36,7 @@ private data class PendingPhotoCaptureRequest(
 )
 
 /**
- * ARCore path for FurnitureFit: [GLSurfaceView] + [Session], CPU bitmaps for YOLO, and smoothed
+ * ARCore path for FurnitureFit: [GLSurfaceView] + [Session], CPU bitmaps for segmentation, and smoothed
  * overlay scale from depth/plane distance + pinhole height ([FurnitureFitArMetrics]).
  *
  * Physical height uses **pinhole × metric distance only**. We do **not** use
@@ -68,7 +68,7 @@ class FurnitureFitArCameraController(
     /** Invoked on [inferenceExecutor] with a decoded camera bitmap. */
     var onBitmapFrame: ((Bitmap) -> Unit)? = null
 
-    /** If false, the GL thread skips posting new frames (e.g. while YOLO is running). */
+    /** If false, the GL thread skips posting new frames (e.g. while segmentation is running). */
     var shouldPostBitmapFrame: () -> Boolean = { true }
 
     @Volatile
@@ -92,7 +92,7 @@ class FurnitureFitArCameraController(
     private var lastMetricDistanceDiagnostic: String? = null
 
     private var lastInferencePostMs = 0L
-    /** Min time between frames handed to YOLO (iOS ~0.07s; slightly lower here for responsiveness). */
+    /** Min time between frames handed to segmentation (iOS ~0.07s; slightly lower here for responsiveness). */
     var minFrameIntervalMs: Long = 55L
 
     @Volatile
@@ -136,7 +136,7 @@ class FurnitureFitArCameraController(
     private var lastFurnitureFitArFrameLogMs = 0L
     /** Throttle render-loop heartbeat so we can tell whether GL/AR is alive even before metrics. */
     private var lastFurnitureFitArHeartbeatLogMs = 0L
-    /** Throttle logs while GL runs but YOLO has not set [bboxHintValid] yet. */
+    /** Throttle logs while GL runs but segmentation has not set [bboxHintValid] yet. */
     private var lastFurnitureFitArWaitBboxLogMs = 0L
     /** Throttle logs when bbox exists but pinhole+fallback cannot produce [estH]. */
     private var lastFurnitureFitArFrameSkipLogMs = 0L
@@ -209,7 +209,7 @@ class FurnitureFitArCameraController(
     }
 
     /**
-     * YOLO had no bbox this frame — stop sampling depth at the old center only.
+     * Segmentation had no bbox this frame — stop sampling depth at the old center only.
      * Keep [lastEstimatedHeightMeters] and overlay scale (matches iOS AR_HOLD): a single missed
      * detection or bad frame must not snap the pill to 0.00m or reset zoom to 1×.
      */
@@ -600,7 +600,7 @@ class FurnitureFitArCameraController(
                 return
             }
 
-            // Expensive: YUV → bitmap only when we actually feed YOLO (throttled by [minFrameIntervalMs]).
+            // Expensive: YUV → bitmap only when we actually feed segmentation (throttled by [minFrameIntervalMs]).
             val rawBmp = image.yuv420888ToBitmap() ?: return
             val (orientedBmp, _) = rawBmp.rotateToMatchLockedRoomPhoto(lockedPhotoOrientation)
             if (orientedBmp !== rawBmp) {
@@ -646,7 +646,7 @@ class FurnitureFitArCameraController(
                     "platform=android phase=wait_bbox tracking=${tracking.name} " +
                         "roomFallback_m=${String.format("%.3f", roomHeightMetersForFallback)} " +
                         "rawWH=(${rawImageWidth}x${rawImageHeight}) " +
-                        "note=no_bbox_hint_until_YOLO_sets_primary",
+                        "note=no_bbox_hint_until_segmentation_sets_primary",
                 )
             }
             return
@@ -667,7 +667,7 @@ class FurnitureFitArCameraController(
             rawImageHeight,
             lockedPhotoOrientation,
         )
-        // Loose YOLO boxes can span most of the frame; huge spans blow up pinhole (meters) when depth glitches.
+        // Loose segmentation boxes can span most of the frame; huge spans blow up pinhole (meters) when depth glitches.
         val maxSpanPx = rawImageHeight.toFloat() * 0.68f
         val hRawForDepthGrid = hRaw.coerceIn(28f, maxOf(96f, maxSpanPx))
         val hRawForPinhole = hRaw.coerceIn(20f, maxSpanPx * 1.08f)

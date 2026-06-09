@@ -475,7 +475,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         super.onDraw(canvas)
 
         // Draw segmented objects (cutout with transparent background).
-        // Ultralytics-style: uniform base scale to fit, scale around bitmap center (pivot), then translate to screen center.
+        // Uniform base scale to fit, scale around bitmap center, then translate to screen center.
         maskBitmap?.let { bmp ->
             val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
             val totalScaleX = baseScale * furnitureScale * assistedOverlayScale

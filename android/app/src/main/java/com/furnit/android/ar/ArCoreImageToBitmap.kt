@@ -66,7 +66,7 @@ fun Image.yuv420888ToBitmap(jpegQuality: Int = 90): Bitmap? {
  * Rotates the bitmap so its aspect (wide vs tall) matches the **room photo lock** (`"portrait"` / `"landscape"`),
  * similar to CameraX [androidx.camera.core.ImageAnalysis] + [androidx.camera.core.ImageProxy.toBitmapSafe].
  *
- * ARCore [Frame.acquireCameraImage] stays in sensor/native layout; this aligns YOLO + overlay with the locked
+ * ARCore [Frame.acquireCameraImage] stays in sensor/native layout; this aligns segmentation + overlay with the locked
  * activity orientation (mirrors iOS classic camera vs AR display path).
  *
  * @return Pair of (oriented bitmap, inverse matrix mapping **oriented** pixel coords → **raw** camera image coords),
@@ -103,7 +103,7 @@ fun Bitmap.rotateToMatchLockedRoomPhoto(lockedOrientation: String): Pair<Bitmap,
 
 /**
  * Same inverse mapping as [Bitmap.rotateToMatchLockedRoomPhoto] but without allocating bitmaps.
- * Use this on the GL thread every frame; only decode YUV→bitmap when actually sending a frame to YOLO.
+ * Use this on the GL thread every frame; only decode YUV→bitmap when actually sending a frame to segmentation.
  */
 fun orientedToRawInverseForDimensions(
     rawWidth: Int,
@@ -131,7 +131,7 @@ fun orientedToRawInverseForDimensions(
 }
 
 /**
- * Maps a point from **oriented** bitmap pixels (what YOLO sees after [rotateToMatchLockedRoomPhoto])
+ * Maps a point from **oriented** bitmap pixels (what segmentation sees after [rotateToMatchLockedRoomPhoto])
  * to **raw** [Frame.acquireCameraImage] pixel coordinates for depth, intrinsics, and hit tests.
  *
  * For a 90° quarter-turn (portrait raw ↔ landscape lock or the reverse), the bitmap dimensions swap;

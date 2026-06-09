@@ -36,12 +36,10 @@ data class SegmentationResult(
 )
 
 /**
- * FurnitureFitManager handles object detection and segmentation using YOLOE models.
+ * FurnitureFitManager handles furniture detection and selected-object cutout generation.
  *
- * Inference backend:
- * 1. ONNX Runtime (`yoloe-11l-seg-pf.onnx` in generated assets)
- *
- * Furniture segmentation is ONNX-only. NCNN and TensorFlow Lite are not used here.
+ * Inference backend: ONNX Runtime. The renderer outputs real camera pixels only inside the
+ * selected mask and leaves every other pixel transparent so the room remains visible behind it.
  */
 class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -93,7 +91,7 @@ class FurnitureFitManager(private val context: Context) {
      * Initializes the ONNX Runtime segmentation backend.
      */
     fun initializeAuto(): Boolean {
-        LogUtil.i(TAG, "Initializing iOS-parity YOLOE 11L ONNX segmentation backend...")
+        LogUtil.i(TAG, "Initializing furniture segmentation ONNX backend...")
 
         try {
             initializeOnnx()
@@ -290,8 +288,7 @@ class FurnitureFitManager(private val context: Context) {
             val inputName = firstInput.key
             val tensorInfo = firstInput.value.info
 
-            // --- FIX #1 (important): use model-declared input H/W instead of hardcoding 640 ---
-            // Many YOLOE exports are 768x768 (your anchors like 48384 and proto like 384 strongly suggest 768).
+            // Use model-declared input H/W instead of hardcoding 640.
             var inputH = 640
             var inputW = 640
             if (tensorInfo is ai.onnxruntime.TensorInfo) {
@@ -401,8 +398,7 @@ class FurnitureFitManager(private val context: Context) {
 
                 val numMaskCoeffs = 32
 
-                // Your comment says prompt-free (embeddings + mask coeffs), but below you treat as standard YOLO format.
-                // We'll keep your logic as-is, but the critical fix is: input size must match model export (768 vs 640).
+                // Input size must match the model export (some exports are 768 rather than 640).
                 val numClasses = numFeatures - 4 - numMaskCoeffs
                 val classStartIdx = 4
                 val maskCoeffStartIdx = 4 + numClasses
@@ -741,7 +737,7 @@ class FurnitureFitManager(private val context: Context) {
             val usesLetterboxPreprocess = inputH >= 1280 || inputW >= 1280
             LogUtil.i(
                 TAG,
-                "YOLOE 11L ONNX start: ${frame.width}x${frame.height} -> ${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x${inputH}"
+                "Furniture segmentation ONNX start: ${frame.width}x${frame.height} -> ${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x${inputH}"
             )
 
             val preprocessStartNanos = System.nanoTime()
@@ -760,23 +756,23 @@ class FurnitureFitManager(private val context: Context) {
                     inputFloats[2 * hw + pixelIdx] = (v and 0xFF) / 255.0f
                 }
             }
-            LogUtil.i(TAG, "YOLOE 11L preprocess: ${elapsedMillis(preprocessStartNanos)}ms")
+            LogUtil.i(TAG, "Furniture segmentation preprocess: ${elapsedMillis(preprocessStartNanos)}ms")
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
             tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
 
             val inferenceStartNanos = System.nanoTime()
             session.run(mapOf(inputName to tensor)).use { results ->
-                LogUtil.i(TAG, "YOLOE 11L inference: ${elapsedMillis(inferenceStartNanos)}ms")
+                LogUtil.i(TAG, "Furniture segmentation inference: ${elapsedMillis(inferenceStartNanos)}ms")
 
                 val outputSelectStartNanos = System.nanoTime()
                 val outputs = selectDetectionProtoOutputs(session, results) ?: run {
-                    LogUtil.e(TAG, "Could not find detection/prototype outputs in YOLOE 11L session")
+                    LogUtil.e(TAG, "Could not find detection/prototype outputs in segmentation session")
                     return null
                 }
                 LogUtil.i(
                     TAG,
-                    "YOLOE 11L outputs: det=${outputs.detectionName}${outputs.detectionShape.contentToString()} proto=${outputs.protoName}${outputs.protoShape.contentToString()} in ${elapsedMillis(outputSelectStartNanos)}ms"
+                    "Furniture segmentation outputs: det=${outputs.detectionName}${outputs.detectionShape.contentToString()} proto=${outputs.protoName}${outputs.protoShape.contentToString()} in ${elapsedMillis(outputSelectStartNanos)}ms"
                 )
 
                 val detValue = outputs.detectionValue
@@ -794,7 +790,7 @@ class FurnitureFitManager(private val context: Context) {
                 )
 
                 if (detections.isEmpty()) {
-                    LogUtil.i(TAG, "YOLOE 11L detections: 0 candidates in ${elapsedMillis(parseStartNanos)}ms")
+                    LogUtil.i(TAG, "Furniture segmentation detections: 0 candidates in ${elapsedMillis(parseStartNanos)}ms")
                     return SegmentationResult(null, emptyList(), inputW, null)
                 }
 
@@ -813,7 +809,7 @@ class FurnitureFitManager(private val context: Context) {
                 }
                 LogUtil.i(
                     TAG,
-                    "YOLOE 11L detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${elapsedMillis(parseStartNanos)}ms"
+                    "Furniture segmentation detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${elapsedMillis(parseStartNanos)}ms"
                 )
 
                 val pinList = pinnedDetections.orEmpty()
@@ -836,15 +832,7 @@ class FurnitureFitManager(private val context: Context) {
                     frameWidth = inputW.toFloat(),
                     frameHeight = inputH.toFloat(),
                 )
-                val maskSourceDetections = if (!restrictToSelection) {
-                    if (primaryDet != null) {
-                        collectMaskDetections(primaryDet, keepDets)
-                    } else {
-                        emptyList()
-                    }
-                } else {
-                    primaryCandidates
-                }
+                val maskSourceDetections = if (restrictToSelection) primaryCandidates else emptyList()
                 val maskDetectionsForBuild = if (restrictToSelection) {
                     maskSourceDetections.map { detection ->
                         expandedPrimaryForMaskBuild(
@@ -854,19 +842,11 @@ class FurnitureFitManager(private val context: Context) {
                         )
                     }
                 } else if (primaryDet != null) {
-                    val expandedPrimary = expandedPrimaryForMaskBuild(
+                    listOf(expandedPrimaryForMaskBuild(
                         primaryDetection = primaryDet,
                         frameWidth = inputW.toFloat(),
                         frameHeight = inputH.toFloat(),
-                    )
-                    buildList {
-                        add(expandedPrimary)
-                        for (detection in maskSourceDetections) {
-                            if (calculateIoUForMaskSelection(detection, primaryDet) < 0.999f) {
-                                add(detection)
-                            }
-                        }
-                    }
+                    ))
                 } else {
                     emptyList()
                 }
@@ -908,7 +888,7 @@ class FurnitureFitManager(private val context: Context) {
                 }
 
                 if (!includeMask) {
-                    LogUtil.i(TAG, "YOLOE 11L total (detections only): ${elapsedMillis(totalStartNanos)}ms")
+                    LogUtil.i(TAG, "Furniture segmentation total (detections only): ${elapsedMillis(totalStartNanos)}ms")
                     return SegmentationResult(
                         mask = null,
                         detections = detectionResults,
@@ -1013,10 +993,10 @@ class FurnitureFitManager(private val context: Context) {
                     val maskBmp = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888)
                     maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
                     maskResult = maskBmp
-                    LogUtil.i(TAG, "YOLOE 11L mask build: ${elapsedMillis(maskBuildStartNanos)}ms")
+                    LogUtil.i(TAG, "Furniture cutout mask build: ${elapsedMillis(maskBuildStartNanos)}ms")
                 }
 
-                LogUtil.i(TAG, "YOLOE 11L total: ${elapsedMillis(totalStartNanos)}ms")
+                LogUtil.i(TAG, "Furniture segmentation total: ${elapsedMillis(totalStartNanos)}ms")
                 SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
             }
         } catch (e: Exception) {
@@ -1614,7 +1594,7 @@ class FurnitureFitManager(private val context: Context) {
             val featuresPerDetection = dim2
             LogUtil.i(
                 TAG,
-                "YOLOE parser layout: end-to-end [1,$numDetections,$featuresPerDetection] with $numMaskCoeffs mask coeffs"
+                "Segmentation parser layout: end-to-end [1,$numDetections,$featuresPerDetection] with $numMaskCoeffs mask coeffs"
             )
 
             for (detIndex in 0 until numDetections) {
@@ -1684,7 +1664,7 @@ class FurnitureFitManager(private val context: Context) {
 
         LogUtil.i(
             TAG,
-            "YOLOE parser layout: one-to-many [1,$numFeatures,$numAnchors] with $numClasses classes and $numMaskCoeffs mask coeffs"
+            "Segmentation parser layout: one-to-many [1,$numFeatures,$numAnchors] with $numClasses classes and $numMaskCoeffs mask coeffs"
         )
         val getDetValue: (Int, Int) -> Float = if (det3d != null) {
             { feature, anchor -> det3d[0][feature][anchor] }
@@ -1813,7 +1793,7 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun labelForClassId(classId: Int): String {
-        // yoloe-11l-seg-pf.onnx exports 80 COCO classes (4 box + 80 class + 32 mask coeffs).
+        // Current segmentation export uses 80 COCO classes (4 box + 80 class + 32 mask coeffs).
         // classes.json is a larger Furnit taxonomy, so using it for class IDs 0..79 maps chairs to
         // unrelated labels like "almond".
         if (classId in COCO_CLASS_NAMES.indices) {

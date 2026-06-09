@@ -855,7 +855,7 @@ class FurnitureFitFragment : Fragment() {
         cameraProvider.unbindAll()
 
         val rotation = ctx.displayRotationForCameraX()
-        // Bias buffer aspect to the locked room orientation so rotation metadata + YOLO see a non-square
+        // Bias buffer aspect to the locked room orientation so segmentation sees a non-square
         // frame; square 640² skips aspect-based correction and was misaligned for landscape-locked UI.
         val analysisTargetSize =
             if (selectedPhotoOrientation.equals("landscape", ignoreCase = true)) {
