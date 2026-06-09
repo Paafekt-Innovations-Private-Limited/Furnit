@@ -24,6 +24,10 @@ DEFAULT_IMAGES = [
     Path("/Users/al/Downloads/WhatsApp Image 2026-06-08 at 16.08.53.jpeg"),
 ]
 
+MODEL_INPUT = 640
+MASK_SIZE = 80
+PREPROCESS = "stretch"
+
 
 def preprocess_bgr_nchw(image_path: Path) -> np.ndarray:
     image = Image.open(image_path).convert("RGB").resize((640, 640), Image.BILINEAR)
@@ -112,6 +116,115 @@ def mask_bounds(binary: np.ndarray) -> tuple[int, int, int, int] | None:
     return int(x0), int(y0), int(x1 - x0 + 1), int(y1 - y0 + 1)
 
 
+def map_model_box_to_source(
+    box640: tuple[float, float, float, float],
+    orig_w: int,
+    orig_h: int,
+    preprocess: str,
+) -> tuple[float, float, float, float]:
+    x1, y1, x2, y2 = box640
+    if preprocess == "stretch":
+        sx = orig_w / MODEL_INPUT
+        sy = orig_h / MODEL_INPUT
+        return (
+            max(0.0, min(float(orig_w), x1 * sx)),
+            max(0.0, min(float(orig_h), y1 * sy)),
+            max(0.0, min(float(orig_w), x2 * sx)),
+            max(0.0, min(float(orig_h), y2 * sy)),
+        )
+    if preprocess == "letterbox":
+        gain = min(MODEL_INPUT / orig_w, MODEL_INPUT / orig_h)
+        pad_x = (MODEL_INPUT - orig_w * gain) * 0.5
+        pad_y = (MODEL_INPUT - orig_h * gain) * 0.5
+        return (
+            max(0.0, min(float(orig_w), (x1 - pad_x) / gain)),
+            max(0.0, min(float(orig_h), (y1 - pad_y) / gain)),
+            max(0.0, min(float(orig_w), (x2 - pad_x) / gain)),
+            max(0.0, min(float(orig_h), (y2 - pad_y) / gain)),
+        )
+    raise ValueError(f"unknown preprocess mode: {preprocess}")
+
+
+def swift_mask_sample_coordinate(
+    source_x: int,
+    source_y: int,
+    orig_w: int,
+    orig_h: int,
+    preprocess: str,
+) -> tuple[int, int]:
+    """Mirror RTMDetImageInference.maskSampleCoordinate for the 640 raw model."""
+    if preprocess == "stretch":
+        model_x = (source_x + 0.5) * MODEL_INPUT / orig_w
+        model_y = (source_y + 0.5) * MODEL_INPUT / orig_h
+    elif preprocess == "letterbox":
+        gain = min(MODEL_INPUT / orig_w, MODEL_INPUT / orig_h)
+        pad_x = (MODEL_INPUT - orig_w * gain) * 0.5
+        pad_y = (MODEL_INPUT - orig_h * gain) * 0.5
+        model_x = (source_x + 0.5) * gain + pad_x
+        model_y = (source_y + 0.5) * gain + pad_y
+    else:
+        raise ValueError(f"unknown preprocess mode: {preprocess}")
+
+    sample_x = min(MASK_SIZE - 1, max(0, int(model_x * MASK_SIZE / MODEL_INPUT)))
+    sample_y = min(MASK_SIZE - 1, max(0, int(model_y * MASK_SIZE / MODEL_INPUT)))
+    return sample_x, sample_y
+
+
+def mask_to_image_space_swift(
+    mask80: np.ndarray,
+    box640: tuple[float, float, float, float],
+    orig_w: int,
+    orig_h: int,
+    mask_threshold: float,
+    preprocess: str = PREPROCESS,
+) -> np.ndarray:
+    """Mirror Swift raw-mask rendering: source bbox loop -> 80x80 sample -> threshold."""
+    mapped = map_model_box_to_source(box640, orig_w, orig_h, preprocess)
+    x_min = max(0, min(orig_w - 1, int(math.floor(mapped[0]))))
+    y_min = max(0, min(orig_h - 1, int(math.floor(mapped[1]))))
+    x_max = max(0, min(orig_w - 1, int(math.ceil(mapped[2]))))
+    y_max = max(0, min(orig_h - 1, int(math.ceil(mapped[3]))))
+
+    out = np.zeros((orig_h, orig_w), dtype=np.uint8)
+    if x_max < x_min or y_max < y_min:
+        return out
+
+    for y in range(y_min, y_max + 1):
+        for x in range(x_min, x_max + 1):
+            sample_x, sample_y = swift_mask_sample_coordinate(x, y, orig_w, orig_h, preprocess)
+            value = float(mask80[sample_y, sample_x])
+            if math.isfinite(value) and value > mask_threshold:
+                out[y, x] = 1
+    return out
+
+
+def save_overlay(
+    orig_path: Path,
+    mask80: np.ndarray,
+    box640: tuple[float, float, float, float],
+    out_path: Path,
+    mask_threshold: float,
+) -> Path:
+    base = Image.open(orig_path).convert("RGB")
+    ow, oh = base.size
+    binm = mask_to_image_space_swift(mask80, box640, ow, oh, mask_threshold)
+
+    rgba = np.array(base.convert("RGBA"))
+    green = np.array([0, 255, 0, 255], dtype=np.float32)
+    hit = binm == 1
+    rgba[hit] = (rgba[hit].astype(np.float32) * 0.5 + green * 0.5).astype(np.uint8)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(rgba).save(out_path)
+    cover = int(binm.sum()) / max(1, ow * oh)
+    mapped = map_model_box_to_source(box640, ow, oh, PREPROCESS)
+    print(
+        f">>> overlay saved: {out_path} | coverage={cover:.3%} "
+        f"bbox640={[round(v) for v in box640]} "
+        f"bbox_source={[round(v) for v in mapped]} preprocess={PREPROCESS}"
+    )
+    return out_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -119,6 +232,8 @@ def main() -> int:
     parser.add_argument("--class-id", type=int, default=56, help="COCO class id to verify; 56 is chair")
     parser.add_argument("--threshold", type=float, default=0.25)
     parser.add_argument("--mask-threshold", type=float, default=0.5)
+    parser.add_argument("--overlay-out", type=Path, help="Save a Swift-transform mask overlay PNG for the first valid image")
+    parser.add_argument("--overlay-all", action="store_true", help="Save overlays for every valid image")
     parser.add_argument("--require-all", action="store_true", help="Fail if any image has no valid class/mask")
     args = parser.parse_args()
 
@@ -160,6 +275,11 @@ def main() -> int:
             failures.append(f"{image_path.name}: decoded mask collapsed pixels={pixels} bounds={bounds}")
         else:
             passed += 1
+            if args.overlay_out and (args.overlay_all or passed == 1):
+                out_path = args.overlay_out
+                if args.overlay_all and len(images) > 1:
+                    out_path = out_path.with_name(f"{out_path.stem}_{image_path.stem}{out_path.suffix}")
+                save_overlay(image_path, mask, box, out_path, args.mask_threshold)
 
     if passed == 0:
         failures.append("no image produced a valid decoded mask")
