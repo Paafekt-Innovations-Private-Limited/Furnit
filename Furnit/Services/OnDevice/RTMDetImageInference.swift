@@ -123,6 +123,7 @@ enum RTMDetImageInference {
             return try runRawHeadPostprocess(
                 outputArrays: outputArrays,
                 outputSummary: outputSummary,
+                sourceBuffer: sourceBuffer,
                 sourceWidth: sourceWidth,
                 sourceHeight: sourceHeight,
                 modelSide: modelSide,
@@ -222,6 +223,7 @@ enum RTMDetImageInference {
     private static func runRawHeadPostprocess(
         outputArrays: [(name: String, array: MLMultiArray)],
         outputSummary: [String],
+        sourceBuffer: CVPixelBuffer,
         sourceWidth: Int,
         sourceHeight: Int,
         modelSide: Int,
@@ -308,6 +310,7 @@ enum RTMDetImageInference {
             rawMaskPlanes: rawMaskPlanes,
             boxes: mappedBoxes,
             maxMaskCount: maxMaskCount,
+            sourceBuffer: sourceBuffer,
             mapping: mapping
         )
         let instanceMaskImages: [UIImage?]
@@ -318,6 +321,7 @@ enum RTMDetImageInference {
                     rawMaskPlanes: [rawMaskPlanes[index]],
                     boxes: [mappedBox],
                     maxMaskCount: 1,
+                    sourceBuffer: sourceBuffer,
                     mapping: mapping
                 )
             }
@@ -589,20 +593,23 @@ enum RTMDetImageInference {
         rawMaskPlanes: [[Float]?],
         boxes: [BoxRecord],
         maxMaskCount: Int,
+        sourceBuffer: CVPixelBuffer,
         mapping: ImageMapping
     ) -> UIImage? {
         guard !rawMaskPlanes.isEmpty, !boxes.isEmpty else { return nil }
         let sourceWidth = mapping.sourceWidth
         let sourceHeight = mapping.sourceHeight
+        guard CVPixelBufferGetWidth(sourceBuffer) == sourceWidth,
+              CVPixelBufferGetHeight(sourceBuffer) == sourceHeight else {
+            return nil
+        }
+
         var rgba = [UInt8](repeating: 0, count: sourceWidth * sourceHeight * 4)
-        let colors: [(UInt8, UInt8, UInt8)] = [
-            (0, 200, 255),
-            (0, 255, 120),
-            (255, 180, 0),
-            (255, 80, 140),
-            (180, 120, 255),
-            (255, 255, 0),
-        ]
+
+        CVPixelBufferLockBaseAddress(sourceBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(sourceBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(sourceBuffer) else { return nil }
+        let rowBytes = CVPixelBufferGetBytesPerRow(sourceBuffer)
 
         var paintedPixels = 0
         let count = min(max(1, maxMaskCount), boxes.count, rawMaskPlanes.count)
@@ -615,8 +622,8 @@ enum RTMDetImageInference {
             let yMax = max(0, min(sourceHeight - 1, Int(ceil(box.y2))))
             guard xMax >= xMin, yMax >= yMin else { continue }
 
-            let (r, g, b) = colors[index % colors.count]
             for y in yMin...yMax {
+                let sourceRow = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
                 for x in xMin...xMax {
                     let (sampleX, sampleY) = maskSampleCoordinate(
                         sourceX: x,
@@ -628,13 +635,12 @@ enum RTMDetImageInference {
                     let value = plane[sampleY * 80 + sampleX]
                     guard value.isFinite, value > 0.5 else { continue }
                     let dest = (y * sourceWidth + x) * 4
-                    if rgba[dest + 3] == 0 {
-                        paintedPixels += 1
-                    }
-                    rgba[dest] = b
-                    rgba[dest + 1] = g
-                    rgba[dest + 2] = r
-                    rgba[dest + 3] = max(rgba[dest + 3], UInt8(140))
+                    let source = x * 4
+                    if rgba[dest + 3] == 0 { paintedPixels += 1 }
+                    rgba[dest] = sourceRow[source + 2]
+                    rgba[dest + 1] = sourceRow[source + 1]
+                    rgba[dest + 2] = sourceRow[source]
+                    rgba[dest + 3] = 255
                 }
             }
         }
