@@ -53,10 +53,13 @@ class FurnitureFitManager(private val context: Context) {
 
     companion object {
         private const val TAG = "FurnitureFitManager"
-        private const val DEFAULT_ONNX_MODEL_ASSET = "yoloe-11l-seg-pf.onnx"
+        private const val RTMDET_ONNX_MODEL_ASSET = "rtmdet-ins-m-raw.onnx"
+        private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
+        private const val RTMDET_CONFIDENCE_THRESHOLD = 0.55f
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
+        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
 
         /**
          * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
@@ -86,6 +89,7 @@ class FurnitureFitManager(private val context: Context) {
     // ONNX Runtime objects
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
+    private var loadedOnnxAssetName: String? = null
 
     /**
      * Initializes the ONNX Runtime segmentation backend.
@@ -127,6 +131,7 @@ class FurnitureFitManager(private val context: Context) {
             ortSession = ortEnv!!.createSession(file.absolutePath, opts)
 
             // Log input/output info
+            loadedOnnxAssetName = onnxAssetName
             LogUtil.i(TAG, "ONNX model loaded successfully")
             for ((name, info) in ortSession!!.inputInfo) {
                 LogUtil.i(TAG, "ONNX input: $name -> ${info.info}")
@@ -142,6 +147,7 @@ class FurnitureFitManager(private val context: Context) {
             LogUtil.e(TAG, "Failed to load onnx: ${e.message}", e)
             ortSession = null
             ortEnv = null
+            loadedOnnxAssetName = null
         }
     }
 
@@ -746,14 +752,24 @@ class FurnitureFitManager(private val context: Context) {
             preparedBitmap.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
             val inputFloats = FloatArray(3 * inputH * inputW)
             val hw = inputH * inputW
+            val isRtmdetRaw = isRtmdetRawSession(session)
             for (y in 0 until inputH) {
                 val rowOff = y * inputW
                 for (x in 0 until inputW) {
                     val v = intValues[rowOff + x]
                     val pixelIdx = rowOff + x
-                    inputFloats[0 * hw + pixelIdx] = ((v shr 16) and 0xFF) / 255.0f
-                    inputFloats[1 * hw + pixelIdx] = ((v shr 8) and 0xFF) / 255.0f
-                    inputFloats[2 * hw + pixelIdx] = (v and 0xFF) / 255.0f
+                    val r = ((v shr 16) and 0xFF).toFloat()
+                    val g = ((v shr 8) and 0xFF).toFloat()
+                    val b = (v and 0xFF).toFloat()
+                    if (isRtmdetRaw) {
+                        inputFloats[0 * hw + pixelIdx] = (b - 103.53f) / 57.375f
+                        inputFloats[1 * hw + pixelIdx] = (g - 116.28f) / 57.12f
+                        inputFloats[2 * hw + pixelIdx] = (r - 123.675f) / 58.395f
+                    } else {
+                        inputFloats[0 * hw + pixelIdx] = r / 255.0f
+                        inputFloats[1 * hw + pixelIdx] = g / 255.0f
+                        inputFloats[2 * hw + pixelIdx] = b / 255.0f
+                    }
                 }
             }
             LogUtil.i(TAG, "Furniture segmentation preprocess: ${elapsedMillis(preprocessStartNanos)}ms")
@@ -764,6 +780,20 @@ class FurnitureFitManager(private val context: Context) {
             val inferenceStartNanos = System.nanoTime()
             session.run(mapOf(inputName to tensor)).use { results ->
                 LogUtil.i(TAG, "Furniture segmentation inference: ${elapsedMillis(inferenceStartNanos)}ms")
+
+                if (isRtmdetRaw) {
+                    return handleRtmdetRawResults(
+                        frame = frame,
+                        inputW = inputW,
+                        inputH = inputH,
+                        includeMask = includeMask,
+                        selectedClassIds = selectedClassIds,
+                        pinnedDetections = pinnedDetections,
+                        session = session,
+                        results = results,
+                        totalStartNanos = totalStartNanos,
+                    )
+                }
 
                 val outputSelectStartNanos = System.nanoTime()
                 val outputs = selectDetectionProtoOutputs(session, results) ?: run {
@@ -1016,8 +1046,29 @@ class FurnitureFitManager(private val context: Context) {
         val protoShape: LongArray,
     )
 
+    private data class RtmdetLevelOutput(
+        val cls: FloatArray,
+        val bbox: FloatArray,
+        val kernel: FloatArray,
+        val side: Int,
+        val stride: Float,
+    )
+
+    private data class RtmdetRawOutputs(
+        val levels: List<RtmdetLevelOutput>,
+        val maskFeat: FloatArray,
+    )
+
     private fun elapsedMillis(startNanos: Long): Long =
         (System.nanoTime() - startNanos) / 1_000_000L
+
+    private fun isRtmdetRawSession(session: OrtSession): Boolean {
+        return loadedOnnxAssetName == RTMDET_ONNX_MODEL_ASSET ||
+            (session.outputInfo.containsKey("cls_80") &&
+                session.outputInfo.containsKey("bbox_80") &&
+                session.outputInfo.containsKey("kernel_80") &&
+                session.outputInfo.containsKey("mask_feat"))
+    }
 
     private fun preprocessFrameForModel(
         frame: Bitmap,
@@ -1100,6 +1151,320 @@ class FurnitureFitManager(private val context: Context) {
             detectionShape = det.second.shape,
             protoShape = proto.second.shape,
         )
+    }
+
+    private fun handleRtmdetRawResults(
+        frame: Bitmap,
+        inputW: Int,
+        inputH: Int,
+        includeMask: Boolean,
+        selectedClassIds: Set<Int>,
+        pinnedDetections: List<DetectionResult>?,
+        session: OrtSession,
+        results: OrtSession.Result,
+        totalStartNanos: Long,
+    ): SegmentationResult? {
+        val parseStartNanos = System.nanoTime()
+        val raw = extractRtmdetRawOutputs(session, results) ?: run {
+            LogUtil.e(TAG, "RTMDet raw outputs missing")
+            return null
+        }
+        val detections = decodeRtmdetRawCandidates(raw, inputW, inputH)
+        if (detections.isEmpty()) {
+            LogUtil.i(TAG, "RTMDet raw detections: 0 candidates in ${elapsedMillis(parseStartNanos)}ms")
+            return SegmentationResult(null, emptyList(), inputW, null)
+        }
+
+        val sortedDets = detections.sortedByDescending { it.confidence }.take(500)
+        val keepDets = mutableListOf<Detection>()
+        val suppressed = BooleanArray(sortedDets.size)
+        for (i in sortedDets.indices) {
+            if (suppressed[i]) continue
+            keepDets.add(sortedDets[i])
+            for (j in i + 1 until sortedDets.size) {
+                if (suppressed[j]) continue
+                if (sortedDets[i].classId != sortedDets[j].classId) continue
+                if (calculateIoU(sortedDets[i], sortedDets[j]) > DEFAULT_NMS_IOU_THRESHOLD) {
+                    suppressed[j] = true
+                }
+            }
+        }
+        LogUtil.i(
+            TAG,
+            "RTMDet raw detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${elapsedMillis(parseStartNanos)}ms",
+        )
+
+        val pinList = pinnedDetections.orEmpty()
+        val restrictToSelection = selectedClassIds.isNotEmpty() || pinList.isNotEmpty()
+        val primaryCandidates = when {
+            pinList.isNotEmpty() -> {
+                val iouPinThreshold = 0.45f
+                keepDets.filter { det ->
+                    pinList.any { pin ->
+                        det.classId == pin.classId && calculateIoU(det, pin) >= iouPinThreshold
+                    }
+                }
+            }
+            selectedClassIds.isEmpty() -> keepDets
+            else -> keepDets.filter { it.classId in selectedClassIds }
+        }
+        val primaryDet = pickPrimaryOnnxDetection(
+            detections = primaryCandidates,
+            frameWidth = inputW.toFloat(),
+            frameHeight = inputH.toFloat(),
+        )
+        val maskDetectionsForBuild = if (restrictToSelection) primaryCandidates else listOfNotNull(primaryDet)
+
+        val orderedDisplayDetections = if (primaryDet != null) {
+            buildList {
+                add(primaryDet)
+                for (detection in keepDets) {
+                    if (detection.anchorIdx != primaryDet.anchorIdx) add(detection)
+                }
+            }
+        } else {
+            keepDets
+        }
+        val detectionResults = orderedDisplayDetections
+            .take(DEFAULT_MAX_DETECTIONS)
+            .map { detection ->
+                DetectionResult(
+                    x = detection.x,
+                    y = detection.y,
+                    w = detection.w,
+                    h = detection.h,
+                    confidence = detection.confidence,
+                    label = labelForClassId(detection.classId),
+                    classId = detection.classId,
+                )
+            }
+
+        if (!includeMask) {
+            LogUtil.i(TAG, "RTMDet raw total (detections only): ${elapsedMillis(totalStartNanos)}ms")
+            return SegmentationResult(null, detectionResults, inputW, detectionResults.firstOrNull())
+        }
+
+        var maskResult: Bitmap? = null
+        if (primaryDet != null && maskDetectionsForBuild.isNotEmpty()) {
+            val maskBuildStartNanos = System.nanoTime()
+            val protoW = 80
+            val protoH = 80
+            val maskProto = FloatArray(protoW * protoH)
+            for (detection in maskDetectionsForBuild) {
+                val plane = buildRtmdetRawMaskPlane(detection, raw.maskFeat) ?: continue
+                for (i in plane.indices) {
+                    if (plane[i] > maskProto[i]) maskProto[i] = plane[i]
+                }
+            }
+
+            val clipLeftModel = maskDetectionsForBuild.minOfOrNull { it.x - it.w / 2f } ?: (primaryDet.x - primaryDet.w / 2f)
+            val clipTopModel = maskDetectionsForBuild.minOfOrNull { it.y - it.h / 2f } ?: (primaryDet.y - primaryDet.h / 2f)
+            val clipRightModel = maskDetectionsForBuild.maxOfOrNull { it.x + it.w / 2f } ?: (primaryDet.x + primaryDet.w / 2f)
+            val clipBottomModel = maskDetectionsForBuild.maxOfOrNull { it.y + it.h / 2f } ?: (primaryDet.y + primaryDet.h / 2f)
+            val protoScaleX = inputW.toFloat() / protoW.toFloat()
+            val protoScaleY = inputH.toFloat() / protoH.toFloat()
+            clipProtoMaskOutsideRect(
+                mask = maskProto,
+                protoW = protoW,
+                protoH = protoH,
+                clipX0 = floor((clipLeftModel / protoScaleX).toDouble()).toInt(),
+                clipY0 = floor((clipTopModel / protoScaleY).toDouble()).toInt(),
+                clipX1 = ceil((clipRightModel / protoScaleX).toDouble()).toInt(),
+                clipY1 = ceil((clipBottomModel / protoScaleY).toDouble()).toInt(),
+            )
+
+            val frameW = frame.width
+            val frameH = frame.height
+            val sxf = frameW.toFloat() / inputW.toFloat()
+            val syf = frameH.toFloat() / inputH.toFloat()
+            val tightFx0 = clipLeftModel * sxf
+            val tightFx1 = clipRightModel * sxf
+            val tightFy0 = clipTopModel * syf
+            val tightFy1 = clipBottomModel * syf
+            val bandMarginW = max(1f, tightFx1 - tightFx0) * bboxExpandMargin
+            val bandMarginH = max(1f, tightFy1 - tightFy0) * bboxExpandMargin
+            val bandX0 = floor((tightFx0 - bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
+            val bandX1 = ceil((tightFx1 + bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
+            val bandY0 = floor((tightFy0 - bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
+            val bandY1 = ceil((tightFy1 + bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
+
+            val framePixels = IntArray(frameW * frameH)
+            frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
+            val outPixels = IntArray(frameW * frameH)
+            composeNearestProtoMaskCutoutArgb(
+                framePixels = framePixels,
+                outPixels = outPixels,
+                maskProto = maskProto,
+                frameW = frameW,
+                frameH = frameH,
+                protoW = protoW,
+                protoH = protoH,
+                x0 = bandX0,
+                x1 = bandX1,
+                y0 = bandY0,
+                y1 = bandY1,
+            )
+            maskResult = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888).also { maskBmp ->
+                maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
+            }
+            LogUtil.i(TAG, "RTMDet cutout mask build: ${elapsedMillis(maskBuildStartNanos)}ms")
+        }
+
+        LogUtil.i(TAG, "RTMDet raw total: ${elapsedMillis(totalStartNanos)}ms")
+        return SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
+    }
+
+    private fun extractRtmdetRawOutputs(
+        session: OrtSession,
+        results: OrtSession.Result,
+    ): RtmdetRawOutputs? {
+        fun value(name: String): Any? {
+            val index = session.outputInfo.entries.indexOfFirst { it.key == name }
+            return if (index >= 0) results.get(index)?.value else null
+        }
+        val cls80 = extractFloatArray(value("cls_80"))
+        val cls40 = extractFloatArray(value("cls_40"))
+        val cls20 = extractFloatArray(value("cls_20"))
+        val bbox80 = extractFloatArray(value("bbox_80"))
+        val bbox40 = extractFloatArray(value("bbox_40"))
+        val bbox20 = extractFloatArray(value("bbox_20"))
+        val kernel80 = extractFloatArray(value("kernel_80"))
+        val kernel40 = extractFloatArray(value("kernel_40"))
+        val kernel20 = extractFloatArray(value("kernel_20"))
+        val maskFeat = extractFloatArray(value("mask_feat"))
+        if (listOf(cls80, cls40, cls20, bbox80, bbox40, bbox20, kernel80, kernel40, kernel20, maskFeat).any { it.isEmpty() }) {
+            return null
+        }
+        return RtmdetRawOutputs(
+            levels = listOf(
+                RtmdetLevelOutput(cls80, bbox80, kernel80, side = 80, stride = 8f),
+                RtmdetLevelOutput(cls40, bbox40, kernel40, side = 40, stride = 16f),
+                RtmdetLevelOutput(cls20, bbox20, kernel20, side = 20, stride = 32f),
+            ),
+            maskFeat = maskFeat,
+        )
+    }
+
+    private fun decodeRtmdetRawCandidates(
+        raw: RtmdetRawOutputs,
+        inputW: Int,
+        inputH: Int,
+    ): List<Detection> {
+        val detections = mutableListOf<Detection>()
+        var anchorBase = 0
+        for (level in raw.levels) {
+            val side = level.side
+            val hw = side * side
+            for (y in 0 until side) {
+                for (x in 0 until side) {
+                    val pos = y * side + x
+                    var bestClass = -1
+                    var bestScore = 0f
+                    for (classId in RTMDET_ALLOWED_CLASS_IDS) {
+                        val logit = level.cls[classId * hw + pos]
+                        val score = sigmoid(logit)
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestClass = classId
+                        }
+                    }
+                    if (bestClass < 0 || bestScore < RTMDET_CONFIDENCE_THRESHOLD) continue
+
+                    val centerX = (x + 0.5f) * level.stride
+                    val centerY = (y + 0.5f) * level.stride
+                    val left = level.bbox[0 * hw + pos]
+                    val top = level.bbox[1 * hw + pos]
+                    val right = level.bbox[2 * hw + pos]
+                    val bottom = level.bbox[3 * hw + pos]
+                    if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) continue
+
+                    val x1 = (centerX - left).coerceIn(0f, inputW.toFloat())
+                    val y1 = (centerY - top).coerceIn(0f, inputH.toFloat())
+                    val x2 = (centerX + right).coerceIn(0f, inputW.toFloat())
+                    val y2 = (centerY + bottom).coerceIn(0f, inputH.toFloat())
+                    val width = x2 - x1
+                    val height = y2 - y1
+                    if (width <= 1f || height <= 1f) continue
+
+                    val kernel = FloatArray(169)
+                    for (i in 0 until 169) {
+                        kernel[i] = level.kernel[i * hw + pos]
+                    }
+                    detections.add(
+                        Detection(
+                            anchorIdx = anchorBase + pos,
+                            x = (x1 + x2) * 0.5f,
+                            y = (y1 + y2) * 0.5f,
+                            w = width,
+                            h = height,
+                            confidence = bestScore,
+                            classId = bestClass,
+                            coeffs = kernel,
+                            priorX = centerX,
+                            priorY = centerY,
+                            levelStride = level.stride,
+                        )
+                    )
+                }
+            }
+            anchorBase += hw
+        }
+        return detections.sortedByDescending { it.confidence }.take(500)
+    }
+
+    private fun buildRtmdetRawMaskPlane(
+        detection: Detection,
+        maskFeat: FloatArray,
+    ): FloatArray? {
+        if (detection.coeffs.size != 169 || maskFeat.size < 8 * 80 * 80) return null
+        val maskSide = 80
+        val hw = maskSide * maskSide
+        val out = FloatArray(hw)
+        val w1 = 0
+        val w2 = w1 + 80
+        val w3 = w2 + 64
+        val b1 = w3 + 8
+        val b2 = b1 + 8
+        val b3 = b2 + 8
+        val input = FloatArray(10)
+        val hidden1 = FloatArray(8)
+        val hidden2 = FloatArray(8)
+
+        for (y in 0 until maskSide) {
+            for (x in 0 until maskSide) {
+                val pos = y * maskSide + x
+                val gridX = (x + 0.5f) * 8f
+                val gridY = (y + 0.5f) * 8f
+                input[0] = (detection.priorX - gridX) / max(1f, detection.levelStride * 8f)
+                input[1] = (detection.priorY - gridY) / max(1f, detection.levelStride * 8f)
+                for (c in 0 until 8) {
+                    input[2 + c] = maskFeat[c * hw + pos]
+                }
+
+                for (o in 0 until 8) {
+                    var sum = detection.coeffs[b1 + o]
+                    for (i in 0 until 10) {
+                        sum += detection.coeffs[w1 + o * 10 + i] * input[i]
+                    }
+                    hidden1[o] = max(0f, sum)
+                }
+
+                for (o in 0 until 8) {
+                    var sum = detection.coeffs[b2 + o]
+                    for (i in 0 until 8) {
+                        sum += detection.coeffs[w2 + o * 8 + i] * hidden1[i]
+                    }
+                    hidden2[o] = max(0f, sum)
+                }
+
+                var logit = detection.coeffs[b3]
+                for (i in 0 until 8) {
+                    logit += detection.coeffs[w3 + i] * hidden2[i]
+                }
+                out[pos] = sigmoid(logit)
+            }
+        }
+        return out
     }
 
     private data class PrimaryCandidateScore(
@@ -1569,7 +1934,10 @@ class FurnitureFitManager(private val context: Context) {
         val x: Float, val y: Float, val w: Float, val h: Float,
         val confidence: Float,
         val classId: Int,
-        val coeffs: FloatArray
+        val coeffs: FloatArray,
+        val priorX: Float = x,
+        val priorY: Float = y,
+        val levelStride: Float = 0f,
     )
 
     private fun parseDetectionsForCurrentModel(
@@ -1800,6 +2168,16 @@ class FurnitureFitManager(private val context: Context) {
             return COCO_CLASS_NAMES[classId]
         }
         return classNames[classId]?.takeIf { it.isNotBlank() } ?: "class_$classId"
+    }
+
+    private fun sigmoid(value: Float): Float {
+        return if (value >= 0f) {
+            val z = exp(-value)
+            (1.0 / (1.0 + z)).toFloat()
+        } else {
+            val z = exp(value)
+            (z / (1.0 + z)).toFloat()
+        }
     }
 }
 
