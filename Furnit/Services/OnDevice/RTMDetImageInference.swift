@@ -1157,35 +1157,47 @@ enum RTMDetImageInference {
     }
 
     private static func floatReader(for array: MLMultiArray) -> (Int) -> Float {
-        let count = array.count
+        let bound = storageSpan(for: array)
         switch array.dataType {
         case .float32:
             let ptr = array.dataPointer.assumingMemoryBound(to: Float.self)
             return { index in
-                guard index >= 0, index < count else { return 0 }
+                guard index >= 0, index < bound else { return 0 }
                 return ptr[index]
             }
         case .float16:
             let ptr = array.dataPointer.assumingMemoryBound(to: UInt16.self)
             return { index in
-                guard index >= 0, index < count else { return 0 }
+                guard index >= 0, index < bound else { return 0 }
                 return Float(Float16(bitPattern: ptr[index]))
             }
         case .double:
             let ptr = array.dataPointer.assumingMemoryBound(to: Double.self)
             return { index in
-                guard index >= 0, index < count else { return 0 }
+                guard index >= 0, index < bound else { return 0 }
                 return Float(ptr[index])
             }
         case .int32:
             let ptr = array.dataPointer.assumingMemoryBound(to: Int32.self)
             return { index in
-                guard index >= 0, index < count else { return 0 }
+                guard index >= 0, index < bound else { return 0 }
                 return Float(ptr[index])
             }
         default:
             return { _ in 0 }
         }
+    }
+
+    private static func storageSpan(for array: MLMultiArray) -> Int {
+        let shape = array.shape.map(\.intValue)
+        let strides = array.strides.map(\.intValue)
+        guard shape.count == strides.count, !shape.isEmpty else { return array.count }
+
+        var span = 1
+        for index in shape.indices {
+            span += max(0, shape[index] - 1) * strides[index]
+        }
+        return max(array.count, span)
     }
 
     private static func nchwReader(for array: MLMultiArray) -> (Int, Int, Int, Int) -> Float {
