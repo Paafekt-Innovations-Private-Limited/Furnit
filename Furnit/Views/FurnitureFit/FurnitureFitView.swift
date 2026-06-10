@@ -319,7 +319,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
     }
     private var shouldShowLiveCameraPreview: Bool {
-        isShowingLiveVideoIdentifications || (currentModelIsRTMDet && showIdentifyLivePreview)
+        // RTMDET-TAP-SEGMENT-OK (verified 2026-06-10): feed hides on segment.
+        // Only show the full-frame live camera feed while IDENTIFYING. Once an item is segmented
+        // (.segmentSelected), hide the feed so the segmented cutout composites over the 3D room
+        // rendered behind this overlay — that's how the user checks the furniture in the room.
+        // The camera session keeps running, so the cutout still updates; only the opaque
+        // passthrough is hidden. (The ONNX path already behaved this way via isShowingLiveVideoIdentifications.)
+        isShowingLiveVideoIdentifications
+            || (currentModelIsRTMDet && showIdentifyLivePreview && segmentationMode == .identifyOnly)
     }
     private var overlayPresentationMode: FurnitureFitOverlayPresentationMode = .deferredCentered
     private var stableOverlayMeasurementFrameCount: Int = 0
