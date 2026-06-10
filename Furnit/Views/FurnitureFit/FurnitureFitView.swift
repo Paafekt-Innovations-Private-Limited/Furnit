@@ -305,8 +305,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false)
                     self.applyCurrentOverlayScaleTransform()
                 }
-            } else if segmentationMode == .segmentSelected {
-                // Hide detection boxes immediately; mask-only presentation while segmenting.
+            } else {
+                // segmentPrimary / segmentSelected: hide detection boxes immediately for a
+                // mask-only presentation while segmenting.
                 DispatchQueue.main.async {
                     self.detectionBBoxOverlayView.items = []
                     self.candidateBboxesInView = []
@@ -553,7 +554,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private var shouldKeepLatestDroppedClassicCameraFrame: Bool {
-        segmentationMode == .identifyOnly &&
+        // identifyOnly + segmentPrimary both run the classic auto-primary pipeline continuously;
+        // only the pinned segmentSelected flow is excluded.
+        segmentationMode != .segmentSelected &&
             !showFullVideoWithIdentifications &&
             !stillImageScanModeEnabled &&
             !oneImageRunAwaitingSave &&
@@ -1611,7 +1614,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestDisplayedSelectedCandidateIndex = selectedIndex
 
         let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
-        if segmentationMode == .segmentSelected || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
+        // Any segmenting mode (segmentPrimary auto, or segmentSelected pinned) hides the boxes for a
+        // mask-only cutout; identify keeps them so the user can see/tap detections.
+        if segmentationMode != .identifyOnly || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
             candidateBboxesInView = []
             detectionBBoxOverlayView.items = []
             return
@@ -2690,8 +2695,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let primary: FurnitureFitDetection
         let primaryIdx: Int
 
-        if segmentationMode == .identifyOnly {
-            // Full-video OFF: auto-select single primary by confidence/area (old behavior).
+        if segmentationMode != .segmentSelected {
+            // identifyOnly + segmentPrimary: auto-select the single primary by confidence/area.
+            // Only the pinned segmentSelected flow uses manual selection (else branch).
             guard let autoIdx = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
                 candidates: candidates,
                 config: autoPrimarySelectionConfig,
@@ -4921,7 +4927,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 allowedClassIndices: Self.rtmDetFurnitureClassIndices,
                 maxMaskCount: segmentationMode == .segmentSelected ? 6 : 1,
                 maxDetectionCount: 6,
-                buildInstanceMasks: segmentationMode == .segmentSelected
+                // Need per-detection masks whenever we composite a cutout: pinned (segmentSelected)
+                // or the auto highest-confidence primary (segmentPrimary). identifyOnly shows boxes
+                // only, so skip the per-instance mask build there.
+                buildInstanceMasks: segmentationMode != .identifyOnly
             )
             // Per-class gate (table 0.30, others 0.55). Pair each detection with its decoder index so
             // the parallel mask array stays aligned with this filtered+sorted candidate list — the

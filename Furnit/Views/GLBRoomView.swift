@@ -884,14 +884,15 @@ struct GLBRoomView: View {
     private var navigationBarFullVideoIdentificationsButton: some View {
         Button {
             showFullVideoWithIdentifications.toggle()
+            dismissFullVideoFurnitureTapHint()
             if showFullVideoWithIdentifications {
-                dismissFullVideoFurnitureTapHint()
+                // Enter the tap-to-segment flow: show live identifications and wait for a tap.
+                furnitureFitSegmentationMode = .identifyOnly
+                furnitureFitShowIdentifyLivePreview = true
             } else {
-                dismissFullVideoFurnitureTapHint()
-                if furnitureFitSegmentationMode == .segmentSelected {
-                    furnitureFitSegmentationMode = .identifyOnly
-                    furnitureFitShowIdentifyLivePreview = true
-                }
+                // Back to the brain default: auto-segment the highest-confidence primary.
+                furnitureFitSegmentationMode = .segmentPrimary
+                furnitureFitShowIdentifyLivePreview = true
             }
         } label: {
             Image(systemName: "text.viewfinder")
@@ -1285,7 +1286,9 @@ struct GLBRoomView: View {
                 } else {
                     showFullVideoWithIdentifications = false
                     furnitureFitInitialSegmentationDone = false
-                    furnitureFitSegmentationMode = .identifyOnly
+                    // Brain default: auto-segment the highest-confidence detection (no tap needed).
+                    // The tap-to-select flow lives behind the full-video toolbar button.
+                    furnitureFitSegmentationMode = .segmentPrimary
                     furnitureFitShowIdentifyLivePreview = true
                     selectedFurnitureFitLabels = []
                     showingFurnitureFit = true

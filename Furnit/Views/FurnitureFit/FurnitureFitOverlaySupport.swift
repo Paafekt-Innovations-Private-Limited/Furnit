@@ -13,6 +13,10 @@ struct FurnitureSizeEstimate {
 
 enum FurnitureFitSegmentationMode: Equatable {
     case identifyOnly
+    /// Brain default: auto-segment the single highest-confidence detection with no tap. The live
+    /// feed is hidden and the cutout composites over the room, exactly like ``segmentSelected``,
+    /// but the target is the top-ranked candidate instead of a user-pinned one.
+    case segmentPrimary
     case segmentSelected
 }
 
