@@ -414,6 +414,15 @@ struct GLBRoomView: View {
                 onSelectedClassLabelsChanged: { labels in
                     selectedFurnitureFitLabels = labels
                 },
+                onSegmentationModeChangeRequested: { mode in
+                    // RTMDET-TAP-SEGMENT-OK (verified working 2026-06-10): tapping furniture renders the
+                    // segmented cutout. INVARIANT: every screen hosting FurnitureFitUIView MUST pass this
+                    // closure. Without it, a tap sets the view's segmentationMode internally but the @State
+                    // stays .identifyOnly, so the next updateUIView clobbers it back and the cutout never
+                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SharpRoomView.
+                    logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
+                    furnitureFitSegmentationMode = mode
+                },
                 showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
                 showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
             )

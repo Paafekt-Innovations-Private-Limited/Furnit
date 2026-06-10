@@ -5027,9 +5027,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primaryIdx = selectedIndex
                 if debugMode {
                     let hasMask = primaryIdx < result.instanceMaskImages.count && result.instanceMaskImages[primaryIdx] != nil
+                    // [SEGMENT_DIAG] Disambiguate why a tapped item yields no cutout: per-instance mask
+                    // missing (index misalignment / decode), vs. quality reject / pin re-match handled below.
                     logDebug(
                         "🧠 [RTMDet segment] selectedIndex=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
-                        "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no")"
+                        "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no") " +
+                        "instanceMasks=\(result.instanceMaskImages.count) candidates=\(candidates.count) " +
+                        "hasOverlayFallback=\(result.overlayMaskImage != nil)"
                     )
                 }
             }
@@ -5995,6 +5999,17 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     @objc private func handleBoundingBoxTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
         let pointInMask = gesture.location(in: maskImageView)
+        if debugMode {
+            // [TAP_DIAG] Tap in maskImageView (aspect-fill view) space vs. every drawn bbox. These are the
+            // SAME rects the overlay renders (candidateBboxesInView ← viewRect), so if the tap visibly lands
+            // on the chair but every "contains=false" here, the display/hit-test transforms have diverged (#1).
+            let tapHitPadding: CGFloat = shouldShowLiveCameraPreview ? 22 : 10
+            let rectSummary = candidateBboxesInView.enumerated().map { index, rect in
+                let contains = rect.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMask)
+                return "[\(index)]=(\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width))x\(Int(rect.height)))\(contains ? "✓" : "✗")"
+            }.joined(separator: " ")
+            logDebug("👆 [TAP_DIAG] point=(\(Int(pointInMask.x)),\(Int(pointInMask.y))) viewBounds=\(Int(maskImageView.bounds.width))x\(Int(maskImageView.bounds.height)) rects=\(rectSummary)")
+        }
         guard let tappedIndex = candidateIndexForTap(pointInMask) else {
             logDebug("👆 [TAP_SELECT] miss point=(\(Int(pointInMask.x)),\(Int(pointInMask.y))) boxes=\(candidateBboxesInView.count)")
             return

@@ -1786,6 +1786,9 @@ struct SharpRoomView: View {
                 selectedFurnitureFitLabels = labels
             },
             onSegmentationModeChangeRequested: { mode in
+                // RTMDET-TAP-SEGMENT-OK (verified working 2026-06-10): canonical wiring. INVARIANT: every
+                // screen hosting FurnitureFitUIView MUST pass this closure or tap-to-segment silently
+                // reverts (updateUIView re-applies the stale @State). See ModelViewer/GLB/MeshRoomView.
                 logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
                 furnitureFitSegmentationMode = mode
             },
