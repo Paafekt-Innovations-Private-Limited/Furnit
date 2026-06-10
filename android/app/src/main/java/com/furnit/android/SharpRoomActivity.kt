@@ -103,6 +103,12 @@ import java.util.concurrent.atomic.AtomicInteger
 class SharpRoomActivity : AppCompatActivity() {
     private enum class BrainSegmentationMode {
         IDENTIFY_ONLY,
+        /**
+         * Brain default: auto-segment the single highest-confidence detection with no tap. The live
+         * feed and detection boxes are hidden and the primary cutout composites over the room, just
+         * like [SEGMENT_SELECTED] but targeting the primary instead of a user-pinned instance.
+         */
+        SEGMENT_PRIMARY,
         SEGMENT_SELECTED,
     }
 
@@ -1355,15 +1361,16 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun toggleFullVideoIdentifications() {
         showFullVideoWithIdentifications = !showFullVideoWithIdentifications
         updateFullVideoToolbarButton()
-        if (!showFullVideoWithIdentifications && brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
-            stopBrainSegmentationOnly()
-        } else {
-            if (showFullVideoWithIdentifications) {
-                showIdentifyLivePreview = true
-            }
+        if (showFullVideoWithIdentifications) {
+            // Enter the tap-to-segment flow: show live identifications and wait for a tap.
+            brainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+            showIdentifyLivePreview = true
             updateBrainLivePreviewVisibility()
             ensureCameraPreviewBoundForFullVideoIfNeeded()
             showBrainDetectionOverlay()
+        } else {
+            // Back to the brain default: auto-segment the highest-confidence primary.
+            enterPrimarySegmentationMode()
         }
         DebugLogger.d(TAG, "Full video with identifications toggled: $showFullVideoWithIdentifications")
     }
@@ -2477,7 +2484,9 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private fun showBrainDetectionOverlay() {
         val maskForOverlay =
-            if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED || shouldShowIdentifyMaskOverlay()) {
+            // Any segmenting mode (auto SEGMENT_PRIMARY or pinned SEGMENT_SELECTED) composites the
+            // cutout; identify shows the mask only when the live feed is hidden.
+            if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY || shouldShowIdentifyMaskOverlay()) {
                 latestBrainMask
             } else {
                 null
@@ -2521,7 +2530,9 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun resetBrainSessionUiState() {
-        brainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
+        // Brain default: auto-segment the highest-confidence primary (no tap). The tap-to-select
+        // flow lives behind the full-video toolbar button (toggleFullVideoIdentifications).
+        brainSegmentationMode = BrainSegmentationMode.SEGMENT_PRIMARY
         showFullVideoWithIdentifications = false
         showIdentifyLivePreview = true
         latestBrainDetections = emptyList()
@@ -2584,6 +2595,18 @@ class SharpRoomActivity : AppCompatActivity() {
         showBrainDetectionOverlay()
     }
 
+    /** Brain default: auto-segment the highest-confidence primary, no tap. Hides the live feed and
+     *  detection boxes so the primary cutout composites cleanly over the room. */
+    private fun enterPrimarySegmentationMode() {
+        brainSegmentationMode = BrainSegmentationMode.SEGMENT_PRIMARY
+        showIdentifyLivePreview = false
+        clearBrainSelection()
+        latestBrainMask = null
+        segmentedFurnitureMeanSrgb = null
+        updateBrainLivePreviewVisibility()
+        showBrainDetectionOverlay()
+    }
+
     private fun requestBrainInference(
         manager: FurnitureFitManager,
         bitmap: Bitmap,
@@ -2601,7 +2624,9 @@ class SharpRoomActivity : AppCompatActivity() {
         firstResultCallback: () -> Unit,
         sourceBitmap: Bitmap? = null,
     ) {
-        if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED) {
+        if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY) {
+            // SEGMENT_PRIMARY + SEGMENT_SELECTED both composite a real cutout, so publish its mean
+            // color for the placement intelligence card.
             segmentedFurnitureMeanSrgb = result?.mask?.let { FurnitureSegmentationMeanColor.meanStraightSrgb(it) }
         } else {
             segmentedFurnitureMeanSrgb = null
