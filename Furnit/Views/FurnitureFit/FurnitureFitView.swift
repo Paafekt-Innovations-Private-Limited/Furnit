@@ -460,6 +460,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         60: "dining table",
     ]
     private static let rtmDetLiveConfidenceThreshold: Float = 0.55
+    /// COCO under-scores standing / height-adjustable desks as "dining table" (class 60); on-device
+    /// logs show such tables peaking ~0.38–0.49 sigmoid. Give tables a lower per-class gate so they
+    /// get detected, while chairs/couches/beds keep the stricter 0.55 to limit false positives.
+    private static let rtmDetTableConfidenceThreshold: Float = 0.30
+    private func rtmDetClassConfidenceThreshold(_ classIdx: Int) -> Float {
+        classIdx == 60 ? Self.rtmDetTableConfidenceThreshold : Self.rtmDetLiveConfidenceThreshold
+    }
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
@@ -4903,25 +4910,34 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         setProgress(0.35, text: "Running segmentation…")
         do {
-            let rtmDetThreshold = max(Self.rtmDetLiveConfidenceThreshold, confidenceThreshold)
+            // Decode down to the lowest per-class gate (tables, 0.30) so their candidates AND masks
+            // are produced; the per-class filter below then enforces the stricter gate for the rest.
+            let rtmDetDecodeFloor = max(Self.rtmDetTableConfidenceThreshold, confidenceThreshold)
             let result = try RTMDetImageInference.runInstanceSegmentation(
                 pixelBuffer: processBuffer,
                 model: model,
-                confidenceThreshold: rtmDetThreshold,
+                confidenceThreshold: rtmDetDecodeFloor,
                 classBlacklist: classBlacklist.ignoredIndices,
                 allowedClassIndices: Self.rtmDetFurnitureClassIndices,
                 maxMaskCount: segmentationMode == .segmentSelected ? 6 : 1,
                 maxDetectionCount: 6,
                 buildInstanceMasks: segmentationMode == .segmentSelected
             )
-            let candidates = result.detections
-                .filter { $0.confidence >= rtmDetThreshold }
+            // Per-class gate (table 0.30, others 0.55). Pair each detection with its decoder index so
+            // the parallel mask array stays aligned with this filtered+sorted candidate list — the
+            // tap path indexes masks positionally, so candidates and masks must move together.
+            let rankedCandidates = result.detections.enumerated()
+                .filter { $0.element.confidence >= rtmDetClassConfidenceThreshold($0.element.classIdx) }
                 .sorted { lhs, rhs in
-                    if lhs.confidence == rhs.confidence {
-                        return lhs.w * lhs.h > rhs.w * rhs.h
+                    if lhs.element.confidence == rhs.element.confidence {
+                        return lhs.element.w * lhs.element.h > rhs.element.w * rhs.element.h
                     }
-                    return lhs.confidence > rhs.confidence
+                    return lhs.element.confidence > rhs.element.confidence
                 }
+            let candidates = rankedCandidates.map { $0.element }
+            let candidateMasks: [UIImage?] = rankedCandidates.map { pair in
+                pair.offset < result.instanceMaskImages.count ? result.instanceMaskImages[pair.offset] : nil
+            }
             if debugMode {
                 let summary = candidates.prefix(8).enumerated().map { index, detection in
                     "#\(index) cls=\(detection.classIdx) conf=\(String(format: "%.2f", detection.confidence)) bbox=(\(Int(detection.x - detection.w * 0.5)),\(Int(detection.y - detection.h * 0.5)),\(Int(detection.w))x\(Int(detection.h)))"
@@ -5033,20 +5049,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primary = selected
                 primaryIdx = selectedIndex
                 if debugMode {
-                    let hasMask = primaryIdx < result.instanceMaskImages.count && result.instanceMaskImages[primaryIdx] != nil
+                    let hasMask = primaryIdx < candidateMasks.count && candidateMasks[primaryIdx] != nil
                     // [SEGMENT_DIAG] Disambiguate why a tapped item yields no cutout: per-instance mask
                     // missing (index misalignment / decode), vs. quality reject / pin re-match handled below.
                     logDebug(
                         "🧠 [RTMDet segment] selectedIndex=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
                         "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no") " +
-                        "instanceMasks=\(result.instanceMaskImages.count) candidates=\(candidates.count) " +
+                        "candidateMasks=\(candidateMasks.count) candidates=\(candidates.count) " +
                         "hasOverlayFallback=\(result.overlayMaskImage != nil)"
                     )
                 }
             }
 
-            let selectedMaskImage = primaryIdx < result.instanceMaskImages.count
-                ? result.instanceMaskImages[primaryIdx]
+            let selectedMaskImage = primaryIdx < candidateMasks.count
+                ? candidateMasks[primaryIdx]
                 : result.overlayMaskImage
             var finalCGImage = selectedMaskImage?.cgImage
             let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape

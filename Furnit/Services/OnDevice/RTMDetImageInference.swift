@@ -336,6 +336,10 @@ enum RTMDetImageInference {
             outputSummary: outputSummary + [
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
                 "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
+                perClassBestProbe(
+                    levels: [(cls: cls80, side: 80), (cls: cls40, side: 40), (cls: cls20, side: 20)],
+                    classIndices: classIndices
+                ),
                 cls80Probe,
             ] + rawMaskPlaneStats(rawMaskPlanes, selected: selected)
         )
@@ -395,6 +399,46 @@ enum RTMDetImageInference {
         }
 
         return "globalBest score=\(String(format: "%.4f", bestScore)) class=\(bestClass) head=\(bestSide) xy=(\(bestX),\(bestY))"
+    }
+
+    /// Debug probe: best PRE-THRESHOLD sigmoid score for each allowed furniture class. Answers
+    /// "why isn't X identified?" at a glance — a sub-threshold score (e.g. table=0.340 vs the 0.55
+    /// gate) means lower/relax the threshold; a ~0 score means the model never proposes that class
+    /// for what the camera sees (recognition limit, not a threshold). Pure logging: reads the cls
+    /// heads the decoder already uses; does NOT change decode, filtering, candidates, or outputs.
+    private static func perClassBestProbe(levels: [(cls: MLMultiArray, side: Int)], classIndices: [Int]) -> String {
+        var bestScoreByClass: [Int: Float] = [:]
+        var bestSideByClass: [Int: Int] = [:]
+        for level in levels {
+            let clsAt = nchwReader(for: level.cls)
+            for classIdx in classIndices where classIdx >= 0 && classIdx < 80 {
+                for y in 0..<level.side {
+                    for x in 0..<level.side {
+                        let score = sigmoid(clsAt(0, classIdx, y, x))
+                        if score.isFinite, score > (bestScoreByClass[classIdx] ?? -1) {
+                            bestScoreByClass[classIdx] = score
+                            bestSideByClass[classIdx] = level.side
+                        }
+                    }
+                }
+            }
+        }
+        let parts = classIndices.sorted().map { classIdx -> String in
+            let score = bestScoreByClass[classIdx] ?? 0
+            let head = bestSideByClass[classIdx] ?? -1
+            return "\(furnitureClassName(classIdx))(\(classIdx))=\(String(format: "%.3f", score))@\(head)"
+        }
+        return "perClassBest: " + parts.joined(separator: " ")
+    }
+
+    private static func furnitureClassName(_ classIdx: Int) -> String {
+        switch classIdx {
+        case 56: return "chair"
+        case 57: return "couch"
+        case 59: return "bed"
+        case 60: return "table"
+        default: return "cls"
+        }
     }
 
     private static func multiArrayReadProbe(name: String, array: MLMultiArray) -> String {
