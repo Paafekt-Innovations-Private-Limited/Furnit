@@ -1,5 +1,5 @@
 // FurnitureFitClassNames.swift
-// Localized YOLO class display names from classes.json (*.lproj; same keys as Android assets/classes.json).
+// Localized the detector class display names from classes.json (*.lproj; same keys as Android assets/classes.json).
 
 import Foundation
 

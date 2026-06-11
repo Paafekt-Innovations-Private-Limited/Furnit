@@ -11,7 +11,7 @@ enum FurnitureFitOnnxStylePipeline {
     //
     // 2. Composite gate after bilinear upsample to camera pixels: opaque iff
     //    `upsampled_logit > nativeCompositeUpsampleLogitThreshold()`.
-    //    When ``retinaMasksCompositeEnabled`` is `true`, this matches the spirit of Ultralytics
+    //    When ``retinaMasksCompositeEnabled`` is `true`, this matches the spirit of the model
     //    `predict(..., retina_masks=True)`: evaluate the mask at full image resolution (we already
     //    bilinear-upsample the fused logit field from proto to buffer) and use a **logit** gate
     //    like `masks > 0` (sigmoid midpoint), not an extra stricter constant.
@@ -59,7 +59,7 @@ enum FurnitureFitOnnxStylePipeline {
     /// Expands the composite ``crop_mask`` band in pixels so bbox edges do not clip foreground.
     static let nativeCompositeBandMarginPx: Int = 1
 
-    // MARK: - Vertical flip (Ultralytics `Instances.flipud` parity)
+    // MARK: - Vertical flip (`Instances.flipud` parity)
 
     /// Row-major `protoW`×`protoH` grid: swaps rows `py` ↔ `protoH - 1 - py`.
     /// Use after mask synthesis when the model input was vertically flipped relative to the camera buffer.
@@ -458,7 +458,7 @@ enum FurnitureFitOnnxStylePipeline {
 
         var maskProto = [Float](repeating: 0, count: hwProto)
         var protoPixelTouched = [UInt8](repeating: 0, count: hwProto)
-        // Ultralytics-style process_mask: scale boxes from model space
+        // process_mask: scale boxes from model space
         // (e.g. 640×640) into proto grid (e.g. 160×160) using simple ratios.
         // widthRatio = protoW / modelW, heightRatio = protoH / modelH.
         let widthRatio = Float(protoW) / modelSide
@@ -469,7 +469,7 @@ enum FurnitureFitOnnxStylePipeline {
         let maxY = Float(protoH - 1)
 
         // Optimization: dot product only within each detection’s bbox on the proto grid.
-        // Ultralytics does a full 160×160 dot then `crop_mask` after upsample; pixels
+        // does a full 160×160 dot then `crop_mask` after upsample; pixels
         // outside the bbox are zeroed there—so this is equivalent for compositing.
 
         for detection in detections {

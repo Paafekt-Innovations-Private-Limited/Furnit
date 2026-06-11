@@ -21,7 +21,6 @@ class CreditsActivity : AppCompatActivity() {
     private val openAiUrl = "https://openai.com/"
     private val anthropicUrl = "https://www.anthropic.com/"
     private val lumaUrl = "https://lumalabs.ai/"
-    private val ultralyticsUrl = "https://www.ultralytics.com/"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +56,6 @@ class CreditsActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.credits_openai_title), getString(R.string.credits_openai_body), openAiUrl)
         addSection(layout, getString(R.string.credits_anthropic_title), getString(R.string.credits_anthropic_body), anthropicUrl)
         addSection(layout, getString(R.string.credits_luma_title), getString(R.string.credits_luma_body), lumaUrl)
-        addSection(layout, getString(R.string.credits_ultralytics_title), getString(R.string.credits_ultralytics_body), ultralyticsUrl)
 
         scrollView.addView(layout)
         setContentView(scrollView)

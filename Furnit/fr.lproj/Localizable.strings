@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "Licences open source";
 "licenses.openSourceIntro" = "Cette application utilise les logiciels open source suivants.";
 "licenses.viewFullLicense" = "Voir la licence complète";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "Cette app utilise des modèles basés sur YOLO (ex. Ultralytics YOLO). YOLO est sous licence AGPL-3.0. Cette version Phase 1 est non commerciale. Pour un usage commercial, voir https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "Reconstruction 3D de pièce (SHARP)";
 "licenses.sharp" = "Copyright (c) contributeurs SharpML. Sous licence MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -443,10 +441,7 @@
 "common.or" = "ou";
 "common.retry" = "Réessayer";
 "settings.furnitureSegmentationSection" = "Segmentation des meubles";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML : autoriser le GPU";
-"settings.yoloeCoreMLAllowGPUDescription" = "Désactivé (défaut) : CPU uniquement — plus lent mais évite des plantages sur certaines versions YOLO-E 26L Core ML. Activé : CPU+GPU pour la vitesse ; risque de SIGABRT si l'export ne tourne pas sur Metal.";
 "settings.showRoomFurnitureCalibrate" = "Afficher calibrage pièce et meubles";
 "settings.showRoomFurnitureCalibrateDescription" = "Affiche « Calibrer le mur » dans le menu de la pièce et la pastille « Toucher pour calibrer » lorsque SmartyPants (cerveau) est actif.";
 "settings.furnitureFitARCompanion" = "Dimensionnement meubles assisté par RA";
@@ -463,8 +458,6 @@
 
 
 "settings.roomMeasurementSection" = "Mesures de la pièce";
-"settings.yoloWallDimensionsOnSave" = "Dimensions du mur YOLO à l'enregistrement";
-"settings.yoloWallDimensionsOnSaveDescription" = "Lorsque vous nommez et enregistrez une pièce SHARP, estime la largeur et la hauteur du mur avant avec YOLO (classe mur ou boîte proche), la monoprofondeur SHARP enregistrée avec la pièce et les EXIF. Nécessite thumbnail.png et de préférence sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "Distance supposée au mur (m)";
 "settings.wallAssumedCeilingM" = "Hauteur de plafond supposée (m)";
 "settings.roomMeasurementFooter" = "Sans monoprofondeur SHARP sur iOS, l'enregistrement utilise la distance supposée et parfois cette hauteur de plafond. Si la largeur est trop faible par rapport au mètre ruban, augmentez la distance supposée (la largeur évolue à peu près linéairement). Réglez la hauteur près de votre mesure (ex. 2,86 m). Ou utilisez ⋮ → Calibrer par mur avant d'enregistrer.";
@@ -474,14 +467,6 @@
 "sharp.downloadingEnginePercent" = "Téléchargement du moteur 3D... %d%%";
 "sharp.downloadComplete" = "Téléchargement terminé";
 "sharp.downloadFailed" = "Échec du téléchargement";
-"yoloe.downloadingModel" = "Téléchargement du modèle de détection...";
-"yoloe.downloadingModelPercent" = "Téléchargement du modèle de détection... %d%%";
-"yoloe.downloadComplete" = "Téléchargement terminé";
-"yoloe.downloadFailed" = "Échec du téléchargement";
-"yoloe.preparingModel" = "Préparation du modèle de détection...";
-"yoloe.loadingModel" = "Chargement du modèle de détection...";
-"yoloe.ready" = "Prêt";
-"yoloe.unavailable" = "Modèle de détection indisponible";
 "sharp.gettingReady" = "Préparation...";
 "sharp.notEnoughSpace" = "Espace insuffisant sur l'appareil";
 "sharp.settingThingsUp" = "Configuration...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "Les outils Anthropic ont été utilisés pour soutenir la recherche, l’assistance au code, le raisonnement sur les détails d’implémentation et l’itération de développement.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Les outils Luma AI et les références produit ont nourri une partie de notre exploration des workflows visuels IA et 3D pendant le développement du produit.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Les outils, la documentation et l’écosystème YOLO d’Ultralytics ont soutenu nos workflows de développement pour la détection d’objets et la segmentation.";

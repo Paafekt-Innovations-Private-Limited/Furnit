@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "تراخيص المصدر المفتوح";
 "licenses.openSourceIntro" = "يستخدم هذا التطبيق البرمجيات مفتوحة المصدر التالية.";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "يستخدم هذا التطبيق نماذجاً قائمة على YOLO (مثل Ultralytics YOLO). YOLO مرخّص بموجب AGPL-3.0. إصدار المرحلة 1 غير تجاري. للاستخدام التجاري، راجع https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "إعادة بناء الغرفة ثلاثية الأبعاد (SHARP)";
 "licenses.sharp" = "حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -440,10 +438,7 @@
 "common.or" = "أو";
 "common.retry" = "إعادة المحاولة";
 "settings.furnitureSegmentationSection" = "تجزئة الأثاث";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: السماح بـ GPU";
-"settings.yoloeCoreMLAllowGPUDescription" = "إيقاف (افتراضي): المعالج فقط — أبطأ لكن يقلل الأعطال في بعض إصدارات YOLO-E 26L Core ML. تشغيل: معالج+GPU للسرعة؛ قد يحدث SIGABRT أثناء التجزئة إذا لم يعمل التصدير على Metal.";
 "settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";
 "settings.showRoomFurnitureCalibrateDescription" = "يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).";
 "settings.furnitureFitARCompanion" = "قياس الأثاث بمساعدة AR";
@@ -460,8 +455,6 @@
 
 
 "settings.roomMeasurementSection" = "قياس الغرفة";
-"settings.yoloWallDimensionsOnSave" = "أبعاد الجدار YOLO عند الحفظ";
-"settings.yoloWallDimensionsOnSaveDescription" = "عند تسمية وحفظ غرفة SHARP، يُقدَّر عرض وارتفاع الجدار الأمامي باستخدام YOLO (فئة جدار أو صندوق شبيه)، وعمق SHARP أحادي المحفوظ مع الغرفة، وبيانات EXIF للكاميرا. يتطلب thumbnail.png ويفضّل sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "المسافة المفترضة إلى الجدار (م)";
 "settings.wallAssumedCeilingM" = "الارتفاع المفترض للجدار/السقف (م)";
 "settings.roomMeasurementFooter" = "بدون عمق أحادي على SHARP iOS، يستخدم الحفظ عمقاً مفترضاً وأحياناً هذا ارتفاع السقف. إذا كان العرض أقل من شريط القياس، زد المسافة المفترضة (العرض يتناسب تقريباً خطياً). اضبط ارتفاع الجدار قرب قياسك (مثلاً 2.86 م). أو استخدم ⋮ → معايرة بالجدار قبل الحفظ.";
@@ -471,14 +464,6 @@
 "sharp.downloadingEnginePercent" = "جاري تنزيل محرك ثلاثي الأبعاد... %d%%";
 "sharp.downloadComplete" = "اكتمل التنزيل";
 "sharp.downloadFailed" = "فشل التنزيل";
-"yoloe.downloadingModel" = "جاري تنزيل نموذج الكشف...";
-"yoloe.downloadingModelPercent" = "جاري تنزيل نموذج الكشف... %d%%";
-"yoloe.downloadComplete" = "اكتمل التنزيل";
-"yoloe.downloadFailed" = "فشل التنزيل";
-"yoloe.preparingModel" = "جاري تجهيز نموذج الكشف...";
-"yoloe.loadingModel" = "جاري تحميل نموذج الكشف...";
-"yoloe.ready" = "جاهز";
-"yoloe.unavailable" = "نموذج الكشف غير متاح";
 "sharp.gettingReady" = "جاري التجهيز...";
 "sharp.notEnoughSpace" = "لا توجد مساحة كافية على الجهاز";
 "sharp.settingThingsUp" = "جاري الإعداد...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "استُخدمت أدوات Anthropic لدعم البحث، والمساعدة في الشفرة، والتفكير في تفاصيل التنفيذ، وتكرار التطوير.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "أسهمت أدوات Luma AI ومراجع منتجاتها في توجيه أجزاء من استكشافنا لسير العمل البصري للذكاء الاصطناعي و3D أثناء تطوير المنتج.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "دعمت أدوات Ultralytics ووثائقها ومنظومة YOLO الخاصة بها سير عملنا لتطوير اكتشاف الأجسام والتجزئة.";

@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">تراخيص المصدر المفتوح</string>
     <string name="licenses_open_source_intro">يستخدم هذا التطبيق البرمجيات مفتوحة المصدر التالية.</string>
     <string name="licenses_view_full_license">عرض الترخيص الكامل</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">حقوق النشر (c) Ultralytics. مرخّص بموجب رخصة جنو أفيرو العمومية v3.0. إصدار المرحلة 1 غير تجاري. للاستخدام التجاري راجع Ultralytics.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">نموذج SHARP غير متاح</string>
     <string name="sharp_inference_writing_room_file">جاري تجهيز المعاينة…</string>
     <string name="sharp_inference_room_ready">غرفتك جاهزة!</string>
-    <string name="yoloe_loading_model">جاري تحميل نموذج الكشف…</string>
-    <string name="yoloe_model_ready">جاهز</string>
-    <string name="yoloe_model_unavailable">نموذج الكشف غير متاح</string>
+    <string name="detector_loading_model">جاري تحميل نموذج الكشف…</string>
+    <string name="detector_model_ready">جاهز</string>
+    <string name="detector_model_unavailable">نموذج الكشف غير متاح</string>
     <string name="single_image_scan_scanning">جاري مسح الصورة المحددة…</string>
     <string name="single_image_scan_no_overlay">لم يتم اكتشاف طبقة</string>
     <string name="ai_progress_getting_photo_ready">جاري تجهيز صورتك…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">استُخدمت أدوات Anthropic لدعم البحث، والمساعدة في الشفرة، والتفكير في تفاصيل التنفيذ، وتكرار التطوير.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">أسهمت أدوات Luma AI ومراجع منتجاتها في توجيه أجزاء من استكشافنا لسير العمل البصري للذكاء الاصطناعي و3D أثناء تطوير المنتج.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">دعمت أدوات Ultralytics ووثائقها ومنظومة YOLO الخاصة بها سير عملنا لتطوير اكتشاف الأجسام والتجزئة.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">أو</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

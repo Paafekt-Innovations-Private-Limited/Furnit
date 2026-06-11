@@ -1,7 +1,7 @@
 import CoreGraphics
 
 enum FurnitureFitGeometry {
-    /// Ultralytics-style `scale_boxes` mapping from model space back to the
+    /// `scale_boxes` mapping from model space back to the
     /// original image space. Supports both letterboxed-square inputs and the
     /// current stretch-to-square camera path.
     static func scaleBoxesFromModel(

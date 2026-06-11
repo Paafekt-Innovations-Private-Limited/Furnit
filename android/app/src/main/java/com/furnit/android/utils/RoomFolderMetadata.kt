@@ -39,17 +39,17 @@ object RoomFolderMetadata {
         /** Isotropic display scale vs raw SHARP bbox (e.g. from ARCore calibration). 1 = unchanged. */
         val arDisplayScale: Float? = null,
         /**
-         * Normalized wall strip height (or 1.0 = full frame proxy) from one-shot YOLOe on the reference image.
+         * Normalized wall strip height (or 1.0 = full frame proxy) from one-shot detection on the reference image.
          */
-        val yoloWallHeightFrac: Float? = null,
+        val savedWallHeightFrac: Float? = null,
         /**
          * Per furniture label (canonical COCO-style key, e.g. chair, couch, bed): bbox height / image height.
          */
-        val yoloFurnitureHeightFracByClass: Map<String, Float> = emptyMap(),
+        val savedFurnitureHeightFracByClass: Map<String, Float> = emptyMap(),
         /** Reference image height in px when ratios were captured (diagnostics / staleness). */
-        val yoloRefImageHeightPx: Int? = null,
-        /** SHARP room height (internal / "Navarro" units) at ratio capture time — dimensionless pairing with YOLO fractions. */
-        val sharpNavarroRoomHeightAtYoloCapture: Float? = null,
+        val savedRefImageHeightPx: Int? = null,
+        /** SHARP room height (internal / "Navarro" units) at ratio capture time — dimensionless pairing with calibration fractions. */
+        val sharpNavarroRoomHeightAtCapture: Float? = null,
         /**
          * When true, the room exists only as a SHARP preview under `files/sharp_rooms/` and was not committed via Save.
          * Omitted or false means the room should appear in the library (legacy folders without the key are treated as saved).
@@ -87,25 +87,25 @@ object RoomFolderMetadata {
 
     /**
      * Use when overwriting room JSON from save flows so a metadata write does not erase
-     * previously stored YOLO ratio fields.
+     * previously stored calibration ratio fields.
      */
-    fun snapshotPreservingYoloFields(folder: File, newSnapshot: Snapshot): Snapshot {
+    fun snapshotPreservingCalibrationFields(folder: File, newSnapshot: Snapshot): Snapshot {
         val prev = readFromFolder(folder) ?: return newSnapshot
-        val hadYoloWork = prev.yoloRefImageHeightPx != null ||
-            prev.yoloWallHeightFrac != null ||
-            prev.yoloFurnitureHeightFracByClass.isNotEmpty()
+        val hadCalibrationWork = prev.savedRefImageHeightPx != null ||
+            prev.savedWallHeightFrac != null ||
+            prev.savedFurnitureHeightFracByClass.isNotEmpty()
         val withAdditiveRoomFields = newSnapshot.copy(
             roomDimsApproach = newSnapshot.roomDimsApproach ?: prev.roomDimsApproach,
             roomSceneWidth = newSnapshot.roomSceneWidth ?: prev.roomSceneWidth,
             roomSceneHeight = newSnapshot.roomSceneHeight ?: prev.roomSceneHeight,
             roomSceneDepth = newSnapshot.roomSceneDepth ?: prev.roomSceneDepth,
         )
-        if (!hadYoloWork) return withAdditiveRoomFields
+        if (!hadCalibrationWork) return withAdditiveRoomFields
         return withAdditiveRoomFields.copy(
-            yoloWallHeightFrac = prev.yoloWallHeightFrac,
-            yoloFurnitureHeightFracByClass = prev.yoloFurnitureHeightFracByClass,
-            yoloRefImageHeightPx = prev.yoloRefImageHeightPx,
-            sharpNavarroRoomHeightAtYoloCapture = prev.sharpNavarroRoomHeightAtYoloCapture,
+            savedWallHeightFrac = prev.savedWallHeightFrac,
+            savedFurnitureHeightFracByClass = prev.savedFurnitureHeightFracByClass,
+            savedRefImageHeightPx = prev.savedRefImageHeightPx,
+            sharpNavarroRoomHeightAtCapture = prev.sharpNavarroRoomHeightAtCapture,
         )
     }
 
@@ -129,17 +129,17 @@ object RoomFolderMetadata {
         snapshot.roomSceneHeight?.let { if (it > 0f) jo.put("roomSceneHeight", it.toDouble()) }
         snapshot.roomSceneDepth?.let { if (it > 0f) jo.put("roomSceneDepth", it.toDouble()) }
         snapshot.arDisplayScale?.takeIf { it > 0f }?.let { jo.put("arDisplayScale", it.toDouble()) }
-        snapshot.yoloWallHeightFrac?.let { jo.put("yoloWallHeightFrac", it.toDouble()) }
-        if (snapshot.yoloFurnitureHeightFracByClass.isNotEmpty()) {
+        snapshot.savedWallHeightFrac?.let { jo.put("savedWallHeightFrac", it.toDouble()) }
+        if (snapshot.savedFurnitureHeightFracByClass.isNotEmpty()) {
             val sub = JSONObject()
-            for ((classKey, frac) in snapshot.yoloFurnitureHeightFracByClass) {
+            for ((classKey, frac) in snapshot.savedFurnitureHeightFracByClass) {
                 if (classKey.isNotBlank()) sub.put(classKey, frac.toDouble())
             }
-            jo.put("yoloFurnitureHeightFracByClass", sub)
+            jo.put("savedFurnitureHeightFracByClass", sub)
         }
-        snapshot.yoloRefImageHeightPx?.let { if (it > 0) jo.put("yoloRefImageHeightPx", it) }
-        snapshot.sharpNavarroRoomHeightAtYoloCapture?.takeIf { it > 0f }?.let {
-            jo.put("sharpNavarroRoomHeightAtYoloCapture", it.toDouble())
+        snapshot.savedRefImageHeightPx?.let { if (it > 0) jo.put("savedRefImageHeightPx", it) }
+        snapshot.sharpNavarroRoomHeightAtCapture?.takeIf { it > 0f }?.let {
+            jo.put("sharpNavarroRoomHeightAtCapture", it.toDouble())
         }
         when (snapshot.previewOnly) {
             null -> { /* legacy: omit */ }
@@ -157,7 +157,7 @@ object RoomFolderMetadata {
             return if (d.isNaN()) null else d.toFloat()
         }
         val rawOrient = jo.optString("photoOrientation", "portrait").trim().lowercase()
-        val furnitureFracs = parseFurnitureFracMap(jo.optJSONObject("yoloFurnitureHeightFracByClass"))
+        val furnitureFracs = parseFurnitureFracMap(jo.optJSONObject("savedFurnitureHeightFracByClass"))
         return Snapshot(
             name = jo.optString("name", "").takeIf { it.isNotBlank() },
             createdAt = if (jo.has("created")) jo.getLong("created") else null,
@@ -175,10 +175,10 @@ object RoomFolderMetadata {
             roomSceneHeight = optFloat("roomSceneHeight"),
             roomSceneDepth = optFloat("roomSceneDepth"),
             arDisplayScale = optFloat("arDisplayScale"),
-            yoloWallHeightFrac = optFloat("yoloWallHeightFrac"),
-            yoloFurnitureHeightFracByClass = furnitureFracs,
-            yoloRefImageHeightPx = if (jo.has("yoloRefImageHeightPx")) jo.optInt("yoloRefImageHeightPx", 0).takeIf { it > 0 } else null,
-            sharpNavarroRoomHeightAtYoloCapture = optFloat("sharpNavarroRoomHeightAtYoloCapture"),
+            savedWallHeightFrac = optFloat("savedWallHeightFrac"),
+            savedFurnitureHeightFracByClass = furnitureFracs,
+            savedRefImageHeightPx = if (jo.has("savedRefImageHeightPx")) jo.optInt("savedRefImageHeightPx", 0).takeIf { it > 0 } else null,
+            sharpNavarroRoomHeightAtCapture = optFloat("sharpNavarroRoomHeightAtCapture"),
             previewOnly = when {
                 !jo.has("previewOnly") -> null
                 else -> jo.optBoolean("previewOnly", false)
@@ -234,10 +234,10 @@ object RoomFolderMetadata {
             roomSceneHeight = map["roomSceneHeight"]?.toFloatOrNull(),
             roomSceneDepth = map["roomSceneDepth"]?.toFloatOrNull(),
             arDisplayScale = map["arDisplayScale"]?.toFloatOrNull(),
-            yoloWallHeightFrac = map["yoloWallHeightFrac"]?.toFloatOrNull(),
-            yoloFurnitureHeightFracByClass = emptyMap(),
-            yoloRefImageHeightPx = map["yoloRefImageHeightPx"]?.toIntOrNull(),
-            sharpNavarroRoomHeightAtYoloCapture = map["sharpNavarroRoomHeightAtYoloCapture"]?.toFloatOrNull(),
+            savedWallHeightFrac = map["savedWallHeightFrac"]?.toFloatOrNull(),
+            savedFurnitureHeightFracByClass = emptyMap(),
+            savedRefImageHeightPx = map["savedRefImageHeightPx"]?.toIntOrNull(),
+            sharpNavarroRoomHeightAtCapture = map["sharpNavarroRoomHeightAtCapture"]?.toFloatOrNull(),
             previewOnly = when {
                 !map.containsKey("previewOnly") -> null
                 map["previewOnly"]?.trim()?.lowercase() == "true" -> true

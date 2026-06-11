@@ -187,7 +187,7 @@ class SharpRoomActivity : AppCompatActivity() {
                         previewOnly = true,
                     )
                 }
-                val merged = RoomFolderMetadata.snapshotPreservingYoloFields(folder, baseSnapshot)
+                val merged = RoomFolderMetadata.snapshotPreservingCalibrationFields(folder, baseSnapshot)
                 RoomFolderMetadata.writeToFolder(folder, merged)
                 DebugLogger.d(TAG, "Persisted Spark Box3 dimensions to room_meta.json: ${w}x${h}")
                 LogUtil.i(
@@ -857,7 +857,7 @@ class SharpRoomActivity : AppCompatActivity() {
         )
         RoomFolderMetadata.writeToFolder(
             folder,
-            RoomFolderMetadata.snapshotPreservingYoloFields(folder, next),
+            RoomFolderMetadata.snapshotPreservingCalibrationFields(folder, next),
         )
 
         val metadataFile = File(folder, "metadata.txt")
@@ -2768,13 +2768,13 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun createInitializedFurnitureFitManager(): FurnitureFitManager? {
-        setBrainProgressText(R.string.yoloe_loading_model)
+        setBrainProgressText(R.string.detector_loading_model)
         val initializedManager = FurnitureFitManager(this)
         if (initializedManager.initializeAuto()) {
             setBrainProgressText(R.string.smartypants_detecting_furniture)
             return initializedManager
         }
-        setBrainProgressText(R.string.yoloe_model_unavailable)
+        setBrainProgressText(R.string.detector_model_unavailable)
         initializedManager.close()
         return null
     }
@@ -4053,7 +4053,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     metadata.append("previewOnly=false\n")
                     metadataFile.writeText(metadata.toString())
                     val folderFile = File(folderPath)
-                    val snapshotToWrite = RoomFolderMetadata.snapshotPreservingYoloFields(
+                    val snapshotToWrite = RoomFolderMetadata.snapshotPreservingCalibrationFields(
                         folderFile,
                         RoomFolderMetadata.Snapshot(
                             name = name,

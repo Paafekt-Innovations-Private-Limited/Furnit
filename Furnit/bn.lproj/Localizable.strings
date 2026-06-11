@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "ওপেন সোর্স লাইসেন্স";
 "licenses.openSourceIntro" = "এই অ্যাপ নিম্নলিখিত ওপেন সোর্স সফটওয়্যার ব্যবহার করে।";
 "licenses.viewFullLicense" = "সম্পূর্ণ লাইসেন্স দেখুন";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "এই অ্যাপ YOLO (যেমন Ultralytics YOLO) ভিত্তিক মডেল ব্যবহার করে। YOLO AGPL-3.0 এর অধীনে লাইসেন্সপ্রাপ্ত। এই পর্ব 1 রিলিজ অ-বাণিজ্যিক। বাণিজ্যিক ব্যবহারের জন্য https://www.ultralytics.com/license দেখুন।";
 "licenses.sharpTitle" = "3D রুম পুনর্গঠন (SHARP)";
 "licenses.sharp" = "কপিরাইট (c) SharpML অবদানকারী। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -440,10 +438,7 @@
 "common.or" = "অথবা";
 "common.retry" = "আবার চেষ্টা করুন";
 "settings.furnitureSegmentationSection" = "ফার্নিচার সেগমেন্টেশন";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU অনুমতি";
-"settings.yoloeCoreMLAllowGPUDescription" = "বন্ধ (ডিফল্ট): শুধু CPU — ধীর কিন্তু কিছু YOLO-E 26L Core ML বিল্ডে ক্র্যাশ এড়ায়। চালু: গতির জন্য CPU+GPU; Metal এ এক্সপোর্ট না চললে সেগমেন্টেশনে SIGABRT হতে পারে।";
 "settings.showRoomFurnitureCalibrate" = "রুম ও ফার্নিচার ক্যালিব্রেশন UI দেখান";
 "settings.showRoomFurnitureCalibrateDescription" = "রুম মেনুতে «দেয়াল ক্যালিব্রেট» এবং SmartyPants (মস্তিষ্ক) চালু থাকলে «ক্যালিব্রেট করতে ট্যাপ» পিল দেখায়।";
 "settings.furnitureFitARCompanion" = "AR-সহায়িত ফার্নিচার মাপ";
@@ -460,8 +455,6 @@
 
 
 "settings.roomMeasurementSection" = "রুম মাপ";
-"settings.yoloWallDimensionsOnSave" = "সংরক্ষণে YOLO দেয়ালের মাপ";
-"settings.yoloWallDimensionsOnSaveDescription" = "SHARP রুম নাম দিয়ে সংরক্ষণ করলে, YOLO (দেয়াল ক্লাস বা দেয়ালসদৃশ বক্স), রুমের সাথে সংরক্ষিত SHARP মোনোডেপথ ও ক্যামেরা EXIF দিয়ে সামনের দেয়ালের প্রস্থ ও উচ্চতা আনুমান। thumbnail.png দরকার; সেরা ফলের জন্য sharp_monodepth.bin।";
 "settings.wallAssumedDepthM" = "দেয়ালের ধারণ দূরত্ব (মি)";
 "settings.wallAssumedCeilingM" = "ধারণ দেয়াল/ছাদ উচ্চতা (মি)";
 "settings.roomMeasurementFooter" = "SHARP iOS এ মোনোডেপথ ছাড়া সংরক্ষণ ধারণ গভীরতা এবং কখনও কখনও এই ছাদ উচ্চতা ব্যবহার করে। মাপার টেপের তুলনায় প্রস্থ কম হলে ধারণ দূরত্ব বাড়ান (প্রস্থ প্রায় রৈখিক স্কেল)। টেপ মাপের কাছাকাছি দেয়াল উচ্চতা সেট করুন (যেমন 2.86 মি)। অথবা সংরক্ষণের আগে ⋮ → দেয়াল দিয়ে ক্যালিব্রেট।";
@@ -471,14 +464,6 @@
 "sharp.downloadingEnginePercent" = "3D ইঞ্জিন ডাউনলোড হচ্ছে... %d%%";
 "sharp.downloadComplete" = "ডাউনলোড সম্পূর্ণ";
 "sharp.downloadFailed" = "ডাউনলোড ব্যর্থ";
-"yoloe.downloadingModel" = "ডিটেকশন মডেল ডাউনলোড হচ্ছে...";
-"yoloe.downloadingModelPercent" = "ডিটেকশন মডেল ডাউনলোড হচ্ছে... %d%%";
-"yoloe.downloadComplete" = "ডাউনলোড সম্পূর্ণ";
-"yoloe.downloadFailed" = "ডাউনলোড ব্যর্থ";
-"yoloe.preparingModel" = "ডিটেকশন মডেল প্রস্তুত হচ্ছে...";
-"yoloe.loadingModel" = "ডিটেকশন মডেল লোড হচ্ছে...";
-"yoloe.ready" = "প্রস্তুত";
-"yoloe.unavailable" = "ডিটেকশন মডেল উপলভ্য নয়";
 "sharp.gettingReady" = "প্রস্তুত হচ্ছে...";
 "sharp.notEnoughSpace" = "ডিভাইসে পর্যাপ্ত জায়গা নেই";
 "sharp.settingThingsUp" = "সেটআপ হচ্ছে...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "Anthropic-এর টুল গবেষণা, কোড সহায়তা, ইমপ্লিমেন্টেশনের বিস্তারিত নিয়ে ভাবনা এবং উন্নয়ন পুনরাবৃত্তিতে ব্যবহার করা হয়েছে।";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Luma AI-এর টুল এবং পণ্যসংক্রান্ত রেফারেন্স আমাদের ভিজ্যুয়াল AI ও 3D ওয়ার্কফ্লো অনুসন্ধানের কিছু অংশকে প্রভাবিত করেছে।";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Ultralytics-এর টুল, ডকুমেন্টেশন এবং YOLO ইকোসিস্টেম অবজেক্ট ডিটেকশন ও সেগমেন্টেশন উন্নয়ন ওয়ার্কফ্লোতে সহায়তা করেছে。";

@@ -1,5 +1,5 @@
 // FurnitureFitClassBlacklist.swift
-// Loads blacklist.json (string keys → YOLO class indices to ignore) once per Furniture Fit session.
+// Loads blacklist.json (string keys → the detector class indices to ignore) once per Furniture Fit session.
 
 import Foundation
 

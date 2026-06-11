@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">Licencias de código abierto</string>
     <string name="licenses_open_source_intro">Esta app utiliza el siguiente software de código abierto.</string>
     <string name="licenses_view_full_license">Ver licencia completa</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">Copyright (c) Ultralytics. Bajo licencia GNU Affero GPL v3.0. Este lanzamiento Fase 1 es no comercial. Para uso comercial, consulta Ultralytics.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) colaboradores de SharpML. Bajo licencia MIT.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -343,9 +341,9 @@
     <string name="sharp_inference_model_unavailable">Modelo SHARP no disponible</string>
     <string name="sharp_inference_writing_room_file">Preparando tu vista previa…</string>
     <string name="sharp_inference_room_ready">¡Tu cuarto está listo!</string>
-    <string name="yoloe_loading_model">Cargando modelo de detección…</string>
-    <string name="yoloe_model_ready">Listo</string>
-    <string name="yoloe_model_unavailable">Modelo de detección no disponible</string>
+    <string name="detector_loading_model">Cargando modelo de detección…</string>
+    <string name="detector_model_ready">Listo</string>
+    <string name="detector_model_unavailable">Modelo de detección no disponible</string>
     <string name="single_image_scan_scanning">Escaneando imagen seleccionada…</string>
     <string name="single_image_scan_no_overlay">No se detectó superposición</string>
     <string name="ai_progress_getting_photo_ready">Preparando tu foto…</string>
@@ -436,8 +434,6 @@
     <string name="credits_anthropic_body">Las herramientas de Anthropic se utilizaron para apoyar la investigación, la asistencia de código, el razonamiento sobre detalles de implementación y la iteración del desarrollo.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Las herramientas de Luma AI y las referencias de producto ayudaron a orientar partes de nuestra exploración de flujos de trabajo visuales de IA y 3D durante el desarrollo del producto.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Las herramientas, la documentación y el ecosistema YOLO de Ultralytics respaldaron nuestros flujos de trabajo de desarrollo para detección de objetos y segmentación.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">o</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">Open-Source-Lizenzen</string>
     <string name="licenses_open_source_intro">Diese App verwendet die folgende Open-Source-Software.</string>
     <string name="licenses_view_full_license">Vollständige Lizenz anzeigen</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">Copyright (c) Ultralytics. Lizenziert unter der GNU Affero General Public License v3.0. Dieses Phase-1-Release ist nichtkommerziell. Für kommerzielle Nutzung siehe Ultralytics.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP-Modell nicht verfügbar</string>
     <string name="sharp_inference_writing_room_file">Vorschau wird vorbereitet…</string>
     <string name="sharp_inference_room_ready">Ihr Raum ist bereit!</string>
-    <string name="yoloe_loading_model">Erkennungsmodell wird geladen…</string>
-    <string name="yoloe_model_ready">Bereit</string>
-    <string name="yoloe_model_unavailable">Erkennungsmodell nicht verfügbar</string>
+    <string name="detector_loading_model">Erkennungsmodell wird geladen…</string>
+    <string name="detector_model_ready">Bereit</string>
+    <string name="detector_model_unavailable">Erkennungsmodell nicht verfügbar</string>
     <string name="single_image_scan_scanning">Ausgewähltes Bild wird gescannt…</string>
     <string name="single_image_scan_no_overlay">Kein Overlay erkannt</string>
     <string name="ai_progress_getting_photo_ready">Foto wird vorbereitet…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic-Tools wurden eingesetzt, um Recherche, Code-Unterstützung, das Durchdenken von Implementierungsdetails und die Entwicklungsiteration zu unterstützen.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma-AI-Tools und Produktreferenzen haben Teile unserer visuellen KI- und 3D-Workflow-Erkundung während der Produktentwicklung geprägt.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics-Tools, Dokumentation und das YOLO-Ökosystem haben unsere Entwicklungsabläufe für Objekterkennung und Segmentierung unterstützt.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">oder</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

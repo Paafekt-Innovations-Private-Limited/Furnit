@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
 "licenses.openSourceIntro" = "ಈ ಅಪ್ಲಿಕೇಶನ್ ಈ ಕೆಳಗಿನ ಓಪನ್ ಸೋರ್ಸ್ ಸಾಫ್ಟ್‌ವೇರ್ ಬಳಸುತ್ತದೆ.";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "ಈ ಅಪ್ಲಿಕೇಶನ್ YOLO (ಉದಾ. Ultralytics YOLO) ಆಧಾರಿತ ಮಾದರಿಗಳನ್ನು ಬಳಸುತ್ತದೆ. YOLO AGPL-3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ https://www.ultralytics.com/license ನೋಡಿ.";
 "licenses.sharpTitle" = "3D ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣ (SHARP)";
 "licenses.sharp" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -440,10 +438,7 @@
 "common.or" = "ಅಥವಾ";
 "common.retry" = "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ";
 "settings.furnitureSegmentationSection" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU ಅನುಮತಿಸಿ";
-"settings.yoloeCoreMLAllowGPUDescription" = "ಆಫ್ (ಡೀಫಾಲ್ಟ್): CPU ಮಾತ್ರ — ನಿಧಾನ, ಆದರೆ ಕೆಲವು YOLO-E 26L Core ML ಬಿಲ್ಡ್‌ಗಳಲ್ಲಿ ಕ್ರ್ಯಾಶ್ ತಪ್ಪಿಸುತ್ತದೆ. ಆನ್: ವೇಗಕ್ಕಾಗಿ CPU+GPU; ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿ Metal ರನ್ ಆಗದ ಫಲಿತಾಂಶದಲ್ಲಿ ಸೆಗ್ಮೆಂಟೇಶನ್ ಸಮಯದಲ್ಲಿ SIGABRT ಆಗಬಹುದು.";
 "settings.showRoomFurnitureCalibrate" = "ಕೊಠಡಿ ಮತ್ತು ಪೀಠೋಪಕರಣ ಕ್ಯಾಲಿಬ್ರೇಷನ್ UI ತೋರಿಸಿ";
 "settings.showRoomFurnitureCalibrateDescription" = "ಕೊಠಡಿ ಮೆನುವಿನಲ್ಲಿ ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮತ್ತು SmartyPants (ಮೆದುಳು) ಆನ್ ಇದ್ದಾಗ ‘ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ತಟ್ಟಿ’ ಪಿಲ್ ತೋರಿಸುತ್ತದೆ.";
 "settings.furnitureFitARCompanion" = "AR-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರ";
@@ -460,8 +455,6 @@
 
 
 "settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
-"settings.yoloWallDimensionsOnSave" = "ಉಳಿಸುವಾಗ YOLO ಗೋಡೆ ಆಯಾಮಗಳು";
-"settings.yoloWallDimensionsOnSaveDescription" = "SHARP ಕೊಠಡಿಗೆ ಹೆಸರು ನೀಡಿ ಉಳಿಸುವಾಗ, YOLO (ಗೋಡೆ ವರ್ಗ ಅಥವಾ ಗೋಡೆಯಂತಹ ಬಾಕ್ಸ್), ಉಳಿಸಿದ SHARP ಮೊನೊಡೆಪ್ತ್ ಮತ್ತು ಕ್ಯಾಮೆರಾ EXIF ಬಳಸಿ ಮುಂಭಾಗದ ಗೋಡೆಯ ಅಗಲ ಮತ್ತು ಎತ್ತರ ಅಂದಾಜು ಮಾಡುತ್ತದೆ. thumbnail.png ಅಗತ್ಯ; ಉತ್ತಮ ಫಲಿತಾಂಶಕ್ಕೆ sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "ಗೋಡೆಗೆ ಅಂದಾಜು ದೂರ (ಮೀ)";
 "settings.wallAssumedCeilingM" = "ಅಂದಾಜು ಗೋಡೆ ಎತ್ತರ/ಸೀಲಿಂಗ್ (ಮೀ)";
 "settings.roomMeasurementFooter" = "SHARP iOS ನಲ್ಲಿ ಮೊನೊಡೆಪ್ತ್ ಇಲ್ಲದಿದ್ದರೆ, ಉಳಿಸುವಿಕೆ ಅಂದಾಜು ದೂರ ಮತ್ತು ಕೆಲವೊಮ್ಮೆ ಈ ಸೀಲಿಂಗ್ ಎತ್ತರವನ್ನು ಬಳಸುತ್ತದೆ. ಟೇಪ್ ಅಳತೆಗೆ ಹೋಲಿಸಿದರೆ ಅಗಲ ಕಡಿಮೆ ಇದ್ದರೆ ‘ಅಂದಾಜು ದೂರ’ ಹೆಚ್ಚಿಸಿ (ಅಗಲ ಸುಮಾರು ರೇಖೀಯವಾಗಿ ಬದಲಾಗುತ್ತದೆ). ಟೇಪ್ ಅಳತೆಗೆ ಹತ್ತಿರ ‘ಅಂದಾಜು ಗೋಡೆ ಎತ್ತರ’ ಹೊಂದಿಸಿ (ಉದಾ. 2.86 ಮೀ). ಅಥವಾ ಉಳಿಸುವ ಮೊದಲು ⋮ → ಗೋಡೆಯಿಂದ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಬಳಸಿ.";
@@ -471,14 +464,6 @@
 "sharp.downloadingEnginePercent" = "3D ಎಂಜಿನ್ ಡೌನ್‌ಲೋಡ್... %d%%";
 "sharp.downloadComplete" = "ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣ";
 "sharp.downloadFailed" = "ಡೌನ್‌ಲೋಡ್ ವಿಫಲ";
-"yoloe.downloadingModel" = "ಪತ್ತೆ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
-"yoloe.downloadingModelPercent" = "ಪತ್ತೆ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ... %d%%";
-"yoloe.downloadComplete" = "ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣ";
-"yoloe.downloadFailed" = "ಡೌನ್‌ಲೋಡ್ ವಿಫಲ";
-"yoloe.preparingModel" = "ಪತ್ತೆ ಮಾದರಿ ಸಿದ್ಧವಾಗುತ್ತಿದೆ...";
-"yoloe.loadingModel" = "ಪತ್ತೆ ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
-"yoloe.ready" = "ಸಿದ್ಧ";
-"yoloe.unavailable" = "ಪತ್ತೆ ಮಾದರಿ ಲಭ್ಯವಿಲ್ಲ";
 "sharp.gettingReady" = "ಸಿದ್ಧವಾಗುತ್ತಿದೆ...";
 "sharp.notEnoughSpace" = "ಸಾಧನದಲ್ಲಿ ಸಾಕಷ್ಟು ಸ್ಥಳವಿಲ್ಲ";
 "sharp.settingThingsUp" = "ಹೊಂದಿಸಲಾಗುತ್ತಿದೆ...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "Anthropic ಸಾಧನಗಳನ್ನು ಸಂಶೋಧನೆ, ಕೋಡ್ ಸಹಾಯ, ಅನುಷ್ಠಾನ ವಿವರಗಳ ಕುರಿತು ಚಿಂತನೆ ಮತ್ತು ಅಭಿವೃದ್ಧಿ ಪುನರಾವರ್ತನೆಗೆ ಬಳಸಲಾಗಿದೆ.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Luma AI ಸಾಧನಗಳು ಮತ್ತು ಉತ್ಪನ್ನ ಉಲ್ಲೇಖಗಳು ನಮ್ಮ ದೃಶ್ಯ AI ಮತ್ತು 3D ವರ್ಕ್‌ಫ್ಲೋ ಅನ್ವೇಷಣೆಯ ಕೆಲವು ಭಾಗಗಳಿಗೆ ದಿಕ್ಕುನಿರ್ದೇಶನ ನೀಡಿವೆ.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Ultralytics ಸಾಧನಗಳು, ದಸ್ತಾವೇಜುಗಳು ಮತ್ತು YOLO ಪರಿಸರ ವ್ಯವಸ್ಥೆ ವಸ್ತು ಗುರುತು ಮತ್ತು ವಿಭಾಗೀಕರಣ ಅಭಿವೃದ್ಧಿ ವರ್ಕ್‌ಫ್ಲೋಗಳಿಗೆ ಬೆಂಬಲ ನೀಡಿವೆ。";

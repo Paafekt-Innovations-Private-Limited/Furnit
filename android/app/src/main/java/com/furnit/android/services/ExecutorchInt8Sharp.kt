@@ -45,7 +45,7 @@ import kotlin.math.*
  * the content/padding edge as OOD; INT8 amplifies it. Raw PLY coords; no aspect scale.
  *
  * Export note: if jagged output persists, consider FP16 for position/scale decoder heads
- * (see Ultralytics deployment practices; INT8 on scales/rotations can cause severe artifacts).
+ * (INT8 on scales/rotations can cause severe artifacts).
  */
 class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
@@ -972,7 +972,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     }
 
     /**
-     * Persists the last pipeline monodepth to [folder]/sharp_monodepth.bin for offline YOLO wall measurement.
+     * Persists the last pipeline monodepth to [folder]/sharp_monodepth.bin for offline wall measurement.
      * Header: 12 bytes little-endian (width, height, channels as int32) + float32 samples (row-major, c interleaved if c>1).
      * Call immediately after a successful [inferStreaming] while native buffers are still valid.
      */
@@ -1160,7 +1160,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /**
      * Resize bitmap using Lanczos3 (6x6 kernel). Slower than bilinear; use for higher-quality resize.
-     * Output clamped to 0..255 to match bilinear range for INT8 input (per Ultralytics).
+     * Output clamped to 0..255 to match bilinear range for INT8 input.
      */
     private fun resizeWithLanczos3(source: Bitmap, targetW: Int, targetH: Int): Bitmap {
         val sw = source.width
@@ -1220,7 +1220,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     /**
      * Center-crop to square (side = min(w,h)) then resize to targetSize. Matches ViT training distribution;
-     * avoids letterbox/gray padding which causes jagged output (Ultralytics).
+     * avoids letterbox/gray padding which causes jagged output.
      * When USE_LANCZOS_RESIZE is true, resize uses Lanczos3; else bilinear. Set USE_LANCZOS_RESIZE=false if slow or problematic.
      */
     private fun getCenterCropBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
@@ -1746,7 +1746,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     /**
      * Write PLY from model output. Uses raw coordinates (no aspect scaling): model trained on square input
      * expects 1:1 coordinate space. Only y,z are negated for our viewer convention.
-     * See Ultralytics: apply aspectRatio only when mapping to non-square frustum; else normalization issues cause jagged output.
+     * apply aspectRatio only when mapping to non-square frustum; else normalization issues cause jagged output.
      */
     private fun writePly(
         params: FloatArray,

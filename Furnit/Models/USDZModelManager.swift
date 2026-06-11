@@ -20,7 +20,7 @@ enum RoomDisplayName {
     }
 }
 
-// MARK: - Saved room .meta JSON (room dims + optional YOLO ratios)
+// MARK: - Saved room .meta JSON (room dims + optional wall ratios)
 
 private struct SavedRoomDiskMetadata {
     let orientation: PhotoOrientation
@@ -31,10 +31,10 @@ private struct SavedRoomDiskMetadata {
     let sceneWidth: Float?
     let sceneHeight: Float?
     let sceneDepth: Float?
-    let yoloWallHeightFrac: Float?
-    let yoloFurnitureHeightFracByClass: [String: Float]?
-    let yoloRefImageHeightPx: Int?
-    let sharpRoomHeightAtYoloCapture: Float?
+    let savedWallHeightFrac: Float?
+    let savedFurnitureHeightFracByClass: [String: Float]?
+    let savedRefImageHeightPx: Int?
+    let sharpRoomHeightAtCapture: Float?
     /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
     let displayName: String?
     let isClassicPly: Bool
@@ -47,10 +47,10 @@ private struct SavedRoomDiskMetadata {
         sceneWidth: nil,
         sceneHeight: nil,
         sceneDepth: nil,
-        yoloWallHeightFrac: nil,
-        yoloFurnitureHeightFracByClass: nil,
-        yoloRefImageHeightPx: nil,
-        sharpRoomHeightAtYoloCapture: nil,
+        savedWallHeightFrac: nil,
+        savedFurnitureHeightFracByClass: nil,
+        savedRefImageHeightPx: nil,
+        sharpRoomHeightAtCapture: nil,
         displayName: nil,
         isClassicPly: false
     )
@@ -63,12 +63,12 @@ private struct SavedRoomDiskMetadata {
         let sceneW = metadata["roomSceneWidth"].flatMap { Float($0) }
         let sceneH = metadata["roomSceneHeight"].flatMap { Float($0) }
         let sceneD = metadata["roomSceneDepth"].flatMap { Float($0) }
-        let yoloWall = metadata["yoloWallHeightFrac"].flatMap { Float($0) }
-        let yoloRefH = metadata["yoloRefImageHeightPx"].flatMap { Int($0) }
-        let sharpCap = metadata["sharpRoomHeightAtYoloCapture"].flatMap { Float($0) }
+        let savedWall = metadata["savedWallHeightFrac"].flatMap { Float($0) }
+        let savedRefH = metadata["savedRefImageHeightPx"].flatMap { Int($0) }
+        let sharpCap = metadata["sharpRoomHeightAtCapture"].flatMap { Float($0) }
         let isClassicPly = metadata["isClassicPly"].flatMap { Bool($0) } ?? false
         var furnMap: [String: Float]?
-        if let json = metadata["yoloFurnitureHeightFracByClass"],
+        if let json = metadata["savedFurnitureHeightFracByClass"],
            let data = json.data(using: .utf8),
            let decoded = try? JSONDecoder().decode([String: Float].self, from: data) {
             furnMap = decoded
@@ -83,10 +83,10 @@ private struct SavedRoomDiskMetadata {
             sceneWidth: sceneW,
             sceneHeight: sceneH,
             sceneDepth: sceneD,
-            yoloWallHeightFrac: yoloWall,
-            yoloFurnitureHeightFracByClass: furnMap,
-            yoloRefImageHeightPx: yoloRefH,
-            sharpRoomHeightAtYoloCapture: sharpCap,
+            savedWallHeightFrac: savedWall,
+            savedFurnitureHeightFracByClass: furnMap,
+            savedRefImageHeightPx: savedRefH,
+            sharpRoomHeightAtCapture: sharpCap,
             displayName: displayName,
             isClassicPly: isClassicPly
         )
@@ -101,10 +101,10 @@ private struct SavedRoomDiskMetadata {
             sceneWidth: sceneWidth,
             sceneHeight: sceneHeight,
             sceneDepth: sceneDepth,
-            yoloWallHeightFrac: yoloWallHeightFrac,
-            yoloFurnitureHeightFracByClass: yoloFurnitureHeightFracByClass,
-            yoloRefImageHeightPx: yoloRefImageHeightPx,
-            sharpRoomHeightAtYoloCapture: sharpRoomHeightAtYoloCapture,
+            savedWallHeightFrac: savedWallHeightFrac,
+            savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
+            savedRefImageHeightPx: savedRefImageHeightPx,
+            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
             displayName: displayName,
             isClassicPly: isClassicPly
         )
@@ -119,10 +119,10 @@ private struct SavedRoomDiskMetadata {
             sceneWidth: sceneWidth,
             sceneHeight: sceneHeight,
             sceneDepth: sceneDepth,
-            yoloWallHeightFrac: yoloWallHeightFrac,
-            yoloFurnitureHeightFracByClass: yoloFurnitureHeightFracByClass,
-            yoloRefImageHeightPx: yoloRefImageHeightPx,
-            sharpRoomHeightAtYoloCapture: sharpRoomHeightAtYoloCapture,
+            savedWallHeightFrac: savedWallHeightFrac,
+            savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
+            savedRefImageHeightPx: savedRefImageHeightPx,
+            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
             displayName: displayName,
             isClassicPly: newValue
         )
@@ -1037,10 +1037,10 @@ class USDZModelManager: ObservableObject {
                     roomSceneWidth: metadata.sceneWidth,
                     roomSceneHeight: metadata.sceneHeight,
                     roomSceneDepth: metadata.sceneDepth,
-                    yoloWallHeightFrac: metadata.yoloWallHeightFrac,
-                    yoloFurnitureHeightFracByClass: metadata.yoloFurnitureHeightFracByClass,
-                    yoloRefImageHeightPx: metadata.yoloRefImageHeightPx,
-                    sharpRoomHeightAtYoloCapture: metadata.sharpRoomHeightAtYoloCapture,
+                    savedWallHeightFrac: metadata.savedWallHeightFrac,
+                    savedFurnitureHeightFracByClass: metadata.savedFurnitureHeightFracByClass,
+                    savedRefImageHeightPx: metadata.savedRefImageHeightPx,
+                    sharpRoomHeightAtCapture: metadata.sharpRoomHeightAtCapture,
                     customDisplayName: displayNameForSavedRoom(
                         fileName: fileName,
                         fileType: fileType,
@@ -1135,8 +1135,8 @@ class USDZModelManager: ObservableObject {
         try out.write(to: metadataURL, options: [.atomic])
     }
 
-    /// Merges YOLO ratio calibration keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
-    func mergeYoloCalibrationMetadata(
+    /// Merges wall ratio calibration (legacy) keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
+    func mergeWallCalibrationMetadata(
         fileName: String,
         modelFileExtension: String,
         wallHeightFrac: Float,
@@ -1152,14 +1152,14 @@ class USDZModelManager: ObservableObject {
             dict = existing
         }
 
-        dict["yoloWallHeightFrac"] = String(format: "%.6f", wallHeightFrac)
-        dict["yoloRefImageHeightPx"] = String(referenceImageHeightPx)
+        dict["savedWallHeightFrac"] = String(format: "%.6f", wallHeightFrac)
+        dict["savedRefImageHeightPx"] = String(referenceImageHeightPx)
         if let h = sharpRoomHeightAtCapture {
-            dict["sharpRoomHeightAtYoloCapture"] = String(format: "%.4f", h)
+            dict["sharpRoomHeightAtCapture"] = String(format: "%.4f", h)
         }
         if let jsonData = try? JSONEncoder().encode(furnitureFractionsByClass),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            dict["yoloFurnitureHeightFracByClass"] = jsonString
+            dict["savedFurnitureHeightFracByClass"] = jsonString
         }
 
         let out = try JSONEncoder().encode(dict)
@@ -1786,7 +1786,7 @@ class USDZModelManager: ObservableObject {
         }
     }
 
-    /// Load all metadata from PLY metadata file (orientation, dimensions, optional YOLO ratios)
+    /// Load all metadata from PLY metadata file (orientation, dimensions, optional wall ratios)
     private func loadPLYMetadata(for fileName: String) -> SavedRoomDiskMetadata {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
         let canonicalStem = canonicalPlyStem(for: fileName)

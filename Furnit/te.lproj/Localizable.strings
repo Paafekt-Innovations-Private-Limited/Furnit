@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "ఓపెన్ సోర్స్ లైసెన్స్‌లు";
 "licenses.openSourceIntro" = "ఈ యాప్ ఈ క్రింది ఓపెన్ సోర్స్ సాఫ్ట్‌వేర్ ఉపయోగిస్తుంది.";
 "licenses.viewFullLicense" = "పూర్తి లైసెన్స్ చూడండి";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "ఈ యాప్ YOLO (ఉదా. Ultralytics YOLO) ఆధారిత మోడల్‌లను ఉపయోగిస్తుంది. YOLO AGPL-3.0 క్రింద లైసెన్స్ పొందింది. ఈ ఫేజ్ 1 రిలీజ్ వాణిజ్యేతరం. వాణిజ్య వాడకానికి https://www.ultralytics.com/license చూడండి.";
 "licenses.sharpTitle" = "3D రూమ్ రీకన్స్ట్రక్షన్ (SHARP)";
 "licenses.sharp" = "కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -440,10 +438,7 @@
 "common.or" = "లేదా";
 "common.retry" = "మళ్లీ ప్రయత్నించండి";
 "settings.furnitureSegmentationSection" = "ఫర్నిచర్ సెగ్మెంటేషన్";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU అనుమతించు";
-"settings.yoloeCoreMLAllowGPUDescription" = "ఆఫ్ (డిఫాల్ట్): CPU మాత్రమే — నెమ్మది కానీ కొన్ని YOLO-E 26L Core ML బిల్డ్‌లలో క్రాష్‌లను తగ్గిస్తుంది. ఆన్: వేగానికి CPU+GPU; Metal పై ఎగుమతి నడకపోతే సెగ్మెంటేషన్‌లో SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు";
 "settings.showRoomFurnitureCalibrateDescription" = "గది మెనూలో «గోడ క్యాలిబ్రేట్ చేయి», SmartyPants (మెదడు) ఆన్‌లో ఉన్నప్పుడు «క్యాలిబ్రేట్ చేయడానికి ట్యాప్» పిల్ చూపిస్తుంది.";
 "settings.furnitureFitARCompanion" = "AR-సహాయిత ఫర్నిచర్ కొలత";
@@ -460,8 +455,6 @@
 
 
 "settings.roomMeasurementSection" = "గది కొలతలు";
-"settings.yoloWallDimensionsOnSave" = "సేవ్ చేసేటప్పుడు YOLO గోడ కొలతలు";
-"settings.yoloWallDimensionsOnSaveDescription" = "SHARP గదికి పేరు పెట్టి సేవ్ చేసినప్పుడు, YOLO (గోడ తరగతి లేదా గోడ లాంటి బాక్స్), గదితో సేవ్ చేసిన SHARP మోనోడెప్త్, కెమెరా EXIF తో ముందు గోడ వెడల్పు మరియు ఎత్తు అంచనా. thumbnail.png అవసరం; ఉత్తమ ఫలితానికి sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "గోడకు అంచనా దూరం (మీ)";
 "settings.wallAssumedCeilingM" = "అంచనా గోడ/సీలింగ్ ఎత్తు (మీ)";
 "settings.roomMeasurementFooter" = "SHARP iOS లో మోనోడెప్త్ లేకుండా సేవ్ అంచనా లోతు మరియు కొన్నిసార్లు ఈ సీలింగ్ ఎత్తును వాడుతుంది. వెడల్పు టేప్ కొలతతో పోలిస్తే తక్కువైతే అంచనా దూరం పెంచండి (వెడల్పు సుమారు రేఖీయంగా స్కేల్). గోడ ఎత్తును టేప్ కొలత దగ్గర సెట్ చేయండి (ఉదా. 2.86 మీ). లేదా సేవ్ చేయే ముందు ⋮ → గోడ ద్వారా క్యాలిబ్రేట్.";
@@ -471,14 +464,6 @@
 "sharp.downloadingEnginePercent" = "3D ఇంజిన్ డౌన్‌లోడ్ అవుతోంది... %d%%";
 "sharp.downloadComplete" = "డౌన్‌లోడ్ పూర్తయింది";
 "sharp.downloadFailed" = "డౌన్‌లోడ్ విఫలమైంది";
-"yoloe.downloadingModel" = "డిటెక్షన్ మోడల్ డౌన్‌లోడ్ అవుతోంది...";
-"yoloe.downloadingModelPercent" = "డిటెక్షన్ మోడల్ డౌన్‌లోడ్ అవుతోంది... %d%%";
-"yoloe.downloadComplete" = "డౌన్‌లోడ్ పూర్తయింది";
-"yoloe.downloadFailed" = "డౌన్‌లోడ్ విఫలమైంది";
-"yoloe.preparingModel" = "డిటెక్షన్ మోడల్ సిద్ధమవుతోంది...";
-"yoloe.loadingModel" = "డిటెక్షన్ మోడల్ లోడ్ అవుతోంది...";
-"yoloe.ready" = "సిద్ధం";
-"yoloe.unavailable" = "డిటెక్షన్ మోడల్ అందుబాటులో లేదు";
 "sharp.gettingReady" = "సిద్ధమవుతోంది...";
 "sharp.notEnoughSpace" = "పరికరంలో తగినంత స్థలం లేదు";
 "sharp.settingThingsUp" = "సెటప్ అవుతోంది...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "Anthropic సాధనాలు పరిశోధన, కోడ్ సహాయం, అమలు వివరాలపై ఆలోచన మరియు అభివృద్ధి పునరావృతికి మద్దతుగా ఉపయోగించబడ్డాయి.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Luma AI సాధనాలు మరియు ఉత్పత్తి సూచనలు మా visual AI మరియు 3D workflow పరిశీలనలోని కొన్ని భాగాలకు దిశానిర్దేశం చేశాయి.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Ultralytics సాధనాలు, డాక్యుమెంటేషన్ మరియు YOLO ecosystem మా object detection మరియు segmentation అభివృద్ధి వర్క్‌ఫ్లోలకు మద్దతు ఇచ్చాయి。";

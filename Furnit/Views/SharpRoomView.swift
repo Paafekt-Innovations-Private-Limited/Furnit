@@ -243,7 +243,7 @@ struct SharpRoomView: View {
     @State private var latestEstimatedFurnitureDepthMeters: Float?
     @State private var latestAestheticScore: AestheticScore?
     @State private var brainArAssistedSizingEnabled = false
-    /// Mean sRGB (0…1) from composited YOLOE cutout pixels; drives ``FurnitureProfile.primaryColor`` when set.
+    /// Mean sRGB (0…1) from composited RTMDet cutout pixels; drives ``FurnitureProfile.primaryColor`` when set.
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
     /// Collapsed: round pill icon; expanded: detail card above the pill.
     @State private var isPlacementIntelligenceExpanded = false

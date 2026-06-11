@@ -231,7 +231,7 @@ struct GLBRoomView: View {
     let roomWidth: Float?
     let roomHeight: Float?
     let roomDepth: Float?
-    /// When opening a saved GLB from Home (YOLO ratio calibration + FurnitureFit).
+    /// When opening a saved GLB from Home (the detector ratio calibration + FurnitureFit).
     var savedRoomModel: USDZModel? = nil
 
     @Environment(\.dismiss) private var dismiss

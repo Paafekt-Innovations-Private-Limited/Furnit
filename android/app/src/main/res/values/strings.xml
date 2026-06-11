@@ -164,8 +164,6 @@
     <string name="licenses_open_source_section">Open Source Licenses</string>
     <string name="licenses_open_source_intro">This app uses the following open source software.</string>
     <string name="licenses_view_full_license">View full license</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">Copyright (c) Ultralytics. Licensed under the GNU Affero General Public License v3.0. This Phase 1 release is non-commercial. For commercial use, see Ultralytics.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) SharpML contributors. Licensed under the MIT License.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -182,8 +180,6 @@
     <string name="credits_anthropic_body">Anthropic tools were used to support research, code assistance, reasoning through implementation details, and development iteration.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI tools and product references informed parts of our visual AI and 3D workflow exploration during product development.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics tools, documentation, and the YOLO ecosystem supported our object detection and segmentation development workflows.</string>
     <string name="settings_room_viewer">Room Viewer</string>
     <string name="settings_rendering_quality">Rendering Quality</string>
     <string name="settings_sign_out">Sign Out</string>
@@ -526,9 +522,9 @@
     <string name="sharp_inference_model_unavailable">SHARP model unavailable</string>
     <string name="sharp_inference_writing_room_file">Preparing your preview…</string>
     <string name="sharp_inference_room_ready">Your room is ready!</string>
-    <string name="yoloe_loading_model">Loading detection model…</string>
-    <string name="yoloe_model_ready">Ready</string>
-    <string name="yoloe_model_unavailable">Detection model unavailable</string>
+    <string name="detector_loading_model">Loading detection model…</string>
+    <string name="detector_model_ready">Ready</string>
+    <string name="detector_model_unavailable">Detection model unavailable</string>
     <string name="single_image_scan_scanning">Scanning selected image…</string>
     <string name="single_image_scan_no_overlay">No overlay detected</string>
     <string name="ai_progress_getting_photo_ready">Getting your photo ready…</string>

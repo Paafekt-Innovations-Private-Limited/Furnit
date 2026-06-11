@@ -18,7 +18,7 @@ struct MeshRoomView: View {
     var ceilingY: CGFloat = 0.15
     var floorY: CGFloat = 0.85
 
-    /// Set when opening a saved mesh room from Home (YOLO ratio calibration).
+    /// Set when opening a saved mesh room from Home (the detector ratio calibration).
     var savedRoomModel: USDZModel? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -64,7 +64,7 @@ struct MeshRoomView: View {
     // WebView reference for GLTF export
     @State private var webView: WKWebView?
 
-    // Model manager for saving rooms (also used for YOLO ratio metadata merge when viewing saved room)
+    // Model manager for saving rooms (also used for the detector ratio metadata merge when viewing saved room)
     @StateObject private var modelManager = USDZModelManager()
 
     /// Brain hint (above brain): 3s auto-hide; tap hand toggles — same as ``SharpRoomView``.

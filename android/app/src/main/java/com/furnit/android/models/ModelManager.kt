@@ -210,7 +210,7 @@ class ModelManager(private val context: Context) {
                     name = trimmed,
                     createdAt = folder.lastModified(),
                 )
-            val next = RoomFolderMetadata.snapshotPreservingYoloFields(folder, base.copy(name = trimmed))
+            val next = RoomFolderMetadata.snapshotPreservingCalibrationFields(folder, base.copy(name = trimmed))
             RoomFolderMetadata.writeToFolder(folder, next)
             loadModels()
             LogUtil.d(TAG, "Renamed room $roomId to \"$trimmed\"")

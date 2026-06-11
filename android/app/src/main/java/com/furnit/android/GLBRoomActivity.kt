@@ -726,7 +726,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 metadata.append("roomHeight=$roomHeight\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
-                val glbSnapshot = RoomFolderMetadata.snapshotPreservingYoloFields(
+                val glbSnapshot = RoomFolderMetadata.snapshotPreservingCalibrationFields(
                     savedRoomFolder,
                     RoomFolderMetadata.Snapshot(
                         name = name,

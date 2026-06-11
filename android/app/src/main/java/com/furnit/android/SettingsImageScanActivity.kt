@@ -250,7 +250,7 @@ class SettingsImageScanActivity : AppCompatActivity() {
                 statusView.visibility = if (initialized) View.GONE else View.VISIBLE
             }
             if (!initialized) {
-                statusView.text = getString(R.string.yoloe_model_unavailable)
+                statusView.text = getString(R.string.detector_model_unavailable)
             }
         }
     }
@@ -305,7 +305,7 @@ class SettingsImageScanActivity : AppCompatActivity() {
             if (requestId != scanRequestId || isDestroyed) return@launch
 
             if (!initialized) {
-                statusView.text = getString(R.string.yoloe_model_unavailable)
+                statusView.text = getString(R.string.detector_model_unavailable)
                 return@launch
             }
 

@@ -132,7 +132,7 @@ private enum AlwaysOnOSLog {
     static let memory = Logger(subsystem: subsystem, category: "MEMORY")
 }
 
-/// YOLO wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
+/// the detector wall measurement on save. Filter: `WALL_MEAS` (matches Android `adb logcat | grep WALL_MEAS`).
 @inline(__always)
 func logWallMeasurement(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }

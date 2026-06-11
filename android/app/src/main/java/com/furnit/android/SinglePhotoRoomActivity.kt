@@ -1009,7 +1009,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             if (requestId != singleImageScanRequestId || isDestroyed) return@launch
 
             if (!initialized) {
-                singleImageScanStatusView.text = getString(R.string.yoloe_model_unavailable)
+                singleImageScanStatusView.text = getString(R.string.detector_model_unavailable)
                 return@launch
             }
 
@@ -1096,7 +1096,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         val folder = result.plyFile.parentFile ?: return
         try {
             val prev = RoomFolderMetadata.readFromFolder(folder) ?: return
-            val updated = RoomFolderMetadata.snapshotPreservingYoloFields(
+            val updated = RoomFolderMetadata.snapshotPreservingCalibrationFields(
                 folder,
                 prev.copy(previewOnly = false),
             )
@@ -1153,7 +1153,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         promoteSharpRoomToLibrary(result)
                     }
                     if (!isDestroyed) {
-                        updateAIOptionProgress(1f, getString(R.string.yoloe_model_ready))
+                        updateAIOptionProgress(1f, getString(R.string.detector_model_ready))
                         hideProgressOverlay()
                         if (aiRoomOverlayRequested) {
                             aiRoomOverlayRequested = false
@@ -1162,8 +1162,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         updateAiStopButtonVisibility()
                     } else {
                         lastAIGenerationProgress = 1f
-                        lastAIGenerationRawMessage = getString(R.string.yoloe_model_ready)
-                        lastAIGenerationMessage = toFriendlyMessage(1f, getString(R.string.yoloe_model_ready))
+                        lastAIGenerationRawMessage = getString(R.string.detector_model_ready)
+                        lastAIGenerationMessage = toFriendlyMessage(1f, getString(R.string.detector_model_ready))
                         updateGlobalAiProgressOverlay()
                     }
                     DebugLogger.d("SinglePhotoRoom", "AI generation completed in background")

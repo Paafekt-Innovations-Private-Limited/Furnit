@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">திறந்த மூல உரிமங்கள்</string>
     <string name="licenses_open_source_intro">இந்த ஆப் பின்வரும் திறந்த மூல மென்பொருளைப் பயன்படுத்துகிறது.</string>
     <string name="licenses_view_full_license">முழு உரிமத்தைக் காண்க</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">பதிப்புரிமை (c) Ultralytics. GNU Affero GPL v3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு Ultralytics பார்க்கவும்.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP மாதிரி கிடைக்கவில்லை</string>
     <string name="sharp_inference_writing_room_file">உங்கள் முன்னோட்டம் தயாராகிறது…</string>
     <string name="sharp_inference_room_ready">உங்கள் அறை தயார்!</string>
-    <string name="yoloe_loading_model">கண்டறிதல் மாதிரி ஏற்றப்படுகிறது…</string>
-    <string name="yoloe_model_ready">தயார்</string>
-    <string name="yoloe_model_unavailable">கண்டறிதல் மாதிரி கிடைக்கவில்லை</string>
+    <string name="detector_loading_model">கண்டறிதல் மாதிரி ஏற்றப்படுகிறது…</string>
+    <string name="detector_model_ready">தயார்</string>
+    <string name="detector_model_unavailable">கண்டறிதல் மாதிரி கிடைக்கவில்லை</string>
     <string name="single_image_scan_scanning">தேர்ந்தெடுத்த படம் ஸ்கேன் செய்யப்படுகிறது…</string>
     <string name="single_image_scan_no_overlay">overlay கண்டறியப்படவில்லை</string>
     <string name="ai_progress_getting_photo_ready">உங்கள் படம் தயாராகிறது…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic கருவிகள் ஆய்வு, code assistance, செயலாக்க விவரங்களை ஆராய்தல் மற்றும் மேம்பாட்டு iteration க்கு ஆதரவாக பயன்படுத்தப்பட்டன.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI கருவிகள் மற்றும் product references எங்கள் visual AI மற்றும் 3D workflow exploration இன் சில பகுதிகளை வழிநடத்தியது.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics கருவிகள், documentation மற்றும் YOLO ecosystem எங்கள் object detection மற்றும் segmentation மேம்பாட்டு பணிச்சூழல்களுக்கு ஆதரவளித்தது.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">அல்லது</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

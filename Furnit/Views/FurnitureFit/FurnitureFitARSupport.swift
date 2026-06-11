@@ -1,5 +1,5 @@
 // FurnitureFitARSupport.swift
-// ARKit helpers: copy ARFrame to BGRA for YOLO, estimate distance, derive overlay scale vs standard furniture height.
+// ARKit helpers: copy ARFrame to BGRA for the detector, estimate distance, derive overlay scale vs standard furniture height.
 
 import ARKit
 import CoreGraphics
@@ -27,7 +27,7 @@ enum FurnitureFitARSupport {
 
     /// Copy `ARFrame.capturedImage` into a reusable BGRA buffer (ARKit buffers are only valid during delegate callbacks).
     ///
-    /// For FurnitureFit, YOLO should see the **same orientation invariants** as the classic AVCapture path:
+    /// For FurnitureFit, the detector should see the **same orientation invariants** as the classic AVCapture path:
     /// - Landscape rooms: landscape buffers.
     /// - Portrait rooms: portrait buffers (width < height), effectively a 90° rotation vs sensor-native.
     /// This helper rotates the AR buffer to portrait only when the locked room orientation is portrait.
@@ -46,7 +46,7 @@ enum FurnitureFitARSupport {
         let isLandscapeBuffer = srcW > srcH
         let needsPortrait = (lockedOrientation == .portrait || lockedOrientation == .square)
         if needsPortrait && isLandscapeBuffer {
-            // Rotate camera buffer 90° so YOLO sees a portrait frame, matching AVCapture's videoRotationAngle = 90.
+            // Rotate camera buffer 90° so the detector sees a portrait frame, matching AVCapture's videoRotationAngle = 90.
             ciImage = ciImage.oriented(.right)
         }
 
@@ -270,7 +270,7 @@ enum FurnitureFitARSupport {
         )
     }
 
-    /// Scene depth at bbox center, using **BGRA-normalized** coords (same space as YOLO / `processBuffer`).
+    /// Scene depth at bbox center, using **BGRA-normalized** coords (same space as the detector / `processBuffer`).
     static func depthMeters(
         snapshot: FurnitureFitARDepthSnapshot,
         normalizedBgraNX: CGFloat,

@@ -1,11 +1,11 @@
 # FurnitureFit Segmentation Pipeline
 
-Real-time furniture segmentation using YOLO-E **26L PF** (Core ML / optional ONNX; typically **640×640** input) with instance segmentation masks.
+Real-time furniture segmentation using RTMDet **26L PF** (Core ML / optional ONNX; typically **640×640** input) with instance segmentation masks.
 
 ## Architecture Overview
 
 ```
-Camera Frame → Preprocess → YOLO-E Inference → Parse Outputs → NMS →
+Camera Frame → Preprocess → RTMDet Inference → Parse Outputs → NMS →
 Select Primary → Filter Candidates → Build Mask → Composite → Display
 ```
 
@@ -136,7 +136,7 @@ if !intersects {
 
 ### 4. Too Many Redundant Detections
 
-**Problem:** YOLO-E produced many overlapping detections for the same object, slowing down processing.
+**Problem:** RTMDet produced many overlapping detections for the same object, slowing down processing.
 
 **Solution:** Added Non-Maximum Suppression (NMS) after parsing detections:
 ```swift
@@ -189,7 +189,7 @@ if (m <= 0.0f) { ... }
 - Convert to MLMultiArray
 
 ### STAGE 2: Inference
-- Run YOLO-E 26L PF model (`YoloEImageInference.modelInputSize` / Core ML image constraint)
+- Run RTMDet model (`RTMDetImageInference.modelInputSize` / Core ML image constraint)
 - Output: detection tensor + prototype masks
 
 ### STAGE 3: Parse Outputs

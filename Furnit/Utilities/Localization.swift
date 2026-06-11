@@ -162,8 +162,6 @@ enum L10n {
         static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
         static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
         static let roomMeasurementSection = "settings.roomMeasurementSection".localized
-        static let yoloWallDimensionsOnSave = "settings.yoloWallDimensionsOnSave".localized
-        static let yoloWallDimensionsOnSaveDescription = "settings.yoloWallDimensionsOnSaveDescription".localized
         static let wallAssumedDepthM = "settings.wallAssumedDepthM".localized
         static let wallAssumedCeilingM = "settings.wallAssumedCeilingM".localized
         static let roomMeasurementFooter = "settings.roomMeasurementFooter".localized
@@ -209,20 +207,6 @@ enum L10n {
         static let cameraModeToggleAccessibilityHint = "sharp.cameraModeToggleAccessibilityHint".localized
     }
 
-    /// YOLOE on-demand resource status messages (furniture detection model download + load)
-    enum YOLOE {
-        static let downloadingModel = "yoloe.downloadingModel".localized
-        static func downloadingModelPercent(_ percent: Int) -> String {
-            String(format: "yoloe.downloadingModelPercent".localized, locale: .current, percent)
-        }
-        static let downloadComplete = "yoloe.downloadComplete".localized
-        static let downloadFailed = "yoloe.downloadFailed".localized
-        static let preparingModel = "yoloe.preparingModel".localized
-        static let loadingModel = "yoloe.loadingModel".localized
-        static let ready = "yoloe.ready".localized
-        static let unavailable = "yoloe.unavailable".localized
-    }
-
     // MARK: Licenses & Attributions
     enum Licenses {
         static let title = "licenses.title".localized
@@ -230,8 +214,6 @@ enum L10n {
         static let openSourceSection = "licenses.openSourceSection".localized
         static let openSourceIntro = "licenses.openSourceIntro".localized
         static let viewFullLicense = "licenses.viewFullLicense".localized
-        static let yoloeTitle = "licenses.yoloeTitle".localized
-        static let yoloe = "licenses.yoloe".localized
         static let sharpTitle = "licenses.sharpTitle".localized
         static let sharp = "licenses.sharp".localized
         static let metalSplatterTitle = "licenses.metalSplatterTitle".localized
@@ -253,8 +235,6 @@ enum L10n {
         static let anthropicBody = "credits.anthropicBody".localized
         static let lumaTitle = "credits.lumaTitle".localized
         static let lumaBody = "credits.lumaBody".localized
-        static let ultralyticsTitle = "credits.ultralyticsTitle".localized
-        static let ultralyticsBody = "credits.ultralyticsBody".localized
     }
 
     // MARK: Help & Support

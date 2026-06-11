@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
 "licenses.openSourceIntro" = "இந்த ஆப் பின்வரும் திறந்த மூல மென்பொருளைப் பயன்படுத்துகிறது.";
 "licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "இந்த ஆப் YOLO (எ.கா. Ultralytics YOLO) அடிப்படையிலான மாதிரிகளைப் பயன்படுத்துகிறது. YOLO AGPL-3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு https://www.ultralytics.com/license பார்க்கவும்.";
 "licenses.sharpTitle" = "3D அறை மறுகட்டமைப்பு (SHARP)";
 "licenses.sharp" = "பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -440,10 +438,7 @@
 "common.or" = "அல்லது";
 "common.retry" = "மீண்டும் முயல்க";
 "settings.furnitureSegmentationSection" = "தளபாட பிரிப்பு";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: GPU அனுமதி";
-"settings.yoloeCoreMLAllowGPUDescription" = "ஆஃப் (இயல்பு): CPU மட்டும் — மெதுவானது ஆனால் சில YOLO-E 26L Core ML கட்டமைப்புகளில் செயலிழப்பைத் தவிர்க்கும். ஆன்: வேகத்திற்கு CPU+GPU; Metal இல் ஏற்றுமதி ஓடாவிட்டால் பிரிப்பில் SIGABRT.";
 "settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";
 "settings.showRoomFurnitureCalibrateDescription" = "அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.";
 "settings.furnitureFitARCompanion" = "AR உதவி தளபாட அளவு";
@@ -460,8 +455,6 @@
 
 
 "settings.roomMeasurementSection" = "அறை அளவீடுகள்";
-"settings.yoloWallDimensionsOnSave" = "சேமிக்கும்போது YOLO சுவர் அளவுகள்";
-"settings.yoloWallDimensionsOnSaveDescription" = "SHARP அறைக்கு பெயரிட்டு சேமிக்கும்போது, YOLO (சுவர் வகுப்பு அல்லது சுவர்போன்ற பெட்டி), அறையுடன் சேமிக்கப்பட்ட SHARP ஒற்றை ஆழம், கேமரா EXIF ஆகியவற்றால் முன் சுவரின் அகலம் மற்றும் உயரம் மதிப்பிடப்படுகிறது. thumbnail.png தேவை; சிறந்த முடிவுக்கு sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "சுவருக்கான கருதப்பட்ட தூரம் (மீ)";
 "settings.wallAssumedCeilingM" = "கருதப்பட்ட சுவர்/மேற்கூரை உயரம் (மீ)";
 "settings.roomMeasurementFooter" = "SHARP iOS இல் ஒற்றை ஆழம் இல்லாமல் சேமிப்பு கருதப்பட்ட ஆழத்தையும் சிலநேரம் இந்த மேற்கூரை உயரத்தையும் பயன்படுத்துகிறது. அகலம் அளவிடும் நாடாவுடன் ஒப்பிட்டு குறைவாக இருந்தால் கருதப்பட்ட தூரத்தை அதிகரிக்கவும் (அகலம் கிட்டத்தட்ட நேரியல்). சுவர் உயரத்தை அளவீட்டுக்கு அருகில் அமைக்கவும் (எ.கா. 2.86 மீ). அல்லது சேமிப்பதற்கு முன் ⋮ → சுவரால் அளவிடு.";
@@ -471,14 +464,6 @@
 "sharp.downloadingEnginePercent" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது... %d%%";
 "sharp.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
 "sharp.downloadFailed" = "பதிவிறக்கம் தோல்வி";
-"yoloe.downloadingModel" = "கண்டறிதல் மாதிரி பதிவிறக்கப்படுகிறது...";
-"yoloe.downloadingModelPercent" = "கண்டறிதல் மாதிரி பதிவிறக்கப்படுகிறது... %d%%";
-"yoloe.downloadComplete" = "பதிவிறக்கம் முடிந்தது";
-"yoloe.downloadFailed" = "பதிவிறக்கம் தோல்வி";
-"yoloe.preparingModel" = "கண்டறிதல் மாதிரி தயாராகிறது...";
-"yoloe.loadingModel" = "கண்டறிதல் மாதிரி ஏற்றப்படுகிறது...";
-"yoloe.ready" = "தயார்";
-"yoloe.unavailable" = "கண்டறிதல் மாதிரி கிடைக்கவில்லை";
 "sharp.gettingReady" = "தயாராகிறது...";
 "sharp.notEnoughSpace" = "சாதனத்தில் போதுமான இடமில்லை";
 "sharp.settingThingsUp" = "அமைக்கப்படுகிறது...";
@@ -559,5 +544,3 @@
 "credits.anthropicBody" = "Anthropic கருவிகள் ஆய்வு, code assistance, செயலாக்க விவரங்களை ஆராய்தல் மற்றும் மேம்பாட்டு iteration க்கு ஆதரவாக பயன்படுத்தப்பட்டன.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Luma AI கருவிகள் மற்றும் product references எங்கள் visual AI மற்றும் 3D workflow exploration இன் சில பகுதிகளை வழிநடத்தியது.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Ultralytics கருவிகள், documentation மற்றும் YOLO ecosystem எங்கள் object detection மற்றும் segmentation மேம்பாட்டு பணிச்சூழல்களுக்கு ஆதரவளித்தது。";

@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">ఓపెన్ సోర్స్ లైసెన్స్‌లు</string>
     <string name="licenses_open_source_intro">ఈ యాప్ ఈ క్రింది ఓపెన్ సోర్స్ సాఫ్ట్‌వేర్ ఉపయోగిస్తుంది.</string>
     <string name="licenses_view_full_license">పూర్తి లైసెన్స్ చూడండి</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">కాపీరైట్ (c) Ultralytics. GNU Affero GPL v3.0 క్రింద లైసెన్స్ పొందింది. ఈ ఫేజ్ 1 రిలీజ్ వాణిజ్యేతరం. వాణిజ్య వాడకానికి Ultralytics చూడండి.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP మోడల్ అందుబాటులో లేదు</string>
     <string name="sharp_inference_writing_room_file">మీ ప్రివ్యూ సిద్ధమవుతోంది…</string>
     <string name="sharp_inference_room_ready">మీ గది సిద్ధం!</string>
-    <string name="yoloe_loading_model">డిటెక్షన్ మోడల్ లోడ్ అవుతోంది…</string>
-    <string name="yoloe_model_ready">సిద్ధం</string>
-    <string name="yoloe_model_unavailable">డిటెక్షన్ మోడల్ అందుబాటులో లేదు</string>
+    <string name="detector_loading_model">డిటెక్షన్ మోడల్ లోడ్ అవుతోంది…</string>
+    <string name="detector_model_ready">సిద్ధం</string>
+    <string name="detector_model_unavailable">డిటెక్షన్ మోడల్ అందుబాటులో లేదు</string>
     <string name="single_image_scan_scanning">ఎంచుకున్న చిత్రం స్కాన్ అవుతోంది…</string>
     <string name="single_image_scan_no_overlay">ఓవర్లే గుర్తించబడలేదు</string>
     <string name="ai_progress_getting_photo_ready">మీ ఫోటో సిద్ధమవుతోంది…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic సాధనాలు పరిశోధన, కోడ్ సహాయం, అమలు వివరాలపై ఆలోచన మరియు అభివృద్ధి పునరావృతికి మద్దతుగా ఉపయోగించబడ్డాయి.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI సాధనాలు మరియు ఉత్పత్తి సూచనలు మా visual AI మరియు 3D workflow పరిశీలనలోని కొన్ని భాగాలకు దిశానిర్దేశం చేశాయి.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics సాధనాలు, డాక్యుమెంటేషన్ మరియు YOLO ecosystem మా object detection మరియు segmentation అభివృద్ధి వర్క్‌ఫ్లోలకు మద్దతు ఇచ్చాయి.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">లేదా</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

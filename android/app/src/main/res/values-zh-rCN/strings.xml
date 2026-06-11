@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">开源许可</string>
     <string name="licenses_open_source_intro">本应用使用以下开源软件。</string>
     <string name="licenses_view_full_license">查看完整许可</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">版权所有 (c) Ultralytics。依据 GNU Affero GPL v3.0 授权。本第一阶段发布为非商业。商业使用请见 Ultralytics。</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">版权所有 (c) SharpML 贡献者。依据 MIT 许可授权。</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP 模型不可用</string>
     <string name="sharp_inference_writing_room_file">正在准备预览…</string>
     <string name="sharp_inference_room_ready">房间已就绪！</string>
-    <string name="yoloe_loading_model">正在加载检测模型…</string>
-    <string name="yoloe_model_ready">就绪</string>
-    <string name="yoloe_model_unavailable">检测模型不可用</string>
+    <string name="detector_loading_model">正在加载检测模型…</string>
+    <string name="detector_model_ready">就绪</string>
+    <string name="detector_model_unavailable">检测模型不可用</string>
     <string name="single_image_scan_scanning">正在扫描所选图片…</string>
     <string name="single_image_scan_no_overlay">未检测到叠加层</string>
     <string name="ai_progress_getting_photo_ready">正在准备照片…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic 工具被用于支持研究、代码辅助、实现细节推理以及开发迭代。</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI 工具及其产品参考为我们在产品开发期间进行视觉 AI 与 3D 工作流探索的部分工作提供了帮助。</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics 工具、文档以及 YOLO 生态为我们的目标检测与分割开发流程提供了支持。</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">或</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

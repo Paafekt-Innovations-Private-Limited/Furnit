@@ -31,7 +31,7 @@ inline float fast_sigmoid(float x) {
 }
 
 /**
- * Vectorized dot product for 32-element vectors (common in YOLO mask coefficients)
+ * Vectorized dot product for 32-element vectors (common in segmentation mask coefficients)
  * Equivalent to cblas_sdot with n=32
  *
  * @param a First vector (32 floats)

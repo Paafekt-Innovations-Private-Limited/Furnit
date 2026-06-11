@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "Licencias de código abierto";
 "licenses.openSourceIntro" = "Esta app utiliza el siguiente software de código abierto.";
 "licenses.viewFullLicense" = "Ver licencia completa";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "Esta app usa modelos basados en YOLO (p. ej. Ultralytics YOLO). YOLO está bajo licencia AGPL-3.0. Este lanzamiento Fase 1 es no comercial. Para uso comercial, consulta https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "Reconstrucción 3D de habitación (SHARP)";
 "licenses.sharp" = "Copyright (c) colaboradores de SharpML. Bajo licencia MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -443,10 +441,7 @@
 "common.or" = "o";
 "common.retry" = "Reintentar";
 "settings.furnitureSegmentationSection" = "Segmentación de muebles";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML: permitir GPU";
-"settings.yoloeCoreMLAllowGPUDescription" = "Desactivado (predeterminado): solo CPU — más lento pero evita cierres en algunas compilaciones YOLO-E 26L Core ML. Activado: CPU+GPU para velocidad; puede producir SIGABRT en segmentación si la exportación no corre en Metal.";
 "settings.showRoomFurnitureCalibrate" = "Mostrar calibración de cuarto y muebles";
 "settings.showRoomFurnitureCalibrateDescription" = "Muestra «Calibrar pared» en el menú del cuarto y la pastilla «Toca para calibrar» cuando SmartyPants (cerebro) está activo.";
 "settings.furnitureFitARCompanion" = "Tamaño de muebles asistido por RA";
@@ -463,8 +458,6 @@
 
 
 "settings.roomMeasurementSection" = "Medidas del cuarto";
-"settings.yoloWallDimensionsOnSave" = "Dimensiones YOLO del muro al guardar";
-"settings.yoloWallDimensionsOnSaveDescription" = "Al poner nombre y guardar un cuarto SHARP, estima ancho y alto del muro frontal con YOLO (clase pared o caja similar), monoprofundidad SHARP guardada con el cuarto y EXIF de la cámara. Requiere thumbnail.png y, para mejores resultados, sharp_monodepth.bin.";
 "settings.wallAssumedDepthM" = "Distancia supuesta al muro (m)";
 "settings.wallAssumedCeilingM" = "Altura supuesta del muro/techo (m)";
 "settings.roomMeasurementFooter" = "Sin monoprofundidad en SHARP iOS, al guardar se usa la profundidad supuesta y a veces esta altura de techo. Si el ancho es bajo respecto a la cinta, aumenta la distancia supuesta (el ancho escala casi linealmente). Ajusta la altura del muro cerca de tu medida (p. ej. 2,86 m). O usa ⋮ → Calibrar por pared antes de guardar.";
@@ -474,14 +467,6 @@
 "sharp.downloadingEnginePercent" = "Descargando motor 3D... %d%%";
 "sharp.downloadComplete" = "Descarga completada";
 "sharp.downloadFailed" = "Error en la descarga";
-"yoloe.downloadingModel" = "Descargando modelo de detección...";
-"yoloe.downloadingModelPercent" = "Descargando modelo de detección... %d%%";
-"yoloe.downloadComplete" = "Descarga completada";
-"yoloe.downloadFailed" = "Error en la descarga";
-"yoloe.preparingModel" = "Preparando modelo de detección...";
-"yoloe.loadingModel" = "Cargando modelo de detección...";
-"yoloe.ready" = "Listo";
-"yoloe.unavailable" = "Modelo de detección no disponible";
 "sharp.gettingReady" = "Preparando...";
 "sharp.notEnoughSpace" = "No hay espacio suficiente en el dispositivo";
 "sharp.settingThingsUp" = "Configurando...";
@@ -551,5 +536,3 @@
 "credits.anthropicBody" = "Las herramientas de Anthropic se utilizaron para apoyar la investigación, la asistencia de código, el razonamiento sobre detalles de implementación y la iteración del desarrollo.";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Las herramientas de Luma AI y las referencias de producto ayudaron a orientar partes de nuestra exploración de flujos de trabajo visuales de IA y 3D durante el desarrollo del producto.";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Las herramientas, la documentación y el ecosistema YOLO de Ultralytics respaldaron nuestros flujos de trabajo de desarrollo para detección de objetos y segmentación.";

@@ -408,7 +408,7 @@ public final class RoomGeometryEngine {
     // MARK: - estimateSceneToMeters  (Change 4)
 
     /// Estimates the scene-unit → metre conversion factor from PLY/ceiling depth span and reference ceiling height
-    /// (or subject distance as a last resort). Wall-YOLO / pinhole tape-height scaling has been removed.
+    /// (or subject distance as a last resort). Wall / pinhole tape-height scaling has been removed.
     ///
     /// - Parameter plyHeightSU: P3–P97 vertical span (scene units) from full PLY via ``measurePLYExtents``.
     ///   When set, used before sparse depth-grid ceiling distance for height denominators.

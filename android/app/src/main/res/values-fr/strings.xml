@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">Licences open source</string>
     <string name="licenses_open_source_intro">Cette application utilise les logiciels open source suivants.</string>
     <string name="licenses_view_full_license">Voir la licence complète</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">Copyright (c) Ultralytics. Sous licence GNU Affero GPL v3.0. Cette version Phase 1 est non commerciale. Pour un usage commercial, voir Ultralytics.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) contributeurs SharpML. Sous licence MIT.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -343,9 +341,9 @@
     <string name="sharp_inference_model_unavailable">Modèle SHARP indisponible</string>
     <string name="sharp_inference_writing_room_file">Préparation de l’aperçu…</string>
     <string name="sharp_inference_room_ready">Votre pièce est prête !</string>
-    <string name="yoloe_loading_model">Chargement du modèle de détection…</string>
-    <string name="yoloe_model_ready">Prêt</string>
-    <string name="yoloe_model_unavailable">Modèle de détection indisponible</string>
+    <string name="detector_loading_model">Chargement du modèle de détection…</string>
+    <string name="detector_model_ready">Prêt</string>
+    <string name="detector_model_unavailable">Modèle de détection indisponible</string>
     <string name="single_image_scan_scanning">Analyse de l’image sélectionnée…</string>
     <string name="single_image_scan_no_overlay">Aucune surcouche détectée</string>
     <string name="ai_progress_getting_photo_ready">Préparation de votre photo…</string>
@@ -436,8 +434,6 @@
     <string name="credits_anthropic_body">Les outils Anthropic ont été utilisés pour soutenir la recherche, l’assistance au code, le raisonnement sur les détails d’implémentation et l’itération de développement.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Les outils Luma AI et les références produit ont nourri une partie de notre exploration des workflows visuels IA et 3D pendant le développement du produit.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Les outils, la documentation et l’écosystème YOLO d’Ultralytics ont soutenu nos workflows de développement pour la détection d’objets et la segmentation.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">ou</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

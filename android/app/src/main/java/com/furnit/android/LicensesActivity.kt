@@ -13,11 +13,10 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Shows Phase 1 non-commercial notice and Open Source Licenses (YOLO11, Sharp ML, Firebase).
+ * Shows Phase 1 non-commercial notice and Open Source Licenses (Sharp ML, Firebase).
  */
 class LicensesActivity : AppCompatActivity() {
 
-    private val urlAgpl = "https://www.gnu.org/licenses/agpl-3.0.html"
     private val urlMit = "https://opensource.org/licenses/MIT"
     private val urlApache2 = "https://www.apache.org/licenses/LICENSE-2.0"
 
@@ -52,7 +51,6 @@ class LicensesActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
 
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
-        addSection(layout, getString(R.string.licenses_yoloe_title), getString(R.string.licenses_yoloe), licenseUrl = urlAgpl)
         addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp), licenseUrl = urlMit)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
 

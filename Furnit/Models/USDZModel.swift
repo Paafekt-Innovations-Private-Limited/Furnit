@@ -19,15 +19,15 @@ struct USDZModel: Identifiable, Hashable {
     let roomSceneHeight: Float?
     let roomSceneDepth: Float?
 
-    // MARK: - YOLO ratio calibration (optional; from *.meta JSON)
+    // MARK: - wall ratio calibration (legacy) (optional; from *.meta JSON)
     /// Wall bbox height / reference image height, or 1.0 when using full-frame proxy.
-    let yoloWallHeightFrac: Float?
+    let savedWallHeightFrac: Float?
     /// Canonical furniture label → height / reference image height.
-    let yoloFurnitureHeightFracByClass: [String: Float]?
+    let savedFurnitureHeightFracByClass: [String: Float]?
     /// Reference image height in pixels at calibration time.
-    let yoloRefImageHeightPx: Int?
+    let savedRefImageHeightPx: Int?
     /// SHARP / metadata room height (m) when ratios were captured.
-    let sharpRoomHeightAtYoloCapture: Float?
+    let sharpRoomHeightAtCapture: Float?
     /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
     let customDisplayName: String?
     /// Saved PLY should be treated like SHARP classic orientation/rendering even without `_classic` filename suffix.
@@ -49,10 +49,10 @@ struct USDZModel: Identifiable, Hashable {
         self.roomSceneWidth = nil
         self.roomSceneHeight = nil
         self.roomSceneDepth = nil
-        self.yoloWallHeightFrac = nil
-        self.yoloFurnitureHeightFracByClass = nil
-        self.yoloRefImageHeightPx = nil
-        self.sharpRoomHeightAtYoloCapture = nil
+        self.savedWallHeightFrac = nil
+        self.savedFurnitureHeightFracByClass = nil
+        self.savedRefImageHeightPx = nil
+        self.sharpRoomHeightAtCapture = nil
         self.customDisplayName = customDisplayName
         self.isClassicPly = false
         self.cachedResolvedURL = nil
@@ -74,10 +74,10 @@ struct USDZModel: Identifiable, Hashable {
         roomSceneWidth: Float? = nil,
         roomSceneHeight: Float? = nil,
         roomSceneDepth: Float? = nil,
-        yoloWallHeightFrac: Float? = nil,
-        yoloFurnitureHeightFracByClass: [String: Float]? = nil,
-        yoloRefImageHeightPx: Int? = nil,
-        sharpRoomHeightAtYoloCapture: Float? = nil,
+        savedWallHeightFrac: Float? = nil,
+        savedFurnitureHeightFracByClass: [String: Float]? = nil,
+        savedRefImageHeightPx: Int? = nil,
+        sharpRoomHeightAtCapture: Float? = nil,
         customDisplayName: String? = nil,
         isClassicPly: Bool = false,
         cachedResolvedURL: URL? = nil
@@ -94,10 +94,10 @@ struct USDZModel: Identifiable, Hashable {
         self.roomSceneWidth = roomSceneWidth
         self.roomSceneHeight = roomSceneHeight
         self.roomSceneDepth = roomSceneDepth
-        self.yoloWallHeightFrac = yoloWallHeightFrac
-        self.yoloFurnitureHeightFracByClass = yoloFurnitureHeightFracByClass
-        self.yoloRefImageHeightPx = yoloRefImageHeightPx
-        self.sharpRoomHeightAtYoloCapture = sharpRoomHeightAtYoloCapture
+        self.savedWallHeightFrac = savedWallHeightFrac
+        self.savedFurnitureHeightFracByClass = savedFurnitureHeightFracByClass
+        self.savedRefImageHeightPx = savedRefImageHeightPx
+        self.sharpRoomHeightAtCapture = sharpRoomHeightAtCapture
         self.customDisplayName = customDisplayName
         self.isClassicPly = isClassicPly
         self.cachedResolvedURL = cachedResolvedURL

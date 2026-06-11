@@ -1223,7 +1223,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var roomImage: UIImage?
     var mlModel: MLModel?
     var processInterval: Double = 0.07
-    /// Minimum detector confidence (0…1) for parsing YOLOE candidates.
+    /// Minimum detector confidence (0…1) for parsing RTMDet candidates.
     /// Matches the updated iOS Core ML path (was 0.25).
     var scoreThreshold: Float = 0.10
     var active: Bool = true

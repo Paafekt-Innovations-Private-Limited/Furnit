@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು</string>
     <string name="licenses_open_source_intro">ಈ ಅಪ್ಲಿಕೇಶನ್ ಈ ಕೆಳಗಿನ ಓಪನ್ ಸೋರ್ಸ್ ಸಾಫ್ಟ್‌ವೇರ್ ಬಳಸುತ್ತದೆ.</string>
     <string name="licenses_view_full_license">ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">ಕೃತಿಸ್ವಾಮ್ಯ (c) Ultralytics. GNU Affero GPL v3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ Ultralytics ನೋಡಿ.</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP ಮಾದರಿ ಲಭ್ಯವಿಲ್ಲ</string>
     <string name="sharp_inference_writing_room_file">ನಿಮ್ಮ ಪೂರ್ವವೀಕ್ಷಣೆ ಸಿದ್ಧವಾಗುತ್ತಿದೆ…</string>
     <string name="sharp_inference_room_ready">ನಿಮ್ಮ ಕೊಠಡಿ ಸಿದ್ಧವಾಗಿದೆ!</string>
-    <string name="yoloe_loading_model">ಪತ್ತೆ ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ…</string>
-    <string name="yoloe_model_ready">ಸಿದ್ಧ</string>
-    <string name="yoloe_model_unavailable">ಪತ್ತೆ ಮಾದರಿ ಲಭ್ಯವಿಲ್ಲ</string>
+    <string name="detector_loading_model">ಪತ್ತೆ ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ…</string>
+    <string name="detector_model_ready">ಸಿದ್ಧ</string>
+    <string name="detector_model_unavailable">ಪತ್ತೆ ಮಾದರಿ ಲಭ್ಯವಿಲ್ಲ</string>
     <string name="single_image_scan_scanning">ಆಯ್ದ ಚಿತ್ರವನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಲಾಗುತ್ತಿದೆ…</string>
     <string name="single_image_scan_no_overlay">ಓವರ್‌ಲೇ ಕಂಡುಬಂದಿಲ್ಲ</string>
     <string name="ai_progress_getting_photo_ready">ನಿಮ್ಮ ಫೋಟೋ ಸಿದ್ಧವಾಗುತ್ತಿದೆ…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic ಸಾಧನಗಳನ್ನು ಸಂಶೋಧನೆ, ಕೋಡ್ ಸಹಾಯ, ಅನುಷ್ಠಾನ ವಿವರಗಳ ಕುರಿತು ಚಿಂತನೆ ಮತ್ತು ಅಭಿವೃದ್ಧಿ ಪುನರಾವರ್ತನೆಗೆ ಬಳಸಲಾಗಿದೆ.</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI ಸಾಧನಗಳು ಮತ್ತು ಉತ್ಪನ್ನ ಉಲ್ಲೇಖಗಳು ನಮ್ಮ ದೃಶ್ಯ AI ಮತ್ತು 3D ವರ್ಕ್‌ಫ್ಲೋ ಅನ್ವೇಷಣೆಯ ಕೆಲವು ಭಾಗಗಳಿಗೆ ದಿಕ್ಕುನಿರ್ದೇಶನ ನೀಡಿವೆ.</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics ಸಾಧನಗಳು, ದಸ್ತಾವೇಜುಗಳು ಮತ್ತು YOLO ಪರಿಸರ ವ್ಯವಸ್ಥೆ ವಸ್ತು ಗುರುತು ಮತ್ತು ವಿಭಾಗೀಕರಣ ಅಭಿವೃದ್ಧಿ ವರ್ಕ್‌ಫ್ಲೋಗಳಿಗೆ ಬೆಂಬಲ ನೀಡಿವೆ.</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">ಅಥವಾ</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>

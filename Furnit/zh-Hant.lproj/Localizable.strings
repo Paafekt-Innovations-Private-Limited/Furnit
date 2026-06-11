@@ -140,8 +140,6 @@
 "licenses.openSourceSection" = "開源授權";
 "licenses.openSourceIntro" = "本應用使用以下開源軟體。";
 "licenses.viewFullLicense" = "檢視完整授權";
-"licenses.yoloeTitle" = "YOLO11";
-"licenses.yoloe" = "本應用使用基於 YOLO（如 Ultralytics YOLO）的模型。YOLO 依 AGPL-3.0 授權。本第一階段發布為非商業。商業使用請見 https://www.ultralytics.com/license";
 "licenses.sharpTitle" = "3D 房間重建 (SHARP)";
 "licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -441,10 +439,7 @@
 "common.or" = "或";
 "common.retry" = "重試";
 "settings.furnitureSegmentationSection" = "傢俱分割";
-"settings.furnitureFitOnnxRuntime" = "Android-style stretch pipeline (YOLO-E)";
 "settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.yoloeCoreMLAllowGPU" = "YOLO-E Core ML：允許 GPU";
-"settings.yoloeCoreMLAllowGPUDescription" = "關（預設）：僅 CPU — 較慢但可避免部分 YOLO-E 26L Core ML 組建當機。開：CPU+GPU 提速；若匯出無法在您裝置的 Metal 上執行，分割時可能 SIGABRT。";
 "settings.showRoomFurnitureCalibrate" = "顯示房間與傢俱校準";
 "settings.showRoomFurnitureCalibrateDescription" = "在房間選單中顯示「校準牆面」，並在 SmartyPants（大腦）開啟時顯示「點一下校準」提示條。";
 "settings.furnitureFitARCompanion" = "AR 輔助家具尺寸";
@@ -461,8 +456,6 @@
 
 
 "settings.roomMeasurementSection" = "房間測量";
-"settings.yoloWallDimensionsOnSave" = "儲存時以 YOLO 估計牆尺寸";
-"settings.yoloWallDimensionsOnSaveDescription" = "為 SHARP 房間命名並儲存時，使用 YOLO（牆類別或類牆框）、隨房間儲存的 SHARP 單眼深度與相機 EXIF 估計前牆寬高。需要 thumbnail.png，最佳效果需要 sharp_monodepth.bin。";
 "settings.wallAssumedDepthM" = "假設到牆距離（公尺）";
 "settings.wallAssumedCeilingM" = "假設牆／頂高度（公尺）";
 "settings.roomMeasurementFooter" = "在 SHARP iOS 無單眼深度時，儲存會使用假設深度並有時用此頂高。若寬度相對捲尺偏小，增大假設距離（寬度約線性縮放）。將牆高設為接近捲尺讀數（如 2.86 公尺）。或在儲存前使用 ⋮ → 依牆校準。";
@@ -472,14 +465,6 @@
 "sharp.downloadingEnginePercent" = "正在下載3D引擎... %d%%";
 "sharp.downloadComplete" = "下載完成";
 "sharp.downloadFailed" = "下載失敗";
-"yoloe.downloadingModel" = "正在下載偵測模型...";
-"yoloe.downloadingModelPercent" = "正在下載偵測模型... %d%%";
-"yoloe.downloadComplete" = "下載完成";
-"yoloe.downloadFailed" = "下載失敗";
-"yoloe.preparingModel" = "正在準備偵測模型...";
-"yoloe.loadingModel" = "正在載入偵測模型...";
-"yoloe.ready" = "就緒";
-"yoloe.unavailable" = "偵測模型無法使用";
 "sharp.gettingReady" = "正在準備...";
 "sharp.notEnoughSpace" = "裝置儲存空間不足";
 "sharp.settingThingsUp" = "正在設定...";
@@ -560,5 +545,3 @@
 "credits.anthropicBody" = "Anthropic 工具被用於支援研究、程式碼協助、實作細節推理以及開發迭代。";
 "credits.lumaTitle" = "Luma AI";
 "credits.lumaBody" = "Luma AI 工具與產品參考協助了我們在產品開發期間對視覺 AI 與 3D 工作流程的部分探索。";
-"credits.ultralyticsTitle" = "Ultralytics";
-"credits.ultralyticsBody" = "Ultralytics 工具、文件以及 YOLO 生態系統支援了我們的物件偵測與分割開發流程。";

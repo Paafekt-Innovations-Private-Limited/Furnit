@@ -350,7 +350,7 @@ class SHARPService: ObservableObject {
     }
 
     /// Drop the in-memory CoreML model after PLY is written so `WKWebView` / WebKit can allocate.
-    /// Without this, peak RAM (SHARP + YOLOE + WebKit) can fail heap allocation at `WKWebViewConfiguration()`.
+    /// Without this, peak RAM (SHARP + WebKit) can fail heap allocation at `WKWebViewConfiguration()`.
     func releaseInferenceMemoryAfterGeneration() {
         modelLoadTask?.cancel()
         modelLoadTask = nil

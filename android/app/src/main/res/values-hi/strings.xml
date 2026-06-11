@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">ओपन सोर्स लाइसेंस</string>
     <string name="licenses_open_source_intro">यह ऐप निम्नलिखित ओपन सोर्स सॉफ्टवेयर का उपयोग करता है।</string>
     <string name="licenses_view_full_license">पूर्ण लाइसेंस देखें</string>
-    <string name="licenses_yoloe_title">YOLO11</string>
-    <string name="licenses_yoloe">कॉपीराइट (c) Ultralytics। GNU Affero GPL v3.0 के तहत लाइसेंस प्राप्त। यह चरण 1 रिलीज़ गैर-वाणिज्यिक है। वाणिज्यिक उपयोग के लिए Ultralytics देखें।</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">कॉपीराइट (c) SharpML योगदानकर्ता। MIT लाइसेंस के तहत लाइसेंस प्राप्त।</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -344,9 +342,9 @@
     <string name="sharp_inference_model_unavailable">SHARP मॉडल उपलब्ध नहीं है</string>
     <string name="sharp_inference_writing_room_file">आपका प्रीव्यू तैयार हो रहा है…</string>
     <string name="sharp_inference_room_ready">आपका कमरा तैयार है!</string>
-    <string name="yoloe_loading_model">डिटेक्शन मॉडल लोड हो रहा है…</string>
-    <string name="yoloe_model_ready">तैयार</string>
-    <string name="yoloe_model_unavailable">डिटेक्शन मॉडल उपलब्ध नहीं है</string>
+    <string name="detector_loading_model">डिटेक्शन मॉडल लोड हो रहा है…</string>
+    <string name="detector_model_ready">तैयार</string>
+    <string name="detector_model_unavailable">डिटेक्शन मॉडल उपलब्ध नहीं है</string>
     <string name="single_image_scan_scanning">चुनी गई इमेज स्कैन हो रही है…</string>
     <string name="single_image_scan_no_overlay">कोई ओवरले नहीं मिला</string>
     <string name="ai_progress_getting_photo_ready">आपकी फोटो तैयार हो रही है…</string>
@@ -437,8 +435,6 @@
     <string name="credits_anthropic_body">Anthropic के टूल्स का उपयोग शोध, कोड सहायता, इम्प्लीमेंटेशन विवरणों पर विचार और विकास पुनरावृत्ति में सहायता के लिए किया गया।</string>
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI के टूल्स और उत्पाद संदर्भों ने हमारे विज़ुअल AI और 3D वर्कफ़्लो अन्वेषण के कुछ हिस्सों को प्रभावित किया।</string>
-    <string name="credits_ultralytics_title">Ultralytics</string>
-    <string name="credits_ultralytics_body">Ultralytics के टूल्स, दस्तावेज़ और YOLO इकोसिस्टम ने ऑब्जेक्ट डिटेक्शन और सेगमेंटेशन विकास वर्कफ़्लो में सहायता की।</string>
     <!-- Missing Android translations filled from available locale/base resources -->
     <string name="common_or">या</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>
