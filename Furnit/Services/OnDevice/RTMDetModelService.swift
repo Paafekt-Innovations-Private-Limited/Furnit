@@ -3,7 +3,7 @@ import CoreML
 
 /// Developer-facing loader for RTMDet-Ins-m Core ML experiments.
 ///
-/// This intentionally does not replace the existing YOLOE runtime yet.
+/// This intentionally does not replace the existing RTMDet runtime yet.
 /// It only supports the still-image validation path until output parsing
 /// and mask quality are proven on device.
 @MainActor

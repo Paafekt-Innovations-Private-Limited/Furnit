@@ -294,7 +294,6 @@ struct HomeTab: View {
                         if !SHARPService.shared.isBackgroundGenerationActive {
                             SHARPService.shared.releaseResources()
                         }
-                        YOLOEModelService.shared.releaseResources()
                     }
                     refreshSavedRoomsList(forceUIReload: true)
                     restartCreateRoomHint()
@@ -1147,18 +1146,6 @@ struct AboutView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Licenses.yoloeTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Licenses.yoloe)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.sharpTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -1186,10 +1173,9 @@ struct AboutView: View {
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0).
 struct LicensesView: View {
     private enum LicenseURL {
-        static let agpl3 = URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
         static let apache2 = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
     }
@@ -1210,20 +1196,6 @@ struct LicensesView: View {
                     .foregroundColor(.secondary)
             } header: {
                 Text(L10n.Licenses.openSourceSection)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Licenses.yoloeTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(L10n.Licenses.yoloe)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.agpl3)
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
             }
 
             Section {
@@ -1279,7 +1251,6 @@ struct CreditsView: View {
         static let openAI = URL(string: "https://openai.com/")!
         static let anthropic = URL(string: "https://www.anthropic.com/")!
         static let luma = URL(string: "https://lumalabs.ai/")!
-        static let ultralytics = URL(string: "https://www.ultralytics.com/")!
     }
 
     var body: some View {
@@ -1354,19 +1325,6 @@ struct CreditsView: View {
                 .padding(.vertical, 4)
             }
 
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("credits.ultralyticsTitle".localized)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text("credits.ultralyticsBody".localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Link("credits.visitWebsite".localized, destination: CreditURL.ultralytics)
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
-            }
         }
         .navigationTitle("credits.title".localized)
         .navigationBarTitleDisplayMode(.inline)

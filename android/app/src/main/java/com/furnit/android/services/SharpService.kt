@@ -406,7 +406,7 @@ class SharpService private constructor(private val context: Context) {
         )
         RoomFolderMetadata.writeToFolder(
             roomFolder,
-            RoomFolderMetadata.snapshotPreservingYoloFields(roomFolder, next),
+            RoomFolderMetadata.snapshotPreservingCalibrationFields(roomFolder, next),
         )
 
         val metadataFile = File(roomFolder, "metadata.txt")

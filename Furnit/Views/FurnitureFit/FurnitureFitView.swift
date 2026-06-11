@@ -94,7 +94,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
               let pendingRequest = pendingStillImageScanRequest,
               processedStillImageScanRequestID != pendingRequest.requestID else { return }
         guard mlModel != nil else { return }
-        guard let pixelBuffer = YoloEImageInference.pixelBufferFromImage(pendingRequest.image) else {
+        guard let pixelBuffer = RTMDetImageInference.pixelBufferFromImage(pendingRequest.image) else {
             DispatchQueue.main.async { [weak self] in
                 self?.setProgress(1.0, text: "Photo load failed")
                 self?.finishStartupProgressIfNeeded()
@@ -184,7 +184,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var latestEstimatedFurnitureBaseWidthMeters: Float?
     private var latestEstimatedFurnitureBaseHeightMeters: Float?
     private var latestEstimatedFurnitureBaseARHeightMeters: Float?
-    /// After first segmentation, publish one **refined** W×H (AR intrinsics + min depth in bbox) to parents — fixes huge first-frame numbers when YOLO boxes are loose.
+    /// After first segmentation, publish one **refined** W×H (AR intrinsics + min depth in bbox) to parents — fixes huge first-frame numbers when the detector boxes are loose.
     private var didPublishARRefinedFurnitureMetersEstimate = false
 
     // MARK: UI
@@ -421,12 +421,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var compositeCpuScratchFloats: [Float] = [Float](repeating: 0, count: 5 * 2048)
     /// Proto mask upscaled to the active composite band via vImage; grows to the largest band seen and never shrinks.
     private var upscaledPlanarMaskScratch: [UInt8] = []
-    /// Whether the current model frame used Ultralytics-style letterbox instead of stretch.
-    private var currentYoloUsesLetterbox: Bool = false
-    /// Shared vertical-flip activation for live Furniture Fit and still-image inference.
-    private var furnitureFitVerticalFlipModelInput: Bool { YoloEImageInference.verticalFlipModelInputEnabled }
-    /// Set per frame when ``furnitureFitVerticalFlipModelInput`` is enabled and the flip succeeds.
-    private var currentYoloInputVerticallyFlipped: Bool = false
+    /// Whether the current model frame used letterbox preprocessing instead of stretch.
+    private var currentModelUsesLetterbox: Bool = false
+    /// Set per frame when the model input was vertically flipped.
+    private var currentModelInputVerticallyFlipped: Bool = false
     // MARK: - Memory Logging
     private func logMemory(_ tag: String) {
         var info = mach_task_basic_info()
@@ -1557,8 +1555,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             box: modelBox,
             modelShape: modelShape,
             imageShape: CGSize(width: imageWidth, height: imageHeight),
-            usesLetterbox: currentYoloUsesLetterbox,
-            inputVerticallyFlipped: currentYoloInputVerticallyFlipped
+            usesLetterbox: currentModelUsesLetterbox,
+            inputVerticallyFlipped: currentModelInputVerticallyFlipped
         )
         let bx1 = max(0, Int(scaledBox.minX))
         let by1 = max(0, Int(scaledBox.minY))
@@ -1855,7 +1853,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             return
         }
-        guard let pixelBuffer = YoloEImageInference.pixelBufferFromImage(atPath: inputURL.path) else {
+        guard let pixelBuffer = RTMDetImageInference.pixelBufferFromImage(atPath: inputURL.path) else {
             logDebug("🖼️ oneImageRun: could not decode image at \(inputURL.path)")
             oneImageRunFinished = true
             DispatchQueue.main.async { [weak self] in
@@ -2233,134 +2231,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private typealias PrimaryBboxMetersResult = (size: FurnitureSceneSize, pipeline: String, distanceMeters: Float?)
 
     /// ONNX-style pipeline using Core ML ``mlModel``. The legacy 1280 package
-    /// (`yoloe-26l-seg-pf`) expects Ultralytics-style letterbox; the newer
+    /// (`legacy seg model`) expects letterbox; the newer
     /// `_seg_o2m` package keeps the Android-parity stretch path.
-    private func processFrameOnnxStyleCoreML(
-        processBuffer: CVPixelBuffer,
-        model: MLModel,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
-        frameStart: Date
-    ) {
-        let bufW = CVPixelBufferGetWidth(processBuffer)
-        let bufH = CVPixelBufferGetHeight(processBuffer)
-        let isLandscape = bufW > bufH
-
-        let modelInputSize = YoloEImageInference.modelInputSize(for: model)
-
-        let usesLetterboxPreprocess = modelInputSize >= 1280
-        currentYoloUsesLetterbox = usesLetterboxPreprocess
-        currentYoloInputVerticallyFlipped = false
-
-        if debugMode {
-            logDebug("\n⏱️ ═══════════════════════════════════════════")
-            logDebug("⏱️ ONNX-STYLE + CORE ML @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
-            logDebug(
-                "⏱️ Buffer: \(bufW)x\(bufH) → \(usesLetterboxPreprocess ? "letterbox" : "stretch") " +
-                "\(modelInputSize)x\(modelInputSize), isLandscape: \(isLandscape)"
-            )
-            logDebug("⏱️ ═══════════════════════════════════════════")
-        }
-
-        setProgress(0.15, text: "Preprocessing…")
-        let t1 = Date()
-        let preparedBuffer = usesLetterboxPreprocess
-            ? resizeLetterboxToSquare(processBuffer, size: modelInputSize)
-            : resizeStretchToSquare(processBuffer, size: modelInputSize)
-        guard let modelInputBuffer = preparedBuffer else {
-            if debugMode {
-                logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: \(usesLetterboxPreprocess ? "letterbox" : "stretch") resize")
-            }
-            resetProcessingFlag()
-            return
-        }
-        if furnitureFitVerticalFlipModelInput {
-            if YoloEImageInference.flipPixelBufferVerticallyBGRA(modelInputBuffer) {
-                currentYoloInputVerticallyFlipped = true
-                if debugMode { logDebug("⏱️ ONNX-STYLE: model input vertically flipped (flipud correction active)") }
-            } else if debugMode {
-                logDebug("⚠️ ONNX-STYLE: vertical flip of model input failed; continuing unflipped")
-            }
-        }
-        if debugMode {
-            logDebug(
-                "⏱️ ONNX-STYLE STAGE 1 - Preprocess (\(usesLetterboxPreprocess ? "letterbox" : "stretch")): " +
-                "\(String(format: "%.2f", Date().timeIntervalSince(t1) * 1000)) ms"
-            )
-        }
-
-        let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
-        let expectsImage = inputDesc?.type == .image
-
-        let inputProvider: MLFeatureProvider
-        if expectsImage {
-            guard let imageValue = MLFeatureValue(pixelBuffer: modelInputBuffer) as MLFeatureValue?,
-                  let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
-                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep") }
-                resetProcessingFlag()
-                return
-            }
-            inputProvider = provider
-        } else {
-            guard let inputArray = pixelBufferToMLMultiArray(modelInputBuffer),
-                  let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
-                if debugMode { logDebug("❌ ONNX-STYLE Core ML STAGE 1 FAILED: Input prep (MultiArray)") }
-                resetProcessingFlag()
-                return
-            }
-            inputProvider = provider
-        }
-
-        setProgress(0.40, text: "Running model…")
-        let t2 = Date()
-        if let backoffUntil = coreMLInferenceBackoffUntil, backoffUntil > Date() {
-            if debugMode {
-                logDebug(
-                    "⚠️ ONNX-STYLE Core ML STAGE 2 SKIPPED: cooling down after timeout for " +
-                    "\(String(format: "%.2f", backoffUntil.timeIntervalSinceNow)) s"
-                )
-            }
-            resetProcessingFlag()
-            return
-        }
-        let processedSuccessfully = autoreleasepool { () -> Bool in
-            guard let output = performCoreMLPredictionWithWatchdog(
-                model: model,
-                inputProvider: inputProvider,
-                startedAt: t2
-            ) else {
-                return false
-            }
-            if debugMode {
-                logDebug("⏱️ ONNX-STYLE STAGE 2 - Inference (Core ML): \(String(format: "%.2f", Date().timeIntervalSince(t2) * 1000)) ms")
-                logMemory("AFTER ONNX-STYLE Core ML INFERENCE")
-            }
-
-            guard let pair = YoloEDetectionParser.extractDetectionAndProto(from: output) else {
-                if debugMode {
-                    logDebug("❌ ONNX-STYLE Core ML: Missing output tensors")
-                    let availableOutputs = output.featureNames.joined(separator: ", ")
-                    logDebug("   Available outputs: \(availableOutputs)")
-                }
-                return false
-            }
-
-            processFrameOnnxStyleCommon(
-                processBuffer: processBuffer,
-                arDepthSnapshot: arDepthSnapshot,
-                frameStart: frameStart,
-                detArray: pair.det,
-                protoArray: pair.proto,
-                modelSide: modelInputSize,
-                stage2DebugLabel: "Core ML"
-            )
-            return true
-        }
-        guard processedSuccessfully else {
-            resetProcessingFlag()
-            return
-        }
-    }
-
     private func performCoreMLPredictionWithWatchdog(
         model: MLModel,
         inputProvider: MLFeatureProvider,
@@ -2430,812 +2302,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     /// Shared postprocess after stretch + inference: detection list, NMS, primary selection, and Android-style bbox-limited proto mask (``FurnitureFitOnnxStylePipeline``).
-    private func processFrameOnnxStyleCommon(
-        processBuffer: CVPixelBuffer,
-        arDepthSnapshot: FurnitureFitARDepthSnapshot?,
-        frameStart: Date,
-        detArray: MLMultiArray,
-        protoArray: MLMultiArray,
-        modelSide: Int,
-        stage2DebugLabel: String
-    ) {
-        let bufW = CVPixelBufferGetWidth(processBuffer)
-        let bufH = CVPixelBufferGetHeight(processBuffer)
-        let isLandscape = bufW > bufH
-        let onnxSide = modelSide
-        let scaleX = Float(bufW) / Float(onnxSide)
-        let scaleY = Float(bufH) / Float(onnxSide)
-
-        let t3 = Date()
-        let prototypeParseStart = Date()
-        guard let protoInfo = parsePrototypes(protoArray) else {
-            if debugMode { logDebug("❌ ONNX-STYLE (\(stage2DebugLabel)): parse prototypes failed") }
-            resetProcessingFlag()
-            return
-        }
-        let prototypeParseMs = Date().timeIntervalSince(prototypeParseStart) * 1000
-        let planes = protoInfo.planes
-        let pW = protoInfo.width
-        let pH = protoInfo.height
-        updateLatestTapMaskState(
-            planes: planes,
-            protoWidth: pW,
-            protoHeight: pH,
-            modelSide: onnxSide,
-            imageWidth: bufW,
-            imageHeight: bufH
-        )
-
-        // Parse the full detector output first. Blacklist filtering is only for primary object selection / mask fusion.
-        // Support-surface hints (floor, carpet, tile, etc.) normally inspect the unblacklisted detections,
-        // but the one-image debug path should respect blacklist.json consistently.
-        let detectionParseAndFilterStart = Date()
-
-        // Split ANE→CPU materialization out of the parse timer (see `parsePrototypes` for rationale).
-        // For the 620 MB detArray this is typically the dominant cost when CoreML lazily DMAs from ANE.
-        let detSyncStart = Date()
-        _ = detArray.dataPointer.load(as: UInt8.self)
-        lastDetDataPointerSyncMs = Date().timeIntervalSince(detSyncStart) * 1000
-
-        if debugMode, !didLogDetLayoutDiagnostic {
-            didLogDetLayoutDiagnostic = true
-            let detShape = detArray.shape.map { $0.intValue }
-            let detStrides = detArray.strides.map { $0.intValue }
-            let dataTypeRaw = detArray.dataType.rawValue
-            let dataTypeName: String
-            if detArray.dataType == .float32 {
-                dataTypeName = "float32"
-            } else if detArray.dataType == .float16 {
-                dataTypeName = "float16"
-            } else if detArray.dataType == .float64 {
-                dataTypeName = "float64"
-            } else if detArray.dataType == .int32 {
-                dataTypeName = "int32"
-            } else {
-                dataTypeName = "unknown"
-            }
-            // Replicate YoloEDetectionParser.isContiguous: standard C-contiguous strides?
-            var expected = 1
-            var isCContiguous = !detShape.isEmpty && detShape.count == detStrides.count
-            if isCContiguous {
-                for i in stride(from: detShape.count - 1, through: 0, by: -1) {
-                    if detStrides[i] != expected { isCContiguous = false; break }
-                    expected *= detShape[i]
-                }
-            }
-            let parserPath: String
-            switch detArray.dataType {
-            case .float32:
-                parserPath = "FAST:float32+directPointer"
-            case .float16:
-                parserPath = isCContiguous ? "FAST:float16+bulkVImage" : "SLOW:float16+rowByRowOrScalar"
-            default:
-                parserPath = "UNSUPPORTED"
-            }
-            logDebug("🔬 parseDetections layout dtype=\(dataTypeName)(\(dataTypeRaw)) shape=\(detShape) strides=\(detStrides) contiguous=\(isCContiguous) path=\(parserPath)")
-        }
-
-        let parseBlacklist: Set<Int> = (oneImageRunAwaitingSave || stillImageScanModeEnabled) ? classBlacklist.ignoredIndices : []
-        let rawDetections = YoloEDetectionParser.parseDetections(
-            detArray: detArray,
-            confidenceThreshold: confidenceThreshold,
-            classBlacklist: parseBlacklist,
-            maximumDetections: 1000
-        )
-
-        if rawDetections.isEmpty {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no detections after parse") }
-            consecutiveEmptyMaskFrames += 1
-            if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                DispatchQueue.main.async {
-                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
-                    self.finishStartupProgressIfNeeded()
-                }
-            }
-            resetProcessingFlag()
-            return
-        }
-
-        if debugMode {
-            let rawDetectionClassNames = rawDetections.map { className($0.classIdx) }.joined(separator: ", ")
-            logDebug("🧾 ONNX-STYLE (\(stage2DebugLabel)) raw detections: \(rawDetectionClassNames)")
-            let rawBedFamilyDetections = rawDetections.filter {
-                let normalizedClassName = displayClassName($0.classIdx).lowercased()
-                return normalizedClassName.contains("bed")
-            }
-            if !rawBedFamilyDetections.isEmpty {
-                let rawBedFamilySummary = rawBedFamilyDetections.map {
-                    "\(displayClassName($0.classIdx)) conf=\(String(format: "%.3f", $0.confidence)) ctr=(\(Int($0.x)),\(Int($0.y))) sz=\(Int($0.w))x\(Int($0.h)))"
-                }.joined(separator: " | ")
-                print("🛏️ ONNX-STYLE (\(stage2DebugLabel)) raw bed-family detections: \(rawBedFamilySummary)")
-            }
-        }
-
-        var candidates: [FurnitureFitDetection]
-        if rawDetections.count > 1 {
-            let sorted = rawDetections.sorted { $0.confidence > $1.confidence }.filter {
-                !parseBlacklist.contains($0.classIdx)
-            }
-            let capped = Array(sorted.prefix(300))
-            candidates = FurnitureFitNMS.applySortedByConfidence(detections: capped, iouThreshold: 0.5)
-        } else {
-            candidates = rawDetections.filter {
-                !parseBlacklist.contains($0.classIdx)
-            }
-        }
-
-        let supportSurfaceHintCandidates = (oneImageRunAwaitingSave || stillImageScanModeEnabled)
-            ? FurnitureFitFilter.excludingClasses(candidates, blacklist: classBlacklist.ignoredIndices)
-            : candidates
-        let supportSurfaceHintName = supportSurfaceHint(
-            from: supportSurfaceHintCandidates,
-            imageWidth: onnxSide,
-            imageHeight: onnxSide
-        )
-        let preferRoomRaycastSizing = supportSurfaceHintName != nil
-
-        candidates = FurnitureFitFilter.excludingClasses(candidates, blacklist: classBlacklist.ignoredIndices)
-        if candidates.isEmpty {
-            if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no candidates after blacklist.json filter") }
-            consecutiveEmptyMaskFrames += 1
-            if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                DispatchQueue.main.async {
-                    self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: true, clearSelections: false)
-                }
-            }
-            resetProcessingFlag()
-            return
-        }
-
-        if debugMode {
-            logDebug("📦 ONNX-STYLE (\(stage2DebugLabel)) candidates: \(candidates.count) (parse conf≥\(confidenceThreshold), class-aware NMS IoU≤0.5, blacklist.json \(classBlacklist.ignoredIndices.count) ids)")
-            for (i, d) in candidates.enumerated() {
-                logDebug("   [\(i)] \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) ctr=(\(Int(d.x)),\(Int(d.y))) sz=\(Int(d.w))x\(Int(d.h))")
-            }
-        }
-        let detectionParseAndFilterMs = Date().timeIntervalSince(detectionParseAndFilterStart) * 1000
-
-        if segmentationMode == .identifyOnly && showFullVideoWithIdentifications && debugMode && !oneImageRunAwaitingSave {
-            let liveDebugMaskBaseImage = debugMode
-                ? renderOriginalFrameCGImage(
-                    processBuffer: processBuffer,
-                    origW: bufW,
-                    origH: bufH
-                )
-                : nil
-            let primaryIdxOpt = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
-                candidates: candidates,
-                config: autoPrimarySelectionConfig,
-                state: &autoPrimarySelectionState
-            )
-            let liveDebugFusedMaskPayload: (logits: [Float], detections: [FurnitureFitDetection])? = {
-                guard debugMode,
-                      let primaryIdx = primaryIdxOpt,
-                      primaryIdx >= 0,
-                      primaryIdx < candidates.count else { return nil }
-                let primaryCandidate = candidates[primaryIdx]
-                let maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
-                    primaryIndex: primaryIdx,
-                    detections: candidates,
-                    protos: planes,
-                    protoHeight: pH,
-                    protoWidth: pW,
-                    modelSide: onnxSide
-                )
-                let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primaryCandidate, onnxSide: onnxSide)
-                var fusedDetections: [FurnitureFitDetection] = [expandedPrimary]
-                for detection in maskSource where FurnitureFitIoU.calculate(detection, primaryCandidate) < 0.999 {
-                    fusedDetections.append(detection)
-                }
-                let fusedMaskResult = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
-                    planes: planes,
-                    protoW: pW,
-                    protoH: pH,
-                    detections: fusedDetections,
-                    modelSide: onnxSide
-                )
-                var fusedLogits = fusedMaskResult.logits
-                if currentYoloInputVerticallyFlipped {
-                    FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&fusedLogits, protoW: pW, protoH: pH)
-                }
-                return (fusedLogits, fusedDetections)
-            }()
-            let liveDebugMaskOverlayImage = debugMode
-                ? renderLiveDebugMaskOverlayImage(
-                    baseImage: liveDebugMaskBaseImage,
-                    candidates: candidates,
-                    primaryIndex: primaryIdxOpt,
-                    fusedMaskLogits: liveDebugFusedMaskPayload?.logits,
-                    fusedMaskDetections: liveDebugFusedMaskPayload?.detections ?? [],
-                    planes: planes,
-                    protoW: pW,
-                    protoH: pH,
-                    modelSide: onnxSide,
-                    origW: bufW,
-                    origH: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-                : nil
-            DispatchQueue.main.async {
-                self.resetOverlayScalesForEmptyMask(
-                    clearDetectedCandidates: false,
-                    clearSelections: false,
-                    resetUserOverlayScale: false
-                )
-                self.updateDetectionOverlay(
-                    candidates: candidates,
-                    selectedIndex: primaryIdxOpt,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-                if let p = primaryIdxOpt {
-                    self.primaryBboxInView = self.viewRect(
-                        for: candidates[p],
-                        imageWidth: bufW,
-                        imageHeight: bufH,
-                        scaleX: scaleX,
-                        scaleY: scaleY
-                    )
-                } else {
-                    self.primaryBboxInView = .zero
-                }
-                if self.isShowingLiveVideoIdentifications {
-                    self.maskImageView.image = nil
-                } else if let liveDebugMaskOverlayImage {
-                    let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
-                    self.maskImageView.image = UIImage(cgImage: liveDebugMaskOverlayImage, scale: scale, orientation: .up)
-                } else {
-                    self.maskImageView.image = nil
-                }
-                self.applyCurrentOverlayScaleTransform()
-                self.finishStartupProgressIfNeeded()
-            }
-            resetProcessingFlag()
-            return
-        }
-
-        // Determine selected candidates + primary for mask compositing.
-        let selectedCandidates: [FurnitureFitDetection]
-        let primary: FurnitureFitDetection
-        let primaryIdx: Int
-
-        if segmentationMode != .segmentSelected {
-            // identifyOnly + segmentPrimary: auto-select the single primary by confidence/area.
-            // Only the pinned segmentSelected flow uses manual selection (else branch).
-            guard let autoIdx = FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
-                candidates: candidates,
-                config: autoPrimarySelectionConfig,
-                state: &autoPrimarySelectionState
-            ) else {
-                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no auto-primary among candidates") }
-                consecutiveEmptyMaskFrames += 1
-                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                    DispatchQueue.main.async {
-                        self.resetOverlayScalesForEmptyMask(clearDetectedCandidates: false, clearSelections: false, resetUserOverlayScale: false)
-                    }
-                }
-                resetProcessingFlag()
-                return
-            }
-            primary = candidates[autoIdx]
-            primaryIdx = autoIdx
-            selectedCandidates = [primary]
-            DispatchQueue.main.async {
-                self.updateDetectionOverlay(
-                    candidates: candidates,
-                    selectedIndex: autoIdx,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-            }
-        } else {
-            // segmentSelected: user-pinned selections.
-            pruneSelectedPinsMissingFromCurrentCandidates(candidates)
-            DispatchQueue.main.async {
-                self.updateDetectionOverlay(
-                    candidates: candidates,
-                    selectedIndex: nil,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-            }
-
-            let pins = selectedPinsSnapshot()
-            let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
-            guard !matchedCandidates.isEmpty else {
-                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): segment mode active but no selected instances match current frame (IoU≥\(pinMatchIoUThreshold))") }
-                consecutiveEmptyMaskFrames += 1
-                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                    DispatchQueue.main.async {
-                        self.resetOverlayScalesForEmptyMask(
-                            clearDetectedCandidates: false,
-                            clearSelections: false,
-                            resetUserOverlayScale: false
-                        )
-                        self.updateDetectionOverlay(
-                            candidates: candidates,
-                            selectedIndex: nil,
-                            imageWidth: bufW,
-                            imageHeight: bufH,
-                            scaleX: scaleX,
-                            scaleY: scaleY
-                        )
-                    }
-                }
-                resetProcessingFlag()
-                return
-            }
-
-            guard let selectedPrimaryRelativeIndex = FurnitureFitPrimarySelection.selectPrimaryIndex(
-                candidates: matchedCandidates,
-                config: autoPrimarySelectionConfig
-            ) else {
-                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): no primary candidate among matched instances") }
-                consecutiveEmptyMaskFrames += 1
-                if consecutiveEmptyMaskFrames > maskGraceFrameLimit {
-                    DispatchQueue.main.async {
-                        self.resetOverlayScalesForEmptyMask(
-                            clearDetectedCandidates: false,
-                            clearSelections: false,
-                            resetUserOverlayScale: false
-                        )
-                        self.updateDetectionOverlay(
-                            candidates: candidates,
-                            selectedIndex: nil,
-                            imageWidth: bufW,
-                            imageHeight: bufH,
-                            scaleX: scaleX,
-                            scaleY: scaleY
-                        )
-                    }
-                }
-                resetProcessingFlag()
-                return
-            }
-            let matched = matchedCandidates[selectedPrimaryRelativeIndex]
-            guard let pIdx = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 }) else {
-                if debugMode { logDebug("⚠️ ONNX-STYLE (\(stage2DebugLabel)): primary not found in full candidate list") }
-                resetProcessingFlag()
-                return
-            }
-            primary = matched
-            primaryIdx = pIdx
-            selectedCandidates = matchedCandidates
-        }
-
-        let lowConfidencePrimaryContributors = lowConfidenceInsidePrimaryContributors(
-            detArray: detArray,
-            primary: primary,
-            blacklist: classBlacklist.ignoredIndices,
-            protos: planes,
-            protoHeight: pH,
-            protoWidth: pW,
-            modelSide: onnxSide
-        )
-        if debugMode, !lowConfidencePrimaryContributors.isEmpty {
-            logDebug(
-                "🧵 ONNX-STYLE (\(stage2DebugLabel)) mask-overlap reparsed contributors: " +
-                "\(lowConfidencePrimaryContributors.count) (conf≥\(furnitureFitInsidePrimaryContributorConfidenceThreshold), overlap≥0.15)"
-            )
-        }
-
-        // Build the proto-space mask from a fusion list of detections.
-        // - When running in identify-only mode (no manual selection), mirror the
-        //   Android path by fusing the primary with nearby overlapping detections
-        //   via `collectMaskDetections`, and expanding the primary bbox slightly
-        //   for legs/wheels before synthesizing logits.
-        // - When running in segmentSelected mode, restrict fusion to the
-        //   user-pinned instances, but still apply the primary expansion per pin.
-        let maskDetectionsForBuild: [FurnitureFitDetection]
-        if segmentationMode == .segmentSelected {
-            // Manual selection: expand each matched pin and build a mask over the
-            // union of those expanded boxes.
-            var selectedFusion = selectedCandidates.map {
-                onnxStyleExpandedPrimaryForMaskBuild($0, onnxSide: onnxSide)
-            }
-            let selectedBaseCount = selectedFusion.count
-            appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &selectedFusion)
-            let supplementalContributors = Array(selectedFusion.dropFirst(selectedBaseCount))
-            let deduplicatedSupplementalContributors = limitedMaskFusionContributors(
-                primary: primary,
-                contributors: supplementalContributors
-            )
-            maskDetectionsForBuild = Array(selectedFusion.prefix(selectedBaseCount)) + deduplicatedSupplementalContributors
-        } else {
-            // Auto primary: Android-style fusion of primary + supporting
-            // detections that intersect it (monitor/table, overlapped props,
-            // etc.), with an expanded primary bbox for mask synthesis.
-            var maskSource = FurnitureFitOnnxStylePipeline.collectMaskDetections(
-                primaryIndex: primaryIdx,
-                detections: candidates,
-                protos: planes,
-                protoHeight: pH,
-                protoWidth: pW,
-                modelSide: onnxSide
-            )
-            appendUniqueMaskContributors(from: lowConfidencePrimaryContributors, to: &maskSource)
-            let expandedPrimary = onnxStyleExpandedPrimaryForMaskBuild(primary, onnxSide: onnxSide)
-            var fusion: [FurnitureFitDetection] = [expandedPrimary]
-            let contributorCandidates = maskSource.filter { FurnitureFitIoU.calculate($0, primary) < 0.999 }
-            let deduplicatedContributors = limitedMaskFusionContributors(
-                primary: primary,
-                contributors: contributorCandidates
-            )
-            fusion.append(contentsOf: deduplicatedContributors)
-            maskDetectionsForBuild = fusion
-        }
-
-        let maskFusionMs = 0.0
-        let morphologyMs = 0.0
-
-        let compositeDetectionsForBuild = maskDetectionsForBuild
-
-        let primaryBufferRect = bufferRect(
-            for: primary,
-            imageWidth: bufW,
-            imageHeight: bufH,
-            scaleX: scaleX,
-            scaleY: scaleY
-        )
-        let clippedPrimaryBufferRect = FurnitureFitGeometry.clipRectToImageBounds(
-            rect: primaryBufferRect,
-            imageWidth: CGFloat(bufW),
-            imageHeight: CGFloat(bufH)
-        )
-        let primaryBx1 = Int(clippedPrimaryBufferRect.minX)
-        let primaryBy1 = Int(clippedPrimaryBufferRect.minY)
-        let primaryBx2 = Int(clippedPrimaryBufferRect.maxX)
-        let primaryBy2 = Int(clippedPrimaryBufferRect.maxY)
-
-        // Build the composite band from the fused detection boxes rather than the
-        // thresholded small mask. This avoids cropping away weak thin parts (for
-        // example the left handle of a chair) before full-res logits are sampled.
-        let clipCandidates = segmentationMode == .segmentSelected ? selectedCandidates : compositeDetectionsForBuild
-        let clipLeftModel = clipCandidates.map { $0.x - $0.w * 0.5 }.min() ?? (primary.x - primary.w * 0.5)
-        let clipTopModel = clipCandidates.map { $0.y - $0.h * 0.5 }.min() ?? (primary.y - primary.h * 0.5)
-        let clipRightModel = clipCandidates.map { $0.x + $0.w * 0.5 }.max() ?? (primary.x + primary.w * 0.5)
-        let clipBottomModel = clipCandidates.map { $0.y + $0.h * 0.5 }.max() ?? (primary.y + primary.h * 0.5)
-        let clipModelRect = CGRect(
-            x: CGFloat(clipLeftModel),
-            y: CGFloat(clipTopModel),
-            width: CGFloat(max(clipRightModel - clipLeftModel, 1)),
-            height: CGFloat(max(clipBottomModel - clipTopModel, 1))
-        )
-        let clipBufferRect = FurnitureFitGeometry.scaleBoxesFromModel(
-            box: clipModelRect,
-            modelShape: CGSize(width: CGFloat(onnxSide), height: CGFloat(onnxSide)),
-            imageShape: CGSize(width: bufW, height: bufH),
-            usesLetterbox: currentYoloUsesLetterbox,
-            inputVerticallyFlipped: currentYoloInputVerticallyFlipped
-        )
-        let clippedCompositeBufferRect = FurnitureFitGeometry.clipRectToImageBounds(
-            rect: clipBufferRect,
-            imageWidth: CGFloat(bufW),
-            imageHeight: CGFloat(bufH)
-        )
-        let bandMarginW: Float = 0  // edge band expansion disabled
-        let bandMarginH: Float = 0  // edge band expansion disabled
-        let cropMarginPx = FurnitureFitOnnxStylePipeline.nativeCompositeBandMarginPx
-        let compBx1 = max(0, Int(floor(Float(clippedCompositeBufferRect.minX) - bandMarginW)) - cropMarginPx)
-        let compBy1 = max(0, Int(floor(Float(clippedCompositeBufferRect.minY) - bandMarginH)) - cropMarginPx)
-        let compBx2 = min(bufW, Int(ceil(Float(clippedCompositeBufferRect.maxX) + bandMarginW)) + cropMarginPx)
-        let compBy2 = min(bufH, Int(ceil(Float(clippedCompositeBufferRect.maxY) + bandMarginH)) + cropMarginPx)
-
-        if debugMode {
-            let stage35Ms = Date().timeIntervalSince(t3) * 1000
-            logDebug(
-                "⏱️ ONNX-STYLE (\(stage2DebugLabel)) breakdown - " +
-                "proto/decode: \(String(format: "%.2f", prototypeParseMs)) ms " +
-                "(ANE-sync: \(String(format: "%.2f", lastProtoDataPointerSyncMs))), " +
-                "parse/NMS/filter: \(String(format: "%.2f", detectionParseAndFilterMs)) ms " +
-                "(ANE-sync: \(String(format: "%.2f", lastDetDataPointerSyncMs))), " +
-                "mask fusion: \(String(format: "%.2f", maskFusionMs)) ms, " +
-                "morph: \(String(format: "%.2f", morphologyMs)) ms"
-            )
-            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) STAGE 3–5 - parse/NMS/mask: \(String(format: "%.2f", stage35Ms)) ms")
-        }
-
-        let bboxCenterImageX = CGFloat(primaryBx1 + primaryBx2) / 2
-        let bboxCenterImageY = CGFloat(primaryBy1 + primaryBy2) / 2
-        let bboxHeightImagePx = Float(max(1, primaryBy2 - primaryBy1))
-        let bboxWidthImagePx = Float(max(1, primaryBx2 - primaryBx1))
-        let finalMetricResult: PrimaryBboxMetersResult? = nil
-
-        let arLabel: String
-        let arTrackingLabel: String
-        let planeAnchorCount: Int
-        if let frame = arSession.currentFrame {
-            switch frame.camera.trackingState {
-            case .normal: arTrackingLabel = "normal"
-            case .limited(let reason):
-                switch reason {
-                case .initializing: arTrackingLabel = "limited(init)"
-                case .relocalizing: arTrackingLabel = "limited(reloc)"
-                case .excessiveMotion: arTrackingLabel = "limited(motion)"
-                case .insufficientFeatures: arTrackingLabel = "limited(features)"
-                @unknown default: arTrackingLabel = "limited(unknown)"
-                }
-            case .notAvailable: arTrackingLabel = "notAvailable"
-            @unknown default: arTrackingLabel = "unknown"
-            }
-            planeAnchorCount = frame.anchors.compactMap({ $0 as? ARPlaneAnchor }).count
-        } else {
-            arTrackingLabel = "noFrame"
-            planeAnchorCount = 0
-        }
-
-        if arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid {
-            arLabel = "valid(\(String(format: "%.3f", autoScaleFromAR)))"
-        } else if arAssistedSizingEnabled && hasARKitAssistedSizingPayload {
-            arLabel = "pending"
-        } else {
-            arLabel = "off"
-        }
-
-        let raycastSuStr: String
-        if let r = roomRaycastSceneDimensions {
-            raycastSuStr =
-                "\(String(format: "%.3f", r.width))×\(String(format: "%.3f", r.height))×\(String(format: "%.3f", r.depth))"
-        } else {
-            raycastSuStr = "—"
-        }
-
-        logFurnitureFitSize(
-            "phase=all " +
-            "ar=\(arLabel) tracking=\(arTrackingLabel) planes=\(planeAnchorCount) " +
-            "room_display_m=\(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))×\(String(format: "%.2f", roomDepthMeters)) " +
-            "raycast_su=\(raycastSuStr) " +
-            "bbox=\(Int(bboxWidthImagePx))×\(Int(bboxHeightImagePx))px buf=\(bufW)×\(bufH) " +
-            "ratioW=\(String(format: "%.3f", bboxWidthImagePx / Float(max(1, bufW)))) ratioH=\(String(format: "%.3f", bboxHeightImagePx / Float(max(1, bufH))))"
-        )
-
-        let firstFrameMeters: (width: Float, height: Float, pipeline: String, dist: Float?)? = nil
-
-        if isUsingARCameraPath {
-            scheduleDebouncedAssistedMeasurement(
-                primaryClassIdx: primary.classIdx,
-                bboxMinX: primaryBx1,
-                bboxMinY: primaryBy1,
-                bboxMaxX: primaryBx2,
-                bboxMaxY: primaryBy2,
-                bboxCenterImageX: bboxCenterImageX,
-                bboxCenterImageY: bboxCenterImageY,
-                bboxHeightImagePx: bboxHeightImagePx,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                arDepthSnapshot: arDepthSnapshot
-            )
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.updateAssistedOverlayScale(
-                    primaryClassIdx: primary.classIdx,
-                    bboxMinX: primaryBx1,
-                    bboxMinY: primaryBy1,
-                    bboxMaxX: primaryBx2,
-                    bboxMaxY: primaryBy2,
-                    bboxCenterImageX: bboxCenterImageX,
-                    bboxCenterImageY: bboxCenterImageY,
-                    bboxHeightImagePx: bboxHeightImagePx,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    arDepthSnapshot: arDepthSnapshot
-                )
-            }
-        }
-        DispatchQueue.main.async {
-            self.primaryBboxInView = self.viewRect(
-                for: primary,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            self.updateDetectionOverlay(
-                candidates: candidates,
-                selectedIndex: primaryIdx,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            self.updateAutoScaleFromRoom(
-                primaryBx1: primaryBx1,
-                primaryBy1: primaryBy1,
-                primaryBx2: primaryBx2,
-                primaryBy2: primaryBy2,
-                imageWidth: bufW,
-                imageHeight: bufH,
-                arDepthSnapshot: arDepthSnapshot,
-                preferRoomRaycastSizing: preferRoomRaycastSizing
-            )
-            self.updateOverlayPresentationMode(
-                primaryClassIdx: primary.classIdx,
-                metric: finalMetricResult
-            )
-            UIView.animate(withDuration: 0.18) {
-                self.applyCurrentOverlayScaleTransform()
-            }
-        }
-
-        setProgress(0.92, text: "Compositing…")
-        let compStart = Date()
-        let composedImage: CGImage? =
-            currentYoloUsesLetterbox
-            ? compositeLegacy1280UnionMaskCutout(
-                processBuffer: processBuffer,
-                planes: planes,
-                protoW: pW,
-                protoH: pH,
-                modelSide: onnxSide,
-                origW: bufW,
-                origH: bufH,
-                maskDetectionsForBuild: compositeDetectionsForBuild,
-                x0: compBx1,
-                x1: compBx2,
-                y0: compBy1,
-                y1: compBy2,
-                primaryBx1: primaryBx1,
-                primaryBy1: primaryBy1,
-                primaryBx2: primaryBx2,
-                primaryBy2: primaryBy2,
-            )
-            : nil
-        let maskHasForeground = composedImage != nil
-
-        let withDebugOverlay: CGImage? = {
-            guard let base = composedImage else { return composedImage }
-            if FurnitureFitOneImageDebugSupport.runEnabled, oneImageRunAwaitingSave {
-                return drawCompositeContributorBboxesOnComposedImage(
-                    composed: base,
-                    compositeDetections: compositeDetectionsForBuild,
-                    primary: primary,
-                    origW: bufW,
-                    origH: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                ) ?? base
-            }
-            if stillImageScanModeEnabled {
-                return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
-                    composed: base,
-                    candidates: candidates,
-                    primaryIndex: primaryIdx,
-                    origW: bufW,
-                    origH: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                ) ?? base
-            }
-            guard debugMode else { return composedImage }
-            return drawOnnxStyleDebugDetectionBboxesOnComposedImage(
-                composed: base,
-                candidates: candidates,
-                primaryIndex: primaryIdx,
-                origW: bufW,
-                origH: bufH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            ) ?? base
-        }()
-
-        let bboxWidthPxForFinish = Int(max(1, primaryBx2 - primaryBx1))
-        let bboxHeightPxForFinish = Int(max(1, primaryBy2 - primaryBy1))
-        let arSnapAttached = arDepthSnapshot != nil
-
-        if let finalImage = withDebugOverlay {
-            consecutiveEmptyMaskFrames = 0
-            let needsRotate = isLandscape && !self.isUsingARCameraPath && self.lockedOrientation != .landscape
-            var out: CGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
-                finalImage,
-                imageWidth: bufW,
-                imageHeight: bufH
-            )
-            if needsRotate {
-                if let r = self.rotateCGImage90(out, clockwise: true) {
-                    out = FurnitureFitGeometry.clipCompositedImageToBounds(
-                        r,
-                        imageWidth: bufH,
-                        imageHeight: bufW
-                    )
-                }
-            }
-            if oneImageRunAwaitingSave {
-                FurnitureFitOneImageDebugSupport.writeOutputPNG(
-                    out,
-                    filename: "alchair_furniturefit_result.png",
-                    logLabel: "composite result"
-                )
-
-                if let originalFrameImage = renderOriginalFrameCGImage(
-                    processBuffer: processBuffer,
-                    origW: bufW,
-                    origH: bufH
-                ), let allDetectionsImage = drawAllDetectionBboxesOnImage(
-                    baseImage: originalFrameImage,
-                    candidates: candidates,
-                    primaryIndex: primaryIdx,
-                    origW: bufW,
-                    origH: bufH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                ) {
-                    let rotatedAllDetectionsImage: CGImage
-                    if needsRotate, let rotated = rotateCGImage90(allDetectionsImage, clockwise: true) {
-                        rotatedAllDetectionsImage = rotated
-                    } else {
-                        rotatedAllDetectionsImage = allDetectionsImage
-                    }
-                    FurnitureFitOneImageDebugSupport.writeOutputPNG(
-                        rotatedAllDetectionsImage,
-                        filename: "alchair_furniturefit_all_detections.png",
-                        logLabel: "all detections"
-                    )
-                } else {
-                    logDebug("🖼️ oneImageRun: failed to build all-detections overlay image")
-                }
-
-                oneImageRunAwaitingSave = false
-                oneImageRunFinished = true
-                DispatchQueue.main.async { [weak self] in
-                    self?.setProgress(1.0, text: "Saved one-image result")
-                    self?.finishStartupProgressIfNeeded()
-                }
-            }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                let scale = self.window?.windowScene?.screen.scale ?? self.traitCollection.displayScale
-                if self.isShowingLiveVideoIdentifications {
-                    self.maskImageView.image = nil
-                } else {
-                    self.maskImageView.image = UIImage(cgImage: out, scale: scale, orientation: .up)
-                }
-                self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: out)
-                self.commitFurnitureSizeAfterSegmentationMaskApplied(
-                    maskHasForeground: maskHasForeground,
-                    primaryMetricResult: finalMetricResult,
-                    firstFrameMeters: firstFrameMeters,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    bboxWidthPx: bboxWidthPxForFinish,
-                    bboxHeightPx: bboxHeightPxForFinish,
-                    arDepthSnapshotAttached: arSnapAttached
-                )
-            }
-        } else if maskHasForeground {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.commitFurnitureSizeAfterSegmentationMaskApplied(
-                    maskHasForeground: maskHasForeground,
-                    primaryMetricResult: finalMetricResult,
-                    firstFrameMeters: firstFrameMeters,
-                    imageWidth: bufW,
-                    imageHeight: bufH,
-                    bboxWidthPx: bboxWidthPxForFinish,
-                    bboxHeightPx: bboxHeightPxForFinish,
-                    arDepthSnapshotAttached: arSnapAttached
-                )
-            }
-        }
-
-        resetProcessingFlag()
-        if debugMode {
-            let compMs = Date().timeIntervalSince(compStart) * 1000
-            let frameTotalMs = Date().timeIntervalSince(frameStart) * 1000
-            logDebug("🖼️ ONNX-STYLE (\(stage2DebugLabel)) compositing: \(String(format: "%.2f", compMs)) ms")
-            logMemory("FRAME END")
-            logDebug("⏱️ ONNX-STYLE (\(stage2DebugLabel)) FRAME TOTAL: \(String(format: "%.2f", frameTotalMs)) ms")
-            logDebug("⏱️ ═══════════════════════════════════════════\n")
-        }
-    }
-
-    /// Expands primary width/height for ONNX-style proto mask synthesis (legs/wheels), clamped to model square.
     private func onnxStyleExpandedPrimaryForMaskBuild(_ primary: FurnitureFitDetection, onnxSide: Int) -> FurnitureFitDetection {
         let side = Float(onnxSide)
         let maxHalfW = min(primary.x, side - primary.x)
@@ -3302,74 +2368,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             .map(\.detection)
     }
 
-    private func lowConfidenceInsidePrimaryContributors(
-        detArray: MLMultiArray,
-        primary: FurnitureFitDetection,
-        blacklist: Set<Int>,
-        protos: [Float],
-        protoHeight: Int,
-        protoWidth: Int,
-        modelSide: Int
-    ) -> [FurnitureFitDetection] {
-        let lowerConfidenceThreshold = furnitureFitInsidePrimaryContributorConfidenceThreshold
-        guard lowerConfidenceThreshold < confidenceThreshold else { return [] }
-        guard primary.coeffs.count >= 32 else { return [] }
-
-        let spatialSize = protoHeight * protoWidth
-        let primaryBinary = FurnitureFitOnnxStylePipeline.buildBboxBinaryMask(
-            detection: primary,
-            protoWidth: protoWidth,
-            protoHeight: protoHeight,
-            modelSide: modelSide,
-            spatialSize: spatialSize
-        )
-
-        let lowThresholdDetections = YoloEDetectionParser.parseDetections(
-            detArray: detArray,
-            confidenceThreshold: lowerConfidenceThreshold,
-            classBlacklist: [],
-            maximumDetections: 1000
-        )
-        guard !lowThresholdDetections.isEmpty else { return [] }
-
-        if debugMode {
-            let reparsedBedFamilyDetections = lowThresholdDetections.filter {
-                let normalizedClassName = displayClassName($0.classIdx).lowercased()
-                return normalizedClassName.contains("bed")
-            }
-            if !reparsedBedFamilyDetections.isEmpty {
-                let reparsedBedFamilySummary = reparsedBedFamilyDetections.map {
-                    "\(displayClassName($0.classIdx)) conf=\(String(format: "%.3f", $0.confidence)) ctr=(\(Int($0.x)),\(Int($0.y))) sz=\(Int($0.w))x\(Int($0.h)))"
-                }.joined(separator: " | ")
-                print("🛏️ ONNX-STYLE reparsed bed-family detections: \(reparsedBedFamilySummary)")
-            }
-        }
-
-        let sortedDetections = lowThresholdDetections.sorted { $0.confidence > $1.confidence }
-        let cappedDetections = Array(sortedDetections.prefix(300))
-        let dedupedDetections = FurnitureFitNMS.applySortedByConfidence(
-            detections: cappedDetections,
-            iouThreshold: 0.7
-        )
-        let filteredDetections = dedupedDetections
-            .filter { !blacklist.contains($0.classIdx) }
-            .filter { $0.coeffs.count >= 32 }
-        return filteredDetections
-            .filter {
-                let overlap = FurnitureFitOnnxStylePipeline.childOverlapsFraction(
-                    childDetection: $0,
-                    primaryBinary: primaryBinary,
-                    protos: protos,
-                    protoWidth: protoWidth,
-                    protoHeight: protoHeight,
-                    modelSide: modelSide
-                )
-                return overlap >= 0.15
-            }
-            .sorted { $0.confidence > $1.confidence }
-    }
-
-    /// BGRA camera × (mask/255) → premultiplied RGBA inside the primary band using vDSP (`vfltu8`, `vsmul`, `vmul`, `vclip`, `vadd`, `vfixu8`).
     private func compositeCpuCameraBandAccelerated(
         outBase: UnsafeMutablePointer<UInt8>,
         origBase: UnsafePointer<UInt8>,
@@ -3453,7 +2451,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// ONNX / Ultralytics `process_mask` order on the composite path: fused proto
+    /// ONNX / `process_mask` order on the composite path: fused proto
     /// logits → bilinear upsample to full camera size (`align_corners=False`) →
     /// write only the image-space crop band → threshold last (`logit > nativeCompositeUpsampleLogitThreshold()`).
     private func compositeCpuBilinearProtoMaskCutoutFromLogits(
@@ -3540,7 +2538,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
 
-        // Ultralytics `process_mask`: upsample float logits (bilinear, align_corners=False),
+        // `process_mask`: upsample float logits (bilinear, align_corners=False),
         // then crop in image space (here: only fill the composite band), then threshold.
         let upsampleThreshold = FurnitureFitOnnxStylePipeline.nativeCompositeUpsampleLogitThreshold()
         for by in 0..<bandH {
@@ -3637,7 +2635,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBx2: Int,
         primaryBy2: Int
     ) -> CGImage? {
-        guard currentYoloUsesLetterbox,
+        guard currentModelUsesLetterbox,
               protoW > 0,
               protoH > 0,
               modelSide > 0,
@@ -4182,7 +3180,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     yStart: fusedMinY,
                     bandW: fusedBandWidth,
                     bandH: fusedBandHeight,
-                    usesLetterbox: currentYoloUsesLetterbox
+                    usesLetterbox: currentModelUsesLetterbox
                ) {
                 let fusedFillColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) = (255, 32, 32, 215)
                 for bandY in 0..<fusedBandHeight {
@@ -4240,7 +3238,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 modelSide: modelSide
             )
             var perDetectionLogits = perDetectionBuilt.logits
-            if currentYoloInputVerticallyFlipped {
+            if currentModelInputVerticallyFlipped {
                 FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&perDetectionLogits, protoW: protoW, protoH: protoH)
             }
             guard let bandMask = debugUpsampledBandMaskFromLogits(
@@ -4254,7 +3252,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 yStart: yStart,
                 bandW: bandW,
                 bandH: bandH,
-                usesLetterbox: currentYoloUsesLetterbox
+                usesLetterbox: currentModelUsesLetterbox
             ) else { continue }
 
             let maskColor = liveDebugMaskColor(
@@ -4738,7 +3736,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return dst
     }
 
-    /// Ultralytics-style letterbox into a square model input with 114 padding.
+    /// letterbox into a square model input with 114 padding.
     private func resizeLetterboxToSquare(_ src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
         CVPixelBufferLockBaseAddress(src, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
@@ -4768,7 +3766,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let padX = (size - scaledWidth) / 2
         let padY = (size - scaledHeight) / 2
         let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        YoloUltralyticsLetterboxFill.fillOpaqueBGRA114LetterboxStrips(
+        ImageLetterboxFill.fillOpaqueBGRA114LetterboxStrips(
             dstBase: dstBase,
             width: size,
             height: size,
@@ -4806,16 +3804,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let frameStart = Date()
         if debugMode { logMemory("FRAME START") }
         classBlacklist.loadBlacklistOnce(debugMode: debugMode) { logDebug($0) }
-        if isRTMDetInstanceSegmentationModel(model) {
-            processFrameRTMDetLive(
-                processBuffer: pixelBuffer,
-                model: model,
-                arDepthSnapshot: arDepthSnapshot,
-                frameStart: frameStart
-            )
-            return
-        }
-        processFrameOnnxStyleCoreML(
+        // RTMDet is the only segmentation backend; the former legacy ONNX-style path was removed.
+        processFrameRTMDetLive(
             processBuffer: pixelBuffer,
             model: model,
             arDepthSnapshot: arDepthSnapshot,

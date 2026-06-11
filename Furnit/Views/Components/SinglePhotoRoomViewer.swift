@@ -1281,11 +1281,8 @@ struct SinglePhotoRoomView: View {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
             // Do not preload SHARP here — holding FP32 Core ML + a 4K `selectedImage` after returning from
             // SharpRoomView/WebKit was peaking RAM on the 2nd room. `generateGaussians` loads on demand.
-            // Unload YOLOE Core ML only — full `releaseResources()` ends ODR and can invalidate the streaming
-            // unzip service (4099) right before SHARP mounts its tagged pack.
-            YOLOEModelService.shared.releaseLoadedModelOnlyPreservingODR()
         }
-        // Do **not** use `.onDisappear` here for SHARP/YOLOE/splatViewerDestination: SwiftUI can call it when
+        // Do **not** use `.onDisappear` here for SHARP/splatViewerDestination: SwiftUI can call it when
         // *pushing* `SharpRoomView` on the stack (parent briefly disappears), which released SHARP mid-splat load.
         // Sheet-dismiss cleanup lives in `ContentView` `onChange(of: showingPhotoRoomCreator)`.
         // ✅ Watch for boundary changes - log when boundaries are updated
@@ -1479,10 +1476,7 @@ struct SinglePhotoRoomView: View {
         fixedImageItem = nil
 
         URLCache.shared.removeAllCachedResponses()
-        // Drop YOLOE Core ML weights while SHARP runs; keep YOLOE ODR mount so we do not kill the shared
-        // streaming-unzip connection immediately before SHARP's `beginAccessingResources` (NSCocoa 4099).
-        YOLOEModelService.shared.releaseLoadedModelOnlyPreservingODR()
-        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_yolo_release")
+        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_cache_clear")
 
         Task {
             do {

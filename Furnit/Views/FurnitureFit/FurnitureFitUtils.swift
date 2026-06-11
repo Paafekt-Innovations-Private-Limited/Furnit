@@ -235,10 +235,10 @@ public struct FurnitureFitFilter {
     }
 }
 
-// MARK: - YOLO letterbox fill (Ultralytics)
-/// Letterbox padding must match Ultralytics default RGB **(114, 114, 114)** (opaque BGRA on device).
-/// `scripts/probe_yoloe26_coreml.py` / `visualize_yoloe26_coreml.py` use the same value; using 128×4 gray skews Core ML confidences vs PyTorch export.
-public enum YoloUltralyticsLetterboxFill {
+// MARK: - Letterbox fill
+/// Letterbox padding uses neutral gray RGB **(114, 114, 114)** (opaque BGRA on device); 128×4 gray
+/// would skew Core ML confidences relative to the PyTorch export the model was trained against.
+public enum ImageLetterboxFill {
     public static func fillOpaqueBGRA114(dstBase: UnsafeMutableRawPointer, totalByteCount: Int) {
         precondition(totalByteCount >= 0 && totalByteCount % 4 == 0)
         guard totalByteCount > 0 else { return }

@@ -15,6 +15,76 @@ struct RTMDetInferenceResult {
 enum RTMDetImageInference {
     private static var lastInputTensorStats = "input=unavailable"
 
+    // MARK: - Image helpers (relocated from the removed RTMDet path)
+
+    /// Square side for stretch, read from the Core ML `image` input constraint; defaults to 640.
+    static func modelInputSize(for model: MLModel) -> Int {
+        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
+        if let imageConstraint = imageInputDesc?.imageConstraint {
+            let w = imageConstraint.pixelsWide
+            let h = imageConstraint.pixelsHigh
+            if w > 0 && h > 0 {
+                return Int(w)
+            }
+            let sc = imageConstraint.sizeConstraint
+            if sc.type == .enumerated {
+                let sizes = sc.enumeratedImageSizes
+                if let best = sizes.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }) {
+                    return Int(best.pixelsWide)
+                }
+            } else if sc.type == .range {
+                let r = sc.pixelsWideRange
+                let target = 640
+                let lo = Int(r.lowerBound)
+                let hi = Int(r.upperBound)
+                if lo > 0 && hi >= lo {
+                    return min(max(target, lo), hi)
+                }
+            }
+        }
+        return 640
+    }
+
+    /// Loads a JPEG/PNG from disk into a BGRA `CVPixelBuffer`.
+    static func pixelBufferFromImage(atPath path: String) -> CVPixelBuffer? {
+        guard let img = UIImage(contentsOfFile: path) else { return nil }
+        return pixelBufferFromImage(img)
+    }
+
+    /// Loads a `UIImage` into a BGRA `CVPixelBuffer` (same layout as the live camera path).
+    static func pixelBufferFromImage(_ image: UIImage) -> CVPixelBuffer? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        let drawn = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
+        guard let cgImage = drawn.cgImage else { return nil }
+        let w = cgImage.width
+        let h = cgImage.height
+        var pb: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true,
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb) == kCVReturnSuccess,
+              let buffer = pb else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        guard let ctx = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: w,
+            height: h,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return buffer
+    }
+
     private struct BoxRecord {
         let rowIndex: Int
         let x1: Float
@@ -65,7 +135,7 @@ enum RTMDetImageInference {
         maxDetectionCount: Int = 12,
         buildInstanceMasks: Bool = false
     ) throws -> RTMDetInferenceResult {
-        guard let sourceBuffer = YoloEImageInference.pixelBufferFromImage(image) else {
+        guard let sourceBuffer = pixelBufferFromImage(image) else {
             throw NSError(
                 domain: "RTMDetImageInference",
                 code: 1,
@@ -96,7 +166,7 @@ enum RTMDetImageInference {
     ) throws -> RTMDetInferenceResult {
         let sourceWidth = CVPixelBufferGetWidth(sourceBuffer)
         let sourceHeight = CVPixelBufferGetHeight(sourceBuffer)
-        let modelSide = YoloEImageInference.modelInputSize(for: model)
+        let modelSide = modelInputSize(for: model)
         let usesLetterbox = modelSide >= 1280
 
         guard let preparedBuffer = usesLetterbox
@@ -1451,7 +1521,7 @@ enum RTMDetImageInference {
         return UIImage(cgImage: cgImage)
     }
 
-    // Shared with the YOLOE image path, duplicated here so the RTMDet spike stays isolated.
+    // Shared with the RTMDet image path, duplicated here so the RTMDet spike stays isolated.
     private static func resizeStretchToSquare(src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [:],
@@ -1496,7 +1566,7 @@ enum RTMDetImageInference {
 
         CVPixelBufferLockBaseAddress(dst, [])
         if let base = CVPixelBufferGetBaseAddress(dst) {
-            YoloUltralyticsLetterboxFill.fillOpaqueBGRA114(dstBase: base, totalByteCount: CVPixelBufferGetBytesPerRow(dst) * size)
+            ImageLetterboxFill.fillOpaqueBGRA114(dstBase: base, totalByteCount: CVPixelBufferGetBytesPerRow(dst) * size)
         }
         CVPixelBufferUnlockBaseAddress(dst, [])
 

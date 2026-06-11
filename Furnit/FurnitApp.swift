@@ -111,10 +111,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// succeeds. Unloading only the in-memory ``MLModel`` keeps the pack mounted and avoids that trap.
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         Task { @MainActor in
-            logDebug("⚠️ [AppDelegate] Memory warning — unloading SHARP/YOLOE Core ML (keeping ODR mounts)")
-            YoloEDetectionParser.trimScratchBuffers()
+            logDebug("⚠️ [AppDelegate] Memory warning — unloading SHARP Core ML (keeping ODR mounts)")
             SHARPService.shared.releaseInferenceMemoryAfterGeneration()
-            YOLOEModelService.shared.releaseLoadedModelOnlyPreservingODR()
         }
     }
 

@@ -4,16 +4,7 @@ import PhotosUI
 
 @MainActor
 struct SettingsFurnitureFitImageScanView: View {
-    private enum ScanBackend: String, CaseIterable, Identifiable {
-        case rtmdetInsM = "RTMDet-Ins-m"
-        case yoloe = "YOLOE"
-
-        var id: String { rawValue }
-    }
-
-    @ObservedObject private var yoloeService = YOLOEModelService.shared
     @ObservedObject private var rtmdetService = RTMDetModelService.shared
-    @State private var selectedBackend: ScanBackend = .rtmdetInsM
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var scanRequestID = UUID()
@@ -23,20 +14,13 @@ struct SettingsFurnitureFitImageScanView: View {
     var body: some View {
         let currentSelectedImage = selectedImage
         let currentScanRequestID = scanRequestID
-        let loadedModel = currentModel
-        let isModelLoading = currentIsModelLoading
+        let loadedModel = rtmdetService.model
+        let isModelLoading = rtmdetService.isLoadingModel
         let currentStatusText = statusText
         let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
 
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 16) {
-                Picker("Backend", selection: $selectedBackend) {
-                    ForEach(ScanBackend.allCases) { backend in
-                        Text(backend.rawValue).tag(backend)
-                    }
-                }
-                .pickerStyle(.segmented)
-
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -50,11 +34,12 @@ struct SettingsFurnitureFitImageScanView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                             if loadedModel != nil {
-                                overlayView(
+                                RTMDetStillImageOverlay(
                                     image: currentSelectedImage,
                                     scanRequestID: currentScanRequestID,
                                     mlModel: loadedModel
                                 )
+                                .allowsHitTesting(false)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                         } else {
@@ -105,10 +90,7 @@ struct SettingsFurnitureFitImageScanView: View {
         .navigationTitle(L10n.Settings.imageScan)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            ensureSelectedModelLoaded()
-        }
-        .onChange(of: selectedBackend) { _, _ in
-            ensureSelectedModelLoaded()
+            rtmdetService.ensureModelLoaded()
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             Task {
@@ -117,68 +99,14 @@ struct SettingsFurnitureFitImageScanView: View {
         }
     }
 
-    @ViewBuilder
-    private func overlayView(image: UIImage, scanRequestID: UUID, mlModel: MLModel?) -> some View {
-        switch selectedBackend {
-        case .yoloe:
-            SettingsFurnitureFitStillImageScannerRepresentable(
-                selectedImage: image,
-                scanRequestID: scanRequestID,
-                mlModel: mlModel
-            )
-            .allowsHitTesting(false)
-        case .rtmdetInsM:
-            RTMDetStillImageOverlay(
-                image: image,
-                scanRequestID: scanRequestID,
-                mlModel: mlModel
-            )
-            .allowsHitTesting(false)
-        }
-    }
-
-    private var currentModel: MLModel? {
-        switch selectedBackend {
-        case .yoloe:
-            return yoloeService.model
-        case .rtmdetInsM:
-            return rtmdetService.model
-        }
-    }
-
-    private var currentIsModelLoading: Bool {
-        switch selectedBackend {
-        case .yoloe:
-            return yoloeService.isLoadingModel
-        case .rtmdetInsM:
-            return rtmdetService.isLoadingModel
-        }
-    }
-
     private var statusText: String {
         if isLoadingSelectedPhoto {
             return L10n.Settings.imageScanLoadingPhoto
         }
-        let serviceMessage: String?
-        switch selectedBackend {
-        case .yoloe:
-            serviceMessage = yoloeService.statusMessage.nilIfEmpty
-        case .rtmdetInsM:
-            serviceMessage = rtmdetService.statusMessage.nilIfEmpty
-        }
-        if let message = serviceMessage {
+        if let message = rtmdetService.statusMessage.nilIfEmpty {
             return message
         }
         return L10n.Settings.imageScanPreparingModel
-    }
-
-    private func ensureSelectedModelLoaded() {
-        switch selectedBackend {
-        case .yoloe:
-            yoloeService.ensureModelLoaded()
-        case .rtmdetInsM:
-            rtmdetService.ensureModelLoaded()
-        }
     }
 
     private func loadSelectedPhoto(from item: PhotosPickerItem?) async {
@@ -336,48 +264,6 @@ private struct RTMDetStillImageOverlay: View {
 
     private func labelText(for detection: FurnitureFitDetection) -> String {
         "#\(detection.classIdx) \(Int(detection.confidence * 100))%"
-    }
-}
-
-private struct SettingsFurnitureFitStillImageScannerRepresentable: UIViewRepresentable {
-    let selectedImage: UIImage
-    let scanRequestID: UUID
-    let mlModel: MLModel?
-
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
-    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-
-    func makeUIView(context: Context) -> FurnitureFitContainerView {
-        let view = FurnitureFitContainerView()
-        view.backgroundColor = .clear
-        view.stillImageScanModeEnabled = true
-        applyConfiguration(to: view)
-        return view
-    }
-
-    func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
-        applyConfiguration(to: uiView)
-        uiView.submitStillImageForScanning(selectedImage, requestID: scanRequestID)
-        uiView.startIfNeeded()
-    }
-
-    static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
-        uiView.stop()
-    }
-
-    private func applyConfiguration(to view: FurnitureFitContainerView) {
-        view.setModel(mlModel)
-        view.processInterval = 0.07
-        view.confidenceThreshold = 0.10
-        view.primaryDetectionMinConfidence = Float(min(max(primaryDetectionMinConfidenceStorage, 0.05), 0.99))
-        view.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
-        view.useBilinearUpscaling = true
-        view.stillImageScanModeEnabled = true
-        view.showFullVideoWithIdentifications = false
-        view.showIdentifyLivePreview = false
-        view.segmentationMode = .identifyOnly
-        view.suppressStartupProgress = false
-        view.arAssistedSizingEnabled = false
     }
 }
 
