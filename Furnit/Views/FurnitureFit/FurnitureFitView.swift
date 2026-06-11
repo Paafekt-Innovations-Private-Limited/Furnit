@@ -471,6 +471,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func rtmDetClassConfidenceThreshold(_ classIdx: Int) -> Float {
         classIdx == 60 ? Self.rtmDetTableConfidenceThreshold : Self.rtmDetLiveConfidenceThreshold
     }
+    /// Center-distance band (fraction of frame diagonal) within which two SEGMENT_PRIMARY candidates
+    /// count as equally centered, so the tie falls back to confidence. Keeps auto-segmentation from
+    /// jittering between two similarly centered objects frame to frame.
+    private static let centeredPrimaryDistanceTieTolerance: CGFloat = 0.06
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
@@ -4900,6 +4904,36 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (accepted, accepted ? reason : "rejected_rect_or_huge \(reason)")
     }
 
+    /// Index of the candidate the user is pointing at for SEGMENT_PRIMARY: prefer boxes whose bbox
+    /// contains the frame center (directly under the crosshair); within that pool pick the one whose
+    /// center is nearest the frame center, breaking near-ties by confidence. Falls back to all
+    /// candidates when none cover the center (panning across a gap). Coordinates are in buffer space.
+    private func centeredPrimaryCandidateIndex(_ candidates: [FurnitureFitDetection], imageWidth: Int, imageHeight: Int) -> Int {
+        guard !candidates.isEmpty else { return 0 }
+        let frameCenterX = CGFloat(imageWidth) * 0.5
+        let frameCenterY = CGFloat(imageHeight) * 0.5
+        let frameDiagonal = max(1, hypot(CGFloat(imageWidth), CGFloat(imageHeight)))
+        let candidatesContainingCenter = candidates.indices.filter { index in
+            let detection = candidates[index]
+            let left = CGFloat(detection.x - detection.w * 0.5)
+            let right = CGFloat(detection.x + detection.w * 0.5)
+            let top = CGFloat(detection.y - detection.h * 0.5)
+            let bottom = CGFloat(detection.y + detection.h * 0.5)
+            return frameCenterX >= left && frameCenterX <= right && frameCenterY >= top && frameCenterY <= bottom
+        }
+        let selectionPool = candidatesContainingCenter.isEmpty ? Array(candidates.indices) : candidatesContainingCenter
+        func normalizedCenterDistance(_ index: Int) -> CGFloat {
+            hypot(CGFloat(candidates[index].x) - frameCenterX, CGFloat(candidates[index].y) - frameCenterY) / frameDiagonal
+        }
+        return selectionPool.min { lhs, rhs in
+            let distanceDelta = normalizedCenterDistance(lhs) - normalizedCenterDistance(rhs)
+            if abs(distanceDelta) < Self.centeredPrimaryDistanceTieTolerance {
+                return candidates[lhs].confidence > candidates[rhs].confidence
+            }
+            return distanceDelta < 0
+        } ?? 0
+    }
+
     private func processFrameRTMDetLive(
         processBuffer: CVPixelBuffer,
         model: MLModel,
@@ -4982,7 +5016,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             consecutiveEmptyMaskFrames = 0
             pruneSelectedPinsMissingFromCurrentCandidates(candidates)
 
-            var primaryIdx = 0
+            // SEGMENT_PRIMARY auto-segments whatever you point at: pick the furniture under the
+            // screen center first, then highest confidence. Plain candidates[0] is the
+            // highest-confidence box anywhere, which kept segmenting a chair only ~20% in frame as
+            // you panned to the next item. (identifyOnly returns early; segmentSelected overrides.)
+            var primaryIdx = segmentationMode == .segmentPrimary
+                ? centeredPrimaryCandidateIndex(candidates, imageWidth: bufW, imageHeight: bufH)
+                : 0
             var primary = candidates[primaryIdx]
 
             if segmentationMode == .identifyOnly {
