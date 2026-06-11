@@ -24,7 +24,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
-    private let rtmdetLiveMinimumProcessInterval: TimeInterval = 1.0
+    /// RTMDet drops every in-flight frame (`captureOutput`) and never queues, so the next inference
+    /// always starts from the freshest camera frame. Keep this floor at 0 so panning to new furniture
+    /// re-segments as fast as inference completes instead of lagging ~1s behind the live view.
+    private let rtmdetLiveMinimumProcessInterval: TimeInterval = 0.0
     var confidenceThreshold: Float = 0.10
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
@@ -4956,9 +4959,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             guard !candidates.isEmpty else {
                 consecutiveEmptyMaskFrames += 1
+                // Hold the last cutout for a few empty frames so panning between two pieces of
+                // furniture doesn't flash the bare room ("switched to live mode") in the gap before
+                // the new furniture is detected. Only clear once the drop is sustained.
+                let exceededEmptyGrace = consecutiveEmptyMaskFrames > maskGraceFrameLimit
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.clearLiveDetectionOverlay(clearCandidates: true)
+                    if exceededEmptyGrace {
+                        self.clearLiveDetectionOverlay(clearCandidates: true)
+                    }
                     self.setProgress(0.70, text: "Looking for furniture…")
                 }
                 logRTMDetLiveFrameFooter(
