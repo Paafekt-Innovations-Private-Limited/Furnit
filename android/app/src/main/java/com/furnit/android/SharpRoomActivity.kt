@@ -117,6 +117,9 @@ class SharpRoomActivity : AppCompatActivity() {
         private const val SCALE_LOG_TAG = "FURNIT_SCALE"
         private const val BRAIN_BUTTON_COLOR_IDLE = "#007AFF"
         private const val BRAIN_BUTTON_COLOR_SEGMENTING = "#34C759"
+        /** Hold the last cutout for this many empty (no-detection) frames before clearing it, so a
+         *  quick pan between two pieces of furniture doesn't flicker to the bare room. */
+        private const val BRAIN_MASK_GRACE_FRAME_LIMIT = 3
         const val EXTRA_PLY_PATH = "ply_path"
         const val EXTRA_ROOM_FOLDER = "room_folder"
         const val EXTRA_ROOM_WIDTH = "room_width"
@@ -341,6 +344,9 @@ class SharpRoomActivity : AppCompatActivity() {
     private var latestBrainPrimaryDetection: DetectionResult? = null
     private var latestBrainDetections: List<DetectionResult> = emptyList()
     private var latestBrainMask: Bitmap? = null
+    /** Consecutive frames with no detection/mask; the last cutout is held for up to
+     *  [BRAIN_MASK_GRACE_FRAME_LIMIT] of these so panning between furniture doesn't flash the room. */
+    private var consecutiveEmptyBrainFrames: Int = 0
     private var latestBrainInputSize: Int = 640
     private var latestBrainOverlayScale: Float = 1f
     private var brainSegmentationMode: BrainSegmentationMode = BrainSegmentationMode.IDENTIFY_ONLY
@@ -2537,6 +2543,7 @@ class SharpRoomActivity : AppCompatActivity() {
         showIdentifyLivePreview = true
         latestBrainDetections = emptyList()
         latestBrainMask = null
+        consecutiveEmptyBrainFrames = 0
         latestBrainInputSize = 640
         latestBrainOverlayScale = 1f
         latestBrainPrimaryDetection = null
@@ -2624,6 +2631,17 @@ class SharpRoomActivity : AppCompatActivity() {
         firstResultCallback: () -> Unit,
         sourceBitmap: Bitmap? = null,
     ) {
+        // Hold the last cutout for a few empty frames so panning between two pieces of furniture
+        // doesn't flash the bare room in the gap before the new furniture is detected. Only kicks
+        // in once we already have a cutout to retain; sustained drops still clear it.
+        val isEmptyResult = result?.mask == null && (result?.detections?.isEmpty() != false)
+        if (isEmptyResult && latestBrainMask != null && consecutiveEmptyBrainFrames < BRAIN_MASK_GRACE_FRAME_LIMIT) {
+            consecutiveEmptyBrainFrames++
+            firstResultCallback()
+            showBrainDetectionOverlay()
+            return
+        }
+        consecutiveEmptyBrainFrames = if (isEmptyResult) consecutiveEmptyBrainFrames + 1 else 0
         if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY) {
             // SEGMENT_PRIMARY + SEGMENT_SELECTED both composite a real cutout, so publish its mean
             // color for the placement intelligence card.
