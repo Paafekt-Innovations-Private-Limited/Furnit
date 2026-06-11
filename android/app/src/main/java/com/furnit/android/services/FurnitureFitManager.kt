@@ -60,6 +60,10 @@ class FurnitureFitManager(private val context: Context) {
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
         private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
+        /** Center-distance band (fraction of frame diagonal) within which two auto-primary candidates
+         *  count as equally centered, so the tie falls back to confidence. Avoids jitter between two
+         *  similarly centered objects frame to frame. */
+        private const val CENTERED_PRIMARY_DISTANCE_TIE_TOLERANCE = 0.06f
 
         /**
          * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
@@ -857,11 +861,23 @@ class FurnitureFitManager(private val context: Context) {
                     selectedClassIds.isEmpty() -> keepDets
                     else -> keepDets.filter { it.classId in selectedClassIds }
                 }
-                val primaryDet = pickPrimaryOnnxDetection(
-                    detections = primaryCandidates,
-                    frameWidth = inputW.toFloat(),
-                    frameHeight = inputH.toFloat(),
-                )
+                // Auto-segment (no pins/class filter) picks whatever furniture is under the screen
+                // center first, then confidence — so panning to the next item hands off cleanly
+                // instead of sticking on a higher-confidence box only ~20% in frame. Pinned/class
+                // selection keeps the weighted score (the user already chose the target).
+                val primaryDet = if (restrictToSelection) {
+                    pickPrimaryOnnxDetection(
+                        detections = primaryCandidates,
+                        frameWidth = inputW.toFloat(),
+                        frameHeight = inputH.toFloat(),
+                    )
+                } else {
+                    pickCenteredPrimaryDetection(
+                        detections = primaryCandidates,
+                        frameWidth = inputW.toFloat(),
+                        frameHeight = inputH.toFloat(),
+                    )
+                }
                 val maskSourceDetections = if (restrictToSelection) primaryCandidates else emptyList()
                 val maskDetectionsForBuild = if (restrictToSelection) {
                     maskSourceDetections.map { detection ->
@@ -1560,6 +1576,42 @@ class FurnitureFitManager(private val context: Context) {
             }
         }
         return bestDetection ?: bestEdgeFallback ?: detections.maxByOrNull { it.confidence }
+    }
+
+    /** The detection the user is pointing at for auto-segment: prefer boxes whose bbox contains the
+     *  frame center (directly under the crosshair); within that pool pick the one whose center is
+     *  nearest the frame center, breaking near-ties by confidence. Falls back to all detections when
+     *  none cover the center (panning across a gap). Coordinates are in model-input space. */
+    private fun pickCenteredPrimaryDetection(
+        detections: List<Detection>,
+        frameWidth: Float,
+        frameHeight: Float,
+    ): Detection? {
+        if (detections.isEmpty()) return null
+        val frameCenterX = frameWidth * 0.5f
+        val frameCenterY = frameHeight * 0.5f
+        val frameDiagonal = max(1f, sqrt(frameWidth * frameWidth + frameHeight * frameHeight))
+        val detectionsContainingCenter = detections.filter { detection ->
+            val left = detection.x - detection.w * 0.5f
+            val right = detection.x + detection.w * 0.5f
+            val top = detection.y - detection.h * 0.5f
+            val bottom = detection.y + detection.h * 0.5f
+            frameCenterX in left..right && frameCenterY in top..bottom
+        }
+        val selectionPool = detectionsContainingCenter.ifEmpty { detections }
+        fun normalizedCenterDistance(detection: Detection): Float {
+            val deltaX = detection.x - frameCenterX
+            val deltaY = detection.y - frameCenterY
+            return sqrt(deltaX * deltaX + deltaY * deltaY) / frameDiagonal
+        }
+        return selectionPool.minWithOrNull { lhs, rhs ->
+            val distanceDelta = normalizedCenterDistance(lhs) - normalizedCenterDistance(rhs)
+            if (kotlin.math.abs(distanceDelta) < CENTERED_PRIMARY_DISTANCE_TIE_TOLERANCE) {
+                rhs.confidence.compareTo(lhs.confidence)
+            } else {
+                distanceDelta.compareTo(0f)
+            }
+        }
     }
 
     private fun pickSupportingTableForMonitorScene(
