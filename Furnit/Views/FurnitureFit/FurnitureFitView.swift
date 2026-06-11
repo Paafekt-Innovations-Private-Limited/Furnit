@@ -6116,13 +6116,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logDebug(
             "👆 [TAP_SELECT] class=\(displayClassName(tappedDetection.classIdx)) conf=\(String(format: "%.2f", tappedDetection.confidence)) index=\(tappedIndex)"
         )
-        if currentModelIsRTMDet && segmentationMode == .identifyOnly {
-            logDebug("👆 [TAP_SELECT] requesting segmentSelected mode for RTMDet mask render")
-            segmentationMode = .segmentSelected
-            DispatchQueue.main.async { [weak self] in
-                self?.onSegmentationModeChangeRequested?(.segmentSelected)
-            }
-        }
+        // Tap only highlights the selection; segmentation is deferred until the user taps the
+        // Segment button (which switches to .segmentSelected). Previously a tap immediately flipped
+        // to .segmentSelected and started segmenting, skipping the confirm step.
     }
 
     @objc private func handleClearSelectedObjectTapped() {
