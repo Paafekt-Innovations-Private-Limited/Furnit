@@ -4934,6 +4934,24 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         } ?? 0
     }
 
+    /// Composite several full-frame instance-mask cutouts into one image (the union of their painted
+    /// pixels) so the Segment button can cut out every selected item together. Each instance mask is
+    /// already source-frame sized with a transparent background, so stacking them is the union.
+    private func combinedInstanceMaskImage(_ masks: [UIImage]) -> UIImage? {
+        guard let firstMask = masks.first else { return nil }
+        guard masks.count > 1 else { return firstMask }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = firstMask.scale
+        let renderer = UIGraphicsImageRenderer(size: firstMask.size, format: format)
+        return renderer.image { _ in
+            let bounds = CGRect(origin: .zero, size: firstMask.size)
+            for mask in masks {
+                mask.draw(in: bounds)
+            }
+        }
+    }
+
     private func processFrameRTMDetLive(
         processBuffer: CVPixelBuffer,
         model: MLModel,
@@ -5024,6 +5042,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 ? centeredPrimaryCandidateIndex(candidates, imageWidth: bufW, imageHeight: bufH)
                 : 0
             var primary = candidates[primaryIdx]
+            // Candidate indices to composite into the cutout. For multi-select, the Segment button
+            // cuts out every selected item together (union of their instance masks); empty/one entry
+            // falls back to the single primaryIdx mask.
+            var selectedMaskCompositeIndices: [Int] = []
 
             if segmentationMode == .identifyOnly {
                 DispatchQueue.main.async { [weak self] in
@@ -5079,8 +5101,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             if segmentationMode == .segmentSelected && !pins.isEmpty {
                 let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
-                guard let selected = matchedCandidates.first,
-                      let selectedIndex = candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, selected) >= 0.99 }) else {
+                let matchedIndices = matchedCandidates.compactMap { matched in
+                    candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 })
+                }
+                guard let selectedIndex = matchedIndices.first else {
                     if debugMode {
                         logDebug("🧠 [RTMDet segment] no selected candidate matched current frame pins=\(pins.count) candidates=\(candidates.count)")
                     }
@@ -5104,14 +5128,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     resetProcessingFlag()
                     return
                 }
-                primary = selected
                 primaryIdx = selectedIndex
+                primary = candidates[selectedIndex]
+                selectedMaskCompositeIndices = matchedIndices
                 if debugMode {
                     let hasMask = primaryIdx < candidateMasks.count && candidateMasks[primaryIdx] != nil
                     // [SEGMENT_DIAG] Disambiguate why a tapped item yields no cutout: per-instance mask
                     // missing (index misalignment / decode), vs. quality reject / pin re-match handled below.
                     logDebug(
-                        "🧠 [RTMDet segment] selectedIndex=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
+                        "🧠 [RTMDet segment] selected=\(matchedIndices) primary=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
                         "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no") " +
                         "candidateMasks=\(candidateMasks.count) candidates=\(candidates.count) " +
                         "hasOverlayFallback=\(result.overlayMaskImage != nil)"
@@ -5119,9 +5144,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            let selectedMaskImage = primaryIdx < candidateMasks.count
-                ? candidateMasks[primaryIdx]
-                : result.overlayMaskImage
+            let isMultiSelectComposite = selectedMaskCompositeIndices.count > 1
+            let selectedMaskImage: UIImage?
+            if isMultiSelectComposite {
+                // Union the instance masks of every selected item into one cutout.
+                let selectedMasks = selectedMaskCompositeIndices.compactMap { index -> UIImage? in
+                    index < candidateMasks.count ? candidateMasks[index] : nil
+                }
+                selectedMaskImage = combinedInstanceMaskImage(selectedMasks) ?? result.overlayMaskImage
+            } else {
+                selectedMaskImage = primaryIdx < candidateMasks.count
+                    ? candidateMasks[primaryIdx]
+                    : result.overlayMaskImage
+            }
             var finalCGImage = selectedMaskImage?.cgImage
             let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
             if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
@@ -5131,7 +5166,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     imageHeight: bufW
                 )
             }
-            if let image = finalCGImage {
+            // The single-mask quality gate rejects a too-large/rectangular blob (a bad segmentation).
+            // A multi-select union is intentionally large, so skip it — each instance mask was already
+            // decoded individually for a furniture the user explicitly picked.
+            if let image = finalCGImage, !isMultiSelectComposite {
                 let quality = shouldAcceptRTMDetMask(image, for: primary)
                 if debugMode {
                     logDebug("🧠 [RTMDet mask quality] class=\(displayClassName(primary.classIdx)) \(quality.reason)")
