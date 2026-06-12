@@ -15,6 +15,42 @@ struct RTMDetInferenceResult {
 enum RTMDetImageInference {
     private static var lastInputTensorStats = "input=unavailable"
 
+    /// Shared GPU-backed Core Image context. Creating a `CIContext` allocates Metal/GPU state, so it
+    /// must never be built per frame — reuse this one for every resize. `CIContext` rendering is
+    /// thread-safe; inference runs on a single serial queue regardless.
+    private static let sharedCIContext = CIContext()
+
+    /// Reused pool of square model-input buffers so each frame recycles a buffer instead of calling
+    /// `CVPixelBufferCreate`. Recreated only if the model input side changes. (Inference is serial.)
+    private static var resizeBufferPool: CVPixelBufferPool?
+    private static var resizeBufferPoolSize: Int = 0
+
+    private static func squareInputBuffer(size: Int) -> CVPixelBuffer? {
+        if resizeBufferPool == nil || resizeBufferPoolSize != size {
+            let attrs: [CFString: Any] = [
+                kCVPixelBufferIOSurfacePropertiesKey: [:],
+                kCVPixelBufferMetalCompatibilityKey: true,
+                kCVPixelBufferCGImageCompatibilityKey: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+                kCVPixelBufferWidthKey: size,
+                kCVPixelBufferHeightKey: size,
+                kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
+            ]
+            var pool: CVPixelBufferPool?
+            guard CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess else {
+                return nil
+            }
+            resizeBufferPool = pool
+            resizeBufferPoolSize = size
+        }
+        guard let pool = resizeBufferPool else { return nil }
+        var buffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &buffer) == kCVReturnSuccess else {
+            return nil
+        }
+        return buffer
+    }
+
     // MARK: - Image helpers (relocated from the removed RTMDet path)
 
     /// Square side for stretch, read from the Core ML `image` input constraint; defaults to 640.
@@ -133,7 +169,9 @@ enum RTMDetImageInference {
         allowedClassIndices: Set<Int>? = nil,
         maxMaskCount: Int = 6,
         maxDetectionCount: Int = 12,
-        buildInstanceMasks: Bool = false
+        buildInstanceMasks: Bool = false,
+        restrictInstanceMasksToFrameCenter: Bool = false,
+        debug: Bool = false
     ) throws -> RTMDetInferenceResult {
         guard let sourceBuffer = pixelBufferFromImage(image) else {
             throw NSError(
@@ -150,7 +188,9 @@ enum RTMDetImageInference {
             allowedClassIndices: allowedClassIndices,
             maxMaskCount: maxMaskCount,
             maxDetectionCount: maxDetectionCount,
-            buildInstanceMasks: buildInstanceMasks
+            buildInstanceMasks: buildInstanceMasks,
+            restrictInstanceMasksToFrameCenter: restrictInstanceMasksToFrameCenter,
+            debug: debug
         )
     }
 
@@ -162,7 +202,9 @@ enum RTMDetImageInference {
         allowedClassIndices: Set<Int>? = nil,
         maxMaskCount: Int = 6,
         maxDetectionCount: Int = 12,
-        buildInstanceMasks: Bool = false
+        buildInstanceMasks: Bool = false,
+        restrictInstanceMasksToFrameCenter: Bool = false,
+        debug: Bool = false
     ) throws -> RTMDetInferenceResult {
         let sourceWidth = CVPixelBufferGetWidth(sourceBuffer)
         let sourceHeight = CVPixelBufferGetHeight(sourceBuffer)
@@ -180,7 +222,7 @@ enum RTMDetImageInference {
             )
         }
 
-        let inputProvider = try inputProvider(for: preparedBuffer, model: model)
+        let inputProvider = try inputProvider(for: preparedBuffer, model: model, collectStats: debug)
         let output = try model.prediction(from: inputProvider)
 
         let outputArrays = collectMultiArrays(from: output)
@@ -203,7 +245,9 @@ enum RTMDetImageInference {
                 allowedClassIndices: allowedClassIndices,
                 maxMaskCount: maxMaskCount,
                 maxDetectionCount: maxDetectionCount,
-                buildInstanceMasks: buildInstanceMasks
+                buildInstanceMasks: buildInstanceMasks,
+                restrictInstanceMasksToFrameCenter: restrictInstanceMasksToFrameCenter,
+                debug: debug
             )
         }
 
@@ -303,7 +347,9 @@ enum RTMDetImageInference {
         allowedClassIndices: Set<Int>?,
         maxMaskCount: Int,
         maxDetectionCount: Int,
-        buildInstanceMasks: Bool
+        buildInstanceMasks: Bool,
+        restrictInstanceMasksToFrameCenter: Bool,
+        debug: Bool
     ) throws -> RTMDetInferenceResult {
         let arrays = Dictionary(uniqueKeysWithValues: outputArrays.map { ($0.name, $0.array) })
         guard let cls80 = arrays["cls_80"],
@@ -330,14 +376,16 @@ enum RTMDetImageInference {
             classIndices = Array(0..<80)
         }
 
-        let rawProbe = rawDecodeProbe(
+        // These probes each sweep all 8,400 grid cells (sigmoid/argmax) only to format debug strings
+        // in `outputSummary`; skip them in production.
+        let rawProbe = debug ? rawDecodeProbe(
             levels: [
                 (cls: cls80, side: 80),
                 (cls: cls40, side: 40),
                 (cls: cls20, side: 20),
             ]
-        )
-        let cls80Probe = multiArrayReadProbe(name: "cls_80", array: cls80)
+        ) : ""
+        let cls80Probe = debug ? multiArrayReadProbe(name: "cls_80", array: cls80) : ""
         let rawCandidates = decodeRawCandidates(
             levels: [
                 (cls: cls80, bbox: bbox80, kernel: kernel80, side: 80, stride: Float(modelSide) / 80),
@@ -385,8 +433,19 @@ enum RTMDetImageInference {
         )
         let instanceMaskImages: [UIImage?]
         if buildInstanceMasks {
+            let frameCenterX = Float(sourceWidth) * 0.5
+            let frameCenterY = Float(sourceHeight) * 0.5
             instanceMaskImages = mappedBoxes.enumerated().map { index, mappedBox in
                 guard index < rawMaskPlanes.count else { return nil }
+                // segmentPrimary only ever composites the centered detection's mask, so skip the
+                // full-frame RGBA build for detections that don't cover the frame center. The centered
+                // primary covers it in the common case; a rare no-cover frame falls back to
+                // overlayMaskImage downstream. segmentSelected passes false (multi-select needs all).
+                if restrictInstanceMasksToFrameCenter,
+                   !(frameCenterX >= mappedBox.x1 && frameCenterX <= mappedBox.x2
+                     && frameCenterY >= mappedBox.y1 && frameCenterY <= mappedBox.y2) {
+                    return nil
+                }
                 return buildCombinedRawMaskImage(
                     rawMaskPlanes: [rawMaskPlanes[index]],
                     boxes: [mappedBox],
@@ -399,11 +458,9 @@ enum RTMDetImageInference {
             instanceMaskImages = []
         }
 
-        return RTMDetInferenceResult(
-            detections: mappedDetections,
-            overlayMaskImage: combinedMask,
-            instanceMaskImages: instanceMaskImages,
-            outputSummary: outputSummary + [
+        // Debug-only summary lines (each sweeps grid cells / mask planes); empty in production.
+        let debugSummary: [String] = debug
+            ? [
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
                 "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
                 perClassBestProbe(
@@ -412,6 +469,12 @@ enum RTMDetImageInference {
                 ),
                 cls80Probe,
             ] + rawMaskPlaneStats(rawMaskPlanes, selected: selected)
+            : []
+        return RTMDetInferenceResult(
+            detections: mappedDetections,
+            overlayMaskImage: combinedMask,
+            instanceMaskImages: instanceMaskImages,
+            outputSummary: outputSummary + debugSummary
         )
     }
 
@@ -559,16 +622,20 @@ enum RTMDetImageInference {
 
             for y in 0..<side {
                 for x in 0..<side {
+                    // sigmoid is monotonic, so argmax over raw logits == argmax over sigmoids: pick the
+                    // best class by logit, then apply sigmoid once (instead of per class).
                     var bestClass = -1
-                    var bestScore: Float = 0
+                    var bestLogit = -Float.greatestFiniteMagnitude
                     for classIdx in classIndices where !classBlacklist.contains(classIdx) {
-                        let score = sigmoid(clsAt(0, classIdx, y, x))
-                        if score > bestScore {
-                            bestScore = score
+                        let logit = clsAt(0, classIdx, y, x)
+                        if logit > bestLogit {
+                            bestLogit = logit
                             bestClass = classIdx
                         }
                     }
-                    guard bestClass >= 0, bestScore >= confidenceThreshold else { continue }
+                    guard bestClass >= 0 else { continue }
+                    let bestScore = sigmoid(bestLogit)
+                    guard bestScore >= confidenceThreshold else { continue }
 
                     let centerX = (Float(x) + 0.5) * stride
                     let centerY = (Float(y) + 0.5) * stride
@@ -664,18 +731,22 @@ enum RTMDetImageInference {
         let b2 = b1 + 8
         let b3 = b2 + 8
 
+        // Scratch buffers reused across pixels (every element is overwritten each iteration before
+        // read), so the 6,400-pixel loop no longer allocates 3 arrays per pixel.
+        var input = [Float](repeating: 0, count: 10)
+        var hidden1 = [Float](repeating: 0, count: 8)
+        var hidden2 = [Float](repeating: 0, count: 8)
+
         for y in 0..<maskSide {
             for x in 0..<maskSide {
                 let gridX = (Float(x) + 0.5) * 8
                 let gridY = (Float(y) + 0.5) * 8
-                var input = [Float](repeating: 0, count: 10)
                 input[0] = (candidate.priorX - gridX) / max(1, candidate.stride * 8)
                 input[1] = (candidate.priorY - gridY) / max(1, candidate.stride * 8)
                 for c in 0..<8 {
                     input[2 + c] = featAt(0, c, y, x)
                 }
 
-                var hidden1 = [Float](repeating: 0, count: 8)
                 for o in 0..<8 {
                     var sum = candidate.kernel[b1 + o]
                     for i in 0..<10 {
@@ -684,7 +755,6 @@ enum RTMDetImageInference {
                     hidden1[o] = max(0, sum)
                 }
 
-                var hidden2 = [Float](repeating: 0, count: 8)
                 for o in 0..<8 {
                     var sum = candidate.kernel[b2 + o]
                     for i in 0..<8 {
@@ -763,7 +833,7 @@ enum RTMDetImageInference {
         return rgbaImage(width: sourceWidth, height: sourceHeight, rgba: rgba)
     }
 
-    private static func inputProvider(for pixelBuffer: CVPixelBuffer, model: MLModel) throws -> MLFeatureProvider {
+    private static func inputProvider(for pixelBuffer: CVPixelBuffer, model: MLModel, collectStats: Bool) throws -> MLFeatureProvider {
         let imageValue = MLFeatureValue(pixelBuffer: pixelBuffer)
         if model.modelDescription.inputDescriptionsByName["image"]?.type == .image {
             return try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
@@ -779,7 +849,7 @@ enum RTMDetImageInference {
             let constraint = multiArrayInput.value.multiArrayConstraint
             let shape = constraint?.shape.map(\.intValue) ?? []
             let dataType = constraint?.dataType ?? .float32
-            let array = try rgbNCHWMultiArray(from: pixelBuffer, expectedShape: shape, dataType: dataType)
+            let array = try rgbNCHWMultiArray(from: pixelBuffer, expectedShape: shape, dataType: dataType, collectStats: collectStats)
             return try MLDictionaryFeatureProvider(dictionary: [inputName: MLFeatureValue(multiArray: array)])
         }
 
@@ -793,7 +863,8 @@ enum RTMDetImageInference {
     private static func rgbNCHWMultiArray(
         from pixelBuffer: CVPixelBuffer,
         expectedShape: [Int],
-        dataType: MLMultiArrayDataType
+        dataType: MLMultiArrayDataType,
+        collectStats: Bool
     ) throws -> MLMultiArray {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -847,13 +918,8 @@ enum RTMDetImageInference {
         var sumValue: Double = 0
         var valueCount = 0
 
-        func record(_ value: Float) {
-            minValue = min(minValue, value)
-            maxValue = max(maxValue, value)
-            sumValue += Double(value)
-            valueCount += 1
-        }
-
+        // The min/max/mean tracking exists only to format `lastInputTensorStats` for the debug probe.
+        // Skipping it in production avoids ~1.2M extra branch+arithmetic ops per frame (640×640×3).
         for y in 0..<height {
             let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
             for x in 0..<width {
@@ -865,16 +931,21 @@ enum RTMDetImageInference {
                 let bNorm = (b - meanB) / stdB
                 let gNorm = (g - meanG) / stdG
                 let rNorm = (r - meanR) / stdR
-                record(bNorm)
-                record(gNorm)
-                record(rNorm)
+                if collectStats {
+                    for value in [bNorm, gNorm, rNorm] {
+                        minValue = min(minValue, value)
+                        maxValue = max(maxValue, value)
+                        sumValue += Double(value)
+                        valueCount += 1
+                    }
+                }
                 writeNormalizedInputValue(bNorm, offset: dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
                 writeNormalizedInputValue(gNorm, offset: channelStride + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
                 writeNormalizedInputValue(rNorm, offset: channelStride * 2 + dest, float32Ptr: float32Ptr, float16Ptr: float16Ptr)
             }
         }
 
-        if valueCount > 0 {
+        if collectStats && valueCount > 0 {
             let meanValue = sumValue / Double(valueCount)
             lastInputTensorStats = "input[min=\(String(format: "%.3f", minValue)) max=\(String(format: "%.3f", maxValue)) mean=\(String(format: "%.3f", meanValue))]"
         }
@@ -1354,8 +1425,11 @@ enum RTMDetImageInference {
         guard strides.count == 4 else {
             return { _, _, _, _ in 0 }
         }
+        // Capture strides as scalars so the hot per-element closure avoids an array subscript +
+        // bounds check on every read.
+        let s0 = strides[0], s1 = strides[1], s2 = strides[2], s3 = strides[3]
         return { n, c, y, x in
-            valueAtOffset(n * strides[0] + c * strides[1] + y * strides[2] + x * strides[3])
+            valueAtOffset(n * s0 + c * s1 + y * s2 + x * s3)
         }
     }
 
@@ -1523,23 +1597,8 @@ enum RTMDetImageInference {
 
     // Shared with the RTMDet image path, duplicated here so the RTMDet spike stays isolated.
     private static func resizeStretchToSquare(src: CVPixelBuffer, size: Int) -> CVPixelBuffer? {
-        let attrs: [CFString: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey: [:],
-            kCVPixelBufferMetalCompatibilityKey: true,
-            kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-        ]
-        var out: CVPixelBuffer?
-        guard CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            size,
-            size,
-            kCVPixelFormatType_32BGRA,
-            attrs as CFDictionary,
-            &out
-        ) == kCVReturnSuccess, let dst = out else { return nil }
-
-        CIContext().render(CIImage(cvPixelBuffer: src).transformed(by: CGAffineTransform(scaleX: CGFloat(size) / CGFloat(CVPixelBufferGetWidth(src)), y: CGFloat(size) / CGFloat(CVPixelBufferGetHeight(src)))), to: dst)
+        guard let dst = squareInputBuffer(size: size) else { return nil }
+        sharedCIContext.render(CIImage(cvPixelBuffer: src).transformed(by: CGAffineTransform(scaleX: CGFloat(size) / CGFloat(CVPixelBufferGetWidth(src)), y: CGFloat(size) / CGFloat(CVPixelBufferGetHeight(src)))), to: dst)
         return dst
     }
 
@@ -1548,21 +1607,7 @@ enum RTMDetImageInference {
         let srcH = CVPixelBufferGetHeight(src)
         guard srcW > 0, srcH > 0 else { return nil }
 
-        let attrs: [CFString: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey: [:],
-            kCVPixelBufferMetalCompatibilityKey: true,
-            kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-        ]
-        var out: CVPixelBuffer?
-        guard CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            size,
-            size,
-            kCVPixelFormatType_32BGRA,
-            attrs as CFDictionary,
-            &out
-        ) == kCVReturnSuccess, let dst = out else { return nil }
+        guard let dst = squareInputBuffer(size: size) else { return nil }
 
         CVPixelBufferLockBaseAddress(dst, [])
         if let base = CVPixelBufferGetBaseAddress(dst) {
@@ -1576,7 +1621,7 @@ enum RTMDetImageInference {
         let tx = (CGFloat(size) - scaledW) * 0.5
         let ty = (CGFloat(size) - scaledH) * 0.5
         let transform = CGAffineTransform(a: gain, b: 0, c: 0, d: gain, tx: tx, ty: ty)
-        CIContext().render(CIImage(cvPixelBuffer: src).transformed(by: transform), to: dst)
+        sharedCIContext.render(CIImage(cvPixelBuffer: src).transformed(by: transform), to: dst)
         return dst
     }
 }

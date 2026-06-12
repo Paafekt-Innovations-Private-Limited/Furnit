@@ -3970,12 +3970,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 confidenceThreshold: rtmDetDecodeFloor,
                 classBlacklist: classBlacklist.ignoredIndices,
                 allowedClassIndices: Self.rtmDetFurnitureClassIndices,
-                maxMaskCount: segmentationMode == .segmentSelected ? 6 : 1,
+                // identifyOnly shows boxes only — request NO masks so the decoder skips the proto
+                // MLP + RGBA build entirely. segmentSelected may union up to 6; segmentPrimary needs 1.
+                maxMaskCount: {
+                    switch segmentationMode {
+                    case .identifyOnly: return 0
+                    case .segmentSelected: return 6
+                    case .segmentPrimary: return 1
+                    }
+                }(),
                 maxDetectionCount: 6,
-                // Need per-detection masks whenever we composite a cutout: pinned (segmentSelected)
-                // or the auto highest-confidence primary (segmentPrimary). identifyOnly shows boxes
-                // only, so skip the per-instance mask build there.
-                buildInstanceMasks: segmentationMode != .identifyOnly
+                // Per-detection masks only when we composite a cutout: pinned (segmentSelected) or the
+                // centered primary (segmentPrimary). identifyOnly skips the per-instance build.
+                buildInstanceMasks: segmentationMode != .identifyOnly,
+                // segmentPrimary uses only the centered detection's mask, so the decoder skips the
+                // RGBA build for off-center detections; segmentSelected needs all (multi-select).
+                restrictInstanceMasksToFrameCenter: segmentationMode == .segmentPrimary,
+                debug: debugMode
             )
             // Per-class gate (table 0.30, others 0.55). Pair each detection with its decoder index so
             // the parallel mask array stays aligned with this filtered+sorted candidate list — the
