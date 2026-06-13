@@ -60,6 +60,11 @@ class FurnitureFitManager(private val context: Context) {
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
         private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
+        /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
+         *  When false, ALL COCO classes are scored and selection relies purely on
+         *  confidence / center / mask-quality gates — set false to test the unrestricted detector
+         *  before deciding the final class policy. Mirrors iOS `controlledList`. */
+        private const val CONTROLLED_LIST = false
         /** Center-distance band (fraction of frame diagonal) within which two auto-primary candidates
          *  count as equally centered, so the tie falls back to confidence. Avoids jitter between two
          *  similarly centered objects frame to frame. */
@@ -1399,7 +1404,11 @@ class FurnitureFitManager(private val context: Context) {
                     val pos = y * side + x
                     var bestClass = -1
                     var bestScore = 0f
-                    for (classId in RTMDET_ALLOWED_CLASS_IDS) {
+                    // Controlled: only the curated furniture classes. Uncontrolled: every COCO class
+                    // (channel count = cls.size / hw) so the highest-scoring object wins regardless of class.
+                    val classIds: Iterable<Int> =
+                        if (CONTROLLED_LIST) RTMDET_ALLOWED_CLASS_IDS else 0 until (level.cls.size / hw)
+                    for (classId in classIds) {
                         val logit = level.cls[classId * hw + pos]
                         val score = sigmoid(logit)
                         if (score > bestScore) {
