@@ -37,6 +37,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				diagrams/README.md,
+				docs/README.md,
 				Models/RTMDet/README.md,
 				Views/FurnitureFit/README.md,
 			);

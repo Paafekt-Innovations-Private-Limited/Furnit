@@ -89,3 +89,4 @@ enum FurnitureFitGeometry {
         return image.cropping(to: clipRect) ?? image
     }
 }
+
