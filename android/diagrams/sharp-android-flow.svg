@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="960" viewBox="0 0 860 960" font-family="Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
+    </marker>
+    <style>
+      .title{font-size:24px;font-weight:700;fill:#1c1c1e}
+      .sub{font-size:13px;fill:#6b7280}
+      .bt{font-size:15px;font-weight:600}
+      .bs{font-size:11.5px}
+      .cam{fill:#eef2f7;stroke:#94a3b8}
+      .acc{fill:#e7f7ec;stroke:#16a34a}
+      .cpu{fill:#e9f0fb;stroke:#3b82f6}
+      .data{fill:#f4f4f5;stroke:#a1a1aa}
+      .disp{fill:#fdeede;stroke:#f59e0b}
+      .io{fill:#f3eafe;stroke:#8b5cf6}
+      .edge{stroke:#5b6470;stroke-width:1.6;fill:none}
+      .legtxt{font-size:12px;fill:#374151}
+    </style>
+  </defs>
+
+  <text x="32" y="40" class="title">SHARP room reconstruction — Android (Kotlin / ExecuTorch)</text>
+  <text x="32" y="60" class="sub">Single photo → 3D Gaussian-splat room. SharpService → ExecutorchInt8Sharp. ★ = Vulkan GPU / XNNPACK INT8.</text>
+
+  <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ExecuTorch (Vulkan/XNNPACK)</text>
+  <rect x="752" y="74" width="14" height="14" rx="3" class="io"/><text x="772" y="86" class="legtxt">file/web</text>
+
+  <g><rect x="250" y="100" width="360" height="52" rx="12" class="cam"/>
+    <text x="430" y="122" text-anchor="middle" class="bt">Single photo (Bitmap)</text>
+    <text x="430" y="140" text-anchor="middle" class="bs">camera capture or gallery pick</text></g>
+  <path class="edge" d="M430,152 L430,190" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="190" width="360" height="52" rx="12" class="cpu"/>
+    <text x="430" y="212" text-anchor="middle" class="bt">Sliding-pyramid tiling</text>
+    <text x="430" y="230" text-anchor="middle" class="bs">1× grid (16 or 25 patches) + 0.5× / 0.25× multi-scale</text></g>
+  <path class="edge" d="M430,242 L430,280" marker-end="url(#arrow)"/>
+
+  <g><rect x="220" y="280" width="420" height="72" rx="12" class="acc"/>
+    <text x="430" y="302" text-anchor="middle" class="bt">★ ExecuTorch .pte forward — component mode</text>
+    <text x="430" y="320" text-anchor="middle" class="bs">per patch: patch-encoder → image-encoder parts → gaussian head</text>
+    <text x="430" y="338" text-anchor="middle" class="bs">split parts (&lt;500 MB each) to avoid OOM · Vulkan GPU or XNNPACK INT8 CPU</text></g>
+  <path class="edge" d="M430,352 L430,390" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="390" width="360" height="52" rx="12" class="cpu"/>
+    <text x="430" y="412" text-anchor="middle" class="bt">Merge patches</text>
+    <text x="430" y="430" text-anchor="middle" class="bs">stitch patch outputs → feature pyramid → gaussian head</text></g>
+  <path class="edge" d="M430,442 L430,480" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="480" width="360" height="52" rx="12" class="data"/>
+    <text x="430" y="502" text-anchor="middle" class="bt">Gaussian parameters</text>
+    <text x="430" y="520" text-anchor="middle" class="bs">N gaussians (pos, scale, rot, color, opacity) · raw PLY coords</text></g>
+  <path class="edge" d="M430,532 L430,570" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="570" width="360" height="52" rx="12" class="io"/>
+    <text x="430" y="592" text-anchor="middle" class="bt">writePLY</text>
+    <text x="430" y="610" text-anchor="middle" class="bs">classic.ply + sidecars + sharp_monodepth.bin (for wall measure)</text></g>
+  <path class="edge" d="M430,622 L430,660" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="660" width="360" height="52" rx="12" class="disp"/>
+    <text x="430" y="682" text-anchor="middle" class="bt">Render room</text>
+    <text x="430" y="700" text-anchor="middle" class="bs">WebView · THREE.js / SparkJS renders the PLY splat</text></g>
+  <path class="edge" d="M430,712 L430,750" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="750" width="360" height="52" rx="12" class="data"/>
+    <text x="430" y="772" text-anchor="middle" class="bt">Room dimensions</text>
+    <text x="430" y="790" text-anchor="middle" class="bs">AABB bounds + ARCore/EXIF → width / height / depth (metres)</text></g>
+
+  <g><rect x="648" y="390" width="186" height="142" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="660" y="412" class="bt" font-size="13">Backends (pref)</text>
+    <text x="660" y="436" class="bs">inference_backend =</text>
+    <text x="660" y="456" class="bs">· executorch (INT8 CPU)</text>
+    <text x="660" y="474" class="bs">· vulkan (GPU)</text>
+    <text x="660" y="492" class="bs">· ncnn (component)</text>
+    <text x="660" y="510" class="bs">· litert (4-part split)</text></g>
+
+  <text x="32" y="852" class="sub">The "brain" (RTMDet) overlay then composites furniture cutouts over this rendered room — see rtmdet-android-flow.svg.</text>
+</svg>

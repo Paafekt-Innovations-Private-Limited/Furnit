@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="880" viewBox="0 0 860 880" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
+    </marker>
+    <style>
+      .title{font-size:24px;font-weight:700;fill:#1c1c1e}
+      .sub{font-size:13px;fill:#6b7280}
+      .bt{font-size:15px;font-weight:600}
+      .bs{font-size:11.5px}
+      .cam{fill:#eef2f7;stroke:#94a3b8}
+      .ane{fill:#dff3e6;stroke:#1ea64a}
+      .cpu{fill:#e9f0fb;stroke:#3b82f6}
+      .data{fill:#f4f4f5;stroke:#a1a1aa}
+      .disp{fill:#fdeede;stroke:#f59e0b}
+      .io{fill:#f3eafe;stroke:#8b5cf6}
+      .edge{stroke:#5b6470;stroke-width:1.6;fill:none}
+      .legtxt{font-size:12px;fill:#374151}
+    </style>
+  </defs>
+
+  <text x="32" y="40" class="title">SHARP room reconstruction — iOS (Swift / Core ML)</text>
+  <text x="32" y="60" class="sub">Single photo → 3D Gaussian-splat room. SHARPService.generateGaussians → SharpRoomView. ★ = ANE/GPU.</text>
+
+  <rect x="600" y="74" width="14" height="14" rx="3" class="ane"/><text x="620" y="86" class="legtxt">ANE/GPU</text>
+  <rect x="690" y="74" width="14" height="14" rx="3" class="cpu"/><text x="710" y="86" class="legtxt">CPU</text>
+  <rect x="752" y="74" width="14" height="14" rx="3" class="io"/><text x="772" y="86" class="legtxt">file/web</text>
+
+  <g><rect x="250" y="100" width="360" height="52" rx="12" class="cam"/>
+    <text x="430" y="122" text-anchor="middle" class="bt">Single photo (UIImage)</text>
+    <text x="430" y="140" text-anchor="middle" class="bs">camera capture or gallery pick</text></g>
+  <path class="edge" d="M430,152 L430,190" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="190" width="360" height="52" rx="12" class="cpu"/>
+    <text x="430" y="212" text-anchor="middle" class="bt">Preprocess</text>
+    <text x="430" y="230" text-anchor="middle" class="bs">apply orientation · resize to model input</text></g>
+  <path class="edge" d="M430,242 L430,280" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="280" width="360" height="52" rx="12" class="ane"/>
+    <text x="430" y="302" text-anchor="middle" class="bt">★ Core ML SHARP inference</text>
+    <text x="430" y="320" text-anchor="middle" class="bs">preprocessAndRunInference · compiled .mlmodelc (ANE/GPU)</text></g>
+  <path class="edge" d="M430,332 L430,370" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="370" width="360" height="52" rx="12" class="data"/>
+    <text x="430" y="392" text-anchor="middle" class="bt">Gaussian parameters</text>
+    <text x="430" y="410" text-anchor="middle" class="bs">N gaussians × paramsPerGaussian (pos, scale, rot, color, opacity)</text></g>
+  <path class="edge" d="M430,422 L430,460" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="460" width="360" height="52" rx="12" class="io"/>
+    <text x="430" y="482" text-anchor="middle" class="bt">writePLY</text>
+    <text x="430" y="500" text-anchor="middle" class="bs">Room_*_classic.ply + camera/AABB sidecars + thumbnail.png</text></g>
+  <path class="edge" d="M430,512 L430,550" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="550" width="360" height="52" rx="12" class="cpu"/>
+    <text x="430" y="572" text-anchor="middle" class="bt">Release Core ML model</text>
+    <text x="430" y="590" text-anchor="middle" class="bs">free RAM so WKWebView/WebKit can allocate</text></g>
+  <path class="edge" d="M430,602 L430,640" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="640" width="360" height="52" rx="12" class="disp"/>
+    <text x="430" y="662" text-anchor="middle" class="bt">SharpRoomView render</text>
+    <text x="430" y="680" text-anchor="middle" class="bs">WKWebView · THREE.js / SparkJS renders the PLY splat</text></g>
+  <path class="edge" d="M430,692 L430,730" marker-end="url(#arrow)"/>
+
+  <g><rect x="250" y="730" width="360" height="52" rx="12" class="data"/>
+    <text x="430" y="752" text-anchor="middle" class="bt">Room dimensions</text>
+    <text x="430" y="770" text-anchor="middle" class="bs">AABB bounds → width / height / depth (scene units → metres)</text></g>
+
+  <text x="32" y="828" class="sub">The "brain" (RTMDet) overlay then composites furniture cutouts over this rendered room — see rtmdet-swift-flow.svg.</text>
+</svg>
