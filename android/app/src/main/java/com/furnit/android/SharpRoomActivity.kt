@@ -2890,11 +2890,16 @@ class SharpRoomActivity : AppCompatActivity() {
             cameraProvider = provider
             provider.unbindAll()
             DebugLogger.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
+            // High-res analysis frame so the cutout composite + guided-filter run at full resolution
+            // (matches iOS' ~720x1280 buffer). Inference is unaffected: the model path always
+            // downsamples to 640x640 in preprocessFrameForModel, so detection cost is unchanged while
+            // the cutout edge quality follows this resolution. Same frame feeds mask + RGB, so no
+            // desync/ghosting. CameraX picks the closest supported size.
             val brainAnalysisSize =
                 if (photoOrientation.equals("landscape", ignoreCase = true)) {
-                    android.util.Size(640, 480)
+                    android.util.Size(1280, 720)
                 } else {
-                    android.util.Size(480, 640)
+                    android.util.Size(720, 1280)
                 }
             val analysis = ImageAnalysis.Builder()
                 .setTargetResolution(brainAnalysisSize)
