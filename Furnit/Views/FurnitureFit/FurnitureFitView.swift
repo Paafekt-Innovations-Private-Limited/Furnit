@@ -454,12 +454,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         57, // couch
         59, // bed
         60, // dining table
+        62, // tv
     ]
     private static let rtmDetCOCOClassNames: [Int: String] = [
         56: "chair",
         57: "couch",
         59: "bed",
         60: "dining table",
+        62: "tv",
     ]
     private static let rtmDetLiveConfidenceThreshold: Float = 0.55
     /// COCO under-scores standing / height-adjustable desks as "dining table" (class 60); on-device
@@ -3886,7 +3888,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         let imageArea = CGFloat(max(1, cgImage.width * cgImage.height))
         let maskAreaFraction = CGFloat(stats.pixelCount) / imageArea
-        let fillLimit: CGFloat = detection.classIdx == 56 ? 0.72 : 0.88
+        // A TV is genuinely rectangular, so a correct mask fills nearly its whole bounding
+        // box; only reject it if it fills essentially everything. Chairs need the tightest
+        // gate (lots of see-through gaps); other furniture uses the default.
+        let fillLimit: CGFloat
+        switch detection.classIdx {
+        case 56: fillLimit = 0.72  // chair
+        case 62: fillLimit = 0.98  // tv (rectangular by nature)
+        default: fillLimit = 0.88
+        }
         let tooRectangular = stats.fillRatio > fillLimit
         // Large furniture (couch, bed, dining table) legitimately fills a big part of the
         // frame — especially when partial or viewed up close — so allow a higher area
