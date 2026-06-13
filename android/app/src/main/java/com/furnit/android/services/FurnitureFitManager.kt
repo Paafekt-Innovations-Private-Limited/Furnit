@@ -776,14 +776,16 @@ class FurnitureFitManager(private val context: Context) {
                     }
                 }
             }
-            LogUtil.i(TAG, "Furniture segmentation preprocess: ${elapsedMillis(preprocessStartNanos)}ms")
+            val preprocessMillis = elapsedMillis(preprocessStartNanos)
+            LogUtil.i(TAG, "Furniture segmentation preprocess: ${preprocessMillis}ms")
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
             tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
 
             val inferenceStartNanos = System.nanoTime()
             session.run(mapOf(inputName to tensor)).use { results ->
-                LogUtil.i(TAG, "Furniture segmentation inference: ${elapsedMillis(inferenceStartNanos)}ms")
+                val inferenceMillis = elapsedMillis(inferenceStartNanos)
+                LogUtil.i(TAG, "Furniture segmentation inference: ${inferenceMillis}ms")
 
                 if (isRtmdetRaw) {
                     return handleRtmdetRawResults(
@@ -796,6 +798,8 @@ class FurnitureFitManager(private val context: Context) {
                         session = session,
                         results = results,
                         totalStartNanos = totalStartNanos,
+                        preprocessMillis = preprocessMillis,
+                        inferenceMillis = inferenceMillis,
                     )
                 }
 
@@ -1179,6 +1183,8 @@ class FurnitureFitManager(private val context: Context) {
         session: OrtSession,
         results: OrtSession.Result,
         totalStartNanos: Long,
+        preprocessMillis: Long = 0,
+        inferenceMillis: Long = 0,
     ): SegmentationResult? {
         val parseStartNanos = System.nanoTime()
         val raw = extractRtmdetRawOutputs(session, results) ?: run {
@@ -1205,9 +1211,10 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
         }
+        val parseNmsMillis = elapsedMillis(parseStartNanos)
         LogUtil.i(
             TAG,
-            "RTMDet raw detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${elapsedMillis(parseStartNanos)}ms",
+            "RTMDet raw detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${parseNmsMillis}ms",
         )
 
         val pinList = pinnedDetections.orEmpty()
@@ -1257,9 +1264,16 @@ class FurnitureFitManager(private val context: Context) {
 
         if (!includeMask) {
             LogUtil.i(TAG, "RTMDet raw total (detections only): ${elapsedMillis(totalStartNanos)}ms")
+            LogUtil.i(
+                TAG,
+                "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
+                    "parse+nms=$parseNmsMillis maskBuild=0 total=${elapsedMillis(totalStartNanos)} " +
+                    "(planes=0 includeMask=false)",
+            )
             return SegmentationResult(null, detectionResults, inputW, detectionResults.firstOrNull())
         }
 
+        var maskBuildMillis = 0L
         var maskResult: Bitmap? = null
         if (primaryDet != null && maskDetectionsForBuild.isNotEmpty()) {
             val maskBuildStartNanos = System.nanoTime()
@@ -1323,10 +1337,19 @@ class FurnitureFitManager(private val context: Context) {
             maskResult = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888).also { maskBmp ->
                 maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
             }
-            LogUtil.i(TAG, "RTMDet cutout mask build: ${elapsedMillis(maskBuildStartNanos)}ms")
+            maskBuildMillis = elapsedMillis(maskBuildStartNanos)
+            LogUtil.i(TAG, "RTMDet cutout mask build: ${maskBuildMillis}ms")
         }
 
         LogUtil.i(TAG, "RTMDet raw total: ${elapsedMillis(totalStartNanos)}ms")
+        // One consolidated breakdown line (mirrors the iOS `stageMillis:`), so the bottleneck is
+        // readable at a glance: preprocess → inference (ONNX backbone) → parse+nms → maskBuild (cutout).
+        LogUtil.i(
+            TAG,
+            "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
+                "parse+nms=$parseNmsMillis maskBuild=$maskBuildMillis total=${elapsedMillis(totalStartNanos)} " +
+                "(planes=${maskDetectionsForBuild.size} includeMask=true)",
+        )
         return SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
     }
 
