@@ -240,11 +240,12 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Nearest-neighbor map from prototype mask to full frame, copy camera ARGB only where mask > [threshold].
-     * Fills [outPixels] with transparent black, then only scans the primary band [x0,x1)×[y0,y1) and uses
-     * horizontal spans that share the same proto column (fewer branches than per-pixel double loop).
+     * Bilinearly upsamples the 80x80 prototype mask to frame resolution and writes a feathered cutout:
+     * transparent outside the object, opaque inside, with a soft anti-aliased alpha ramp at the edge
+     * (centered on [threshold]). The old nearest-neighbor + hard-threshold path baked blocky 8px alpha
+     * squares into the bitmap that display-time filtering could not smooth. Scans only the primary band.
      */
-    private fun composeNearestProtoMaskCutoutArgb(
+    private fun composeBilinearProtoMaskCutoutArgb(
         framePixels: IntArray,
         outPixels: IntArray,
         maskProto: FloatArray,
@@ -266,21 +267,54 @@ class FurnitureFitManager(private val context: Context) {
         val yEnd = y1.coerceIn(0, frameH)
         if (xStart >= xEnd || yStart >= yEnd) return
 
+        // Feather the alpha across a band (~one mask cell wide) centered on [threshold] so the
+        // upscaled edge is anti-aliased instead of a hard 0/255 step.
+        val edgeFeather = 0.10f
+        val edgeLow = threshold - edgeFeather
+        val edgeSpan = (2f * edgeFeather).coerceAtLeast(1e-4f)
+        val scaleX = protoW.toFloat() / frameW.toFloat()
+        val scaleY = protoH.toFloat() / frameH.toFloat()
+        val maxProtoX = protoW - 1
+        val maxProtoY = protoH - 1
+
+        // Precompute proto-column neighbours + horizontal weight per frame column in the band.
+        val bandWidth = xEnd - xStart
+        val leftProtoColumn = IntArray(bandWidth)
+        val rightProtoColumn = IntArray(bandWidth)
+        val horizontalWeight = FloatArray(bandWidth)
+        for (x in xStart until xEnd) {
+            val sampleX = (x + 0.5f) * scaleX - 0.5f
+            val baseX = floor(sampleX.toDouble()).toInt()
+            val index = x - xStart
+            leftProtoColumn[index] = baseX.coerceIn(0, maxProtoX)
+            rightProtoColumn[index] = (baseX + 1).coerceIn(0, maxProtoX)
+            horizontalWeight[index] = (sampleX - baseX).coerceIn(0f, 1f)
+        }
+
         for (y in yStart until yEnd) {
-            val protoY = (y * protoH) / frameH
-            val protoRow = protoY * protoW
+            val sampleY = (y + 0.5f) * scaleY - 0.5f
+            val baseY = floor(sampleY.toDouble()).toInt()
+            val verticalWeight = (sampleY - baseY).coerceIn(0f, 1f)
+            val topRow = baseY.coerceIn(0, maxProtoY) * protoW
+            val bottomRow = (baseY + 1).coerceIn(0, maxProtoY) * protoW
             val rowBase = y * frameW
-            var x = xStart
-            while (x < xEnd) {
-                val protoX = (x * protoW) / frameW
-                val nextX = minOf(
-                    xEnd,
-                    ((protoX + 1) * frameW + protoW - 1) / protoW,
-                )
-                if (maskProto[protoRow + protoX] > threshold) {
-                    System.arraycopy(framePixels, rowBase + x, outPixels, rowBase + x, nextX - x)
-                }
-                x = nextX
+            for (x in xStart until xEnd) {
+                val index = x - xStart
+                val leftColumn = leftProtoColumn[index]
+                val rightColumn = rightProtoColumn[index]
+                val weightX = horizontalWeight[index]
+                val topLeft = maskProto[topRow + leftColumn]
+                val topRight = maskProto[topRow + rightColumn]
+                val bottomLeft = maskProto[bottomRow + leftColumn]
+                val bottomRight = maskProto[bottomRow + rightColumn]
+                val top = topLeft + (topRight - topLeft) * weightX
+                val bottom = bottomLeft + (bottomRight - bottomLeft) * weightX
+                val maskValue = top + (bottom - top) * verticalWeight
+                val coverage = ((maskValue - edgeLow) / edgeSpan).coerceIn(0f, 1f)
+                if (coverage <= 0f) continue
+                val alpha = (coverage * 255f + 0.5f).toInt()
+                val rgb = framePixels[rowBase + x] and 0x00FFFFFF
+                outPixels[rowBase + x] = (alpha shl 24) or rgb
             }
         }
     }
@@ -1037,7 +1071,7 @@ class FurnitureFitManager(private val context: Context) {
                     frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
 
                     val outPixels = IntArray(frameW * frameH)
-                    composeNearestProtoMaskCutoutArgb(
+                    composeBilinearProtoMaskCutoutArgb(
                         framePixels = framePixels,
                         outPixels = outPixels,
                         maskProto = maskProto,
@@ -1332,7 +1366,7 @@ class FurnitureFitManager(private val context: Context) {
             val framePixels = IntArray(frameW * frameH)
             frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
             val outPixels = IntArray(frameW * frameH)
-            composeNearestProtoMaskCutoutArgb(
+            composeBilinearProtoMaskCutoutArgb(
                 framePixels = framePixels,
                 outPixels = outPixels,
                 maskProto = maskProto,
