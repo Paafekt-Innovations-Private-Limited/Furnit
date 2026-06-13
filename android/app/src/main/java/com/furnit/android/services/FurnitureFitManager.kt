@@ -239,13 +239,67 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
+    // Reusable scratch for the guided-filter cutout refine, grown on demand so steady-state frames
+    // allocate nothing. Sized to the largest primary band seen.
+    private var gfCapacity = 0
+    private var gfProb = FloatArray(0)      // bilinear-upscaled mask probability (p)
+    private var gfGuide = FloatArray(0)     // normalized camera luma (I)
+    private var gfMeanI = FloatArray(0)
+    private var gfMeanP = FloatArray(0)
+    private var gfCorrI = FloatArray(0)
+    private var gfCorrIp = FloatArray(0)
+    private var gfCoefA = FloatArray(0)
+    private var gfCoefB = FloatArray(0)
+    private var gfBoxTmp = FloatArray(0)
+    private var gfPrefix = FloatArray(0)
+
+    private fun ensureGuidedScratch(bandPixels: Int, maxBandSide: Int) {
+        if (bandPixels > gfCapacity) {
+            gfCapacity = bandPixels
+            gfProb = FloatArray(bandPixels)
+            gfGuide = FloatArray(bandPixels)
+            gfMeanI = FloatArray(bandPixels)
+            gfMeanP = FloatArray(bandPixels)
+            gfCorrI = FloatArray(bandPixels)
+            gfCorrIp = FloatArray(bandPixels)
+            gfCoefA = FloatArray(bandPixels)
+            gfCoefB = FloatArray(bandPixels)
+            gfBoxTmp = FloatArray(bandPixels)
+        }
+        if (gfPrefix.size < maxBandSide + 1) gfPrefix = FloatArray(maxBandSide + 1)
+    }
+
+    /** Separable normalized box (mean) filter with radius [r], border-aware via per-line prefix sums. */
+    private fun boxMean(src: FloatArray, dst: FloatArray, tmp: FloatArray, prefix: FloatArray, w: Int, h: Int, r: Int) {
+        for (y in 0 until h) {
+            val base = y * w
+            prefix[0] = 0f
+            for (x in 0 until w) prefix[x + 1] = prefix[x] + src[base + x]
+            for (x in 0 until w) {
+                val lo = if (x - r > 0) x - r else 0
+                val hi = if (x + r < w - 1) x + r else w - 1
+                tmp[base + x] = (prefix[hi + 1] - prefix[lo]) / (hi - lo + 1)
+            }
+        }
+        for (x in 0 until w) {
+            prefix[0] = 0f
+            for (y in 0 until h) prefix[y + 1] = prefix[y] + tmp[y * w + x]
+            for (y in 0 until h) {
+                val lo = if (y - r > 0) y - r else 0
+                val hi = if (y + r < h - 1) y + r else h - 1
+                dst[y * w + x] = (prefix[hi + 1] - prefix[lo]) / (hi - lo + 1)
+            }
+        }
+    }
+
     /**
-     * Bilinearly upsamples the 80x80 prototype mask to frame resolution and writes a feathered cutout:
-     * transparent outside the object, opaque inside, with a soft anti-aliased alpha ramp at the edge
-     * (centered on [threshold]). The old nearest-neighbor + hard-threshold path baked blocky 8px alpha
-     * squares into the bitmap that display-time filtering could not smooth. Scans only the primary band.
+     * Bilinearly upsamples the 80x80 prototype mask to frame resolution, then refines the alpha with a
+     * guided filter using the camera luma as guidance so the edge snaps to the real object boundary
+     * instead of the blocky 80x80 mask grid. Fixes both the stair-stepped edges and the background
+     * bleed (background pixels fall on the wrong side of the true edge and get pushed toward alpha 0).
+     * Scans only the primary band [x0,x1) x [y0,y1); the mask probability is used directly as alpha.
      */
-    private fun composeBilinearProtoMaskCutoutArgb(
+    private fun composeGuidedProtoMaskCutoutArgb(
         framePixels: IntArray,
         outPixels: IntArray,
         maskProto: FloatArray,
@@ -257,7 +311,6 @@ class FurnitureFitManager(private val context: Context) {
         x1: Int,
         y0: Int,
         y1: Int,
-        threshold: Float = 0.5f,
     ) {
         outPixels.fill(0)
         if (x0 >= x1 || y0 >= y1 || frameW <= 0 || frameH <= 0) return
@@ -267,54 +320,82 @@ class FurnitureFitManager(private val context: Context) {
         val yEnd = y1.coerceIn(0, frameH)
         if (xStart >= xEnd || yStart >= yEnd) return
 
-        // Feather the alpha across a band (~one mask cell wide) centered on [threshold] so the
-        // upscaled edge is anti-aliased instead of a hard 0/255 step.
-        val edgeFeather = 0.10f
-        val edgeLow = threshold - edgeFeather
-        val edgeSpan = (2f * edgeFeather).coerceAtLeast(1e-4f)
+        val bandW = xEnd - xStart
+        val bandH = yEnd - yStart
+        val bandPixels = bandW * bandH
+        ensureGuidedScratch(bandPixels, max(bandW, bandH))
+
+        val prob = gfProb
+        val guide = gfGuide
         val scaleX = protoW.toFloat() / frameW.toFloat()
         val scaleY = protoH.toFloat() / frameH.toFloat()
         val maxProtoX = protoW - 1
         val maxProtoY = protoH - 1
 
-        // Precompute proto-column neighbours + horizontal weight per frame column in the band.
-        val bandWidth = xEnd - xStart
-        val leftProtoColumn = IntArray(bandWidth)
-        val rightProtoColumn = IntArray(bandWidth)
-        val horizontalWeight = FloatArray(bandWidth)
-        for (x in xStart until xEnd) {
-            val sampleX = (x + 0.5f) * scaleX - 0.5f
-            val baseX = floor(sampleX.toDouble()).toInt()
-            val index = x - xStart
-            leftProtoColumn[index] = baseX.coerceIn(0, maxProtoX)
-            rightProtoColumn[index] = (baseX + 1).coerceIn(0, maxProtoX)
-            horizontalWeight[index] = (sampleX - baseX).coerceIn(0f, 1f)
-        }
-
-        for (y in yStart until yEnd) {
+        // Phase 1: fill p (bilinear mask probability) and guide (normalized luma) over the band.
+        for (yy in 0 until bandH) {
+            val y = yStart + yy
             val sampleY = (y + 0.5f) * scaleY - 0.5f
             val baseY = floor(sampleY.toDouble()).toInt()
-            val verticalWeight = (sampleY - baseY).coerceIn(0f, 1f)
+            val weightY = (sampleY - baseY).coerceIn(0f, 1f)
             val topRow = baseY.coerceIn(0, maxProtoY) * protoW
             val bottomRow = (baseY + 1).coerceIn(0, maxProtoY) * protoW
-            val rowBase = y * frameW
-            for (x in xStart until xEnd) {
-                val index = x - xStart
-                val leftColumn = leftProtoColumn[index]
-                val rightColumn = rightProtoColumn[index]
-                val weightX = horizontalWeight[index]
-                val topLeft = maskProto[topRow + leftColumn]
-                val topRight = maskProto[topRow + rightColumn]
-                val bottomLeft = maskProto[bottomRow + leftColumn]
-                val bottomRight = maskProto[bottomRow + rightColumn]
-                val top = topLeft + (topRight - topLeft) * weightX
-                val bottom = bottomLeft + (bottomRight - bottomLeft) * weightX
-                val maskValue = top + (bottom - top) * verticalWeight
-                val coverage = ((maskValue - edgeLow) / edgeSpan).coerceIn(0f, 1f)
-                if (coverage <= 0f) continue
-                val alpha = (coverage * 255f + 0.5f).toInt()
-                val rgb = framePixels[rowBase + x] and 0x00FFFFFF
-                outPixels[rowBase + x] = (alpha shl 24) or rgb
+            val frameRow = y * frameW
+            val bandRow = yy * bandW
+            for (xx in 0 until bandW) {
+                val x = xStart + xx
+                val sampleX = (x + 0.5f) * scaleX - 0.5f
+                val baseX = floor(sampleX.toDouble()).toInt()
+                val weightX = (sampleX - baseX).coerceIn(0f, 1f)
+                val leftColumn = baseX.coerceIn(0, maxProtoX)
+                val rightColumn = (baseX + 1).coerceIn(0, maxProtoX)
+                val top = maskProto[topRow + leftColumn] + (maskProto[topRow + rightColumn] - maskProto[topRow + leftColumn]) * weightX
+                val bottom = maskProto[bottomRow + leftColumn] + (maskProto[bottomRow + rightColumn] - maskProto[bottomRow + leftColumn]) * weightX
+                val bandIndex = bandRow + xx
+                prob[bandIndex] = top + (bottom - top) * weightY
+                val color = framePixels[frameRow + x]
+                val red = (color ushr 16) and 0xFF
+                val green = (color ushr 8) and 0xFF
+                val blue = color and 0xFF
+                guide[bandIndex] = (0.299f * red + 0.587f * green + 0.114f * blue) / 255f
+            }
+        }
+
+        // Phase 2: guided filter (He et al.). I = guide, p = prob. eps on normalized luma.
+        val radius = 8
+        val eps = 1e-3f
+        val prefix = gfPrefix
+        boxMean(guide, gfMeanI, gfBoxTmp, prefix, bandW, bandH, radius)
+        boxMean(prob, gfMeanP, gfBoxTmp, prefix, bandW, bandH, radius)
+        for (i in 0 until bandPixels) gfCoefA[i] = guide[i] * prob[i]
+        boxMean(gfCoefA, gfCorrIp, gfBoxTmp, prefix, bandW, bandH, radius)
+        for (i in 0 until bandPixels) gfCoefA[i] = guide[i] * guide[i]
+        boxMean(gfCoefA, gfCorrI, gfBoxTmp, prefix, bandW, bandH, radius)
+        for (i in 0 until bandPixels) {
+            val meanI = gfMeanI[i]
+            val meanP = gfMeanP[i]
+            val varI = gfCorrI[i] - meanI * meanI
+            val covIp = gfCorrIp[i] - meanI * meanP
+            val a = covIp / (varI + eps)
+            gfCoefA[i] = a
+            gfCoefB[i] = meanP - a * meanI
+        }
+        boxMean(gfCoefA, gfCorrIp, gfBoxTmp, prefix, bandW, bandH, radius) // meanA -> gfCorrIp
+        boxMean(gfCoefB, gfCorrI, gfBoxTmp, prefix, bandW, bandH, radius)  // meanB -> gfCorrI
+
+        // Phase 3: composite refined alpha q = meanA * I + meanB.
+        for (yy in 0 until bandH) {
+            val y = yStart + yy
+            val frameRow = y * frameW
+            val bandRow = yy * bandW
+            for (xx in 0 until bandW) {
+                val bandIndex = bandRow + xx
+                var q = gfCorrIp[bandIndex] * guide[bandIndex] + gfCorrI[bandIndex]
+                if (q <= 0.0039f) continue // < 1/255, fully transparent
+                if (q > 1f) q = 1f
+                val alpha = (q * 255f + 0.5f).toInt()
+                val x = xStart + xx
+                outPixels[frameRow + x] = (alpha shl 24) or (framePixels[frameRow + x] and 0x00FFFFFF)
             }
         }
     }
@@ -1071,7 +1152,7 @@ class FurnitureFitManager(private val context: Context) {
                     frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
 
                     val outPixels = IntArray(frameW * frameH)
-                    composeBilinearProtoMaskCutoutArgb(
+                    composeGuidedProtoMaskCutoutArgb(
                         framePixels = framePixels,
                         outPixels = outPixels,
                         maskProto = maskProto,
@@ -1366,7 +1447,7 @@ class FurnitureFitManager(private val context: Context) {
             val framePixels = IntArray(frameW * frameH)
             frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
             val outPixels = IntArray(frameW * frameH)
-            composeBilinearProtoMaskCutoutArgb(
+            composeGuidedProtoMaskCutoutArgb(
                 framePixels = framePixels,
                 outPixels = outPixels,
                 maskProto = maskProto,
