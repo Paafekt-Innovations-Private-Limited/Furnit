@@ -20,6 +20,9 @@ struct SettingsFurnitureFitImageScanView: View {
         let shouldShowLoadingOverlay = isLoadingSelectedPhoto || loadedModel == nil || isModelLoading
 
         GeometryReader { proxy in
+            // Read the scalar here so the @Sendable PhotosPicker label closure captures a Sendable
+            // CGFloat instead of the non-Sendable GeometryProxy.
+            let idealImageHeight = proxy.size.height * 0.7
             VStack(alignment: .leading, spacing: 16) {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     ZStack {
@@ -70,7 +73,7 @@ struct SettingsFurnitureFitImageScanView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 360, idealHeight: proxy.size.height * 0.7)
+                    .frame(minHeight: 360, idealHeight: idealImageHeight)
                 }
                 .buttonStyle(.plain)
 

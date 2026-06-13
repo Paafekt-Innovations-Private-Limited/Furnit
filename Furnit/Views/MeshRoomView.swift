@@ -2001,8 +2001,6 @@ struct MeshWebGLView: UIViewRepresentable {
 
         let isPortrait = photoOrientation == .portrait
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
-        let orbitControlsURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/controls/OrbitControls.js")
-        let gltfExporterURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/exporters/GLTFExporter.js")
 
         return """
         <!DOCTYPE html>

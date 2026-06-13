@@ -1963,7 +1963,6 @@ struct GLBWebGLView: UIViewRepresentable {
         let base64GLB = glbData.base64EncodedString()
         let isPortrait = photoOrientation == .portrait
         let threeModuleURL = BundledWebViewAsset.assetURLString(for: "three/build/three.module.js")
-        let gltfLoaderURL = BundledWebViewAsset.assetURLString(for: "three/examples/jsm/loaders/GLTFLoader.js")
         return """
         <!DOCTYPE html>
         <html>

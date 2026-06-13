@@ -5283,6 +5283,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return bytes[offset + min(3, bytesPerPixel - 1)]
         case .noneSkipFirst, .noneSkipLast, .none:
             return 255
+        case .alphaOnly:
+            return bytes[offset]
         @unknown default:
             return bytes[offset + min(3, bytesPerPixel - 1)]
         }
