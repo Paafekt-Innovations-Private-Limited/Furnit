@@ -161,6 +161,14 @@ enum RTMDetImageInference {
         let stride: Float
     }
 
+    /// Per-stage wall-clock (ms) for live-frame profiling; carried into the postprocess so the whole
+    /// breakdown is emitted on one debug line.
+    private struct StageMillis {
+        let resize: Double
+        let input: Double
+        let predict: Double
+    }
+
     static func runInstanceSegmentation(
         image: UIImage,
         model: MLModel,
@@ -211,6 +219,9 @@ enum RTMDetImageInference {
         let modelSide = modelInputSize(for: model)
         let usesLetterbox = modelSide >= 1280
 
+        // Per-stage timing (cheap Date() marks) to locate the live-frame bottleneck; only the summary
+        // string is built/logged in debug.
+        let tStageStart = Date()
         guard let preparedBuffer = usesLetterbox
             ? resizeLetterboxToSquare(src: sourceBuffer, size: modelSide)
             : resizeStretchToSquare(src: sourceBuffer, size: modelSide)
@@ -221,9 +232,17 @@ enum RTMDetImageInference {
                 userInfo: [NSLocalizedDescriptionKey: "Image preprocessing failed"],
             )
         }
+        let tResized = Date()
 
         let inputProvider = try inputProvider(for: preparedBuffer, model: model, collectStats: debug)
+        let tInputBuilt = Date()
         let output = try model.prediction(from: inputProvider)
+        let tPredicted = Date()
+        let preStageMillis = StageMillis(
+            resize: tResized.timeIntervalSince(tStageStart) * 1000,
+            input: tInputBuilt.timeIntervalSince(tResized) * 1000,
+            predict: tPredicted.timeIntervalSince(tInputBuilt) * 1000
+        )
 
         let outputArrays = collectMultiArrays(from: output)
         let outputSummary = outputArrays.map { entry in
@@ -247,6 +266,7 @@ enum RTMDetImageInference {
                 maxDetectionCount: maxDetectionCount,
                 buildInstanceMasks: buildInstanceMasks,
                 restrictInstanceMasksToFrameCenter: restrictInstanceMasksToFrameCenter,
+                preStageMillis: preStageMillis,
                 debug: debug
             )
         }
@@ -349,6 +369,7 @@ enum RTMDetImageInference {
         maxDetectionCount: Int,
         buildInstanceMasks: Bool,
         restrictInstanceMasksToFrameCenter: Bool,
+        preStageMillis: StageMillis,
         debug: Bool
     ) throws -> RTMDetInferenceResult {
         let arrays = Dictionary(uniqueKeysWithValues: outputArrays.map { ($0.name, $0.array) })
@@ -386,6 +407,7 @@ enum RTMDetImageInference {
             ]
         ) : ""
         let cls80Probe = debug ? multiArrayReadProbe(name: "cls_80", array: cls80) : ""
+        let tDecodeStart = Date()
         let rawCandidates = decodeRawCandidates(
             levels: [
                 (cls: cls80, bbox: bbox80, kernel: kernel80, side: 80, stride: Float(modelSide) / 80),
@@ -417,12 +439,14 @@ enum RTMDetImageInference {
             )
         }
 
+        let tDecoded = Date()
         let rawMaskPlanes: [[Float]?]
         if maxMaskCount > 0 || buildInstanceMasks {
             rawMaskPlanes = selected.map { buildRawMaskPlane(candidate: $0, maskFeat: maskFeat) }
         } else {
             rawMaskPlanes = []
         }
+        let tMaskPlanes = Date()
 
         let combinedMask = buildCombinedRawMaskImage(
             rawMaskPlanes: rawMaskPlanes,
@@ -431,6 +455,7 @@ enum RTMDetImageInference {
             sourceBuffer: sourceBuffer,
             mapping: mapping
         )
+        let tCombined = Date()
         let instanceMaskImages: [UIImage?]
         if buildInstanceMasks {
             let frameCenterX = Float(sourceWidth) * 0.5
@@ -457,10 +482,19 @@ enum RTMDetImageInference {
         } else {
             instanceMaskImages = []
         }
+        let tInstances = Date()
 
         // Debug-only summary lines (each sweeps grid cells / mask planes); empty in production.
         let debugSummary: [String] = debug
             ? [
+                "stageMillis: resize=\(String(format: "%.1f", preStageMillis.resize)) "
+                    + "input=\(String(format: "%.1f", preStageMillis.input)) "
+                    + "predict=\(String(format: "%.1f", preStageMillis.predict)) "
+                    + "decode=\(String(format: "%.1f", tDecoded.timeIntervalSince(tDecodeStart) * 1000)) "
+                    + "maskPlanes=\(String(format: "%.1f", tMaskPlanes.timeIntervalSince(tDecoded) * 1000)) "
+                    + "combined=\(String(format: "%.1f", tCombined.timeIntervalSince(tMaskPlanes) * 1000)) "
+                    + "instances=\(String(format: "%.1f", tInstances.timeIntervalSince(tCombined) * 1000)) "
+                    + "(planes=\(selected.count) buildInstanceMasks=\(buildInstanceMasks))",
                 "rawSwiftDecode: candidates=\(rawCandidates.count) kept=\(selected.count)",
                 "rawSwiftProbe: \(lastInputTensorStats) \(rawProbe)",
                 perClassBestProbe(
