@@ -95,9 +95,10 @@ class FurnitureFitManager(private val context: Context) {
     }
     private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    // ONNX Runtime objects
-    private var ortEnv: OrtEnvironment? = null
-    private var ortSession: OrtSession? = null
+    // ONNX Runtime objects. @Volatile: written on the loader/main thread, read + closed on the
+    // single-thread inferenceExecutor.
+    @Volatile private var ortEnv: OrtEnvironment? = null
+    @Volatile private var ortSession: OrtSession? = null
     private var loadedOnnxAssetName: String? = null
 
     /**
@@ -218,18 +219,23 @@ class FurnitureFitManager(private val context: Context) {
             return
         }
 
-        inferenceExecutor.execute {
-            try {
-                if (ortSession != null) {
-                    runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, pinnedDetections, callback)
-                    return@execute
-                }
+        try {
+            inferenceExecutor.execute {
+                try {
+                    if (ortSession != null) {
+                        runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, pinnedDetections, callback)
+                        return@execute
+                    }
 
-                mainHandler.post { callback(null) }
-            } catch (e: Exception) {
-                LogUtil.e("FurnitureFitManager", "inference error", e)
-                mainHandler.post { callback(null) }
+                    mainHandler.post { callback(null) }
+                } catch (e: Exception) {
+                    LogUtil.e("FurnitureFitManager", "inference error", e)
+                    mainHandler.post { callback(null) }
+                }
             }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // close() shut the executor down (screen tearing down); drop this frame quietly.
+            mainHandler.post { callback(null) }
         }
     }
 
@@ -2175,10 +2181,22 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     fun close() {
-        ortSession?.close()
-        ortSession = null
-        ortEnv?.close()
-        ortEnv = null
+        // Close the native ONNX session ON the inference thread. Closing it from the caller
+        // (main) thread while the executor is mid-session.run() frees the session's mutex under a
+        // running inference and aborts with SIGABRT ("pthread_mutex_lock called on a destroyed
+        // mutex"). The single-thread executor serializes this teardown after any queued/in-flight
+        // inference; shutdown() then rejects new frames (handled where execute() is called).
+        if (inferenceExecutor.isShutdown) return
+        try {
+            inferenceExecutor.execute {
+                ortSession?.close()
+                ortSession = null
+                ortEnv?.close()
+                ortEnv = null
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // Already shutting down; no in-flight inference left to protect.
+        }
         inferenceExecutor.shutdown()
     }
 
