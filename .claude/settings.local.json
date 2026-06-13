@@ -11,7 +11,8 @@
       "Bash(qlmanage -t -s 900 -o /tmp/svgcheck Furnit/diagrams/rtmdet-swift-flow.svg)",
       "Read(//tmp/**)",
       "Bash(rsvg-convert -w 860 android/diagrams/sharp-android-flow.svg -o /tmp/svgcheck/asharp.png)",
-      "Bash(rsvg-convert -w 860 android/diagrams/rtmdet-android-flow.svg -o /tmp/svgcheck/artmdet.png)"
+      "Bash(rsvg-convert -w 860 android/diagrams/rtmdet-android-flow.svg -o /tmp/svgcheck/artmdet.png)",
+      "Bash(./gradlew :app:compileEtCpuDebugKotlin :app:compileEtVulkanDebugKotlin)"
     ],
     "deny": [],
     "ask": []
