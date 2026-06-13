@@ -463,6 +463,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         60: "dining table",
         62: "tv",
     ]
+    /// When true, RTMDet only surfaces the curated furniture classes above
+    /// (`rtmDetFurnitureClassIndices`). When false, ALL 80 COCO classes are allowed through and
+    /// selection relies purely on confidence / center / mask-quality gates — set false to test
+    /// how the unrestricted detector behaves before deciding the final class policy.
+    private static let controlledList: Bool = false
     private static let rtmDetLiveConfidenceThreshold: Float = 0.55
     /// COCO under-scores standing / height-adjustable desks as "dining table" (class 60); on-device
     /// logs show such tables peaking ~0.38–0.49 sigmoid. Give tables a lower per-class gate so they
@@ -3984,7 +3989,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 model: model,
                 confidenceThreshold: rtmDetDecodeFloor,
                 classBlacklist: classBlacklist.ignoredIndices,
-                allowedClassIndices: Self.rtmDetFurnitureClassIndices,
+                allowedClassIndices: Self.controlledList ? Self.rtmDetFurnitureClassIndices : nil,
                 // identifyOnly shows boxes only — request NO masks so the decoder skips the proto
                 // MLP + RGBA build entirely. segmentSelected may union up to 6; segmentPrimary needs 1.
                 maxMaskCount: {
