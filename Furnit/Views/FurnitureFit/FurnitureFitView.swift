@@ -4189,8 +4189,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             // The single-mask quality gate rejects a too-large/rectangular blob (a bad segmentation).
             // A multi-select union is intentionally large, so skip it — each instance mask was already
-            // decoded individually for a furniture the user explicitly picked.
-            if let image = finalCGImage, !isMultiSelectComposite {
+            // decoded individually for a furniture the user explicitly picked. Also gate it on
+            // controlledList: the bbox-fit / too-huge / too-rectangular checks wrongly drop furniture
+            // (e.g. a table) that legitimately fills the whole frame, so in uncontrolled mode we keep
+            // the mask and rely purely on confidence/center.
+            if Self.controlledList, let image = finalCGImage, !isMultiSelectComposite {
                 let quality = shouldAcceptRTMDetMask(image, for: primary)
                 if debugMode {
                     logDebug("🧠 [RTMDet mask quality] class=\(displayClassName(primary.classIdx)) \(quality.reason)")
