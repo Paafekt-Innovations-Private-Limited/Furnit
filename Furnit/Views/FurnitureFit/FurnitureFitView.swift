@@ -3888,9 +3888,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let maskAreaFraction = CGFloat(stats.pixelCount) / imageArea
         let fillLimit: CGFloat = detection.classIdx == 56 ? 0.72 : 0.88
         let tooRectangular = stats.fillRatio > fillLimit
-        let tooHuge = maskAreaFraction > 0.35
+        // Large furniture (couch, bed, dining table) legitimately fills a big part of the
+        // frame — especially when partial or viewed up close — so allow a higher area
+        // fraction before rejecting the mask as a runaway "huge" blob (a bad segmentation).
+        let largeFurnitureClasses: Set<Int> = [57, 59, 60] // couch, bed, dining table
+        let hugeLimit: CGFloat = largeFurnitureClasses.contains(detection.classIdx) ? 0.60 : 0.35
+        let tooHuge = maskAreaFraction > hugeLimit
         let accepted = !tooRectangular && !tooHuge
-        let reason = "pixels=\(stats.pixelCount) bounds=(\(Int(stats.bounds.minX)),\(Int(stats.bounds.minY)),\(Int(stats.bounds.width))x\(Int(stats.bounds.height))) fill=\(String(format: "%.2f", stats.fillRatio)) area=\(String(format: "%.2f", maskAreaFraction)) limit=\(String(format: "%.2f", fillLimit))"
+        let reason = "pixels=\(stats.pixelCount) bounds=(\(Int(stats.bounds.minX)),\(Int(stats.bounds.minY)),\(Int(stats.bounds.width))x\(Int(stats.bounds.height))) fill=\(String(format: "%.2f", stats.fillRatio)) area=\(String(format: "%.2f", maskAreaFraction)) fillLimit=\(String(format: "%.2f", fillLimit)) hugeLimit=\(String(format: "%.2f", hugeLimit))"
         return (accepted, accepted ? reason : "rejected_rect_or_huge \(reason)")
     }
 
