@@ -130,14 +130,16 @@ Still worth checking before submission if auth scope changes.
 
 ### Legal and commercial clarity
 
-Your own strings and license text describe this as a non-commercial Phase 1 release and mention separate commercial licensing for YOLO-related use.
+Resolved. The earlier "non-commercial Phase 1 release" notice has been removed from the
+in-app Licenses screen (iOS `AboutView` + `LicensesView`, Android `LicensesActivity`)
+ahead of a commercial release. The YOLO/Ultralytics model and its separate commercial
+licensing no longer apply — segmentation now uses RTMDet-Ins-m from OpenMMLab MMDetection
+(Apache License 2.0), with attribution added to the in-app Licenses screen on both platforms.
 
-Files:
-- [Localizable.strings](/Users/al/Documents/tries01/Furnit/Furnit/en.lproj/Localizable.strings#L154)
-- [ContentView.swift](/Users/al/Documents/tries01/Furnit/Furnit/Views/ContentView.swift#L934)
-
-Why this matters:
-- If the app is intended for public App Store distribution, licensing and commercial-use wording should be internally consistent and legally settled.
+Still worth verifying before submission:
+- Store-listing copy (App Store Connect / Google Play Console), Terms of Service, support
+  page, and marketing site carry no leftover "non-commercial / personal use only" wording,
+  since those live outside the repo.
 
 ## Submission Checklist
 
