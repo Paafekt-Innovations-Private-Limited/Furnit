@@ -3,6 +3,8 @@ package com.furnit.android
 import android.Manifest
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import com.furnit.android.utils.LogUtil
 import android.widget.Toast
@@ -39,6 +41,8 @@ class FurnitureFitActivity : AppCompatActivity() {
         }
 
         super.onCreate(savedInstanceState)
+        overridePendingTransition(0, 0)
+        window.setBackgroundDrawable(ColorDrawable(Color.rgb(128, 128, 128)))
         setContentView(R.layout.activity_furniture_fit)
 
         if (savedInstanceState != null) {
@@ -97,5 +101,10 @@ class FurnitureFitActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.furniture_fit_container, fragment)
             .commit()
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(0, 0)
     }
 }

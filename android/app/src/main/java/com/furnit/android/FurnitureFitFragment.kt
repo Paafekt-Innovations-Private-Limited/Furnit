@@ -157,7 +157,9 @@ class FurnitureFitFragment : Fragment() {
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        val root = FrameLayout(requireContext())
+        val root = FrameLayout(requireContext()).apply {
+            setBackgroundColor(Color.parseColor("#808080"))
+        }
 
         previewView = PreviewView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
@@ -174,7 +176,7 @@ class FurnitureFitFragment : Fragment() {
             visibility = View.GONE
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            setBackgroundColor(Color.parseColor("#808080"))
+            setBackgroundColor(Color.TRANSPARENT)
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
                     msg?.let { LogUtil.d("FurnitureFit", "PLY WebView: ${it.message()}") }
@@ -329,18 +331,36 @@ class FurnitureFitFragment : Fragment() {
         val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
         if (hasRoomBackground) {
             previewView.visibility = View.GONE
-            // Show room layer immediately so progress bar overlays the room; PLY will load into this WebView
-            roomPlyWebView?.visibility = View.VISIBLE
+            // The PLY WebView is above SceneView in z-order. Only show it for real PLY rooms;
+            // otherwise it covers GLB rooms as a grey/curtain layer.
+            if (hasPlyRoomBackground()) {
+                roomPlyWebView?.visibility = View.VISIBLE
+                roomSceneView.visibility = View.GONE
+            } else {
+                roomSceneView.visibility = View.VISIBLE
+                roomPlyWebView?.visibility = View.GONE
+            }
         }
-        root.addView(previewView)
-        root.addView(roomSceneView)
-        roomPlyWebView?.let { root.addView(it) }  // PLY splat background (shown when no room.glb)
-        root.addView(overlay)
-        root.addView(touchLayer)     // Touch-anywhere drag layer
-        root.addView(statusLabel)
-        root.addView(progressContainer)
-        root.addView(backButton)
-        root.addView(bottomControls)
+        val uiHost = if (hasRoomBackground) {
+            createRoomViewport().apply {
+                addView(roomSceneView)
+                roomPlyWebView?.let { addView(it) }  // PLY splat background (shown when no room.glb)
+                addView(this@FurnitureFitFragment.overlay)
+                addView(touchLayer)
+                root.addView(this)
+            }
+        } else {
+            root.addView(previewView)
+            root.addView(roomSceneView)
+            roomPlyWebView?.let { root.addView(it) }
+            root.addView(overlay)
+            root.addView(touchLayer)
+            root
+        }
+        uiHost.addView(statusLabel)
+        uiHost.addView(progressContainer)
+        uiHost.addView(backButton)
+        uiHost.addView(bottomControls)
 
         if (!segmentationCompletedOnceThisSession) {
             setProgress(5, "Starting camera...")
@@ -521,9 +541,20 @@ class FurnitureFitFragment : Fragment() {
                 }
                 statusLabel.text = getString(R.string.smartypants_scanning)
                 overlay.setMaskAndDetections(null, emptyList())
-                roomSceneView.visibility = View.GONE
-                roomPlyWebView?.visibility = View.GONE
-                previewView.visibility = View.VISIBLE
+                if (showRoomBackground) {
+                    if (usePlyBackground) {
+                        roomPlyWebView?.visibility = View.VISIBLE
+                        roomSceneView.visibility = View.GONE
+                    } else {
+                        roomSceneView.visibility = View.VISIBLE
+                        roomPlyWebView?.visibility = View.GONE
+                    }
+                    previewView.visibility = View.GONE
+                } else {
+                    roomSceneView.visibility = View.GONE
+                    roomPlyWebView?.visibility = View.GONE
+                    previewView.visibility = View.VISIBLE
+                }
             }
         }
     }
@@ -858,6 +889,39 @@ class FurnitureFitFragment : Fragment() {
         cameraProvider = null
     }
 
+    private fun createRoomViewport(): FrameLayout {
+        val aspect = (selectedRoomWidth / selectedRoomHeight)
+            .takeIf { it.isFinite() && it > 0.2f }
+            ?: if (selectedPhotoOrientation == "landscape") 16f / 9f else 9f / 16f
+
+        return object : FrameLayout(requireContext()) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val maxWidth = MeasureSpec.getSize(widthMeasureSpec)
+                val maxHeight = MeasureSpec.getSize(heightMeasureSpec)
+                var measuredWidth = maxWidth
+                var measuredHeight = (measuredWidth / aspect).toInt()
+                if (measuredHeight > maxHeight) {
+                    measuredHeight = maxHeight
+                    measuredWidth = (measuredHeight * aspect).toInt()
+                }
+                val childWidthSpec = MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY)
+                val childHeightSpec = MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY)
+                super.onMeasure(childWidthSpec, childHeightSpec)
+                setMeasuredDimension(measuredWidth, measuredHeight)
+            }
+        }.apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER
+            }
+            clipChildren = true
+            clipToPadding = true
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+    }
+
     private fun bindCameraUseCases() {
         if (!isAdded) return
         val ctx = context ?: return
@@ -1146,6 +1210,15 @@ class FurnitureFitFragment : Fragment() {
      * Bundled rooms (vintage, cozy_room) or rooms/ and sharp_rooms/ by ROOM_ID use room.glb when present.
      * No fallback: if there is no room.glb and no room.ply, no background is shown.
      */
+    private fun hasPlyRoomBackground(): Boolean {
+        val roomFolderPath = selectedRoomFolder
+        if (roomFolderPath.isNullOrBlank()) return usePlyBackground
+        val folder = java.io.File(roomFolderPath)
+        val glbFile = java.io.File(folder, "room.glb")
+        val plyFile = java.io.File(folder, "room.ply")
+        return !glbFile.exists() && plyFile.exists()
+    }
+
     private fun loadRoom3D() {
         val roomId = selectedRoomId
         val roomFolderPath = selectedRoomFolder

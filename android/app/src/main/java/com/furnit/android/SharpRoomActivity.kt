@@ -2461,8 +2461,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun shouldShowIdentifyMaskOverlay(): Boolean {
-        return brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY &&
-            !shouldShowIdentifyLivePreview()
+        return false
     }
 
     private fun updateBrainLivePreviewVisibility() {
@@ -2633,6 +2632,8 @@ class SharpRoomActivity : AppCompatActivity() {
     ) {
         if (brainSegmentationMode == BrainSegmentationMode.SEGMENT_SELECTED && selectedBrainPins.isNotEmpty()) {
             manager.segmentSelectedInstancesAsync(bitmap, selectedBrainPins.toList(), callback)
+        } else if (brainSegmentationMode == BrainSegmentationMode.IDENTIFY_ONLY) {
+            manager.detectWithDetectionsAsync(bitmap, callback)
         } else {
             manager.segmentWithDetectionsAsync(bitmap, callback)
         }

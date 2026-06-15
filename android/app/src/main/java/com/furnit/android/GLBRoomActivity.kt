@@ -1,7 +1,9 @@
 package com.furnit.android
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -22,17 +24,33 @@ import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
+import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.SegmentationResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * GLBRoomActivity - WebGL-based GLB/GLTF 3D room viewer
@@ -56,6 +74,18 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var titleView: TextView
+    private lateinit var rootLayout: FrameLayout
+    private lateinit var brainDetectionOverlay: FrameLayout
+    private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
+    private lateinit var brainProgressOverlay: FrameLayout
+    private lateinit var brainProgressLabel: TextView
+    private lateinit var cameraExecutor: ExecutorService
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var furnitureFitManager: FurnitureFitManager? = null
+    private val isBrainInferenceRunning = AtomicBoolean(false)
+    private val brainSessionGeneration = AtomicInteger(0)
+    private var brainAcceptingUpdates = false
+    private var brainButton: TextView? = null
     private var glbPath: String? = null
     private var roomName: String = "3D Room"
     private var roomId: String? = null
@@ -66,9 +96,20 @@ class GLBRoomActivity : AppCompatActivity() {
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
 
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            startInlineBrainSegmentation()
+        } else {
+            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_SHORT).show()
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -108,7 +149,7 @@ class GLBRoomActivity : AppCompatActivity() {
             return
         }
 
-        val rootLayout = FrameLayout(this)
+        rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#808080"))
 
         // WebView for 3D rendering
@@ -166,6 +207,34 @@ class GLBRoomActivity : AppCompatActivity() {
         // Loading overlay
         loadingOverlay = createLoadingOverlay()
         rootLayout.addView(loadingOverlay)
+
+        brainProgressOverlay = createBrainProgressOverlay().apply {
+            visibility = View.GONE
+            elevation = 20f
+        }
+        rootLayout.addView(brainProgressOverlay)
+
+        brainDetectionOverlay = FrameLayout(this).apply {
+            visibility = View.GONE
+            elevation = 21f
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        brainDetectionOverlayView = FurnitureFitOverlayView(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            onTouchOutsideFurniture = { event -> webView.dispatchTouchEvent(event) }
+        }
+        brainDetectionOverlay.addView(brainDetectionOverlayView)
+        rootLayout.addView(
+            brainDetectionOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
 
         setContentView(rootLayout)
 
@@ -317,8 +386,9 @@ class GLBRoomActivity : AppCompatActivity() {
                     gravity = Gravity.START or Gravity.BOTTOM
                     bottomMargin = dpToPx(20)
                 }
-                setOnClickListener { openFurnitureFit(enableArAssistedSizing = false) }
+                setOnClickListener { toggleInlineBrainSegmentation() }
             }
+            brainButton = brainBtn
             addView(brainBtn)
 
             // Center: Orientation label
@@ -395,7 +465,178 @@ class GLBRoomActivity : AppCompatActivity() {
         intent.putExtra("ROOM_HEIGHT", roomHeight)
         intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
         intent.putExtra(FurnitureFitActivity.EXTRA_ENABLE_AR_ASSISTED_SIZING, enableArAssistedSizing)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         startActivity(intent)
+        overridePendingTransition(0, 0)
+    }
+
+    private fun createBrainProgressOverlay(): FrameLayout {
+        return FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            val content = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dpToPx(24), dpToPx(14), dpToPx(24), dpToPx(14))
+                background = GradientDrawable().apply {
+                    cornerRadius = dpToPx(16).toFloat()
+                    setColor(0xCC1C1C1E.toInt())
+                }
+                val progress = ProgressBar(this@GLBRoomActivity).apply {
+                    isIndeterminate = true
+                }
+                addView(progress)
+                brainProgressLabel = TextView(this@GLBRoomActivity).apply {
+                    text = getString(R.string.smartypants_detecting_furniture)
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    setPadding(0, dpToPx(10), 0, 0)
+                }
+                addView(brainProgressLabel)
+            }
+            addView(
+                content,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER
+                },
+            )
+        }
+    }
+
+    private fun toggleInlineBrainSegmentation() {
+        if (::brainDetectionOverlay.isInitialized && brainDetectionOverlay.visibility == View.VISIBLE) {
+            stopInlineBrainSegmentation()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
+        startInlineBrainSegmentation()
+    }
+
+    private fun startInlineBrainSegmentation() {
+        LogUtil.d(TAG, "Inline brain: start")
+        val generation = brainSessionGeneration.incrementAndGet()
+        brainAcceptingUpdates = false
+        isBrainInferenceRunning.set(false)
+        brainDetectionOverlay.visibility = View.VISIBLE
+        brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        brainProgressOverlay.visibility = View.VISIBLE
+        setBrainButtonActive(true)
+
+        lifecycleScope.launch {
+            val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
+                FurnitureFitManager(this@GLBRoomActivity).takeIf { it.initializeAuto() }
+            }
+            if (manager == null) {
+                brainProgressOverlay.visibility = View.GONE
+                setBrainButtonActive(false)
+                Toast.makeText(this@GLBRoomActivity, getString(R.string.detector_model_unavailable), Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            furnitureFitManager = manager
+            bindInlineBrainCamera(manager, generation)
+        }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun bindInlineBrainCamera(manager: FurnitureFitManager, generation: Int) {
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            val provider = providerFuture.get()
+            cameraProvider = provider
+            provider.unbindAll()
+
+            val analysisSize =
+                if (photoOrientation.equals("landscape", ignoreCase = true)) {
+                    android.util.Size(1280, 720)
+                } else {
+                    android.util.Size(720, 1280)
+                }
+            val analysis = ImageAnalysis.Builder()
+                .setTargetResolution(analysisSize)
+                .setTargetRotation(displayRotationForCameraX())
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+
+            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                try {
+                    if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
+                    if (isBrainInferenceRunning.get()) return@setAnalyzer
+                    val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
+                    val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
+                    if (bitmap !== rawBitmap) rawBitmap.recycle()
+                    isBrainInferenceRunning.set(true)
+                    manager.segmentWithDetectionsAsync(bitmap) { result ->
+                        bitmap.recycle()
+                        runOnUiThread {
+                            isBrainInferenceRunning.set(false)
+                            if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
+                            applyInlineBrainResult(result)
+                        }
+                    }
+                } finally {
+                    imageProxy.close()
+                }
+            }
+
+            try {
+                brainAcceptingUpdates = true
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                LogUtil.d(TAG, "Inline brain: CameraX analysis bound")
+            } catch (e: Exception) {
+                brainAcceptingUpdates = false
+                brainProgressOverlay.visibility = View.GONE
+                setBrainButtonActive(false)
+                LogUtil.e(TAG, "Inline brain camera bind failed", e)
+                Toast.makeText(this, getString(R.string.smartypants_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
+                CrashReporter.report(this, e, "GLB room inline brain camera bind")
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun applyInlineBrainResult(result: SegmentationResult?) {
+        brainProgressOverlay.visibility = View.GONE
+        val mask = result?.mask
+        val detections = result?.detections ?: emptyList()
+        brainDetectionOverlayView.setMaskAndDetections(
+            mask,
+            emptyList(),
+            result?.inputSize ?: 640,
+            1f,
+            null,
+            roomHeight,
+        )
+        LogUtil.i(
+            TAG,
+            "Inline brain result: mask=${mask != null} alpha=${mask?.hasAlpha()} dets=${detections.size} " +
+                "primary=${result?.primaryDetection?.label}:${result?.primaryDetection?.confidence}",
+        )
+    }
+
+    private fun stopInlineBrainSegmentation() {
+        LogUtil.d(TAG, "Inline brain: stop")
+        brainSessionGeneration.incrementAndGet()
+        brainAcceptingUpdates = false
+        isBrainInferenceRunning.set(false)
+        brainProgressOverlay.visibility = View.GONE
+        brainDetectionOverlay.visibility = View.GONE
+        brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        setBrainButtonActive(false)
+        try {
+            cameraProvider?.unbindAll()
+        } catch (_: Exception) {
+        }
+        cameraProvider = null
+    }
+
+    private fun setBrainButtonActive(active: Boolean) {
+        val color = if (active) "#34C759" else "#007AFF"
+        (brainButton?.background as? GradientDrawable)?.setColor(Color.parseColor(color))
     }
 
     private fun createLoadingOverlay(): FrameLayout {
@@ -821,6 +1062,10 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun handleBackNavigation() {
+        if (::brainDetectionOverlay.isInitialized && brainDetectionOverlay.visibility == View.VISIBLE) {
+            stopInlineBrainSegmentation()
+            return
+        }
         if (isPreviewMode) {
             if (webView.canGoBack()) {
                 webView.goBack()
@@ -850,6 +1095,10 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        stopInlineBrainSegmentation()
+        furnitureFitManager?.close()
+        furnitureFitManager = null
+        cameraExecutor.shutdown()
         webView.destroy()
         super.onDestroy()
     }

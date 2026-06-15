@@ -56,9 +56,12 @@ class FurnitureFitManager(private val context: Context) {
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
         private const val RTMDET_CONFIDENCE_THRESHOLD = 0.30f
         private const val PRIMARY_CANDIDATE_POOL_LIMIT = 12
+        private const val LOW_CONFIDENCE_OVERSIZED_THRESHOLD = 0.65f
+        private const val OVERSIZED_BOX_AREA_FRACTION = 0.45f
+        private const val RTMDET_MASK_KEEP_THRESHOLD = 0.80f
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
-        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60, 62)
+        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
         /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
          *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
         private const val CONTROLLED_LIST = true
@@ -1310,8 +1313,16 @@ class FurnitureFitManager(private val context: Context) {
             val maskProto = FloatArray(protoW * protoH)
             for (detection in maskDetectionsForBuild) {
                 val plane = buildRtmdetRawMaskPlane(detection, raw.maskFeat) ?: continue
-                for (i in plane.indices) {
-                    if (plane[i] > maskProto[i]) maskProto[i] = plane[i]
+                val refinedPlane = refineRtmdetMaskPlaneForDetection(
+                    plane = plane,
+                    detection = detection,
+                    inputW = inputW,
+                    inputH = inputH,
+                    protoW = protoW,
+                    protoH = protoH,
+                )
+                for (i in refinedPlane.indices) {
+                    if (refinedPlane[i] > maskProto[i]) maskProto[i] = refinedPlane[i]
                 }
             }
 
@@ -1339,8 +1350,8 @@ class FurnitureFitManager(private val context: Context) {
             val tightFx1 = clipRightModel * sxf
             val tightFy0 = clipTopModel * syf
             val tightFy1 = clipBottomModel * syf
-            val bandMarginW = max(1f, tightFx1 - tightFx0) * bboxExpandMargin
-            val bandMarginH = max(1f, tightFy1 - tightFy0) * bboxExpandMargin
+            val bandMarginW = 0f
+            val bandMarginH = 0f
             val bandX0 = floor((tightFx0 - bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
             val bandX1 = ceil((tightFx1 + bandMarginW).toDouble()).toInt().coerceIn(0, frameW)
             val bandY0 = floor((tightFy0 - bandMarginH).toDouble()).toInt().coerceIn(0, frameH)
@@ -1540,6 +1551,110 @@ class FurnitureFitManager(private val context: Context) {
         return out
     }
 
+    private fun refineRtmdetMaskPlaneForDetection(
+        plane: FloatArray,
+        detection: Detection,
+        inputW: Int,
+        inputH: Int,
+        protoW: Int,
+        protoH: Int,
+    ): FloatArray {
+        if (plane.size != protoW * protoH || protoW <= 0 || protoH <= 0) return plane
+        val protoScaleX = inputW.toFloat() / protoW.toFloat()
+        val protoScaleY = inputH.toFloat() / protoH.toFloat()
+        val x0 = floor(((detection.x - detection.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW - 1)
+        val y0 = floor(((detection.y - detection.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH - 1)
+        val x1 = ceil(((detection.x + detection.w / 2f) / protoScaleX).toDouble()).toInt().coerceIn(0, protoW - 1)
+        val y1 = ceil(((detection.y + detection.h / 2f) / protoScaleY).toDouble()).toInt().coerceIn(0, protoH - 1)
+        if (x1 < x0 || y1 < y0) return FloatArray(plane.size)
+
+        val lowThreshold = 0.50f
+        val highThreshold = RTMDET_MASK_KEEP_THRESHOLD
+        val visited = BooleanArray(plane.size)
+        val queue = IntArray(plane.size)
+        val componentPixels = IntArray(plane.size)
+        val bboxArea = max(1, (x1 - x0 + 1) * (y1 - y0 + 1))
+        val centerX = ((detection.x / protoScaleX).toInt()).coerceIn(x0, x1)
+        val centerY = ((detection.y / protoScaleY).toInt()).coerceIn(y0, y1)
+
+        var bestCount = 0
+        var bestScore = -Float.MAX_VALUE
+        val keep = BooleanArray(plane.size)
+
+        for (startY in y0..y1) {
+            for (startX in x0..x1) {
+                val start = startY * protoW + startX
+                if (visited[start] || plane[start] <= lowThreshold) continue
+
+                var head = 0
+                var tail = 0
+                var count = 0
+                var highCount = 0
+                var valueSum = 0f
+                var minCenterDistanceSq = Int.MAX_VALUE
+
+                visited[start] = true
+                queue[tail++] = start
+                while (head < tail) {
+                    val idx = queue[head++]
+                    componentPixels[count++] = idx
+                    val px = idx % protoW
+                    val py = idx / protoW
+                    val value = plane[idx]
+                    valueSum += value
+                    if (value >= highThreshold) highCount++
+                    val dx = px - centerX
+                    val dy = py - centerY
+                    val distSq = dx * dx + dy * dy
+                    if (distSq < minCenterDistanceSq) minCenterDistanceSq = distSq
+
+                    fun push(nx: Int, ny: Int) {
+                        if (nx < x0 || nx > x1 || ny < y0 || ny > y1) return
+                        val next = ny * protoW + nx
+                        if (visited[next] || plane[next] <= lowThreshold) return
+                        visited[next] = true
+                        queue[tail++] = next
+                    }
+                    push(px - 1, py)
+                    push(px + 1, py)
+                    push(px, py - 1)
+                    push(px, py + 1)
+                }
+
+                if (count <= 0 || highCount <= 0) continue
+                val areaFraction = count.toFloat() / bboxArea.toFloat()
+                val averageValue = valueSum / count.toFloat()
+                val distancePenalty = minCenterDistanceSq.toFloat() / bboxArea.toFloat()
+                val hugePenalty = if (areaFraction > 0.75f && detection.confidence < 0.75f) areaFraction * 2f else 0f
+                val score = highCount.toFloat() * 4f + count.toFloat() * averageValue - distancePenalty * 50f - hugePenalty * count.toFloat()
+                if (score > bestScore) {
+                    bestScore = score
+                    bestCount = count
+                    keep.fill(false)
+                    for (i in 0 until count) {
+                        keep[componentPixels[i]] = true
+                    }
+                }
+            }
+        }
+
+        val refined = FloatArray(plane.size)
+        var keptPixels = 0
+        for (i in plane.indices) {
+            if (keep[i] && plane[i] >= RTMDET_MASK_KEEP_THRESHOLD) {
+                refined[i] = plane[i]
+                keptPixels++
+            }
+        }
+        val rawPixels = plane.count { it > lowThreshold }
+        LogUtil.i(
+            TAG,
+            "RTMDet mask refine: ${labelForClassId(detection.classId)} conf=${String.format("%.2f", detection.confidence)} " +
+                "raw=$rawPixels kept=$keptPixels bboxProto=${x1 - x0 + 1}x${y1 - y0 + 1} best=$bestCount",
+        )
+        return refined
+    }
+
     private fun primaryDetectionScore(
         detection: Detection,
         frameWidth: Float,
@@ -1558,13 +1673,18 @@ class FurnitureFitManager(private val context: Context) {
         }
 
         val area = width * height
+        val frameArea = frameWidth * frameHeight
+        val frameAreaFraction = (area / frameArea.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        if (frameAreaFraction > OVERSIZED_BOX_AREA_FRACTION && confidence < LOW_CONFIDENCE_OVERSIZED_THRESHOLD) {
+            return -1f
+        }
         val areaNormalized = (area / maxCandidateArea.coerceAtLeast(1f)).coerceIn(0f, 1f)
         val minimumAreaNormalized = 0.005f
         if (confidence < minimumConfidence || areaNormalized < minimumAreaNormalized) {
             return -1f
         }
 
-        return 0.5f * confidence + 0.5f * areaNormalized
+        return 0.75f * confidence + 0.25f * areaNormalized
     }
 
     private fun pickPrimaryOnnxDetection(
@@ -1594,7 +1714,7 @@ class FurnitureFitManager(private val context: Context) {
         if (viable.isEmpty()) return detections.maxByOrNull { it.confidence }
 
         val maxCandidateArea = viable.maxOf { it.w * it.h }.coerceAtLeast(1f)
-        return viable.maxWithOrNull { lhs, rhs ->
+        val selected = viable.maxWithOrNull { lhs, rhs ->
             val lhsScore = primaryDetectionScore(lhs, frameWidth, frameHeight, maxCandidateArea, minimumConfidence)
             val rhsScore = primaryDetectionScore(rhs, frameWidth, frameHeight, maxCandidateArea, minimumConfidence)
             if (lhsScore == rhsScore) {
@@ -1608,6 +1728,20 @@ class FurnitureFitManager(private val context: Context) {
                 lhsScore.compareTo(rhsScore)
             }
         } ?: detections.maxByOrNull { it.confidence }
+        if (selected != null) {
+            val summary = viable.take(4).joinToString(" | ") { detection ->
+                val areaFraction = (detection.w * detection.h / (frameWidth * frameHeight).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                "${labelForClassId(detection.classId)}:${String.format("%.2f", detection.confidence)} " +
+                    "box=${String.format("%.2f", areaFraction)}"
+            }
+            LogUtil.i(
+                TAG,
+                "Primary selection: selected=${labelForClassId(selected.classId)}:${String.format("%.2f", selected.confidence)} " +
+                    "bbox=${String.format("%.2f", (selected.w * selected.h / (frameWidth * frameHeight).coerceAtLeast(1f)).coerceIn(0f, 1f))} " +
+                    "pool=[$summary]",
+            )
+        }
+        return selected
     }
 
     private fun pickSupportingTableForMonitorScene(
