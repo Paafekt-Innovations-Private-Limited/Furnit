@@ -374,10 +374,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private weak var overlayTapGesture: UITapGestureRecognizer?
     /// Auto-primary hysteresis state for identify-only mode.
     private var autoPrimarySelectionState = FurnitureFitAutoPrimarySelectionState()
-    private let autoPrimaryPersistenceIoUThreshold: Float = 0.45
+    // Hysteresis tuned for RTMDet's noisier boxes + ~1fps cadence: a looser IoU keeps the primary
+    // locked on the same object through per-frame box jitter (lower = stickier, since a match needs
+    // IoU >= threshold), and a stiffer confidence gate stops near-tie flips between similar objects.
+    // switchRequiredFrames is kept at 3 — at ~1 frame/sec, raising it would make switching to a
+    // genuinely new object feel sluggish.
+    private let autoPrimaryPersistenceIoUThreshold: Float = 0.35
     private let autoPrimarySwitchRequiredFrames: Int = 3
-    private let autoPrimaryConfidenceSwitchGain: Float = 1.08
-    private let autoPrimaryConfidenceSwitchMargin: Float = 0.03
+    private let autoPrimaryConfidenceSwitchGain: Float = 1.15
+    private let autoPrimaryConfidenceSwitchMargin: Float = 0.06
     private let autoPrimaryAreaShortlistCount: Int = 3
     /// Keep RTMDet's pre-selection pool close to the old YOLOE flow: select primary after NMS from
     /// a wider candidate set, then let the 3-largest area shortlist + confidence score decide.
