@@ -1,6 +1,6 @@
-Furnit Android Skeleton
+# Furnit Android
 
-This folder contains a minimal Android project scaffold that mirrors the iOS app structure found in the repository. It is a starting point — AR and ML functionality are placeholders and require model conversion and further implementation.
+This folder contains the Android app for Furnit: room capture/reconstruction, GLB/PLY room viewing, and on-device furniture segmentation/cutout.
 
 Quick start
 
@@ -10,16 +10,18 @@ Quick start
 
 Notes
 
-- CoreML models in the iOS app must be converted to TensorFlow Lite or another Android-compatible runtime. See TensorFlow Lite conversion docs.
-- AR features currently show a placeholder; integrate ARCore / Sceneform or Google Filament for 3D placement and rendering.
-- Services/U2NetSegmentationManager.kt is a stub demonstrating where to put on-device inference logic.
+- SHARP room reconstruction uses ONNX/ExecuTorch-backed model paths depending on the selected build/runtime.
+- Furniture cutout uses RTMDet-Ins raw ONNX through ONNX Runtime in `FurnitureFitManager`.
+- GLB rooms render in `GLBRoomActivity` with a WebView/Three.js viewer. The brain button runs segmentation in the same activity and overlays only the transparent cutout; it does not launch a second room-rendering activity.
+- PLY/SHARP rooms render in `SharpRoomActivity`; brain segmentation also overlays the existing room view in that activity.
 
-ONNX Runtime (recommended)
+RTMDet / furniture segmentation
 
-- This project includes an exported ONNX model at `android/yoloe-11l-seg-pf.onnx` (if present).
-- Preferred approach: use ONNX Runtime Mobile on Android to run the ONNX model directly and avoid fragile ONNX->TFLite conversion steps.
-- Place your ONNX model file in `app/src/main/assets/` (or update the asset name in `SmartyPantsManager.initializeOnnx`).
-- After placing the ONNX file, open the project in Android Studio and sync Gradle; the `com.microsoft.onnxruntime:onnxruntime-android` dependency is already added.
+- Model: `rtmdet-ins-m-raw.onnx` in app assets.
+- Runtime: ONNX Runtime Android.
+- Manager: `app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`.
+- Output: `SegmentationResult.mask` is an ARGB bitmap. Non-furniture pixels must have alpha `0`; only furniture pixels are opaque camera RGB.
+- Display: `FurnitureFitOverlayView` draws the cutout over the current room screen.
 
 NOTE: TFLite conversion is paused — the repository's ONNX->TFLite GitHub Actions workflow produced failures and has been disabled. The disabled workflow file is `.github/workflows/convert-onnx-to-tflite.yml.disabled`.
 If you later want to retry conversion, re-enable the workflow (rename to `convert-onnx-to-tflite.yml`) or run the conversion scripts in `scripts/` locally or in a container.
@@ -47,20 +49,20 @@ Next steps I can take
 
 If you want, I can proceed with any of these next steps now.
 
-Usage example (SmartyPants runtime)
+Usage example (RTMDet runtime)
 
-Add the ONNX model to `app/src/main/assets/` (see `scripts/copy_model_to_assets.sh`). In your camera fragment or activity create and initialize the manager:
+Add `rtmdet-ins-m-raw.onnx` to `app/src/main/assets/`. In a camera owner activity/fragment, create and initialize the manager:
 
 ```kotlin
 // create and initialize
-val manager = SmartyPantsManager(requireContext())
-manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
+val manager = FurnitureFitManager(requireContext())
+manager.initializeAuto()
 
 // when receiving camera frames as Bitmap
-manager.segmentImageAsync(frameBitmap) { maskBitmap ->
+manager.segmentWithDetectionsAsync(frameBitmap) { result ->
 	runOnUiThread {
-		// maskBitmap may be null if inference or post-processing failed
-		overlayView.setMask(maskBitmap)
+		// result?.mask may be null if no furniture is detected
+		overlayView.setMaskAndDetections(result?.mask, result?.detections ?: emptyList())
 	}
 }
 ```
@@ -85,4 +87,4 @@ gradle assembleDebug
 
 Notes: this environment does not include the Android SDK or Gradle, so builds must be run locally or in CI with Android tooling available.
 
-`overlayView` is a simple view that draws the mask bitmap above the camera preview (see `SmartyPantsOverlayView` in the project).
+`FurnitureFitOverlayView` draws the transparent cutout over the current room view. In GLB brain mode the camera is analysis-only; the camera preview is not displayed as a background.

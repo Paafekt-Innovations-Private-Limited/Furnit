@@ -25,9 +25,9 @@ This guide explains how to set up the AI room generation models after checking o
 
 **Total: ~2.5GB**
 
-### YOLOE Segmentation Model (No ADB push needed)
+### RTMDet Furniture Segmentation Model (No ADB push needed)
 
-The YOLOE segmentation ONNX is packaged in the app’s `assets/` and is copied to cache on first use. Your friend does **not** need to `adb push` any YOLOE files.
+The RTMDet-Ins raw ONNX model (`rtmdet-ins-m-raw.onnx`) is packaged in the app’s `assets/` and is copied to cache on first use. Your friend does **not** need to `adb push` any segmentation model files.
 
 ### Optional: Other Backends (Currently Disabled)
 
@@ -146,7 +146,7 @@ cd android
 ./gradlew installDebug
 ```
 
-Note: This repo is configured to build **ONNX-only by default**. To build **YOLOE** (`libyoloe_ncnn.so`), run with **`-Pfurnit.enableNative=true`**. Legacy **NCNN SHARP** (`libsharp_ncnn.so`) is **off** unless you add **`-Pfurnit.enableNcnnSharp=true`** (SHARP in-app is normally **ExecuTorch**).
+Note: This repo is configured to build **ONNX-only by default** for app inference. Legacy native YOLOE/NCNN experiments are not part of the current RTMDet furniture-cutout path. Legacy **NCNN SHARP** (`libsharp_ncnn.so`) is **off** unless you add **`-Pfurnit.enableNcnnSharp=true`** (SHARP in-app is normally **ExecuTorch**).
 ```bash
 cd android
 ./gradlew installDebug -Pfurnit.enableNative=true

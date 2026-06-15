@@ -20,14 +20,14 @@
   </defs>
 
   <text x="32" y="40" class="title">RTMDet instance segmentation — Android (Kotlin / ONNX Runtime)</text>
-  <text x="32" y="60" class="sub">Live "brain" loop. FurnitureFitManager + SharpRoomActivity. ★ = ONNX Runtime EP,  ☆ = scalar Kotlin.</text>
+  <text x="32" y="60" class="sub">Live "brain" loop. Same-activity overlays in GLBRoomActivity / SharpRoomActivity. ★ = ONNX Runtime EP, ☆ = scalar Kotlin.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ONNX RT (CPU/XNNPACK)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Kotlin CPU</text>
 
   <g><rect x="250" y="100" width="360" height="52" rx="12" class="cam"/>
-    <text x="430" y="122" text-anchor="middle" class="bt">CameraX ImageAnalysis</text>
-    <text x="430" y="140" text-anchor="middle" class="bs">STRATEGY_KEEP_ONLY_LATEST · ARCore or classic camera</text></g>
+    <text x="430" y="122" text-anchor="middle" class="bt">Hidden CameraX ImageAnalysis</text>
+    <text x="430" y="140" text-anchor="middle" class="bs">analysis-only frames · no camera preview background</text></g>
   <path class="edge" d="M430,152 L430,186" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="186" width="360" height="52" rx="12" class="cam"/>
@@ -57,7 +57,7 @@
 
   <g><rect x="250" y="616" width="360" height="52" rx="12" class="cpu"/>
     <text x="430" y="638" text-anchor="middle" class="bt">NMS + primary selection</text>
-    <text x="430" y="656" text-anchor="middle" class="bs">class-aware NMS · centered-primary / pinned filter</text></g>
+    <text x="430" y="656" text-anchor="middle" class="bs">class-aware NMS · confidence/area primary · furniture class filter</text></g>
   <path class="edge" d="M430,668 L430,702" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="702" width="360" height="52" rx="12" class="cpu"/>
@@ -67,21 +67,21 @@
   <path class="edge" d="M430,754 L430,788" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="788" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="810" text-anchor="middle" class="bt">Composite cutout</text>
-    <text x="430" y="828" text-anchor="middle" class="bs">mask → bitmap cutout (union of selected instances)</text></g>
+    <text x="430" y="810" text-anchor="middle" class="bt">Transparent ARGB cutout</text>
+    <text x="430" y="828" text-anchor="middle" class="bs">camera RGB only where mask is furniture · alpha 0 elsewhere</text></g>
   <path class="edge" d="M430,840 L430,874" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="874" width="360" height="52" rx="12" class="disp"/>
-    <text x="430" y="896" text-anchor="middle" class="bt">Display</text>
-    <text x="430" y="914" text-anchor="middle" class="bs">cutout overlaid on the 3D room (WebView / SparkJS)</text></g>
+    <text x="430" y="896" text-anchor="middle" class="bt">Display over existing room</text>
+    <text x="430" y="914" text-anchor="middle" class="bs">FurnitureFitOverlayView over GLB WebView or PLY SparkJS screen</text></g>
 
   <path class="edge" d="M250,900 C120,900 120,212 250,212" marker-end="url(#arrow)"/>
   <text x="96" y="560" transform="rotate(-90 96,560)" class="sub">live loop (one inference at a time)</text>
 
   <g><rect x="648" y="530" width="186" height="124" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
     <text x="660" y="552" class="bt" font-size="13">Modes</text>
-    <text x="660" y="576" class="bs">SEGMENT_PRIMARY — centered</text>
-    <text x="660" y="592" class="bs">detection (auto, default)</text>
+    <text x="660" y="576" class="bs">GLB brain — primary cutout</text>
+    <text x="660" y="592" class="bs">in GLBRoomActivity</text>
     <text x="660" y="614" class="bs">SEGMENT_SELECTED — union</text>
     <text x="660" y="630" class="bs">of tapped pins</text>
     <text x="660" y="648" class="bs">IDENTIFY_ONLY — tap to pick</text></g>

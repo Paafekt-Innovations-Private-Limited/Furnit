@@ -100,14 +100,13 @@ adb logcat -s ModelDetailActivity:D RoomBoundaryManager:D -v time
 Shows model bbox center/extents, model position, room bounds, and camera pos/lookAt when opening a room from the list.
 
 **Camera debug: which path ran and final position (capture to file):**
-Use this to see whether GLB (RoomBoundaryManager / ModelDetail / FurnitureFit) or PLY (SharpRoomActivity WebView) set the camera, and what values were used.
+Use this to see whether GLB (RoomBoundaryManager / ModelDetail / GLBRoomActivity) or PLY (SharpRoomActivity WebView) set the camera, and what values were used.
 ```bash
 adb logcat -s RoomBoundaryManager:D ModelDetailActivity:D FurnitureFit:D SharpRoomActivity:D -v time 2>&1 | tee camera_debug.log
 ```
 Then open the room (from list or create from photo). Look for:
 - `[BackCenter]` = RoomBoundaryManager computed position (GLB path).
 - `[ModelDetail] getCameraAtBackCenter CALLED` / `camera SET` = opening a GLB room from the list.
-- `[FurnitureFit] getCameraAtBackCenter CALLED` / `camera SET` = GLB room as brain/segmentation background.
 - `[SharpRoom] Building WebView HTML` = PLY/splat viewer started (photo-orientation and isPortrait).
 - `CAMERA_POSITION_FINAL` (in WebGL message) = JS in SharpRoomActivity set the camera; shows pos, depthAlongView, insetFraction, insetFromBack.
 If you only see `[SharpRoom]` and `CAMERA_POSITION_FINAL`, the camera is controlled by the WebView JS (SharpRoomActivity), not Kotlin RoomBoundaryManager.
@@ -118,15 +117,14 @@ adb logcat -s chromium:D -v time
 ```
 (WebView logs may use the `chromium` tag; check logcat for `[GLBViewer]` in the message.)
 
-**Camera and brain icon (room list / FurnitureFit):**  
-Room list 3D view uses the same virtual camera as iOS: **back-left corner** inside the room (RealityKitBoundaryManager), looking at the front wall. When you tap the **brain icon**, the app starts FurnitureFit (furniture segmentation) and passes **ROOM_FOLDER** and **ROOM_ID** so the 3D background matches the opened room when possible.
+**Camera and brain icon (room list / segmentation):**
+Room list 3D view uses the same virtual camera as iOS: **back-left corner** inside the room (RealityKitBoundaryManager), looking at the front wall. In a GLB room, tapping the **brain icon** stays inside `GLBRoomActivity`: CameraX `ImageAnalysis` runs hidden, RTMDet segments the current camera frame, and `FurnitureFitOverlayView` draws only the transparent furniture cutout over the existing WebView room. It does **not** launch `FurnitureFitActivity` and does **not** render a second room background.
 
-**How the brain (segmentation) background is picked:**  
-When you tap the brain from an opened room: (1) If the room folder has **room.glb**, it is shown as the 3D background (SceneView). (2) If the room folder has only **room.ply** (SHARP Gaussian splat), the PLY is shown as the background via a WebView (same SparkJS viewer as the Sharp room screen). (3) Bundled rooms (`vintage`, `cozy_room`) or rooms found by **ROOM_ID** under `rooms/` or `sharp_rooms/` use their `room.glb` when present. No fallback: if there is no `room.glb` and no `room.ply`, no 3D backdrop is shown.
+PLY/SHARP rooms already run the brain overlay in `SharpRoomActivity` on top of the existing SparkJS viewer. The shared rule is: the room screen owns the room render; segmentation only supplies an ARGB cutout with alpha.
 
-**Logs for brain icon / background:**
+**Logs for brain icon / RTMDet cutout:**
 ```bash
-adb logcat -s FurnitureFitActivity:D FurnitureFit:D -v time
+adb logcat -s GLBRoomActivity:D SharpRoomActivity:D FurnitureFitManager:D FurnitureFitOverlay:I FurnitureFit:D -v time
 ```
 
 **SHARP / ExecuTorch INT8:**

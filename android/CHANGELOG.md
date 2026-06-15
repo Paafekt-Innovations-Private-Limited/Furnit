@@ -1,5 +1,12 @@
 # Furnit Android - Recent Changes
 
+## Android RTMDet brain overlay
+
+- **GLB rooms**: the brain button now stays inside `GLBRoomActivity`, binds hidden CameraX `ImageAnalysis`, runs RTMDet through `FurnitureFitManager`, and overlays only the transparent ARGB furniture cutout on the existing WebView room. It no longer launches `FurnitureFitActivity` or renders a second room background for the default brain flow.
+- **PLY/SHARP rooms**: brain segmentation remains same-activity inside `SharpRoomActivity`, over the existing SparkJS room view.
+- **RTMDet selection/mask quality**: furniture classes are restricted to the active furniture set, primary selection is confidence/area based instead of center-gated, oversized false positives are rejected, and RTMDet mask planes are refined before compositing.
+- **Docs/diagrams**: RTMDet flow docs now describe hidden analysis frames and transparent cutout compositing over the existing room.
+
 ## SHARP hybrid pipeline (experimental, opt-in)
 
 - **Native (`sharp_executorch_full_vulkan.cpp`)**: optional Part3 overlap with Part1+2, early encoder scratch release after Part1+2, async Part4b `tile_00` mmap preload during Part4a, optional Vulkan 25-only interleaved Part1→Part2 (memory-gated).
