@@ -786,6 +786,10 @@ struct MeshRoomView: View {
             }
             .disabled(isLoading)
 
+            if showingFurnitureFit {
+                navigationBarFullVideoIdentificationsButton
+            }
+
             if canOfferBrainArAssist, showingFurnitureFit {
                 navigationBarARButton
                     .fixedSize(horizontal: true, vertical: true)
@@ -849,37 +853,6 @@ struct MeshRoomView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
-                if showingFurnitureFit {
-                    Button {
-                        showFullVideoWithIdentifications.toggle()
-                        dismissFullVideoFurnitureTapHint()
-                        if showFullVideoWithIdentifications {
-                            furnitureFitSegmentationMode = .identifyOnly
-                            furnitureFitShowIdentifyLivePreview = true
-                        } else {
-                            furnitureFitSegmentationMode = .segmentPrimary
-                            furnitureFitShowIdentifyLivePreview = true
-                        }
-                    } label: {
-                        Image(systemName: "text.viewfinder")
-                            .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                Circle().fill(
-                                    showFullVideoWithIdentifications
-                                        ? Color.green.opacity(0.9)
-                                        : Color.black.opacity(0.45)
-                                )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLoading)
-                    .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
-                    .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
-                    .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
-                }
                 if pinchHintExplanationVisible {
                     Text(L10n.RoomViewer.pinchGestureHintExplanation)
                         .font(.caption2)
@@ -1487,20 +1460,21 @@ struct MeshRoomView: View {
             .padding(.bottom, 12)
 
             // Bottom controls: brain + segment + snapshot (full-video toggle is in the nav bar next to recenter)
-            HStack(alignment: .bottom) {
+            HStack {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }
                 .padding(.leading, 16)
                 segmentButton
                     .padding(.leading, 10)
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                        .padding(.leading, 10)
+                }
 
                 Spacer()
 
                 VStack(spacing: 10) {
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                    }
                     if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                         if showRoomFurnitureCalibrate {
                             Button(action: { showFurnitureDimensionsInput = true }) {
@@ -1525,11 +1499,14 @@ struct MeshRoomView: View {
             Spacer()
 
             // Horizontal bottom bar
-            HStack(alignment: .bottom, spacing: 20) {
+            HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     brainButtonWithHintAbove
                 }
                 segmentButton
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                }
 
                 // Orientation label
                 HStack(spacing: 6) {
@@ -1552,9 +1529,6 @@ struct MeshRoomView: View {
                 Spacer()
 
                 VStack(spacing: 10) {
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                    }
                     if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                         if showRoomFurnitureCalibrate {
                             Button(action: { showFurnitureDimensionsInput = true }) {
