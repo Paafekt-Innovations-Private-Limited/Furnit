@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d മുറികൾ ബാക്കി";
 "home.deleteHint" = "പുതിയവ സൃഷ്ടിക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക";
 "home.swipeHint" = "ഇല്ലാതാക്കാൻ ഇടത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക";
+"home.renameRoom" = "പേരുമാറ്റുക";
+"home.renameRoomMessage" = "ഈ പേര് നിങ്ങളുടെ മുറികളുടെ പട്ടികയിൽ കാണിക്കും. സംരക്ഷിച്ച ഫയലിന്റെ പേര് മാറില്ല.";
+"home.roomNamePlaceholder" = "മുറിയുടെ പേര്";
 "home.roomModel" = "3D റൂം മോഡൽ";
 "home.aiBased3DRoom" = "AI അടിസ്ഥാനമുള്ള 3D മുറി";
 "home.manualBased3DRoom" = "മാനുവൽ അടിസ്ഥാനമുള്ള 3D മുറി";

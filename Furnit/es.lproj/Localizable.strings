@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d de %d habitaciones disponibles";
 "home.deleteHint" = "Elimina habitaciones antiguas para crear nuevas";
 "home.swipeHint" = "Desliza a la izquierda para eliminar";
+"home.renameRoom" = "Cambiar nombre";
+"home.renameRoomMessage" = "Este nombre aparece en tu lista de habitaciones. El nombre del archivo guardado no cambia.";
+"home.roomNamePlaceholder" = "Nombre de la habitación";
 "home.roomModel" = "Modelo de habitación 3D";
 "home.aiBased3DRoom" = "Habitación 3D basada en IA";
 "home.manualBased3DRoom" = "Habitación 3D manual";

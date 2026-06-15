@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ";
 "home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
 "home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";
+"home.renameRoom" = "ಮರುಹೆಸರಿಸಿ";
+"home.renameRoomMessage" = "ಈ ಹೆಸರು ನಿಮ್ಮ ಕೋಣೆಗಳ ಪಟ್ಟಿಯಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ. ಉಳಿಸಿದ ಫೈಲ್‌ ಹೆಸರು ಹಾಗೆಯೇ ಇರುತ್ತದೆ.";
+"home.roomNamePlaceholder" = "ಕೋಣೆಯ ಹೆಸರು";
 "home.roomModel" = "3D ಕೊಠಡಿ ಮಾದರಿ";
 "home.aiBased3DRoom" = "AI ಆಧಾರಿತ 3D ಕೊಠಡಿ";
 "home.manualBased3DRoom" = "ಮ್ಯಾನುವಲ್ ಆಧಾರಿತ 3D ಕೊಠಡಿ";

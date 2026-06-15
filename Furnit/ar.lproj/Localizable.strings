@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d غرف متبقية";
 "home.deleteHint" = "احذف الغرف القديمة لإنشاء غرف جديدة";
 "home.swipeHint" = "اسحب لليسار للحذف";
+"home.renameRoom" = "إعادة تسمية";
+"home.renameRoomMessage" = "يظهر هذا الاسم في قائمة غرفك. يبقى اسم الملف المحفوظ كما هو.";
+"home.roomNamePlaceholder" = "اسم الغرفة";
 "home.roomModel" = "نموذج غرفة ثلاثي الأبعاد";
 "home.aiBased3DRoom" = "غرفة ثلاثية الأبعاد بالذكاء الاصطناعي";
 "home.manualBased3DRoom" = "غرفة ثلاثية الأبعاد يدوية";

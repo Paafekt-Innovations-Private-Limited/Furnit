@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d அறைகள் மீதம்";
 "home.deleteHint" = "புதியவற்றை உருவாக்க பழைய அறைகளை நீக்கவும்";
 "home.swipeHint" = "நீக்க இடது பக்கம் ஸ்வைப் செய்யவும்";
+"home.renameRoom" = "மறுபெயரிடு";
+"home.renameRoomMessage" = "இந்தப் பெயர் உங்கள் அறைகள் பட்டியலில் தோன்றும். சேமித்த கோப்பின் பெயர் மாறாது.";
+"home.roomNamePlaceholder" = "அறையின் பெயர்";
 "home.roomModel" = "3D அறை மாதிரி";
 "home.aiBased3DRoom" = "AI அடிப்படையிலான 3D அறை";
 "home.manualBased3DRoom" = "கைமுறை அடிப்படையிலான 3D அறை";

@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d में से %d कमरे शेष";
 "home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
 "home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";
+"home.renameRoom" = "नाम बदलें";
+"home.renameRoomMessage" = "यह नाम आपकी कमरों की सूची में दिखता है। सहेजी गई फ़ाइल का नाम वही रहता है।";
+"home.roomNamePlaceholder" = "कमरे का नाम";
 "home.roomModel" = "3D कमरा मॉडल";
 "home.aiBased3DRoom" = "AI आधारित 3D कमरा";
 "home.manualBased3DRoom" = "मैनुअल आधारित 3D कमरा";

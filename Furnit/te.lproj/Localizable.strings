@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d గదులు మిగిలి ఉన్నాయి";
 "home.deleteHint" = "కొత్తవి సృష్టించడానికి పాత గదులను తొలగించండి";
 "home.swipeHint" = "తొలగించడానికి ఎడమకు స్వైప్ చేయండి";
+"home.renameRoom" = "పేరు మార్చు";
+"home.renameRoomMessage" = "ఈ పేరు మీ గదుల జాబితాలో కనిపిస్తుంది. సేవ్ చేసిన ఫైల్ పేరు అలాగే ఉంటుంది.";
+"home.roomNamePlaceholder" = "గది పేరు";
 "home.roomModel" = "3D గది మోడల్";
 "home.aiBased3DRoom" = "AI ఆధారిత 3D గది";
 "home.manualBased3DRoom" = "మాన్యువల్ ఆధారిత 3D గది";

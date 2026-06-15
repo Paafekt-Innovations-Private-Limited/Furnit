@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "剩餘%d/%d个房间";
 "home.deleteHint" = "删除舊房间以建立新房间";
 "home.swipeHint" = "向左滑动删除";
+"home.renameRoom" = "重命名";
+"home.renameRoomMessage" = "此名称显示在你的房间列表中。已保存的文件名保持不变。";
+"home.roomNamePlaceholder" = "房间名称";
 "home.roomModel" = "3D房间模型";
 "home.aiBased3DRoom" = "基于 AI 的 3D 房间";
 "home.manualBased3DRoom" = "基于手动的 3D 房间";

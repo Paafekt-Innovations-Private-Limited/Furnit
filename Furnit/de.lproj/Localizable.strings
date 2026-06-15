@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d von %d Räumen verfügbar";
 "home.deleteHint" = "Alte Räume löschen, um neue zu erstellen";
 "home.swipeHint" = "Nach links wischen zum Löschen";
+"home.renameRoom" = "Umbenennen";
+"home.renameRoomMessage" = "Dieser Name erscheint in deiner Raumliste. Der gespeicherte Dateiname bleibt gleich.";
+"home.roomNamePlaceholder" = "Raumname";
 "home.roomModel" = "3D-Raummodell";
 "home.aiBased3DRoom" = "KI-basiertes 3D-Zimmer";
 "home.manualBased3DRoom" = "Manuell erstelltes 3D-Zimmer";

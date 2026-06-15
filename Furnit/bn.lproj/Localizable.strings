@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d/%d রুম বাকি";
 "home.deleteHint" = "নতুন তৈরি করতে পুরানো রুম মুছুন";
 "home.swipeHint" = "মুছতে বামে সোয়াইপ করুন";
+"home.renameRoom" = "নাম পরিবর্তন করুন";
+"home.renameRoomMessage" = "এই নামটি আপনার ঘরের তালিকায় দেখা যায়। সংরক্ষিত ফাইলের নাম অপরিবর্তিত থাকে।";
+"home.roomNamePlaceholder" = "ঘরের নাম";
 "home.roomModel" = "3D রুম মডেল";
 "home.aiBased3DRoom" = "AI ভিত্তিক 3D রুম";
 "home.manualBased3DRoom" = "ম্যানুয়াল ভিত্তিক 3D রুম";

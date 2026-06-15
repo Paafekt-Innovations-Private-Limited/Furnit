@@ -57,6 +57,9 @@
 "home.roomsRemaining" = "%d pièces sur %d restantes";
 "home.deleteHint" = "Supprimez d'anciennes pièces pour en créer de nouvelles";
 "home.swipeHint" = "Balayez vers la gauche pour supprimer";
+"home.renameRoom" = "Renommer";
+"home.renameRoomMessage" = "Ce nom apparaît dans votre liste de pièces. Le nom du fichier enregistré reste inchangé.";
+"home.roomNamePlaceholder" = "Nom de la pièce";
 "home.roomModel" = "Modèle de pièce 3D";
 "home.aiBased3DRoom" = "Pièce 3D basée sur l’IA";
 "home.manualBased3DRoom" = "Pièce 3D basée sur le mode manuel";
