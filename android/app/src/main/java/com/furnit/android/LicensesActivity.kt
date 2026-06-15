@@ -13,7 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Shows Phase 1 non-commercial notice and Open Source Licenses (Sharp ML, Firebase).
+ * Shows Open Source Licenses (Sharp ML, Firebase, RTMDet/MMDetection).
  */
 class LicensesActivity : AppCompatActivity() {
 
@@ -48,11 +48,10 @@ class LicensesActivity : AppCompatActivity() {
         }
         layout.addView(titleView)
 
-        addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
-
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
         addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp), licenseUrl = urlMit)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
 
         scrollView.addView(layout)
         setContentView(scrollView)

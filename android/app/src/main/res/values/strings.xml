@@ -168,6 +168,8 @@
     <string name="licenses_sharp">Copyright (c) SharpML contributors. Licensed under the MIT License.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Licensed under the Apache License 2.0.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.</string>
     <string name="credits_title">Credits</string>
     <string name="credits_intro">This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and model workflows during development.</string>
     <string name="credits_disclaimer">These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.</string>

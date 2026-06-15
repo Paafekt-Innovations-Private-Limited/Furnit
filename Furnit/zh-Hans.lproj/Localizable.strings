@@ -149,6 +149,8 @@
 "licenses.metalSplatter" = "设备端高斯 splat 渲染。Copyright (c) Sean Cier。依据 MIT 许可授权。";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "版权所有 (c) Google LLC。依据 Apache 2.0 许可授权。";
+"licenses.rtmdetTitle" = "RTMDet (MMDetection)";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
 
 // MARK: - Quality Options
 "quality.standard" = "标准";

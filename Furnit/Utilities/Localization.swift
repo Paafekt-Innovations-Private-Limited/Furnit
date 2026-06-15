@@ -220,6 +220,8 @@ enum L10n {
         static let metalSplatter = "licenses.metalSplatter".localized
         static let firebaseTitle = "licenses.firebaseTitle".localized
         static let firebase = "licenses.firebase".localized
+        static let rtmdetTitle = "licenses.rtmdetTitle".localized
+        static let rtmdet = "licenses.rtmdet".localized
     }
 
     enum Credits {

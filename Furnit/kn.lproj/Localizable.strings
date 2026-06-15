@@ -149,6 +149,8 @@
 "licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
+"licenses.rtmdetTitle" = "RTMDet (MMDetection)";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
 
 // MARK: - Quality Options
 "quality.standard" = "ಸ್ಟ್ಯಾಂಡರ್ಡ್";

@@ -1137,14 +1137,6 @@ struct AboutView: View {
             }
 
             Section {
-                Text(L10n.Licenses.phase1Notice)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            } header: {
-                Text(L10n.Licenses.title)
-            }
-
-            Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.sharpTitle)
                         .font(.subheadline)
@@ -1173,7 +1165,7 @@ struct AboutView: View {
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Includes Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0).
 struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
@@ -1182,14 +1174,6 @@ struct LicensesView: View {
 
     var body: some View {
         Form {
-            Section {
-                Text(L10n.Licenses.phase1Notice)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            } header: {
-                Text(L10n.Licenses.title)
-            }
-
             Section {
                 Text(L10n.Licenses.openSourceIntro)
                     .font(.subheadline)
@@ -1232,6 +1216,20 @@ struct LicensesView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     Text(L10n.Licenses.firebase)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.rtmdetTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.rtmdet)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
