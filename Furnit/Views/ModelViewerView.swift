@@ -682,8 +682,9 @@ struct ModelViewerView: View {
     }
 
     private var brainButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             brainGestureHintColumn
+                .offset(y: -72)
             Button(action: toggleFurnitureFit) {
                 Image(systemName: "brain.head.profile")
                     .font(.system(size: 28))
@@ -694,11 +695,13 @@ struct ModelViewerView: View {
             .contentShape(Circle())
             .frame(width: 76, height: 76)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     private var snapshotButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             snapshotGestureHintColumn
+                .offset(y: -72)
             Button(action: saveFurnitureFitSnapshot) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 28))
@@ -708,6 +711,7 @@ struct ModelViewerView: View {
             }
             .disabled(isCapturingSnapshot)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     private var pinchHintAccessibilityLabel: String {

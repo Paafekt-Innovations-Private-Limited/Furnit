@@ -7,6 +7,7 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.LogUtil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -35,6 +36,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     /** Pinned instances (matched each frame by class + IoU), not "all boxes of this class". */
     private var selectedPins: List<DetectionResult> = emptyList()
     private var pendingTappedDetection: DetectionResult? = null
+    private var lastMaskDrawLogMs = 0L
 
     // Pinch-to-zoom scale factor for furniture (1.0 = neutral)
     private var furnitureScale = 1.0f
@@ -355,11 +357,24 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
     private fun replaceMaskBitmap(newMask: Bitmap?) {
         val oldMask = maskBitmap
-        if (oldMask != null && oldMask !== newMask && !oldMask.isRecycled) {
+        val alphaMask = newMask?.let { ensureAlphaMaskBitmap(it) }
+        if (oldMask != null && oldMask !== newMask && oldMask !== alphaMask && !oldMask.isRecycled) {
             oldMask.recycle()
         }
-        maskBitmap = newMask
+        maskBitmap = alphaMask
         clearHitTestCache()
+    }
+
+    private fun ensureAlphaMaskBitmap(bitmap: Bitmap): Bitmap {
+        if (bitmap.config == Bitmap.Config.ARGB_8888 && bitmap.hasAlpha()) {
+            return bitmap
+        }
+        val copy = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        copy.setHasAlpha(true)
+        if (!bitmap.hasAlpha()) {
+            LogUtil.w("FurnitureFitOverlay", "Incoming mask bitmap had hasAlpha=false; copied to ARGB_8888 alpha mask")
+        }
+        return copy
     }
 
     private fun maybeResetTransformForPrimaryDetection(dets: List<DetectionResult>) {
@@ -477,6 +492,15 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         // Draw segmented objects (cutout with transparent background).
         // Uniform base scale to fit, scale around bitmap center, then translate to screen center.
         maskBitmap?.let { bmp ->
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastMaskDrawLogMs >= 1000L) {
+                lastMaskDrawLogMs = now
+                LogUtil.i(
+                    "FurnitureFitOverlay",
+                    "Drawing mask bitmap: ${bmp.width}x${bmp.height} config=${bmp.config} hasAlpha=${bmp.hasAlpha()} " +
+                        "overlayBg=${background != null} parentBg=${(parent as? View)?.background != null}",
+                )
+            }
             val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
             val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
             val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)

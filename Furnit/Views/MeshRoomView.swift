@@ -1146,8 +1146,9 @@ struct MeshRoomView: View {
     }
 
     private var brainButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             brainGestureHintColumn
+                .offset(y: -72)
             Button(action: {
                 if showingFurnitureFit {
                     dismissFullVideoFurnitureTapHint()
@@ -1171,6 +1172,7 @@ struct MeshRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     /// After pinned segment targets leave the scene, labels become empty; reopen full-video tap-to-pick flow.
@@ -1197,8 +1199,9 @@ struct MeshRoomView: View {
     }
 
     private var snapshotButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             snapshotGestureHintColumn
+                .offset(y: -72)
             Button(action: { takeScreenshot() }) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 28))
@@ -1208,6 +1211,7 @@ struct MeshRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {

@@ -1387,8 +1387,9 @@ struct SharpRoomView: View {
 
     @ViewBuilder
     private var brainButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             brainGestureHintColumn
+                .offset(y: -72)
             Button(action: toggleFurnitureFit) {
                 Image(systemName: "brain.head.profile")
                     .font(.system(size: 28))
@@ -1398,12 +1399,14 @@ struct SharpRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     @ViewBuilder
     private var snapshotButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             snapshotGestureHintColumn
+                .offset(y: -72)
             Button(action: { takeScreenshot() }) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 28))
@@ -1413,6 +1416,7 @@ struct SharpRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     @ViewBuilder

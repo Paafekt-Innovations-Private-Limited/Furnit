@@ -24,8 +24,6 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.pow
-import kotlin.math.sqrt
 
 // Result containing mask and detections
 data class SegmentationResult(
@@ -56,19 +54,14 @@ class FurnitureFitManager(private val context: Context) {
         private const val RTMDET_ONNX_MODEL_ASSET = "rtmdet-ins-m-raw.onnx"
         private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
-        private const val RTMDET_CONFIDENCE_THRESHOLD = 0.55f
+        private const val RTMDET_CONFIDENCE_THRESHOLD = 0.30f
+        private const val PRIMARY_CANDIDATE_POOL_LIMIT = 12
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
-        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
+        private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60, 62)
         /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
-         *  When false, ALL COCO classes are scored and selection relies purely on
-         *  confidence / center / mask-quality gates — set false to test the unrestricted detector
-         *  before deciding the final class policy. Mirrors iOS `controlledList`. */
-        private const val CONTROLLED_LIST = false
-        /** Center-distance band (fraction of frame diagonal) within which two auto-primary candidates
-         *  count as equally centered, so the tie falls back to confidence. Avoids jitter between two
-         *  similarly centered objects frame to frame. */
-        private const val CENTERED_PRIMARY_DISTANCE_TIE_TOLERANCE = 0.06f
+         *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
+        private const val CONTROLLED_LIST = true
 
         /**
          * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
@@ -290,6 +283,31 @@ class FurnitureFitManager(private val context: Context) {
                 outPixels[frameRow + x] = (0xFF shl 24) or (framePixels[frameRow + x] and 0x00FFFFFF)
             }
         }
+    }
+
+    private fun logCutoutAlphaStats(stage: String, pixels: IntArray, width: Int, height: Int) {
+        if (pixels.isEmpty() || width <= 0 || height <= 0) return
+        var opaqueCount = 0
+        var translucentCount = 0
+        for (pixel in pixels) {
+            val alpha = (pixel ushr 24) and 0xFF
+            when {
+                alpha == 0 -> Unit
+                alpha == 255 -> opaqueCount++
+                else -> translucentCount++
+            }
+        }
+        fun alphaAt(x: Int, y: Int): Int {
+            val safeX = x.coerceIn(0, width - 1)
+            val safeY = y.coerceIn(0, height - 1)
+            return (pixels[safeY * width + safeX] ushr 24) and 0xFF
+        }
+        LogUtil.i(
+            TAG,
+            "Cutout alpha[$stage]: size=${width}x$height opaque=$opaqueCount translucent=$translucentCount " +
+                "transparent=${pixels.size - opaqueCount - translucentCount} " +
+                "corners=${alphaAt(0, 0)},${alphaAt(width - 1, 0)},${alphaAt(0, height - 1)},${alphaAt(width - 1, height - 1)}",
+        )
     }
 
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
@@ -887,6 +905,7 @@ class FurnitureFitManager(private val context: Context) {
                     detections = primaryCandidates,
                     frameWidth = inputW.toFloat(),
                     frameHeight = inputH.toFloat(),
+                    minimumConfidence = DEFAULT_CONFIDENCE_THRESHOLD,
                 )
                 val maskSourceDetections = if (restrictToSelection) primaryCandidates else emptyList()
                 val maskDetectionsForBuild = if (restrictToSelection) {
@@ -1047,8 +1066,10 @@ class FurnitureFitManager(private val context: Context) {
                     )
 
                     val maskBmp = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888)
+                    maskBmp.setHasAlpha(true)
                     maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
                     maskResult = maskBmp
+                    logCutoutAlphaStats("generic", outPixels, frameW, frameH)
                     LogUtil.i(TAG, "Furniture cutout mask build: ${elapsedMillis(maskBuildStartNanos)}ms")
                 }
 
@@ -1241,6 +1262,7 @@ class FurnitureFitManager(private val context: Context) {
             detections = primaryCandidates,
             frameWidth = inputW.toFloat(),
             frameHeight = inputH.toFloat(),
+            minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
         )
         val maskDetectionsForBuild = if (restrictToSelection) primaryCandidates else listOfNotNull(primaryDet)
 
@@ -1344,6 +1366,7 @@ class FurnitureFitManager(private val context: Context) {
                 maskBmp.setHasAlpha(true)
                 maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
             }
+            logCutoutAlphaStats("rtmdet", outPixels, frameW, frameH)
             maskBuildMillis = elapsedMillis(maskBuildStartNanos)
             LogUtil.i(TAG, "RTMDet cutout mask build: ${maskBuildMillis}ms")
         }
@@ -1521,94 +1544,70 @@ class FurnitureFitManager(private val context: Context) {
         detection: Detection,
         frameWidth: Float,
         frameHeight: Float,
+        maxCandidateArea: Float,
+        minimumConfidence: Float,
     ): Float {
-        val centerX = detection.x
-        val centerY = detection.y
         val width = detection.w
         val height = detection.h
         val confidence = detection.confidence
-        if (!centerX.isFinite() || !centerY.isFinite() || !width.isFinite() || !height.isFinite() || !confidence.isFinite()) {
+        if (!detection.x.isFinite() || !detection.y.isFinite() || !width.isFinite() || !height.isFinite() || !confidence.isFinite()) {
             return -1f
         }
         if (frameWidth <= 1f || frameHeight <= 1f || width <= 0f || height <= 0f) {
             return -1f
         }
 
-        val frameArea = frameWidth * frameHeight
-        val areaNormalized = ((width * height) / frameArea).coerceIn(0f, 1f)
-        val minimumConfidence = 0.05f
+        val area = width * height
+        val areaNormalized = (area / maxCandidateArea.coerceAtLeast(1f)).coerceIn(0f, 1f)
         val minimumAreaNormalized = 0.005f
         if (confidence < minimumConfidence || areaNormalized < minimumAreaNormalized) {
             return -1f
         }
 
-        val frameCenterX = frameWidth * 0.5f
-        val frameCenterY = frameHeight * 0.5f
-        val deltaX = (centerX - frameCenterX) / frameCenterX.coerceAtLeast(1f)
-        val deltaY = (centerY - frameCenterY) / frameCenterY.coerceAtLeast(1f)
-        val centerDistance = min(1f, sqrt(deltaX * deltaX + deltaY * deltaY))
-
-        // Object persistence beats centerness: a real, large confident furniture box should not
-        // disappear just because it moved away from the frame center. Center is only a weak
-        // tie-breaker between otherwise similar candidates.
-        val confidenceTerm = confidence.pow(1.4f)
-        val areaTerm = areaNormalized.pow(0.7f)
-        val centerTieBreaker = 1f + (1f - centerDistance) * 0.05f
-        return confidenceTerm * areaTerm * centerTieBreaker
+        return 0.5f * confidence + 0.5f * areaNormalized
     }
 
     private fun pickPrimaryOnnxDetection(
         detections: List<Detection>,
         frameWidth: Float,
         frameHeight: Float,
+        minimumConfidence: Float,
     ): Detection? {
         if (detections.isEmpty()) return null
 
-        return detections.maxWithOrNull { lhs, rhs ->
-            val lhsScore = primaryDetectionScore(lhs, frameWidth, frameHeight)
-            val rhsScore = primaryDetectionScore(rhs, frameWidth, frameHeight)
+        val viable = detections
+            .asSequence()
+            .filter { detection ->
+                detection.confidence.isFinite() &&
+                    detection.confidence >= minimumConfidence &&
+                    detection.w.isFinite() &&
+                    detection.h.isFinite() &&
+                    detection.w > 0f &&
+                    detection.h > 0f
+            }
+            .sortedWith(
+                compareByDescending<Detection> { it.confidence }
+                    .thenByDescending { it.w * it.h }
+            )
+            .take(PRIMARY_CANDIDATE_POOL_LIMIT)
+            .toList()
+        if (viable.isEmpty()) return detections.maxByOrNull { it.confidence }
+
+        val maxCandidateArea = viable.maxOf { it.w * it.h }.coerceAtLeast(1f)
+        return viable.maxWithOrNull { lhs, rhs ->
+            val lhsScore = primaryDetectionScore(lhs, frameWidth, frameHeight, maxCandidateArea, minimumConfidence)
+            val rhsScore = primaryDetectionScore(rhs, frameWidth, frameHeight, maxCandidateArea, minimumConfidence)
             if (lhsScore == rhsScore) {
-                lhs.confidence.compareTo(rhs.confidence)
+                val confidenceDelta = lhs.confidence.compareTo(rhs.confidence)
+                if (confidenceDelta != 0) {
+                    confidenceDelta
+                } else {
+                    (lhs.w * lhs.h).compareTo(rhs.w * rhs.h)
+                }
             } else {
                 lhsScore.compareTo(rhsScore)
             }
         } ?: detections.maxByOrNull { it.confidence }
-    }
-
-    /** The detection the user is pointing at for auto-segment: prefer boxes whose bbox contains the
-     *  frame center (directly under the crosshair); within that pool pick the one whose center is
-     *  nearest the frame center, breaking near-ties by confidence. Falls back to all detections when
-     *  none cover the center (panning across a gap). Coordinates are in model-input space. */
-    private fun pickCenteredPrimaryDetection(
-        detections: List<Detection>,
-        frameWidth: Float,
-        frameHeight: Float,
-    ): Detection? {
-        if (detections.isEmpty()) return null
-        val frameCenterX = frameWidth * 0.5f
-        val frameCenterY = frameHeight * 0.5f
-        val frameDiagonal = max(1f, sqrt(frameWidth * frameWidth + frameHeight * frameHeight))
-        val detectionsContainingCenter = detections.filter { detection ->
-            val left = detection.x - detection.w * 0.5f
-            val right = detection.x + detection.w * 0.5f
-            val top = detection.y - detection.h * 0.5f
-            val bottom = detection.y + detection.h * 0.5f
-            frameCenterX in left..right && frameCenterY in top..bottom
-        }
-        val selectionPool = detectionsContainingCenter.ifEmpty { detections }
-        fun normalizedCenterDistance(detection: Detection): Float {
-            val deltaX = detection.x - frameCenterX
-            val deltaY = detection.y - frameCenterY
-            return sqrt(deltaX * deltaX + deltaY * deltaY) / frameDiagonal
-        }
-        return selectionPool.minWithOrNull { lhs, rhs ->
-            val distanceDelta = normalizedCenterDistance(lhs) - normalizedCenterDistance(rhs)
-            if (kotlin.math.abs(distanceDelta) < CENTERED_PRIMARY_DISTANCE_TIE_TOLERANCE) {
-                rhs.confidence.compareTo(lhs.confidence)
-            } else {
-                distanceDelta.compareTo(0f)
-            }
-        }
     }
 
     private fun pickSupportingTableForMonitorScene(

@@ -691,12 +691,14 @@ class SharpRoomActivity : AppCompatActivity() {
         brainDetectionOverlay = FrameLayout(this).apply {
             visibility = View.GONE
             elevation = 21f
+            setBackgroundColor(Color.TRANSPARENT)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
         brainDetectionOverlayView = FurnitureFitOverlayView(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2521,6 +2523,13 @@ class SharpRoomActivity : AppCompatActivity() {
         )
         brainDetectionOverlay.visibility = if (brainOverlayVisible) View.VISIBLE else View.GONE
         updateBrainLivePreviewVisibility()
+        LogUtil.i(
+            TAG,
+            "Brain overlay show: mode=$brainSegmentationMode mask=${maskForOverlay != null} " +
+                "maskAlpha=${maskForOverlay?.hasAlpha()} dets=${detectionsForOverlay.size} " +
+                "livePreview=${shouldShowIdentifyLivePreview()} previewVisible=${if (::brainCameraPreviewView.isInitialized) brainCameraPreviewView.visibility == View.VISIBLE else false} " +
+                "overlayVisible=${brainDetectionOverlay.visibility == View.VISIBLE}",
+        )
         setBrainSegmentationButtonActive(brainOverlayVisible)
         updateFullVideoToolbarButton()
         updateBrainActionButton()

@@ -379,6 +379,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let autoPrimaryConfidenceSwitchGain: Float = 1.08
     private let autoPrimaryConfidenceSwitchMargin: Float = 0.03
     private let autoPrimaryAreaShortlistCount: Int = 3
+    /// Keep RTMDet's pre-selection pool close to the old YOLOE flow: select primary after NMS from
+    /// a wider candidate set, then let the 3-largest area shortlist + confidence score decide.
+    private let rtmDetPrimaryCandidatePoolLimit: Int = 12
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -463,16 +466,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         60: "dining table",
         62: "tv",
     ]
-    /// When true, RTMDet only surfaces the curated furniture classes above
-    /// (`rtmDetFurnitureClassIndices`). When false, ALL 80 COCO classes are allowed through and
-    /// selection relies purely on confidence / center / mask-quality gates — set false to test
-    /// how the unrestricted detector behaves before deciding the final class policy.
-    private static let controlledList: Bool = false
-    private static let rtmDetLiveConfidenceThreshold: Float = 0.55
-    /// COCO under-scores standing / height-adjustable desks as "dining table" (class 60); on-device
-    /// logs show such tables peaking ~0.38–0.49 sigmoid. Give tables a lower per-class gate so they
-    /// get detected, while chairs/couches/beds keep the stricter 0.55 to limit false positives.
+    /// RTMDet is a fixed COCO detector for this flow, so keep primary selection in furniture classes.
+    /// Leaving all 80 classes enabled lets higher-scoring non-furniture classes consume the NMS pool.
+    private static let controlledList: Bool = true
+    /// RTMDet raw scores are lower than the old YOLOE scores in live camera frames. Logs show valid
+    /// chairs around 0.40-0.49, so 0.55 intermittently drops the object after it was detected.
+    private static let rtmDetLiveConfidenceThreshold: Float = 0.30
+    /// COCO under-scores common furniture in live frames; use a low gate and let the primary selector
+    /// rank by size + confidence instead of throwing away valid chairs before selection.
     private static let rtmDetTableConfidenceThreshold: Float = 0.30
+    /// Keep this independent from `controlledList`: class filtering is useful, but the mask-quality
+    /// rectangle/huge checks can reject valid near/large furniture.
+    private static let rtmDetSingleMaskQualityGateEnabled: Bool = false
     private func rtmDetClassConfidenceThreshold(_ classIdx: Int) -> Float {
         classIdx == 60 ? Self.rtmDetTableConfidenceThreshold : Self.rtmDetLiveConfidenceThreshold
     }
@@ -497,7 +502,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var lastARHeavyWorkFinishCAC: CFTimeInterval = 0
     private var autoPrimarySelectionConfig: FurnitureFitPrimarySelectionConfig {
         FurnitureFitPrimarySelectionConfig(
-            minimumConfidence: primaryDetectionMinConfidence,
+            minimumConfidence: currentModelIsRTMDet
+                ? Self.rtmDetLiveConfidenceThreshold
+                : primaryDetectionMinConfidence,
             preferHighestConfidence: primarySelectionByHighestConfidence,
             areaShortlistCount: autoPrimaryAreaShortlistCount,
             persistenceIoUThreshold: autoPrimaryPersistenceIoUThreshold,
@@ -3965,7 +3972,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     case .segmentPrimary: return 1
                     }
                 }(),
-                maxDetectionCount: 6,
+                maxDetectionCount: rtmDetPrimaryCandidatePoolLimit,
                 // Per-detection masks only when we composite a cutout: pinned (segmentSelected) or the
                 // centered primary (segmentPrimary). identifyOnly skips the per-instance build.
                 buildInstanceMasks: segmentationMode != .identifyOnly,
@@ -4022,10 +4029,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             consecutiveEmptyMaskFrames = 0
             pruneSelectedPinsMissingFromCurrentCandidates(candidates)
 
-            // SEGMENT_PRIMARY should keep the actual furniture object, not drop it because it is
-            // temporarily off-center. Use the stable primary selector (confidence + area + hysteresis)
-            // instead of the old frame-center picker.
-            var primaryIdx = segmentationMode == .segmentPrimary
+            // Match the old YOLOE auto-primary flow for both identify and segment-primary: choose
+            // from a wider post-NMS pool using area shortlist + confidence score + hysteresis.
+            var primaryIdx = segmentationMode != .segmentSelected
                 ? (FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(
                     candidates: candidates,
                     config: autoPrimarySelectionConfig,
@@ -4157,13 +4163,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     imageHeight: bufW
                 )
             }
-            // The single-mask quality gate rejects a too-large/rectangular blob (a bad segmentation).
-            // A multi-select union is intentionally large, so skip it — each instance mask was already
-            // decoded individually for a furniture the user explicitly picked. Also gate it on
-            // controlledList: the bbox-fit / too-huge / too-rectangular checks wrongly drop furniture
-            // (e.g. a table) that legitimately fills the whole frame, so in uncontrolled mode we keep
-            // the mask and rely purely on confidence/center.
-            if Self.controlledList, let image = finalCGImage, !isMultiSelectComposite {
+            // The single-mask quality gate can reject furniture that legitimately fills most of the
+            // frame, so keep it disabled for live RTMDet primary selection unless explicitly reenabled.
+            if Self.rtmDetSingleMaskQualityGateEnabled, let image = finalCGImage, !isMultiSelectComposite {
                 let quality = shouldAcceptRTMDetMask(image, for: primary)
                 if debugMode {
                     logDebug("🧠 [RTMDet mask quality] class=\(displayClassName(primary.classIdx)) \(quality.reason)")

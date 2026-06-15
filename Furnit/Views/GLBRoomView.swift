@@ -1277,8 +1277,9 @@ struct GLBRoomView: View {
     }
 
     private var brainButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             brainGestureHintColumn
+                .offset(y: -72)
             Button(action: {
                 if showingFurnitureFit {
                     dismissFullVideoFurnitureTapHint()
@@ -1302,6 +1303,7 @@ struct GLBRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
@@ -1327,8 +1329,9 @@ struct GLBRoomView: View {
     }
 
     private var snapshotButtonWithHintAbove: some View {
-        VStack(alignment: .center, spacing: 6) {
+        ZStack(alignment: .bottom) {
             snapshotGestureHintColumn
+                .offset(y: -72)
             Button(action: { takeScreenshot() }) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 28))
@@ -1338,6 +1341,7 @@ struct GLBRoomView: View {
             }
             .disabled(isLoading)
         }
+        .frame(width: 76, height: 120, alignment: .bottom)
     }
 
     private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {
