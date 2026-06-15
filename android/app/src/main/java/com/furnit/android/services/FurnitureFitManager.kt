@@ -240,11 +240,9 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     /**
-     * Upscales the 80x80 prototype mask to frame resolution and writes the cutout: opaque camera RGB
-     * (alpha 255) where the bilinearly sampled mask probability is above 0.5, fully transparent (alpha 0)
-     * everywhere else — one layer, hard alpha, no edge filtering, exactly like the iOS path. At the
-     * high-res analysis frame this matches the iOS look. framePixels are ARGB_8888 (0xAARRGGBB) from
-     * Bitmap.getPixels, so RGB is copied straight through (no channel swap). Scans only the primary band.
+     * Upscales the 80x80 RTMDet mask to frame resolution and writes a cutout bitmap.
+     * Non-object pixels must be fully transparent; otherwise the live camera frame leaks over the
+     * rendered room as a visible rectangular/background patch.
      */
     private fun composeProtoMaskCutoutArgb(
         framePixels: IntArray,
@@ -259,8 +257,7 @@ class FurnitureFitManager(private val context: Context) {
         y0: Int,
         y1: Int,
     ) {
-        // DEBUG: opaque green everywhere except the chair, to visualize the actual mask/cutout on device.
-        outPixels.fill(0xFF00FF00.toInt())
+        outPixels.fill(0x00000000)
         if (x0 >= x1 || y0 >= y1 || frameW <= 0 || frameH <= 0) return
         val xStart = x0.coerceIn(0, frameW)
         val xEnd = x1.coerceIn(0, frameW)
@@ -886,23 +883,11 @@ class FurnitureFitManager(private val context: Context) {
                     selectedClassIds.isEmpty() -> keepDets
                     else -> keepDets.filter { it.classId in selectedClassIds }
                 }
-                // Auto-segment (no pins/class filter) picks whatever furniture is under the screen
-                // center first, then confidence — so panning to the next item hands off cleanly
-                // instead of sticking on a higher-confidence box only ~20% in frame. Pinned/class
-                // selection keeps the weighted score (the user already chose the target).
-                val primaryDet = if (restrictToSelection) {
-                    pickPrimaryOnnxDetection(
-                        detections = primaryCandidates,
-                        frameWidth = inputW.toFloat(),
-                        frameHeight = inputH.toFloat(),
-                    )
-                } else {
-                    pickCenteredPrimaryDetection(
-                        detections = primaryCandidates,
-                        frameWidth = inputW.toFloat(),
-                        frameHeight = inputH.toFloat(),
-                    )
-                }
+                val primaryDet = pickPrimaryOnnxDetection(
+                    detections = primaryCandidates,
+                    frameWidth = inputW.toFloat(),
+                    frameHeight = inputH.toFloat(),
+                )
                 val maskSourceDetections = if (restrictToSelection) primaryCandidates else emptyList()
                 val maskDetectionsForBuild = if (restrictToSelection) {
                     maskSourceDetections.map { detection ->
@@ -1356,6 +1341,7 @@ class FurnitureFitManager(private val context: Context) {
                 y1 = bandY1,
             )
             maskResult = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888).also { maskBmp ->
+                maskBmp.setHasAlpha(true)
                 maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
             }
             maskBuildMillis = elapsedMillis(maskBuildStartNanos)
@@ -1531,33 +1517,29 @@ class FurnitureFitManager(private val context: Context) {
         return out
     }
 
-    private data class PrimaryCandidateScore(
-        val score: Float,
-        val isInteriorCandidate: Boolean,
-    )
-
     private fun primaryDetectionScore(
-        centerX: Float,
-        centerY: Float,
-        width: Float,
-        height: Float,
-        confidence: Float,
+        detection: Detection,
         frameWidth: Float,
         frameHeight: Float,
-    ): PrimaryCandidateScore {
+    ): Float {
+        val centerX = detection.x
+        val centerY = detection.y
+        val width = detection.w
+        val height = detection.h
+        val confidence = detection.confidence
         if (!centerX.isFinite() || !centerY.isFinite() || !width.isFinite() || !height.isFinite() || !confidence.isFinite()) {
-            return PrimaryCandidateScore(-1f, false)
+            return -1f
         }
         if (frameWidth <= 1f || frameHeight <= 1f || width <= 0f || height <= 0f) {
-            return PrimaryCandidateScore(-1f, false)
+            return -1f
         }
 
         val frameArea = frameWidth * frameHeight
-        val areaNormalized = (width * height) / frameArea
-        val minimumConfidence = 0.15f
-        val minimumAreaNormalized = 0.02f
+        val areaNormalized = ((width * height) / frameArea).coerceIn(0f, 1f)
+        val minimumConfidence = 0.05f
+        val minimumAreaNormalized = 0.005f
         if (confidence < minimumConfidence || areaNormalized < minimumAreaNormalized) {
-            return PrimaryCandidateScore(-1f, false)
+            return -1f
         }
 
         val frameCenterX = frameWidth * 0.5f
@@ -1565,33 +1547,14 @@ class FurnitureFitManager(private val context: Context) {
         val deltaX = (centerX - frameCenterX) / frameCenterX.coerceAtLeast(1f)
         val deltaY = (centerY - frameCenterY) / frameCenterY.coerceAtLeast(1f)
         val centerDistance = min(1f, sqrt(deltaX * deltaX + deltaY * deltaY))
-        val centerScore = 1f - centerDistance
 
-        val boxLeft = centerX - width * 0.5f
-        val boxTop = centerY - height * 0.5f
-        val boxRight = centerX + width * 0.5f
-        val boxBottom = centerY + height * 0.5f
-        val edgeMarginX = max(frameWidth * 0.04f, 1f)
-        val edgeMarginY = max(frameHeight * 0.04f, 1f)
-        val leftClearance = (boxLeft / edgeMarginX).coerceIn(0f, 1f)
-        val topClearance = (boxTop / edgeMarginY).coerceIn(0f, 1f)
-        val rightClearance = ((frameWidth - boxRight) / edgeMarginX).coerceIn(0f, 1f)
-        val bottomClearance = ((frameHeight - boxBottom) / edgeMarginY).coerceIn(0f, 1f)
-        val edgeClearanceScore = max(0.1f, min(min(leftClearance, topClearance), min(rightClearance, bottomClearance)))
-        val isInteriorCandidate =
-            leftClearance >= 1f &&
-                topClearance >= 1f &&
-                rightClearance >= 1f &&
-                bottomClearance >= 1f
-
-        val confidenceTerm = confidence.pow(1.0f)
-        val areaTerm = areaNormalized.pow(0.8f)
-        val centerTerm = max(0f, centerScore).pow(1.0f)
-        val edgeTerm = edgeClearanceScore.pow(1.0f)
-        return PrimaryCandidateScore(
-            score = confidenceTerm * areaTerm * centerTerm * edgeTerm,
-            isInteriorCandidate = isInteriorCandidate,
-        )
+        // Object persistence beats centerness: a real, large confident furniture box should not
+        // disappear just because it moved away from the frame center. Center is only a weak
+        // tie-breaker between otherwise similar candidates.
+        val confidenceTerm = confidence.pow(1.4f)
+        val areaTerm = areaNormalized.pow(0.7f)
+        val centerTieBreaker = 1f + (1f - centerDistance) * 0.05f
+        return confidenceTerm * areaTerm * centerTieBreaker
     }
 
     private fun pickPrimaryOnnxDetection(
@@ -1601,29 +1564,15 @@ class FurnitureFitManager(private val context: Context) {
     ): Detection? {
         if (detections.isEmpty()) return null
 
-        var bestDetection: Detection? = null
-        var bestScore = -1f
-        var bestEdgeFallback: Detection? = null
-        var bestEdgeFallbackScore = -1f
-        for (detection in detections) {
-            val candidateScore = primaryDetectionScore(
-                centerX = detection.x,
-                centerY = detection.y,
-                width = detection.w,
-                height = detection.h,
-                confidence = detection.confidence,
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-            )
-            if (candidateScore.isInteriorCandidate && candidateScore.score > bestScore) {
-                bestScore = candidateScore.score
-                bestDetection = detection
-            } else if (!candidateScore.isInteriorCandidate && candidateScore.score > bestEdgeFallbackScore) {
-                bestEdgeFallbackScore = candidateScore.score
-                bestEdgeFallback = detection
+        return detections.maxWithOrNull { lhs, rhs ->
+            val lhsScore = primaryDetectionScore(lhs, frameWidth, frameHeight)
+            val rhsScore = primaryDetectionScore(rhs, frameWidth, frameHeight)
+            if (lhsScore == rhsScore) {
+                lhs.confidence.compareTo(rhs.confidence)
+            } else {
+                lhsScore.compareTo(rhsScore)
             }
-        }
-        return bestDetection ?: bestEdgeFallback ?: detections.maxByOrNull { it.confidence }
+        } ?: detections.maxByOrNull { it.confidence }
     }
 
     /** The detection the user is pointing at for auto-segment: prefer boxes whose bbox contains the

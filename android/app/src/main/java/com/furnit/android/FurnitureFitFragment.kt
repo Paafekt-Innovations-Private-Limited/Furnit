@@ -406,6 +406,12 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun processArCoreFrame(bitmap: Bitmap) {
+        if (!isAdded || view == null) {
+            bitmap.recycle()
+            isProcessing = false
+            arCameraController?.onInferenceFinished()
+            return
+        }
         if (isProcessing) {
             return
         }
@@ -416,6 +422,12 @@ class FurnitureFitFragment : Fragment() {
         }
 
         manager.segmentWithDetectionsAsync(bitmap) { result ->
+            if (!isAdded || view == null) {
+                bitmap.recycle()
+                isProcessing = false
+                arCameraController?.onInferenceFinished()
+                return@segmentWithDetectionsAsync
+            }
             handleSegmentationResult(result, bitmap, isArPath = true)
             isProcessing = false
             arCameraController?.onInferenceFinished()
@@ -942,6 +954,13 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun runCameraXSegmentation(bitmap: Bitmap) {
+        if (!isAdded || view == null) {
+            bitmap.recycle()
+            clearPendingCameraBitmap()
+            isProcessing = false
+            arCameraController?.onInferenceFinished()
+            return
+        }
         // Update progress during processing
         if (!hasFirstDetection) {
             setProgress(15, getString(R.string.smartypants_preprocessing))
@@ -950,6 +969,13 @@ class FurnitureFitFragment : Fragment() {
         val alignedBitmap = alignCameraBitmapToLockedRoom(bitmap)
 
         manager.segmentWithDetectionsAsync(alignedBitmap) { result ->
+            if (!isAdded || view == null) {
+                alignedBitmap.recycle()
+                clearPendingCameraBitmap()
+                isProcessing = false
+                arCameraController?.onInferenceFinished()
+                return@segmentWithDetectionsAsync
+            }
             handleSegmentationResult(result, alignedBitmap, isArPath = false)
             val nextCameraBitmap = synchronized(pendingCameraBitmapLock) {
                 val pendingBitmap = pendingCameraBitmap
@@ -963,6 +989,15 @@ class FurnitureFitFragment : Fragment() {
                 arCameraController?.onInferenceFinished()
             }
         }
+    }
+
+    private fun clearPendingCameraBitmap() {
+        val pendingBitmap = synchronized(pendingCameraBitmapLock) {
+            val current = pendingCameraBitmap
+            pendingCameraBitmap = null
+            current
+        }
+        pendingBitmap?.takeIf { !it.isRecycled }?.recycle()
     }
 
     private fun setProgress(value: Int, text: String) {

@@ -265,7 +265,6 @@ enum RTMDetImageInference {
                 maxMaskCount: maxMaskCount,
                 maxDetectionCount: maxDetectionCount,
                 buildInstanceMasks: buildInstanceMasks,
-                restrictInstanceMasksToFrameCenter: restrictInstanceMasksToFrameCenter,
                 preStageMillis: preStageMillis,
                 debug: debug
             )
@@ -368,7 +367,6 @@ enum RTMDetImageInference {
         maxMaskCount: Int,
         maxDetectionCount: Int,
         buildInstanceMasks: Bool,
-        restrictInstanceMasksToFrameCenter: Bool,
         preStageMillis: StageMillis,
         debug: Bool
     ) throws -> RTMDetInferenceResult {
@@ -458,19 +456,8 @@ enum RTMDetImageInference {
         let tCombined = Date()
         let instanceMaskImages: [UIImage?]
         if buildInstanceMasks {
-            let frameCenterX = Float(sourceWidth) * 0.5
-            let frameCenterY = Float(sourceHeight) * 0.5
             instanceMaskImages = mappedBoxes.enumerated().map { index, mappedBox in
                 guard index < rawMaskPlanes.count else { return nil }
-                // segmentPrimary only ever composites the centered detection's mask, so skip the
-                // full-frame RGBA build for detections that don't cover the frame center. The centered
-                // primary covers it in the common case; a rare no-cover frame falls back to
-                // overlayMaskImage downstream. segmentSelected passes false (multi-select needs all).
-                if restrictInstanceMasksToFrameCenter,
-                   !(frameCenterX >= mappedBox.x1 && frameCenterX <= mappedBox.x2
-                     && frameCenterY >= mappedBox.y1 && frameCenterY <= mappedBox.y2) {
-                    return nil
-                }
                 return buildCombinedRawMaskImage(
                     rawMaskPlanes: [rawMaskPlanes[index]],
                     boxes: [mappedBox],

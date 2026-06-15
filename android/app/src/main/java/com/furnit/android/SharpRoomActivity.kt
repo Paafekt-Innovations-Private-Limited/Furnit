@@ -2468,6 +2468,9 @@ class SharpRoomActivity : AppCompatActivity() {
         if (::brainCameraPreviewView.isInitialized) {
             brainCameraPreviewView.visibility =
                 if (shouldShowLivePreview && brainArController == null && cameraPreviewUseCase != null) View.VISIBLE else View.GONE
+            if (brainSegmentationMode != BrainSegmentationMode.IDENTIFY_ONLY) {
+                brainCameraPreviewView.visibility = View.GONE
+            }
         }
         brainArController?.let { controller ->
             val layoutParams = controller.glSurfaceView.layoutParams as? FrameLayout.LayoutParams
