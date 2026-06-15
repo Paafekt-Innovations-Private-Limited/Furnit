@@ -49,13 +49,13 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         )
     }
 
-    func testRTMDetLiveCadenceRunsRealInferenceOnVideoFrames() throws {
+    func testRTMDetLiveCadenceRunsRealInferenceOnVideoFrames() async throws {
         let model = try loadRTMDetModel()
         assertRTMDetInterface(model)
 
         let sourceImage = try loadFixtureImage(named: "bus", extension: "jpg")
         let videoURL = try makeVideoFixture(from: sourceImage, frameCount: 9, fps: 3)
-        let frames = try readBGRAVideoFrames(from: videoURL)
+        let frames = try await readBGRAVideoFrames(from: videoURL)
 
         XCTAssertEqual(frames.count, 9, "Video fixture should decode every frame")
 
@@ -324,9 +324,9 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         return buffer
     }
 
-    private func readBGRAVideoFrames(from url: URL) throws -> [VideoFrame] {
-        let asset = AVAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else {
+    private func readBGRAVideoFrames(from url: URL) async throws -> [VideoFrame] {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             XCTFail("Video fixture has no video track")
             return []
         }
