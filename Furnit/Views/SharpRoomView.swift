@@ -431,9 +431,6 @@ struct SharpRoomView: View {
     private var navigationBarTrailingControls: some View {
         HStack(spacing: 14) {
             navigationBarRecenterButton
-            if showingFurnitureFit {
-                navigationBarFullVideoIdentificationsButton
-            }
             if canOfferBrainArAssist, showingFurnitureFit {
                 navigationBarARButton
                     .fixedSize(horizontal: true, vertical: true)
@@ -520,6 +517,37 @@ struct SharpRoomView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
+                if showingFurnitureFit {
+                    Button {
+                        showFullVideoWithIdentifications.toggle()
+                        dismissFullVideoFurnitureTapHint()
+                        if showFullVideoWithIdentifications {
+                            furnitureFitSegmentationMode = .identifyOnly
+                            furnitureFitShowIdentifyLivePreview = true
+                        } else {
+                            furnitureFitSegmentationMode = .segmentPrimary
+                            furnitureFitShowIdentifyLivePreview = true
+                        }
+                    } label: {
+                        Image(systemName: "text.viewfinder")
+                            .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                Circle().fill(
+                                    showFullVideoWithIdentifications
+                                        ? Color.green.opacity(0.9)
+                                        : Color.black.opacity(0.45)
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+                    .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+                    .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+                }
                 if pinchHintExplanationVisible {
                     Text(L10n.RoomViewer.pinchGestureHintExplanation)
                         .font(.caption2)
@@ -2183,11 +2211,11 @@ struct SharpRoomView: View {
                         brainButtonWithHintAbove
                     }
                     segmentButton
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                    }
                     Spacer().allowsHitTesting(false)
                     VStack(alignment: .trailing, spacing: 10) {
+                        if showingFurnitureFit {
+                            roomIntelligencePlacementCardResetOnExit
+                        }
                         if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                             if showRoomFurnitureCalibrate {
                                 Button(action: { showFurnitureDimensionsInput = true }) {
@@ -2224,11 +2252,10 @@ struct SharpRoomView: View {
                     segmentButton
                         .padding(.leading, 10)
                     Spacer(minLength: 4)
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                    }
-                    Spacer(minLength: 4)
                     VStack(spacing: 8) {
+                        if showingFurnitureFit {
+                            roomIntelligencePlacementCardResetOnExit
+                        }
                         if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                             if showRoomFurnitureCalibrate {
                                 Button(action: { showFurnitureDimensionsInput = true }) {
