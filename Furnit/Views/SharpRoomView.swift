@@ -390,30 +390,56 @@ struct SharpRoomView: View {
         .accessibilityLabel(L10n.RoomViewer.recenterView)
     }
 
-    private var navigationBarFullVideoIdentificationsButton: some View {
-        Button {
-            showFullVideoWithIdentifications.toggle()
-            dismissFullVideoFurnitureTapHint()
-            if showFullVideoWithIdentifications {
-                // Enter the tap-to-segment flow: show live identifications and wait for a tap.
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-            } else {
-                // Back to the brain default: auto-segment the highest-confidence primary.
-                furnitureFitSegmentationMode = .segmentPrimary
-                furnitureFitShowIdentifyLivePreview = true
-            }
-        } label: {
+    private func toggleFullVideoIdentifications() {
+        showFullVideoWithIdentifications.toggle()
+        dismissFullVideoFurnitureTapHint()
+        if showFullVideoWithIdentifications {
+            // Enter the tap-to-segment flow: show live identifications and wait for a tap.
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+        } else {
+            // Back to the brain default: auto-segment the highest-confidence primary.
+            furnitureFitSegmentationMode = .segmentPrimary
+            furnitureFitShowIdentifyLivePreview = true
+        }
+    }
+
+    private var fullVideoIdentificationsFloatingButton: some View {
+        Button(action: toggleFullVideoIdentifications) {
             Image(systemName: "text.viewfinder")
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                .font(.title3)
-                .foregroundStyle(showingFurnitureFit ? Color.cyan : .primary)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(showingFurnitureFit ? Color.cyan : .white)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.black.opacity(0.62)))
+                .overlay(
+                    Circle().stroke(
+                        showFullVideoWithIdentifications ? Color.cyan.opacity(0.9) : Color.white.opacity(0.18),
+                        lineWidth: 1
+                    )
+                )
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
         .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
         .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
         .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+    }
+
+    private var fullVideoModeFloatingButtonOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit {
+                fullVideoIdentificationsFloatingButton
+                    .padding(.top, 54)
+                    .padding(.trailing, canOfferBrainArAssist ? 58 : 16)
+                    .transition(.opacity)
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(107)
     }
 
     private var navigationBarSaveButton: some View {
@@ -431,9 +457,6 @@ struct SharpRoomView: View {
     private var navigationBarTrailingControls: some View {
         HStack(spacing: 14) {
             navigationBarRecenterButton
-            if showingFurnitureFit {
-                navigationBarFullVideoIdentificationsButton
-            }
             if canOfferBrainArAssist, showingFurnitureFit {
                 navigationBarARButton
                     .fixedSize(horizontal: true, vertical: true)
@@ -442,12 +465,6 @@ struct SharpRoomView: View {
                 navigationBarSaveButton
             }
         }
-    }
-
-    private var fullVideoHelperButtonsToRight: Int {
-        let arButtons = (canOfferBrainArAssist && showingFurnitureFit) ? 1 : 0
-        let saveButtons = allowSave ? 1 : 0
-        return arButtons + saveButtons
     }
 
     private var fullVideoToolbarHelperOverlay: some View {
@@ -475,8 +492,8 @@ struct SharpRoomView: View {
                         )
                 }
                 .padding(.top, 6)
-                .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))
-                .offset(y: -34)
+                .padding(.trailing, canOfferBrainArAssist ? 62 : 20)
+                .offset(y: 50)
                 .transition(.opacity)
             }
         }
@@ -2183,9 +2200,6 @@ struct SharpRoomView: View {
                         brainButtonWithHintAbove
                     }
                     segmentButton
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                    }
                     Spacer().allowsHitTesting(false)
                     VStack(alignment: .trailing, spacing: 10) {
                         if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
@@ -2201,6 +2215,10 @@ struct SharpRoomView: View {
                     }
                 }
                 .padding(.horizontal, 30).padding(.bottom, 20)
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                        .padding(.bottom, 40)
+                }
             }
             .opacity(isCapturingSnapshot ? 0 : 1)
             .zIndex(99997)
@@ -2216,31 +2234,33 @@ struct SharpRoomView: View {
                 .background(Color.black.opacity(0.4)).cornerRadius(6)
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
-                HStack(alignment: .bottom, spacing: 0) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        brainButtonWithHintAbove
+                ZStack(alignment: .bottom) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        HStack(alignment: .bottom, spacing: 8) {
+                            brainButtonWithHintAbove
+                        }
+                            .padding(.leading, 16)
+                        segmentButton
+                            .padding(.leading, 10)
+                        Spacer(minLength: 4)
+                        VStack(spacing: 8) {
+                            if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                                if showRoomFurnitureCalibrate {
+                                    Button(action: { showFurnitureDimensionsInput = true }) {
+                                        furnitureMeasurementPillContent(showTapHint: true)
+                                    }
+                                } else {
+                                    furnitureMeasurementPillContent(showTapHint: false)
+                                }
+                            }
+                            snapshotButtonWithHintAbove
+                        }
+                        .padding(.trailing, 16)
                     }
-                        .padding(.leading, 16)
-                    segmentButton
-                        .padding(.leading, 10)
-                    Spacer(minLength: 4)
                     if showingFurnitureFit {
                         roomIntelligencePlacementCardResetOnExit
+                            .padding(.bottom, 20)
                     }
-                    Spacer(minLength: 4)
-                    VStack(spacing: 8) {
-                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                            if showRoomFurnitureCalibrate {
-                                Button(action: { showFurnitureDimensionsInput = true }) {
-                                    furnitureMeasurementPillContent(showTapHint: true)
-                                }
-                            } else {
-                                furnitureMeasurementPillContent(showTapHint: false)
-                            }
-                        }
-                        snapshotButtonWithHintAbove
-                    }
-                    .padding(.trailing, 16)
                 }
                 .padding(.bottom, 20)
             }
@@ -2256,6 +2276,7 @@ struct SharpRoomView: View {
                 topTrailingPinchTapAndSizingHintsOverlay
                 roomDimensionsHintOverlay
                 fullVideoFurnitureTapHintOverlay
+                fullVideoModeFloatingButtonOverlay
                 fullVideoToolbarHelperOverlay
             }
             if isLoading { loadingOverlayView }

@@ -271,20 +271,20 @@ struct ModelViewerView: View {
     private var modelViewerBrainAndPlacementChrome: some View {
         VStack {
             Spacer()
-            HStack {
-                VStack(spacing: 16) {
-                    HStack(alignment: .bottom, spacing: 8) {
+            ZStack(alignment: .bottom) {
+                HStack(alignment: .bottom) {
+                    HStack(alignment: .bottom, spacing: 10) {
                         brainButtonWithHintAbove
+                        segmentModeToggleChrome
                     }
-                    segmentModeToggleChrome
+                    .padding(.leading, 16)
+                    Spacer()
                 }
-                .padding(.leading, 16)
-                .padding(.bottom, 20)
-                Spacer()
                 roomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 26)
-                Spacer()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 0)
             }
+            .padding(.bottom, 20)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(99998) // SECOND HIGHEST Z-INDEX
@@ -312,6 +312,7 @@ struct ModelViewerView: View {
             fullVideoToolbarHelperOverlay
             topTrailingPinchAndSizingHintsOverlay
             fullVideoFurnitureTapBubbleOverlay
+            fullVideoModeFloatingButtonOverlay
             modelViewerTopChrome
             modelViewerBrainAndPlacementChrome
             modelViewerSnapshotChrome
@@ -500,19 +501,6 @@ struct ModelViewerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.RoomViewer.recenterView)
 
-            if showingFurnitureFit {
-                Button(action: toggleFullVideoIdentifications) {
-                    Image(systemName: "text.viewfinder")
-                        .font(.system(size: 18, weight: .medium))
-                        .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                        .foregroundStyle(Color.cyan)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
-                .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
-                .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
-            }
-
             if showingFurnitureFit && canOfferBrainArAssist {
                 Button(action: toggleBrainArAssistedSizingOrShowHint) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -537,6 +525,42 @@ struct ModelViewerView: View {
         .padding(.vertical, 10)
         .background(Color.black.opacity(0.72))
         .clipShape(Capsule())
+    }
+
+    private var fullVideoIdentificationsFloatingButton: some View {
+        Button(action: toggleFullVideoIdentifications) {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 16, weight: .semibold))
+                .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                .foregroundStyle(Color.cyan)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.black.opacity(0.68)))
+                .overlay(
+                    Circle().stroke(
+                        showFullVideoWithIdentifications ? Color.cyan.opacity(0.9) : Color.white.opacity(0.18),
+                        lineWidth: 1
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+        .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+        .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+    }
+
+    private var fullVideoModeFloatingButtonOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit {
+                fullVideoIdentificationsFloatingButton
+                    .padding(.top, 88)
+                    .padding(.trailing, 8)
+            }
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(99997)
     }
 
     private var roomDimensionsHintText: String {
@@ -587,12 +611,14 @@ struct ModelViewerView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if showingFurnitureFit && showFullVideoWithIdentifications {
+            if showingFurnitureFit &&
+                !showFullVideoWithIdentifications &&
+                furnitureFitSegmentationMode == .segmentPrimary {
                 VStack(alignment: .trailing, spacing: 4) {
-                    Image(systemName: "arrow.up")
+                    Image(systemName: "arrow.up.right")
                         .font(.caption.weight(.bold))
                         .foregroundColor(.cyan)
-                        .padding(.trailing, 18)
+                        .padding(.trailing, 4)
                     Text(L10n.RoomViewer.fullVideoSelectionHelper)
                         .font(.caption2)
                         .foregroundColor(.cyan)
@@ -607,8 +633,8 @@ struct ModelViewerView: View {
                         )
                 }
                 .padding(.top, 6)
-                .padding(.trailing, 52)
-                .offset(y: -24)
+                .padding(.trailing, 54)
+                .offset(y: 70)
             }
         }
         .allowsHitTesting(false)
@@ -643,7 +669,7 @@ struct ModelViewerView: View {
                 }
             }
             .padding(.top, 52)
-            .padding(.trailing, 16)
+            .padding(.trailing, showingFurnitureFit ? 64 : 16)
         }
         .allowsHitTesting(false)
         .zIndex(101)

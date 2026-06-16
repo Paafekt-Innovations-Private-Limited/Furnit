@@ -472,6 +472,7 @@ struct GLBRoomView: View {
 
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
+            fullVideoModeFloatingButtonOverlay
             fullVideoToolbarHelperOverlay
             glbRoomCalibrationGateOverlay
             glbRoomOrientationControls
@@ -881,29 +882,55 @@ struct GLBRoomView: View {
         brainArAssistedSizingEnabled.toggle()
     }
 
-    private var navigationBarFullVideoIdentificationsButton: some View {
-        Button {
-            showFullVideoWithIdentifications.toggle()
-            dismissFullVideoFurnitureTapHint()
-            if showFullVideoWithIdentifications {
-                // Enter the tap-to-segment flow: show live identifications and wait for a tap.
-                furnitureFitSegmentationMode = .identifyOnly
-                furnitureFitShowIdentifyLivePreview = true
-            } else {
-                // Back to the brain default: auto-segment the highest-confidence primary.
-                furnitureFitSegmentationMode = .segmentPrimary
-                furnitureFitShowIdentifyLivePreview = true
-            }
-        } label: {
+    private func toggleFullVideoIdentifications() {
+        showFullVideoWithIdentifications.toggle()
+        dismissFullVideoFurnitureTapHint()
+        if showFullVideoWithIdentifications {
+            // Enter the tap-to-segment flow: show live identifications and wait for a tap.
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+        } else {
+            // Back to the brain default: auto-segment the highest-confidence primary.
+            furnitureFitSegmentationMode = .segmentPrimary
+            furnitureFitShowIdentifyLivePreview = true
+        }
+    }
+
+    private var fullVideoIdentificationsFloatingButton: some View {
+        Button(action: toggleFullVideoIdentifications) {
             Image(systemName: "text.viewfinder")
                 .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                .foregroundStyle(showingFurnitureFit ? Color.cyan : .primary)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(showingFurnitureFit ? Color.cyan : .white)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.black.opacity(0.62)))
+                .overlay(
+                    Circle().stroke(
+                        showFullVideoWithIdentifications ? Color.cyan.opacity(0.9) : Color.white.opacity(0.18),
+                        lineWidth: 1
+                    )
+                )
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
         .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
         .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
         .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
+    }
+
+    private var fullVideoModeFloatingButtonOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit {
+                fullVideoIdentificationsFloatingButton
+                    .padding(.top, 54)
+                    .padding(.trailing, canOfferBrainArAssist ? 58 : 16)
+                    .transition(.opacity)
+            }
+        }
+        .zIndex(107)
     }
 
     private var navigationBarARButton: some View {
@@ -937,19 +964,11 @@ struct GLBRoomView: View {
             }
             .disabled(isLoading)
 
-            if showingFurnitureFit {
-                navigationBarFullVideoIdentificationsButton
-            }
-
             if canOfferBrainArAssist, showingFurnitureFit {
                 navigationBarARButton
                     .fixedSize(horizontal: true, vertical: true)
             }
         }
-    }
-
-    private var fullVideoHelperButtonsToRight: Int {
-        (canOfferBrainArAssist && showingFurnitureFit) ? 1 : 0
     }
 
     private var fullVideoToolbarHelperOverlay: some View {
@@ -977,8 +996,8 @@ struct GLBRoomView: View {
                         )
                 }
                 .padding(.top, 6)
-                .padding(.trailing, 18 + CGFloat(fullVideoHelperButtonsToRight * 34))
-                .offset(y: -34)
+                .padding(.trailing, canOfferBrainArAssist ? 62 : 20)
+                .offset(y: 50)
                 .transition(.opacity)
             }
         }
@@ -1663,31 +1682,33 @@ struct GLBRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            HStack {
-                brainButtonWithHintAbove
-                    .padding(.leading, 16)
-                segmentButton
-                    .padding(.leading, 10)
+            ZStack(alignment: .bottom) {
+                HStack {
+                    brainButtonWithHintAbove
+                        .padding(.leading, 16)
+                    segmentButton
+                        .padding(.leading, 10)
+
+                    Spacer()
+
+                    VStack(spacing: 10) {
+                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                            if showRoomFurnitureCalibrate {
+                                Button(action: { showFurnitureDimensionsInput = true }) {
+                                    furnitureMeasurementPillContent(showTapHint: true)
+                                }
+                            } else {
+                                furnitureMeasurementPillContent(showTapHint: false)
+                            }
+                        }
+                        snapshotButtonWithHintAbove
+                    }
+                    .padding(.trailing, 16)
+                }
                 if showingFurnitureFit {
                     roomIntelligencePlacementCardResetOnExit
-                        .padding(.leading, 10)
+                        .padding(.bottom, 20)
                 }
-
-                Spacer()
-
-                VStack(spacing: 10) {
-                    if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                        if showRoomFurnitureCalibrate {
-                            Button(action: { showFurnitureDimensionsInput = true }) {
-                                furnitureMeasurementPillContent(showTapHint: true)
-                            }
-                        } else {
-                            furnitureMeasurementPillContent(showTapHint: false)
-                        }
-                    }
-                    snapshotButtonWithHintAbove
-                }
-                .padding(.trailing, 16)
             }
             .padding(.bottom, 20)
         }
