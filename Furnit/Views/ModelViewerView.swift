@@ -69,6 +69,8 @@ struct ModelViewerView: View {
     @State private var arSizingHintExplanationVisible = false
     @State private var arSizingHintHideTextTask: Task<Void, Never>?
     @State private var arSizingHintRequiresBrain = false
+    @State private var fullVideoSelectionHelperVisible = false
+    @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
 
     @State private var isCapturingSnapshot = false
 
@@ -358,8 +360,10 @@ struct ModelViewerView: View {
             restartSnapshotGestureHint()
             restartPinchGestureHint()
             updateRoomPlacementIntelligence()
+            presentFullVideoSelectionHelperIfNeeded()
         } else {
             dismissFullVideoFurnitureTapHint()
+            cancelFullVideoSelectionHelper()
             showFullVideoWithIdentifications = false
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
@@ -421,6 +425,7 @@ struct ModelViewerView: View {
         cancelSnapshotHintTasks()
         cancelRoomDimensionsHintTasks()
         cancelARSizingHintTasks()
+        cancelFullVideoSelectionHelper()
         OrientationLockManager.shared.unlock()
     }
 
@@ -437,6 +442,28 @@ struct ModelViewerView: View {
         tapHintColorTimer?.invalidate()
         tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             DispatchQueue.main.async { tapHintColorIndex += 1 }
+        }
+    }
+
+    private func cancelFullVideoSelectionHelper() {
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperHideTask = nil
+        fullVideoSelectionHelperVisible = false
+    }
+
+    private func presentFullVideoSelectionHelperIfNeeded() {
+        guard showingFurnitureFit,
+              !showFullVideoWithIdentifications,
+              furnitureFitSegmentationMode == .segmentPrimary else {
+            cancelFullVideoSelectionHelper()
+            return
+        }
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperVisible = true
+        fullVideoSelectionHelperHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            fullVideoSelectionHelperVisible = false
         }
     }
 
@@ -613,7 +640,8 @@ struct ModelViewerView: View {
                 .allowsHitTesting(false)
             if showingFurnitureFit &&
                 !showFullVideoWithIdentifications &&
-                furnitureFitSegmentationMode == .segmentPrimary {
+                furnitureFitSegmentationMode == .segmentPrimary &&
+                fullVideoSelectionHelperVisible {
                 VStack(alignment: .trailing, spacing: 4) {
                     Image(systemName: "arrow.up.right")
                         .font(.caption.weight(.bold))
@@ -634,7 +662,7 @@ struct ModelViewerView: View {
                 }
                 .padding(.top, 6)
                 .padding(.trailing, 54)
-                .offset(y: 70)
+                .offset(y: 108)
             }
         }
         .allowsHitTesting(false)
@@ -760,11 +788,13 @@ struct ModelViewerView: View {
         showFurnitureHint = false
         if showingFurnitureFit {
             dismissFullVideoFurnitureTapHint()
+            cancelFullVideoSelectionHelper()
             showingFurnitureFit = false
         } else {
             logDebug("BRAIN FLOW: loading RTMDet and opening FurnitureFit")
             rtmdetService.ensureModelLoaded()
             showFullVideoWithIdentifications = false
+            cancelFullVideoSelectionHelper()
             brainArAssistedSizingEnabled = false
             // Brain default: auto-segment the highest-confidence detection (no tap needed). The
             // tap-to-select flow lives behind the full-video (text.viewfinder) toolbar button.
@@ -787,6 +817,7 @@ struct ModelViewerView: View {
         showFullVideoWithIdentifications.toggle()
         dismissFullVideoFurnitureTapHint()
         if showFullVideoWithIdentifications {
+            cancelFullVideoSelectionHelper()
             // Enter the tap-to-segment flow: show live identifications and wait for a tap.
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
@@ -794,6 +825,7 @@ struct ModelViewerView: View {
             // Back to the brain default: auto-segment the highest-confidence primary.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
+            presentFullVideoSelectionHelperIfNeeded()
         }
     }
 
