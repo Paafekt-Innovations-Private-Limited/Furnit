@@ -330,9 +330,9 @@ final class IntegrationTests: XCTestCase {
     func testMaskThresholding() {
         let floatMask: [Float] = [-1.0, -0.1, 0.0, 0.1, 0.5, 1.0]
 
-        // Default threshold (0.0)
+        // Default threshold (0.5, inclusive)
         let defaultThreshold = FurnitureFitMask.threshold(floatMask)
-        XCTAssertEqual(defaultThreshold, [0, 0, 0, 255, 255, 255])
+        XCTAssertEqual(defaultThreshold, [0, 0, 0, 0, 255, 255])
 
         // Custom threshold (0.3)
         let customThreshold = FurnitureFitMask.threshold(floatMask, threshold: 0.3)

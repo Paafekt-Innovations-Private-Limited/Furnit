@@ -6,6 +6,7 @@ import RealityKit
 import simd
 @testable import Furnit
 
+@MainActor
 final class RealityKitGestureTests: XCTestCase {
 
     // MARK: - Camera Anchor Movement Tests
@@ -18,7 +19,8 @@ final class RealityKitGestureTests: XCTestCase {
 
         XCTAssertNotNil(anchor)
         XCTAssertNotNil(camera)
-        XCTAssertEqual(anchor.children.count, 1)
+        let childCount = anchor.children.count
+        XCTAssertEqual(childCount, 1)
     }
 
     func testCameraAnchorTransformModification() {
@@ -212,6 +214,7 @@ final class RealityKitGestureTests: XCTestCase {
 
 // MARK: - RealityKit View Coordinator Tests
 
+@MainActor
 final class RealityKitViewCoordinatorTests: XCTestCase {
 
     func testGestureHandlerCreation() {
@@ -232,6 +235,7 @@ final class RealityKitViewCoordinatorTests: XCTestCase {
         anchor.addChild(camera)
 
         // Verify hierarchy
-        XCTAssertTrue(anchor.children.contains(where: { $0 is PerspectiveCamera }))
+        let hasCameraChild = anchor.children.contains(where: { $0 is PerspectiveCamera })
+        XCTAssertTrue(hasCameraChild)
     }
 }

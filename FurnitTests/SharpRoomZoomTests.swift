@@ -109,12 +109,15 @@ final class SharpRoomZoomTests: XCTestCase {
     func testZoomInThenZoomOutRestoresDirection() {
         let target = ZoomCameraMath.Vec3(x: 1, y: 2, z: 0)
         var camera = ZoomCameraMath.Vec3(x: 1, y: 2, z: 6)
+        let zoomInScale = 1.5
 
-        let afterIn = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: 1.5, roomBounds: nil)
+        let afterIn = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: zoomInScale, roomBounds: nil)
         XCTAssertNotNil(afterIn)
         camera = afterIn!
 
-        let afterOut = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: 1/1.5, roomBounds: nil)
+        let amplifiedZoomIn = 1 + (zoomInScale - 1) * ZoomCameraMath.amplification
+        let inverseGestureScale = 1 + ((1 / amplifiedZoomIn) - 1) / ZoomCameraMath.amplification
+        let afterOut = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: inverseGestureScale, roomBounds: nil)
         XCTAssertNotNil(afterOut)
         let distOriginal: Double = 6
         let distBack = ZoomCameraMath.distance(afterOut!, target)
@@ -150,7 +153,7 @@ final class SharpRoomZoomTests: XCTestCase {
 
     func testRoomBoundsClamp() {
         let target = ZoomCameraMath.Vec3(x: 0, y: 0, z: 0)
-        var camera = ZoomCameraMath.Vec3(x: 0, y: 0, z: 5)
+        let camera = ZoomCameraMath.Vec3(x: 0, y: 0, z: 5)
         let bounds = (minX: -2.0, maxX: 2.0, minY: -1.5, maxY: 1.5, minZ: -4.0, maxZ: 0.0)
 
         let after = ZoomCameraMath.zoom(cameraPosition: camera, target: target, scale: 0.3, roomBounds: bounds)

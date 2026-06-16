@@ -4,4 +4,7 @@
    <FileRef
       location = "group:Furnit.xcodeproj">
    </FileRef>
+   <FileRef
+      location = "group:../Furnit.xctestplan">
+   </FileRef>
 </Workspace>

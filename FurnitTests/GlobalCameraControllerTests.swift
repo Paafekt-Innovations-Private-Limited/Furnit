@@ -23,8 +23,6 @@ final class GlobalCameraControllerTests: XCTestCase {
 
         // Verify camera is registered (controller should be active)
         // We can test this indirectly by checking if drag updates work
-        let initialPosition = cameraNode.position
-
         // Simulate drag
         controller.updateFromDrag(CGSize(width: 100, height: 0))
 
@@ -125,8 +123,6 @@ final class GlobalCameraControllerTests: XCTestCase {
         // Register camera
         controller.registerSceneKitCamera(cameraNode)
 
-        let initialZ = cameraNode.position.z
-
         // Drag down (positive Y) should move forward (-Z direction)
         controller.updateFromDrag(CGSize(width: 0, height: 100))
 
@@ -192,10 +188,6 @@ final class GlobalCameraControllerTests: XCTestCase {
         // Apply large drag
         controller.updateFromDrag(CGSize(width: 200, height: 0))
 
-        // Movement should be gradual due to smoothing
-        var previousX = cameraNode.position.x
-        var movementIncreasing = true
-
         for i in 0..<5 {
             let expectation = XCTestExpectation(description: "Movement frame \(i)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -203,12 +195,7 @@ final class GlobalCameraControllerTests: XCTestCase {
             }
             wait(for: [expectation], timeout: 1.0)
 
-            // Check that movement is happening
-            let currentX = cameraNode.position.x
-            if abs(currentX - previousX) < 0.0001 && i > 2 {
-                movementIncreasing = false
-            }
-            previousX = currentX
+            _ = cameraNode.position.x
         }
 
         controller.endDrag()

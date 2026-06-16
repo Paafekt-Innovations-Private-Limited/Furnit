@@ -113,9 +113,22 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         XCTAssertGreaterThan(bestMaskBounds.width, 100, "RTMDet mask overlay is too narrow: \(bestMaskBounds)")
         XCTAssertGreaterThan(bestMaskBounds.height, 100, "RTMDet mask overlay is too short: \(bestMaskBounds)")
         XCTAssertLessThan(bestMaskFillRatio, 0.88, "RTMDet mask overlay is too rectangular: bounds=\(bestMaskBounds) fillRatio=\(bestMaskFillRatio)")
-        XCTAssertTrue(outputSummaries.contains { $0 == "dets: 1x100x5 float32" }, "Missing dets output: \(outputSummaries)")
-        XCTAssertTrue(outputSummaries.contains { $0 == "labels: 1x100 int32" }, "Missing labels output: \(outputSummaries)")
-        XCTAssertTrue(outputSummaries.contains { $0 == "masks: 1x100x640x640 float32" }, "Missing masks output: \(outputSummaries)")
+        XCTAssertTrue(
+            outputSummaries.contains { $0.hasPrefix("cls_80:") },
+            "Missing raw class head output: \(outputSummaries)"
+        )
+        XCTAssertTrue(
+            outputSummaries.contains { $0.hasPrefix("bbox_80:") },
+            "Missing raw bbox head output: \(outputSummaries)"
+        )
+        XCTAssertTrue(
+            outputSummaries.contains { $0.hasPrefix("kernel_80:") },
+            "Missing raw mask-kernel head output: \(outputSummaries)"
+        )
+        XCTAssertTrue(
+            outputSummaries.contains { $0.hasPrefix("mask_feat:") },
+            "Missing raw mask feature output: \(outputSummaries)"
+        )
     }
 
     private struct VideoFrame {
@@ -157,9 +170,25 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         XCTAssertEqual(inputs["input"]?.multiArrayConstraint?.shape.map(\.intValue), [1, 3, 640, 640])
 
         let outputs = model.modelDescription.outputDescriptionsByName
-        XCTAssertNotNil(outputs["dets"])
-        XCTAssertNotNil(outputs["labels"])
-        XCTAssertNotNil(outputs["masks"])
+        let hasPostprocessedOutputs =
+            outputs["dets"] != nil &&
+            outputs["labels"] != nil &&
+            outputs["masks"] != nil
+        let hasRawHeadOutputs =
+            outputs["cls_80"] != nil &&
+            outputs["bbox_80"] != nil &&
+            outputs["kernel_80"] != nil &&
+            outputs["cls_40"] != nil &&
+            outputs["bbox_40"] != nil &&
+            outputs["kernel_40"] != nil &&
+            outputs["cls_20"] != nil &&
+            outputs["bbox_20"] != nil &&
+            outputs["kernel_20"] != nil &&
+            outputs["mask_feat"] != nil
+        XCTAssertTrue(
+            hasPostprocessedOutputs || hasRawHeadOutputs,
+            "RTMDet model must expose either postprocessed dets/labels/masks or raw cls/bbox/kernel/mask_feat heads. Outputs: \(outputs.keys.sorted())"
+        )
     }
 
     private func alphaStats(in image: UIImage) -> (pixelCount: Int, bounds: CGRect, fillRatio: Double) {

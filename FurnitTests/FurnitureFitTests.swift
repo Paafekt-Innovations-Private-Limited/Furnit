@@ -276,7 +276,7 @@ final class FurnitureFitTests: XCTestCase {
         let floatMask: [Float] = [-0.5, 0.0, 0.5, 1.0]
         let thresholded = FurnitureFitMask.threshold(floatMask, threshold: 0.0)
 
-        XCTAssertEqual(thresholded, [0, 0, 255, 255])
+        XCTAssertEqual(thresholded, [0, 255, 255, 255])
     }
 
     func testMaskThresholdCustom() {

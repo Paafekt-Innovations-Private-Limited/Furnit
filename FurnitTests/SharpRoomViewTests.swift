@@ -251,7 +251,6 @@ final class SharpRoomViewTests: XCTestCase {
     func testWarmupActiveCheck() {
         // Simulate warm-up period check
         let warmupDuration = 5000
-        let animationStartTime = 0
 
         // At 2 seconds - should be in warmup
         let elapsed2s = 2000
