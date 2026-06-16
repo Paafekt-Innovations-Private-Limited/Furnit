@@ -146,11 +146,11 @@
 "licenses.sharpTitle" = "3D 房間重建 (SHARP)";
 "licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "裝置端高斯 splat 渲染。Copyright (c) Sean Cier。依 MIT 授權條款授權。";
+"licenses.metalSplatter" = "裝置端 Gaussian splat 渲染。版權所有 (c) Sean Cier。依 MIT 授權條款授權。";
 "licenses.firebaseTitle" = "Firebase";
-"licenses.firebase" = "版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。";
+"licenses.firebase" = "版權所有 (c) Google LLC。依 Apache License 2.0 授權。";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "家具偵測與分割使用 OpenMMLab MMDetection 的 RTMDet-Ins 模型。版權所有 (c) OpenMMLab。依 Apache License 2.0 授權。";
 
 // MARK: - Quality Options
 "quality.standard" = "標準";

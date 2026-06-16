@@ -146,11 +146,11 @@
 "licenses.sharpTitle" = "3D রুম পুনর্গঠন (SHARP)";
 "licenses.sharp" = "কপিরাইট (c) SharpML অবদানকারী। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
+"licenses.metalSplatter" = "ডিভাইসেই Gaussian splat rendering। কপিরাইট (c) Sean Cier। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.firebaseTitle" = "Firebase";
-"licenses.firebase" = "কপিরাইট (c) Google LLC। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।";
+"licenses.firebase" = "কপিরাইট (c) Google LLC। Apache License 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "ফার্নিচার শনাক্তকরণ এবং সেগমেন্টেশন OpenMMLab MMDetection-এর RTMDet-Ins মডেল ব্যবহার করে। কপিরাইট (c) OpenMMLab। Apache License 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।";
 
 // MARK: - Quality Options
 "quality.standard" = "স্ট্যান্ডার্ড";

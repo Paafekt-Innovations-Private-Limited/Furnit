@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">Voir la licence complète</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) contributeurs SharpML. Sous licence MIT.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">Rendu Gaussian splat sur l’appareil. Copyright (c) Sean Cier. Sous licence MIT.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Sous licence Apache 2.0.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">La détection et la segmentation des meubles utilisent le modèle RTMDet-Ins d’OpenMMLab MMDetection. Copyright (c) OpenMMLab. Sous licence Apache 2.0.</string>
     <string name="settings_room_viewer">Visionneuse de pièce</string>
     <string name="settings_rendering_quality">Qualité de rendu</string>
     <string name="settings_sign_out">Déconnexion</string>

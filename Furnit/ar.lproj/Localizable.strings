@@ -146,11 +146,11 @@
 "licenses.sharpTitle" = "إعادة بناء الغرفة ثلاثية الأبعاد (SHARP)";
 "licenses.sharp" = "حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "تصيير splat غاوسي على الجهاز. حقوق النشر (c) Sean Cier. مرخّص بموجب رخصة MIT.";
+"licenses.metalSplatter" = "عرض Gaussian splat على الجهاز. حقوق النشر (c) Sean Cier. مرخّص بموجب ترخيص MIT.";
 "licenses.firebaseTitle" = "Firebase";
-"licenses.firebase" = "حقوق النشر (c) Google LLC. مرخّص بموجب رخصة Apache 2.0.";
+"licenses.firebase" = "حقوق النشر (c) Google LLC. مرخّص بموجب ترخيص Apache License 2.0.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "يستخدم اكتشاف الأثاث وتقسيمه نموذج RTMDet-Ins من OpenMMLab MMDetection. حقوق النشر (c) OpenMMLab. مرخّص بموجب ترخيص Apache License 2.0.";
 
 // MARK: - Quality Options
 "quality.standard" = "قياسي";

@@ -146,11 +146,11 @@
 "licenses.sharpTitle" = "3D-Raumrekonstruktion (SHARP)";
 "licenses.sharp" = "Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "Gaussian-Splat-Rendering auf dem Gerät. Copyright (c) Sean Cier. Lizenziert unter der MIT-Lizenz.";
+"licenses.metalSplatter" = "Gaussian-Splat-Rendering direkt auf dem Gerät. Copyright (c) Sean Cier. Lizenziert unter der MIT-Lizenz.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "Möbelerkennung und -segmentierung verwenden das RTMDet-Ins-Modell von OpenMMLab MMDetection. Copyright (c) OpenMMLab. Lizenziert unter der Apache-Lizenz 2.0.";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";

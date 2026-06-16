@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">ಸಾಧನದಲ್ಲಿಯೇ Gaussian splat ರೆಂಡರಿಂಗ್. ಕೃತಿಸ್ವಾಮ್ಯ (c) Sean Cier. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">ಫರ್ನಿಚರ್ ಪತ್ತೆ ಮತ್ತು ಸೆಗ್ಮೆಂಟೇಶನ್ OpenMMLab MMDetection ನ RTMDet-Ins ಮಾದರಿಯನ್ನು ಬಳಸುತ್ತದೆ. ಕೃತಿಸ್ವಾಮ್ಯ (c) OpenMMLab. Apache License 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
     <string name="settings_room_viewer">ಕೊಠಡಿ ವೀಕ್ಷಕ</string>
     <string name="settings_rendering_quality">ರೆಂಡರಿಂಗ್ ಗುಣಮಟ್ಟ</string>
     <string name="settings_sign_out">ಸೈನ್ ಔಟ್</string>

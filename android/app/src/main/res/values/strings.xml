@@ -166,6 +166,8 @@
     <string name="licenses_view_full_license">View full license</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">Copyright (c) SharpML contributors. Licensed under the MIT License.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">Copyright (c) Google LLC. Licensed under the Apache License 2.0.</string>
     <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>

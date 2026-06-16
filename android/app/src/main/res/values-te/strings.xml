@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">పూర్తి లైసెన్స్ చూడండి</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">పరికరంపైనే Gaussian splat rendering. కాపీరైట్ (c) Sean Cier. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">కాపీరైట్ (c) Google LLC. Apache లైసెన్స్ 2.0 క్రింద లైసెన్స్ పొందింది.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">ఫర్నిచర్ గుర్తింపు మరియు సెగ్మెంటేషన్ OpenMMLab MMDetection యొక్క RTMDet-Ins మోడల్‌ను ఉపయోగిస్తాయి. కాపీరైట్ (c) OpenMMLab. Apache License 2.0 క్రింద లైసెన్స్ పొందింది.</string>
     <string name="settings_room_viewer">రూమ్ వ్యూయర్</string>
     <string name="settings_rendering_quality">రెండరింగ్ నాణ్యత</string>
     <string name="settings_sign_out">సైన్ అవుట్</string>

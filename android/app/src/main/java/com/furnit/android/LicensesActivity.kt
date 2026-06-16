@@ -13,7 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Shows Open Source Licenses (Sharp ML, Firebase, RTMDet/MMDetection).
+ * Shows Open Source Licenses (Sharp ML, MetalSplatter, Firebase, RTMDet/MMDetection).
  */
 class LicensesActivity : AppCompatActivity() {
 
@@ -50,6 +50,7 @@ class LicensesActivity : AppCompatActivity() {
 
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
         addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp), licenseUrl = urlMit)
+        addSection(layout, getString(R.string.licenses_metal_splatter_title), getString(R.string.licenses_metal_splatter), licenseUrl = urlMit)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
 

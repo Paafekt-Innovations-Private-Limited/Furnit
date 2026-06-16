@@ -146,11 +146,11 @@
 "licenses.sharpTitle" = "3D రూమ్ రీకన్స్ట్రక్షన్ (SHARP)";
 "licenses.sharp" = "కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
-"licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
+"licenses.metalSplatter" = "పరికరంపైనే Gaussian splat rendering. కాపీరైట్ (c) Sean Cier. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.";
 "licenses.firebaseTitle" = "Firebase";
-"licenses.firebase" = "కాపీరైట్ (c) Google LLC. Apache లైసెన్స్ 2.0 క్రింద లైసెన్స్ పొందింది.";
+"licenses.firebase" = "కాపీరైట్ (c) Google LLC. Apache License 2.0 క్రింద లైసెన్స్ పొందింది.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.rtmdet" = "ఫర్నిచర్ గుర్తింపు మరియు సెగ్మెంటేషన్ OpenMMLab MMDetection యొక్క RTMDet-Ins మోడల్‌ను ఉపయోగిస్తాయి. కాపీరైట్ (c) OpenMMLab. Apache License 2.0 క్రింద లైసెన్స్ పొందింది.";
 
 // MARK: - Quality Options
 "quality.standard" = "స్టాండర్డ్";

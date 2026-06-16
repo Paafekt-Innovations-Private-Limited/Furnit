@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">പൂർണ്ണ ലൈസൻസ് കാണുക</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">കൃതിസ്വാമ്യം (c) SharpML സംഭാവനക്കാർ. MIT ലൈസൻസ് അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">ഉപകരണത്തിൽ തന്നെ Gaussian splat rendering. കൃതിസ്വാമ്യം (c) Sean Cier. MIT ലൈസൻസ് പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">കൃതിസ്വാമ്യം (c) Google LLC. Apache ലൈസൻസ് 2.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">ഫർണിച്ചർ കണ്ടെത്തലും സെഗ്മെന്റേഷനും OpenMMLab MMDetection-ലെ RTMDet-Ins മോഡൽ ഉപയോഗിക്കുന്നു. കൃതിസ്വാമ്യം (c) OpenMMLab. Apache License 2.0 പ്രകാരം ലൈസൻസ് ചെയ്തിരിക്കുന്നു.</string>
     <string name="settings_room_viewer">റൂം വ്യൂവർ</string>
     <string name="settings_rendering_quality">റെൻഡറിംഗ് ഗുണനിലവാരം</string>
     <string name="settings_sign_out">സൈൻ ഔട്ട്</string>

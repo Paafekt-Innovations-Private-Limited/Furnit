@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">முழு உரிமத்தைக் காண்க</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">சாதனத்திலேயே Gaussian splat rendering. பதிப்புரிமை (c) Sean Cier. MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">மரச்சாமான் கண்டறிதல் மற்றும் பிரித்தல் OpenMMLab MMDetection இன் RTMDet-Ins மாதிரியைப் பயன்படுத்துகின்றன. பதிப்புரிமை (c) OpenMMLab. Apache License 2.0 உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.</string>
     <string name="settings_room_viewer">அறை பார்வையாளர்</string>
     <string name="settings_rendering_quality">ரெண்டரிங் தரம்</string>
     <string name="settings_sign_out">வெளியேறு</string>

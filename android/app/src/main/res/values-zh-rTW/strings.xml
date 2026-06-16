@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">檢視完整授權</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">裝置端 Gaussian splat 渲染。版權所有 (c) Sean Cier。依 MIT 授權條款授權。</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">家具偵測與分割使用 OpenMMLab MMDetection 的 RTMDet-Ins 模型。版權所有 (c) OpenMMLab。依 Apache License 2.0 授權。</string>
     <string name="settings_room_viewer">房間檢視器</string>
     <string name="settings_rendering_quality">渲染品質</string>
     <string name="settings_sign_out">登出</string>

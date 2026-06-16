@@ -103,8 +103,12 @@
     <string name="licenses_view_full_license">সম্পূর্ণ লাইসেন্স দেখুন</string>
     <string name="licenses_sharp_title">Sharp ML</string>
     <string name="licenses_sharp">কপিরাইট (c) SharpML অবদানকারী। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_metal_splatter_title">MetalSplatter</string>
+    <string name="licenses_metal_splatter">ডিভাইসেই Gaussian splat rendering। কপিরাইট (c) Sean Cier। MIT লাইসেন্সের অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="licenses_firebase_title">Firebase</string>
     <string name="licenses_firebase">কপিরাইট (c) Google LLC। Apache লাইসেন্স 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
+    <string name="licenses_rtmdet_title">RTMDet (MMDetection)</string>
+    <string name="licenses_rtmdet">ফার্নিচার শনাক্তকরণ এবং সেগমেন্টেশন OpenMMLab MMDetection-এর RTMDet-Ins মডেল ব্যবহার করে। কপিরাইট (c) OpenMMLab। Apache License 2.0 এর অধীনে লাইসেন্সপ্রাপ্ত।</string>
     <string name="settings_room_viewer">রুম ভিউয়ার</string>
     <string name="settings_rendering_quality">রেন্ডারিং কোয়ালিটি</string>
     <string name="settings_sign_out">সাইন আউট</string>
