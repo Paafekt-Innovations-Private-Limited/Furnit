@@ -4841,13 +4841,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestEstimatedFurnitureBaseHeightMeters = finalHeight
         latestEstimatedFurnitureBaseARHeightMeters = finalARHeight
 
-        if arAssistedSizingEnabled,
-           let arHeight = finalARHeight,
+        let pinch = Float(max(userPinchScale, 0.01))
+        finalWidth *= pinch
+        finalHeight *= pinch
+        if let arHeight = finalARHeight,
            arHeight.isFinite,
            arHeight > 0 {
-            let pinch = Float(max(userPinchScale, 0.01))
-            finalWidth *= pinch
-            finalHeight *= pinch
             finalARHeight = arHeight * pinch
         }
 
