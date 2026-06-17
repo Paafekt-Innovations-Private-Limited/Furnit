@@ -415,6 +415,16 @@ class SHARPService: ObservableObject {
         }
     }
 
+    /// Mark the SHARP flow as active before any synchronous view-side preparation starts.
+    /// This gives SwiftUI a progress state to render immediately after the user taps AI generation.
+    func beginForegroundGenerationProgress() {
+        clearProgressFooterNotice()
+        isBackgroundGenerationActive = false
+        status = .processing
+        statusMessage = L10n.Sharp.preparingPhoto
+        progress = max(progress, 0.02)
+    }
+
     /// Ensure model is loaded — call from view's onAppear to re-trigger loading
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
@@ -563,10 +573,10 @@ class SHARPService: ObservableObject {
             throw GenerationError.serverError("SHARP model failed to load. Check model download, storage, or device memory.")
         }
 
-        // Reset state
+        // Reset state without dropping to 0 after the foreground overlay has already appeared.
         status = .processing
         statusMessage = L10n.Sharp.preparingPhoto
-        progress = 0.0
+        progress = max(progress, 0.05)
 
         do {
             // Compute the small working image in a tight scope so the full-res originals

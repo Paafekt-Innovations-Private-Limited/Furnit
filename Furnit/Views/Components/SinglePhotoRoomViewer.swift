@@ -935,7 +935,11 @@ struct SinglePhotoRoomView: View {
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
                         showSharpProgressOverlay = true
-                        startSHARPGeneration(image: image)
+                        sharpService.beginForegroundGenerationProgress()
+                        Task { @MainActor in
+                            await Task.yield()
+                            startSHARPGeneration(image: image)
+                        }
                     }) {
                         HStack(spacing: 16) {
                             Image(systemName: "wand.and.stars")
@@ -1181,7 +1185,11 @@ struct SinglePhotoRoomView: View {
                 logDebug("🤖 [View] Back alert: AI SHARP selected")
                 showMethodPicker = false
                 showSharpProgressOverlay = true
-                startSHARPGeneration(image: image)
+                sharpService.beginForegroundGenerationProgress()
+                Task { @MainActor in
+                    await Task.yield()
+                    startSHARPGeneration(image: image)
+                }
             }
             Button(L10n.PhotoRoom.backAlertManual) {
                 guard let image = selectedImage else { return }
@@ -1458,8 +1466,7 @@ struct SinglePhotoRoomView: View {
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
         logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
 
-        sharpService.clearProgressFooterNotice()
-        sharpService.isBackgroundGenerationActive = false
+        sharpService.beginForegroundGenerationProgress()
         splatViewerDestination = nil
         let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
         let pxH = max(1, Int(ceil(Double(image.size.height * image.scale))))
