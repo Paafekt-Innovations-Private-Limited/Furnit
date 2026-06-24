@@ -178,8 +178,17 @@ enum FurnitureFitOverlayScaling {
         isShowingLiveVideoIdentifications: Bool,
         overlayPresentationMode: FurnitureFitOverlayPresentationMode,
         bounds: CGRect,
-        primaryBboxInView: CGRect
+        primaryBboxInView: CGRect,
+        debugFreezeOverlayScale: Bool
     ) -> FurnitureFitOverlayTransformResult {
+        if debugFreezeOverlayScale {
+            return FurnitureFitOverlayTransformResult(
+                transform: .identity,
+                loggedOverlayScale: 1.0,
+                assistedLabel: "DEBUG_FREEZE",
+                logMessage: "overlayScale=1.0 (debug freeze)"
+            )
+        }
         let arOn = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid
         let roomFactor: CGFloat = arOn ? 1.0 : (allowRoomProportionFallback ? autoScaleFromRoom : defaultStaticOverlayScale)
         let assistedScale: CGFloat = arOn ? autoScaleFromAR : 1.0

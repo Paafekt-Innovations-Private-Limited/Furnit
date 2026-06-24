@@ -1042,7 +1042,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
             overlayPresentationMode: overlayPresentationMode,
             bounds: bounds,
-            primaryBboxInView: primaryBboxInView
+            primaryBboxInView: primaryBboxInView,
+            debugFreezeOverlayScale: debugMode
         )
         maskImageView.transform = transformResult.transform
         detectionBBoxOverlayView.transform = transformResult.transform
@@ -1558,6 +1559,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         scaleX: Float,
         scaleY: Float
     ) -> CGRect {
+        // RTMDet path: detections are already mapped into source-image pixel space in
+        // `RTMDetImageInference` (mapBoxToSource). Do not re-project through
+        // `scaleBoxesFromModel` again — that double-mapping inflates boxes.
+        if currentModelIsRTMDet {
+            let x1 = CGFloat(detection.x - detection.w * 0.5)
+            let y1 = CGFloat(detection.y - detection.h * 0.5)
+            let x2 = CGFloat(detection.x + detection.w * 0.5)
+            let y2 = CGFloat(detection.y + detection.h * 0.5)
+            let bx1 = max(0, Int(floor(x1)))
+            let by1 = max(0, Int(floor(y1)))
+            let bx2 = min(imageWidth, Int(ceil(x2)))
+            let by2 = min(imageHeight, Int(ceil(y2)))
+            return CGRect(
+                x: bx1,
+                y: by1,
+                width: max(1, bx2 - bx1),
+                height: max(1, by2 - by1)
+            )
+        }
+
         let modelShape = CGSize(
             width: CGFloat(Float(imageWidth) / max(scaleX, 1e-6)),
             height: CGFloat(Float(imageHeight) / max(scaleY, 1e-6))
