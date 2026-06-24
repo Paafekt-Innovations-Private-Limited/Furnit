@@ -277,6 +277,8 @@ struct GLBRoomView: View {
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
+    @State private var fullVideoSelectionHelperVisible = false
+    @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
     @State private var tapHintColorTimer: Timer?
@@ -886,6 +888,7 @@ struct GLBRoomView: View {
         showFullVideoWithIdentifications.toggle()
         dismissFullVideoFurnitureTapHint()
         if showFullVideoWithIdentifications {
+            cancelFullVideoSelectionHelper()
             // Enter the tap-to-segment flow: show live identifications and wait for a tap.
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
@@ -893,6 +896,7 @@ struct GLBRoomView: View {
             // Back to the brain default: auto-segment the highest-confidence primary.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
+            presentFullVideoSelectionHelperIfNeeded()
         }
     }
 
@@ -976,7 +980,10 @@ struct GLBRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if showingFurnitureFit {
+            if showingFurnitureFit &&
+                !showFullVideoWithIdentifications &&
+                furnitureFitSegmentationMode == .segmentPrimary &&
+                fullVideoSelectionHelperVisible {
                 VStack(alignment: .trailing, spacing: 4) {
                     Image(systemName: "arrow.up")
                         .font(.caption.weight(.bold))
@@ -1102,6 +1109,28 @@ struct GLBRoomView: View {
         fullVideoFurnitureTapHintVisible = false
         tapHintColorTimer?.invalidate()
         tapHintColorTimer = nil
+    }
+
+    private func cancelFullVideoSelectionHelper() {
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperHideTask = nil
+        fullVideoSelectionHelperVisible = false
+    }
+
+    private func presentFullVideoSelectionHelperIfNeeded() {
+        guard showingFurnitureFit,
+              !showFullVideoWithIdentifications,
+              furnitureFitSegmentationMode == .segmentPrimary else {
+            cancelFullVideoSelectionHelper()
+            return
+        }
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperVisible = true
+        fullVideoSelectionHelperHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            fullVideoSelectionHelperVisible = false
+        }
     }
 
     private func presentFullVideoFurnitureTapHintIfNeeded() {
@@ -1302,6 +1331,7 @@ struct GLBRoomView: View {
             Button(action: {
                 if showingFurnitureFit {
                     dismissFullVideoFurnitureTapHint()
+                    cancelFullVideoSelectionHelper()
                     showingFurnitureFit = false
                 } else {
                     showFullVideoWithIdentifications = false
@@ -1312,6 +1342,7 @@ struct GLBRoomView: View {
                     furnitureFitShowIdentifyLivePreview = true
                     selectedFurnitureFitLabels = []
                     showingFurnitureFit = true
+                    presentFullVideoSelectionHelperIfNeeded()
                 }
             }) {
                 Image(systemName: "brain.head.profile")

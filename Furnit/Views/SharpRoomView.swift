@@ -264,6 +264,8 @@ struct SharpRoomView: View {
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
+    @State private var fullVideoSelectionHelperVisible = false
+    @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
     @State private var tapHintColorTimer: Timer?
@@ -899,6 +901,7 @@ struct SharpRoomView: View {
     private func toggleFurnitureFit() {
         if showingFurnitureFit {
             dismissFullVideoFurnitureTapHint()
+            cancelFullVideoSelectionHelper()
             showingFurnitureFit = false
         } else {
             showFullVideoWithIdentifications = false
@@ -910,6 +913,7 @@ struct SharpRoomView: View {
             selectedFurnitureFitLabels = []
             SHARPService.shared.releaseResources()
             showingFurnitureFit = true
+            presentFullVideoSelectionHelperIfNeeded()
         }
     }
 
@@ -926,6 +930,28 @@ struct SharpRoomView: View {
         tapHintColorTimer?.invalidate()
         tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             DispatchQueue.main.async { tapHintColorIndex += 1 }
+        }
+    }
+
+    private func cancelFullVideoSelectionHelper() {
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperHideTask = nil
+        fullVideoSelectionHelperVisible = false
+    }
+
+    private func presentFullVideoSelectionHelperIfNeeded() {
+        guard showingFurnitureFit,
+              !showFullVideoWithIdentifications,
+              furnitureFitSegmentationMode == .segmentPrimary else {
+            cancelFullVideoSelectionHelper()
+            return
+        }
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperVisible = true
+        fullVideoSelectionHelperHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            fullVideoSelectionHelperVisible = false
         }
     }
 
