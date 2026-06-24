@@ -5,6 +5,9 @@ struct SettingsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) private var dismiss
     @State private var showLogoutConfirmation = false
+    @State private var showDeleteAccountConfirmation = false
+    @State private var accountDeletionErrorMessage: String?
+    @State private var isDeletingAccount = false
     
     // Single Photo Room Dimensions
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
@@ -313,6 +316,22 @@ struct SettingsView: View {
                                 .foregroundColor(.red)
                         }
                     }
+
+                    Button(role: .destructive) {
+                        showDeleteAccountConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                                .foregroundColor(.red)
+                            Text(L10n.Profile.deleteAccount)
+                                .foregroundColor(.red)
+                            if isDeletingAccount {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isDeletingAccount)
                 } header: {
                     Text(L10n.Settings.account)
                 }
@@ -327,6 +346,27 @@ struct SettingsView: View {
             } message: {
                 Text(L10n.Profile.logoutConfirmMessage)
             }
+            .alert(L10n.Profile.deleteAccountConfirmTitle, isPresented: $showDeleteAccountConfirmation) {
+                Button(L10n.Common.cancel, role: .cancel) { }
+                Button(L10n.Common.delete, role: .destructive) {
+                    deleteAccount()
+                }
+            } message: {
+                Text(L10n.Profile.deleteAccountConfirmMessage)
+            }
+            .alert(
+                L10n.Profile.deleteAccount,
+                isPresented: Binding(
+                    get: { accountDeletionErrorMessage != nil },
+                    set: { if !$0 { accountDeletionErrorMessage = nil } }
+                )
+            ) {
+                Button(L10n.Common.ok, role: .cancel) {
+                    accountDeletionErrorMessage = nil
+                }
+            } message: {
+                Text(accountDeletionErrorMessage ?? "")
+            }
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
             .toolbar {
@@ -336,6 +376,21 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func deleteAccount() {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+
+        Task {
+            do {
+                try await authManager.deleteCurrentAccount()
+                dismiss()
+            } catch {
+                accountDeletionErrorMessage = error.localizedDescription
+            }
+            isDeletingAccount = false
         }
     }
 }

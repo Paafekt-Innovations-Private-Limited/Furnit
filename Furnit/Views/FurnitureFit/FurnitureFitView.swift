@@ -387,6 +387,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Keep RTMDet's pre-selection pool close to the old YOLOE flow: select primary after NMS from
     /// a wider candidate set, then let the 3-largest area shortlist + confidence score decide.
     private let rtmDetPrimaryCandidatePoolLimit: Int = 12
+    /// Min-area overlap coefficient τ for grouping neighboring detections into one mask.
+    private static let rtmDetGroupOverlapTau: CGFloat = 0.15
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -3940,6 +3942,47 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    // MARK: - RTMDet grouping (primary + overlapping neighbors)
+
+    /// Overlap coefficient based on intersection over min-area, treating edge-touching as 0.
+    private static func overlapCoefficient(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let ix = max(a.minX, b.minX)
+        let iy = max(a.minY, b.minY)
+        let iw = min(a.maxX, b.maxX) - ix
+        let ih = min(a.maxY, b.maxY) - iy
+        guard iw > 0, ih > 0 else { return 0 }
+        let inter = iw * ih
+        let minArea = min(a.width * a.height, b.width * b.height)
+        return minArea > 0 ? inter / minArea : 0
+    }
+
+    /// Returns the transitive overlap group starting from the given seed indices.
+    /// Any candidate whose bbox overlaps an in-group member with overlapCoefficient ≥ τ joins the group.
+    private func rtmDetTransitiveOverlapGroup(
+        candidates: [FurnitureFitDetection],
+        seedIndices: [Int],
+        tau: CGFloat
+    ) -> [Int] {
+        guard !candidates.isEmpty else { return [] }
+        guard !seedIndices.isEmpty else { return [] }
+
+        var inGroup = Set(seedIndices)
+        var frontier = seedIndices
+
+        while let current = frontier.popLast() {
+            let curBox = candidates[current].boundingBox
+            for j in candidates.indices where !inGroup.contains(j) {
+                let otherBox = candidates[j].boundingBox
+                if Self.overlapCoefficient(curBox, otherBox) >= tau {
+                    inGroup.insert(j)
+                    frontier.append(j)
+                }
+            }
+        }
+
+        return Array(inGroup)
+    }
+
     private func processFrameRTMDetLive(
         processBuffer: CVPixelBuffer,
         model: MLModel,
@@ -4145,6 +4188,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     )
                 }
             }
+
+            // Group primary (and any selected pins) with overlapping neighbors using a transitive
+            // min-area overlap coefficient flood-fill. This pulls the table + surrounding chairs
+            // into the same cutout when their boxes genuinely overlap (edges-only do not qualify).
+            let groupingSeeds: [Int]
+            if segmentationMode == .segmentSelected && !selectedMaskCompositeIndices.isEmpty {
+                groupingSeeds = selectedMaskCompositeIndices
+            } else {
+                groupingSeeds = [primaryIdx]
+            }
+            let groupedIndices = rtmDetTransitiveOverlapGroup(
+                candidates: candidates,
+                seedIndices: groupingSeeds,
+                tau: Self.rtmDetGroupOverlapTau
+            )
+            selectedMaskCompositeIndices = groupedIndices
 
             let isMultiSelectComposite = selectedMaskCompositeIndices.count > 1
             let selectedMaskImage: UIImage?
