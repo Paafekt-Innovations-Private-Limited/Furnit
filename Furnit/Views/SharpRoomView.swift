@@ -396,6 +396,7 @@ struct SharpRoomView: View {
         showFullVideoWithIdentifications.toggle()
         dismissFullVideoFurnitureTapHint()
         if showFullVideoWithIdentifications {
+            cancelFullVideoSelectionHelper()
             // Enter the tap-to-segment flow: show live identifications and wait for a tap.
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
@@ -403,6 +404,7 @@ struct SharpRoomView: View {
             // Back to the brain default: auto-segment the highest-confidence primary.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
+            presentFullVideoSelectionHelperIfNeeded()
         }
     }
 
@@ -474,7 +476,10 @@ struct SharpRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if showingFurnitureFit {
+            if showingFurnitureFit &&
+                !showFullVideoWithIdentifications &&
+                furnitureFitSegmentationMode == .segmentPrimary &&
+                fullVideoSelectionHelperVisible {
                 VStack(alignment: .trailing, spacing: 4) {
                     Image(systemName: "arrow.up")
                         .font(.caption.weight(.bold))
