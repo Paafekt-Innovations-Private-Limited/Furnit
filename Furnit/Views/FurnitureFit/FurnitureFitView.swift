@@ -459,31 +459,98 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         guard let model = mlModel else { return false }
         return isRTMDetInstanceSegmentationModel(model)
     }
-    private static let rtmDetFurnitureClassIndices: Set<Int> = [
-        56, // chair
-        57, // couch
-        59, // bed
-        60, // dining table
-        62, // tv
-    ]
     private static let rtmDetCOCOClassNames: [Int: String] = [
+        0: "person",
+        1: "bicycle",
+        2: "car",
+        3: "motorcycle",
+        4: "airplane",
+        5: "bus",
+        6: "train",
+        7: "truck",
+        8: "boat",
+        9: "traffic light",
+        10: "fire hydrant",
+        11: "stop sign",
+        12: "parking meter",
+        13: "bench",
+        14: "bird",
+        15: "cat",
+        16: "dog",
+        17: "horse",
+        18: "sheep",
+        19: "cow",
+        20: "elephant",
+        21: "bear",
+        22: "zebra",
+        23: "giraffe",
+        24: "backpack",
+        25: "umbrella",
+        26: "handbag",
+        27: "tie",
+        28: "suitcase",
+        29: "frisbee",
+        30: "skis",
+        31: "snowboard",
+        32: "sports ball",
+        33: "kite",
+        34: "baseball bat",
+        35: "baseball glove",
+        36: "skateboard",
+        37: "surfboard",
+        38: "tennis racket",
+        39: "bottle",
+        40: "wine glass",
+        41: "cup",
+        42: "fork",
+        43: "knife",
+        44: "spoon",
+        45: "bowl",
+        46: "banana",
+        47: "apple",
+        48: "sandwich",
+        49: "orange",
+        50: "broccoli",
+        51: "carrot",
+        52: "hot dog",
+        53: "pizza",
+        54: "donut",
+        55: "cake",
         56: "chair",
         57: "couch",
+        58: "potted plant",
         59: "bed",
         60: "dining table",
+        61: "toilet",
         62: "tv",
+        63: "laptop",
+        64: "mouse",
+        65: "remote",
+        66: "keyboard",
+        67: "cell phone",
+        68: "microwave",
+        69: "oven",
+        70: "toaster",
+        71: "sink",
+        72: "refrigerator",
+        73: "book",
+        74: "clock",
+        75: "vase",
+        76: "scissors",
+        77: "teddy bear",
+        78: "hair drier",
+        79: "toothbrush",
     ]
-    /// RTMDet is a fixed COCO detector for this flow, so keep primary selection in furniture classes.
-    /// Leaving all 80 classes enabled lets higher-scoring non-furniture classes consume the NMS pool.
-    private static let controlledList: Bool = true
+    /// RTMDet is a fixed COCO-80 detector; do not reuse the older YOLOE furniture-only whitelist.
+    /// Let the raw decoder consider all RTMDet classes, then rank/group the detections it returns.
     /// RTMDet raw scores are lower than the old YOLOE scores in live camera frames. Logs show valid
     /// chairs around 0.40-0.49, so 0.55 intermittently drops the object after it was detected.
     private static let rtmDetLiveConfidenceThreshold: Float = 0.30
     /// COCO under-scores common furniture in live frames; use a low gate and let the primary selector
     /// rank by size + confidence instead of throwing away valid chairs before selection.
     private static let rtmDetTableConfidenceThreshold: Float = 0.30
-    /// Keep this independent from `controlledList`: class filtering is useful, but the mask-quality
-    /// rectangle/huge checks can reject valid near/large furniture.
+    /// Keep the mask-quality rectangle/huge checks disabled by default; they can reject valid
+    /// near/large objects.
     private static let rtmDetSingleMaskQualityGateEnabled: Bool = false
     private func rtmDetClassConfidenceThreshold(_ classIdx: Int) -> Float {
         classIdx == 60 ? Self.rtmDetTableConfidenceThreshold : Self.rtmDetLiveConfidenceThreshold
@@ -802,7 +869,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
         detectionBBoxOverlayView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            previewContainerView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            previewContainerView.topAnchor.constraint(equalTo: topAnchor),
             previewContainerView.bottomAnchor.constraint(equalTo: bottomAnchor),
             previewContainerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             previewContainerView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -1559,24 +1626,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         scaleX: Float,
         scaleY: Float
     ) -> CGRect {
-        // RTMDet path: detections are already mapped into source-image pixel space in
-        // `RTMDetImageInference` (mapBoxToSource). Do not re-project through
-        // `scaleBoxesFromModel` again — that double-mapping inflates boxes.
         if currentModelIsRTMDet {
-            let x1 = CGFloat(detection.x - detection.w * 0.5)
-            let y1 = CGFloat(detection.y - detection.h * 0.5)
-            let x2 = CGFloat(detection.x + detection.w * 0.5)
-            let y2 = CGFloat(detection.y + detection.h * 0.5)
-            let bx1 = max(0, Int(floor(x1)))
-            let by1 = max(0, Int(floor(y1)))
-            let bx2 = min(imageWidth, Int(ceil(x2)))
-            let by2 = min(imageHeight, Int(ceil(y2)))
-            return CGRect(
-                x: bx1,
-                y: by1,
-                width: max(1, bx2 - bx1),
-                height: max(1, by2 - by1)
-            )
+            // RTMDet path: `FurnitureFitDetection` is already in source-image pixel space
+            // (mapBoxToSource was applied in RTMDetImageInference). Use the raw boundingBox.
+            return detection.boundingBox
         }
 
         let modelShape = CGSize(
@@ -1656,13 +1709,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestDisplayedCandidates = candidates
         latestDisplayedSelectedCandidateIndex = selectedIndex
 
-        let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
-        // Any segmenting mode (segmentPrimary auto, or segmentSelected pinned) hides the boxes for a
-        // mask-only cutout; identify keeps them so the user can see/tap detections.
-        if segmentationMode != .identifyOnly || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
-            candidateBboxesInView = []
-            detectionBBoxOverlayView.items = []
-            return
+        if !debugMode {
+            let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
+            // Any segmenting mode (segmentPrimary auto, or segmentSelected pinned) hides the boxes for a
+            // mask-only cutout; identify keeps them so the user can see/tap detections.
+            if segmentationMode != .identifyOnly || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
+                candidateBboxesInView = []
+                detectionBBoxOverlayView.items = []
+                return
+            }
         }
 
         let rects = candidates.map {
@@ -1678,9 +1733,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         candidateBboxesInView = rects
         detectionBBoxOverlayView.items = candidates.enumerated().map { index, detection in
             let isSel = pins.contains { FurnitureFitIoU.calculate(detection, $0) >= pinMatchIoUThreshold }
+            let label = debugMode ? "" : displayClassName(detection.classIdx)
             return DetectionOverlayItem(
                 rectInView: rects[index],
-                label: displayClassName(detection.classIdx),
+                label: label,
                 confidence: detection.confidence,
                 isSelected: isSel
             )
@@ -4017,7 +4073,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
             logDebug("⏱️ RTMDET LIVE @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
-            logDebug("⏱️ Buffer: \(bufW)x\(bufH) → RTMDet final dets/masks")
+            logDebug("⏱️ Buffer: \(bufW)x\(bufH) (processBuffer) → RTMDet final dets/masks")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
@@ -4031,7 +4087,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 model: model,
                 confidenceThreshold: rtmDetDecodeFloor,
                 classBlacklist: classBlacklist.ignoredIndices,
-                allowedClassIndices: Self.controlledList ? Self.rtmDetFurnitureClassIndices : nil,
+                allowedClassIndices: nil,
                 // identifyOnly shows boxes only — request NO masks so the decoder skips the proto
                 // MLP + RGBA build entirely. segmentSelected may union up to 6; segmentPrimary needs 1.
                 maxMaskCount: {
@@ -4074,16 +4130,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             guard !candidates.isEmpty else {
-                consecutiveEmptyMaskFrames += 1
-                // Hold the last cutout for a few empty frames so panning between two pieces of
-                // furniture doesn't flash the bare room ("switched to live mode") in the gap before
-                // the new furniture is detected. Only clear once the drop is sustained.
-                let exceededEmptyGrace = consecutiveEmptyMaskFrames > maskGraceFrameLimit
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    if exceededEmptyGrace {
-                        self.clearLiveDetectionOverlay(clearCandidates: true)
-                    }
+                    self.clearLiveDetectionOverlay(clearCandidates: true)
                     self.setProgress(0.70, text: "Looking for furniture…")
                 }
                 logRTMDetLiveFrameFooter(
@@ -4225,6 +4274,29 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 tau: Self.rtmDetGroupOverlapTau
             )
             selectedMaskCompositeIndices = groupedIndices
+
+            if debugMode {
+                let p = primary
+                let bufRect = bufferRect(
+                    for: p,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+                let viewRectPrimary = viewRect(
+                    for: p,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+                logDebug(
+                    "🧠 [RTMDet primary bbox] center=(\(Int(p.x)),\(Int(p.y))) size=(\(Int(p.w))x\(Int(p.h))) " +
+                    "bufferRect=(\(Int(bufRect.minX)),\(Int(bufRect.minY)),\(Int(bufRect.width))x\(Int(bufRect.height))) " +
+                    "viewRect=(\(Int(viewRectPrimary.minX)),\(Int(viewRectPrimary.minY)),\(Int(viewRectPrimary.width))x\(Int(viewRectPrimary.height)))"
+                )
+            }
 
             let isMultiSelectComposite = selectedMaskCompositeIndices.count > 1
             let selectedMaskImage: UIImage?

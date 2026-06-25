@@ -65,7 +65,8 @@ final class DetectionBBoxOverlayView: UIView {
             boxPath.stroke()
 
             let scoreText = String(format: "%.2f", item.confidence)
-            let text = "\(item.label) \(scoreText)"
+            let text = item.label.isEmpty ? "" : "\(item.label) \(scoreText)"
+            guard !text.isEmpty else { continue }
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: item.isSelected ? 11 : 10, weight: item.isSelected ? .semibold : .medium),
                 .foregroundColor: UIColor.white,

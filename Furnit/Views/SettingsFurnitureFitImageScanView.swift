@@ -148,27 +148,44 @@ private struct RTMDetStillImageOverlay: View {
     let scanRequestID: UUID
     let mlModel: MLModel?
 
-    @State private var result: RTMDetInferenceResult?
+    private static let confidenceThreshold: Float = 0.30
+    private static let detectionLimit = 30
+    private static let areaSeedCount = 3
+    private static let groupOverlapTau: CGFloat = 0.15
+    private static let classBlacklist = FurnitureFitClassBlacklist()
+
+    private struct StillImageScanResult {
+        let mergedMaskImage: UIImage?
+        let mergedMaskBoundingBox: CGRect?
+        let detections: [FurnitureFitDetection]
+        let sourcePixelSize: CGSize
+    }
+
+    @State private var result: StillImageScanResult?
     @State private var errorMessage: String?
     @State private var isRunning = false
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                if let overlayMaskImage = result?.overlayMaskImage {
-                    Image(uiImage: overlayMaskImage)
+                if let mergedMaskImage = result?.mergedMaskImage {
+                    Image(uiImage: mergedMaskImage)
                         .resizable()
                         .scaledToFit()
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
 
-                if let detections = result?.detections {
-                    let layout = imageLayout(in: proxy.size)
-                    ForEach(Array(detections.enumerated()), id: \.offset) { index, detection in
-                        let rect = mappedRect(for: detection, layout: layout)
+                if let result {
+                    let layout = imageLayout(in: proxy.size, sourceSize: result.sourcePixelSize)
+                    ForEach(Array(result.detections.enumerated()), id: \.offset) { _, detection in
+                        let rect = mappedRect(
+                            for: detection,
+                            layout: layout,
+                            sourceSize: result.sourcePixelSize
+                        )
                         Rectangle()
                             .path(in: rect)
-                            .stroke(index == 0 ? Color.green : Color.orange, lineWidth: index == 0 ? 3 : 2)
+                            .stroke(Color.orange, lineWidth: 2)
 
                         Text(labelText(for: detection))
                             .font(.caption2.monospacedDigit())
@@ -176,6 +193,17 @@ private struct RTMDetStillImageOverlay: View {
                             .padding(.vertical, 3)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .position(x: rect.minX + 52, y: max(layout.origin.y + 10, rect.minY - 10))
+                    }
+
+                    if let mergedMaskBoundingBox = result.mergedMaskBoundingBox {
+                        let rect = mappedRect(
+                            for: mergedMaskBoundingBox,
+                            layout: layout,
+                            sourceSize: result.sourcePixelSize
+                        )
+                        Rectangle()
+                            .path(in: rect)
+                            .stroke(Color.green, lineWidth: 3)
                     }
                 }
 
@@ -191,18 +219,8 @@ private struct RTMDetStillImageOverlay: View {
                         .padding(10)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding(12)
-                } else if let result {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Detections: \(result.detections.count)")
-                            .font(.caption.bold())
-                        ForEach(result.outputSummary.prefix(3), id: \.self) { line in
-                            Text(line)
-                                .font(.caption2.monospaced())
-                        }
-                    }
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .padding(12)
+                } else if result != nil {
+                    EmptyView()
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -228,9 +246,22 @@ private struct RTMDetStillImageOverlay: View {
         }
 
         do {
-            let inferenceResult = try RTMDetImageInference.runInstanceSegmentation(image: image, model: mlModel)
+            Self.classBlacklist.loadBlacklistOnce(debugMode: true) { print($0) }
+            let inferenceResult = try RTMDetImageInference.runInstanceSegmentation(
+                image: image,
+                model: mlModel,
+                confidenceThreshold: Self.confidenceThreshold,
+                classBlacklist: Self.classBlacklist.ignoredIndices,
+                allowedClassIndices: nil,
+                maxMaskCount: Self.detectionLimit,
+                maxDetectionCount: Self.detectionLimit,
+                buildInstanceMasks: true,
+                restrictInstanceMasksToFrameCenter: false,
+                debug: true
+            )
+            let scanResult = buildStillImageScanResult(from: inferenceResult)
             await MainActor.run {
-                result = inferenceResult
+                result = scanResult
                 errorMessage = nil
                 isRunning = false
             }
@@ -243,13 +274,142 @@ private struct RTMDetStillImageOverlay: View {
         }
     }
 
-    private func imageLayout(in containerSize: CGSize) -> (origin: CGPoint, size: CGSize) {
-        guard image.size.width > 0, image.size.height > 0 else {
+    private func buildStillImageScanResult(from inferenceResult: RTMDetInferenceResult) -> StillImageScanResult {
+        let sourcePixelSize = sourcePixelSize(from: inferenceResult) ?? fallbackSourcePixelSize
+        guard let groupedIndices = largestOverlapClusterIndices(for: inferenceResult.detections) else {
+            return StillImageScanResult(
+                mergedMaskImage: nil,
+                mergedMaskBoundingBox: nil,
+                detections: inferenceResult.detections,
+                sourcePixelSize: sourcePixelSize
+            )
+        }
+
+        logSelectedMaskAlignmentDiagnostics(
+            outputSummary: inferenceResult.outputSummary,
+            selectedIndices: groupedIndices
+        )
+        let groupedMasks = groupedIndices.compactMap { index -> UIImage? in
+            index < inferenceResult.instanceMaskImages.count ? inferenceResult.instanceMaskImages[index] : nil
+        }
+        let mergedMaskImage = combinedInstanceMaskImage(groupedMasks)
+        let mergedMaskBoundingBox = mergedMaskImage.flatMap { alphaBoundingBox(in: $0) }
+        return StillImageScanResult(
+            mergedMaskImage: mergedMaskImage,
+            mergedMaskBoundingBox: mergedMaskBoundingBox,
+            detections: inferenceResult.detections,
+            sourcePixelSize: sourcePixelSize
+        )
+    }
+
+    private func logSelectedMaskAlignmentDiagnostics(
+        outputSummary: [String],
+        selectedIndices: [Int]
+    ) {
+        let selectedIndexSet = Set(selectedIndices)
+        for line in outputSummary where line.hasPrefix("rawMaskPlaneAlign[") {
+            guard let closeBracket = line.firstIndex(of: "]") else { continue }
+            let rawIndex = line[line.index(line.startIndex, offsetBy: "rawMaskPlaneAlign[".count)..<closeBracket]
+            guard let index = Int(rawIndex), selectedIndexSet.contains(index) else { continue }
+            print("🧪 [ImageScan MASK_ALIGN selected] \(line)")
+        }
+    }
+
+    private var fallbackSourcePixelSize: CGSize {
+        if let cgImage = image.cgImage {
+            return CGSize(width: cgImage.width, height: cgImage.height)
+        }
+        return CGSize(width: max(1, image.size.width), height: max(1, image.size.height))
+    }
+
+    private func sourcePixelSize(from inferenceResult: RTMDetInferenceResult) -> CGSize? {
+        let images = [inferenceResult.overlayMaskImage] + inferenceResult.instanceMaskImages
+        for image in images {
+            if let cgImage = image?.cgImage {
+                return CGSize(width: cgImage.width, height: cgImage.height)
+            }
+        }
+        return nil
+    }
+
+    private func combinedInstanceMaskImage(_ masks: [UIImage]) -> UIImage? {
+        guard let firstMask = masks.first else { return nil }
+        guard masks.count > 1 else { return firstMask }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = firstMask.scale
+        let renderer = UIGraphicsImageRenderer(size: firstMask.size, format: format)
+        return renderer.image { _ in
+            let bounds = CGRect(origin: .zero, size: firstMask.size)
+            for mask in masks {
+                mask.draw(in: bounds)
+            }
+        }
+    }
+
+    private func alphaBoundingBox(in image: UIImage) -> CGRect? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        let drewImage = rgba.withUnsafeMutableBytes { buffer in
+            guard let baseAddress = buffer.baseAddress,
+                  let context = CGContext(
+                    data: baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGBitmapInfo.byteOrder32Big
+                        .union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
+                        .rawValue
+                  ) else {
+                return false
+            }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drewImage else { return nil }
+
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+
+        for y in 0..<height {
+            let rowOffset = y * width * 4
+            for x in 0..<width {
+                let alpha = rgba[rowOffset + x * 4 + 3]
+                guard alpha > 0 else { continue }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return CGRect(
+            x: CGFloat(minX),
+            y: CGFloat(minY),
+            width: CGFloat(maxX - minX + 1),
+            height: CGFloat(maxY - minY + 1)
+        )
+    }
+
+    private func imageLayout(
+        in containerSize: CGSize,
+        sourceSize: CGSize
+    ) -> (origin: CGPoint, size: CGSize) {
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
             return (.zero, containerSize)
         }
-        let scale = min(containerSize.width / image.size.width, containerSize.height / image.size.height)
-        let width = image.size.width * scale
-        let height = image.size.height * scale
+        let scale = min(containerSize.width / sourceSize.width, containerSize.height / sourceSize.height)
+        let width = sourceSize.width * scale
+        let height = sourceSize.height * scale
         let origin = CGPoint(
             x: (containerSize.width - width) * 0.5,
             y: (containerSize.height - height) * 0.5
@@ -257,16 +417,93 @@ private struct RTMDetStillImageOverlay: View {
         return (origin, CGSize(width: width, height: height))
     }
 
-    private func mappedRect(for detection: FurnitureFitDetection, layout: (origin: CGPoint, size: CGSize)) -> CGRect {
-        let x = layout.origin.x + CGFloat(detection.x - detection.w * 0.5) * layout.size.width / image.size.width
-        let y = layout.origin.y + CGFloat(detection.y - detection.h * 0.5) * layout.size.height / image.size.height
-        let width = CGFloat(detection.w) * layout.size.width / image.size.width
-        let height = CGFloat(detection.h) * layout.size.height / image.size.height
+    private func mappedRect(
+        for imageRect: CGRect,
+        layout: (origin: CGPoint, size: CGSize),
+        sourceSize: CGSize
+    ) -> CGRect {
+        let x = layout.origin.x + imageRect.minX * layout.size.width / sourceSize.width
+        let y = layout.origin.y + imageRect.minY * layout.size.height / sourceSize.height
+        let width = imageRect.width * layout.size.width / sourceSize.width
+        let height = imageRect.height * layout.size.height / sourceSize.height
         return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func mappedRect(
+        for detection: FurnitureFitDetection,
+        layout: (origin: CGPoint, size: CGSize),
+        sourceSize: CGSize
+    ) -> CGRect {
+        mappedRect(
+            for: detection.boundingBox,
+            layout: layout,
+            sourceSize: sourceSize
+        )
     }
 
     private func labelText(for detection: FurnitureFitDetection) -> String {
         "#\(detection.classIdx) \(Int(detection.confidence * 100))%"
+    }
+
+    private func largestOverlapClusterIndices(for detections: [FurnitureFitDetection]) -> [Int]? {
+        guard !detections.isEmpty else { return nil }
+
+        let seedIndices = detections.indices
+            .sorted {
+                let lhsArea = detections[$0].boundingBox.width * detections[$0].boundingBox.height
+                let rhsArea = detections[$1].boundingBox.width * detections[$1].boundingBox.height
+                return lhsArea > rhsArea
+            }
+            .prefix(Self.areaSeedCount)
+        var bestCluster: [Int] = []
+        var bestClusterArea: CGFloat = -1
+
+        for seedIndex in seedIndices {
+            var cluster = [seedIndex]
+            var inCluster: Set<Int> = [seedIndex]
+            var frontier = [seedIndex]
+
+            while let currentIndex = frontier.popLast() {
+                let currentBox = detections[currentIndex].boundingBox
+                for candidateIndex in detections.indices where !inCluster.contains(candidateIndex) {
+                    let candidateBox = detections[candidateIndex].boundingBox
+                    guard overlapCoefficient(currentBox, candidateBox) >= Self.groupOverlapTau else {
+                        continue
+                    }
+                    inCluster.insert(candidateIndex)
+                    cluster.append(candidateIndex)
+                    frontier.append(candidateIndex)
+                }
+            }
+
+            let clusterArea = unionRectArea(for: cluster, detections: detections)
+            if clusterArea > bestClusterArea {
+                bestClusterArea = clusterArea
+                bestCluster = cluster
+            }
+        }
+
+        return bestCluster.isEmpty ? nil : bestCluster
+    }
+
+    private func unionRectArea(for indices: [Int], detections: [FurnitureFitDetection]) -> CGFloat {
+        let unionRect = indices
+            .map { detections[$0].boundingBox }
+            .reduce(CGRect.null) { $0.union($1) }
+        guard !unionRect.isNull else { return 0 }
+        return unionRect.width * unionRect.height
+    }
+
+    private func overlapCoefficient(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let ix = max(a.minX, b.minX)
+        let iy = max(a.minY, b.minY)
+        let iw = min(a.maxX, b.maxX) - ix
+        let ih = min(a.maxY, b.maxY) - iy
+        guard iw > 0, ih > 0 else { return 0 }
+
+        let intersection = iw * ih
+        let minArea = min(a.width * a.height, b.width * b.height)
+        return minArea > 0 ? intersection / minArea : 0
     }
 }
 

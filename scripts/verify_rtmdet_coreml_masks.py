@@ -25,7 +25,7 @@ DEFAULT_IMAGES = [
 ]
 
 MODEL_INPUT = 640
-MASK_SIZE = 80
+MASK_SIZE = 160
 PREPROCESS = "stretch"
 
 
@@ -91,11 +91,12 @@ def build_mask(candidate: tuple, mask_feat: np.ndarray) -> np.ndarray:
     b2 = kernel[160:168]
     b3 = float(kernel[168])
 
-    mask = np.zeros((80, 80), dtype=np.float32)
-    for y in range(80):
-        for x in range(80):
-            grid_x = (x + 0.5) * 8
-            grid_y = (y + 0.5) * 8
+    mask = np.zeros((MASK_SIZE, MASK_SIZE), dtype=np.float32)
+    mask_stride = MODEL_INPUT / MASK_SIZE
+    for y in range(MASK_SIZE):
+        for x in range(MASK_SIZE):
+            grid_x = (x + 0.5) * mask_stride
+            grid_y = (y + 0.5) * mask_stride
             values = np.empty(10, dtype=np.float32)
             values[0] = (center_x - grid_x) / (stride * 8)
             values[1] = (center_y - grid_y) / (stride * 8)
@@ -171,14 +172,14 @@ def swift_mask_sample_coordinate(
 
 
 def mask_to_image_space_swift(
-    mask80: np.ndarray,
+    mask: np.ndarray,
     box640: tuple[float, float, float, float],
     orig_w: int,
     orig_h: int,
     mask_threshold: float,
     preprocess: str = PREPROCESS,
 ) -> np.ndarray:
-    """Mirror Swift raw-mask rendering: source bbox loop -> 80x80 sample -> threshold."""
+    """Mirror Swift raw-mask rendering: source bbox loop -> mask grid sample -> threshold."""
     mapped = map_model_box_to_source(box640, orig_w, orig_h, preprocess)
     x_min = max(0, min(orig_w - 1, int(math.floor(mapped[0]))))
     y_min = max(0, min(orig_h - 1, int(math.floor(mapped[1]))))
@@ -192,7 +193,7 @@ def mask_to_image_space_swift(
     for y in range(y_min, y_max + 1):
         for x in range(x_min, x_max + 1):
             sample_x, sample_y = swift_mask_sample_coordinate(x, y, orig_w, orig_h, preprocess)
-            value = float(mask80[sample_y, sample_x])
+            value = float(mask[sample_y, sample_x])
             if math.isfinite(value) and value > mask_threshold:
                 out[y, x] = 1
     return out
@@ -200,14 +201,14 @@ def mask_to_image_space_swift(
 
 def save_overlay(
     orig_path: Path,
-    mask80: np.ndarray,
+    mask: np.ndarray,
     box640: tuple[float, float, float, float],
     out_path: Path,
     mask_threshold: float,
 ) -> Path:
     base = Image.open(orig_path).convert("RGB")
     ow, oh = base.size
-    binm = mask_to_image_space_swift(mask80, box640, ow, oh, mask_threshold)
+    binm = mask_to_image_space_swift(mask, box640, ow, oh, mask_threshold)
 
     rgba = np.array(base.convert("RGBA"))
     green = np.array([0, 255, 0, 255], dtype=np.float32)

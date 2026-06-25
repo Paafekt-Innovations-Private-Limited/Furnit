@@ -163,13 +163,23 @@ public struct FurnitureFitNMS {
     public static func apply(detections: [FurnitureFitDetection], iouThreshold: Float) -> [FurnitureFitDetection] {
         guard !detections.isEmpty else { return [] }
 
-        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        // Prefer tighter (smaller-area) boxes first so looser wrappers that overlap the same object
+        // are suppressed. Within similar areas, fall back to higher score.
+        let sorted = detections.sorted { lhs, rhs in
+            let lhsArea = lhs.w * lhs.h
+            let rhsArea = rhs.w * rhs.h
+            if abs(lhsArea - rhsArea) > 1e-3 {
+                return lhsArea < rhsArea
+            }
+            return lhs.confidence > rhs.confidence
+        }
         return applySortedDescending(detections: sorted, iouThreshold: iouThreshold)
     }
 
     public static func applySortedByConfidence(detections: [FurnitureFitDetection], iouThreshold: Float) -> [FurnitureFitDetection] {
         guard !detections.isEmpty else { return [] }
-        return applySortedDescending(detections: detections, iouThreshold: iouThreshold)
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        return applySortedDescending(detections: sorted, iouThreshold: iouThreshold)
     }
 
     /// Apply NMS using CGRect boxes and scores

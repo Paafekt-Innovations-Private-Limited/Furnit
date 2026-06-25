@@ -164,15 +164,15 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
-				045F5BD82E6D302900C5585D = {
-					CreatedOnToolsVersion = 16.4;
-					LastSwiftMigration = 2620;
-					SystemCapabilities = {
-						com.apple.Push = {
-							enabled = 1;
+					045F5BD82E6D302900C5585D = {
+						CreatedOnToolsVersion = 16.4;
+						LastSwiftMigration = 2620;
+						SystemCapabilities = {
+							com.apple.Push = {
+								enabled = 1;
+							};
 						};
 					};
-				};
 					61A62FAC2F24C31500FE755A = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 045F5BD82E6D302900C5585D;

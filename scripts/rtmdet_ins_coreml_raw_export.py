@@ -19,6 +19,7 @@ from pathlib import Path
 
 import coremltools as ct
 import torch
+import torch.nn.functional as F
 from mmdet.apis import init_detector
 
 
@@ -37,6 +38,7 @@ class RTMDetInsRawHead(torch.nn.Module):
     def forward(self, x):
         feats = self.model.extract_feat(x)
         cls_scores, bbox_preds, kernel_preds, mask_feat = self.model.bbox_head(feats)
+        mask_feat = F.interpolate(mask_feat, scale_factor=2.0, mode="bilinear", align_corners=False)
         return (
             cls_scores[0],
             cls_scores[1],
