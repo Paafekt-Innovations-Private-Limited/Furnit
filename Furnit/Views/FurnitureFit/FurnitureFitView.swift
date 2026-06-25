@@ -356,6 +356,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Latest displayed candidates aligned with ``candidateBboxesInView``. Main-thread only for tap-selection.
     private var latestDisplayedCandidates: [FurnitureFitDetection] = []
     private var latestDisplayedSelectedCandidateIndex: Int?
+    private struct RTMDetLiveMaskCache {
+        let buildCache: RTMDetMaskBuildCache
+        let candidates: [FurnitureFitDetection]
+    }
+    private let rtmDetLiveMaskCacheLock = NSLock()
+    private var rtmDetLiveMaskCache: RTMDetLiveMaskCache?
     /// Latest prototype mask state used to validate taps against per-candidate mask presence.
     private let tapMaskState = FurnitureFitTapMaskState()
     private let selectedClassStateLock = NSLock()
@@ -633,7 +639,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             preferImmediateNextInference = false
         }
         frameLock.unlock()
-        if isRTMDetModel {
+        if isRTMDetModel && segmentationMode != .identifyOnly {
             pendingFrameLock.lock()
             pendingLatestSegmentationFrame = nil
             pendingFrameLock.unlock()
@@ -642,18 +648,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         processPendingLatestSegmentationFrameIfNeeded()
     }
 
-    private var shouldKeepLatestDroppedClassicCameraFrame: Bool {
-        // identifyOnly + segmentPrimary both run the classic auto-primary pipeline continuously;
-        // only the pinned segmentSelected flow is excluded.
+    private var shouldKeepLatestDroppedCameraFrame: Bool {
+        // Keep one freshest dropped frame for continuous live modes so inference jumps to the
+        // latest camera pose instead of visually trailing behind during pans.
         segmentationMode != .segmentSelected &&
-            !showFullVideoWithIdentifications &&
             !stillImageScanModeEnabled &&
             !oneImageRunAwaitingSave &&
-            !currentModelIsRTMDet
+            (!currentModelIsRTMDet || segmentationMode == .identifyOnly)
     }
 
     private func processPendingLatestSegmentationFrameIfNeeded() {
-        guard !currentModelIsRTMDet else { return }
         pendingFrameLock.lock()
         guard let pending = pendingLatestSegmentationFrame else {
             pendingFrameLock.unlock()
@@ -680,7 +684,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func storePendingLatestSegmentationFrame(pixelBuffer: CVPixelBuffer, arDepthSnapshot: FurnitureFitARDepthSnapshot?) {
-        guard !currentModelIsRTMDet else { return }
         guard let copiedBuffer = copyPixelBufferForDeferredProcessing(pixelBuffer) else { return }
         pendingFrameLock.lock()
         pendingLatestSegmentationFrame = PendingSegmentationFrame(
@@ -1449,6 +1452,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             latestDisplayedCandidates = []
             detectionBBoxOverlayView.items = []
             clearLatestTapMaskState()
+            storeRTMDetLiveMaskCache(nil, candidates: [])
         }
         latestDisplayedSelectedCandidateIndex = nil
         maskImageView.image = nil
@@ -1751,6 +1755,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             candidateBboxesInView = []
             latestDisplayedCandidates = []
             latestDisplayedSelectedCandidateIndex = nil
+            storeRTMDetLiveMaskCache(nil, candidates: [])
         }
         detectionBBoxOverlayView.items = []
         clearLatestTapMaskState()
@@ -2286,7 +2291,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         if isProcessing {
             preferImmediateNextInference = true
             frameLock.unlock()
-            if shouldKeepLatestDroppedClassicCameraFrame, let pixelBuffer {
+            if shouldKeepLatestDroppedCameraFrame, let pixelBuffer {
                 storePendingLatestSegmentationFrame(pixelBuffer: pixelBuffer, arDepthSnapshot: nil)
             }
             return
@@ -4019,6 +4024,109 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    private func storeRTMDetLiveMaskCache(_ buildCache: RTMDetMaskBuildCache?, candidates: [FurnitureFitDetection]) {
+        rtmDetLiveMaskCacheLock.lock()
+        if let buildCache {
+            rtmDetLiveMaskCache = RTMDetLiveMaskCache(buildCache: buildCache, candidates: candidates)
+        } else {
+            rtmDetLiveMaskCache = nil
+        }
+        rtmDetLiveMaskCacheLock.unlock()
+    }
+
+    private func latestRTMDetLiveMaskCacheSnapshot() -> RTMDetLiveMaskCache? {
+        rtmDetLiveMaskCacheLock.lock()
+        defer { rtmDetLiveMaskCacheLock.unlock() }
+        return rtmDetLiveMaskCache
+    }
+
+    private func tryRenderRTMDetSegmentFromCachedIdentify(frameStart: Date, arDepthSnapshot: FurnitureFitARDepthSnapshot?) -> Bool {
+        guard segmentationMode == .segmentSelected else { return false }
+        let pins = selectedPinsSnapshot()
+        guard !pins.isEmpty, let cached = latestRTMDetLiveMaskCacheSnapshot() else { return false }
+
+        let candidates = cached.candidates
+        let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
+        let matchedIndices = matchedCandidates.compactMap { matched in
+            candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 })
+        }
+        guard let primaryIdx = matchedIndices.first else { return false }
+
+        let groupedIndices = rtmDetTransitiveOverlapGroup(
+            candidates: candidates,
+            seedIndices: matchedIndices,
+            tau: Self.rtmDetGroupOverlapTau
+        )
+        let groupedDetections = groupedIndices.map { candidates[$0] }
+        guard let cachedMaskImage = RTMDetImageInference.buildCachedMaskImage(
+            from: cached.buildCache,
+            detections: groupedDetections,
+            debug: debugMode
+        ) else { return false }
+
+        let primary = candidates[primaryIdx]
+        let bufW = cached.buildCache.sourceWidth
+        let bufH = cached.buildCache.sourceHeight
+        let isLandscape = bufW > bufH
+        var finalCGImage = cachedMaskImage.cgImage
+        let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
+        if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
+            finalCGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
+                rotated,
+                imageWidth: bufH,
+                imageHeight: bufW
+            )
+        }
+
+        let bboxWidthPx = Int(max(1, primary.w))
+        let bboxHeightPx = Int(max(1, primary.h))
+        let maskHasForeground = finalCGImage != nil
+        let arSnapAttached = arDepthSnapshot != nil
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.primaryBboxInView = self.viewRect(
+                for: primary,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: 1,
+                scaleY: 1
+            )
+            self.updateDetectionOverlay(
+                candidates: candidates,
+                selectedIndex: primaryIdx,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                scaleX: 1,
+                scaleY: 1
+            )
+            if let finalCGImage {
+                self.maskImageView.image = UIImage(cgImage: finalCGImage, scale: 1.0, orientation: .up)
+                self.scheduleSegmentationMeanColorPublishIfNeeded(compositedCgImage: finalCGImage)
+            } else {
+                self.maskImageView.image = nil
+            }
+            self.commitFurnitureSizeAfterSegmentationMaskApplied(
+                maskHasForeground: maskHasForeground,
+                primaryMetricResult: nil,
+                firstFrameMeters: nil,
+                imageWidth: bufW,
+                imageHeight: bufH,
+                bboxWidthPx: bboxWidthPx,
+                bboxHeightPx: bboxHeightPx,
+                arDepthSnapshotAttached: arSnapAttached
+            )
+        }
+
+        logRTMDetLiveFrameFooter(
+            frameStart: frameStart,
+            candidatesCount: candidates.count,
+            outputSummary: ["rtmdetCachedMask: selected=\(groupedIndices.count)"]
+        )
+        resetProcessingFlag()
+        return true
+    }
+
     // MARK: - RTMDet grouping (primary + overlapping neighbors)
 
     /// Overlap coefficient based on intersection over min-area, treating edge-touching as 0.
@@ -4077,6 +4185,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
+        if tryRenderRTMDetSegmentFromCachedIdentify(frameStart: frameStart, arDepthSnapshot: arDepthSnapshot) {
+            return
+        }
+
         setProgress(0.35, text: "Running segmentation…")
         do {
             // Decode down to the lowest per-class gate (tables, 0.30) so their candidates AND masks
@@ -4101,6 +4213,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 // Per-detection masks only when we composite a cutout: pinned (segmentSelected) or the
                 // centered primary (segmentPrimary). identifyOnly skips the per-instance build.
                 buildInstanceMasks: segmentationMode != .identifyOnly,
+                cacheMaskBuildInputs: segmentationMode == .identifyOnly,
                 // segmentPrimary can keep an off-center target through auto-primary persistence, so
                 // every candidate needs its instance mask. The old center-only optimization caused
                 // valid furniture to lose its cutout whenever it drifted away from frame center.
@@ -4163,6 +4276,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             var selectedMaskCompositeIndices: [Int] = []
 
             if segmentationMode == .identifyOnly {
+                storeRTMDetLiveMaskCache(result.maskBuildCache, candidates: candidates)
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.maskImageView.image = nil

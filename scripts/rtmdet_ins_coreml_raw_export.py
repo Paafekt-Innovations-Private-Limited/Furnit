@@ -34,8 +34,11 @@ class RTMDetInsRawHead(torch.nn.Module):
     def __init__(self, model):
         super().__init__()
         self.model = model
+        self.register_buffer("input_mean", torch.tensor([103.53, 116.28, 123.675], dtype=torch.float32).view(1, 3, 1, 1))
+        self.register_buffer("input_inv_std", (1.0 / torch.tensor([57.375, 57.12, 58.395], dtype=torch.float32)).view(1, 3, 1, 1))
 
     def forward(self, x):
+        x = (x - self.input_mean) * self.input_inv_std
         feats = self.model.extract_feat(x)
         cls_scores, bbox_preds, kernel_preds, mask_feat = self.model.bbox_head(feats)
         mask_feat = F.interpolate(mask_feat, scale_factor=2.0, mode="bilinear", align_corners=False)
@@ -79,10 +82,11 @@ def main() -> int:
 
     wrapped = RTMDetInsRawHead(model).eval()
     example = torch.zeros(1, 3, 640, 640, dtype=torch.float32)
+    normalized_example = (example - wrapped.input_mean) * wrapped.input_inv_std
     with torch.inference_mode():
         print(">>> probing backbone output shapes", flush=True)
         start = time.perf_counter()
-        feats = model.extract_feat(example)
+        feats = model.extract_feat(normalized_example)
         print(f">>> backbone probe took {time.perf_counter() - start:.2f}s", flush=True)
         for idx, feat in enumerate(feats):
             print(f"feat_{idx}: {tuple(feat.shape)}", flush=True)
@@ -141,7 +145,15 @@ def main() -> int:
     mlmodel = ct.convert(
         traced,
         convert_to="mlprogram",
-        inputs=[ct.TensorType(name="input", shape=example.shape)],
+        inputs=[
+            ct.ImageType(
+                name="input",
+                shape=example.shape,
+                color_layout=ct.colorlayout.BGR,
+                scale=1.0,
+                bias=[0.0, 0.0, 0.0],
+            )
+        ],
         outputs=[ct.TensorType(name=name) for name in output_names],
         minimum_deployment_target=ct.target.iOS17,
     )

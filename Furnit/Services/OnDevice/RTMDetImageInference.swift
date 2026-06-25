@@ -11,6 +11,18 @@ struct RTMDetInferenceResult {
     let overlayMaskImage: UIImage?
     let instanceMaskImages: [UIImage?]
     let outputSummary: [String]
+    let maskBuildCache: RTMDetMaskBuildCache?
+}
+
+struct RTMDetMaskBuildCache {
+    let sourceWidth: Int
+    let sourceHeight: Int
+    let detections: [FurnitureFitDetection]
+    fileprivate let sourceBuffer: CVPixelBuffer
+    fileprivate let candidates: [RTMDetImageInference.RawCandidate]
+    fileprivate let mappedBoxes: [RTMDetImageInference.BoxRecord]
+    fileprivate let maskFeatureMatrix: RTMDetImageInference.RawMaskFeatureMatrix
+    fileprivate let mapping: RTMDetImageInference.ImageMapping
 }
 
 enum RTMDetImageInference {
@@ -124,7 +136,39 @@ enum RTMDetImageInference {
         return buffer
     }
 
-    private struct BoxRecord {
+    private static func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(source, .readOnly) }
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
+        var copy: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true,
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat, attrs as CFDictionary, &copy) == kCVReturnSuccess,
+              let copy else { return nil }
+        CVPixelBufferLockBaseAddress(copy, [])
+        defer { CVPixelBufferUnlockBaseAddress(copy, []) }
+        guard let srcBase = CVPixelBufferGetBaseAddress(source),
+              let dstBase = CVPixelBufferGetBaseAddress(copy) else { return nil }
+        let srcRowBytes = CVPixelBufferGetBytesPerRow(source)
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(copy)
+        let rowBytesToCopy = min(srcRowBytes, dstRowBytes)
+        for y in 0..<height {
+            memcpy(
+                dstBase.advanced(by: y * dstRowBytes),
+                srcBase.advanced(by: y * srcRowBytes),
+                rowBytesToCopy
+            )
+        }
+        return copy
+    }
+
+    fileprivate struct BoxRecord {
         let rowIndex: Int
         let x1: Float
         let y1: Float
@@ -140,7 +184,7 @@ enum RTMDetImageInference {
         case sourceImage
     }
 
-    private struct ImageMapping {
+    fileprivate struct ImageMapping {
         let modelSide: Int
         let sourceWidth: Int
         let sourceHeight: Int
@@ -156,7 +200,7 @@ enum RTMDetImageInference {
         let maxY: Int
     }
 
-    private struct RawCandidate {
+    fileprivate struct RawCandidate {
         let box: BoxRecord
         let kernel: [Float]
         let priorX: Float
@@ -164,7 +208,7 @@ enum RTMDetImageInference {
         let stride: Float
     }
 
-    private struct RawMaskFeatureMatrix {
+    fileprivate struct RawMaskFeatureMatrix {
         let side: Int
         let pixelCount: Int
         /// Row-major `[channel][pixel]`, shape 8 x pixelCount.
@@ -188,6 +232,7 @@ enum RTMDetImageInference {
         maxMaskCount: Int = 6,
         maxDetectionCount: Int = 12,
         buildInstanceMasks: Bool = false,
+        cacheMaskBuildInputs: Bool = false,
         restrictInstanceMasksToFrameCenter: Bool = false,
         debug: Bool = false
     ) throws -> RTMDetInferenceResult {
@@ -207,6 +252,7 @@ enum RTMDetImageInference {
             maxMaskCount: maxMaskCount,
             maxDetectionCount: maxDetectionCount,
             buildInstanceMasks: buildInstanceMasks,
+            cacheMaskBuildInputs: cacheMaskBuildInputs,
             restrictInstanceMasksToFrameCenter: restrictInstanceMasksToFrameCenter,
             debug: debug
         )
@@ -221,6 +267,7 @@ enum RTMDetImageInference {
         maxMaskCount: Int = 6,
         maxDetectionCount: Int = 12,
         buildInstanceMasks: Bool = false,
+        cacheMaskBuildInputs: Bool = false,
         restrictInstanceMasksToFrameCenter: Bool = false,
         debug: Bool = false
     ) throws -> RTMDetInferenceResult {
@@ -275,6 +322,7 @@ enum RTMDetImageInference {
                 maxMaskCount: maxMaskCount,
                 maxDetectionCount: maxDetectionCount,
                 buildInstanceMasks: buildInstanceMasks,
+                cacheMaskBuildInputs: cacheMaskBuildInputs,
                 preStageMillis: preStageMillis,
                 debug: debug
             )
@@ -351,7 +399,8 @@ enum RTMDetImageInference {
             detections: mappedDetections,
             overlayMaskImage: combinedMask,
             instanceMaskImages: instanceMaskImages,
-            outputSummary: outputSummary
+            outputSummary: outputSummary,
+            maskBuildCache: nil
         )
     }
 
@@ -377,6 +426,7 @@ enum RTMDetImageInference {
         maxMaskCount: Int,
         maxDetectionCount: Int,
         buildInstanceMasks: Bool,
+        cacheMaskBuildInputs: Bool,
         preStageMillis: StageMillis,
         debug: Bool
     ) throws -> RTMDetInferenceResult {
@@ -448,9 +498,11 @@ enum RTMDetImageInference {
         }
 
         let tDecoded = Date()
+        let shouldPrepareMaskFeatures = maxMaskCount > 0 || buildInstanceMasks || cacheMaskBuildInputs
+        let maskFeatureMatrix = shouldPrepareMaskFeatures ? rawMaskFeatureMatrix(from: maskFeat) : nil
         let rawMaskPlanes: [[Float]?]
         if maxMaskCount > 0 || buildInstanceMasks {
-            if let maskFeatureMatrix = rawMaskFeatureMatrix(from: maskFeat) {
+            if let maskFeatureMatrix {
                 rawMaskPlanes = selected.map { buildRawMaskPlane(candidate: $0, maskFeatureMatrix: maskFeatureMatrix) }
             } else {
                 rawMaskPlanes = []
@@ -459,6 +511,21 @@ enum RTMDetImageInference {
             rawMaskPlanes = []
         }
         let tMaskPlanes = Date()
+        let maskBuildCache: RTMDetMaskBuildCache?
+        if cacheMaskBuildInputs, let maskFeatureMatrix, let cachedSourceBuffer = copyPixelBuffer(sourceBuffer) {
+            maskBuildCache = RTMDetMaskBuildCache(
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight,
+                detections: mappedDetections,
+                sourceBuffer: cachedSourceBuffer,
+                candidates: selected,
+                mappedBoxes: mappedBoxes,
+                maskFeatureMatrix: maskFeatureMatrix,
+                mapping: mapping
+            )
+        } else {
+            maskBuildCache = nil
+        }
 
         let combinedMask = buildCombinedRawMaskImage(
             rawMaskPlanes: rawMaskPlanes,
@@ -517,7 +584,45 @@ enum RTMDetImageInference {
             detections: mappedDetections,
             overlayMaskImage: combinedMask,
             instanceMaskImages: instanceMaskImages,
-            outputSummary: outputSummary + debugSummary
+            outputSummary: outputSummary + debugSummary,
+            maskBuildCache: maskBuildCache
+        )
+    }
+
+    static func buildCachedMaskImage(
+        from cache: RTMDetMaskBuildCache,
+        detections requestedDetections: [FurnitureFitDetection],
+        debug: Bool = false
+    ) -> UIImage? {
+        guard !requestedDetections.isEmpty else { return nil }
+        var selectedIndices: [Int] = []
+        selectedIndices.reserveCapacity(requestedDetections.count)
+
+        for requested in requestedDetections {
+            guard let matchIndex = cache.detections.indices
+                .filter({ !selectedIndices.contains($0) })
+                .max(by: { lhs, rhs in
+                    FurnitureFitIoU.calculate(cache.detections[lhs], requested) <
+                        FurnitureFitIoU.calculate(cache.detections[rhs], requested)
+                }) else { continue }
+            let matched = cache.detections[matchIndex]
+            guard matched.classIdx == requested.classIdx,
+                  FurnitureFitIoU.calculate(matched, requested) >= 0.95 else { continue }
+            selectedIndices.append(matchIndex)
+        }
+
+        guard !selectedIndices.isEmpty else { return nil }
+        let selectedPlanes: [[Float]?] = selectedIndices.map { index in
+            buildRawMaskPlane(candidate: cache.candidates[index], maskFeatureMatrix: cache.maskFeatureMatrix)
+        }
+        let selectedBoxes = selectedIndices.map { cache.mappedBoxes[$0] }
+        return buildCombinedRawMaskImage(
+            rawMaskPlanes: selectedPlanes,
+            boxes: selectedBoxes,
+            maxMaskCount: selectedPlanes.count,
+            sourceBuffer: cache.sourceBuffer,
+            mapping: cache.mapping,
+            debugLabel: debug ? "cached" : nil
         )
     }
 
@@ -831,16 +936,65 @@ enum RTMDetImageInference {
     }
 
     private static func rawMaskFeatureMatrix(from maskFeat: MLMultiArray) -> RawMaskFeatureMatrix? {
-        let featAt = nchwReader(for: maskFeat)
         let side = rawMaskSide
         let pixelCount = side * side
         var features = [Float](repeating: 0, count: 8 * pixelCount)
-        for c in 0..<8 {
-            let channelOffset = c * pixelCount
-            for y in 0..<side {
-                let rowOffset = channelOffset + y * side
-                for x in 0..<side {
-                    features[rowOffset + x] = featAt(0, c, y, x)
+        let dims = compactDims(maskFeat)
+        let strides = maskFeat.strides.map(\.intValue)
+        guard dims.count == 4,
+              strides.count == 4,
+              dims[0] >= 1,
+              dims[1] >= 8,
+              dims[2] >= side,
+              dims[3] >= side else {
+            return nil
+        }
+
+        let s1 = strides[1]
+        let s2 = strides[2]
+        let s3 = strides[3]
+        let bound = storageSpan(for: maskFeat)
+
+        switch maskFeat.dataType {
+        case .float32:
+            let ptr = maskFeat.dataPointer.assumingMemoryBound(to: Float.self)
+            for c in 0..<8 {
+                let channelOffset = c * pixelCount
+                let sourceChannelOffset = c * s1
+                for y in 0..<side {
+                    let rowOffset = channelOffset + y * side
+                    let sourceRowOffset = sourceChannelOffset + y * s2
+                    for x in 0..<side {
+                        let sourceIndex = sourceRowOffset + x * s3
+                        features[rowOffset + x] = sourceIndex >= 0 && sourceIndex < bound ? ptr[sourceIndex] : 0
+                    }
+                }
+            }
+        case .float16:
+            let ptr = maskFeat.dataPointer.assumingMemoryBound(to: UInt16.self)
+            for c in 0..<8 {
+                let channelOffset = c * pixelCount
+                let sourceChannelOffset = c * s1
+                for y in 0..<side {
+                    let rowOffset = channelOffset + y * side
+                    let sourceRowOffset = sourceChannelOffset + y * s2
+                    for x in 0..<side {
+                        let sourceIndex = sourceRowOffset + x * s3
+                        features[rowOffset + x] = sourceIndex >= 0 && sourceIndex < bound
+                            ? Float(Float16(bitPattern: ptr[sourceIndex]))
+                            : 0
+                    }
+                }
+            }
+        default:
+            let featAt = nchwReader(for: maskFeat)
+            for c in 0..<8 {
+                let channelOffset = c * pixelCount
+                for y in 0..<side {
+                    let rowOffset = channelOffset + y * side
+                    for x in 0..<side {
+                        features[rowOffset + x] = featAt(0, c, y, x)
+                    }
                 }
             }
         }
@@ -1072,11 +1226,13 @@ enum RTMDetImageInference {
     private static func inputProvider(for pixelBuffer: CVPixelBuffer, model: MLModel, collectStats: Bool) throws -> MLFeatureProvider {
         let imageValue = MLFeatureValue(pixelBuffer: pixelBuffer)
         if model.modelDescription.inputDescriptionsByName["image"]?.type == .image {
+            if collectStats { lastInputTensorStats = "input=image" }
             return try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
         }
 
         if let firstInputName = model.modelDescription.inputDescriptionsByName.first?.key,
            model.modelDescription.inputDescriptionsByName[firstInputName]?.type == .image {
+            if collectStats { lastInputTensorStats = "input=image" }
             return try MLDictionaryFeatureProvider(dictionary: [firstInputName: imageValue])
         }
 

@@ -29,14 +29,26 @@ MASK_SIZE = 160
 PREPROCESS = "stretch"
 
 
+def load_resized_rgb_image(image_path: Path) -> Image.Image:
+    return Image.open(image_path).convert("RGB").resize((640, 640), Image.BILINEAR)
+
+
 def preprocess_bgr_nchw(image_path: Path) -> np.ndarray:
-    image = Image.open(image_path).convert("RGB").resize((640, 640), Image.BILINEAR)
+    image = load_resized_rgb_image(image_path)
     rgb = np.asarray(image).astype(np.float32)
     blob = np.empty((1, 3, 640, 640), dtype=np.float16)
     blob[0, 0] = (rgb[:, :, 2] - 103.53) / 57.375
     blob[0, 1] = (rgb[:, :, 1] - 116.28) / 57.12
     blob[0, 2] = (rgb[:, :, 0] - 123.675) / 58.395
     return blob
+
+
+def model_input_payload(model: ct.models.MLModel, image_path: Path) -> dict:
+    input_description = model.get_spec().description.input[0]
+    input_name = input_description.name
+    if input_description.type.WhichOneof("Type") == "imageType":
+        return {input_name: load_resized_rgb_image(image_path)}
+    return {input_name: preprocess_bgr_nchw(image_path)}
 
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
@@ -251,7 +263,7 @@ def main() -> int:
     passed = 0
 
     for image_path in images:
-        out = {name: np.asarray(value) for name, value in model.predict({"input": preprocess_bgr_nchw(image_path)}).items()}
+        out = {name: np.asarray(value) for name, value in model.predict(model_input_payload(model, image_path)).items()}
         chairs = decode_chairs(out, args.class_id, args.threshold)
         print(f"\nimage={image_path}")
         print(f"raw outputs: " + ", ".join(f"{k}={v.shape}" for k, v in sorted(out.items())))
