@@ -1845,8 +1845,7 @@ struct SharpRoomView: View {
             showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
             showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
         )
-        // Do not ignore top safe area: full-screen camera would sit under the nav bar and steal ruler taps.
-        .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+        .ignoresSafeArea()
         .zIndex(100)
     }
 

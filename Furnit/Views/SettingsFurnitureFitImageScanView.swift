@@ -246,7 +246,10 @@ private struct RTMDetStillImageOverlay: View {
         }
 
         do {
-            Self.classBlacklist.loadBlacklistOnce(debugMode: true) { print($0) }
+            let debugMode = AppStateManager.shared.qualitySettings.debugMode
+            Self.classBlacklist.loadBlacklistOnce(debugMode: debugMode) { message in
+                if debugMode { print(message) }
+            }
             let inferenceResult = try RTMDetImageInference.runInstanceSegmentation(
                 image: image,
                 model: mlModel,
@@ -257,7 +260,7 @@ private struct RTMDetStillImageOverlay: View {
                 maxDetectionCount: Self.detectionLimit,
                 buildInstanceMasks: true,
                 restrictInstanceMasksToFrameCenter: false,
-                debug: true
+                debug: debugMode
             )
             let scanResult = buildStillImageScanResult(from: inferenceResult)
             await MainActor.run {
@@ -306,6 +309,7 @@ private struct RTMDetStillImageOverlay: View {
         outputSummary: [String],
         selectedIndices: [Int]
     ) {
+        guard AppStateManager.shared.qualitySettings.debugMode else { return }
         let selectedIndexSet = Set(selectedIndices)
         for line in outputSummary where line.hasPrefix("rawMaskPlaneAlign[") {
             guard let closeBracket = line.firstIndex(of: "]") else { continue }

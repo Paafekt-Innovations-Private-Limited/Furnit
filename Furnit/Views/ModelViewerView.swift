@@ -149,6 +149,7 @@ struct ModelViewerView: View {
                 showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
             .zIndex(9000)
         }
     }

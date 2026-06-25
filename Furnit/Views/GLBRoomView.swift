@@ -428,7 +428,7 @@ struct GLBRoomView: View {
                 showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
                 showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
             )
-            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+            .ignoresSafeArea()
             .zIndex(100)
         }
     }
