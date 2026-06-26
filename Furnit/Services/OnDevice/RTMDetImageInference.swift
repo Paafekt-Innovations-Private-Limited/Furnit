@@ -557,14 +557,19 @@ enum RTMDetImageInference {
             debugLabel: debug ? "combined" : nil
         )
         let tCombined = Date()
+        let maskAffinityGraph = buildInstanceMasks
+            ? makeMaskAffinityGraph(rawMaskPlanes)
+            : nil
         let instanceMaskImages: [UIImage?]
         if buildInstanceMasks {
-            instanceMaskImages = mappedBoxes.enumerated().map { index, mappedBox in
+            instanceMaskImages = mappedBoxes.indices.map { index in
                 guard index < rawMaskPlanes.count else { return nil }
+                let groupIndices = maskAffinityGraph?.transitiveGroup(seedIndices: [index]) ?? [index]
+                let selectedIndices = groupIndices.isEmpty ? [index] : groupIndices
                 return buildCombinedRawMaskImage(
-                    rawMaskPlanes: [rawMaskPlanes[index]],
-                    boxes: [mappedBox],
-                    maxMaskCount: 1,
+                    rawMaskPlanes: selectedIndices.map { rawMaskPlanes[$0] },
+                    boxes: selectedIndices.map { mappedBoxes[$0] },
+                    maxMaskCount: selectedIndices.count,
                     sourceBuffer: sourceBuffer,
                     mapping: mapping,
                     debugLabel: nil
@@ -574,9 +579,6 @@ enum RTMDetImageInference {
             instanceMaskImages = []
         }
         let tInstances = Date()
-        let maskAffinityGraph = buildInstanceMasks
-            ? makeMaskAffinityGraph(rawMaskPlanes)
-            : nil
 
         // Debug-only summary lines (each sweeps grid cells / mask planes); empty in production.
         let debugSummary: [String] = debug
@@ -637,10 +639,15 @@ enum RTMDetImageInference {
         }
 
         guard !selectedIndices.isEmpty else { return nil }
-        let selectedPlanes: [[Float]?] = selectedIndices.map { index in
+        let allRawMaskPlanes = cache.candidates.map {
+            buildRawMaskPlane(candidate: $0, maskFeatureMatrix: cache.maskFeatureMatrix)
+        }
+        let affinityGroup = makeMaskAffinityGraph(allRawMaskPlanes).transitiveGroup(seedIndices: selectedIndices)
+        let expandedIndices = affinityGroup.isEmpty ? selectedIndices : affinityGroup
+        let selectedPlanes: [[Float]?] = expandedIndices.map { index in
             buildRawMaskPlane(candidate: cache.candidates[index], maskFeatureMatrix: cache.maskFeatureMatrix)
         }
-        let selectedBoxes = selectedIndices.map { cache.mappedBoxes[$0] }
+        let selectedBoxes = expandedIndices.map { cache.mappedBoxes[$0] }
         return buildCombinedRawMaskImage(
             rawMaskPlanes: selectedPlanes,
             boxes: selectedBoxes,
@@ -649,17 +656,6 @@ enum RTMDetImageInference {
             mapping: cache.mapping,
             debugLabel: debug ? "cached" : nil
         )
-    }
-
-    static func cachedMaskAffinityGroup(
-        from cache: RTMDetMaskBuildCache,
-        seedIndices: [Int]
-    ) -> [Int] {
-        guard !seedIndices.isEmpty else { return [] }
-        let rawMaskPlanes = cache.candidates.map {
-            buildRawMaskPlane(candidate: $0, maskFeatureMatrix: cache.maskFeatureMatrix)
-        }
-        return makeMaskAffinityGraph(rawMaskPlanes).transitiveGroup(seedIndices: seedIndices)
     }
 
     private static func makeMaskAffinityGraph(_ planes: [[Float]?]) -> RTMDetMaskAffinityGraph {

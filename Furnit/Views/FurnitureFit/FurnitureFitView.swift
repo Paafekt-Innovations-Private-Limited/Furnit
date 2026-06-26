@@ -4003,22 +4003,83 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return (accepted, accepted ? reason : "rejected_rect_or_huge \(reason)")
     }
 
-    /// Composite several full-frame instance-mask cutouts into one image (the union of their painted
-    /// pixels) so the Segment button can cut out every selected item together. Each instance mask is
-    /// already source-frame sized with a transparent background, so stacking them is the union.
+    /// Pixel-level union of full-frame instance-mask cutouts. Do not use `draw(in:)` here: Core
+    /// Graphics alpha blending can soften repeated transparent edges and make the cutout look foggy.
     private func combinedInstanceMaskImage(_ masks: [UIImage]) -> UIImage? {
         guard let firstMask = masks.first else { return nil }
         guard masks.count > 1 else { return firstMask }
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
-        format.scale = firstMask.scale
-        let renderer = UIGraphicsImageRenderer(size: firstMask.size, format: format)
-        return renderer.image { _ in
-            let bounds = CGRect(origin: .zero, size: firstMask.size)
-            for mask in masks {
-                mask.draw(in: bounds)
+        guard let firstCGImage = firstMask.cgImage else { return firstMask }
+        let width = firstCGImage.width
+        let height = firstCGImage.height
+        let bytesPerPixel = 4
+        let byteCount = width * height * bytesPerPixel
+        var unionRGBA = [UInt8](repeating: 0, count: byteCount)
+
+        for mask in masks {
+            guard let maskCGImage = mask.cgImage,
+                  maskCGImage.width == width,
+                  maskCGImage.height == height,
+                  let maskRGBA = renderedRGBABytes(from: maskCGImage, width: width, height: height) else {
+                continue
+            }
+
+            for pixelOffset in stride(from: 0, to: byteCount, by: bytesPerPixel) {
+                let alpha = Int(maskRGBA[pixelOffset + 3])
+                guard alpha > 0 else { continue }
+                if alpha == 255 {
+                    unionRGBA[pixelOffset] = maskRGBA[pixelOffset]
+                    unionRGBA[pixelOffset + 1] = maskRGBA[pixelOffset + 1]
+                    unionRGBA[pixelOffset + 2] = maskRGBA[pixelOffset + 2]
+                } else {
+                    unionRGBA[pixelOffset] = UInt8(min(255, Int(maskRGBA[pixelOffset]) * 255 / alpha))
+                    unionRGBA[pixelOffset + 1] = UInt8(min(255, Int(maskRGBA[pixelOffset + 1]) * 255 / alpha))
+                    unionRGBA[pixelOffset + 2] = UInt8(min(255, Int(maskRGBA[pixelOffset + 2]) * 255 / alpha))
+                }
+                unionRGBA[pixelOffset + 3] = 255
             }
         }
+
+        return imageFromRGBABytes(unionRGBA, width: width, height: height, scale: firstMask.scale)
+    }
+
+    private func renderedRGBABytes(from cgImage: CGImage, width: Int, height: Int) -> [UInt8]? {
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &rgba,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        context.interpolationQuality = .none
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return rgba
+    }
+
+    private func imageFromRGBABytes(_ rgba: [UInt8], width: Int, height: Int, scale: CGFloat) -> UIImage? {
+        guard rgba.count == width * height * 4 else { return nil }
+        let data = Data(rgba)
+        guard let provider = CGDataProvider(data: data as CFData),
+              let image = CGImage(
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  bytesPerRow: width * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGBitmapInfo.byteOrder32Big.union(.init(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)),
+                  provider: provider,
+                  decode: nil,
+                  shouldInterpolate: false,
+                  intent: .defaultIntent
+              ) else {
+            return nil
+        }
+        return UIImage(cgImage: image, scale: scale, orientation: .up)
     }
 
     private func storeRTMDetLiveMaskCache(_ buildCache: RTMDetMaskBuildCache?, candidates: [FurnitureFitDetection]) {
@@ -4049,14 +4110,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         guard let primaryIdx = matchedIndices.first else { return false }
 
-        let groupedIndices = RTMDetImageInference.cachedMaskAffinityGroup(
-            from: cached.buildCache,
-            seedIndices: matchedIndices
-        )
-        let groupedDetections = groupedIndices.map { candidates[$0] }
         guard let cachedMaskImage = RTMDetImageInference.buildCachedMaskImage(
             from: cached.buildCache,
-            detections: groupedDetections,
+            detections: matchedCandidates,
             debug: debugMode
         ) else { return false }
 
@@ -4117,7 +4173,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logRTMDetLiveFrameFooter(
             frameStart: frameStart,
             candidatesCount: candidates.count,
-            outputSummary: ["rtmdetCachedMask: maskAffinitySelected=\(groupedIndices.count)"]
+            outputSummary: ["rtmdetCachedMask: selected=\(matchedIndices.count)"]
         )
         resetProcessingFlag()
         return true
@@ -4327,17 +4383,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     )
                 }
             }
-
-            // Expand the selected object through RTMDet's raw mask-plane affinity graph. This is
-            // class-agnostic and uses the model's own mask representation to fuse related pieces.
-            let groupingSeeds: [Int]
-            if segmentationMode == .segmentSelected && !selectedMaskCompositeIndices.isEmpty {
-                groupingSeeds = selectedMaskCompositeIndices
-            } else {
-                groupingSeeds = [primaryIdx]
-            }
-            let groupedIndices = result.maskAffinityGraph?.transitiveGroup(seedIndices: groupingSeeds) ?? groupingSeeds
-            selectedMaskCompositeIndices = groupedIndices
 
             if debugMode {
                 let p = primary
