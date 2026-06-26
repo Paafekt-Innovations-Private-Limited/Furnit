@@ -1,0 +1,17 @@
+---
+description: Prevent agents from changing local Xcode and SwiftPM cache paths
+alwaysApply: true
+---
+
+# Xcode Cache Safety
+
+- Never create, delete, replace, or repair symlinks or folders under:
+  - `~/Library/Caches/org.swift.swiftpm`
+  - `~/Library/Developer/Xcode/DerivedData`
+  - `/Volumes/*/xcode`
+  - `/Volumes/*/XcodeLocalCaches`
+- Do not pass custom `-derivedDataPath` to `xcodebuild` unless the user explicitly asks.
+- Do not move SwiftPM, DerivedData, SourcePackages, or Xcode cache folders.
+- If `xcodebuild` fails because of SwiftPM cache, DerivedData, disk space, missing external volume, symlink, or permission issues, stop and report the exact error. Do not attempt environment repair.
+- For iOS verification, use the repo's default `xcodebuild` command from `ios-build-preference.mdc` only.
+- It is OK to read/list these paths for diagnosis, but do not modify them without explicit user approval in the current conversation.

@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import CoreML
+import MetalSplatter
 import simd
 
 /// App sandbox temp directory for unsaved Sharp previews (`Room_*.ply`, sidecars, thumbnails). Not `Documents/SavedRooms`.
@@ -2503,6 +2504,49 @@ class SHARPService: ObservableObject {
         let classicAttributes = try FileManager.default.attributesOfItem(atPath: classicFileURL.path)
         let classicSize = classicAttributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: Classic PLY saved (\(classicSize / 1024) KB) — Metal uchar RGB")
+
+        let cacheT0 = CFAbsoluteTimeGetCurrent()
+        let cacheFullMin = SIMD3<Float>(clMinX, clMinY, clMinZ)
+        let cacheFullMax = SIMD3<Float>(clMaxX, clMaxY, clMaxZ)
+        let cacheCentroid = rows.reduce(into: SIMD3<Float>.zero) { partial, row in
+            partial += SIMD3<Float>(row.x, -row.y, -row.z)
+        } / Float(max(rows.count, 1))
+        SplatBinaryCache.writeEncodedSplats(
+            sourceURL: classicFileURL,
+            splatCount: rows.count,
+            sortedByLocality: false,
+            metadata: SplatBinaryCache.Metadata(
+                fullBoundsMin: cacheFullMin,
+                fullBoundsMax: cacheFullMax,
+                framingBoundsMin: cacheFullMin,
+                framingBoundsMax: cacheFullMax,
+                centroid: cacheCentroid
+            ),
+            encodedBytes: { body in
+                let gamma: Float = 1.0 / 2.2
+                let brightness: Float = 1.1
+                let inverseSHC0: Float = 1.0 / 0.28209479177387814
+                body.reserveCapacity(body.count + rows.count * MemoryLayout<EncodedSplatPoint>.stride)
+                for g in rows {
+                    let fR = pow(min(max(g.rawR * brightness, 0), 1), gamma)
+                    let fG = pow(min(max(g.rawG * brightness, 0), 1), gamma)
+                    let fB = pow(min(max(g.rawB * brightness, 0), 1), gamma)
+                    let colorSH0 = (SIMD3<Float>(fR, fG, fB) - SIMD3<Float>(repeating: 0.5)) * inverseSHC0
+                    let opacity = 1 / (1 + exp(-g.opacity))
+                    let scale = exp(SIMD3<Float>(g.s0, g.s1, g.s2))
+                    let rotation = simd_quatf(ix: g.r1, iy: g.r2, iz: g.r3, r: g.r0).normalized
+                    var encoded = EncodedSplatPoint(
+                        position: SIMD3<Float>(g.x, -g.y, -g.z),
+                        colorSH0: colorSH0,
+                        opacity: opacity,
+                        scale: scale,
+                        rotation: rotation
+                    )
+                    withUnsafeBytes(of: &encoded) { body.append(contentsOf: $0) }
+                }
+            },
+            t0: cacheT0
+        )
 
         logPlyBoundsDiagnostic(
             "SHARP classic_ply room bounds (vertex frame written to *_classic.ply; in-app Metal uses this file): " +

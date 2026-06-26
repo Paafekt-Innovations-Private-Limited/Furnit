@@ -10,8 +10,26 @@ struct RTMDetInferenceResult {
     let detections: [FurnitureFitDetection]
     let overlayMaskImage: UIImage?
     let instanceMaskImages: [UIImage?]
+    let maskAffinityGraph: RTMDetMaskAffinityGraph?
     let outputSummary: [String]
     let maskBuildCache: RTMDetMaskBuildCache?
+}
+
+struct RTMDetMaskAffinityGraph {
+    fileprivate let neighbors: [[Int]]
+
+    func transitiveGroup(seedIndices: [Int]) -> [Int] {
+        guard !seedIndices.isEmpty, !neighbors.isEmpty else { return [] }
+        var inGroup = Set(seedIndices.filter { $0 >= 0 && $0 < neighbors.count })
+        var frontier = Array(inGroup)
+        while let current = frontier.popLast() {
+            for neighbor in neighbors[current] where !inGroup.contains(neighbor) {
+                inGroup.insert(neighbor)
+                frontier.append(neighbor)
+            }
+        }
+        return Array(inGroup).sorted()
+    }
 }
 
 struct RTMDetMaskBuildCache {
@@ -29,6 +47,8 @@ enum RTMDetImageInference {
     private static var lastInputTensorStats = "input=unavailable"
     private static let rawMaskModelSide = 640
     private static let rawMaskSide = 160
+    private static let rawMaskAffinityThreshold: Float = 0.12
+    private static let rawMaskAffinityBitThreshold: Float = 0.5
 
     /// Shared GPU-backed Core Image context. Creating a `CIContext` allocates Metal/GPU state, so it
     /// must never be built per frame — reuse this one for every resize. `CIContext` rendering is
@@ -230,7 +250,7 @@ enum RTMDetImageInference {
         classBlacklist: Set<Int> = [],
         allowedClassIndices: Set<Int>? = nil,
         maxMaskCount: Int = 6,
-        maxDetectionCount: Int = 12,
+        maxDetectionCount: Int? = nil,
         buildInstanceMasks: Bool = false,
         cacheMaskBuildInputs: Bool = false,
         restrictInstanceMasksToFrameCenter: Bool = false,
@@ -265,7 +285,7 @@ enum RTMDetImageInference {
         classBlacklist: Set<Int> = [],
         allowedClassIndices: Set<Int>? = nil,
         maxMaskCount: Int = 6,
-        maxDetectionCount: Int = 12,
+        maxDetectionCount: Int? = nil,
         buildInstanceMasks: Bool = false,
         cacheMaskBuildInputs: Bool = false,
         restrictInstanceMasksToFrameCenter: Bool = false,
@@ -339,7 +359,7 @@ enum RTMDetImageInference {
         let labelsArray = pickLabelsArray(from: outputArrays, targetCountHint: detectionCount(for: boxesArray))
         let maskArray = pickMaskArray(from: outputArrays, targetCountHint: detectionCount(for: boxesArray))
 
-        let boxes = Array(parseBoxes(from: boxesArray, labelsArray: labelsArray, confidenceThreshold: confidenceThreshold)
+        let sortedBoxes = parseBoxes(from: boxesArray, labelsArray: labelsArray, confidenceThreshold: confidenceThreshold)
             .filter { box in
                 guard let classIdx = box.classIdx else { return true }
                 if let allowedClassIndices, !allowedClassIndices.contains(classIdx) {
@@ -355,7 +375,7 @@ enum RTMDetImageInference {
                 }
                 return lhs.score > rhs.score
             }
-            .prefix(max(1, maxDetectionCount)))
+        let boxes = maxDetectionCount.map { Array(sortedBoxes.prefix(max(1, $0))) } ?? sortedBoxes
         let mapping = ImageMapping(
             modelSide: modelSide,
             sourceWidth: sourceWidth,
@@ -399,6 +419,7 @@ enum RTMDetImageInference {
             detections: mappedDetections,
             overlayMaskImage: combinedMask,
             instanceMaskImages: instanceMaskImages,
+            maskAffinityGraph: nil,
             outputSummary: outputSummary,
             maskBuildCache: nil
         )
@@ -424,7 +445,7 @@ enum RTMDetImageInference {
         classBlacklist: Set<Int>,
         allowedClassIndices: Set<Int>?,
         maxMaskCount: Int,
-        maxDetectionCount: Int,
+        maxDetectionCount: Int?,
         buildInstanceMasks: Bool,
         cacheMaskBuildInputs: Bool,
         preStageMillis: StageMillis,
@@ -476,9 +497,9 @@ enum RTMDetImageInference {
             classBlacklist: classBlacklist,
             confidenceThreshold: confidenceThreshold,
             modelSide: modelSide,
-            preNMSLimit: 500
+            preNMSLimit: nil
         )
-        let selected = classAwareNMS(rawCandidates, iouThreshold: 0.5, limit: max(1, maxDetectionCount))
+        let selected = classAwareNMS(rawCandidates, iouThreshold: 0.5, limit: maxDetectionCount)
         let mapping = ImageMapping(
             modelSide: modelSide,
             sourceWidth: sourceWidth,
@@ -553,6 +574,9 @@ enum RTMDetImageInference {
             instanceMaskImages = []
         }
         let tInstances = Date()
+        let maskAffinityGraph = buildInstanceMasks
+            ? makeMaskAffinityGraph(rawMaskPlanes)
+            : nil
 
         // Debug-only summary lines (each sweeps grid cells / mask planes); empty in production.
         let debugSummary: [String] = debug
@@ -584,6 +608,7 @@ enum RTMDetImageInference {
             detections: mappedDetections,
             overlayMaskImage: combinedMask,
             instanceMaskImages: instanceMaskImages,
+            maskAffinityGraph: maskAffinityGraph,
             outputSummary: outputSummary + debugSummary,
             maskBuildCache: maskBuildCache
         )
@@ -624,6 +649,63 @@ enum RTMDetImageInference {
             mapping: cache.mapping,
             debugLabel: debug ? "cached" : nil
         )
+    }
+
+    static func cachedMaskAffinityGroup(
+        from cache: RTMDetMaskBuildCache,
+        seedIndices: [Int]
+    ) -> [Int] {
+        guard !seedIndices.isEmpty else { return [] }
+        let rawMaskPlanes = cache.candidates.map {
+            buildRawMaskPlane(candidate: $0, maskFeatureMatrix: cache.maskFeatureMatrix)
+        }
+        return makeMaskAffinityGraph(rawMaskPlanes).transitiveGroup(seedIndices: seedIndices)
+    }
+
+    private static func makeMaskAffinityGraph(_ planes: [[Float]?]) -> RTMDetMaskAffinityGraph {
+        let bitsets = planes.map { maskBitset(for: $0) }
+        var neighbors = Array(repeating: [Int](), count: planes.count)
+        guard bitsets.count > 1 else { return RTMDetMaskAffinityGraph(neighbors: neighbors) }
+
+        for leftIndex in 0..<(bitsets.count - 1) {
+            let left = bitsets[leftIndex]
+            guard left.onCount > 0 else { continue }
+            for rightIndex in (leftIndex + 1)..<bitsets.count {
+                let right = bitsets[rightIndex]
+                guard right.onCount > 0 else { continue }
+                let intersectionCount = bitsetIntersectionCount(left.words, right.words)
+                let affinity = Float(intersectionCount) / Float(max(1, min(left.onCount, right.onCount)))
+                if affinity >= rawMaskAffinityThreshold {
+                    neighbors[leftIndex].append(rightIndex)
+                    neighbors[rightIndex].append(leftIndex)
+                }
+            }
+        }
+
+        return RTMDetMaskAffinityGraph(neighbors: neighbors)
+    }
+
+    private static func maskBitset(for plane: [Float]?) -> (words: [UInt64], onCount: Int) {
+        let pixelCount = rawMaskSide * rawMaskSide
+        var words = [UInt64](repeating: 0, count: (pixelCount + 63) / 64)
+        guard let plane, plane.count >= pixelCount else {
+            return (words, 0)
+        }
+        var onCount = 0
+        for index in 0..<pixelCount where plane[index].isFinite && plane[index] > rawMaskAffinityBitThreshold {
+            words[index >> 6] |= UInt64(1) << UInt64(index & 63)
+            onCount += 1
+        }
+        return (words, onCount)
+    }
+
+    private static func bitsetIntersectionCount(_ left: [UInt64], _ right: [UInt64]) -> Int {
+        let count = min(left.count, right.count)
+        var total = 0
+        for index in 0..<count {
+            total += Int((left[index] & right[index]).nonzeroBitCount)
+        }
+        return total
     }
 
     private static func rawMaskPlaneStats(_ planes: [[Float]?], selected: [RawCandidate]) -> [String] {
@@ -816,10 +898,10 @@ enum RTMDetImageInference {
         classBlacklist: Set<Int>,
         confidenceThreshold: Float,
         modelSide: Int,
-        preNMSLimit: Int
+        preNMSLimit: Int?
     ) -> [RawCandidate] {
         var candidates: [RawCandidate] = []
-        candidates.reserveCapacity(preNMSLimit)
+        candidates.reserveCapacity(preNMSLimit ?? 512)
 
         for level in levels {
             let clsAt = nchwReader(for: level.cls)
@@ -879,22 +961,24 @@ enum RTMDetImageInference {
             }
         }
 
-        return Array(candidates.sorted { $0.box.score > $1.box.score }.prefix(max(1, preNMSLimit)))
+        let sortedCandidates = candidates.sorted { $0.box.score > $1.box.score }
+        return preNMSLimit.map { Array(sortedCandidates.prefix(max(1, $0))) } ?? sortedCandidates
     }
 
-    private static func classAwareNMS(_ candidates: [RawCandidate], iouThreshold: Float, limit: Int) -> [RawCandidate] {
-        // Prefer tighter (smaller-area) boxes first so looser wrappers that overlap the same object
-        // are suppressed. Within similar areas, fall back to higher score.
+    private static func classAwareNMS(_ candidates: [RawCandidate], iouThreshold: Float, limit: Int?) -> [RawCandidate] {
+        // Standard class-aware NMS: confidence first, suppress same-class boxes whose IoU exceeds
+        // the threshold. Area is only a deterministic tie-breaker, not the primary priority.
+        let cappedLimit = limit.map { max(1, $0) }
         let sorted = candidates.sorted { lhs, rhs in
+            if abs(lhs.box.score - rhs.box.score) > 1e-6 {
+                return lhs.box.score > rhs.box.score
+            }
             let lhsArea = max(0, lhs.box.x2 - lhs.box.x1) * max(0, lhs.box.y2 - lhs.box.y1)
             let rhsArea = max(0, rhs.box.x2 - rhs.box.x1) * max(0, rhs.box.y2 - rhs.box.y1)
-            if abs(lhsArea - rhsArea) > 1e-3 {
-                return lhsArea < rhsArea
-            }
-            return lhs.box.score > rhs.box.score
+            return lhsArea < rhsArea
         }
         var kept: [RawCandidate] = []
-        kept.reserveCapacity(limit)
+        kept.reserveCapacity(cappedLimit ?? candidates.count)
 
         for candidate in sorted {
             var suppressed = false
@@ -916,7 +1000,7 @@ enum RTMDetImageInference {
                     classIdx: candidate.box.classIdx
                 )
                 kept.append(RawCandidate(box: box, kernel: candidate.kernel, priorX: candidate.priorX, priorY: candidate.priorY, stride: candidate.stride))
-                if kept.count >= limit {
+                if let cappedLimit, kept.count >= cappedLimit {
                     break
                 }
             }

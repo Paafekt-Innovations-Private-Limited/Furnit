@@ -23,6 +23,294 @@ private func logSplatLoadTiming(phase: String, t0: CFAbsoluteTime, note: String 
     logDebug("⏱️ [SplatLoad] \(phase): \(String(format: "%.1f", ms))ms\(suffix)")
 }
 
+enum SplatBinaryCache {
+    struct LoadedChunk {
+        let chunk: SplatChunk
+        let sortedByLocality: Bool
+        let metadata: Metadata
+    }
+
+    struct Metadata {
+        let fullBoundsMin: SIMD3<Float>
+        let fullBoundsMax: SIMD3<Float>
+        let framingBoundsMin: SIMD3<Float>
+        let framingBoundsMax: SIMD3<Float>
+        let centroid: SIMD3<Float>
+    }
+
+    private static let magic = [UInt8]("FSCACHE1".utf8)
+    private static let version: UInt32 = 2
+    private static let headerSize = 128
+    private static let flagsSortedByLocality: UInt32 = 1 << 0
+
+    static func cacheURL(for sourceURL: URL) -> URL {
+        sourceURL.deletingPathExtension()
+            .appendingPathExtension("splatcache")
+    }
+
+    static func loadChunkIfValid(
+        sourceURL: URL,
+        device: MTLDevice,
+        t0: CFAbsoluteTime?
+    ) -> LoadedChunk? {
+        let cacheURL = cacheURL(for: sourceURL)
+        let start = CFAbsoluteTimeGetCurrent()
+        guard let identity = SplatLoadHint.fileIdentity(for: sourceURL) else { return nil }
+        guard let data = try? Data(contentsOf: cacheURL, options: [.mappedIfSafe]) else {
+            if let t0 { logSplatLoadTiming(phase: "cache_miss", t0: t0, note: "reason=missing") }
+            return nil
+        }
+        guard let header = Header(data: data) else {
+            if let t0 { logSplatLoadTiming(phase: "cache_invalid", t0: t0, note: "reason=header") }
+            return nil
+        }
+        guard header.version == version,
+              header.sourceByteCount == UInt64(identity.byteCount),
+              abs(header.sourceModificationTime - identity.modificationTime) < 0.001,
+              header.splatStride == UInt32(MemoryLayout<EncodedSplatPoint>.stride),
+              header.headerSize == UInt32(headerSize),
+              header.payloadByteCount == UInt64(header.splatCount) * UInt64(header.splatStride),
+              data.count == headerSize + Int(header.payloadByteCount) else {
+            if let t0 {
+                logSplatLoadTiming(
+                    phase: "cache_invalid",
+                    t0: t0,
+                    note: "reason=identity_or_size cacheBytes=\(data.count)"
+                )
+            }
+            return nil
+        }
+
+        do {
+            let splatBuffer = try MetalBuffer<EncodedSplatPoint>(device: device, capacity: Int(header.splatCount))
+            splatBuffer.count = Int(header.splatCount)
+            data.withUnsafeBytes { rawBuffer in
+                guard let baseAddress = rawBuffer.baseAddress else { return }
+                memcpy(
+                    splatBuffer.values,
+                    baseAddress.advanced(by: headerSize),
+                    Int(header.payloadByteCount)
+                )
+            }
+            let chunk = SplatChunk(splats: splatBuffer, shDegree: .sh0)
+            if let t0 {
+                logSplatLoadTiming(
+                    phase: "4_cache_load",
+                    t0: t0,
+                    note: "splats=\(header.splatCount) sorted=\(header.sortedByLocality) bytes=\(data.count) local=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - start) * 1000))ms"
+                )
+            }
+            return LoadedChunk(chunk: chunk, sortedByLocality: header.sortedByLocality, metadata: header.metadata)
+        } catch {
+            if let t0 { logSplatLoadTiming(phase: "cache_invalid", t0: t0, note: "reason=buffer \(error)") }
+            return nil
+        }
+    }
+
+    static func write(
+        chunk: SplatChunk,
+        sourceURL: URL,
+        sortedByLocality: Bool,
+        metadata: Metadata,
+        t0: CFAbsoluteTime?
+    ) {
+        guard chunk.shDegree == .sh0, chunk.shCoefficients == nil else {
+            if let t0 { logSplatLoadTiming(phase: "cache_write_skipped", t0: t0, note: "reason=sh_degree_\(chunk.shDegree.rawValue)") }
+            return
+        }
+        writeEncodedSplats(
+            sourceURL: sourceURL,
+            splatCount: chunk.splats.count,
+            sortedByLocality: sortedByLocality,
+            metadata: metadata,
+            encodedBytes: { body in
+                body.append(contentsOf:
+                    UnsafeRawBufferPointer(
+                        start: chunk.splats.values,
+                        count: chunk.splats.count * MemoryLayout<EncodedSplatPoint>.stride
+                    )
+                )
+            },
+            t0: t0
+        )
+    }
+
+    static func writeEncodedSplats(
+        sourceURL: URL,
+        splatCount: Int,
+        sortedByLocality: Bool,
+        metadata: Metadata,
+        encodedBytes: (inout Data) -> Void,
+        t0: CFAbsoluteTime?
+    ) {
+        let start = CFAbsoluteTimeGetCurrent()
+        guard let identity = SplatLoadHint.fileIdentity(for: sourceURL) else {
+            if let t0 { logSplatLoadTiming(phase: "cache_write_skipped", t0: t0, note: "reason=source_identity") }
+            return
+        }
+        let splatStride = MemoryLayout<EncodedSplatPoint>.stride
+        let payloadByteCount = splatCount * splatStride
+        var data = Data()
+        data.reserveCapacity(headerSize + payloadByteCount)
+        Header(
+            version: version,
+            headerSize: UInt32(headerSize),
+            sourceByteCount: UInt64(identity.byteCount),
+            sourceModificationTime: identity.modificationTime,
+            splatCount: UInt64(splatCount),
+            splatStride: UInt32(splatStride),
+            flags: sortedByLocality ? flagsSortedByLocality : 0,
+            payloadByteCount: UInt64(payloadByteCount),
+            metadata: metadata
+        ).append(to: &data)
+        encodedBytes(&data)
+        guard data.count == headerSize + payloadByteCount else {
+            if let t0 { logSplatLoadTiming(phase: "cache_write_skipped", t0: t0, note: "reason=payload_size") }
+            return
+        }
+
+        let cacheURL = cacheURL(for: sourceURL)
+        let temporaryURL = cacheURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(cacheURL.lastPathComponent).\(UUID().uuidString).tmp")
+        do {
+            try data.write(to: temporaryURL, options: [.atomic])
+            if FileManager.default.fileExists(atPath: cacheURL.path) {
+                _ = try FileManager.default.replaceItemAt(cacheURL, withItemAt: temporaryURL)
+            } else {
+                try FileManager.default.moveItem(at: temporaryURL, to: cacheURL)
+            }
+            if let t0 {
+                logSplatLoadTiming(
+                    phase: "cache_write",
+                    t0: t0,
+                    note: "splats=\(splatCount) bytes=\(data.count) local=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - start) * 1000))ms"
+                )
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            if let t0 { logSplatLoadTiming(phase: "cache_write_failed", t0: t0, note: error.localizedDescription) }
+        }
+    }
+
+    private struct Header {
+        let version: UInt32
+        let headerSize: UInt32
+        let sourceByteCount: UInt64
+        let sourceModificationTime: TimeInterval
+        let splatCount: UInt64
+        let splatStride: UInt32
+        let flags: UInt32
+        let payloadByteCount: UInt64
+        let metadata: Metadata
+        var sortedByLocality: Bool { (flags & SplatBinaryCache.flagsSortedByLocality) != 0 }
+
+        init(
+            version: UInt32,
+            headerSize: UInt32,
+            sourceByteCount: UInt64,
+            sourceModificationTime: TimeInterval,
+            splatCount: UInt64,
+            splatStride: UInt32,
+            flags: UInt32,
+            payloadByteCount: UInt64,
+            metadata: Metadata
+        ) {
+            self.version = version
+            self.headerSize = headerSize
+            self.sourceByteCount = sourceByteCount
+            self.sourceModificationTime = sourceModificationTime
+            self.splatCount = splatCount
+            self.splatStride = splatStride
+            self.flags = flags
+            self.payloadByteCount = payloadByteCount
+            self.metadata = metadata
+        }
+
+        init?(data: Data) {
+            guard data.count >= SplatBinaryCache.headerSize else { return nil }
+            let bytes = [UInt8](data.prefix(SplatBinaryCache.headerSize))
+            guard Array(bytes[0..<8]) == magic else { return nil }
+            self.version = Self.readUInt32(bytes, 8)
+            self.headerSize = Self.readUInt32(bytes, 12)
+            self.sourceByteCount = Self.readUInt64(bytes, 16)
+            self.sourceModificationTime = TimeInterval(bitPattern: Self.readUInt64(bytes, 24))
+            self.splatCount = Self.readUInt64(bytes, 32)
+            self.splatStride = Self.readUInt32(bytes, 40)
+            self.flags = Self.readUInt32(bytes, 44)
+            self.payloadByteCount = Self.readUInt64(bytes, 48)
+            self.metadata = Metadata(
+                fullBoundsMin: SIMD3(Self.readFloat32(bytes, 56), Self.readFloat32(bytes, 60), Self.readFloat32(bytes, 64)),
+                fullBoundsMax: SIMD3(Self.readFloat32(bytes, 68), Self.readFloat32(bytes, 72), Self.readFloat32(bytes, 76)),
+                framingBoundsMin: SIMD3(Self.readFloat32(bytes, 80), Self.readFloat32(bytes, 84), Self.readFloat32(bytes, 88)),
+                framingBoundsMax: SIMD3(Self.readFloat32(bytes, 92), Self.readFloat32(bytes, 96), Self.readFloat32(bytes, 100)),
+                centroid: SIMD3(Self.readFloat32(bytes, 104), Self.readFloat32(bytes, 108), Self.readFloat32(bytes, 112))
+            )
+        }
+
+        func append(to data: inout Data) {
+            data.append(contentsOf: magic)
+            data.appendLittleEndian(version)
+            data.appendLittleEndian(headerSize)
+            data.appendLittleEndian(sourceByteCount)
+            data.appendLittleEndian(sourceModificationTime.bitPattern)
+            data.appendLittleEndian(splatCount)
+            data.appendLittleEndian(splatStride)
+            data.appendLittleEndian(flags)
+            data.appendLittleEndian(payloadByteCount)
+            data.appendFloat32(metadata.fullBoundsMin.x)
+            data.appendFloat32(metadata.fullBoundsMin.y)
+            data.appendFloat32(metadata.fullBoundsMin.z)
+            data.appendFloat32(metadata.fullBoundsMax.x)
+            data.appendFloat32(metadata.fullBoundsMax.y)
+            data.appendFloat32(metadata.fullBoundsMax.z)
+            data.appendFloat32(metadata.framingBoundsMin.x)
+            data.appendFloat32(metadata.framingBoundsMin.y)
+            data.appendFloat32(metadata.framingBoundsMin.z)
+            data.appendFloat32(metadata.framingBoundsMax.x)
+            data.appendFloat32(metadata.framingBoundsMax.y)
+            data.appendFloat32(metadata.framingBoundsMax.z)
+            data.appendFloat32(metadata.centroid.x)
+            data.appendFloat32(metadata.centroid.y)
+            data.appendFloat32(metadata.centroid.z)
+            data.appendLittleEndian(UInt64(0))
+            data.appendLittleEndian(UInt32(0))
+        }
+
+        private static func readUInt32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
+            UInt32(bytes[offset]) |
+                (UInt32(bytes[offset + 1]) << 8) |
+                (UInt32(bytes[offset + 2]) << 16) |
+                (UInt32(bytes[offset + 3]) << 24)
+        }
+
+        private static func readUInt64(_ bytes: [UInt8], _ offset: Int) -> UInt64 {
+            UInt64(bytes[offset]) |
+                (UInt64(bytes[offset + 1]) << 8) |
+                (UInt64(bytes[offset + 2]) << 16) |
+                (UInt64(bytes[offset + 3]) << 24) |
+                (UInt64(bytes[offset + 4]) << 32) |
+                (UInt64(bytes[offset + 5]) << 40) |
+                (UInt64(bytes[offset + 6]) << 48) |
+                (UInt64(bytes[offset + 7]) << 56)
+        }
+
+        private static func readFloat32(_ bytes: [UInt8], _ offset: Int) -> Float {
+            Float(bitPattern: readUInt32(bytes, offset))
+        }
+    }
+}
+
+private extension Data {
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var littleEndianValue = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndianValue) { append(contentsOf: $0) }
+    }
+
+    mutating func appendFloat32(_ value: Float) {
+        appendLittleEndian(value.bitPattern)
+    }
+}
+
 // MARK: - GaussianSplatView
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
@@ -475,6 +763,52 @@ struct GaussianSplatView: UIViewRepresentable {
                     guard self.setupGeneration == thisGeneration else { return }
                     logSplatLoadTiming(phase: "3_async_load_begin", t0: loadT0, note: "generation=\(thisGeneration)")
                     do {
+                    let renderer = try SplatRenderer(
+                        device: device,
+                        colorFormat: colorFormat,
+                        depthFormat: depthFormat,
+                        sampleCount: sampleCount,
+                        maxViewCount: 1,
+                        maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders,
+                        highQualityDepth: true,
+                        clearColor: clearColor
+                    )
+
+                    if let cachedLoad = SplatBinaryCache.loadChunkIfValid(sourceURL: plyURL, device: device, t0: loadT0) {
+                        let addCacheStart = CFAbsoluteTimeGetCurrent()
+                        _ = await renderer.addChunk(cachedLoad.chunk, sortByLocality: !cachedLoad.sortedByLocality)
+                        logSplatLoadTiming(
+                            phase: "5_cache_add_chunk",
+                            t0: loadT0,
+                            note: "rendererSplats=\(renderer.splatCount) sort=\(!cachedLoad.sortedByLocality) local=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - addCacheStart) * 1000))ms"
+                        )
+                        let cachedSplatCount = renderer.splatCount
+                        let fullMin = cachedLoad.metadata.fullBoundsMin
+                        let fullMax = cachedLoad.metadata.fullBoundsMax
+                        let cameraBoundsMin = cachedLoad.metadata.framingBoundsMin
+                        let cameraBoundsMax = cachedLoad.metadata.framingBoundsMax
+                        let cameraCentroid = cachedLoad.metadata.centroid
+                        let bounds = RoomBounds(
+                            minX: fullMin.x, maxX: fullMax.x,
+                            minY: fullMin.y, maxY: fullMax.y,
+                            minZ: fullMin.z, maxZ: fullMax.z
+                        )
+                        self.scheduleSwiftUIBindingUpdates { [weak self] in
+                            guard let self, self.setupGeneration == thisGeneration else { return }
+                            self.onBoundsAvailable?(bounds)
+                            self.sceneBoundsMin = cameraBoundsMin
+                            self.sceneBoundsMax = cameraBoundsMax
+                            self.sceneCentroid = cameraCentroid
+                            self.trimmedSplatPositions = nil
+                            self.splatRenderer = renderer
+                            logSplatLoadTiming(phase: "7_interactive_ready", t0: loadT0, note: "isLoading=false cache splats=\(cachedSplatCount)")
+                            self.isLoading = false
+                            self.warmupEndTime = CFAbsoluteTimeGetCurrent() + 3.0
+                            mtkView.setNeedsDisplay()
+                        }
+                        return
+                    }
+
                     var points = try await AutodetectSceneReader(plyURL).readAll()
                     guard !points.isEmpty else { throw GaussianSplatLoadError.emptyScene }
                     logSplatLoadTiming(phase: "4_ply_read", t0: loadT0, note: "splats=\(points.count)")
@@ -576,20 +910,34 @@ struct GaussianSplatView: UIViewRepresentable {
                     }
                     #endif
 
-                    let renderer = try SplatRenderer(
-                        device: device,
-                        colorFormat: colorFormat,
-                        depthFormat: depthFormat,
-                        sampleCount: sampleCount,
-                        maxViewCount: 1,
-                        maxSimultaneousRenders: GaussianSplatView.maxSimultaneousRenders,
-                        highQualityDepth: true,
-                        clearColor: clearColor
-                    )
+                    let packStart = CFAbsoluteTimeGetCurrent()
                     let chunk = try SplatChunk(device: device, from: points)
+                    logSplatLoadTiming(
+                        phase: "6_splat_chunk_pack",
+                        t0: loadT0,
+                        note: "splats=\(chunk.splatCount) local=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - packStart) * 1000))ms"
+                    )
+                    let addChunkStart = CFAbsoluteTimeGetCurrent()
                     _ = await renderer.addChunk(chunk)
+                    logSplatLoadTiming(
+                        phase: "6_gpu_chunk_upload",
+                        t0: loadT0,
+                        note: "rendererSplats=\(renderer.splatCount) local=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - addChunkStart) * 1000))ms"
+                    )
+                    SplatBinaryCache.write(
+                        chunk: chunk,
+                        sourceURL: plyURL,
+                        sortedByLocality: true,
+                        metadata: SplatBinaryCache.Metadata(
+                            fullBoundsMin: fullMin,
+                            fullBoundsMax: fullMax,
+                            framingBoundsMin: cameraBoundsMin,
+                            framingBoundsMax: cameraBoundsMax,
+                            centroid: cameraCentroid
+                        ),
+                        t0: loadT0
+                    )
                     points.removeAll(keepingCapacity: false)
-                    logSplatLoadTiming(phase: "6_gpu_chunk_upload", t0: loadT0, note: "rendererSplats=\(renderer.splatCount)")
                     logMemorySnapshot(
                         "GaussianSplatView.setup",
                         details: "phase=after_renderer_add_chunk ply=\(plyURL.lastPathComponent) splats=\(renderer.splatCount)"
@@ -600,7 +948,7 @@ struct GaussianSplatView: UIViewRepresentable {
                         minY: fullMin.y, maxY: fullMax.y,
                         minZ: fullMin.z, maxZ: fullMax.z
                     )
-                    let loadedSplatCount = renderer.splatCount
+                    let loadedSplatCount = splatCount
                     let refreshedHint = SplatLoadHint.fileIdentity(for: plyURL).map { identity in
                         SplatLoadHint(
                             fileByteCount: identity.byteCount,

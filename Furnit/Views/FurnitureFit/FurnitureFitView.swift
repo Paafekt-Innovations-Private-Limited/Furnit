@@ -322,6 +322,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var isShowingLiveVideoIdentifications: Bool {
         showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
     }
+    private var shouldAllowBoundingBoxTapSelection: Bool {
+        isShowingLiveVideoIdentifications
+    }
     private var shouldShowLiveCameraPreview: Bool {
         // RTMDET-TAP-SEGMENT-OK (verified 2026-06-10): feed hides on segment.
         // Only show the full-frame live camera feed while IDENTIFYING. Once an item is segmented
@@ -390,12 +393,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let autoPrimaryConfidenceSwitchGain: Float = 1.15
     private let autoPrimaryConfidenceSwitchMargin: Float = 0.06
     private let autoPrimaryAreaShortlistCount: Int = 3
-    /// Keep RTMDet's pre-selection pool close to the old YOLOE flow: select primary after NMS from
-    /// a wider candidate set, then let the 3-largest area shortlist + confidence score decide.
-    private let rtmDetPrimaryCandidatePoolLimit: Int = 12
-    /// Min-area overlap coefficient τ for grouping neighboring detections into one mask.
-    private static let rtmDetGroupOverlapTau: CGFloat = 0.15
-
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
     private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
@@ -1737,7 +1734,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         candidateBboxesInView = rects
         detectionBBoxOverlayView.items = candidates.enumerated().map { index, detection in
             let isSel = pins.contains { FurnitureFitIoU.calculate(detection, $0) >= pinMatchIoUThreshold }
-            let label = debugMode ? "" : displayClassName(detection.classIdx)
+            let label = displayClassName(detection.classIdx)
             return DetectionOverlayItem(
                 rectInView: rects[index],
                 label: label,
@@ -4052,10 +4049,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         guard let primaryIdx = matchedIndices.first else { return false }
 
-        let groupedIndices = rtmDetTransitiveOverlapGroup(
-            candidates: candidates,
-            seedIndices: matchedIndices,
-            tau: Self.rtmDetGroupOverlapTau
+        let groupedIndices = RTMDetImageInference.cachedMaskAffinityGroup(
+            from: cached.buildCache,
+            seedIndices: matchedIndices
         )
         let groupedDetections = groupedIndices.map { candidates[$0] }
         guard let cachedMaskImage = RTMDetImageInference.buildCachedMaskImage(
@@ -4121,51 +4117,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         logRTMDetLiveFrameFooter(
             frameStart: frameStart,
             candidatesCount: candidates.count,
-            outputSummary: ["rtmdetCachedMask: selected=\(groupedIndices.count)"]
+            outputSummary: ["rtmdetCachedMask: maskAffinitySelected=\(groupedIndices.count)"]
         )
         resetProcessingFlag()
         return true
-    }
-
-    // MARK: - RTMDet grouping (primary + overlapping neighbors)
-
-    /// Overlap coefficient based on intersection over min-area, treating edge-touching as 0.
-    private static func overlapCoefficient(_ a: CGRect, _ b: CGRect) -> CGFloat {
-        let ix = max(a.minX, b.minX)
-        let iy = max(a.minY, b.minY)
-        let iw = min(a.maxX, b.maxX) - ix
-        let ih = min(a.maxY, b.maxY) - iy
-        guard iw > 0, ih > 0 else { return 0 }
-        let inter = iw * ih
-        let minArea = min(a.width * a.height, b.width * b.height)
-        return minArea > 0 ? inter / minArea : 0
-    }
-
-    /// Returns the transitive overlap group starting from the given seed indices.
-    /// Any candidate whose bbox overlaps an in-group member with overlapCoefficient ≥ τ joins the group.
-    private func rtmDetTransitiveOverlapGroup(
-        candidates: [FurnitureFitDetection],
-        seedIndices: [Int],
-        tau: CGFloat
-    ) -> [Int] {
-        guard !candidates.isEmpty else { return [] }
-        guard !seedIndices.isEmpty else { return [] }
-
-        var inGroup = Set(seedIndices)
-        var frontier = seedIndices
-
-        while let current = frontier.popLast() {
-            let curBox = candidates[current].boundingBox
-            for j in candidates.indices where !inGroup.contains(j) {
-                let otherBox = candidates[j].boundingBox
-                if Self.overlapCoefficient(curBox, otherBox) >= tau {
-                    inGroup.insert(j)
-                    frontier.append(j)
-                }
-            }
-        }
-
-        return Array(inGroup)
     }
 
     private func processFrameRTMDetLive(
@@ -4209,7 +4164,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     case .segmentPrimary: return 1
                     }
                 }(),
-                maxDetectionCount: rtmDetPrimaryCandidatePoolLimit,
+                maxDetectionCount: nil,
                 // Per-detection masks only when we composite a cutout: pinned (segmentSelected) or the
                 // centered primary (segmentPrimary). identifyOnly skips the per-instance build.
                 buildInstanceMasks: segmentationMode != .identifyOnly,
@@ -4373,20 +4328,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
-            // Group primary (and any selected pins) with overlapping neighbors using a transitive
-            // min-area overlap coefficient flood-fill. This pulls the table + surrounding chairs
-            // into the same cutout when their boxes genuinely overlap (edges-only do not qualify).
+            // Expand the selected object through RTMDet's raw mask-plane affinity graph. This is
+            // class-agnostic and uses the model's own mask representation to fuse related pieces.
             let groupingSeeds: [Int]
             if segmentationMode == .segmentSelected && !selectedMaskCompositeIndices.isEmpty {
                 groupingSeeds = selectedMaskCompositeIndices
             } else {
                 groupingSeeds = [primaryIdx]
             }
-            let groupedIndices = rtmDetTransitiveOverlapGroup(
-                candidates: candidates,
-                seedIndices: groupingSeeds,
-                tau: Self.rtmDetGroupOverlapTau
-            )
+            let groupedIndices = result.maskAffinityGraph?.transitiveGroup(seedIndices: groupingSeeds) ?? groupingSeeds
             selectedMaskCompositeIndices = groupedIndices
 
             if debugMode {
@@ -5383,6 +5333,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     @objc private func handleBoundingBoxTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
+        guard shouldAllowBoundingBoxTapSelection else {
+            logDebug("👆 [TAP_SELECT] ignored; bbox selection is only enabled in full-video identification mode")
+            return
+        }
         let pointInMask = gesture.location(in: maskImageView)
         if debugMode {
             // [TAP_DIAG] Tap in maskImageView (aspect-fill view) space vs. every drawn bbox. These are the
@@ -5445,6 +5399,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         if gestureRecognizer is UITapGestureRecognizer {
+            guard shouldAllowBoundingBoxTapSelection else { return false }
             let touchPoint = touch.location(in: maskImageView)
             return candidateIndexForTap(touchPoint) != nil
         }
@@ -5586,22 +5541,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         let pointInMask = convert(point, to: maskImageView)
-        let tapHitPadding: CGFloat = shouldShowLiveCameraPreview ? 22 : 10
+        let tapHitPadding: CGFloat = shouldAllowBoundingBoxTapSelection ? 22 : 10
         let candidateContains = candidateBboxesInView.contains {
             $0.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMask)
         }
 
-        if candidateContains && maskImageView.image == nil {
+        if shouldAllowBoundingBoxTapSelection && candidateContains && maskImageView.image == nil {
             logDebug("👆 [hitTest] INSIDE candidate bbox - handling tap without mask boxes=\(candidateBboxesInView.count)")
             return maskImageView
         }
 
-        if shouldShowLiveCameraPreview {
+        if shouldAllowBoundingBoxTapSelection {
             if candidateContains {
                 logDebug("👆 [hitTest] INSIDE identify candidate bbox - handling")
                 return maskImageView
             }
             logDebug("👆 [hitTest] OUTSIDE identify candidate bbox boxes=\(candidateBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
+            return nil
+        }
+
+        if shouldShowLiveCameraPreview {
             return nil
         }
 

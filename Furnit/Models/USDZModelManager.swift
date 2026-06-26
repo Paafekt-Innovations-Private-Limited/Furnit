@@ -360,6 +360,9 @@ class USDZModelManager: ObservableObject {
         if fileName.hasSuffix(".splat_load_hint.json") {
             return String(fileName.dropLast(".splat_load_hint.json".count))
         }
+        if fileName.hasSuffix(".splatcache") {
+            return String(fileName.dropLast(".splatcache".count))
+        }
         if fileName.hasSuffix(".meta") {
             let withoutMeta = fileURL.deletingPathExtension().lastPathComponent
             return URL(fileURLWithPath: withoutMeta).deletingPathExtension().lastPathComponent
@@ -1604,6 +1607,19 @@ class USDZModelManager: ObservableObject {
                 }
             } else if debugMode {
                 logDebug("⏱️ [SplatLoad] metadata_copy source=\(sourceURL.lastPathComponent) dest=\(destinationURL.lastPathComponent) type=hint miss")
+            }
+            let sourceSplatCacheURL = SplatBinaryCache.cacheURL(for: sourceURL)
+            let destinationSplatCacheURL = SplatBinaryCache.cacheURL(for: destinationURL)
+            if FileManager.default.fileExists(atPath: sourceSplatCacheURL.path) {
+                if FileManager.default.fileExists(atPath: destinationSplatCacheURL.path) {
+                    try FileManager.default.removeItem(at: destinationSplatCacheURL)
+                }
+                try FileManager.default.copyItem(at: sourceSplatCacheURL, to: destinationSplatCacheURL)
+                if debugMode {
+                    logDebug("⏱️ [SplatLoad] cache_copy source=\(sourceSplatCacheURL.lastPathComponent) dest=\(destinationSplatCacheURL.lastPathComponent)")
+                }
+            } else if debugMode {
+                logDebug("⏱️ [SplatLoad] cache_copy source=\(sourceURL.lastPathComponent) type=splatcache miss")
             }
 
             let variantDestinations: [(label: String, url: URL, isClassic: Bool)] = [
