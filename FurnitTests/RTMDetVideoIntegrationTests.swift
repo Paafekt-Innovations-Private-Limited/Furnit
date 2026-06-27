@@ -6,6 +6,71 @@ import XCTest
 
 final class RTMDetVideoIntegrationTests: XCTestCase {
 
+    func testRTMDetRepeatedStillFrameMatchesVideoLikePlayback() throws {
+        let image = try loadRepeatedChairFrameFixture()
+        let model = try loadRTMDetModel()
+
+        var signatures: [RepeatedStillFrameSignature] = []
+        for runIndex in 1...30 {
+            let result = try RTMDetImageInference.runInstanceSegmentation(
+                image: image,
+                model: model,
+                confidenceThreshold: 0.30,
+                classBlacklist: [],
+                allowedClassIndices: nil,
+                maxMaskCount: Int.max,
+                maxDetectionCount: nil,
+                buildInstanceMasks: true,
+                debug: true
+            )
+
+            guard let chairIndex = result.detections.indices
+                .filter({ result.detections[$0].classIdx == 56 })
+                .max(by: { result.detections[$0].confidence < result.detections[$1].confidence }) else {
+                XCTFail("Run \(runIndex): expected a chair at app threshold 0.30. Detections: \(result.detections)")
+                continue
+            }
+
+            let chair = result.detections[chairIndex]
+            guard chairIndex < result.instanceMaskImages.count,
+                  let chairMask = result.instanceMaskImages[chairIndex] else {
+                XCTFail("Run \(runIndex): expected an instance mask for chair detection \(chairIndex). Detections: \(result.detections)")
+                continue
+            }
+
+            let maskStats = alphaStats(in: chairMask)
+            XCTAssertGreaterThan(maskStats.pixelCount, 0, "Run \(runIndex): chair mask is empty")
+            XCTAssertGreaterThan(
+                maskStats.bounds.height,
+                CGFloat(chair.h) * 0.45,
+                "Run \(runIndex): chair mask looks vertically collapsed / bottom-only. bbox=\(chair.boundingBox) mask=\(maskStats.bounds)"
+            )
+            XCTAssertLessThan(
+                maskStats.bounds.minY,
+                chair.boundingBox.minY + CGFloat(chair.h) * 0.55,
+                "Run \(runIndex): chair mask starts too low in bbox, matching the bottom-only failure. bbox=\(chair.boundingBox) mask=\(maskStats.bounds)"
+            )
+
+            let signature = RepeatedStillFrameSignature(
+                detectionCount: result.detections.count,
+                chairIndex: chairIndex,
+                chairClass: chair.classIdx,
+                chairConfidencePermille: Int((chair.confidence * 1000).rounded()),
+                chairBox: roundedRect(chair.boundingBox),
+                maskPixelCount: maskStats.pixelCount,
+                maskBounds: roundedRect(maskStats.bounds)
+            )
+            signatures.append(signature)
+        }
+
+        XCTAssertEqual(signatures.count, 30, "All repeated still-frame runs should produce a signature")
+        XCTAssertEqual(
+            Set(signatures).count,
+            1,
+            "RTMDet repeated still-frame inference should be deterministic. Signatures: \(signatures)"
+        )
+    }
+
     func testRTMDetSegmentsRealChairPhotoWithFurnitureFilter() throws {
         let imagePath = "/Users/al/Downloads/WhatsApp Image 2026-06-08 at 16.08.53.jpeg"
         guard FileManager.default.fileExists(atPath: imagePath),
@@ -136,6 +201,33 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         let pixelBuffer: CVPixelBuffer
     }
 
+    private struct RepeatedStillFrameSignature: Hashable, CustomStringConvertible {
+        let detectionCount: Int
+        let chairIndex: Int
+        let chairClass: Int
+        let chairConfidencePermille: Int
+        let chairBox: RoundedRect
+        let maskPixelCount: Int
+        let maskBounds: RoundedRect
+
+        var description: String {
+            "detections=\(detectionCount) chairIndex=\(chairIndex) cls=\(chairClass) " +
+            "confPermille=\(chairConfidencePermille) chairBox=\(chairBox) " +
+            "maskPixels=\(maskPixelCount) maskBounds=\(maskBounds)"
+        }
+    }
+
+    private struct RoundedRect: Hashable, CustomStringConvertible {
+        let x: Int
+        let y: Int
+        let width: Int
+        let height: Int
+
+        var description: String {
+            "(\(x),\(y),\(width)x\(height))"
+        }
+    }
+
     private func loadRTMDetModel() throws -> MLModel {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuOnly
@@ -160,6 +252,61 @@ final class RTMDetVideoIntegrationTests: XCTestCase {
         }
 
         throw XCTSkip("rtmdet-ins-m Core ML model is not available in the app/test bundle")
+    }
+
+    private func loadRepeatedChairFrameFixture() throws -> UIImage {
+        let bundles = [Bundle(for: type(of: self)), Bundle.main]
+        for bundle in bundles {
+            if let bundledURL = bundle.url(forResource: "rtmdet_repeated_chair_frame", withExtension: "jpg"),
+               let image = UIImage(contentsOfFile: bundledURL.path) {
+                return image
+            }
+            if let resourceURL = bundle.resourceURL,
+               let image = imageFromRecursiveBundleSearch(named: "rtmdet_repeated_chair_frame.jpg", under: resourceURL) {
+                return image
+            }
+        }
+
+        let environmentPath = ProcessInfo.processInfo.environment["RTMDET_REPEAT_TEST_IMAGE_PATH"]
+        let candidatePaths = [
+            environmentPath,
+            "/Users/al/.cursor/projects/Users-al-Documents-tries01-Furnit/assets/image-145b02a9-1212-4858-8bc4-0bd458149834.png",
+            "/Users/al/Documents/tries01/Furnit/FurnitTests/rtmdet_repeated_chair_frame.jpg",
+        ].compactMap { $0 }
+
+        for path in candidatePaths {
+            if FileManager.default.fileExists(atPath: path),
+               let image = UIImage(contentsOfFile: path) {
+                return image
+            }
+        }
+
+        throw XCTSkip("Repeated RTMDet chair-frame fixture is not available. Set RTMDET_REPEAT_TEST_IMAGE_PATH or add FurnitTests/rtmdet_repeated_chair_frame.jpg")
+    }
+
+    private func imageFromRecursiveBundleSearch(named filename: String, under rootURL: URL) -> UIImage? {
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+        for case let fileURL as URL in enumerator where fileURL.lastPathComponent == filename {
+            if let image = UIImage(contentsOfFile: fileURL.path) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    private func roundedRect(_ rect: CGRect) -> RoundedRect {
+        RoundedRect(
+            x: Int(rect.minX.rounded()),
+            y: Int(rect.minY.rounded()),
+            width: Int(rect.width.rounded()),
+            height: Int(rect.height.rounded())
+        )
     }
 
     private func assertRTMDetInterface(_ model: MLModel) {

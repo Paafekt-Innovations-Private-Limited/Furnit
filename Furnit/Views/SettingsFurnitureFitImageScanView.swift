@@ -149,9 +149,6 @@ private struct RTMDetStillImageOverlay: View {
     let mlModel: MLModel?
 
     private static let confidenceThreshold: Float = 0.30
-    private static let detectionLimit = 30
-    private static let areaSeedCount = 3
-    private static let groupOverlapTau: CGFloat = 0.15
     private static let classBlacklist = FurnitureFitClassBlacklist()
 
     private struct StillImageScanResult {
@@ -256,8 +253,8 @@ private struct RTMDetStillImageOverlay: View {
                 confidenceThreshold: Self.confidenceThreshold,
                 classBlacklist: Self.classBlacklist.ignoredIndices,
                 allowedClassIndices: nil,
-                maxMaskCount: Self.detectionLimit,
-                maxDetectionCount: Self.detectionLimit,
+                maxMaskCount: Int.max,
+                maxDetectionCount: nil,
                 buildInstanceMasks: true,
                 restrictInstanceMasksToFrameCenter: false,
                 debug: debugMode
@@ -279,7 +276,8 @@ private struct RTMDetStillImageOverlay: View {
 
     private func buildStillImageScanResult(from inferenceResult: RTMDetInferenceResult) -> StillImageScanResult {
         let sourcePixelSize = sourcePixelSize(from: inferenceResult) ?? fallbackSourcePixelSize
-        guard let groupedIndices = largestOverlapClusterIndices(for: inferenceResult.detections) else {
+        let maskImages = inferenceResult.instanceMaskImages.compactMap { $0 }
+        guard !maskImages.isEmpty else {
             return StillImageScanResult(
                 mergedMaskImage: nil,
                 mergedMaskBoundingBox: nil,
@@ -290,12 +288,9 @@ private struct RTMDetStillImageOverlay: View {
 
         logSelectedMaskAlignmentDiagnostics(
             outputSummary: inferenceResult.outputSummary,
-            selectedIndices: groupedIndices
+            selectedIndices: Array(inferenceResult.detections.indices)
         )
-        let groupedMasks = groupedIndices.compactMap { index -> UIImage? in
-            index < inferenceResult.instanceMaskImages.count ? inferenceResult.instanceMaskImages[index] : nil
-        }
-        let mergedMaskImage = combinedInstanceMaskImage(groupedMasks)
+        let mergedMaskImage = combinedInstanceMaskImage(maskImages)
         let mergedMaskBoundingBox = mergedMaskImage.flatMap { alphaBoundingBox(in: $0) }
         return StillImageScanResult(
             mergedMaskImage: mergedMaskImage,
@@ -339,16 +334,78 @@ private struct RTMDetStillImageOverlay: View {
     private func combinedInstanceMaskImage(_ masks: [UIImage]) -> UIImage? {
         guard let firstMask = masks.first else { return nil }
         guard masks.count > 1 else { return firstMask }
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
-        format.scale = firstMask.scale
-        let renderer = UIGraphicsImageRenderer(size: firstMask.size, format: format)
-        return renderer.image { _ in
-            let bounds = CGRect(origin: .zero, size: firstMask.size)
-            for mask in masks {
-                mask.draw(in: bounds)
+        guard let firstCGImage = firstMask.cgImage else { return firstMask }
+        let width = firstCGImage.width
+        let height = firstCGImage.height
+        let bytesPerPixel = 4
+        let byteCount = width * height * bytesPerPixel
+        var unionRGBA = [UInt8](repeating: 0, count: byteCount)
+
+        for mask in masks {
+            guard let maskCGImage = mask.cgImage,
+                  maskCGImage.width == width,
+                  maskCGImage.height == height,
+                  let maskRGBA = renderedRGBABytes(from: maskCGImage, width: width, height: height) else {
+                continue
+            }
+
+            for pixelOffset in stride(from: 0, to: byteCount, by: bytesPerPixel) {
+                let alpha = Int(maskRGBA[pixelOffset + 3])
+                guard alpha > 0 else { continue }
+                if alpha == 255 {
+                    unionRGBA[pixelOffset] = maskRGBA[pixelOffset]
+                    unionRGBA[pixelOffset + 1] = maskRGBA[pixelOffset + 1]
+                    unionRGBA[pixelOffset + 2] = maskRGBA[pixelOffset + 2]
+                } else {
+                    unionRGBA[pixelOffset] = UInt8(min(255, Int(maskRGBA[pixelOffset]) * 255 / alpha))
+                    unionRGBA[pixelOffset + 1] = UInt8(min(255, Int(maskRGBA[pixelOffset + 1]) * 255 / alpha))
+                    unionRGBA[pixelOffset + 2] = UInt8(min(255, Int(maskRGBA[pixelOffset + 2]) * 255 / alpha))
+                }
+                unionRGBA[pixelOffset + 3] = 255
             }
         }
+
+        return imageFromRGBABytes(unionRGBA, width: width, height: height, scale: firstMask.scale)
+    }
+
+    private func renderedRGBABytes(from cgImage: CGImage, width: Int, height: Int) -> [UInt8]? {
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &rgba,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        context.interpolationQuality = .none
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return rgba
+    }
+
+    private func imageFromRGBABytes(_ rgba: [UInt8], width: Int, height: Int, scale: CGFloat) -> UIImage? {
+        guard rgba.count == width * height * 4 else { return nil }
+        let data = Data(rgba)
+        guard let provider = CGDataProvider(data: data as CFData),
+              let image = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.union(.init(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else {
+            return nil
+        }
+        return UIImage(cgImage: image, scale: scale, orientation: .up)
     }
 
     private func alphaBoundingBox(in image: UIImage) -> CGRect? {
@@ -449,66 +506,6 @@ private struct RTMDetStillImageOverlay: View {
         "#\(detection.classIdx) \(Int(detection.confidence * 100))%"
     }
 
-    private func largestOverlapClusterIndices(for detections: [FurnitureFitDetection]) -> [Int]? {
-        guard !detections.isEmpty else { return nil }
-
-        let seedIndices = detections.indices
-            .sorted {
-                let lhsArea = detections[$0].boundingBox.width * detections[$0].boundingBox.height
-                let rhsArea = detections[$1].boundingBox.width * detections[$1].boundingBox.height
-                return lhsArea > rhsArea
-            }
-            .prefix(Self.areaSeedCount)
-        var bestCluster: [Int] = []
-        var bestClusterArea: CGFloat = -1
-
-        for seedIndex in seedIndices {
-            var cluster = [seedIndex]
-            var inCluster: Set<Int> = [seedIndex]
-            var frontier = [seedIndex]
-
-            while let currentIndex = frontier.popLast() {
-                let currentBox = detections[currentIndex].boundingBox
-                for candidateIndex in detections.indices where !inCluster.contains(candidateIndex) {
-                    let candidateBox = detections[candidateIndex].boundingBox
-                    guard overlapCoefficient(currentBox, candidateBox) >= Self.groupOverlapTau else {
-                        continue
-                    }
-                    inCluster.insert(candidateIndex)
-                    cluster.append(candidateIndex)
-                    frontier.append(candidateIndex)
-                }
-            }
-
-            let clusterArea = unionRectArea(for: cluster, detections: detections)
-            if clusterArea > bestClusterArea {
-                bestClusterArea = clusterArea
-                bestCluster = cluster
-            }
-        }
-
-        return bestCluster.isEmpty ? nil : bestCluster
-    }
-
-    private func unionRectArea(for indices: [Int], detections: [FurnitureFitDetection]) -> CGFloat {
-        let unionRect = indices
-            .map { detections[$0].boundingBox }
-            .reduce(CGRect.null) { $0.union($1) }
-        guard !unionRect.isNull else { return 0 }
-        return unionRect.width * unionRect.height
-    }
-
-    private func overlapCoefficient(_ a: CGRect, _ b: CGRect) -> CGFloat {
-        let ix = max(a.minX, b.minX)
-        let iy = max(a.minY, b.minY)
-        let iw = min(a.maxX, b.maxX) - ix
-        let ih = min(a.maxY, b.maxY) - iy
-        guard iw > 0, ih > 0 else { return 0 }
-
-        let intersection = iw * ih
-        let minArea = min(a.width * a.height, b.width * b.height)
-        return minArea > 0 ? intersection / minArea : 0
-    }
 }
 
 private extension String {
