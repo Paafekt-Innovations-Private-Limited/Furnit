@@ -20,7 +20,7 @@
   </defs>
 
   <text x="32" y="40" class="title">SHARP room reconstruction — iOS (Swift / Core ML)</text>
-  <text x="32" y="60" class="sub">Single photo → 3D Gaussian-splat room. SHARPService.generateGaussians → SharpRoomView. ★ = ANE/GPU.</text>
+  <text x="32" y="60" class="sub">Single photo → 3D Gaussian-splat room. SHARPService.generateGaussians → SharpRoomView/GaussianSplatView. ★ = ANE/GPU.</text>
 
   <rect x="600" y="74" width="14" height="14" rx="3" class="ane"/><text x="620" y="86" class="legtxt">ANE/GPU</text>
   <rect x="690" y="74" width="14" height="14" rx="3" class="cpu"/><text x="710" y="86" class="legtxt">CPU</text>
@@ -47,8 +47,8 @@
   <path class="edge" d="M430,422 L430,460" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="460" width="360" height="52" rx="12" class="io"/>
-    <text x="430" y="482" text-anchor="middle" class="bt">writePLY</text>
-    <text x="430" y="500" text-anchor="middle" class="bs">Room_*_classic.ply + camera/AABB sidecars + thumbnail.png</text></g>
+    <text x="430" y="482" text-anchor="middle" class="bt">writePLY + binary splat cache</text>
+    <text x="430" y="500" text-anchor="middle" class="bs">Room_*_classic.ply + .splatcache + camera/AABB sidecars + thumbnail.png</text></g>
   <path class="edge" d="M430,512 L430,550" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="550" width="360" height="52" rx="12" class="cpu"/>
@@ -58,12 +58,12 @@
 
   <g><rect x="250" y="640" width="360" height="52" rx="12" class="disp"/>
     <text x="430" y="662" text-anchor="middle" class="bt">SharpRoomView render</text>
-    <text x="430" y="680" text-anchor="middle" class="bs">WKWebView · THREE.js / SparkJS renders the PLY splat</text></g>
+    <text x="430" y="680" text-anchor="middle" class="bs">MetalSplatter loads .splatcache fast path; PLY parser fallback</text></g>
   <path class="edge" d="M430,692 L430,730" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="730" width="360" height="52" rx="12" class="data"/>
     <text x="430" y="752" text-anchor="middle" class="bt">Room dimensions</text>
     <text x="430" y="770" text-anchor="middle" class="bs">AABB bounds → width / height / depth (scene units → metres)</text></g>
 
-  <text x="32" y="828" class="sub">The "brain" (RTMDet) overlay then composites furniture cutouts over this rendered room — see rtmdet-swift-flow.svg.</text>
+  <text x="32" y="828" class="sub">The "brain" (RTMDet) overlay then composites pinch-scalable furniture cutouts over this rendered room — see rtmdet-swift-flow.svg.</text>
 </svg>

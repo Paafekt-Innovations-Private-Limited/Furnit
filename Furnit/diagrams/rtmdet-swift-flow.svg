@@ -22,7 +22,7 @@
   </defs>
 
   <text x="32" y="40" class="title">RTMDet instance segmentation — iOS (Swift / Core ML)</text>
-  <text x="32" y="60" class="sub">Live "brain" loop. RTMDetImageInference + FurnitureFitView. ★ = accelerated on ANE/GPU,  ☆ = scalar CPU.</text>
+  <text x="32" y="60" class="sub">Live + Settings image-scan "brain" loop. RTMDetImageInference + FurnitureFitView. ★ = accelerated on ANE/GPU, ☆ = scalar CPU.</text>
 
   <!-- legend -->
   <rect x="600" y="74" width="14" height="14" rx="3" class="ane"/><text x="620" y="86" class="legtxt">ANE/GPU</text>
@@ -32,8 +32,8 @@
   <!-- boxes pitch 86, x=250 w=360 h=52 -->
   <g>
     <rect x="250" y="100" width="360" height="52" class="box cam"/>
-    <text x="430" y="122" text-anchor="middle" class="bt">Camera frame</text>
-    <text x="430" y="140" text-anchor="middle" class="bs">AVCaptureVideoDataOutput · BGRA · ~30fps · alwaysDiscardsLateVideoFrames</text>
+    <text x="430" y="122" text-anchor="middle" class="bt">Camera / still image frame</text>
+    <text x="430" y="140" text-anchor="middle" class="bs">AVCapture BGRA live feed or Settings image scan UIImage</text>
   </g>
   <path class="edge" d="M430,152 L430,186" marker-end="url(#arrow)"/>
 
@@ -47,14 +47,14 @@
   <g>
     <rect x="250" y="272" width="360" height="52" class="box gpu"/>
     <text x="430" y="294" text-anchor="middle" class="bt">Preprocess · resize → 640×640</text>
-    <text x="430" y="312" text-anchor="middle" class="bs">shared CIContext + CVPixelBufferPool (GPU/Metal)</text>
+    <text x="430" y="312" text-anchor="middle" class="bs">image input; BGR mean/std normalization lives in Core ML graph</text>
   </g>
   <path class="edge" d="M430,324 L430,358" marker-end="url(#arrow)"/>
 
   <g>
     <rect x="250" y="358" width="360" height="52" class="box cpu"/>
-    <text x="430" y="380" text-anchor="middle" class="bt">Build input tensor</text>
-    <text x="430" y="398" text-anchor="middle" class="bs">BGRA → NCHW · ImageNet mean/std normalize</text>
+    <text x="430" y="380" text-anchor="middle" class="bt">Input provider</text>
+    <text x="430" y="398" text-anchor="middle" class="bs">prefer MLFeatureValue(image); multi-array fallback still supported</text>
   </g>
   <path class="edge" d="M430,410 L430,444" marker-end="url(#arrow)"/>
 
@@ -68,7 +68,7 @@
   <g>
     <rect x="250" y="530" width="360" height="52" class="box data"/>
     <text x="430" y="552" text-anchor="middle" class="bt">Raw heads</text>
-    <text x="430" y="570" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} levels · + mask_feat [1,8,80,80]</text>
+    <text x="430" y="570" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} levels · + mask_feat [1,8,160,160]</text>
   </g>
   <path class="edge" d="M430,582 L430,616" marker-end="url(#arrow)"/>
 
@@ -81,8 +81,8 @@
 
   <g>
     <rect x="250" y="702" width="360" height="52" class="box cpu"/>
-    <text x="430" y="724" text-anchor="middle" class="bt">Class-aware NMS</text>
-    <text x="430" y="742" text-anchor="middle" class="bs">keep ≤ 6 detections (maxDetectionCount)</text>
+    <text x="430" y="724" text-anchor="middle" class="bt">Confidence-first class-aware NMS</text>
+    <text x="430" y="742" text-anchor="middle" class="bs">IoU suppression; maxDetectionCount optional (nil = uncapped)</text>
   </g>
   <path class="edge" d="M430,754 L430,788" marker-end="url(#arrow)"/>
 
@@ -96,15 +96,15 @@
 
   <g>
     <rect x="250" y="874" width="360" height="52" class="box cpu"/>
-    <text x="430" y="896" text-anchor="middle" class="bt">Composite cutout · buildCombinedRawMaskImage</text>
-    <text x="430" y="914" text-anchor="middle" class="bs">sample mask plane → full-resolution RGBA cutout</text>
+    <text x="430" y="896" text-anchor="middle" class="bt">Mask affinity + pixel union</text>
+    <text x="430" y="914" text-anchor="middle" class="bs">class-agnostic piece grouping; opaque RGBA union avoids fog</text>
   </g>
   <path class="edge" d="M430,926 L430,960" marker-end="url(#arrow)"/>
 
   <g>
     <rect x="250" y="960" width="360" height="52" class="box disp"/>
-    <text x="430" y="982" text-anchor="middle" class="bt">Display</text>
-    <text x="430" y="1000" text-anchor="middle" class="bs">cutout composited over the 3D room (SharpRoom/GLB/Mesh/Model)</text>
+    <text x="430" y="982" text-anchor="middle" class="bt">Display + gestures</text>
+    <text x="430" y="1000" text-anchor="middle" class="bs">cutout over room; overlay owns two-finger pinch when mask is visible</text>
   </g>
 
   <!-- loop arrow back to frame gate -->
@@ -116,10 +116,10 @@
     <rect x="648" y="616" width="186" height="138" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
     <text x="660" y="638" class="bt" font-size="13">Modes (gate masks)</text>
     <text x="660" y="662" class="bs">identifyOnly — boxes only;</text>
-    <text x="660" y="678" class="bs">maxMaskCount 0, skip head</text>
+    <text x="660" y="678" class="bs">mask build gated off</text>
     <text x="660" y="700" class="bs">segmentPrimary — centered</text>
     <text x="660" y="716" class="bs">detection only (1 mask)</text>
-    <text x="660" y="738" class="bs">segmentSelected — union of</text>
-    <text x="660" y="754" class="bs">tapped pins (≤6 masks)</text>
+    <text x="660" y="738" class="bs">segmentSelected — fused</text>
+    <text x="660" y="754" class="bs">pin masks + affinity graph</text>
   </g>
 </svg>

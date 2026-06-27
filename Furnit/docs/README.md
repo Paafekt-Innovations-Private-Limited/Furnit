@@ -6,13 +6,16 @@ iOS (Swift) app documentation and architecture diagrams.
 Real SVG flow diagrams (open in any browser / Xcode preview):
 
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance-segmentation
-  ("brain") live loop: camera → Core ML (ANE) → decode/NMS → mask head → cutout → display.
+  ("brain") live/still loop: camera or Settings image scan → Core ML image input → raw-head decode
+  → confidence-first NMS → mask affinity → pixel-union cutout → overlay gestures/display.
 - [`sharp-swift-flow.svg`](../diagrams/sharp-swift-flow.svg) — SHARP room reconstruction: single
-  photo → Core ML Gaussian-splat → PLY → SharpRoomView render → dimensions.
+  photo → Core ML Gaussian-splat → PLY + `.splatcache` → SharpRoomView render → dimensions.
 
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — the RTMDet mask-head matmul: problem statement,
   reviewer guidance (profile first, then `cblas_sgemm`), and the per-stage timing instrumentation.
+- `Furnit/Views/FurnitureFit/README.md` — current RTMDet/FurnitureFit live path, Settings scan
+  diagnostic path, mask affinity grouping, pixel-level mask union, and overlay gesture ownership.
 
 ## Related iOS docs (repo-root `docs/`)
 These are cross-linked with each other (and with `Furnit/Views/FurnitureFit/README.md`) via

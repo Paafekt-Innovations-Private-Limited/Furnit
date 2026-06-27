@@ -59,6 +59,7 @@ The composited mask uses a **uniform** scale on the image view. Roughly:
 | Map meters → raycast su | `FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits` |
 | Overlay ratios | `Furnit/Models/RoomFitmentMeasurement.swift` — `OverlayScale.ratios`, `OverlayScale.compute`, `FitmentCheck` |
 | Room-based overlay scale + AR product | `FurnitureFitView.swift` — `updateAutoScaleFromRoom`, `applyCurrentOverlayScaleTransform`, `updateAssistedOverlayScale` |
+| Segmented-overlay gestures | `FurnitureFitView.swift` — `handlePinch(_:)`, `handlePan(_:)`, `hitTest(_:with:)`, `gestureRecognizer(_:shouldReceive:)` |
 | Depth raycast room + PLY bounds logs | `Furnit/Views/Components/GaussianSplatView.swift` — `measureRoomFromDepthBuffer`, `logPlyBoundsDiagnostic` |
 | Sharp room UI (raycast-first title) | `Furnit/Views/SharpRoomView.swift` — `navigationRoomMetersLine`, `raycastRoomDimensions` |
 
@@ -88,6 +89,16 @@ The composited mask uses a **uniform** scale on the image view. Roughly:
 
 So if the **average ratio is below 0.3**, **`autoScaleFromRoom`** sits at **0.3** until AR or pinch changes the combined product.
 
+### Gesture ownership in the main room flow
+
+The segmented furniture cutout is a transparent `UIImageView` (`maskImageView`) over SHARP/GLB/Mesh room content. The room layer underneath also has its own pinch zoom. Therefore:
+
+- **Two-finger pinch while a cutout is visible** should be claimed by `FurnitureFitContainerView` so it updates `userPinchScale`.
+- **Single-finger pan** stays stricter and is accepted only on visible mask pixels.
+- Hit-testing must not return `nil` for active two-finger touches; otherwise the underlying `GaussianSplatView`/room viewer receives the pinch and zooms the room instead of the segmented furniture cluster.
+
+If pinch seems broken in the main flow, confirm that `handlePinch(_:)` logs appear. If they do not, the issue is gesture ownership/hit-testing, not overlay scale math.
+
 ### Console log cheat sheet
 
 | Prefix / tag | Meaning |
@@ -100,6 +111,7 @@ So if the **average ratio is below 0.3**, **`autoScaleFromRoom`** sits at **0.3*
 | `📐 [Overlay]` | Logged **scaleX × scaleY** from `OverlayScale.compute` (throttled fitment path). |
 | `[FurnitureFitSize] phase=all` | Per-frame summary: **proportion**, **pinhole** (with **centerDepth_m** / proxy note), **ar=**, **tracking=**, **planes=**, **room_display_m**, **raycast_su**, bbox pixels. |
 | `[FurnitureFitOverlay]` | Effective overlay: **`roomStored`**, **`roomUsed`**, **`ar`**, **`pinch`**, **`wantAR`**, **`arValid`**. |
+| `📐 [PINCH]` | Overlay pinch started/changed/ended; if absent, the room layer probably captured the gesture. |
 
 ### Caveats for debugging
 
@@ -112,4 +124,4 @@ So if the **average ratio is below 0.3**, **`autoScaleFromRoom`** sits at **0.3*
 ## Related reading
 
 - `docs/IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md` — ONNX-style detection/mask pipeline (where `phase=all` is emitted).  
-- `Furnit/Views/FurnitureFit/README.md` — Segmentation stages and memory notes.
+- `Furnit/Views/FurnitureFit/README.md` — Current RTMDet segmentation stages, Settings scan parity, mask affinity, pixel-union compositing, and overlay gesture ownership.

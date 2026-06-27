@@ -5459,11 +5459,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return false
         }
 
-        if gestureRecognizer is UIPinchGestureRecognizer || gestureRecognizer is UIPanGestureRecognizer {
+        if gestureRecognizer is UIPinchGestureRecognizer {
+            return true
+        }
+
+        if gestureRecognizer is UIPanGestureRecognizer {
             let touchPoint = touch.location(in: maskImageView)
-            let containsVisibleFurniture = touchIsOnVisibleMaskFurniture(touchPoint)
-            logDebug("👆 [shouldReceive overlay gesture] touchPoint=\(touchPoint) visibleMask=\(containsVisibleFurniture)")
-            return containsVisibleFurniture
+            let acceptsTouch = touchIsOnVisibleMaskFurniture(touchPoint)
+            logDebug("👆 [shouldReceive overlay gesture] touchPoint=\(touchPoint) accepts=\(acceptsTouch) pan=true")
+            return acceptsTouch
         }
 
         return false
@@ -5478,6 +5482,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private static let maskFurnitureHitAlphaThreshold: UInt8 = 24
     private static let maskFurnitureHitSampleRadius: CGFloat = 5
+    private static let maskFurniturePinchBoundsPadding: CGFloat = 44
 
     private func touchIsOnVisibleMaskFurniture(_ pointInMaskView: CGPoint) -> Bool {
         guard let image = maskImageView.image,
@@ -5497,6 +5502,125 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return samplePoints.contains { samplePoint in
             maskAlpha(atMaskViewPoint: samplePoint, image: image) >= Self.maskFurnitureHitAlphaThreshold
         }
+    }
+
+    private func touchIsInsideVisibleMaskCluster(_ pointInMaskView: CGPoint) -> Bool {
+        guard let image = maskImageView.image,
+              maskImageView.bounds.contains(pointInMaskView) else {
+            return false
+        }
+        if touchIsOnVisibleMaskFurniture(pointInMaskView) {
+            return true
+        }
+        guard let clusterBounds = visibleMaskClusterBoundsInMaskView(image: image) else {
+            return false
+        }
+        return clusterBounds
+            .insetBy(dx: -Self.maskFurniturePinchBoundsPadding, dy: -Self.maskFurniturePinchBoundsPadding)
+            .contains(pointInMaskView)
+    }
+
+    private func visibleMaskClusterBoundsInMaskView(image: UIImage) -> CGRect? {
+        guard let cgImage = image.cgImage,
+              let data = cgImage.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            return nil
+        }
+
+        let bytesPerPixel = max(1, cgImage.bitsPerPixel / 8)
+        guard cgImage.bitsPerComponent == 8,
+              bytesPerPixel >= 4 else {
+            return nil
+        }
+
+        var minX = cgImage.width
+        var minY = cgImage.height
+        var maxX = -1
+        var maxY = -1
+        let dataLength = CFDataGetLength(data)
+
+        for y in 0..<cgImage.height {
+            for x in 0..<cgImage.width {
+                let offset = y * cgImage.bytesPerRow + x * bytesPerPixel
+                guard offset + bytesPerPixel <= dataLength else { continue }
+                let alpha: UInt8
+                switch cgImage.alphaInfo {
+                case .premultipliedFirst, .first:
+                    alpha = bytes[offset]
+                case .premultipliedLast, .last:
+                    alpha = bytes[offset + min(3, bytesPerPixel - 1)]
+                case .noneSkipFirst, .noneSkipLast, .none:
+                    alpha = 255
+                case .alphaOnly:
+                    alpha = bytes[offset]
+                @unknown default:
+                    alpha = bytes[offset + min(3, bytesPerPixel - 1)]
+                }
+                guard alpha >= Self.maskFurnitureHitAlphaThreshold else { continue }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return maskViewRect(forImagePixelRect: CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX + 1,
+            height: maxY - minY + 1
+        ), image: image)
+    }
+
+    private func maskViewRect(forImagePixelRect pixelRect: CGRect, image: UIImage) -> CGRect? {
+        let bounds = maskImageView.bounds
+        let imageSize = image.size
+        guard bounds.width > 0,
+              bounds.height > 0,
+              imageSize.width > 0,
+              imageSize.height > 0,
+              image.scale > 0 else {
+            return nil
+        }
+
+        let scale: CGFloat
+        switch maskImageView.contentMode {
+        case .scaleAspectFit:
+            scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        case .scaleAspectFill:
+            scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        case .scaleToFill, .redraw:
+            let pixelWidth = CGFloat(max(1, image.cgImage?.width ?? 1))
+            let pixelHeight = CGFloat(max(1, image.cgImage?.height ?? 1))
+            return CGRect(
+                x: pixelRect.minX / pixelWidth * bounds.width,
+                y: pixelRect.minY / pixelHeight * bounds.height,
+                width: pixelRect.width / pixelWidth * bounds.width,
+                height: pixelRect.height / pixelHeight * bounds.height
+            )
+        default:
+            scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        }
+
+        guard scale > 0 else { return nil }
+        let drawnSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let drawnOrigin = CGPoint(
+            x: (bounds.width - drawnSize.width) * 0.5,
+            y: (bounds.height - drawnSize.height) * 0.5
+        )
+        let pointRect = CGRect(
+            x: pixelRect.minX / image.scale,
+            y: pixelRect.minY / image.scale,
+            width: pixelRect.width / image.scale,
+            height: pixelRect.height / image.scale
+        )
+        return CGRect(
+            x: drawnOrigin.x + pointRect.minX * scale,
+            y: drawnOrigin.y + pointRect.minY * scale,
+            width: pointRect.width * scale,
+            height: pointRect.height * scale
+        )
     }
 
     private func maskAlpha(atMaskViewPoint point: CGPoint, image: UIImage) -> UInt8 {
@@ -5614,6 +5738,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
+        // In the room viewers, the splat/mesh layer underneath also owns pinch zoom.
+        // When a segmented cutout is visible, claim two-finger touches across the
+        // overlay so pinch-in/out reliably resizes the furniture cluster instead
+        // of falling through to the room camera.
+        if let touchCount = event?.allTouches?.count, touchCount >= 2 {
+            logDebug("👆 [hitTest] multi-touch over active mask - accepting overlay pinch")
+            return super.hitTest(point, with: event)
+        }
+
         // Once the overlay gesture begins, keep receiving moved touches even if a
         // finger drifts outside the transparent mask edge.
         if let pinch = overlayPinchGesture,
@@ -5627,8 +5760,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return super.hitTest(point, with: event)
         }
 
-        if touchIsOnVisibleMaskFurniture(pointInMask) {
-            logDebug("👆 [hitTest] INSIDE visible mask - handling touch")
+        if touchIsOnVisibleMaskFurniture(pointInMask) || touchIsInsideVisibleMaskCluster(pointInMask) {
+            logDebug("👆 [hitTest] INSIDE visible mask cluster - handling touch")
             return super.hitTest(point, with: event)
         }
 

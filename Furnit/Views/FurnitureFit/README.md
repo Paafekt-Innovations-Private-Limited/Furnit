@@ -1,13 +1,20 @@
 # FurnitureFit Segmentation Pipeline
 
-Real-time furniture segmentation using RTMDet **26L PF** (Core ML / optional ONNX; typically **640×640** input) with instance segmentation masks.
+Real-time furniture segmentation using **RTMDet-Ins-m** (Core ML raw-head export, typically **640×640** input) with instance segmentation masks.
 
 ## Architecture Overview
 
 ```
-Camera Frame → Preprocess → RTMDet Inference → Parse Outputs → NMS →
-Select Primary → Filter Candidates → Build Mask → Composite → Display
+Camera/Still Frame → Core ML image input → RTMDet raw heads → Confidence-first NMS →
+Mask-head planes → Mask-affinity grouping → Pixel-level cutout union → Overlay gesture/display
 ```
+
+Current implementation notes:
+
+- `RTMDetImageInference` owns raw-head decoding (`cls/bbox/kernel` at 80/40/20 plus `mask_feat`), confidence-first class-aware NMS, per-instance mask building, mask-affinity grouping, and cached mask rebuilds for live selection.
+- `SettingsFurnitureFitImageScanView` uses the same uncapped RTMDet still-image path as the live flow: `maxDetectionCount: nil`, no fixed detection cap, fused instance masks, and pixel-level RGBA union.
+- `FurnitureFitContainerView` displays the cutout in `maskImageView`; pinch/pan transforms are applied through `userPinchScale`, `userPanOffset`, and `FurnitureFitOverlayScaling.resolvedTransform`.
+- In SHARP/GLB/Mesh room viewers, the room layer also owns pinch zoom. When a segmented mask is visible, the FurnitureFit overlay must claim two-finger touches so the user scales the segmented cluster rather than the room camera.
 
 ## Problems & Solutions
 
@@ -134,11 +141,11 @@ if !intersects {
 
 ---
 
-### 4. Too Many Redundant Detections
+### 4. Too Many Redundant Detections / Wrapper Boxes
 
 **Problem:** RTMDet produced many overlapping detections for the same object, slowing down processing.
 
-**Solution:** Added Non-Maximum Suppression (NMS) after parsing detections:
+**Solution:** Class-aware NMS runs after parsing detections. It is **confidence-first**: highest-confidence boxes are kept first; area is only a deterministic tie-breaker.
 ```swift
 func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
     var indices = scores.enumerated().sorted(by: { $0.element > $1.element }).map { $0.offset }
@@ -157,14 +164,46 @@ func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
     return keep
 }
 
-// Usage:
-let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: 0.5)
-let candidates: [UnionDet] = keptIdx.map { allDets[$0] }
+// Current raw-head path:
+let selected = classAwareNMS(rawCandidates, iouThreshold: 0.5, limit: maxDetectionCount)
 ```
+
+For exploratory image scan and live RTMDet, `maxDetectionCount` can be `nil`, so NMS suppresses duplicates without imposing a hard count cap.
 
 ---
 
-### 5. Incorrect Metal Shader Mask Threshold
+### 5. Object-Piece Fusion / Mask Affinity
+
+**Problem:** One physical object can appear as multiple RTMDet pieces (chair back, seat, base). Bounding-box overlap alone is not enough to fuse these parts.
+
+**Solution:** Build raw mask planes first, then connect detections whose binary masks have enough pixel-level affinity. The transitive group is used when building per-instance cutouts and cached selected masks.
+
+```swift
+let maskAffinityGraph = makeMaskAffinityGraph(rawMaskPlanes)
+let groupIndices = maskAffinityGraph.transitiveGroup(seedIndices: [index])
+```
+
+This is class-agnostic and applies to every detected object, not chair-specific rules.
+
+---
+
+### 6. Settings Image Scan Drift
+
+**Problem:** Settings image scan had its own detection cap, bbox-overlap clustering, and Core Graphics mask drawing. That made the diagnostic path differ from the live RTMDet path.
+
+**Solution:** Settings image scan now calls `RTMDetImageInference.runInstanceSegmentation` with uncapped detections, consumes fused `instanceMaskImages`, and performs pixel-level RGBA union instead of alpha-blended drawing.
+
+---
+
+### 7. Segmented Cluster Pinch / Main Flow Gesture Ownership
+
+**Problem:** In room viewers, the SHARP/GLB/Mesh room layer also handles pinch zoom. If the FurnitureFit overlay rejects a touch or returns `nil` from `hitTest`, pinch goes to the room camera instead of resizing the segmented cutout.
+
+**Solution:** When a segmented mask is visible, `FurnitureFitContainerView` claims two-finger touches for overlay pinch. Single-finger pan remains stricter and requires touching actual mask pixels. A padded cluster-bounds hit target makes disconnected object parts easier to pinch.
+
+---
+
+### 8. Incorrect Metal Shader Mask Threshold
 
 **Problem:** Mask threshold in Metal shader was `< 0.5f`, which is arbitrary for binary masks.
 
@@ -183,10 +222,9 @@ if (m <= 0.0f) { ... }
 
 ## Pipeline Stages
 
-### STAGE 1: Preprocess
-- Resize input to square (model constraint, usually **640×640** for 26L PF)
-- Letterbox padding with gray (128)
-- Convert to MLMultiArray
+### STAGE 1: Input / Preprocess
+- Current RTMDet Core ML export accepts an image input when available; BGR mean/std normalization is pushed into the model graph.
+- Legacy multi-array fallback still supports BGRA → NCHW normalization in Swift.
 
 ### STAGE 2: Inference
 - Run RTMDet model (`RTMDetImageInference.modelInputSize` / Core ML image constraint)
@@ -197,8 +235,8 @@ if (m <= 0.0f) { ... }
 - Parse 32-channel prototype masks (160×160)
 
 ### STAGE 3b: NMS
-- Apply Non-Maximum Suppression (IoU threshold: 0.5)
-- Reduces redundant overlapping detections
+- Apply confidence-first class-aware NMS (IoU threshold: 0.5)
+- `maxDetectionCount` is optional; `nil` means no artificial cap after suppression
 
 ### STAGE 4: Select Primary
 - Score = conf^1.5 × area_norm^1.2 × center_term
@@ -209,14 +247,10 @@ if (m <= 0.0f) { ... }
 - Skip if bbox encompasses primary (background detection)
 - Skip if bbox doesn't intersect primary
 
-### STAGE 5b: Filter by Mask Overlap (SGEMV)
-- Compute primary logits: `scratchPrimaryLogits = planes^T × primary.coeffs`
-- For each candidate:
-  - Compute candidate logits: `scratchCandidateLogits = planes^T × candidate.coeffs`
-  - Count overlap pixels (both masks positive)
-  - Reject if no overlap
-  - Reject if too large (> 1.5× primary size)
-  - Reject if duplicate (bbox IoU > 0.7 with kept detections)
+### STAGE 5b: Mask Affinity
+- Build raw mask planes from each RTMDet dynamic kernel + `mask_feat`
+- Convert planes to bitsets at threshold
+- Connect detections by overlap affinity, then use transitive groups for fused object masks
 
 ### STAGE 6: Build Mask
 - Compute union bbox of kept detections
@@ -224,9 +258,9 @@ if (m <= 0.0f) { ... }
 - Clip to union bbox
 
 ### STAGE 6b: Composite
-- **GPU path (Metal):** Fused kernel computes max logits and composites in one pass
-- **CPU fallback:** Manual pixel-by-pixel compositing
-- Alpha channel: 1.0 where mask positive, 0.0 elsewhere (premultiplied)
+- CPU path builds full-resolution RGBA cutouts directly from the source buffer
+- Combined still-image masks use pixel-level union, not Core Graphics alpha blending
+- Active pixels are forced opaque to avoid foggy translucent cutouts
 
 ### STAGE 7: Finalize
 - Draw debug overlays (bboxes, labels) if debug mode

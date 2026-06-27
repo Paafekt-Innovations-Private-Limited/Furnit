@@ -1,5 +1,33 @@
 # Furnit iOS - Recent Changes
 
+## RTMDet / Furniture Fit Diagnostics
+
+### Settings Image Scan Parity
+- **Location**: `SettingsFurnitureFitImageScanView.swift`, `RTMDetImageInference.swift`
+- Settings image scan now follows the same RTMDet still-image path as the live room flow:
+  - no fixed detection cap (`maxDetectionCount: nil`)
+  - fused `instanceMaskImages`
+  - pixel-level RGBA mask union instead of Core Graphics alpha blending
+  - no bbox-overlap-only clustering
+
+### RTMDet Object-Piece Fusion
+- **Location**: `RTMDetImageInference.swift`
+- Added mask-affinity grouping over raw mask planes so disconnected pieces of the same object can be treated as one object.
+- Grouping is class-agnostic and is reused by cached selected-mask rebuilds.
+
+### Confidence-First NMS
+- **Location**: `RTMDetImageInference.swift`
+- Class-aware NMS is confidence-first. Area is only a tie-breaker.
+
+### Segmented Overlay Gestures
+- **Location**: `FurnitureFitView.swift`
+- Pinch on a segmented cutout updates `userPinchScale` and is applied through `FurnitureFitOverlayScaling`.
+- In SHARP/GLB/Mesh room viewers, the FurnitureFit overlay must capture two-finger touches when a cutout is visible so the room viewer does not steal pinch zoom.
+
+### Repeated Swift RTMDet Test Fixture
+- **Location**: `RTMDetVideoIntegrationTests.swift`, `FurnitTests/rtmdet_repeated_chair_frame.jpg`
+- Added a real Swift/Core ML repeated still-frame test path for detecting deterministic still-frame regressions.
+
 ## Room Viewer Enhancements
 
 ### Auto-Orbit Feature

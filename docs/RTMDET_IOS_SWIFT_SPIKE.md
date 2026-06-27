@@ -1,17 +1,19 @@
 # RTMDet iOS Swift Spike
 
-This repo now contains a first-pass Swift test path for `RTMDet-Ins-m` in the iOS app.
+This repo contains the active Swift/Core ML path for `RTMDet-Ins-m` in the iOS app.
 
 ## What is already wired
 
-- Developer image-scan screen now supports a backend switch:
-  - `RTMDet-Ins-m`
-  - `YOLOE`
 - Swift-side RTMDet loader:
   - `Furnit/Services/OnDevice/RTMDetModelService.swift`
-- Swift-side RTMDet still-image inference adapter:
+- Swift-side RTMDet image/live inference adapter:
   - `Furnit/Services/OnDevice/RTMDetImageInference.swift`
-- Existing live room segmentation remains on the YOLOE path for now.
+- Live Furniture Fit overlay:
+  - `Furnit/Views/FurnitureFit/FurnitureFitView.swift`
+- Settings still-image diagnostic:
+  - `Furnit/Views/SettingsFurnitureFitImageScanView.swift`
+
+The live room segmentation flow now uses RTMDet raw heads for the Furniture Fit "brain" path. YOLOE docs/scripts remain for comparison and older experiments.
 
 ## What is still external
 
@@ -34,7 +36,7 @@ Helper:
 
 - `scripts/install_rtmdet_ios_model.sh /path/to/rtmdet-ins-m.mlpackage`
 
-The loader tries those names with this compute-unit fallback chain:
+The service tries the configured model with a compute-unit fallback chain; test helpers usually force `.cpuOnly` for deterministic host-app unit tests.
 
 1. `.all`
 2. `.cpuAndNeuralEngine`
@@ -46,17 +48,41 @@ The loader tries those names with this compute-unit fallback chain:
 1. Add the RTMDet Core ML package to the `Furnit` target.
    Preferred location: `Furnit/Models/RTMDet/`
 2. Launch the app.
-3. Open:
-   - `Settings`
-   - `Image scan`
-4. Switch backend to `RTMDet-Ins-m`.
-5. Pick a furniture photo.
+3. Open `Settings` → `Image scan`.
+4. Pick a furniture photo.
 
 What you should see:
 
 - detection boxes over the image
-- a basic mask overlay if the Core ML export exposes mask tensors
-- a small debug card with the first few output tensor names and shapes
+- fused instance-mask cutouts from `RTMDetImageInference`
+- a merged mask overlay built by pixel-level RGBA union
+
+The Settings image scan intentionally mirrors the RTMDet live path:
+
+- `maxDetectionCount: nil` (no artificial cap)
+- fused `instanceMaskImages`
+- no bbox-overlap-only clustering
+- no `UIGraphicsImageRenderer` mask blending
+
+## Current Swift postprocess behavior
+
+- Raw outputs expected: `cls_80/40/20`, `bbox_80/40/20`, `kernel_80/40/20`, and `mask_feat`.
+- Decoding chooses the best class per grid cell and applies the configured confidence threshold.
+- NMS is class-aware and confidence-first. Area is only a tie-breaker.
+- `mask_feat` is copied into a cache-friendly `RawMaskFeatureMatrix`.
+- Each selected dynamic kernel builds a raw mask plane.
+- `RTMDetMaskAffinityGraph` groups object pieces by mask-level affinity; grouping is class-agnostic.
+- Cached selected-mask rebuilds reuse raw outputs and expand selected indices through the same affinity graph.
+
+## Main-flow overlay gestures
+
+The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible, `FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster (`userPinchScale`) rather than zooming the SHARP/GLB/Mesh room.
+
+Relevant code:
+
+- `FurnitureFitContainerView.handlePinch(_:)`
+- `FurnitureFitContainerView.hitTest(_:with:)`
+- `FurnitureFitOverlayScaling.resolvedTransform(...)`
 
 ## Local output inspection
 
@@ -80,11 +106,10 @@ This script:
 - heuristically identifies box / label / mask outputs
 - prints the top scored box rows
 
-Use this first if the Swift overlay looks wrong. It will tell you whether the export format matches the current Swift assumptions.
+Use this for export inspection only. The Swift app/test path is the source of truth for current image-input behavior, cache behavior, and overlay compositing.
 
 ## Current limits
 
-- This is a still-image spike only.
-- The mask parser is heuristic because the exact Core ML export format depends on how RTMDet was converted.
-- Live camera segmentation should not be switched to RTMDet until the output tensors are verified on a real exported model.
+- Python probes may not match the current in-graph image preprocessing path.
+- A screenshot of the live overlay is not equivalent to the original camera frame; re-scanning the screenshot can legitimately produce different scores/detections.
 - License review still needs to cover the exact checkpoint you export from, not just the OpenMMLab code license.
