@@ -5738,35 +5738,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return nil
         }
 
-        // In the room viewers, the splat/mesh layer underneath also owns pinch zoom.
-        // When a segmented cutout is visible, claim two-finger touches across the
-        // overlay so pinch-in/out reliably resizes the furniture cluster instead
-        // of falling through to the room camera.
-        if let touchCount = event?.allTouches?.count, touchCount >= 2 {
-            logDebug("👆 [hitTest] multi-touch over active mask - accepting overlay pinch")
-            return super.hitTest(point, with: event)
-        }
-
-        // Once the overlay gesture begins, keep receiving moved touches even if a
-        // finger drifts outside the transparent mask edge.
-        if let pinch = overlayPinchGesture,
-           pinch.state == .began || pinch.state == .changed {
-            logDebug("👆 [hitTest] Pinch in progress – accepting")
-            return super.hitTest(point, with: event)
-        }
-        if let pan = overlayPanGesture,
-           pan.state == .began || pan.state == .changed {
-            logDebug("👆 [hitTest] Pan in progress – accepting")
-            return super.hitTest(point, with: event)
-        }
-
-        if touchIsOnVisibleMaskFurniture(pointInMask) || touchIsInsideVisibleMaskCluster(pointInMask) {
-            logDebug("👆 [hitTest] INSIDE visible mask cluster - handling touch")
-            return super.hitTest(point, with: event)
-        }
-
-        logDebug("👆 [hitTest] OUTSIDE visible mask - passing through")
-        return nil
+        // Segmented mask is visible — the overlay owns ALL touches.
+        // hitTest is called per-touch, so the first finger of a pinch arrives with
+        // allTouches.count == 1. If we return nil here, UIKit routes that touch to
+        // the GaussianSplatView (MTKView) underneath, and the room viewer's pinch
+        // gesture steals the entire two-finger sequence. By always claiming the
+        // touch, the overlay's UIPinchGestureRecognizer gets first crack at it.
+        // gestureRecognizer(_:shouldReceive:) still filters: pinch is always
+        // accepted, pan requires touching opaque mask pixels.
+        logDebug("👆 [hitTest] active mask visible - claiming touch for overlay gestures")
+        return super.hitTest(point, with: event)
     }
 }
 
