@@ -309,7 +309,7 @@
 "roomViewer.stopSegmentationAction" = "停止";
 "roomViewer.segmentFurnitureAccessibility" = "分割所選家具";
 "roomViewer.snapshotGestureHintExplanation" = "點按 📷 儲存";
-"roomViewer.arFurnitureSizingHint" = "📷 更好匹配";
+"roomViewer.arFurnitureSizingHint" = "更好的尺寸匹配";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "我會依照房間大小比例擺放家具。請先點一下大腦圖示，然後再試我。";
 "roomViewer.arSizingEnable" = "開啟相機輔助家具尺寸";
 "roomViewer.arSizingDisable" = "關閉相機輔助家具尺寸";

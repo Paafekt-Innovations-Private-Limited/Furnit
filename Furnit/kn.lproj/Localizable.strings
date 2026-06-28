@@ -308,7 +308,7 @@
 "roomViewer.stopSegmentationAction" = "ನಿಲ್ಲಿಸಿ";
 "roomViewer.segmentFurnitureAccessibility" = "ಆಯ್ಕೆಮಾಡಿದ ಫರ್ಣಿಚರ್ ಸೆಗ್ಮೆಂಟ್ ಮಾಡಿ";
 "roomViewer.snapshotGestureHintExplanation" = "ಉಳಿಸಲು 📷 ಟ್ಯಾಪ್ ಮಾಡಿ";
-"roomViewer.arFurnitureSizingHint" = "ಉತ್ತಮ ಹೊಂದಾಣಿಕೆಗೆ 📷";
+"roomViewer.arFurnitureSizingHint" = "ಉತ್ತಮ ಗಾತ್ರ ಹೊಂದಾಣಿಕೆಗೆ";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "ನಾನು ಕೊಠಡಿಯ ಗಾತ್ರಕ್ಕೆ ಅನುಪಾತವಾಗಿ ಪೀಠೋಪಕರಣವನ್ನು ಇಡುತ್ತೇನೆ. ಮೊದಲು ಬ್ರೇನ್ ಐಕಾನ್ ಒತ್ತಿ, ನಂತರ ನನ್ನನ್ನು ಪ್ರಯತ್ನಿಸಿ.";
 "roomViewer.arSizingEnable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.arSizingDisable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ";

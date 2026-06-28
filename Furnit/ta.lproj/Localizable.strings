@@ -308,7 +308,7 @@
 "roomViewer.stopSegmentationAction" = "நிறுத்து";
 "roomViewer.segmentFurnitureAccessibility" = "தேர்ந்தெடுத்த தளபாடத்தைப் பிரித்தெடு";
 "roomViewer.snapshotGestureHintExplanation" = "சேமிக்க 📷 தட்டவும்";
-"roomViewer.arFurnitureSizingHint" = "சிறந்த பொருத்தத்திற்கு 📷";
+"roomViewer.arFurnitureSizingHint" = "சிறந்த அளவு பொருத்தத்திற்கு";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "அறை அளவுக்கு ஒப்பாக தளபாடத்தை அமைக்க நான் உதவுவேன். முதலில் பிரெயின் ஐகானைத் தட்டி, பிறகு என்னை முயற்சிக்கவும்.";
 "roomViewer.arSizingEnable" = "கேமரா உதவித் தளபாட அளவை இயக்கு";
 "roomViewer.arSizingDisable" = "கேமரா உதவித் தளபாட அளவை முடக்கு";

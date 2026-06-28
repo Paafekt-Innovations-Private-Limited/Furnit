@@ -308,7 +308,7 @@
 "roomViewer.stopSegmentationAction" = "ఆపు";
 "roomViewer.segmentFurnitureAccessibility" = "ఎంచుకున్న ఫర్నిచర్‌ను సెగ్మెంట్ చేయి";
 "roomViewer.snapshotGestureHintExplanation" = "సేవ్ చేయడానికి 📷 ట్యాప్ చేయండి";
-"roomViewer.arFurnitureSizingHint" = "మెరుగైన సరిపోలికకు 📷";
+"roomViewer.arFurnitureSizingHint" = "మెరుగైన పరిమాణ సరిపోలికకు";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "నేను గది పరిమాణానికి తగిన నిష్పత్తిలో ఫర్నిచర్‌ను ఉంచేందుకు సహాయపడుతాను. ముందుగా బ్రెయిన్ ఐకాన్‌ను ట్యాప్ చేసి, తర్వాత నన్ను ప్రయత్నించండి.";
 "roomViewer.arSizingEnable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ప్రారంభించు";
 "roomViewer.arSizingDisable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ఆపు";

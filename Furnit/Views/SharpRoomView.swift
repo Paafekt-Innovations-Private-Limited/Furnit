@@ -247,28 +247,76 @@ struct SharpRoomView: View {
     @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
     /// Collapsed: round pill icon; expanded: detail card above the pill.
     @State private var isPlacementIntelligenceExpanded = false
-    /// Pinch hint (top-trailing): icon always visible; text shows on load and when tapped, auto-hides after 3s.
-    @State private var pinchHintExplanationVisible = false
-    @State private var pinchHintHideTextTask: Task<Void, Never>?
-    /// Brain hint (above brain button): text auto-hides after 3s; tap icon always stays; tap toggles text.
-    @State private var brainHintExplanationVisible = false
-    @State private var brainHintHideTextTask: Task<Void, Never>?
-    /// Snapshot hint (above camera button): same behavior as ``brainHintExplanationVisible``.
-    @State private var snapshotHintExplanationVisible = false
-    @State private var snapshotHintHideTextTask: Task<Void, Never>?
-    /// Camera sizing hint (under the left controls): explains what the camera/viewfinder button does.
-    @State private var cameraSizingHintExplanationVisible = false
-    @State private var cameraSizingHintHideTextTask: Task<Void, Never>?
-    @State private var cameraSizingHintRequiresBrain = false
-    @State private var roomDimensionsHintVisible = false
-    @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    // MARK: - Onboarding hint coordinator (one hint at a time, priority-ordered)
+    enum OnboardingHint: Equatable {
+        case pickAnother   // G — "Not this one? Tap to pick another."
+        case arSizing      // E — "Tap the brain icon, then size-match…"
+        case pinchResize   // A′ — "Pinch resizes the overlay."
+        case brainIdentify // B — "Tap 🧠 to identify furniture"
+    }
+    @AppStorage("hint_seenBrainHint") private var seenBrainHint = false
+    @AppStorage("hint_seenPinchResize") private var seenPinchResize = false
+    @AppStorage("hint_seenArSizing") private var seenArSizing = false
+    @AppStorage("hint_seenPickAnother") private var seenPickAnother = false
+    @State private var selectionJustBecamePrimary = false
+    @State private var onboardingHintDismissTask: Task<Void, Never>?
+
+    private var activeOnboardingHint: OnboardingHint? {
+        let mode = currentRoomViewerMode
+        // Priority 1 – G
+        if selectionJustBecamePrimary && !seenPickAnother && (mode == .furnitureFit || mode == .fullVideo) {
+            return .pickAnother
+        }
+        // Priority 2 – E (merged D)
+        if mode == .furnitureFit && canOfferBrainArAssist && !seenArSizing {
+            return .arSizing
+        }
+        // Priority 3 – A′
+        if mode == .furnitureFit && !seenPinchResize {
+            return .pinchResize
+        }
+        // Priority 4 – B
+        if !isLoading && mode == .browsing && !seenBrainHint {
+            return .brainIdentify
+        }
+        return nil
+    }
+
+    private enum RoomViewerMode { case browsing, furnitureFit, fullVideo }
+    private var currentRoomViewerMode: RoomViewerMode {
+        if showingFurnitureFit && showFullVideoWithIdentifications { return .fullVideo }
+        if showingFurnitureFit { return .furnitureFit }
+        return .browsing
+    }
+
+    private func scheduleOnboardingHintAutoDismiss() {
+        onboardingHintDismissTask?.cancel()
+        guard let hint = activeOnboardingHint else {
+            onboardingHintDismissTask = nil
+            return
+        }
+        onboardingHintDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            markOnboardingHintSeen(hint)
+        }
+    }
+
+    private func markOnboardingHintSeen(_ hint: OnboardingHint) {
+        switch hint {
+        case .pickAnother:
+            seenPickAnother = true
+            selectionJustBecamePrimary = false
+        case .arSizing:    seenArSizing = true
+        case .pinchResize: seenPinchResize = true
+        case .brainIdentify: seenBrainHint = true
+        }
+        onboardingHintDismissTask?.cancel()
+        onboardingHintDismissTask = nil
+        scheduleOnboardingHintAutoDismiss()
+    }
+
     @State private var showFullVideoWithIdentifications = false
-    @State private var fullVideoFurnitureTapHintVisible = false
-    @State private var fullVideoSelectionHelperVisible = false
-    @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
-    @State private var tapHintColorIndex: Int = 0
-    private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
-    @State private var tapHintColorTimer: Timer?
     @State private var measuredRoomDimensions: MeasuredPlyRoomDimensions?
     var body: some View {
         sharpRoomBody
@@ -304,7 +352,6 @@ struct SharpRoomView: View {
                 }
                 if hasCalculatedRoomMeasurements {
                     logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
-                    onRoomDimensionsIconTapped()
                 } else {
                     logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
                     startAsyncRoomMeasurementForRuler()
@@ -318,23 +365,6 @@ struct SharpRoomView: View {
             .buttonStyle(.plain)
             .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
             .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
-
-            Button(action: onPinchHintIconTapped) {
-                Image(systemName: "hand.pinch.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(pinchHintAccessibilityLabel)
-
-            Button(action: displayAllGestureHelpers) {
-                Image(systemName: "hand.tap.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
 
             if !selectedFurnitureFitLabels.isEmpty {
                 Button {
@@ -394,17 +424,15 @@ struct SharpRoomView: View {
 
     private func toggleFullVideoIdentifications() {
         showFullVideoWithIdentifications.toggle()
-        dismissFullVideoFurnitureTapHint()
         if showFullVideoWithIdentifications {
-            cancelFullVideoSelectionHelper()
-            // Enter the tap-to-segment flow: show live identifications and wait for a tap.
             furnitureFitSegmentationMode = .identifyOnly
             furnitureFitShowIdentifyLivePreview = true
         } else {
             // Back to the brain default: auto-segment the highest-confidence primary.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
-            presentFullVideoSelectionHelperIfNeeded()
+            selectionJustBecamePrimary = true
+            scheduleOnboardingHintAutoDismiss()
         }
     }
 
@@ -430,20 +458,11 @@ struct SharpRoomView: View {
         .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
     }
 
+    /// Kept for API compatibility; the button is now rendered inside
+    /// ``topTrailingActionButtonsOverlay`` so it stacks cleanly with the AR
+    /// sizing button and hint.
     private var fullVideoModeFloatingButtonOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            if showingFurnitureFit {
-                fullVideoIdentificationsFloatingButton
-                    .padding(.top, 54)
-                    .padding(.trailing, canOfferBrainArAssist ? 58 : 16)
-                    .transition(.opacity)
-            }
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(107)
+        EmptyView()
     }
 
     private var navigationBarSaveButton: some View {
@@ -461,10 +480,6 @@ struct SharpRoomView: View {
     private var navigationBarTrailingControls: some View {
         HStack(spacing: 14) {
             navigationBarRecenterButton
-            if canOfferBrainArAssist, showingFurnitureFit {
-                navigationBarARButton
-                    .fixedSize(horizontal: true, vertical: true)
-            }
             if allowSave {
                 navigationBarSaveButton
             }
@@ -476,10 +491,7 @@ struct SharpRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if showingFurnitureFit &&
-                !showFullVideoWithIdentifications &&
-                furnitureFitSegmentationMode == .segmentPrimary &&
-                fullVideoSelectionHelperVisible {
+            if activeOnboardingHint == .pickAnother {
                 VStack(alignment: .trailing, spacing: 4) {
                     Image(systemName: "arrow.up")
                         .font(.caption.weight(.bold))
@@ -499,7 +511,7 @@ struct SharpRoomView: View {
                         )
                 }
                 .padding(.top, 6)
-                .padding(.trailing, canOfferBrainArAssist ? 62 : 20)
+                .padding(.trailing, 20)
                 .offset(y: 50)
                 .transition(.opacity)
             }
@@ -511,11 +523,13 @@ struct SharpRoomView: View {
 
     private func toggleBrainArAssistedSizingOrShowHint() {
         guard showingFurnitureFit else { return }
+        if activeOnboardingHint == .arSizing {
+            markOnboardingHintSeen(.arSizing)
+        }
         brainArAssistedSizingEnabled.toggle()
     }
 
-    /// AR sizing control in the navigation bar (replaces the share-PLY toolbar button).
-    private var navigationBarARButton: some View {
+    private var arSizingButton: some View {
         Button(action: toggleBrainArAssistedSizingOrShowHint) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
                 .symbolRenderingMode(.hierarchical)
@@ -537,47 +551,65 @@ struct SharpRoomView: View {
         )
     }
 
-    /// Optional pinch / AR sizing hint copy sits below the top toolbar row when visible.
-    private var topTrailingPinchTapAndSizingHintsOverlay: some View {
+    /// AR sizing button + hint + full-video button stacked vertically in the
+    /// top-trailing corner. Lives in the SwiftUI content layer (not the system
+    /// toolbar) so the hint can anchor inline — same pattern as
+    /// ``brainButtonWithHintAbove``.
+    private var topTrailingActionButtonsOverlay: some View {
         ZStack(alignment: .topTrailing) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            VStack(alignment: .trailing, spacing: 6) {
-                if pinchHintExplanationVisible {
-                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
+            VStack(alignment: .trailing, spacing: 8) {
+                if canOfferBrainArAssist, showingFurnitureFit {
+                    arSizingButton
+                    if activeOnboardingHint == .arSizing {
+                        Text(L10n.RoomViewer.arFurnitureSizingRequiresBrainHint)
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 200)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                            .transition(.opacity)
+                    }
                 }
-                if canOfferBrainArAssist, cameraSizingHintExplanationVisible,
-                   showingFurnitureFit || cameraSizingHintRequiresBrain {
-                    Text(cameraSizingHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 200)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                if showingFurnitureFit {
+                    fullVideoIdentificationsFloatingButton
                         .transition(.opacity)
                 }
             }
-            .padding(.top, 52)
+            .padding(.top, 4)
             .padding(.trailing, 16)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(101)
-        .onAppear { restartPinchGestureHint() }
-        .onDisappear {
-            cancelPinchHintTasks()
-            cancelCameraSizingHintTasks()
+        .zIndex(108)
+    }
+
+    /// Pinch-resize hint (A′) — shown only when coordinator says so.
+    private var topTrailingPinchHintOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if activeOnboardingHint == .pinchResize {
+                Text(L10n.RoomViewer.pinchGestureHintExplanation)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 220, alignment: .trailing)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .transition(.opacity)
+                    .padding(.top, 4)
+                    .padding(.trailing, 16)
+            }
         }
+        .allowsHitTesting(false)
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(101)
     }
 
     @ToolbarContentBuilder
@@ -623,11 +655,7 @@ struct SharpRoomView: View {
         backgroundRoomMeasurementTask = nil
         isMeasuringRoomDimensions = false
         saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-        cancelPinchHintTasks()
-        cancelBrainHintTasks()
-        cancelCameraSizingHintTasks()
-        cancelRoomDimensionsHintTasks()
-        dismissFullVideoFurnitureTapHint()
+        onboardingHintDismissTask?.cancel()
         OrientationLockManager.shared.unlock()
         splatMeasurementHost.setModalHeavyWorkPaused(false)
         SHARPService.shared.releaseResources()
@@ -642,13 +670,9 @@ struct SharpRoomView: View {
         if isOn {
             rtmdetService.ensureModelLoaded()
             updateRoomPlacementIntelligence()
-            if canOfferBrainArAssist {
-                showCameraSizingHint(requiresBrain: false)
-            }
+            scheduleOnboardingHintAutoDismiss()
         } else {
-            dismissFullVideoFurnitureTapHint()
-            cancelCameraSizingHintTasks()
-            cameraSizingHintExplanationVisible = false
+            onboardingHintDismissTask?.cancel()
             brainArAssistedSizingEnabled = false
             showFullVideoWithIdentifications = false
             furnitureFitSegmentationMode = .identifyOnly
@@ -691,14 +715,9 @@ struct SharpRoomView: View {
 
     private func sharpRoomHandleIsLoadingForHints(loading: Bool) {
         if loading {
-            cancelPinchHintTasks()
-            cancelBrainHintTasks()
-            cancelSnapshotHintTasks()
-            cancelCameraSizingHintTasks()
-            cancelRoomDimensionsHintTasks()
+            onboardingHintDismissTask?.cancel()
         } else {
-            restartBrainGestureHint()
-            restartSnapshotGestureHint()
+            scheduleOnboardingHintAutoDismiss()
         }
     }
 
@@ -901,62 +920,22 @@ struct SharpRoomView: View {
 
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {}
 
-    // MARK: - Gesture hint chips (pinch, brain, snapshot)
+    // MARK: - Furniture Fit toggle
 
     private func toggleFurnitureFit() {
         if showingFurnitureFit {
-            dismissFullVideoFurnitureTapHint()
-            cancelFullVideoSelectionHelper()
             showingFurnitureFit = false
         } else {
+            seenBrainHint = true
             showFullVideoWithIdentifications = false
             furnitureFitInitialSegmentationDone = false
-            // Brain default: auto-segment the highest-confidence detection (no tap needed). The
-            // tap-to-select flow lives behind the full-video (text.viewfinder) toolbar button.
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
             selectedFurnitureFitLabels = []
             SHARPService.shared.releaseResources()
             showingFurnitureFit = true
-            presentFullVideoSelectionHelperIfNeeded()
-        }
-    }
-
-    private func dismissFullVideoFurnitureTapHint() {
-        fullVideoFurnitureTapHintVisible = false
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = nil
-    }
-
-    private func presentFullVideoFurnitureTapHintIfNeeded() {
-        guard showFullVideoWithIdentifications else { return }
-        tapHintColorIndex = 0
-        fullVideoFurnitureTapHintVisible = true
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            DispatchQueue.main.async { tapHintColorIndex += 1 }
-        }
-    }
-
-    private func cancelFullVideoSelectionHelper() {
-        fullVideoSelectionHelperHideTask?.cancel()
-        fullVideoSelectionHelperHideTask = nil
-        fullVideoSelectionHelperVisible = false
-    }
-
-    private func presentFullVideoSelectionHelperIfNeeded() {
-        guard showingFurnitureFit,
-              !showFullVideoWithIdentifications,
-              furnitureFitSegmentationMode == .segmentPrimary else {
-            cancelFullVideoSelectionHelper()
-            return
-        }
-        fullVideoSelectionHelperHideTask?.cancel()
-        fullVideoSelectionHelperVisible = true
-        fullVideoSelectionHelperHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            fullVideoSelectionHelperVisible = false
+            selectionJustBecamePrimary = true
+            scheduleOnboardingHintAutoDismiss()
         }
     }
 
@@ -964,11 +943,9 @@ struct SharpRoomView: View {
         guard showingFurnitureFit else { return }
         guard furnitureFitSegmentationMode == .segmentSelected else { return }
         guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
-        dismissFullVideoFurnitureTapHint()
         showFullVideoWithIdentifications = true
         furnitureFitSegmentationMode = .identifyOnly
         furnitureFitShowIdentifyLivePreview = true
-        presentFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func activateSelectedFurnitureSegmentation() {
@@ -979,153 +956,9 @@ struct SharpRoomView: View {
         }
         guard canSegmentSelectedFurniture else { return }
         furnitureFitSegmentationMode = .segmentSelected
-        dismissFullVideoFurnitureTapHint()
     }
 
-    private func cancelPinchHintTasks() {
-        pinchHintHideTextTask?.cancel()
-        pinchHintHideTextTask = nil
-    }
-
-    private func schedulePinchHintTextAutoHide(seconds: UInt64 = 3) {
-        pinchHintHideTextTask?.cancel()
-        pinchHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            pinchHintExplanationVisible = false
-        }
-    }
-
-    private func restartPinchGestureHint() {
-        cancelPinchHintTasks()
-        pinchHintExplanationVisible = true
-        schedulePinchHintTextAutoHide(seconds: 3)
-    }
-
-    private func onPinchHintIconTapped() {
-        cancelPinchHintTasks()
-        pinchHintExplanationVisible.toggle()
-        if pinchHintExplanationVisible {
-            schedulePinchHintTextAutoHide(seconds: 3)
-        }
-    }
-
-    private func cancelBrainHintTasks() {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = nil
-    }
-
-    private func cancelCameraSizingHintTasks() {
-        cameraSizingHintHideTextTask?.cancel()
-        cameraSizingHintHideTextTask = nil
-    }
-
-    private func cancelRoomDimensionsHintTasks() {
-        roomDimensionsHintHideTask?.cancel()
-        roomDimensionsHintHideTask = nil
-    }
-
-    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            brainHintExplanationVisible = false
-        }
-    }
-
-    private func restartBrainGestureHint() {
-        cancelBrainHintTasks()
-        brainHintExplanationVisible = true
-        scheduleBrainHintTextAutoHide(seconds: 3)
-    }
-
-    private func onBrainHintIconTapped() {
-        cancelBrainHintTasks()
-        brainHintExplanationVisible.toggle()
-        if brainHintExplanationVisible {
-            scheduleBrainHintTextAutoHide(seconds: 3)
-        }
-    }
-
-    private func cancelSnapshotHintTasks() {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = nil
-    }
-
-    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            snapshotHintExplanationVisible = false
-        }
-    }
-
-    private func restartSnapshotGestureHint() {
-        cancelSnapshotHintTasks()
-        snapshotHintExplanationVisible = true
-        scheduleSnapshotHintTextAutoHide(seconds: 3)
-    }
-
-    private func displayAllGestureHelpers() {
-        restartPinchGestureHint()
-        restartBrainGestureHint()
-        restartSnapshotGestureHint()
-        showCameraSizingHint(requiresBrain: !showingFurnitureFit)
-        roomDimensionsHintVisible = true
-        scheduleRoomDimensionsHintAutoHide(seconds: 3)
-    }
-
-    private func onSnapshotHintIconTapped() {
-        cancelSnapshotHintTasks()
-        snapshotHintExplanationVisible.toggle()
-        if snapshotHintExplanationVisible {
-            scheduleSnapshotHintTextAutoHide(seconds: 3)
-        }
-    }
-
-    private func scheduleCameraSizingHintAutoHide(seconds: UInt64 = 3) {
-        cameraSizingHintHideTextTask?.cancel()
-        cameraSizingHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            cameraSizingHintExplanationVisible = false
-        }
-    }
-
-    private func showCameraSizingHint(requiresBrain: Bool) {
-        cancelCameraSizingHintTasks()
-        cameraSizingHintRequiresBrain = requiresBrain
-        cameraSizingHintExplanationVisible = true
-        scheduleCameraSizingHintAutoHide(seconds: 3)
-    }
-
-    private func onCameraSizingHintIconTapped() {
-        cancelCameraSizingHintTasks()
-        cameraSizingHintRequiresBrain = false
-        cameraSizingHintExplanationVisible.toggle()
-        if cameraSizingHintExplanationVisible {
-            scheduleCameraSizingHintAutoHide(seconds: 3)
-        }
-    }
-
-    private func scheduleRoomDimensionsHintAutoHide(seconds: UInt64 = 3) {
-        roomDimensionsHintHideTask?.cancel()
-        roomDimensionsHintHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            roomDimensionsHintVisible = false
-        }
-    }
-
-    private func onRoomDimensionsIconTapped() {
-        cancelRoomDimensionsHintTasks()
-        roomDimensionsHintVisible.toggle()
-        if roomDimensionsHintVisible {
-            scheduleRoomDimensionsHintAutoHide(seconds: 3)
-        }
-    }
+    // Old hint infrastructure removed — all hints flow through activeOnboardingHint.
 
     private func startAsyncRoomMeasurementForRuler() {
         guard !isMeasuringRoomDimensions else { return }
@@ -1183,8 +1016,6 @@ struct SharpRoomView: View {
                 }
                 isMeasuringRoomDimensions = false
                 saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-                roomDimensionsHintVisible = true
-                scheduleRoomDimensionsHintAutoHide(seconds: 3)
             }
         }
     }
@@ -1240,30 +1071,9 @@ struct SharpRoomView: View {
         }
     }
 
-    private var pinchHintAccessibilityLabel: String {
-        L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var brainHintAccessibilityLabel: String {
-        L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
 
     private var canSegmentSelectedFurniture: Bool {
         showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
-    }
-
-    private var snapshotHintAccessibilityLabel: String {
-        L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var cameraSizingHintAccessibilityLabel: String {
-        cameraSizingHintText + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var cameraSizingHintText: String {
-        cameraSizingHintRequiresBrain
-            ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
-            : L10n.RoomViewer.arFurnitureSizingHint
     }
 
     private var roomDimensionsHintText: String {
@@ -1322,7 +1132,7 @@ struct SharpRoomView: View {
         }
     }
 
-    /// D-pad cluster (top-left). Pinch + tap hints live in ``topTrailingPinchTapAndSizingHintsOverlay``.
+    /// D-pad cluster (top-left). Pinch hint lives in ``topTrailingPinchHintOverlay``.
     private var cameraButtonsOverlay: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
@@ -1342,53 +1152,43 @@ struct SharpRoomView: View {
         .zIndex(102)
     }
 
-    private var roomDimensionsHintOverlay: some View {
-        ZStack(alignment: .top) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(spacing: 0) {
-                if roomDimensionsHintVisible {
-                    Text(roomDimensionsHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
-                }
+    /// H — permanent chip showing room dimensions whenever measurements exist.
+    private var roomDimensionsChipOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+            if activeRoomMetersDimensions != nil {
+                Text(roomDimensionsHintText)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .padding(.top, 6)
+                    .padding(.leading, 12)
             }
-            .padding(.top, 12)
-            .onDisappear { cancelRoomDimensionsHintTasks() }
         }
+        .allowsHitTesting(false)
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(104)
     }
 
-    private var fullVideoFurnitureTapHintOverlay: some View {
+    /// F — static mode pill shown whenever mode == fullVideo. No timer, no color cycling.
+    private var fullVideoModePillOverlay: some View {
         ZStack(alignment: .top) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(spacing: 0) {
-                if fullVideoFurnitureTapHintVisible {
-                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 260)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-                }
+            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+            if currentRoomViewerMode == .fullVideo {
+                Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 260)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .padding(.top, activeRoomMetersDimensions != nil ? 36 : 12)
             }
-            .padding(.top, roomDimensionsHintVisible ? 56 : 12)
         }
         .allowsHitTesting(false)
         .opacity(isCapturingSnapshot ? 0 : 1)
@@ -1398,7 +1198,7 @@ struct SharpRoomView: View {
     /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
-            if brainHintExplanationVisible {
+            if activeOnboardingHint == .brainIdentify {
                 Text(L10n.RoomViewer.brainGestureHintExplanation)
                     .font(.caption2)
                     .foregroundColor(.white)
@@ -1410,27 +1210,6 @@ struct SharpRoomView: View {
                     .transition(.opacity)
             }
         }
-        .onAppear { restartBrainGestureHint() }
-        .onDisappear { cancelBrainHintTasks() }
-    }
-
-    /// Text + tap icon above the snapshot camera; mirrors ``brainGestureHintColumn``.
-    private var snapshotGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if snapshotHintExplanationVisible {
-                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-            }
-        }
-        .onAppear { restartSnapshotGestureHint() }
-        .onDisappear { cancelSnapshotHintTasks() }
     }
 
     @ViewBuilder
@@ -1452,19 +1231,14 @@ struct SharpRoomView: View {
 
     @ViewBuilder
     private var snapshotButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            snapshotGestureHintColumn
-                .offset(y: -72)
-            Button(action: { takeScreenshot() }) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(Color.blue).shadow(radius: 5))
-            }
-            .disabled(isLoading)
+        Button(action: { takeScreenshot() }) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Color.blue).shadow(radius: 5))
         }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        .disabled(isLoading)
     }
 
     @ViewBuilder
@@ -2303,10 +2077,10 @@ struct SharpRoomView: View {
         ZStack {
             if !isLoading {
                 cameraButtonsOverlay
-                topTrailingPinchTapAndSizingHintsOverlay
-                roomDimensionsHintOverlay
-                fullVideoFurnitureTapHintOverlay
-                fullVideoModeFloatingButtonOverlay
+                topTrailingPinchHintOverlay
+                topTrailingActionButtonsOverlay
+                roomDimensionsChipOverlay
+                fullVideoModePillOverlay
                 fullVideoToolbarHelperOverlay
             }
             if isLoading { loadingOverlayView }

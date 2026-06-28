@@ -306,6 +306,19 @@ struct SettingsView: View {
                         }
                     }
 
+                    Button {
+                        UserDefaults.standard.set(false, forKey: "hint_seenBrainHint")
+                        UserDefaults.standard.set(false, forKey: "hint_seenPinchResize")
+                        UserDefaults.standard.set(false, forKey: "hint_seenArSizing")
+                        UserDefaults.standard.set(false, forKey: "hint_seenPickAnother")
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise")
+                                .foregroundColor(.blue)
+                            Text("Reset onboarding hints")
+                        }
+                    }
+
                     Button(action: {
                         showLogoutConfirmation = true
                     }) {

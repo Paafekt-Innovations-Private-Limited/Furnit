@@ -308,7 +308,7 @@
 "roomViewer.stopSegmentationAction" = "നിർത്തുക";
 "roomViewer.segmentFurnitureAccessibility" = "തിരഞ്ഞെടുത്ത ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്യുക";
 "roomViewer.snapshotGestureHintExplanation" = "സേവ് ചെയ്യാൻ 📷 ടാപ്പ് ചെയ്യുക";
-"roomViewer.arFurnitureSizingHint" = "മികച്ച പൊരുത്തത്തിന് 📷";
+"roomViewer.arFurnitureSizingHint" = "മികച്ച വലിപ്പ പൊരുത്തത്തിന്";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "മുറിയുടെ വലുപ്പത്തിന് അനുപാതമായി ഫർണിച്ചർ വയ്ക്കാൻ ഞാൻ സഹായിക്കും. ആദ്യം ബ്രെയിൻ ഐക്കണിൽ ടാപ്പ് ചെയ്യൂ, ശേഷം എന്നെ പരീക്ഷിക്കൂ.";
 "roomViewer.arSizingEnable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക";
 "roomViewer.arSizingDisable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓഫ് ചെയ്യുക";

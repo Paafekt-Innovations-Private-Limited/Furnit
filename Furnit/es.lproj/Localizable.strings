@@ -311,7 +311,7 @@
 "roomViewer.stopSegmentationAction" = "Detener";
 "roomViewer.segmentFurnitureAccessibility" = "Segmentar muebles seleccionados";
 "roomViewer.snapshotGestureHintExplanation" = "Toca 📷 para guardar";
-"roomViewer.arFurnitureSizingHint" = "📷 para mejor ajuste";
+"roomViewer.arFurnitureSizingHint" = "Para mejor ajuste de tamaño";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Coloco los muebles en proporción al tamaño de la habitación. Toca el icono del cerebro y luego inténtalo conmigo.";
 "roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
 "roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";

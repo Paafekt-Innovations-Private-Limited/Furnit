@@ -308,7 +308,7 @@
 "roomViewer.stopSegmentationAction" = "रोकें";
 "roomViewer.segmentFurnitureAccessibility" = "चयनित फर्नीचर सेगमेंट करें";
 "roomViewer.snapshotGestureHintExplanation" = "सेव करने के लिए 📷 टैप करें";
-"roomViewer.arFurnitureSizingHint" = "बेहतर मिलान के लिए 📷";
+"roomViewer.arFurnitureSizingHint" = "बेहतर आकार मिलान के लिए";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "मैं कमरे के आकार के अनुपात में फर्नीचर रखता हूँ। पहले ब्रेन आइकन पर टैप करें, फिर मुझे आज़माएँ।";
 "roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
 "roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";

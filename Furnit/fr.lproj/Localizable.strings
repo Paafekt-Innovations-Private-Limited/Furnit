@@ -311,7 +311,7 @@
 "roomViewer.stopSegmentationAction" = "Arrêter";
 "roomViewer.segmentFurnitureAccessibility" = "Segmenter les meubles sélectionnés";
 "roomViewer.snapshotGestureHintExplanation" = "Appuyez sur 📷 pour enregistrer";
-"roomViewer.arFurnitureSizingHint" = "📷 pour mieux ajuster";
+"roomViewer.arFurnitureSizingHint" = "Pour un meilleur ajustement de taille";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "Je place les meubles en proportion de la taille de la pièce. Touchez l’icône cerveau puis réessayez avec moi.";
 "roomViewer.arSizingEnable" = "Activer le dimensionnement assisté par la caméra";
 "roomViewer.arSizingDisable" = "Désactiver le dimensionnement assisté par la caméra";

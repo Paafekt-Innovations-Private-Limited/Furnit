@@ -412,7 +412,7 @@
 "roomViewer.stopSegmentationAction" = "Stop";
 "roomViewer.segmentFurnitureAccessibility" = "Segment selected furniture";
 "roomViewer.snapshotGestureHintExplanation" = "Tap 📷 to save";
-"roomViewer.arFurnitureSizingHint" = "📷 for better match";
+"roomViewer.arFurnitureSizingHint" = "For better size match";
 "roomViewer.arFurnitureSizingRequiresBrainHint" = "I place furniture in proportion to the room size. Tap the brain icon, then try me.";
 "roomViewer.arSizingEnable" = "Enable camera-assisted furniture sizing";
 "roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
