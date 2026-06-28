@@ -24,10 +24,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: Config
     var processInterval: TimeInterval = 0.07
+    /// RTMDet live-identify target cadence (~5fps). Adjustable at runtime by thermal backoff.
+    private var rtmdetLiveTargetInterval: TimeInterval = 0.200
+    private static let rtmdetLiveNominalInterval: TimeInterval = 0.200
+    private static let rtmdetLiveSeriousInterval: TimeInterval = 0.400
     /// RTMDet drops every in-flight frame (`captureOutput`) and never queues, so the next inference
     /// always starts from the freshest camera frame. Keep this floor at 0 so panning to new furniture
     /// re-segments as fast as inference completes instead of lagging ~1s behind the live view.
     private let rtmdetLiveMinimumProcessInterval: TimeInterval = 0.0
+    /// True when independent overlay items are placed and inference should not run.
+    private var inferencePausedForPlacement: Bool { usesIndependentOverlayItems }
     var confidenceThreshold: Float = 0.10
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
@@ -976,6 +982,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             name: AVCaptureSession.runtimeErrorNotification,
             object: captureSession
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleThermalStateDidChange),
+            name: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil
+        )
+        updateCadenceForThermalState(ProcessInfo.processInfo.thermalState)
+
         captureSessionObserverTokens = CameraOwnershipDiagnostics.makeCaptureSessionObservers(
             session: captureSession,
             owner: "FurnitureFitContainerView.AVCapture"
@@ -2350,7 +2377,69 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
+    // MARK: - App Lifecycle & Thermal
+
+    private var wasRunningBeforeResignActive = false
+    private var inferencePausedForThermalCritical = false
+
+    @objc private func handleAppWillResignActive() {
+        wasRunningBeforeResignActive = captureSession.isRunning || isUsingARCameraPath
+        if wasRunningBeforeResignActive {
+            logDebug("🔋 [FurnitureFit] willResignActive — pausing capture session")
+            stop()
+        }
+    }
+
+    @objc private func handleAppDidBecomeActive() {
+        guard wasRunningBeforeResignActive else { return }
+        wasRunningBeforeResignActive = false
+        if !inferencePausedForThermalCritical {
+            logDebug("🔋 [FurnitureFit] didBecomeActive — resuming capture session")
+            startIfNeeded()
+        }
+    }
+
+    @objc private func handleThermalStateDidChange() {
+        let state = ProcessInfo.processInfo.thermalState
+        updateCadenceForThermalState(state)
+    }
+
+    private func updateCadenceForThermalState(_ state: ProcessInfo.ThermalState) {
+        let label: String
+        switch state {
+        case .nominal:
+            rtmdetLiveTargetInterval = Self.rtmdetLiveNominalInterval
+            inferencePausedForThermalCritical = false
+            label = "nominal"
+        case .fair:
+            rtmdetLiveTargetInterval = Self.rtmdetLiveNominalInterval
+            inferencePausedForThermalCritical = false
+            label = "fair"
+        case .serious:
+            rtmdetLiveTargetInterval = Self.rtmdetLiveSeriousInterval
+            inferencePausedForThermalCritical = false
+            label = "serious"
+        case .critical:
+            inferencePausedForThermalCritical = true
+            label = "critical"
+        @unknown default:
+            rtmdetLiveTargetInterval = Self.rtmdetLiveNominalInterval
+            inferencePausedForThermalCritical = false
+            label = "unknown"
+        }
+        logDebug("🌡️ [FurnitureFit] thermalState=\(label) → interval=\(String(format: "%.0f", rtmdetLiveTargetInterval * 1000))ms paused=\(inferencePausedForThermalCritical)")
+        if inferencePausedForThermalCritical && captureSession.isRunning {
+            captureSessionControlQueue.async { [weak self] in
+                guard let self, self.captureSession.isRunning else { return }
+                CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_stopRequested", details: "reason=thermal_critical")
+                self.captureSession.stopRunning()
+            }
+        }
+    }
+
     /// AVCapture for video; optional ARSession **companion** (Settings) for metric depth on LiDAR **or** plane raycast on e.g. iPhone 12.
+    /// AR session is paused *before* AVCapture starts, with a brief settling delay to avoid
+    /// dual-camera-owner contention (err=-17281).
     private func startClassicCameraPathIfNeeded() {
         isUsingARCameraPath = false
         DispatchQueue.main.async { [weak self] in
@@ -2359,14 +2448,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.ARSession", event: "ar_pause", details: "reason=startClassicCameraPath")
             self.arSession.pause()
 
-            self.captureSessionControlQueue.async { [weak self] in
+            self.captureSessionControlQueue.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self else { return }
                 self.setupCamera()
                 if !self.captureSession.isRunning {
-                    CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_startRequested")
+                    CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_startRequested", details: "after_ar_pause_settle")
                     self.captureSession.startRunning()
                 }
-                // Floor-contact depth estimation stays on the AVCapture path; no AR companion is started here.
             }
 
             if self.debugMode {
@@ -2393,6 +2481,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        if inferencePausedForPlacement || inferencePausedForThermalCritical {
+            return
+        }
         // Drop every frame while segmentation is in flight (do not queue work on `detectionQueue`).
         let now = Date()
         let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
@@ -2406,7 +2497,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
         let effectiveInterval = currentModelIsRTMDet
-            ? max(processInterval, rtmdetLiveMinimumProcessInterval)
+            ? max(rtmdetLiveTargetInterval, rtmdetLiveMinimumProcessInterval)
             : processInterval
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= effectiveInterval
         if shouldProcess {
@@ -5953,6 +6044,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 extension FurnitureFitContainerView {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isUsingARCameraPath else { return }
+        if inferencePausedForPlacement || inferencePausedForThermalCritical { return }
         isARDepthCompanionSessionRunning = true
         let t = CACurrentMediaTime()
         if lastARHeavyWorkFinishCAC > 0, t - lastARHeavyWorkFinishCAC < Self.arSessionDelegateHeavyMinInterval {
