@@ -5161,7 +5161,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             minCombinedOverlayScale: minCombinedOverlayScale,
             maxCombinedOverlayScale: maxCombinedOverlayScale,
             isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
-            overlayPresentationMode: overlayPresentationMode,
+            overlayPresentationMode: .measuredPlacement,
             bounds: bounds,
             primaryBboxInView: item.primaryBboxInView,
             debugFreezeOverlayScale: debugMode
