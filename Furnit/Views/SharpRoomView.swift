@@ -284,6 +284,27 @@ struct SharpRoomView: View {
         return nil
     }
 
+    private func isHintEligible(_ hint: OnboardingHint) -> Bool {
+        let mode = currentRoomViewerMode
+        switch hint {
+        case .pickAnother:
+            return (mode == .furnitureFit || mode == .fullVideo)
+        case .arSizing:
+            return mode == .furnitureFit && canOfferBrainArAssist
+        case .pinchResize:
+            return mode == .furnitureFit
+        case .brainIdentify:
+            return !isLoading && mode == .browsing
+        }
+    }
+
+    private func isHintVisible(_ hint: OnboardingHint) -> Bool {
+        if forceShowHints {
+            return isHintEligible(hint)
+        }
+        return activeOnboardingHint == hint
+    }
+
     private enum RoomViewerMode { case browsing, furnitureFit, fullVideo }
     private var currentRoomViewerMode: RoomViewerMode {
         if showingFurnitureFit && showFullVideoWithIdentifications { return .fullVideo }
@@ -532,7 +553,7 @@ struct SharpRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if activeOnboardingHint == .pickAnother {
+            if isHintVisible(.pickAnother) {
                 VStack(alignment: .trailing, spacing: 4) {
                     Image(systemName: "arrow.up")
                         .font(.caption.weight(.bold))
@@ -564,7 +585,7 @@ struct SharpRoomView: View {
 
     private func toggleBrainArAssistedSizingOrShowHint() {
         guard showingFurnitureFit else { return }
-        if activeOnboardingHint == .arSizing {
+        if isHintVisible(.arSizing) {
             markOnboardingHintSeen(.arSizing)
         }
         brainArAssistedSizingEnabled.toggle()
@@ -604,7 +625,7 @@ struct SharpRoomView: View {
             VStack(alignment: .trailing, spacing: 8) {
                 if canOfferBrainArAssist, showingFurnitureFit {
                     arSizingButton
-                    if activeOnboardingHint == .arSizing {
+                    if isHintVisible(.arSizing) {
                         Text(L10n.RoomViewer.arFurnitureSizingRequiresBrainHint)
                             .font(.caption2)
                             .foregroundColor(.white)
@@ -634,7 +655,7 @@ struct SharpRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            if activeOnboardingHint == .pinchResize {
+            if isHintVisible(.pinchResize) {
                 Text(L10n.RoomViewer.pinchGestureHintExplanation)
                     .font(.caption2)
                     .foregroundColor(.white)
@@ -1239,7 +1260,7 @@ struct SharpRoomView: View {
     /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
-            if activeOnboardingHint == .brainIdentify {
+            if isHintVisible(.brainIdentify) {
                 Text(L10n.RoomViewer.brainGestureHintExplanation)
                     .font(.caption2)
                     .foregroundColor(.white)
