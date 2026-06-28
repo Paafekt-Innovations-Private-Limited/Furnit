@@ -17,6 +17,7 @@ struct RTMDetInferenceResult {
 
 struct RTMDetMaskAffinityGraph {
     fileprivate let neighbors: [[Int]]
+    var nodeCount: Int { neighbors.count }
 
     func transitiveGroup(seedIndices: [Int]) -> [Int] {
         guard !seedIndices.isEmpty, !neighbors.isEmpty else { return [] }
@@ -566,7 +567,7 @@ enum RTMDetImageInference {
             debugLabel: debug ? "combined" : nil
         )
         let tCombined = Date()
-        let maskAffinityGraph = buildInstanceMasks
+        let maskAffinityGraph = !rawMaskPlanes.isEmpty
             ? makeMaskAffinityGraph(rawMaskPlanes)
             : nil
         let instanceMaskImages: [UIImage?]

@@ -260,23 +260,25 @@ struct SharpRoomView: View {
     @AppStorage("hint_seenPickAnother") private var seenPickAnother = false
     @State private var selectionJustBecamePrimary = false
     @State private var onboardingHintDismissTask: Task<Void, Never>?
+    @State private var forceShowHints = false
 
     private var activeOnboardingHint: OnboardingHint? {
         let mode = currentRoomViewerMode
+        let ignoreSeenFlags = forceShowHints
         // Priority 1 – G
-        if selectionJustBecamePrimary && !seenPickAnother && (mode == .furnitureFit || mode == .fullVideo) {
+        if (selectionJustBecamePrimary || ignoreSeenFlags) && (ignoreSeenFlags || !seenPickAnother) && (mode == .furnitureFit || mode == .fullVideo) {
             return .pickAnother
         }
         // Priority 2 – E (merged D)
-        if mode == .furnitureFit && canOfferBrainArAssist && !seenArSizing {
+        if mode == .furnitureFit && canOfferBrainArAssist && (ignoreSeenFlags || !seenArSizing) {
             return .arSizing
         }
         // Priority 3 – A′
-        if mode == .furnitureFit && !seenPinchResize {
+        if mode == .furnitureFit && (ignoreSeenFlags || !seenPinchResize) {
             return .pinchResize
         }
         // Priority 4 – B
-        if !isLoading && mode == .browsing && !seenBrainHint {
+        if !isLoading && mode == .browsing && (ignoreSeenFlags || !seenBrainHint) {
             return .brainIdentify
         }
         return nil
@@ -291,14 +293,21 @@ struct SharpRoomView: View {
 
     private func scheduleOnboardingHintAutoDismiss() {
         onboardingHintDismissTask?.cancel()
-        guard let hint = activeOnboardingHint else {
+        guard activeOnboardingHint != nil else {
             onboardingHintDismissTask = nil
             return
         }
+        let dismissDelay: Double = forceShowHints ? 5 : 3
         onboardingHintDismissTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(dismissDelay))
             guard !Task.isCancelled else { return }
-            markOnboardingHintSeen(hint)
+            if forceShowHints {
+                forceShowHints = false
+            } else {
+                if let hint = activeOnboardingHint {
+                    markOnboardingHintSeen(hint)
+                }
+            }
         }
     }
 
@@ -311,8 +320,15 @@ struct SharpRoomView: View {
         case .pinchResize: seenPinchResize = true
         case .brainIdentify: seenBrainHint = true
         }
+        forceShowHints = false
         onboardingHintDismissTask?.cancel()
         onboardingHintDismissTask = nil
+        scheduleOnboardingHintAutoDismiss()
+    }
+
+    private func showHintsOnDemand() {
+        forceShowHints = true
+        onboardingHintDismissTask?.cancel()
         scheduleOnboardingHintAutoDismiss()
     }
 
@@ -493,6 +509,17 @@ struct SharpRoomView: View {
 
     private var navigationBarTrailingControls: some View {
         HStack(spacing: 14) {
+            Button {
+                showHintsOnDemand()
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel("Show hints")
+
             navigationBarRecenterButton
             if allowSave {
                 navigationBarSaveButton
