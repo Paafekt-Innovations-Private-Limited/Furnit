@@ -357,10 +357,24 @@ struct SharpRoomView: View {
                     startAsyncRoomMeasurementForRuler()
                 }
             } label: {
-                Image(systemName: "ruler.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
+                if let d = activeRoomMetersDimensions {
+                    VStack(spacing: 1) {
+                        Text("W × H × D")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                        Text(String(format: "%.2f × %.2f × %.2f m", d.width, d.height, d.depth))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                } else {
+                    Image(systemName: "ruler.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.primary)
+                }
             }
             .buttonStyle(.plain)
             .disabled(!canPresentRoomDimensionsAlert || isMeasuringRoomDimensions)
@@ -2079,7 +2093,6 @@ struct SharpRoomView: View {
                 cameraButtonsOverlay
                 topTrailingPinchHintOverlay
                 topTrailingActionButtonsOverlay
-                roomDimensionsChipOverlay
                 fullVideoModePillOverlay
                 fullVideoToolbarHelperOverlay
             }

@@ -32,6 +32,13 @@ struct RTMDetMaskAffinityGraph {
     }
 }
 
+struct RTMDetCachedMaskResult {
+    let image: UIImage
+    /// Indices (in cache-detection-space) of detections whose masks were unioned
+    /// into ``image`` via transitive affinity overlap.
+    let affinityGroupIndices: [Int]
+}
+
 struct RTMDetMaskBuildCache {
     let sourceWidth: Int
     let sourceHeight: Int
@@ -375,7 +382,8 @@ enum RTMDetImageInference {
                 }
                 return lhs.score > rhs.score
             }
-        let boxes = maxDetectionCount.map { Array(sortedBoxes.prefix(max(1, $0))) } ?? sortedBoxes
+        let effectiveLimit = maxDetectionCount ?? 200
+        let boxes = Array(sortedBoxes.prefix(max(1, effectiveLimit)))
         let mapping = ImageMapping(
             modelSide: modelSide,
             sourceWidth: sourceWidth,
@@ -499,7 +507,8 @@ enum RTMDetImageInference {
             modelSide: modelSide,
             preNMSLimit: nil
         )
-        let selected = classAwareNMS(rawCandidates, iouThreshold: 0.5, limit: maxDetectionCount)
+        let safetyLimit = maxDetectionCount ?? 200
+        let selected = classAwareNMS(rawCandidates, iouThreshold: 0.5, limit: safetyLimit)
         let mapping = ImageMapping(
             modelSide: modelSide,
             sourceWidth: sourceWidth,
@@ -621,6 +630,14 @@ enum RTMDetImageInference {
         detections requestedDetections: [FurnitureFitDetection],
         debug: Bool = false
     ) -> UIImage? {
+        buildCachedMaskWithGroupInfo(from: cache, detections: requestedDetections, debug: debug)?.image
+    }
+
+    static func buildCachedMaskWithGroupInfo(
+        from cache: RTMDetMaskBuildCache,
+        detections requestedDetections: [FurnitureFitDetection],
+        debug: Bool = false
+    ) -> RTMDetCachedMaskResult? {
         guard !requestedDetections.isEmpty else { return nil }
         var selectedIndices: [Int] = []
         selectedIndices.reserveCapacity(requestedDetections.count)
@@ -648,14 +665,15 @@ enum RTMDetImageInference {
             buildRawMaskPlane(candidate: cache.candidates[index], maskFeatureMatrix: cache.maskFeatureMatrix)
         }
         let selectedBoxes = expandedIndices.map { cache.mappedBoxes[$0] }
-        return buildCombinedRawMaskImage(
+        guard let image = buildCombinedRawMaskImage(
             rawMaskPlanes: selectedPlanes,
             boxes: selectedBoxes,
             maxMaskCount: selectedPlanes.count,
             sourceBuffer: cache.sourceBuffer,
             mapping: cache.mapping,
             debugLabel: debug ? "cached" : nil
-        )
+        ) else { return nil }
+        return RTMDetCachedMaskResult(image: image, affinityGroupIndices: expandedIndices)
     }
 
     private static func makeMaskAffinityGraph(_ planes: [[Float]?]) -> RTMDetMaskAffinityGraph {

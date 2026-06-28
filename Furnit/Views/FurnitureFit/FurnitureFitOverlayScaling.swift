@@ -182,11 +182,16 @@ enum FurnitureFitOverlayScaling {
         debugFreezeOverlayScale: Bool
     ) -> FurnitureFitOverlayTransformResult {
         if debugFreezeOverlayScale {
+            let frozenTransform = CGAffineTransform(scaleX: userPinchScale, y: userPinchScale)
+                .concatenating(CGAffineTransform(
+                    translationX: userPanOffset.x,
+                    y: userPanOffset.y
+                ))
             return FurnitureFitOverlayTransformResult(
-                transform: .identity,
-                loggedOverlayScale: 1.0,
+                transform: frozenTransform,
+                loggedOverlayScale: userPinchScale,
                 assistedLabel: "DEBUG_FREEZE",
-                logMessage: "overlayScale=1.0 (debug freeze)"
+                logMessage: "overlayScale=\(String(format: "%.3f", userPinchScale)) (debug freeze, assisted=1.0, pan=\(String(format: "%.1f,%.1f", userPanOffset.x, userPanOffset.y)))"
             )
         }
         let arOn = arAssistedSizingEnabled && hasARKitAssistedSizingPayload && arAssistedScaleValid

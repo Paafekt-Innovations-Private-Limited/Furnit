@@ -362,6 +362,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private struct RTMDetLiveMaskCache {
         let buildCache: RTMDetMaskBuildCache
         let candidates: [FurnitureFitDetection]
+        /// Maps each index in ``candidates`` to its original decoder index in
+        /// ``RTMDetInferenceResult.detections`` / ``maskAffinityGraph``.
+        let originalDecoderIndices: [Int]
     }
     private let rtmDetLiveMaskCacheLock = NSLock()
     private var rtmDetLiveMaskCache: RTMDetLiveMaskCache?
@@ -381,6 +384,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private weak var overlayPanGesture: UIPanGestureRecognizer?
     /// Stored reference so bbox taps can coexist with pan/pinch.
     private weak var overlayTapGesture: UITapGestureRecognizer?
+    /// Per-item overlay state for multi-select segmentation (independent pan/pinch per furniture).
+    private struct OverlayItemState {
+        let itemID: UUID
+        let detection: FurnitureFitDetection
+        let imageView: UIImageView
+        var panOffset: CGPoint = .zero
+        var pinchScale: CGFloat = 1.0
+        var lockedAssistedScale: Bool = false
+        var primaryBboxInView: CGRect = .zero
+    }
+    private var overlayItems: [OverlayItemState] = []
+    private var activeGestureOverlayItemIndex: Int?
+    private var activePinchOverlayItemIndex: Int?
     /// Auto-primary hysteresis state for identify-only mode.
     private var autoPrimarySelectionState = FurnitureFitAutoPrimarySelectionState()
     // Hysteresis tuned for RTMDet's noisier boxes + ~1fps cadence: a looser IoU keeps the primary
@@ -928,11 +944,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         tapGesture.numberOfTapsRequired = 1
         
         addGestureRecognizer(pinchGesture)
+        addGestureRecognizer(panGesture)
         addGestureRecognizer(tapGesture)
         overlayPinchGesture = pinchGesture
-        overlayTapGesture = tapGesture
-        maskImageView.addGestureRecognizer(panGesture)
         overlayPanGesture = panGesture
+        overlayTapGesture = tapGesture
         tapGesture.require(toFail: panGesture)
         selectedObjectChipButton.addTarget(self, action: #selector(handleClearSelectedObjectTapped), for: .touchUpInside)
 
@@ -1091,6 +1107,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Combined overlay: AR metric scale when available, else room-proportion fallback, then user pinch.
     private func applyCurrentOverlayScaleTransform() {
+        if usesIndependentOverlayItems {
+            applyAllIndependentOverlayItemTransforms()
+            maskImageView.transform = .identity
+            detectionBBoxOverlayView.transform = .identity
+            return
+        }
+
         let transformResult = FurnitureFitOverlayScaling.resolvedTransform(
             currentLastAssistedLabel: overlayDebugLastAssistedLabel,
             currentLastCombinedScale: overlayDebugLastCombined,
@@ -1452,7 +1475,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             storeRTMDetLiveMaskCache(nil, candidates: [])
         }
         latestDisplayedSelectedCandidateIndex = nil
+        clearIndependentOverlayItems()
         maskImageView.image = nil
+        maskImageView.isHidden = false
         maskImageView.center = CGPoint(x: bounds.midX, y: bounds.midY)
         maskImageView.transform = .identity
         detectionBBoxOverlayView.transform = .identity
@@ -1710,11 +1735,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         latestDisplayedCandidates = candidates
         latestDisplayedSelectedCandidateIndex = selectedIndex
 
+        let isSegmenting = segmentationMode != .identifyOnly
+        if debugMode && isSegmenting {
+            candidateBboxesInView = []
+            detectionBBoxOverlayView.items = []
+            return
+        }
         if !debugMode {
             let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
-            // Any segmenting mode (segmentPrimary auto, or segmentSelected pinned) hides the boxes for a
-            // mask-only cutout; identify keeps them so the user can see/tap detections.
-            if segmentationMode != .identifyOnly || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
+            if isSegmenting || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
                 candidateBboxesInView = []
                 detectionBBoxOverlayView.items = []
                 return
@@ -1745,7 +1774,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func clearLiveDetectionOverlay(clearCandidates: Bool) {
+        clearIndependentOverlayItems()
         maskImageView.image = nil
+        maskImageView.isHidden = false
         maskImageView.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
         primaryBboxInView = .zero
         if clearCandidates {
@@ -1798,7 +1829,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
     
     private func setupGestureConflictResolution() {
-        guard let panGesture = maskImageView.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }) as? UIPanGestureRecognizer else { return }
+        guard let panGesture = gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }) as? UIPanGestureRecognizer else { return }
         
         if let vc = self.parentViewController,
            let navController = vc.navigationController,
@@ -3056,340 +3087,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return result
     }
 
-    private func debugUpsampledBandMaskFromLogits(
-        maskLogits: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        xStart: Int,
-        yStart: Int,
-        bandW: Int,
-        bandH: Int,
-        usesLetterbox: Bool
-    ) -> [UInt8]? {
-        guard protoW > 0,
-              protoH > 0,
-              bandW > 0,
-              bandH > 0,
-              maskLogits.count >= protoW * protoH else { return nil }
 
-        let upsampleThreshold = FurnitureFitOnnxStylePipeline.nativeCompositeUpsampleLogitThreshold()
-        if let gpuBandMask = gpuBilinearUpsampleAndThreshold(
-            logits: maskLogits,
-            protoW: protoW,
-            protoH: protoH,
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            xStart: xStart,
-            yStart: yStart,
-            bandW: bandW,
-            bandH: bandH,
-            usesLetterbox: usesLetterbox,
-            logitThreshold: upsampleThreshold
-        ) {
-            if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
-                return morphologicalBinaryClose3x3Planar8(mask: gpuBandMask, width: bandW, height: bandH)
-            }
-            return gpuBandMask
-        }
-
-        let geometry = nativeUpsampleGeometry(
-            modelSide: modelSide,
-            origW: origW,
-            origH: origH,
-            usesLetterbox: usesLetterbox
-        )
-        let protoScaleX = Float(protoW) / geometry.modelInput
-        let protoScaleY = Float(protoH) / geometry.modelInput
-        let maximumProtoX = protoW - 1
-        let maximumProtoY = protoH - 1
-        var bandMask = [UInt8](repeating: 0, count: bandW * bandH)
-
-        for bandY in 0..<bandH {
-            let imageY = yStart + bandY
-            let modelCenterY = (Float(imageY) + 0.5) * geometry.imageToModelScaleY + geometry.padY
-            let protoYFloat = modelCenterY * protoScaleY - 0.5
-            let protoY0 = max(0, min(maximumProtoY, Int(floor(protoYFloat))))
-            let protoY1 = max(0, min(maximumProtoY, protoY0 + 1))
-            let yBlend = protoYFloat - Float(protoY0)
-
-            for bandX in 0..<bandW {
-                let imageX = xStart + bandX
-                let modelCenterX = (Float(imageX) + 0.5) * geometry.imageToModelScaleX + geometry.padX
-                let protoXFloat = modelCenterX * protoScaleX - 0.5
-                let protoX0 = max(0, min(maximumProtoX, Int(floor(protoXFloat))))
-                let protoX1 = max(0, min(maximumProtoX, protoX0 + 1))
-                let xBlend = protoXFloat - Float(protoX0)
-
-                let topLeftIndex = protoY0 * protoW + protoX0
-                let topRightIndex = protoY0 * protoW + protoX1
-                let bottomLeftIndex = protoY1 * protoW + protoX0
-                let bottomRightIndex = protoY1 * protoW + protoX1
-
-                let topLeftLogit = maskLogits[topLeftIndex]
-                let topRightLogit = maskLogits[topRightIndex]
-                let bottomLeftLogit = maskLogits[bottomLeftIndex]
-                let bottomRightLogit = maskLogits[bottomRightIndex]
-
-                let blendedLogit =
-                    topLeftLogit * (1 - xBlend) * (1 - yBlend) +
-                    topRightLogit * xBlend * (1 - yBlend) +
-                    bottomLeftLogit * (1 - xBlend) * yBlend +
-                    bottomRightLogit * xBlend * yBlend
-
-                bandMask[bandY * bandW + bandX] = blendedLogit > upsampleThreshold ? 255 : 0
-            }
-        }
-
-        if furnitureFitNativeMaskMorphologicalClose, bandW >= 3, bandH >= 3 {
-            bandMask = morphologicalBinaryClose3x3Planar8(mask: bandMask, width: bandW, height: bandH)
-        }
-        return bandMask
-    }
-
-    private func liveDebugMaskColor(
-        detectionIndex: Int,
-        isPrimary: Bool
-    ) -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) {
-        if isPrimary {
-            return (255, 64, 64, 170)
-        }
-
-        let palette: [(UInt8, UInt8, UInt8, UInt8)] = [
-            (72, 220, 255, 120),
-            (112, 255, 140, 120),
-            (255, 196, 72, 120),
-            (196, 136, 255, 120),
-            (255, 120, 184, 120)
-        ]
-        let color = palette[detectionIndex % palette.count]
-        return (color.0, color.1, color.2, color.3)
-    }
-
-    private func blendLiveDebugMaskPixel(
-        outBase: UnsafeMutablePointer<UInt8>,
-        bytesPerRow: Int,
-        x: Int,
-        y: Int,
-        color: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)
-    ) {
-        let pixelOffset = y * bytesPerRow + x * 4
-        let sourceAlpha = Float(color.alpha) / 255
-        let destinationAlpha = Float(outBase[pixelOffset + 3]) / 255
-        let destinationKeep = 1 - sourceAlpha
-
-        let sourceRedPremultiplied = Float(color.red) * sourceAlpha
-        let sourceGreenPremultiplied = Float(color.green) * sourceAlpha
-        let sourceBluePremultiplied = Float(color.blue) * sourceAlpha
-
-        let blendedRed = sourceRedPremultiplied + Float(outBase[pixelOffset + 0]) * destinationKeep
-        let blendedGreen = sourceGreenPremultiplied + Float(outBase[pixelOffset + 1]) * destinationKeep
-        let blendedBlue = sourceBluePremultiplied + Float(outBase[pixelOffset + 2]) * destinationKeep
-        let blendedAlpha = sourceAlpha + destinationAlpha * destinationKeep
-
-        outBase[pixelOffset + 0] = UInt8(max(0, min(255, Int(blendedRed.rounded()))))
-        outBase[pixelOffset + 1] = UInt8(max(0, min(255, Int(blendedGreen.rounded()))))
-        outBase[pixelOffset + 2] = UInt8(max(0, min(255, Int(blendedBlue.rounded()))))
-        outBase[pixelOffset + 3] = UInt8(max(0, min(255, Int((blendedAlpha * 255).rounded()))))
-    }
-
-    private func renderLiveDebugMaskOverlayImage(
-        baseImage: CGImage?,
-        candidates: [FurnitureFitDetection],
-        primaryIndex: Int?,
-        fusedMaskLogits: [Float]?,
-        fusedMaskDetections: [FurnitureFitDetection],
-        planes: [Float],
-        protoW: Int,
-        protoH: Int,
-        modelSide: Int,
-        origW: Int,
-        origH: Int,
-        scaleX: Float,
-        scaleY: Float
-    ) -> CGImage? {
-        guard !candidates.isEmpty,
-              protoW > 0,
-              protoH > 0,
-              modelSide > 0,
-              origW > 0,
-              origH > 0 else { return nil }
-
-        guard let context = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ), let rawData = context.data else { return nil }
-
-        let bytesPerRow = cgBitmapAllocatedBytesPerRow(context)
-        let outBase = rawData.assumingMemoryBound(to: UInt8.self)
-        if let baseImage {
-            context.draw(baseImage, in: CGRect(x: 0, y: 0, width: origW, height: origH))
-        } else {
-            fillCompositeBufferTransparent(
-                outBase: outBase,
-                height: origH,
-                bytesPerRowOut: bytesPerRow
-            )
-        }
-
-        let orderedIndices = candidates.indices.filter { $0 != primaryIndex }
-            + (primaryIndex.map { [$0] } ?? [])
-        var paintedPixelCount = 0
-
-        if let fusedMaskLogits,
-           !fusedMaskDetections.isEmpty,
-           fusedMaskLogits.count >= protoW * protoH {
-            let fusedRects = fusedMaskDetections.map {
-                bufferRect(
-                    for: $0,
-                    imageWidth: origW,
-                    imageHeight: origH,
-                    scaleX: scaleX,
-                    scaleY: scaleY
-                )
-            }
-            let fusedMinX = max(0, Int(floor(fusedRects.map(\.minX).min() ?? 0)))
-            let fusedMinY = max(0, Int(floor(fusedRects.map(\.minY).min() ?? 0)))
-            let fusedMaxX = min(origW, Int(ceil(fusedRects.map(\.maxX).max() ?? 0)))
-            let fusedMaxY = min(origH, Int(ceil(fusedRects.map(\.maxY).max() ?? 0)))
-            let fusedBandWidth = fusedMaxX - fusedMinX
-            let fusedBandHeight = fusedMaxY - fusedMinY
-
-            if fusedBandWidth > 0,
-               fusedBandHeight > 0,
-               let fusedBandMask = debugUpsampledBandMaskFromLogits(
-                    maskLogits: fusedMaskLogits,
-                    protoW: protoW,
-                    protoH: protoH,
-                    modelSide: modelSide,
-                    origW: origW,
-                    origH: origH,
-                    xStart: fusedMinX,
-                    yStart: fusedMinY,
-                    bandW: fusedBandWidth,
-                    bandH: fusedBandHeight,
-                    usesLetterbox: currentModelUsesLetterbox
-               ) {
-                let fusedFillColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) = (255, 32, 32, 215)
-                for bandY in 0..<fusedBandHeight {
-                    let imageY = fusedMinY + bandY
-                    let rowOffset = bandY * fusedBandWidth
-                    for bandX in 0..<fusedBandWidth where fusedBandMask[rowOffset + bandX] != 0 {
-                        let isBoundaryPixel =
-                            bandX == 0 ||
-                            bandY == 0 ||
-                            bandX == fusedBandWidth - 1 ||
-                            bandY == fusedBandHeight - 1 ||
-                            fusedBandMask[rowOffset + max(0, bandX - 1)] == 0 ||
-                            fusedBandMask[rowOffset + min(fusedBandWidth - 1, bandX + 1)] == 0 ||
-                            fusedBandMask[max(0, bandY - 1) * fusedBandWidth + bandX] == 0 ||
-                            fusedBandMask[min(fusedBandHeight - 1, bandY + 1) * fusedBandWidth + bandX] == 0
-                        let pixelColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) =
-                            isBoundaryPixel ? (255, 255, 255, 255) : fusedFillColor
-                        blendLiveDebugMaskPixel(
-                            outBase: outBase,
-                            bytesPerRow: bytesPerRow,
-                            x: fusedMinX + bandX,
-                            y: imageY,
-                            color: pixelColor
-                        )
-                        paintedPixelCount += 1
-                    }
-                }
-            }
-        }
-
-        let shouldDrawPerDetectionMasks = fusedMaskLogits == nil || fusedMaskDetections.isEmpty
-        if shouldDrawPerDetectionMasks {
-        for detectionIndex in orderedIndices {
-            let detection = candidates[detectionIndex]
-            let detectionBufferRect = bufferRect(
-                for: detection,
-                imageWidth: origW,
-                imageHeight: origH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            let xStart = max(0, Int(floor(detectionBufferRect.minX)))
-            let yStart = max(0, Int(floor(detectionBufferRect.minY)))
-            let xEnd = min(origW, Int(ceil(detectionBufferRect.maxX)))
-            let yEnd = min(origH, Int(ceil(detectionBufferRect.maxY)))
-            let bandW = xEnd - xStart
-            let bandH = yEnd - yStart
-            guard bandW > 0, bandH > 0 else { continue }
-
-            let perDetectionBuilt = FurnitureFitOnnxStylePipeline.buildFullFieldLogitMask(
-                planes: planes,
-                protoW: protoW,
-                protoH: protoH,
-                detections: [detection],
-                modelSide: modelSide
-            )
-            var perDetectionLogits = perDetectionBuilt.logits
-            if currentModelInputVerticallyFlipped {
-                FurnitureFitOnnxStylePipeline.flipProtoFloatGridVertically(&perDetectionLogits, protoW: protoW, protoH: protoH)
-            }
-            guard let bandMask = debugUpsampledBandMaskFromLogits(
-                maskLogits: perDetectionLogits,
-                protoW: protoW,
-                protoH: protoH,
-                modelSide: modelSide,
-                origW: origW,
-                origH: origH,
-                xStart: xStart,
-                yStart: yStart,
-                bandW: bandW,
-                bandH: bandH,
-                usesLetterbox: currentModelUsesLetterbox
-            ) else { continue }
-
-            let maskColor = liveDebugMaskColor(
-                detectionIndex: detectionIndex,
-                isPrimary: detectionIndex == primaryIndex
-            )
-            for bandY in 0..<bandH {
-                let imageY = yStart + bandY
-                let bandRowOffset = bandY * bandW
-                for bandX in 0..<bandW where bandMask[bandRowOffset + bandX] != 0 {
-                    let isBoundaryPixel =
-                        bandX == 0 ||
-                        bandY == 0 ||
-                        bandX == bandW - 1 ||
-                        bandY == bandH - 1 ||
-                        bandMask[bandRowOffset + max(0, bandX - 1)] == 0 ||
-                        bandMask[bandRowOffset + min(bandW - 1, bandX + 1)] == 0 ||
-                        bandMask[max(0, bandY - 1) * bandW + bandX] == 0 ||
-                        bandMask[min(bandH - 1, bandY + 1) * bandW + bandX] == 0
-                    let pixelColor: (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) =
-                        isBoundaryPixel
-                        ? (255, 255, 255, detectionIndex == primaryIndex ? 255 : 220)
-                        : maskColor
-                    blendLiveDebugMaskPixel(
-                        outBase: outBase,
-                        bytesPerRow: bytesPerRow,
-                        x: xStart + bandX,
-                        y: imageY,
-                        color: pixelColor
-                    )
-                    paintedPixelCount += 1
-                }
-            }
-        }
-        }
-
-        if debugMode && paintedPixelCount == 0 {
-            logDebug("⚠️ Live debug mask overlay produced zero painted pixels")
-        }
-        return context.makeImage()
-    }
 
     /// `process_mask_native` composite: full-field matmul → GPU bilinear upsample →
     /// crop + threshold → optional morph close → CPU camera composite.
@@ -3498,94 +3196,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return ctx.makeImage()
     }
 
-    /// Draws bounding boxes for every detection whose mask logits are fused into the composite (expanded primary + overlapping contributors).
-    private func drawCompositeContributorBboxesOnComposedImage(
-        composed: CGImage,
-        compositeDetections: [FurnitureFitDetection],
-        primary: FurnitureFitDetection,
-        origW: Int,
-        origH: Int,
-        scaleX: Float,
-        scaleY: Float
-    ) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
+    // MARK: - Debug detection bbox overlay (burned into image)
+    // Color precedence: pin (yellow) > affinity (orange) > primary (red) > unselected (cyan).
+    // Primary itself is always red regardless of other memberships.
 
-        ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
-
-        func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
-            let scaledRect = self.bufferRect(
-                for: d,
-                imageWidth: origW,
-                imageHeight: origH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            let bx1 = Int(scaledRect.minX)
-            let by1 = Int(scaledRect.minY)
-            let bx2 = Int(scaledRect.maxX)
-            let by2 = Int(scaledRect.maxY)
-            let bw = max(1, bx2 - bx1)
-            let bh = max(1, by2 - by1)
-            return (bx1, by1, bw, bh)
-        }
-
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = .byTruncatingTail
-
-        for d in compositeDetections {
-            let r = bufferRect(for: d)
-            let cgRect = CGRect(
-                x: CGFloat(r.bx1),
-                y: CGFloat(origH - r.by1 - r.bh),
-                width: CGFloat(r.bw),
-                height: CGFloat(r.bh)
-            )
-            let isPrimaryChip = FurnitureFitIoU.calculate(d, primary) >= 0.92
-            ctx.setLineWidth(isPrimaryChip ? 4.0 : 2.5)
-            ctx.setStrokeColor((isPrimaryChip ? UIColor.systemRed : UIColor.systemOrange).cgColor)
-            ctx.stroke(cgRect)
-
-            let labelText = "\(displayClassName(d.classIdx)) \(String(format: "%.2f", d.confidence))"
-            let font = UIFont.systemFont(ofSize: 12, weight: isPrimaryChip ? .semibold : .regular)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: paragraphStyle
-            ]
-            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-            let line = CTLineCreateWithAttributedString(attributedString)
-            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-            let labelX = CGFloat(r.bx1)
-            let labelY = CGFloat(origH - r.by1 + 4)
-            let textBackgroundRect = CGRect(
-                x: labelX - 2,
-                y: labelY - textBounds.height - 2,
-                width: min(CGFloat(origW) - labelX + 2, textBounds.width + 8),
-                height: textBounds.height + 4
-            )
-            ctx.setFillColor(UIColor.black.withAlphaComponent(0.72).cgColor)
-            ctx.fill(textBackgroundRect)
-            ctx.saveGState()
-            ctx.textMatrix = .identity
-            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
-            ctx.setFillColor(UIColor.white.cgColor)
-            CTLineDraw(line, ctx)
-            ctx.restoreGState()
-        }
-
-        return ctx.makeImage()
-    }
-
-    private func renderOriginalFrameCGImage(
-        processBuffer: CVPixelBuffer,
+    private func drawDebugDetectionBboxes(
+        on baseImage: CGImage,
+        candidates: [FurnitureFitDetection],
+        primaryIndex: Int,
+        affinityGroupIndices: Set<Int>,
+        compositeIndices: Set<Int>,
         origW: Int,
         origH: Int
     ) -> CGImage? {
@@ -3599,83 +3219,47 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        let bytesPerRowOut = cgBitmapAllocatedBytesPerRow(ctx)
-
-        CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(processBuffer)?.assumingMemoryBound(to: UInt8.self),
-              let outData = ctx.data else { return nil }
-
-        let camRowBytes = CVPixelBufferGetBytesPerRow(processBuffer)
-        let outBase = outData.assumingMemoryBound(to: UInt8.self)
-
-        for y in 0..<origH {
-            let outRowPtr = outBase.advanced(by: y * bytesPerRowOut)
-            let origRowPtr = origBase.advanced(by: y * camRowBytes)
-            for x in 0..<origW {
-                let outOff = x * 4
-                let camOff = x * 4
-                outRowPtr[outOff + 0] = origRowPtr[camOff + 2]
-                outRowPtr[outOff + 1] = origRowPtr[camOff + 1]
-                outRowPtr[outOff + 2] = origRowPtr[camOff + 0]
-                outRowPtr[outOff + 3] = 255
-            }
-        }
-
-        return ctx.makeImage()
-    }
-
-    private func drawAllDetectionBboxesOnImage(
-        baseImage: CGImage,
-        candidates: [FurnitureFitDetection],
-        primaryIndex: Int,
-        origW: Int,
-        origH: Int,
-        scaleX: Float,
-        scaleY: Float
-    ) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-
         ctx.draw(baseImage, in: CGRect(x: 0, y: 0, width: origW, height: origH))
-
-        func bufferRect(for detection: FurnitureFitDetection) -> CGRect {
-            let scaledRect = self.bufferRect(
-                for: detection,
-                imageWidth: origW,
-                imageHeight: origH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            return CGRect(
-                x: scaledRect.minX,
-                y: CGFloat(origH) - scaledRect.maxY,
-                width: max(1, scaledRect.width),
-                height: max(1, scaledRect.height)
-            )
-        }
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
 
         for (index, detection) in candidates.enumerated() {
-            let rect = bufferRect(for: detection)
-            let isPrimary = index == primaryIndex
-            let strokeColor = isPrimary ? UIColor.systemRed : UIColor.systemCyan
-            ctx.setStrokeColor(strokeColor.cgColor)
-            ctx.setLineWidth(isPrimary ? 4.0 : 2.2)
-            ctx.stroke(rect)
+            let srcRect = bufferRect(
+                for: detection,
+                imageWidth: origW,
+                imageHeight: origH,
+                scaleX: 1,
+                scaleY: 1
+            )
+            let cgRect = CGRect(
+                x: srcRect.minX,
+                y: CGFloat(origH) - srcRect.maxY,
+                width: max(1, srcRect.width),
+                height: max(1, srcRect.height)
+            )
 
-            let labelText = "\(displayClassName(detection.classIdx)) [\(detection.classIdx)] \(String(format: "%.2f", detection.confidence))"
+            let isPrimary = index == primaryIndex
+            let role: (color: UIColor, width: CGFloat, tag: String)
+            if isPrimary {
+                role = (.systemRed, 4.0, "P")
+            } else if compositeIndices.contains(index) {
+                role = (.systemYellow, 2.5, "PIN")
+            } else if affinityGroupIndices.contains(index) {
+                role = (.systemOrange, 2.5, "AFF")
+            } else {
+                role = (UIColor.cyan.withAlphaComponent(0.7), 1.5, "")
+            }
+
+            ctx.setStrokeColor(role.color.cgColor)
+            ctx.setLineWidth(role.width)
+            ctx.stroke(cgRect)
+
+            let tag = role.tag.isEmpty ? "" : " \(role.tag)"
+            let labelText = "\(displayClassName(detection.classIdx)) [\(detection.classIdx)] \(String(format: "%.2f", detection.confidence))\(tag)"
+            let font = UIFont.systemFont(ofSize: isPrimary ? 13 : 11, weight: isPrimary ? .bold : .medium)
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: isPrimary ? 13 : 12, weight: isPrimary ? .semibold : .medium),
+                .font: font,
                 .foregroundColor: UIColor.white,
                 .paragraphStyle: paragraphStyle
             ]
@@ -3683,12 +3267,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let line = CTLineCreateWithAttributedString(attributedString)
             let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
             let labelRect = CGRect(
-                x: rect.minX,
-                y: max(0, rect.minY - textBounds.height - 6),
-                width: min(CGFloat(origW) - rect.minX, textBounds.width + 10),
+                x: cgRect.minX,
+                y: max(0, cgRect.minY - textBounds.height - 6),
+                width: min(CGFloat(origW) - cgRect.minX, textBounds.width + 10),
                 height: textBounds.height + 6
             )
-            ctx.setFillColor(UIColor.black.withAlphaComponent(0.72).cgColor)
+            ctx.setFillColor(role.color.withAlphaComponent(0.65).cgColor)
             ctx.fill(labelRect)
             ctx.saveGState()
             ctx.textMatrix = .identity
@@ -3698,87 +3282,36 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             ctx.restoreGState()
         }
 
+        drawDebugBboxLegend(ctx: ctx, origW: origW, origH: origH)
         return ctx.makeImage()
     }
 
-    /// ONNX-style stretch coords → buffer pixels; CGContext stroke uses bottom-left origin, so flip Y like STAGE 7 letterbox debug.
-    private func drawOnnxStyleDebugDetectionBboxesOnComposedImage(
-        composed: CGImage,
-        candidates: [FurnitureFitDetection],
-        primaryIndex: Int,
-        origW: Int,
-        origH: Int,
-        scaleX: Float,
-        scaleY: Float
-    ) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil,
-            width: origW,
-            height: origH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-
-        ctx.draw(composed, in: CGRect(x: 0, y: 0, width: origW, height: origH))
-
-        func bufferRect(for d: FurnitureFitDetection) -> (bx1: Int, by1: Int, bw: Int, bh: Int) {
-            let scaledRect = self.bufferRect(
-                for: d,
-                imageWidth: origW,
-                imageHeight: origH,
-                scaleX: scaleX,
-                scaleY: scaleY
-            )
-            let bx1 = Int(scaledRect.minX)
-            let by1 = Int(scaledRect.minY)
-            let bx2 = Int(scaledRect.maxX)
-            let by2 = Int(scaledRect.maxY)
-            let bw = max(1, bx2 - bx1)
-            let bh = max(1, by2 - by1)
-            return (bx1, by1, bw, bh)
+    private func drawDebugBboxLegend(ctx: CGContext, origW: Int, origH: Int) {
+        let lines = [
+            ("■ RED = primary/seed", UIColor.systemRed),
+            ("■ ORANGE = affinity overlap", UIColor.systemOrange),
+            ("■ YELLOW = explicit pin", UIColor.systemYellow),
+            ("■ CYAN = unselected", UIColor.cyan),
+        ]
+        let font = UIFont.systemFont(ofSize: 10, weight: .medium)
+        let lineHeight: CGFloat = 14
+        let padding: CGFloat = 6
+        let bgHeight = CGFloat(lines.count) * lineHeight + padding * 2
+        let bgWidth: CGFloat = 160
+        let bgRect = CGRect(x: 4, y: CGFloat(origH) - bgHeight - 4, width: bgWidth, height: bgHeight)
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+        ctx.fill(bgRect)
+        ctx.saveGState()
+        ctx.textMatrix = .identity
+        for (i, entry) in lines.enumerated() {
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: entry.1]
+            let attrStr = NSAttributedString(string: entry.0, attributes: attrs)
+            let ctLine = CTLineCreateWithAttributedString(attrStr)
+            let y = bgRect.minY + padding + CGFloat(lines.count - 1 - i) * lineHeight
+            ctx.textPosition = CGPoint(x: bgRect.minX + padding, y: y)
+            CTLineDraw(ctLine, ctx)
         }
-
-        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
-
-        for (index, d) in candidates.enumerated() {
-            let r = bufferRect(for: d)
-            let cgRect = CGRect(x: r.bx1, y: origH - r.by1 - r.bh, width: r.bw, height: r.bh)
-            let isPrimary = index == primaryIndex
-            ctx.setLineWidth(isPrimary ? 4.0 : 2.0)
-            ctx.setStrokeColor((isPrimary ? UIColor.red : UIColor.cyan).cgColor)
-            ctx.stroke(cgRect)
-
-            let plainName = classNames[d.classIdx] ?? "unknown"
-            let confidence = String(format: "%.2f", d.confidence)
-            let labelText = "\(plainName) [\(d.classIdx)] (\(confidence))"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: UIColor.white
-            ]
-            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-            let line = CTLineCreateWithAttributedString(attributedString)
-            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-            let labelX = CGFloat(r.bx1)
-            let labelY = CGFloat(origH - r.by1 + 4)
-            let textBackgroundRect = CGRect(
-                x: labelX - 2,
-                y: labelY - textBounds.height - 2,
-                width: textBounds.width + 4,
-                height: textBounds.height + 4
-            )
-            ctx.setFillColor((isPrimary ? UIColor.systemRed : UIColor.black).withAlphaComponent(0.7).cgColor)
-            ctx.fill(textBackgroundRect)
-            ctx.saveGState()
-            ctx.textMatrix = .identity
-            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
-            ctx.setFillColor(UIColor.white.cgColor)
-            CTLineDraw(line, ctx)
-            ctx.restoreGState()
-        }
-
-        return ctx.makeImage()
+        ctx.restoreGState()
     }
 
     private func squarePixelBufferAttributes() -> CFDictionary {
@@ -4082,10 +3615,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return UIImage(cgImage: image, scale: scale, orientation: .up)
     }
 
-    private func storeRTMDetLiveMaskCache(_ buildCache: RTMDetMaskBuildCache?, candidates: [FurnitureFitDetection]) {
+    private func storeRTMDetLiveMaskCache(
+        _ buildCache: RTMDetMaskBuildCache?,
+        candidates: [FurnitureFitDetection],
+        originalDecoderIndices: [Int] = []
+    ) {
         rtmDetLiveMaskCacheLock.lock()
         if let buildCache {
-            rtmDetLiveMaskCache = RTMDetLiveMaskCache(buildCache: buildCache, candidates: candidates)
+            rtmDetLiveMaskCache = RTMDetLiveMaskCache(
+                buildCache: buildCache,
+                candidates: candidates,
+                originalDecoderIndices: originalDecoderIndices
+            )
         } else {
             rtmDetLiveMaskCache = nil
         }
@@ -4110,17 +3651,61 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
         guard let primaryIdx = matchedIndices.first else { return false }
 
-        guard let cachedMaskImage = RTMDetImageInference.buildCachedMaskImage(
+        let primary = candidates[primaryIdx]
+        let bufW = cached.buildCache.sourceWidth
+        let bufH = cached.buildCache.sourceHeight
+        let isLandscape = bufW > bufH
+
+        if matchedCandidates.count > 1 {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.updateIndependentOverlayItemsFromCache(
+                    buildCache: cached.buildCache,
+                    matchedCandidates: matchedCandidates,
+                    matchedIndices: matchedIndices,
+                    candidates: candidates,
+                    rankedDecoderOffsets: cached.originalDecoderIndices,
+                    bufW: bufW,
+                    bufH: bufH,
+                    isLandscape: isLandscape
+                )
+                self.updateDetectionOverlay(
+                    candidates: candidates,
+                    selectedIndex: primaryIdx,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+                let maskHasForeground = self.overlayItems.contains { $0.imageView.image != nil }
+                self.commitFurnitureSizeAfterSegmentationMaskApplied(
+                    maskHasForeground: maskHasForeground,
+                    primaryMetricResult: nil,
+                    firstFrameMeters: nil,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    bboxWidthPx: Int(max(1, primary.w)),
+                    bboxHeightPx: Int(max(1, primary.h)),
+                    arDepthSnapshotAttached: arDepthSnapshot != nil
+                )
+            }
+
+            logRTMDetLiveFrameFooter(
+                frameStart: frameStart,
+                candidatesCount: candidates.count,
+                outputSummary: ["rtmdetCachedMask: independentOverlays=\(matchedIndices.count)"]
+            )
+            resetProcessingFlag()
+            return true
+        }
+
+        guard let cachedResult = RTMDetImageInference.buildCachedMaskWithGroupInfo(
             from: cached.buildCache,
             detections: matchedCandidates,
             debug: debugMode
         ) else { return false }
 
-        let primary = candidates[primaryIdx]
-        let bufW = cached.buildCache.sourceWidth
-        let bufH = cached.buildCache.sourceHeight
-        let isLandscape = bufW > bufH
-        var finalCGImage = cachedMaskImage.cgImage
+        var finalCGImage = cachedResult.image.cgImage
         let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
         if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
             finalCGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
@@ -4130,6 +3715,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             )
         }
 
+        if debugMode, let image = finalCGImage {
+            let decoderOffsets = cached.originalDecoderIndices
+            let affinityInCandidateSpace: Set<Int> = Set(
+                cachedResult.affinityGroupIndices.compactMap { unrankedIdx in
+                    decoderOffsets.firstIndex(of: unrankedIdx)
+                }
+            )
+            let compositeInCandidateSpace = Set(matchedIndices)
+            finalCGImage = drawDebugDetectionBboxes(
+                on: image,
+                candidates: candidates,
+                primaryIndex: primaryIdx,
+                affinityGroupIndices: affinityInCandidateSpace,
+                compositeIndices: compositeInCandidateSpace,
+                origW: image.width,
+                origH: image.height
+            ) ?? image
+        }
+
         let bboxWidthPx = Int(max(1, primary.w))
         let bboxHeightPx = Int(max(1, primary.h))
         let maskHasForeground = finalCGImage != nil
@@ -4137,6 +3741,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.clearIndependentOverlayItems()
+            self.maskImageView.isHidden = false
             self.primaryBboxInView = self.viewRect(
                 for: primary,
                 imageWidth: bufW,
@@ -4211,23 +3817,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 confidenceThreshold: rtmDetDecodeFloor,
                 classBlacklist: classBlacklist.ignoredIndices,
                 allowedClassIndices: nil,
-                // identifyOnly shows boxes only — request NO masks so the decoder skips the proto
-                // MLP + RGBA build entirely. segmentSelected may union up to 6; segmentPrimary needs 1.
-                maxMaskCount: {
-                    switch segmentationMode {
-                    case .identifyOnly: return 0
-                    case .segmentSelected: return 6
-                    case .segmentPrimary: return 1
-                    }
-                }(),
+                maxMaskCount: 0,
                 maxDetectionCount: nil,
-                // Per-detection masks only when we composite a cutout: pinned (segmentSelected) or the
-                // centered primary (segmentPrimary). identifyOnly skips the per-instance build.
-                buildInstanceMasks: segmentationMode != .identifyOnly,
-                cacheMaskBuildInputs: segmentationMode == .identifyOnly,
-                // segmentPrimary can keep an off-center target through auto-primary persistence, so
-                // every candidate needs its instance mask. The old center-only optimization caused
-                // valid furniture to lose its cutout whenever it drifted away from frame center.
+                // Never pre-build per-candidate instance masks in the live path — each one
+                // allocates a full-frame RGBA buffer (~3.5MB on 720×1280). Instead, always cache
+                // the lightweight raw mask planes (~100KB each) and build the selected mask on
+                // demand from cache via buildCachedMaskWithGroupInfo. This drops memory from
+                // N × 3.5MB to a single 3.5MB union buffer regardless of candidate count.
+                buildInstanceMasks: false,
+                cacheMaskBuildInputs: true,
                 restrictInstanceMasksToFrameCenter: false,
                 debug: debugMode
             )
@@ -4243,9 +3841,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     return lhs.element.confidence > rhs.element.confidence
                 }
             let candidates = rankedCandidates.map { $0.element }
-            let candidateMasks: [UIImage?] = rankedCandidates.map { pair in
-                pair.offset < result.instanceMaskImages.count ? result.instanceMaskImages[pair.offset] : nil
-            }
             if debugMode {
                 let summary = candidates.prefix(8).enumerated().map { index, detection in
                     "#\(index) cls=\(detection.classIdx) conf=\(String(format: "%.2f", detection.confidence)) bbox=(\(Int(detection.x - detection.w * 0.5)),\(Int(detection.y - detection.h * 0.5)),\(Int(detection.w))x\(Int(detection.h)))"
@@ -4286,8 +3881,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             // falls back to the single primaryIdx mask.
             var selectedMaskCompositeIndices: [Int] = []
 
+            let rankedDecoderOffsets = rankedCandidates.map { $0.offset }
+
+            storeRTMDetLiveMaskCache(
+                result.maskBuildCache,
+                candidates: candidates,
+                originalDecoderIndices: rankedDecoderOffsets
+            )
+
             if segmentationMode == .identifyOnly {
-                storeRTMDetLiveMaskCache(result.maskBuildCache, candidates: candidates)
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.maskImageView.image = nil
@@ -4372,13 +3974,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 primary = candidates[selectedIndex]
                 selectedMaskCompositeIndices = matchedIndices
                 if debugMode {
-                    let hasMask = primaryIdx < candidateMasks.count && candidateMasks[primaryIdx] != nil
-                    // [SEGMENT_DIAG] Disambiguate why a tapped item yields no cutout: per-instance mask
-                    // missing (index misalignment / decode), vs. quality reject / pin re-match handled below.
                     logDebug(
                         "🧠 [RTMDet segment] selected=\(matchedIndices) primary=\(primaryIdx) class=\(displayClassName(primary.classIdx)) " +
-                        "conf=\(String(format: "%.2f", primary.confidence)) mask=\(hasMask ? "yes" : "no") " +
-                        "candidateMasks=\(candidateMasks.count) candidates=\(candidates.count) " +
+                        "conf=\(String(format: "%.2f", primary.confidence)) " +
+                        "candidates=\(candidates.count) hasCache=\(result.maskBuildCache != nil) " +
                         "hasOverlayFallback=\(result.overlayMaskImage != nil)"
                     )
                 }
@@ -4407,19 +4006,66 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 )
             }
 
-            let isMultiSelectComposite = selectedMaskCompositeIndices.count > 1
-            let selectedMaskImage: UIImage?
-            if isMultiSelectComposite {
-                // Union the instance masks of every selected item into one cutout.
-                let selectedMasks = selectedMaskCompositeIndices.compactMap { index -> UIImage? in
-                    index < candidateMasks.count ? candidateMasks[index] : nil
+            if selectedMaskCompositeIndices.count > 1,
+               let buildCache = result.maskBuildCache {
+                let maskDetections = selectedMaskCompositeIndices.compactMap { idx in
+                    idx < candidates.count ? candidates[idx] : nil
                 }
-                selectedMaskImage = combinedInstanceMaskImage(selectedMasks) ?? result.overlayMaskImage
-            } else {
-                selectedMaskImage = primaryIdx < candidateMasks.count
-                    ? candidateMasks[primaryIdx]
-                    : result.overlayMaskImage
+                let bboxWidthPx = Int(max(1, primary.w))
+                let bboxHeightPx = Int(max(1, primary.h))
+                let arSnapAttached = arDepthSnapshot != nil
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.updateIndependentOverlayItemsFromCache(
+                        buildCache: buildCache,
+                        matchedCandidates: maskDetections,
+                        matchedIndices: selectedMaskCompositeIndices,
+                        candidates: candidates,
+                        rankedDecoderOffsets: rankedDecoderOffsets,
+                        bufW: bufW,
+                        bufH: bufH,
+                        isLandscape: isLandscape
+                    )
+                    self.updateDetectionOverlay(
+                        candidates: candidates,
+                        selectedIndex: primaryIdx,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        scaleX: 1,
+                        scaleY: 1
+                    )
+                    let maskHasForeground = self.overlayItems.contains { $0.imageView.image != nil }
+                    self.commitFurnitureSizeAfterSegmentationMaskApplied(
+                        maskHasForeground: maskHasForeground,
+                        primaryMetricResult: nil,
+                        firstFrameMeters: nil,
+                        imageWidth: bufW,
+                        imageHeight: bufH,
+                        bboxWidthPx: bboxWidthPx,
+                        bboxHeightPx: bboxHeightPx,
+                        arDepthSnapshotAttached: arSnapAttached
+                    )
+                }
+
+                logRTMDetLiveFrameFooter(
+                    frameStart: frameStart,
+                    candidatesCount: candidates.count,
+                    outputSummary: result.outputSummary + ["independentOverlays=\(maskDetections.count)"]
+                )
+                resetProcessingFlag()
+                return
             }
+
+            let maskDetections: [FurnitureFitDetection] = [primary]
+            let cachedMaskResult = result.maskBuildCache.flatMap {
+                RTMDetImageInference.buildCachedMaskWithGroupInfo(
+                    from: $0,
+                    detections: maskDetections,
+                    debug: debugMode
+                )
+            }
+            let selectedMaskImage: UIImage? = cachedMaskResult?.image ?? result.overlayMaskImage
             var finalCGImage = selectedMaskImage?.cgImage
             let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
             if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
@@ -4429,8 +4075,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     imageHeight: bufW
                 )
             }
-            // The single-mask quality gate can reject furniture that legitimately fills most of the
-            // frame, so keep it disabled for live RTMDet primary selection unless explicitly reenabled.
+            let isMultiSelectComposite = selectedMaskCompositeIndices.count > 1
             if Self.rtmDetSingleMaskQualityGateEnabled, let image = finalCGImage, !isMultiSelectComposite {
                 let quality = shouldAcceptRTMDetMask(image, for: primary)
                 if debugMode {
@@ -4441,6 +4086,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 }
             }
 
+            if debugMode, let image = finalCGImage {
+                let affinityInCandidateSpace: Set<Int>
+                if let groupIndices = cachedMaskResult?.affinityGroupIndices {
+                    affinityInCandidateSpace = Set(groupIndices.compactMap { unrankedIdx in
+                        rankedDecoderOffsets.firstIndex(of: unrankedIdx)
+                    })
+                } else {
+                    affinityInCandidateSpace = [primaryIdx]
+                }
+                let compositeInCandidateSpace = Set(selectedMaskCompositeIndices)
+                finalCGImage = drawDebugDetectionBboxes(
+                    on: image,
+                    candidates: candidates,
+                    primaryIndex: primaryIdx,
+                    affinityGroupIndices: affinityInCandidateSpace,
+                    compositeIndices: compositeInCandidateSpace,
+                    origW: image.width,
+                    origH: image.height
+                ) ?? image
+            }
+
             let bboxWidthPx = Int(max(1, primary.w))
             let bboxHeightPx = Int(max(1, primary.h))
             let maskHasForeground = finalCGImage != nil
@@ -4448,6 +4114,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.clearIndependentOverlayItems()
+                self.maskImageView.isHidden = false
                 self.primaryBboxInView = self.viewRect(
                     for: primary,
                     imageWidth: bufW,
@@ -5302,13 +4970,335 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         resolvedAssistedFurnitureHeightMeters(estimatedHeightMeters: lastAREstimatedHeightMeters)
     }
 
+    // MARK: - Independent multi-select overlays
+
+    private var usesIndependentOverlayItems: Bool {
+        segmentationMode == .segmentSelected && overlayItems.count > 1
+    }
+
+    private var hasVisibleSegmentationOverlay: Bool {
+        maskImageView.image != nil || overlayItems.contains { $0.imageView.image != nil }
+    }
+
+    private func makeOverlayItemImageView() -> UIImageView {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFill
+        imageView.backgroundColor = .clear
+        imageView.isOpaque = false
+        imageView.clipsToBounds = true
+        imageView.layer.masksToBounds = true
+        imageView.layer.minificationFilter = .linear
+        imageView.layer.magnificationFilter = .linear
+        imageView.isUserInteractionEnabled = false
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }
+
+    private func pinOverlayItemImageView(_ imageView: UIImageView) {
+        previewContainerView.insertSubview(imageView, aboveSubview: maskImageView)
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
+            imageView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor)
+        ])
+    }
+
+    private func clearIndependentOverlayItems() {
+        activeGestureOverlayItemIndex = nil
+        activePinchOverlayItemIndex = nil
+        for item in overlayItems {
+            item.imageView.removeFromSuperview()
+        }
+        overlayItems.removeAll()
+        maskImageView.isHidden = false
+    }
+
+    private struct PreparedOverlayMask {
+        let cgImage: CGImage?
+        let affinityGroupIndices: [Int]
+    }
+
+    private func buildSingleOverlayMaskFromCache(
+        buildCache: RTMDetMaskBuildCache,
+        detection: FurnitureFitDetection,
+        bufW: Int,
+        bufH: Int,
+        isLandscape: Bool,
+        candidates: [FurnitureFitDetection],
+        candidateIndex: Int,
+        matchedIndices: [Int],
+        rankedDecoderOffsets: [Int]
+    ) -> PreparedOverlayMask {
+        guard let cachedResult = RTMDetImageInference.buildCachedMaskWithGroupInfo(
+            from: buildCache,
+            detections: [detection],
+            debug: debugMode
+        ) else {
+            return PreparedOverlayMask(cgImage: nil, affinityGroupIndices: [])
+        }
+
+        var finalCGImage = cachedResult.image.cgImage
+        let needsRotate = isLandscape && !isUsingARCameraPath && lockedOrientation != .landscape
+        if needsRotate, let image = finalCGImage, let rotated = rotateCGImage90(image, clockwise: true) {
+            finalCGImage = FurnitureFitGeometry.clipCompositedImageToBounds(
+                rotated,
+                imageWidth: bufH,
+                imageHeight: bufW
+            )
+        }
+
+        if debugMode, let image = finalCGImage {
+            let affinityInCandidateSpace: Set<Int> = Set(
+                cachedResult.affinityGroupIndices.compactMap { unrankedIdx in
+                    rankedDecoderOffsets.firstIndex(of: unrankedIdx)
+                }
+            )
+            let compositeInCandidateSpace = Set(matchedIndices)
+            finalCGImage = drawDebugDetectionBboxes(
+                on: image,
+                candidates: candidates,
+                primaryIndex: candidateIndex,
+                affinityGroupIndices: affinityInCandidateSpace,
+                compositeIndices: compositeInCandidateSpace,
+                origW: image.width,
+                origH: image.height
+            ) ?? image
+        }
+
+        return PreparedOverlayMask(
+            cgImage: finalCGImage,
+            affinityGroupIndices: cachedResult.affinityGroupIndices
+        )
+    }
+
+    private func updateIndependentOverlayItemsFromCache(
+        buildCache: RTMDetMaskBuildCache,
+        matchedCandidates: [FurnitureFitDetection],
+        matchedIndices: [Int],
+        candidates: [FurnitureFitDetection],
+        rankedDecoderOffsets: [Int],
+        bufW: Int,
+        bufH: Int,
+        isLandscape: Bool
+    ) {
+        guard matchedCandidates.count > 1 else {
+            clearIndependentOverlayItems()
+            return
+        }
+
+        if !overlayItems.isEmpty {
+            // Regime A: once the user enters placement, furniture overlays are frozen.
+            // Camera/live detections are no longer authoritative for position or identity;
+            // user gestures are the only thing that moves these views until the session is cleared.
+            return
+        }
+
+        maskImageView.image = nil
+        maskImageView.isHidden = true
+        maskImageView.transform = .identity
+
+        for (itemIndex, detection) in matchedCandidates.enumerated() {
+            let candidateIndex = itemIndex < matchedIndices.count ? matchedIndices[itemIndex] : 0
+            let prepared = buildSingleOverlayMaskFromCache(
+                buildCache: buildCache,
+                detection: detection,
+                bufW: bufW,
+                bufH: bufH,
+                isLandscape: isLandscape,
+                candidates: candidates,
+                candidateIndex: candidateIndex,
+                matchedIndices: matchedIndices,
+                rankedDecoderOffsets: rankedDecoderOffsets
+            )
+
+            let imageView = makeOverlayItemImageView()
+            pinOverlayItemImageView(imageView)
+            if let finalCGImage = prepared.cgImage {
+                imageView.image = UIImage(cgImage: finalCGImage, scale: 1.0, orientation: .up)
+            } else {
+                imageView.image = nil
+            }
+
+            let item = OverlayItemState(
+                itemID: UUID(),
+                detection: detection,
+                imageView: imageView,
+                primaryBboxInView: viewRect(
+                    for: detection,
+                    imageWidth: bufW,
+                    imageHeight: bufH,
+                    scaleX: 1,
+                    scaleY: 1
+                )
+            )
+            overlayItems.append(item)
+        }
+
+        if let firstItem = overlayItems.first {
+            primaryBboxInView = firstItem.primaryBboxInView
+        }
+        applyAllIndependentOverlayItemTransforms()
+        detectionBBoxOverlayView.transform = .identity
+    }
+
+    private func applyOverlayItemTransform(at index: Int) {
+        guard index >= 0, index < overlayItems.count else { return }
+        let item = overlayItems[index]
+        let transformResult = FurnitureFitOverlayScaling.resolvedTransform(
+            currentLastAssistedLabel: overlayDebugLastAssistedLabel,
+            currentLastCombinedScale: overlayDebugLastCombined,
+            autoScaleFromRoom: autoScaleFromRoom,
+            autoScaleFromAR: autoScaleFromAR,
+            userPinchScale: item.pinchScale,
+            userPanOffset: item.panOffset,
+            userLockedAssistedOverlayScale: item.lockedAssistedScale,
+            arAssistedSizingEnabled: arAssistedSizingEnabled,
+            hasARKitAssistedSizingPayload: hasARKitAssistedSizingPayload,
+            arAssistedScaleValid: arAssistedScaleValid,
+            allowRoomProportionFallback: arAssistedSizingEnabled && !QualitySettings.supportsLiDARSceneDepth,
+            defaultStaticOverlayScale: defaultStaticOverlayScale,
+            minCombinedOverlayScale: minCombinedOverlayScale,
+            maxCombinedOverlayScale: maxCombinedOverlayScale,
+            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
+            overlayPresentationMode: overlayPresentationMode,
+            bounds: bounds,
+            primaryBboxInView: item.primaryBboxInView,
+            debugFreezeOverlayScale: debugMode
+        )
+        item.imageView.transform = transformResult.transform
+        if debugMode {
+            let c = item.imageView.center
+            logDebug(
+                "📐 [applyTransform] idx=\(index) pan=(\(String(format: "%.1f", item.panOffset.x)),\(String(format: "%.1f", item.panOffset.y))) " +
+                "pinch=\(String(format: "%.2f", item.pinchScale)) " +
+                "tx=\(String(format: "%.1f", transformResult.transform.tx)) ty=\(String(format: "%.1f", transformResult.transform.ty)) " +
+                "center=(\(String(format: "%.1f", c.x)),\(String(format: "%.1f", c.y)))"
+            )
+        }
+    }
+
+    private func applyAllIndependentOverlayItemTransforms() {
+        for index in overlayItems.indices {
+            applyOverlayItemTransform(at: index)
+        }
+    }
+
+    private func overlayItemIndex(atContainerPoint point: CGPoint) -> Int? {
+        guard usesIndependentOverlayItems else { return nil }
+        var frameOnlyCandidate: Int?
+        for index in overlayItems.indices.reversed() {
+            let item = overlayItems[index]
+            guard item.imageView.image != nil else { continue }
+            let hitRect = transformedOverlayHitRect(for: item)
+            let frameHit = hitRect.contains(point)
+            guard frameHit else {
+                logDebug(
+                    "👆 [overlayItemIndex] idx=\(index) point=(\(Int(point.x)),\(Int(point.y))) " +
+                    "frame=(\(Int(hitRect.minX)),\(Int(hitRect.minY)),\(Int(hitRect.width))x\(Int(hitRect.height))) " +
+                    "frameHit=false — skipped"
+                )
+                continue
+            }
+            let pointInItemView = item.imageView.convert(point, from: self)
+            let alphaHit = touchIsInsideVisibleMaskCluster(at: pointInItemView, imageView: item.imageView)
+            logDebug(
+                "👆 [overlayItemIndex] idx=\(index) point=(\(Int(point.x)),\(Int(point.y))) " +
+                "frame=(\(Int(hitRect.minX)),\(Int(hitRect.minY)),\(Int(hitRect.width))x\(Int(hitRect.height))) " +
+                "frameHit=true alphaHit=\(alphaHit)"
+            )
+            if alphaHit {
+                return index
+            }
+            if frameOnlyCandidate == nil {
+                frameOnlyCandidate = index
+            }
+        }
+        if let fallback = frameOnlyCandidate {
+            logDebug("👆 [overlayItemIndex] frame-only fallback idx=\(fallback)")
+            return fallback
+        }
+        logDebug("👆 [overlayItemIndex] miss point=(\(Int(point.x)),\(Int(point.y))) count=\(overlayItems.count)")
+        return nil
+    }
+
+    private func transformedOverlayHitRect(for item: OverlayItemState) -> CGRect {
+        let sourceRect = item.primaryBboxInView
+        let corners = [
+            sourceRect.origin,
+            CGPoint(x: sourceRect.maxX, y: sourceRect.minY),
+            CGPoint(x: sourceRect.minX, y: sourceRect.maxY),
+            CGPoint(x: sourceRect.maxX, y: sourceRect.maxY)
+        ].map { item.imageView.convert($0, to: self) }
+
+        let minX = corners.map(\.x).min() ?? sourceRect.minX
+        let maxX = corners.map(\.x).max() ?? sourceRect.maxX
+        let minY = corners.map(\.y).min() ?? sourceRect.minY
+        let maxY = corners.map(\.y).max() ?? sourceRect.maxY
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: max(1, maxX - minX),
+            height: max(1, maxY - minY)
+        ).insetBy(dx: -Self.maskFurniturePinchBoundsPadding, dy: -Self.maskFurniturePinchBoundsPadding)
+    }
+
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        guard !isShowingLiveVideoIdentifications else { return }
+
+        if usesIndependentOverlayItems {
+            guard overlayItems.contains(where: { $0.imageView.image != nil }) else {
+                logDebug("📐 [PINCH] ignored – no independent overlay images")
+                return
+            }
+
+            switch gesture.state {
+            case .began:
+                activePinchOverlayItemIndex = overlayItemIndex(atContainerPoint: gesture.location(in: self))
+                if let index = activePinchOverlayItemIndex {
+                    overlayItems[index].lockedAssistedScale = true
+                }
+                let point = gesture.location(in: self)
+                logDebug("📐 [PINCH] began independent item=\(activePinchOverlayItemIndex ?? -1) point=(\(Int(point.x)),\(Int(point.y)))")
+            case .changed:
+                if activePinchOverlayItemIndex == nil {
+                    activePinchOverlayItemIndex = overlayItemIndex(atContainerPoint: gesture.location(in: self))
+                    if let index = activePinchOverlayItemIndex {
+                        overlayItems[index].lockedAssistedScale = true
+                        logDebug("📐 [PINCH] recovered independent item=\(index)")
+                    }
+                }
+                guard let index = activePinchOverlayItemIndex, index < overlayItems.count else { return }
+                overlayItems[index].lockedAssistedScale = true
+                let newPinch = overlayItems[index].pinchScale * gesture.scale
+                overlayItems[index].pinchScale = min(max(newPinch, 0.25), 4.0)
+                applyOverlayItemTransform(at: index)
+                publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
+                gesture.scale = 1.0
+            case .ended, .cancelled:
+                if let index = activePinchOverlayItemIndex, index < overlayItems.count {
+                    if overlayItems[index].pinchScale > 0.92 && overlayItems[index].pinchScale < 1.08 {
+                        overlayItems[index].pinchScale = 1.0
+                        overlayItems[index].lockedAssistedScale = false
+                    } else {
+                        overlayItems[index].lockedAssistedScale = true
+                    }
+                    UIView.animate(withDuration: 0.2) {
+                        self.applyOverlayItemTransform(at: index)
+                    }
+                    publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
+                }
+                activePinchOverlayItemIndex = nil
+            default: break
+            }
+            return
+        }
+
         guard maskImageView.image != nil else {
             logDebug("📐 [PINCH] ignored – no mask image")
             return
         }
-        guard !isShowingLiveVideoIdentifications else { return }
 
         switch gesture.state {
         case .began:
@@ -5344,6 +5334,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Reset overlay scale back to its default for the current detection: keep room and AR-assisted
     /// scaling, but remove user pinch so the furniture returns to its \"real\" size.
     @objc private func handleResetScaleTapped() {
+        if usesIndependentOverlayItems {
+            for index in overlayItems.indices {
+                overlayItems[index].pinchScale = 1.0
+                overlayItems[index].panOffset = .zero
+                overlayItems[index].lockedAssistedScale = false
+            }
+            userPinchScale = 1.0
+            userPanOffset = .zero
+            userLockedAssistedOverlayScale = false
+            if debugMode {
+                logDebug("📐 [RESET] independent overlay scales reset")
+            }
+            UIView.animate(withDuration: 0.2) {
+                self.applyAllIndependentOverlayItemTransforms()
+            }
+            publishLatestFurnitureSizeEstimateForCurrentPinchIfNeeded()
+            return
+        }
+
         guard maskImageView.image != nil else { return }
         userPinchScale = 1.0
         userPanOffset = .zero
@@ -5358,8 +5367,46 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard maskImageView.image != nil else { return }
         guard !isShowingLiveVideoIdentifications else { return }
+
+        if usesIndependentOverlayItems {
+            let translation = gesture.translation(in: self)
+            switch gesture.state {
+            case .began:
+                activeGestureOverlayItemIndex = overlayItemIndex(atContainerPoint: gesture.location(in: self))
+                if let index = activeGestureOverlayItemIndex {
+                    logDebug(
+                        "📐 [PAN] began independent item=\(index) offset=(\(String(format: "%.1f", overlayItems[index].panOffset.x)), \(String(format: "%.1f", overlayItems[index].panOffset.y)))"
+                    )
+                } else {
+                    let point = gesture.location(in: self)
+                    logDebug("📐 [PAN] began independent item=-1 point=(\(Int(point.x)),\(Int(point.y)))")
+                }
+            case .changed:
+                if activeGestureOverlayItemIndex == nil {
+                    activeGestureOverlayItemIndex = overlayItemIndex(atContainerPoint: gesture.location(in: self))
+                    if let index = activeGestureOverlayItemIndex {
+                        logDebug("📐 [PAN] recovered independent item=\(index)")
+                    }
+                }
+                guard let index = activeGestureOverlayItemIndex, index < overlayItems.count else { return }
+                overlayItems[index].panOffset.x += translation.x
+                overlayItems[index].panOffset.y += translation.y
+                applyOverlayItemTransform(at: index)
+                gesture.setTranslation(.zero, in: self)
+            case .ended, .cancelled:
+                if let index = activeGestureOverlayItemIndex, index < overlayItems.count {
+                    logDebug(
+                        "📐 [PAN] ended independent item=\(index) offset=(\(String(format: "%.1f", overlayItems[index].panOffset.x)), \(String(format: "%.1f", overlayItems[index].panOffset.y)))"
+                    )
+                }
+                activeGestureOverlayItemIndex = nil
+            default: break
+            }
+            return
+        }
+
+        guard maskImageView.image != nil else { return }
 
         let translation = gesture.translation(in: self)
         switch gesture.state {
@@ -5454,6 +5501,29 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return false
         }
 
+        if usesIndependentOverlayItems {
+            guard overlayItems.contains(where: { $0.imageView.image != nil }) else {
+                logDebug("👆 [shouldReceive overlay gesture] No independent overlay images")
+                return false
+            }
+            if gestureRecognizer is UIPinchGestureRecognizer {
+                logDebug("👆 [shouldReceive overlay gesture] independent pinch accepted count=\(overlayItems.count)")
+                return true
+            }
+            if gestureRecognizer is UIPanGestureRecognizer {
+                if debugMode {
+                    logDebug("👆 [shouldReceive overlay gesture] independent pan accepted debug count=\(overlayItems.count)")
+                    return true
+                }
+                let touchPoint = touch.location(in: self)
+                let acceptsTouch = overlayItemIndex(atContainerPoint: touchPoint) != nil
+                logDebug("👆 [shouldReceive overlay gesture] independent pan accepts=\(acceptsTouch) point=(\(Int(touchPoint.x)),\(Int(touchPoint.y))) count=\(overlayItems.count)")
+                return acceptsTouch
+            }
+            logDebug("👆 [shouldReceive overlay gesture] independent rejected recognizer=\(type(of: gestureRecognizer))")
+            return false
+        }
+
         guard maskImageView.image != nil else {
             logDebug("👆 [shouldReceive overlay gesture] No mask image")
             return false
@@ -5464,8 +5534,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         if gestureRecognizer is UIPanGestureRecognizer {
+            if debugMode {
+                return true
+            }
             let touchPoint = touch.location(in: maskImageView)
-            let acceptsTouch = touchIsOnVisibleMaskFurniture(touchPoint)
+            let acceptsTouch = touchIsInsideVisibleMaskCluster(touchPoint)
             logDebug("👆 [shouldReceive overlay gesture] touchPoint=\(touchPoint) accepts=\(acceptsTouch) pan=true")
             return acceptsTouch
         }
@@ -5485,8 +5558,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private static let maskFurniturePinchBoundsPadding: CGFloat = 44
 
     private func touchIsOnVisibleMaskFurniture(_ pointInMaskView: CGPoint) -> Bool {
-        guard let image = maskImageView.image,
-              maskImageView.bounds.contains(pointInMaskView) else {
+        touchIsOnVisibleMaskFurniture(at: pointInMaskView, imageView: maskImageView)
+    }
+
+    private func touchIsOnVisibleMaskFurniture(at pointInMaskView: CGPoint, imageView: UIImageView) -> Bool {
+        guard let image = imageView.image,
+              imageView.bounds.contains(pointInMaskView) else {
             return false
         }
 
@@ -5500,19 +5577,23 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         ]
 
         return samplePoints.contains { samplePoint in
-            maskAlpha(atMaskViewPoint: samplePoint, image: image) >= Self.maskFurnitureHitAlphaThreshold
+            maskAlpha(atMaskViewPoint: samplePoint, image: image, imageView: imageView) >= Self.maskFurnitureHitAlphaThreshold
         }
     }
 
     private func touchIsInsideVisibleMaskCluster(_ pointInMaskView: CGPoint) -> Bool {
-        guard let image = maskImageView.image,
-              maskImageView.bounds.contains(pointInMaskView) else {
+        touchIsInsideVisibleMaskCluster(at: pointInMaskView, imageView: maskImageView)
+    }
+
+    private func touchIsInsideVisibleMaskCluster(at pointInMaskView: CGPoint, imageView: UIImageView) -> Bool {
+        guard let image = imageView.image,
+              imageView.bounds.contains(pointInMaskView) else {
             return false
         }
-        if touchIsOnVisibleMaskFurniture(pointInMaskView) {
+        if touchIsOnVisibleMaskFurniture(at: pointInMaskView, imageView: imageView) {
             return true
         }
-        guard let clusterBounds = visibleMaskClusterBoundsInMaskView(image: image) else {
+        guard let clusterBounds = visibleMaskClusterBoundsInMaskView(image: image, imageView: imageView) else {
             return false
         }
         return clusterBounds
@@ -5521,6 +5602,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func visibleMaskClusterBoundsInMaskView(image: UIImage) -> CGRect? {
+        visibleMaskClusterBoundsInMaskView(image: image, imageView: maskImageView)
+    }
+
+    private func visibleMaskClusterBoundsInMaskView(image: UIImage, imageView: UIImageView) -> CGRect? {
         guard let cgImage = image.cgImage,
               let data = cgImage.dataProvider?.data,
               let bytes = CFDataGetBytePtr(data) else {
@@ -5570,11 +5655,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             y: minY,
             width: maxX - minX + 1,
             height: maxY - minY + 1
-        ), image: image)
+        ), image: image, imageView: imageView)
     }
 
     private func maskViewRect(forImagePixelRect pixelRect: CGRect, image: UIImage) -> CGRect? {
-        let bounds = maskImageView.bounds
+        maskViewRect(forImagePixelRect: pixelRect, image: image, imageView: maskImageView)
+    }
+
+    private func maskViewRect(forImagePixelRect pixelRect: CGRect, image: UIImage, imageView: UIImageView) -> CGRect? {
+        let bounds = imageView.bounds
         let imageSize = image.size
         guard bounds.width > 0,
               bounds.height > 0,
@@ -5585,7 +5674,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         let scale: CGFloat
-        switch maskImageView.contentMode {
+        switch imageView.contentMode {
         case .scaleAspectFit:
             scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
         case .scaleAspectFill:
@@ -5624,8 +5713,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func maskAlpha(atMaskViewPoint point: CGPoint, image: UIImage) -> UInt8 {
+        maskAlpha(atMaskViewPoint: point, image: image, imageView: maskImageView)
+    }
+
+    private func maskAlpha(atMaskViewPoint point: CGPoint, image: UIImage, imageView: UIImageView) -> UInt8 {
         guard let cgImage = image.cgImage,
-              let pixelPoint = imagePixelPoint(forMaskViewPoint: point, image: image) else {
+              let pixelPoint = imagePixelPoint(forMaskViewPoint: point, image: image, imageView: imageView) else {
             return 0
         }
 
@@ -5660,7 +5753,11 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func imagePixelPoint(forMaskViewPoint point: CGPoint, image: UIImage) -> CGPoint? {
-        let bounds = maskImageView.bounds
+        imagePixelPoint(forMaskViewPoint: point, image: image, imageView: maskImageView)
+    }
+
+    private func imagePixelPoint(forMaskViewPoint point: CGPoint, image: UIImage, imageView: UIImageView) -> CGPoint? {
+        let bounds = imageView.bounds
         let imageSize = image.size
         guard bounds.width > 0,
               bounds.height > 0,
@@ -5670,7 +5767,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         let scale: CGFloat
-        switch maskImageView.contentMode {
+        switch imageView.contentMode {
         case .scaleAspectFit:
             scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
         case .scaleAspectFill:
@@ -5726,6 +5823,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 return maskImageView
             }
             logDebug("👆 [hitTest] OUTSIDE identify candidate bbox boxes=\(candidateBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
+            return nil
+        }
+
+        if usesIndependentOverlayItems {
+            if let itemIndex = overlayItemIndex(atContainerPoint: point) {
+                logDebug("👆 [hitTest] independent overlay item=\(itemIndex) - claiming touch for overlay gestures")
+                return super.hitTest(point, with: event)
+            }
+            logDebug("👆 [hitTest] outside independent overlay items point=(\(Int(point.x)),\(Int(point.y))) count=\(overlayItems.count) - pass through")
             return nil
         }
 
