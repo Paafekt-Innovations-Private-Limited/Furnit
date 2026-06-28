@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="1120" viewBox="0 0 860 1120" font-family="-apple-system, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="1320" viewBox="0 0 860 1320" font-family="-apple-system, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
@@ -38,88 +38,101 @@
   <path class="edge" d="M430,152 L430,186" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="186" width="360" height="52" class="box cam"/>
-    <text x="430" y="208" text-anchor="middle" class="bt">Frame gate</text>
-    <text x="430" y="226" text-anchor="middle" class="bs">drop every frame while inferring · take the freshest · no queue</text>
+    <rect x="250" y="186" width="360" height="72" class="box cam"/>
+    <text x="430" y="208" text-anchor="middle" class="bt">Frame gate + cadence</text>
+    <text x="430" y="226" text-anchor="middle" class="bs">~5fps (200ms interval) · skip if placement active or thermal-critical</text>
+    <text x="430" y="244" text-anchor="middle" class="bs">background/resign → stop · foreground → resume</text>
   </g>
-  <path class="edge" d="M430,238 L430,272" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,258 L430,292" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="272" width="360" height="52" class="box gpu"/>
-    <text x="430" y="294" text-anchor="middle" class="bt">Preprocess · resize → 640×640</text>
-    <text x="430" y="312" text-anchor="middle" class="bs">image input; BGR mean/std normalization lives in Core ML graph</text>
+    <rect x="250" y="292" width="360" height="52" class="box gpu"/>
+    <text x="430" y="314" text-anchor="middle" class="bt">Preprocess · resize → 640×640</text>
+    <text x="430" y="332" text-anchor="middle" class="bs">image input; BGR mean/std normalization lives in Core ML graph</text>
   </g>
-  <path class="edge" d="M430,324 L430,358" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,344 L430,378" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="358" width="360" height="52" class="box cpu"/>
-    <text x="430" y="380" text-anchor="middle" class="bt">Input provider</text>
-    <text x="430" y="398" text-anchor="middle" class="bs">prefer MLFeatureValue(image); multi-array fallback still supported</text>
+    <rect x="250" y="378" width="360" height="52" class="box cpu"/>
+    <text x="430" y="400" text-anchor="middle" class="bt">Input provider</text>
+    <text x="430" y="418" text-anchor="middle" class="bs">prefer MLFeatureValue(image); multi-array fallback still supported</text>
   </g>
-  <path class="edge" d="M430,410 L430,444" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,430 L430,464" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="444" width="360" height="52" class="box ane"/>
-    <text x="430" y="466" text-anchor="middle" class="bt">★ Core ML predict — RTMDet-Ins backbone</text>
-    <text x="430" y="484" text-anchor="middle" class="bs">.mlmodelc · computeUnits .cpuAndNeuralEngine (ANE)</text>
+    <rect x="250" y="464" width="360" height="52" class="box ane"/>
+    <text x="430" y="486" text-anchor="middle" class="bt">★ Core ML predict — RTMDet-Ins backbone</text>
+    <text x="430" y="504" text-anchor="middle" class="bs">.mlmodelc · computeUnits .cpuAndNeuralEngine (ANE)</text>
   </g>
-  <path class="edge" d="M430,496 L430,530" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,516 L430,550" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="530" width="360" height="52" class="box data"/>
-    <text x="430" y="552" text-anchor="middle" class="bt">Raw heads</text>
-    <text x="430" y="570" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} levels · + mask_feat [1,8,160,160]</text>
+    <rect x="250" y="550" width="360" height="52" class="box data"/>
+    <text x="430" y="572" text-anchor="middle" class="bt">Raw heads</text>
+    <text x="430" y="590" text-anchor="middle" class="bs">cls / bbox / kernel × {80,40,20} levels · + mask_feat [1,8,160,160]</text>
   </g>
-  <path class="edge" d="M430,582 L430,616" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,602 L430,636" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="616" width="360" height="52" class="box cpu"/>
-    <text x="430" y="638" text-anchor="middle" class="bt">Decode candidates</text>
-    <text x="430" y="656" text-anchor="middle" class="bs">per cell: argmax(logits) → sigmoid once · ≥ threshold</text>
+    <rect x="250" y="636" width="360" height="52" class="box cpu"/>
+    <text x="430" y="658" text-anchor="middle" class="bt">Decode candidates</text>
+    <text x="430" y="676" text-anchor="middle" class="bs">per cell: argmax(logits) → sigmoid once · ≥ threshold</text>
   </g>
-  <path class="edge" d="M430,668 L430,702" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,688 L430,722" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="702" width="360" height="52" class="box cpu"/>
-    <text x="430" y="724" text-anchor="middle" class="bt">Confidence-first class-aware NMS</text>
-    <text x="430" y="742" text-anchor="middle" class="bs">IoU suppression; maxDetectionCount optional (nil = uncapped)</text>
+    <rect x="250" y="722" width="360" height="52" class="box cpu"/>
+    <text x="430" y="744" text-anchor="middle" class="bt">Confidence-first class-aware NMS</text>
+    <text x="430" y="762" text-anchor="middle" class="bs">IoU suppression; maxDetectionCount optional (nil = uncapped)</text>
   </g>
-  <path class="edge" d="M430,754 L430,788" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,774 L430,808" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="788" width="360" height="52" class="box cpu"/>
-    <text x="430" y="810" text-anchor="middle" class="bt">☆ Mask head · buildRawMaskPlane</text>
-    <text x="430" y="828" text-anchor="middle" class="bs">dynamic-conv MLP (10→8→8→1) per 80×80 px · scalar CPU</text>
+    <rect x="250" y="808" width="360" height="52" class="box cpu"/>
+    <text x="430" y="830" text-anchor="middle" class="bt">☆ Mask head · buildRawMaskPlane</text>
+    <text x="430" y="848" text-anchor="middle" class="bs">dynamic-conv MLP (10→8→8→1) per 80×80 px · scalar CPU</text>
   </g>
-  <text x="624" y="818" class="star">← un-accelerated</text>
-  <path class="edge" d="M430,840 L430,874" marker-end="url(#arrow)"/>
+  <text x="624" y="838" class="star">← un-accelerated</text>
+  <path class="edge" d="M430,860 L430,894" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="874" width="360" height="52" class="box cpu"/>
-    <text x="430" y="896" text-anchor="middle" class="bt">Mask affinity + pixel union</text>
-    <text x="430" y="914" text-anchor="middle" class="bs">class-agnostic piece grouping; opaque RGBA union avoids fog</text>
+    <rect x="250" y="894" width="360" height="52" class="box cpu"/>
+    <text x="430" y="916" text-anchor="middle" class="bt">Mask affinity + pixel union</text>
+    <text x="430" y="934" text-anchor="middle" class="bs">class-agnostic piece grouping; opaque RGBA union avoids fog</text>
   </g>
-  <path class="edge" d="M430,926 L430,960" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,946 L430,980" marker-end="url(#arrow)"/>
 
   <g>
-    <rect x="250" y="960" width="360" height="52" class="box disp"/>
-    <text x="430" y="982" text-anchor="middle" class="bt">Display + gestures</text>
-    <text x="430" y="1000" text-anchor="middle" class="bs">cutout over room; overlay owns two-finger pinch when mask is visible</text>
+    <rect x="250" y="980" width="360" height="72" class="box disp"/>
+    <text x="430" y="1002" text-anchor="middle" class="bt">Display + gestures</text>
+    <text x="430" y="1020" text-anchor="middle" class="bs">cutout over room; overlay owns two-finger pinch when mask is visible</text>
+    <text x="430" y="1038" text-anchor="middle" class="bs">multi-select: independent overlays with per-item pan/pinch (Regime A)</text>
   </g>
 
   <!-- loop arrow back to frame gate -->
-  <path class="edge" d="M250,986 C120,986 120,212 250,212" marker-end="url(#arrow)"/>
-  <text x="96" y="600" transform="rotate(-90 96,600)" class="sub">live loop (back-pressure: one inference at a time)</text>
+  <path class="edge" d="M250,1016 C110,1016 110,222 250,222" marker-end="url(#arrow)"/>
+  <text x="86" y="620" transform="rotate(-90 86,620)" class="sub">live loop (~5fps · back-pressure: one inference at a time)</text>
 
   <!-- modes side note -->
   <g>
-    <rect x="648" y="616" width="186" height="138" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
-    <text x="660" y="638" class="bt" font-size="13">Modes (gate masks)</text>
-    <text x="660" y="662" class="bs">identifyOnly — boxes only;</text>
-    <text x="660" y="678" class="bs">mask build gated off</text>
-    <text x="660" y="700" class="bs">segmentPrimary — centered</text>
-    <text x="660" y="716" class="bs">detection only (1 mask)</text>
-    <text x="660" y="738" class="bs">segmentSelected — fused</text>
-    <text x="660" y="754" class="bs">pin masks + affinity graph</text>
+    <rect x="648" y="636" width="186" height="158" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="660" y="658" class="bt" font-size="13">Modes (gate masks)</text>
+    <text x="660" y="682" class="bs">identifyOnly — boxes only;</text>
+    <text x="660" y="698" class="bs">mask build gated off</text>
+    <text x="660" y="720" class="bs">segmentPrimary — centered</text>
+    <text x="660" y="736" class="bs">detection only (1 mask)</text>
+    <text x="660" y="758" class="bs">segmentSelected — fused</text>
+    <text x="660" y="774" class="bs">pin masks + affinity graph</text>
+    <text x="660" y="790" class="bs" font-style="italic">fullVideo — cluster bboxes</text>
+  </g>
+
+  <!-- thermal side note -->
+  <g>
+    <rect x="648" y="186" width="186" height="108" rx="10" fill="#fff5f5" stroke="#fca5a5"/>
+    <text x="660" y="208" class="bt" font-size="13">Thermal backoff</text>
+    <text x="660" y="230" class="bs">nominal/fair → 200ms</text>
+    <text x="660" y="246" class="bs">serious → 400ms</text>
+    <text x="660" y="262" class="bs">critical → pause inference</text>
+    <text x="660" y="282" class="bs">placement → skip entirely</text>
   </g>
 </svg>

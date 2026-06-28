@@ -315,9 +315,74 @@ Enable via `QualitySettings.debugMode`. Shows:
 
 ---
 
+### 9. Full Video Mode — Cluster Bounding Boxes
+
+**Problem:** Full video mode displayed individual detection bounding boxes. Users tapped one piece of a multi-piece object and only that piece was selected.
+
+**Solution:** The mask affinity graph (always built when raw mask planes exist) groups detections into clusters. Full video mode now:
+- Displays a single union bounding box per cluster with combined labels.
+- Tapping any cluster bbox selects all its members for segmentation.
+- Selection highlights apply to entire clusters.
+
+```swift
+let clusters = buildClustersFromAffinityGraph(graph, rankedCandidates: candidates)
+// Each cluster's union bbox is displayed; tap selects all members
+```
+
+---
+
+### 10. Independent Per-Furniture Movement (Multi-Select)
+
+**Problem:** When multiple furniture items were selected and segmented, they could not be moved independently — all items were stacked or moved together.
+
+**Solution:** Regime A (freeze on selection):
+- Each selected item gets an independent overlay with a stable `UUID`.
+- Items are frozen at selection — not updated from live detections.
+- Hit-testing uses each item's **transformed bounding box** (not original position) with alpha fallback.
+- Z-order tie-breaking: topmost (last-added) item wins.
+- `.began`-miss recovery in `handlePan`: re-resolve if `activeGestureOverlayItemIndex` is nil at `.changed`.
+- `overlayPresentationMode: .measuredPlacement` keeps items at detected positions (no auto-centering).
+- `resolvedTransform` preserves user pan/pinch even when `debugFreezeOverlayScale` is true.
+
+---
+
+### 11. Debug Bounding Box Drawing
+
+**Problem:** After switching from YOLOe to RTMDet, debug bounding box visualization was lost.
+
+**Solution:** Single `drawDebugDetectionBboxes` helper called from both live and cached segmentation paths. 4-color scheme:
+- **Red** — primary detection
+- **Orange** — affinity group member (pulled in by mask overlap)
+- **Yellow** — explicit pin (user-selected)
+- **Cyan** — unselected candidate
+
+Boxes and a burned-in legend are drawn in image space on the CGImage. UIView bbox overlay is suppressed in debug to avoid double-draw.
+
+---
+
+### 12. Thermal & Cadence Management
+
+**Problem:** Live RTMDet ran back-to-back (~100% duty cycle), causing high thermal load. Inference continued during placement (results discarded) and when the app was backgrounded.
+
+**Solution:**
+
+1. **5fps cadence**: `rtmdetLiveTargetInterval = 200ms` creates idle gaps between inference runs.
+2. **Placement pause**: `inferencePausedForPlacement` skips inference entirely when independent overlay items are active. Camera preview stays alive.
+3. **Background pause**: Observers on `willResignActiveNotification` / `didBecomeActiveNotification` stop/resume the capture session.
+4. **Thermal backoff**: Observes `thermalStateDidChangeNotification`:
+   - `.nominal` / `.fair` → 200ms (~5fps)
+   - `.serious` → 400ms (~2.5fps)
+   - `.critical` → pause inference entirely, keep last boxes
+5. **Camera ownership**: 150ms settle delay between AR pause and AVCapture start reduces `-17281` contention.
+
+The cadence interval (`rtmdetLiveTargetInterval`) is a single tunable constant adjusted at runtime by thermal backoff.
+
+---
+
 ## Key Files
 
 - `FurnitureFitView.swift` - Main pipeline implementation
+- `FurnitureFitOverlayScaling.swift` - Overlay transform computation (pan, pinch, assisted scale)
 - `CompositeKernels.metal` - GPU compositing shaders
 - `MetalMaskLogic.swift` - Metal buffer management
 - `classes.json` (per language in `Furnit/xx.lproj/`) — class ID → display name for bbox labels; `Bundle` loads the file for the active locale

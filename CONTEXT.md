@@ -30,6 +30,18 @@ Current behavior:
 - Object-piece fusion is class-agnostic mask-affinity grouping, not chair-specific logic.
 - Settings image scan should mirror the live RTMDet path: uncapped detections, fused instance masks, and pixel-level RGBA union.
 - In room viewers, the room layer also owns pinch zoom; when a segmented cutout is visible, Furniture Fit must capture two-finger touches so pinch scales the furniture cluster instead of the room camera.
+- **Full video mode** displays cluster-level bounding boxes (union bbox per affinity group) rather than individual detection boxes; tapping a cluster selects all its members.
+- **Multi-select placement** (Regime A): when multiple items are selected and segmented, each gets an independent overlay with stable `UUID` identity. Items are frozen at selection, not updated from live detections. Each can be independently panned/pinched.
+- **Onboarding hints**: priority-ordered, one-at-a-time transient hints with `@AppStorage` persistence. A "?" button shows all eligible hints on demand. Hints are mode-scoped (browsing, furnitureFit, fullVideo).
+- **Toolbar dimensions**: W×H×D room measurements displayed directly in the navigation bar when available (replaces the old ruler icon and floating chip).
+
+### Thermal & Cadence Management
+
+- **Live cadence**: RTMDet live-identify runs at ~5fps (`rtmdetLiveTargetInterval = 200ms`), creating genuine idle gaps between inference runs.
+- **Placement pause**: inference is fully skipped (not just results-discarded) when independent overlay items are active (`inferencePausedForPlacement`). Camera preview stays alive.
+- **Background pause**: `UIApplication.willResignActiveNotification` stops the capture session; `didBecomeActiveNotification` resumes it.
+- **Thermal backoff**: observes `ProcessInfo.thermalStateDidChangeNotification`. Maps `.nominal/.fair` → 200ms, `.serious` → 400ms, `.critical` → pause inference entirely while keeping last-displayed boxes.
+- **Camera ownership**: AR↔AVCapture transitions use a 150ms settle delay after AR pause before AVCapture starts, reducing `-17281` contention errors.
 
 ### SHARP Room Flow
 

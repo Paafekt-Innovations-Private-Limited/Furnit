@@ -1,5 +1,62 @@
 # Furnit iOS - Recent Changes
 
+## Thermal & Cadence Management
+
+### Live Cadence Throttle
+- **Location**: `FurnitureFitView.swift`
+- RTMDet live-identify cadence raised to ~5fps (`rtmdetLiveTargetInterval = 200ms`) with genuine idle gaps between inference runs, reducing sustained thermal load vs the previous ~100% duty cycle.
+
+### Placement Inference Pause
+- **Location**: `FurnitureFitView.swift`
+- When independent overlay items are placed (multi-select segmentation), inference is fully skipped — not just results-discarded. Camera preview stays alive for the room view.
+
+### Background / Resign-Active Pause
+- **Location**: `FurnitureFitView.swift`
+- Added observers for `UIApplication.willResignActiveNotification` / `didBecomeActiveNotification` to stop/resume the capture session on app lifecycle transitions.
+
+### Thermal-State Backoff
+- **Location**: `FurnitureFitView.swift`
+- Observes `ProcessInfo.thermalStateDidChangeNotification`. Maps thermal state to cadence:
+  - `.nominal` / `.fair` → 200ms (~5fps)
+  - `.serious` → 400ms (~2.5fps)
+  - `.critical` → pause inference entirely, keep last-displayed boxes
+
+### Camera Ownership (AR↔AVCapture)
+- **Location**: `FurnitureFitView.swift`
+- Added 150ms settle delay between AR session pause and AVCapture session start in `startClassicCameraPathIfNeeded`, reducing `-17281` camera contention errors.
+
+## Cluster Bounding Boxes in Full Video Mode
+- **Location**: `FurnitureFitView.swift`, `RTMDetImageInference.swift`
+- Full video mode now displays union bounding boxes per affinity-group cluster instead of individual detection boxes.
+- Tapping a cluster bbox selects all its members for segmentation.
+- Mask affinity graph is always built when raw mask planes exist (not gated on `buildInstanceMasks`).
+
+## Independent Per-Furniture Movement (Multi-Select)
+- **Location**: `FurnitureFitView.swift`, `FurnitureFitOverlayScaling.swift`
+- When multiple furniture items are selected and segmented, each gets an independent overlay with stable `UUID` identity (Regime A: freeze on selection).
+- Items can be independently panned and pinched without affecting each other.
+- Uses `.measuredPlacement` to keep items at detected positions (no auto-centering).
+- Debug mode preserves user gestures while freezing only assisted scale.
+
+## Onboarding Hint System
+- **Location**: `SharpRoomView.swift`, `SettingsView.swift`
+- Priority-ordered, one-at-a-time transient hints with `@AppStorage` persistence flags.
+- Four hints: brain icon (browsing), pinch resize (furnitureFit), AR sizing (furnitureFit), pick another (furnitureFit/fullVideo).
+- Mode-scoped eligibility: browsing → B only, furnitureFit → A′/E/G, fullVideo → G only.
+- "?" button in toolbar shows all eligible hints on demand for 5 seconds.
+- "Reset onboarding hints" debug option in Settings.
+
+## Toolbar Room Dimensions
+- **Location**: `SharpRoomView.swift`
+- Replaced ruler icon in the navigation bar with compact W×H×D measurement text when `activeRoomMetersDimensions` is available.
+- Removed the floating `roomDimensionsChipOverlay` (now integrated into toolbar).
+
+## Debug Bounding Box Drawing
+- **Location**: `FurnitureFitView.swift`, `RTMDetImageInference.swift`
+- Single `drawDebugDetectionBboxes` helper with 4-color scheme: red (primary), orange (affinity group), yellow (explicit pin), cyan (unselected).
+- Burns bounding boxes + legend into the CGImage in image space.
+- Called from both live and cached segmentation paths.
+
 ## RTMDet / Furniture Fit Diagnostics
 
 ### Settings Image Scan Parity
