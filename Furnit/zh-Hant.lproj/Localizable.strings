@@ -126,6 +126,7 @@
 "settings.currentValue" = "目前值：";
 "settings.account" = "帳戶";
 "settings.loggedInAs" = "已登入為";
+"settings.showTipsAgain" = "再次顯示提示";
 "settings.legal" = "法律";
 "settings.privacyPolicy" = "隱私政策";
 "settings.termsOfService" = "服務條款";

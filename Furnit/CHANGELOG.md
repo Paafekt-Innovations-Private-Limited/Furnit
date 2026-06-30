@@ -44,7 +44,7 @@
 - Four hints: brain icon (browsing), pinch resize (furnitureFit), AR sizing (furnitureFit), pick another (furnitureFit/fullVideo).
 - Mode-scoped eligibility: browsing → B only, furnitureFit → A′/E/G, fullVideo → G only.
 - "?" button in toolbar shows all eligible hints on demand for 5 seconds.
-- "Reset onboarding hints" debug option in Settings.
+- "Show tips again" option in Settings lets users restore onboarding hints.
 
 ## Toolbar Room Dimensions
 - **Location**: `SharpRoomView.swift`

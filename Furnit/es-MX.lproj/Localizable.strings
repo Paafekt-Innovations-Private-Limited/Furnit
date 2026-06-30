@@ -126,6 +126,7 @@
 "settings.currentValue" = "Valor actual:";
 "settings.account" = "Cuenta";
 "settings.loggedInAs" = "Conectado como";
+"settings.showTipsAgain" = "Mostrar consejos de nuevo";
 "settings.legal" = "Legal";
 "settings.privacyPolicy" = "Política de Privacidad";
 "settings.termsOfService" = "Términos de Servicio";

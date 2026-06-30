@@ -133,6 +133,7 @@
 "settings.currentValue" = "Current value:";
 "settings.account" = "Account";
 "settings.loggedInAs" = "Logged in as";
+"settings.showTipsAgain" = "Show tips again";
 "settings.legal" = "Legal";
 "settings.privacyPolicy" = "Privacy Policy";
 "settings.termsOfService" = "Terms of Service";

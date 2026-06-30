@@ -40,4 +40,10 @@ echo
 echo "Next:"
 echo "1. Open Xcode."
 echo "2. Ensure $SRC_BASENAME is included in the Furnit app target resources."
-echo "3. Run the app, open Settings -> Image scan, and switch backend to RTMDet-Ins-m."
+if [ "$SRC_BASENAME" = "rtmdet-ins-m.mlpackage" ]; then
+  echo "3. The standard path/name is already mapped to the RTMDetModel On-Demand Resources tag in Furnit.xcodeproj."
+  echo "4. Run the app, open Settings -> Image scan, and switch backend to RTMDet-Ins-m."
+else
+  echo "3. In the File inspector, add the On-Demand Resources tag: RTMDetModel for this custom filename."
+  echo "4. Run the app, open Settings -> Image scan, and switch backend to RTMDet-Ins-m."
+fi

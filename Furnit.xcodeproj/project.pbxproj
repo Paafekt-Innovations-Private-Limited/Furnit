@@ -37,6 +37,11 @@
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		616C17B12F27CD5A00A10214 /* Exceptions for "Furnit" folder in "Furnit" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			assetTagsByRelativePath = {
+				"Models/RTMDet/rtmdet-ins-m.mlpackage" = (
+					RTMDetModel,
+				);
+			};
 			membershipExceptions = (
 				diagrams/README.md,
 				docs/README.md,
@@ -209,6 +214,10 @@
 				ml,
 				bn,
 				ar,
+			);
+			knownAssetTags = (
+				SHARPModel,
+				RTMDetModel,
 			);
 			mainGroup = 045F5BD02E6D302900C5585D;
 			minimizedProjectReferenceProxies = 1;

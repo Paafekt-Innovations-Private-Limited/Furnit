@@ -134,6 +134,7 @@ enum L10n {
         static let currentValue = "settings.currentValue".localized
         static let account = "settings.account".localized
         static let loggedInAs = "settings.loggedInAs".localized
+        static let showTipsAgain = "settings.showTipsAgain".localized
         static let legal = "settings.legal".localized
         static let privacyPolicy = "settings.privacyPolicy".localized
         static let termsOfService = "settings.termsOfService".localized

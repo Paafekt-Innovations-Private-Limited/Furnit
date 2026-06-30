@@ -315,7 +315,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "arrow.counterclockwise")
                                 .foregroundColor(.blue)
-                            Text("Reset onboarding hints")
+                            Text(L10n.Settings.showTipsAgain)
                         }
                     }
 

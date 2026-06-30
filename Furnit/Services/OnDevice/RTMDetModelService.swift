@@ -11,10 +11,18 @@ final class RTMDetModelService: ObservableObject {
 
     static let shared = RTMDetModelService()
 
+    private static let rtmdetModelTag = "RTMDetModel"
+
     @Published var model: MLModel?
     @Published var isLoadingModel = false
+    @Published var isDownloadingResources = false
+    @Published var downloadProgress: Double = 0.0
+    @Published var resourcesAvailable = false
     @Published var statusMessage = ""
     @Published var loadErrorMessage: String?
+
+    private var resourceRequest: NSBundleResourceRequest?
+    private var progressObservation: NSKeyValueObservation?
 
     private init() {}
 
@@ -48,10 +56,18 @@ final class RTMDetModelService: ObservableObject {
     }
 
     func releaseResources() {
+        progressObservation?.invalidate()
+        progressObservation = nil
+        resourceRequest?.endAccessingResources()
+        resourceRequest = nil
         model = nil
         isLoadingModel = false
+        isDownloadingResources = false
+        downloadProgress = 0.0
+        resourcesAvailable = false
         statusMessage = ""
         loadErrorMessage = nil
+        logDebug("RTMDet-Ins-m released model + ODR resources")
     }
 
     private func loadModel() async {
@@ -66,6 +82,8 @@ final class RTMDetModelService: ObservableObject {
 
         var failures: [String] = []
 
+        await ensureODRReadyIfNeeded()
+
         for computeUnits in Self.computeUnitFallbacks {
             let config = MLModelConfiguration()
             config.computeUnits = computeUnits
@@ -76,7 +94,13 @@ final class RTMDetModelService: ObservableObject {
                         continue
                     }
                     do {
-                        model = try MLModel(contentsOf: url, configuration: config)
+                        let loadURL: URL
+                        if ext == "mlpackage" {
+                            loadURL = try await MLModel.compileModel(at: url)
+                        } else {
+                            loadURL = url
+                        }
+                        model = try MLModel(contentsOf: loadURL, configuration: config)
                         let location = subdirectory ?? "<bundle-root>"
                         statusMessage = "RTMDet-Ins-m ready (\(computeUnits.debugName), \(location))"
                         logDebug("RTMDet-Ins-m loaded with computeUnits=\(computeUnits.debugName) location=\(location)")
@@ -94,6 +118,73 @@ final class RTMDetModelService: ObservableObject {
         loadErrorMessage = failures.isEmpty
             ? "Add a bundled Core ML model named rtmdet-ins-m.mlpackage or rtmdet-ins-m.mlmodelc to the iOS target, preferably under Furnit/Models/RTMDet/."
             : failures.joined(separator: "\n")
+    }
+
+    private func ensureODRReadyIfNeeded() async {
+        if hasBundledModelURL() {
+            logDebug("RTMDet-Ins-m embedded in app bundle — skipping ODR")
+            return
+        }
+
+        if resourcesAvailable { return }
+
+        let tags: Set<String> = [Self.rtmdetModelTag]
+        let conditionalRequest = NSBundleResourceRequest(tags: tags)
+        conditionalRequest.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+        if await conditionalRequest.conditionallyBeginAccessingResources() {
+            resourceRequest = conditionalRequest
+            resourcesAvailable = true
+            downloadProgress = 1.0
+            logDebug("RTMDet-Ins-m ODR resources available (conditionallyBeginAccessingResources)")
+            return
+        }
+
+        guard !isDownloadingResources else {
+            while isDownloadingResources {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            return
+        }
+
+        isDownloadingResources = true
+        downloadProgress = 0.0
+        statusMessage = "Downloading RTMDet-Ins-m model..."
+        defer { isDownloadingResources = false }
+
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+        progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            Task { @MainActor in
+                self?.downloadProgress = progress.fractionCompleted
+                let percent = Int(progress.fractionCompleted * 100)
+                self?.statusMessage = "Downloading RTMDet-Ins-m model... \(percent)%"
+            }
+        }
+
+        do {
+            try await FurnitODRBeginAccessing.beginAccessingResources(request)
+            resourceRequest = request
+            resourcesAvailable = true
+            downloadProgress = 1.0
+            statusMessage = "RTMDet-Ins-m download complete"
+            logDebug("RTMDet-Ins-m ODR download complete")
+        } catch {
+            progressObservation?.invalidate()
+            progressObservation = nil
+            downloadProgress = 0.0
+            logDebug("RTMDet-Ins-m ODR download failed: \(error)")
+        }
+    }
+
+    private func hasBundledModelURL() -> Bool {
+        for subdirectory in Self.bundledSubdirectories {
+            for (name, ext) in Self.bundledCandidates {
+                if Bundle.main.url(forResource: name, withExtension: ext, subdirectory: subdirectory) != nil {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 

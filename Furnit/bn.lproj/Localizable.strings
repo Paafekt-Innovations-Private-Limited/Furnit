@@ -126,6 +126,7 @@
 "settings.currentValue" = "বর্তমান মান:";
 "settings.account" = "অ্যাকাউন্ট";
 "settings.loggedInAs" = "লগইন করা হয়েছে";
+"settings.showTipsAgain" = "টিপস আবার দেখান";
 "settings.legal" = "আইনি";
 "settings.privacyPolicy" = "গোপনীয়তা নীতি";
 "settings.termsOfService" = "সেবার শর্তাবলী";

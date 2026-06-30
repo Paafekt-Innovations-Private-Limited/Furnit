@@ -126,6 +126,7 @@
 "settings.currentValue" = "தற்போதைய மதிப்பு:";
 "settings.account" = "கணக்கு";
 "settings.loggedInAs" = "உள்நுழைந்தவர்";
+"settings.showTipsAgain" = "உதவிக்குறிப்புகளை மீண்டும் காட்டு";
 "settings.legal" = "சட்டபூர்வமான";
 "settings.privacyPolicy" = "தனியுரிமைக் கொள்கை";
 "settings.termsOfService" = "சேவை விதிமுறைகள்";

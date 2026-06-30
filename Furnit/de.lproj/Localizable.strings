@@ -126,6 +126,7 @@
 "settings.currentValue" = "Aktueller Wert:";
 "settings.account" = "Konto";
 "settings.loggedInAs" = "Angemeldet als";
+"settings.showTipsAgain" = "Tipps erneut anzeigen";
 "settings.legal" = "Rechtliches";
 "settings.privacyPolicy" = "Datenschutzrichtlinie";
 "settings.termsOfService" = "Nutzungsbedingungen";

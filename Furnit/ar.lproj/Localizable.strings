@@ -126,6 +126,7 @@
 "settings.currentValue" = "القيمة الحالية:";
 "settings.account" = "الحساب";
 "settings.loggedInAs" = "مسجل الدخول كـ";
+"settings.showTipsAgain" = "إظهار النصائح مرة أخرى";
 "settings.legal" = "قانوني";
 "settings.privacyPolicy" = "سياسة الخصوصية";
 "settings.termsOfService" = "شروط الخدمة";
