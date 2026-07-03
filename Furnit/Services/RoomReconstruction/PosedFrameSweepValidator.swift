@@ -5,41 +5,89 @@ import UIKit
 struct PosedFrameSweepValidationResult: Sendable {
     let singleFramePLYURL: URL
     let overlayPLYURL: URL?
+    let firstFrameIndex: Int
+    let secondFrameIndex: Int?
+    let firstFrameDiagnostics: PosedFrameSweepFrameDiagnostics
+    let secondFrameDiagnostics: PosedFrameSweepFrameDiagnostics?
     let firstFramePointCount: Int
     let secondFramePointCount: Int
     let matchedPointCount: Int
     let medianAlignmentOffsetMeters: Float?
     let p90AlignmentOffsetMeters: Float?
+    let medianPlaneResidualMeters: Float?
+    let p90PlaneResidualMeters: Float?
+    let planeNormalAngleDegrees: Float?
+    let planeOffsetMeters: Float?
     let firstFrameDepthMedianMeters: Float?
 
     var summary: String {
         let medianCM = medianAlignmentOffsetMeters.map { String(format: "%.1fcm", $0 * 100) } ?? "n/a"
         let p90CM = p90AlignmentOffsetMeters.map { String(format: "%.1fcm", $0 * 100) } ?? "n/a"
+        let planeMedianCM = medianPlaneResidualMeters.map { String(format: "%.1fcm", $0 * 100) } ?? "n/a"
+        let planeP90CM = p90PlaneResidualMeters.map { String(format: "%.1fcm", $0 * 100) } ?? "n/a"
+        let planeAngle = planeNormalAngleDegrees.map { String(format: "%.1fdeg", $0) } ?? "n/a"
+        let planeOffsetCM = planeOffsetMeters.map { String(format: "%.1fcm", $0 * 100) } ?? "n/a"
         let depthM = firstFrameDepthMedianMeters.map { String(format: "%.2fm", $0) } ?? "n/a"
-        return "points=(\(firstFramePointCount),\(secondFramePointCount)) matched=\(matchedPointCount) medianOffset=\(medianCM) p90=\(p90CM) firstDepthMedian=\(depthM)"
+        let secondIndex = secondFrameIndex.map(String.init) ?? "n/a"
+        return "frames=(\(firstFrameIndex),\(secondIndex)) points=(\(firstFramePointCount),\(secondFramePointCount)) matched=\(matchedPointCount) nnMedian=\(medianCM) nnP90=\(p90CM) planeMedian=\(planeMedianCM) planeP90=\(planeP90CM) planeAngle=\(planeAngle) planeOffset=\(planeOffsetCM) firstDepthMedian=\(depthM) first={\(firstFrameDiagnostics.summary)} second={\(secondFrameDiagnostics?.summary ?? "n/a")}"
     }
 }
 
-/// Debug gate for posed-frame capture: proves depth units, intrinsics scaling, and ARKit pose convention.
+struct PosedFrameSweepFrameDiagnostics: Sendable {
+    let frameID: String
+    let trackingState: String
+    let rgbResolution: PixelResolution
+    let depthResolution: PixelResolution
+    let fxDepth: Float
+    let fyDepth: Float
+    let cxDepth: Float
+    let cyDepth: Float
+
+    var summary: String {
+        "id=\(frameID) tracking=\(trackingState) rgb=\(rgbResolution.width)x\(rgbResolution.height) depth=\(depthResolution.width)x\(depthResolution.height) Kd=(fx:\(String(format: "%.2f", fxDepth)), fy:\(String(format: "%.2f", fyDepth)), cx:\(String(format: "%.2f", cxDepth)), cy:\(String(format: "%.2f", cyDepth)))"
+    }
+}
+
+/// Debug gate for posed-frame capture.
+///
+/// Contract:
+/// - Nearest-neighbor offsets catch gross overlap failures.
+/// - Plane residual, plane angle, and plane offset catch double-wall drift, normal-depth offsets,
+///   and plane orientation mismatches.
+/// - The overlay PLY is the visual truth gate. Pure in-plane tangential slide can look clean to
+///   both nearest-neighbor and plane metrics, so the overlay must be inspected before trusting
+///   the capture convention.
 enum PosedFrameSweepValidator {
     static func validate(
         sessionURL: URL,
+        firstFrameIndex: Int = 0,
+        secondFrameIndex requestedSecondFrameIndex: Int? = nil,
         stride: Int = 4,
         minimumConfidenceRawValue: UInt8 = 1,
         maxAlignmentDistanceMeters: Float = 0.25
     ) throws -> PosedFrameSweepValidationResult {
         let manifest = try loadManifest(sessionURL: sessionURL)
-        guard let first = manifest.frames.first else {
+        guard !manifest.frames.isEmpty else {
             throw PosedFrameSweepValidationError.noFrames
         }
+        let first = try frame(at: firstFrameIndex, in: manifest.frames)
+        let resolvedSecondFrameIndex = requestedSecondFrameIndex ?? defaultSecondFrameIndex(
+            firstFrameIndex: firstFrameIndex,
+            frameCount: manifest.frames.count
+        )
+        if resolvedSecondFrameIndex == firstFrameIndex {
+            throw PosedFrameSweepValidationError.duplicateFrameIndex(firstFrameIndex)
+        }
 
-        let firstPoints = try unprojectFrame(
+        let firstUnprojection = try unprojectFrame(
             first,
             sessionURL: sessionURL,
             stride: stride,
             minimumConfidenceRawValue: minimumConfidenceRawValue,
             debugColorOverride: nil
         )
+        let firstPoints = firstUnprojection.points
+        logDebug("[PosedFrameSweepValidator] first frame diagnostics: \(firstUnprojection.diagnostics.summary)")
         let singlePLY = sessionURL.appendingPathComponent("debug_single_frame_world.ply")
         try writePLY(points: firstPoints, to: singlePLY)
 
@@ -48,16 +96,24 @@ enum PosedFrameSweepValidator {
         var matchedCount = 0
         var medianOffset: Float?
         var p90Offset: Float?
+        var medianPlaneResidual: Float?
+        var p90PlaneResidual: Float?
+        var planeNormalAngle: Float?
+        var planeOffset: Float?
+        var secondDiagnostics: PosedFrameSweepFrameDiagnostics?
 
-        if manifest.frames.count >= 2 {
-            let second = manifest.frames[1]
-            let secondPoints = try unprojectFrame(
+        if let resolvedSecondFrameIndex {
+            let second = try frame(at: resolvedSecondFrameIndex, in: manifest.frames)
+            let secondUnprojection = try unprojectFrame(
                 second,
                 sessionURL: sessionURL,
                 stride: stride,
                 minimumConfidenceRawValue: minimumConfidenceRawValue,
                 debugColorOverride: DebugRGB(r: 0, g: 220, b: 255)
             )
+            let secondPoints = secondUnprojection.points
+            secondDiagnostics = secondUnprojection.diagnostics
+            logDebug("[PosedFrameSweepValidator] second frame diagnostics: \(secondUnprojection.diagnostics.summary)")
             let firstOverlayPoints = firstPoints.map {
                 DebugPoint(position: $0.position, color: DebugRGB(r: 255, g: 64, b: 64), depthMeters: $0.depthMeters)
             }
@@ -73,18 +129,37 @@ enum PosedFrameSweepValidator {
             matchedCount = stats.count
             medianOffset = stats.median
             p90Offset = stats.p90
+
+            let planeStats = planeResidualStats(
+                first: firstPoints,
+                second: secondPoints
+            )
+            medianPlaneResidual = planeStats.medianResidual
+            p90PlaneResidual = planeStats.p90Residual
+            planeNormalAngle = planeStats.normalAngleDegrees
+            planeOffset = planeStats.planeOffsetMeters
         }
 
-        return PosedFrameSweepValidationResult(
+        let result = PosedFrameSweepValidationResult(
             singleFramePLYURL: singlePLY,
             overlayPLYURL: overlayPLY,
+            firstFrameIndex: firstFrameIndex,
+            secondFrameIndex: resolvedSecondFrameIndex,
+            firstFrameDiagnostics: firstUnprojection.diagnostics,
+            secondFrameDiagnostics: secondDiagnostics,
             firstFramePointCount: firstPoints.count,
             secondFramePointCount: secondCount,
             matchedPointCount: matchedCount,
             medianAlignmentOffsetMeters: medianOffset,
             p90AlignmentOffsetMeters: p90Offset,
+            medianPlaneResidualMeters: medianPlaneResidual,
+            p90PlaneResidualMeters: p90PlaneResidual,
+            planeNormalAngleDegrees: planeNormalAngle,
+            planeOffsetMeters: planeOffset,
             firstFrameDepthMedianMeters: median(firstPoints.map(\.depthMeters))
         )
+        logDebug("[PosedFrameSweepValidator] validation summary: \(result.summary)")
+        return result
     }
 
     private static func loadManifest(sessionURL: URL) throws -> PosedFrameSweepManifest {
@@ -95,13 +170,31 @@ enum PosedFrameSweepValidator {
         return try decoder.decode(PosedFrameSweepManifest.self, from: data)
     }
 
+    private static func frame(at index: Int, in frames: [PosedFrameRecord]) throws -> PosedFrameRecord {
+        guard frames.indices.contains(index) else {
+            throw PosedFrameSweepValidationError.invalidFrameIndex(index: index, frameCount: frames.count)
+        }
+        return frames[index]
+    }
+
+    private static func defaultSecondFrameIndex(firstFrameIndex: Int, frameCount: Int) -> Int? {
+        guard frameCount >= 2 else { return nil }
+        if firstFrameIndex + 1 < frameCount {
+            return firstFrameIndex + 1
+        }
+        if firstFrameIndex > 0 {
+            return firstFrameIndex - 1
+        }
+        return nil
+    }
+
     private static func unprojectFrame(
         _ frame: PosedFrameRecord,
         sessionURL: URL,
         stride: Int,
         minimumConfidenceRawValue: UInt8,
         debugColorOverride: DebugRGB?
-    ) throws -> [DebugPoint] {
+    ) throws -> UnprojectedFrame {
         guard frame.trackingState == "normal" else {
             throw PosedFrameSweepValidationError.nonNormalTracking(frame.trackingState)
         }
@@ -151,7 +244,19 @@ enum PosedFrameSweepValidator {
                 )
             }
         }
-        return points
+        return UnprojectedFrame(
+            points: points,
+            diagnostics: PosedFrameSweepFrameDiagnostics(
+                frameID: frame.id,
+                trackingState: frame.trackingState,
+                rgbResolution: frame.rgbResolution,
+                depthResolution: depthResolution,
+                fxDepth: intrinsics.fxDepth,
+                fyDepth: intrinsics.fyDepth,
+                cxDepth: intrinsics.cxDepth,
+                cyDepth: intrinsics.cyDepth
+            )
+        )
     }
 
     private static func alignmentStats(
@@ -194,6 +299,115 @@ enum PosedFrameSweepValidator {
             percentile(sorted: distances, fraction: 0.5),
             percentile(sorted: distances, fraction: 0.9)
         )
+    }
+
+    private static func planeResidualStats(
+        first: [DebugPoint],
+        second: [DebugPoint],
+        inlierThresholdMeters: Float = 0.04
+    ) -> PlaneResidualStats {
+        guard let firstPlane = dominantPlane(points: first.map(\.position), inlierThresholdMeters: inlierThresholdMeters),
+              let secondPlane = dominantPlane(points: second.map(\.position), inlierThresholdMeters: inlierThresholdMeters) else {
+            return PlaneResidualStats.empty
+        }
+
+        var alignedSecondPlane = secondPlane
+        if dot(firstPlane.normal, alignedSecondPlane.normal) < 0 {
+            alignedSecondPlane = alignedSecondPlane.flipped()
+        }
+
+        let normalDot = min(Float(1), max(Float(-1), dot(firstPlane.normal, alignedSecondPlane.normal)))
+        let normalAngleDegrees = acos(normalDot) * 180 / .pi
+        let planeOffsetMeters = abs(dot(firstPlane.normal, alignedSecondPlane.point - firstPlane.point))
+
+        var residuals: [Float] = []
+        residuals.reserveCapacity(firstPlane.inlierCount + alignedSecondPlane.inlierCount)
+        for point in first.map(\.position) where abs(firstPlane.signedDistance(to: point)) <= inlierThresholdMeters {
+            residuals.append(abs(alignedSecondPlane.signedDistance(to: point)))
+        }
+        for point in second.map(\.position) where abs(alignedSecondPlane.signedDistance(to: point)) <= inlierThresholdMeters {
+            residuals.append(abs(firstPlane.signedDistance(to: point)))
+        }
+
+        residuals.sort()
+        return PlaneResidualStats(
+            medianResidual: percentile(sorted: residuals, fraction: 0.5),
+            p90Residual: percentile(sorted: residuals, fraction: 0.9),
+            normalAngleDegrees: normalAngleDegrees,
+            planeOffsetMeters: planeOffsetMeters
+        )
+    }
+
+    private static func dominantPlane(
+        points: [SIMD3<Float>],
+        inlierThresholdMeters: Float
+    ) -> DebugPlane? {
+        let finitePoints = points.filter { point in
+            point.x.isFinite && point.y.isFinite && point.z.isFinite
+        }
+        guard finitePoints.count >= 12 else { return nil }
+
+        let sample = deterministicSample(finitePoints, maxCount: 6_000)
+        guard sample.count >= 12 else { return nil }
+
+        var rng = DeterministicRNG(seed: UInt64(sample.count) &* 1_103_515_245 &+ 12_345)
+        let iterations = min(180, max(48, sample.count / 30))
+        var bestPlane: DebugPlane?
+        var bestInlierCount = 0
+        var bestMeanResidual = Float.greatestFiniteMagnitude
+
+        for _ in 0..<iterations {
+            let i0 = rng.nextIndex(upperBound: sample.count)
+            var i1 = rng.nextIndex(upperBound: sample.count)
+            var i2 = rng.nextIndex(upperBound: sample.count)
+            if i1 == i0 { i1 = (i1 + 1) % sample.count }
+            if i2 == i0 || i2 == i1 { i2 = (i2 + 2) % sample.count }
+
+            let a = sample[i0]
+            let b = sample[i1]
+            let c = sample[i2]
+            let rawNormal = cross(b - a, c - a)
+            let normalLength = simd_length(rawNormal)
+            guard normalLength > 1e-4 else { continue }
+
+            let normal = rawNormal / normalLength
+            let plane = DebugPlane(normal: normal, point: a, inlierCount: 0)
+            var inlierCount = 0
+            var residualSum: Float = 0
+
+            for point in sample {
+                let residual = abs(plane.signedDistance(to: point))
+                if residual <= inlierThresholdMeters {
+                    inlierCount += 1
+                    residualSum += residual
+                }
+            }
+
+            guard inlierCount > 0 else { continue }
+            let meanResidual = residualSum / Float(inlierCount)
+            if inlierCount > bestInlierCount || (inlierCount == bestInlierCount && meanResidual < bestMeanResidual) {
+                bestPlane = DebugPlane(normal: normal, point: a, inlierCount: inlierCount)
+                bestInlierCount = inlierCount
+                bestMeanResidual = meanResidual
+            }
+        }
+
+        guard let bestPlane, bestInlierCount >= max(12, sample.count / 50) else {
+            return nil
+        }
+        return bestPlane
+    }
+
+    private static func deterministicSample(_ points: [SIMD3<Float>], maxCount: Int) -> [SIMD3<Float>] {
+        guard points.count > maxCount else { return points }
+        let step = Float(points.count - 1) / Float(max(maxCount - 1, 1))
+        var sample: [SIMD3<Float>] = []
+        sample.reserveCapacity(maxCount)
+        for index in 0..<maxCount {
+            let sourceIndex = min(points.count - 1, Int((Float(index) * step).rounded()))
+            sample.append(points[sourceIndex])
+        }
+        return sample
     }
 
     private static func readFloat32Grid(url: URL, resolution: PixelResolution) throws -> [Float] {
@@ -272,6 +486,11 @@ enum PosedFrameSweepValidator {
     }
 }
 
+private struct UnprojectedFrame {
+    let points: [DebugPoint]
+    let diagnostics: PosedFrameSweepFrameDiagnostics
+}
+
 private struct Intrinsics {
     let fxDepth: Float
     let fyDepth: Float
@@ -325,6 +544,47 @@ private struct VoxelKey: Hashable {
     }
 }
 
+private struct DebugPlane {
+    let normal: SIMD3<Float>
+    let point: SIMD3<Float>
+    let inlierCount: Int
+
+    func signedDistance(to point: SIMD3<Float>) -> Float {
+        dot(normal, point - self.point)
+    }
+
+    func flipped() -> DebugPlane {
+        DebugPlane(normal: -normal, point: point, inlierCount: inlierCount)
+    }
+}
+
+private struct PlaneResidualStats {
+    let medianResidual: Float?
+    let p90Residual: Float?
+    let normalAngleDegrees: Float?
+    let planeOffsetMeters: Float?
+
+    static let empty = PlaneResidualStats(
+        medianResidual: nil,
+        p90Residual: nil,
+        normalAngleDegrees: nil,
+        planeOffsetMeters: nil
+    )
+}
+
+private struct DeterministicRNG {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        self.state = seed == 0 ? 0x9E37_79B9_7F4A_7C15 : seed
+    }
+
+    mutating func nextIndex(upperBound: Int) -> Int {
+        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        return Int(state % UInt64(upperBound))
+    }
+}
+
 private final class RGBSampler {
     private let width: Int
     private let height: Int
@@ -363,12 +623,14 @@ private final class RGBSampler {
     }
 }
 
-enum PosedFrameSweepValidationError: LocalizedError {
+enum PosedFrameSweepValidationError: LocalizedError, Equatable {
     case noFrames
     case missingDepth
     case nonNormalTracking(String)
     case invalidGridSize(String)
     case invalidMatrix
+    case invalidFrameIndex(index: Int, frameCount: Int)
+    case duplicateFrameIndex(Int)
 
     var errorDescription: String? {
         switch self {
@@ -382,6 +644,10 @@ enum PosedFrameSweepValidationError: LocalizedError {
             return "Grid file has an invalid byte size: \(name)."
         case .invalidMatrix:
             return "Pose or intrinsics matrix has invalid shape."
+        case .invalidFrameIndex(let index, let frameCount):
+            return "Frame index \(index) is outside the sweep frame range 0..<\(frameCount)."
+        case .duplicateFrameIndex(let index):
+            return "Validator needs two different frames; frame \(index) was selected twice."
         }
     }
 }
