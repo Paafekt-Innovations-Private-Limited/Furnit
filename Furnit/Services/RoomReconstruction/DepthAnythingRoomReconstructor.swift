@@ -163,7 +163,7 @@ final class DepthAnythingRoomReconstructor {
                 let z = -(depthMax - depth)
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
-                let v = 1.0 - Float(row) / Float(max(imageHeight - 1, 1))
+                let v = Float(row) / Float(max(imageHeight - 1, 1))
 
                 vertexData.appendFloat32LE(x)
                 vertexData.appendFloat32LE(y)

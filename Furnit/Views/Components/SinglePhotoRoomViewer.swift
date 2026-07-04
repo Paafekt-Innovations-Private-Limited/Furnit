@@ -907,6 +907,11 @@ struct SinglePhotoRoomView: View {
     @State private var showSharpProgressOverlay = false
     @State private var singlePhotoGenerationStatus: String?
     @State private var usdzViewerDestination: USDZViewerDestination?
+    @State private var depthAnythingSaveInProgress = false
+    @State private var depthAnythingSavedDestinationIDs: Set<UUID> = []
+    @State private var showDepthAnythingSaveAlert = false
+    @State private var depthAnythingSaveAlertMessage = ""
+    @State private var depthAnythingSaveWasSuccessful = false
     @Environment(\.dismiss) private var dismiss
     @AppStorage("roomGeneration.implementation")
     private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
@@ -1381,14 +1386,17 @@ struct SinglePhotoRoomView: View {
             }
         }
         .navigationDestination(item: $usdzViewerDestination) { destination in
-            ModelViewerView(model: destination.model)
-                .onAppear {
-                    logDebug("🚀 [Navigation] ModelViewerView (Depth Anything USDZ)")
-                    logDebug("   \(destination.summary)")
-                }
-                .onDisappear {
-                    usdzViewerDestination = nil
-                }
+            ZStack {
+                ModelViewerView(model: destination.model)
+                depthAnythingSaveOverlay(destination: destination)
+            }
+            .onAppear {
+                logDebug("🚀 [Navigation] ModelViewerView (Depth Anything USDZ)")
+                logDebug("   \(destination.summary)")
+            }
+            .onDisappear {
+                usdzViewerDestination = nil
+            }
         }
         // Success alert for API-generated PLY file
         .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
@@ -1403,6 +1411,15 @@ struct SinglePhotoRoomView: View {
             } else {
                 Text(L10n.PhotoRoom.saveSuccessMessage)
             }
+        }
+        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showDepthAnythingSaveAlert) {
+            Button(L10n.Common.ok, role: .cancel) {
+                if depthAnythingSaveWasSuccessful {
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                }
+            }
+        } message: {
+            Text(depthAnythingSaveAlertMessage)
         }
         // Handle generation errors
         .alert(L10n.PhotoRoom.generationFailedTitle, isPresented: Binding(
@@ -1436,6 +1453,130 @@ struct SinglePhotoRoomView: View {
         } else {
             dismiss()
         }
+    }
+
+    private func depthAnythingSaveOverlay(destination: USDZViewerDestination) -> some View {
+        let isSaved = depthAnythingSavedDestinationIDs.contains(destination.id)
+
+        return VStack {
+            Spacer()
+            Button {
+                saveDepthAnythingRoom(destination)
+            } label: {
+                HStack(spacing: 8) {
+                    if depthAnythingSaveInProgress {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                            .scaleEffect(0.75)
+                    } else {
+                        Image(systemName: isSaved ? "checkmark.circle.fill" : "square.and.arrow.down")
+                    }
+                    Text(isSaved ? L10n.RoomViewer.roomSavedAlertTitle : L10n.Common.save)
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 18)
+                .frame(height: 46)
+                .background(
+                    Capsule()
+                        .fill(isSaved ? Color.green.opacity(0.9) : Color.blue.opacity(0.92))
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 7, x: 0, y: 3)
+            }
+            .disabled(depthAnythingSaveInProgress || isSaved)
+            .padding(.bottom, 30)
+        }
+        .zIndex(100_000)
+    }
+
+    private func saveDepthAnythingRoom(_ destination: USDZViewerDestination) {
+        guard !depthAnythingSaveInProgress else { return }
+        guard let sourceURL = destination.model.cachedResolvedURL ?? destination.model.temporaryURL else {
+            depthAnythingSaveWasSuccessful = false
+            depthAnythingSaveAlertMessage = "Could not find generated room file."
+            showDepthAnythingSaveAlert = true
+            return
+        }
+
+        depthAnythingSaveInProgress = true
+        let destinationID = destination.id
+        let metadata = Self.depthAnythingSavedRoomMetadata(for: destination.model)
+
+        Task {
+            do {
+                let savedURL = try await Task.detached(priority: .userInitiated) {
+                    try Self.copyDepthAnythingRoomToSavedRooms(sourceURL: sourceURL, metadata: metadata)
+                }.value
+                await MainActor.run {
+                    depthAnythingSaveInProgress = false
+                    depthAnythingSavedDestinationIDs.insert(destinationID)
+                    depthAnythingSaveWasSuccessful = true
+                    depthAnythingSaveAlertMessage = L10n.RoomViewer.roomSavedAlertTitle
+                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
+                    showDepthAnythingSaveAlert = true
+                    logDebug("✅ [DepthAnythingRoom] Saved room to \(savedURL.lastPathComponent)")
+                }
+            } catch {
+                await MainActor.run {
+                    depthAnythingSaveInProgress = false
+                    depthAnythingSaveWasSuccessful = false
+                    depthAnythingSaveAlertMessage = error.localizedDescription
+                    showDepthAnythingSaveAlert = true
+                    logDebug("❌ [DepthAnythingRoom] Save failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    nonisolated private static func depthAnythingSavedRoomMetadata(for model: USDZModel) -> [String: String] {
+        var metadata: [String: String] = [
+            "photoOrientation": model.photoOrientation.rawValue,
+            "roomCoordinateFrame": model.roomCoordinateFrame.rawValue,
+            "displayName": RoomDisplayName.aiRoomWithTimestamp()
+        ]
+
+        if let roomWidth = model.roomWidth, roomWidth.isFinite, roomWidth > 0 {
+            metadata["roomWidth"] = String(format: "%.2f", roomWidth)
+        }
+        if let roomHeight = model.roomHeight, roomHeight.isFinite, roomHeight > 0 {
+            metadata["roomHeight"] = String(format: "%.2f", roomHeight)
+        }
+        if let roomDepth = model.roomDepth, roomDepth.isFinite, roomDepth > 0 {
+            metadata["roomDepth"] = String(format: "%.2f", roomDepth)
+        }
+
+        return metadata
+    }
+
+    nonisolated private static func copyDepthAnythingRoomToSavedRooms(sourceURL: URL, metadata: [String: String]) throws -> URL {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let savedRoomsURL = documentsURL.appendingPathComponent("SavedRooms", isDirectory: true)
+        try FileManager.default.createDirectory(at: savedRoomsURL, withIntermediateDirectories: true)
+
+        let destinationURL = uniqueDepthAnythingSavedRoomURL(in: savedRoomsURL, sourceURL: sourceURL)
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+        let metadataURL = savedRoomsURL.appendingPathComponent("\(destinationURL.deletingPathExtension().lastPathComponent).usdz.meta")
+        let metadataData = try JSONEncoder().encode(metadata)
+        try metadataData.write(to: metadataURL, options: [.atomic])
+        return destinationURL
+    }
+
+    nonisolated private static func uniqueDepthAnythingSavedRoomURL(in directory: URL, sourceURL: URL) -> URL {
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "usdz" : sourceURL.pathExtension
+        var candidate = directory.appendingPathComponent(baseName).appendingPathExtension(fileExtension)
+        var suffix = 1
+
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory
+                .appendingPathComponent("\(baseName)_\(suffix)")
+                .appendingPathExtension(fileExtension)
+            suffix += 1
+        }
+
+        return candidate
     }
     
     private func confidenceColor(_ confidence: Float) -> Color {
