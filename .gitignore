@@ -209,6 +209,10 @@ android/app/src/main/assets/room.jpeg
 # Optional demo GLBs for bundled_rooms (~90MB+); copy locally per README_ANDROID.md
 android/app/src/main/assets/bundled_rooms/*.glb
 
+# Generated 3D geometry exports
+*.ply
+*.glb
+
 # iOS mlpackage models (large, stored locally)
 *.mlpackage/
 *.mlmodelc/
