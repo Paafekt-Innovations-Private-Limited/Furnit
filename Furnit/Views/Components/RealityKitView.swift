@@ -83,9 +83,11 @@ struct RealityKitView: UIViewRepresentable {
                 let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
                 cameraAnchor.transform.translation = cameraPosition
 
-                let lookDirection = normalize(lookAtPosition - cameraPosition)
-                let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
-                cameraAnchor.transform.rotation = lookRotation
+                _ = Self.applyCameraPose(
+                    cameraAnchor,
+                    position: cameraPosition,
+                    lookAt: lookAtPosition
+                )
 
                 logDebug("📷 [RealityKitView.updateUIView] Camera RESET to: \(cameraPosition)")
             }
@@ -116,9 +118,11 @@ struct RealityKitView: UIViewRepresentable {
                 let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
                 cameraAnchor.transform.translation = cameraPosition
 
-                let lookDirection = normalize(lookAtPosition - cameraPosition)
-                let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
-                cameraAnchor.transform.rotation = lookRotation
+                _ = Self.applyCameraPose(
+                    cameraAnchor,
+                    position: cameraPosition,
+                    lookAt: lookAtPosition
+                )
 
                 if debugMode {
                     logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraPosition)")
@@ -157,6 +161,45 @@ struct RealityKitView: UIViewRepresentable {
                 }
             }
         }
+    }
+
+    @discardableResult
+    private static func applyCameraPose(
+        _ cameraAnchor: AnchorEntity,
+        position: SIMD3<Float>,
+        lookAt: SIMD3<Float>
+    ) -> SIMD3<Float> {
+        let direction = normalizedDirection(from: position, to: lookAt)
+        cameraAnchor.transform.translation = position
+        cameraAnchor.transform.rotation = fixedWorldUpLookRotation(forward: direction)
+        return direction
+    }
+
+    private static func normalizedDirection(from position: SIMD3<Float>, to target: SIMD3<Float>) -> SIMD3<Float> {
+        let delta = target - position
+        let lengthSquared = simd_length_squared(delta)
+        guard lengthSquared > 1e-8 else {
+            return SIMD3<Float>(0, 0, -1)
+        }
+        return delta / sqrt(lengthSquared)
+    }
+
+    private static func fixedWorldUpLookRotation(forward: SIMD3<Float>) -> simd_quatf {
+        var up = SIMD3<Float>(0, 1, 0)
+        if abs(simd_dot(forward, up)) > 0.98 {
+            up = SIMD3<Float>(0, 0, 1)
+        }
+
+        let right = simd_normalize(simd_cross(forward, up))
+        let correctedUp = simd_normalize(simd_cross(right, forward))
+        let localToWorld = float3x3(
+            columns: (
+                right,
+                correctedUp,
+                -forward
+            )
+        )
+        return simd_quatf(localToWorld)
     }
     
     class Coordinator {
@@ -492,17 +535,15 @@ struct RealityKitView: UIViewRepresentable {
                     logDebug("   Position: \(cameraPosition)")
                     logDebug("   LookAt: \(lookAtPosition)")
 
-                    // Set camera position
                     let oldPosition = cameraAnchor.transform.translation
-                    cameraAnchor.transform.translation = cameraPosition
+                    let lookDirection = Self.applyCameraPose(
+                        cameraAnchor,
+                        position: cameraPosition,
+                        lookAt: lookAtPosition
+                    )
                     logDebug("📷 [RealityKitView] Camera translation SET:")
                     logDebug("   OLD position: \(oldPosition)")
                     logDebug("   NEW position: \(cameraAnchor.transform.translation)")
-
-                    // Make camera look at the calculated target point
-                    let lookDirection = normalize(lookAtPosition - cameraPosition)
-                    let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
-                    cameraAnchor.transform.rotation = lookRotation
 
                     logDebug("📷 [RealityKitView] Camera BACK-LEFT CORNER positioned:")
                     logDebug("   📍 Final Position: \(cameraAnchor.transform.translation)")
@@ -522,9 +563,11 @@ struct RealityKitView: UIViewRepresentable {
                     cameraAnchor.transform.translation = defaultPosition
 
                     // Look toward origin
-                    let lookDirection = normalize(SIMD3<Float>(0, 1.4, 0) - defaultPosition)
-                    let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
-                    cameraAnchor.transform.rotation = lookRotation
+                    _ = Self.applyCameraPose(
+                        cameraAnchor,
+                        position: defaultPosition,
+                        lookAt: SIMD3<Float>(0, 1.4, 0)
+                    )
 
                     logDebug("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")
 
