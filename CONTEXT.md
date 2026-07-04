@@ -43,23 +43,61 @@ Current behavior:
 - **Thermal backoff**: observes `ProcessInfo.thermalStateDidChangeNotification`. Maps `.nominal/.fair` → 200ms, `.serious` → 400ms, `.critical` → pause inference entirely while keeping last-displayed boxes.
 - **Camera ownership**: AR↔AVCapture transitions use a 150ms settle delay after AR pause before AVCapture starts, reducing `-17281` contention errors.
 
-### SHARP Room Flow
+### Room Generation / SHARP Replacement
 
-The active iOS SHARP path generates Gaussian splat rooms and renders them with MetalSplatter.
+The active iOS single-photo room-generation backend is now **Depth Anything Metric USDZ**, selected by `RoomGenerationImplementation.defaultImplementation`.
+The older SHARP Core ML path is still present for comparison/debugging, but it is not the default shipping path because SHARP model weights are not license-clean for commercial release.
 
 Important files:
 
-- `Furnit/Services/OnDevice/SHARPService.swift` — Core ML SHARP inference, PLY write path, `.splatcache` generation.
-- `Furnit/Views/Components/GaussianSplatView.swift` — MetalSplatter render and `.splatcache` load path.
-- `Furnit/Views/SharpRoomView.swift` — SHARP room viewer, Furniture Fit overlay host, room dimensions/measurement UI.
-- `Furnit/Models/USDZModelManager.swift` — saved room artifacts, including related `.splatcache` files.
+- `Furnit/Models/RoomGenerationImplementation.swift` — room-generation enum and default backend (`.depthAnythingMetricUSDZ`).
+- `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift` — Depth Anything V2 Metric Indoor Core ML inference, proportional-XY/depth-relief mesh construction, USDZ export.
+- `Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage` — bundled Apache-licensed metric indoor depth model.
+- `Furnit/Views/Components/SinglePhotoRoomViewer.swift` — dispatches the selected generation backend, opens Depth Anything USDZ preview, and saves generated USDZ rooms.
+- `Furnit/Views/ModelViewerView.swift` / `Furnit/Views/Components/RealityKitView.swift` — RealityKit USDZ preview and camera framing.
+- `Furnit/Utilities/RealityKitBoundaryManager.swift` — front-facing camera placement for image-depth meshes.
+- `Furnit/Models/USDZModel.swift` / `Furnit/Models/USDZModelManager.swift` — saved room metadata, coordinate-frame persistence, and list loading.
+- `Furnit/Services/RoomReconstruction/SwiftSharpMathRoomReconstructor.swift` — no-ML flat-plane prototype/debug backend.
+- `Furnit/Services/OnDevice/SHARPService.swift`, `Furnit/Views/SharpRoomView.swift`, `Furnit/Views/Components/GaussianSplatView.swift` — retained SHARP/Core ML Gaussian-splat path and viewer.
 - `Furnit/diagrams/sharp-swift-flow.svg` — visual flow.
 
 Current behavior:
 
-- SHARP saves `Room_*_classic.ply` plus sidecars and a binary `.splatcache`.
-- `.splatcache` is the preferred fast path for parsed/encoded splat data; PLY parsing is fallback.
+- **Depth Anything Metric USDZ is default.** It runs the metric indoor model through Vision/Core ML (`computeUnits = .all`), resizes depth back to the working image, builds a connected grid mesh, skips triangles across >0.4m depth discontinuities, and exports USDZ.
+- Depth Anything geometry uses proportional image-space X/Y, not pinhole `pixel * depth / focalLength`; Z is depth relief (`-(depthMax - depth)`) so near geometry comes toward the viewer.
+- The generated USDZ uses a texture image plus UVs. After the camera-facing fix, the exporter uses non-inverted V coordinates so newly generated rooms are not upside down in the preview.
+- Fresh Depth Anything previews have a bottom-center **Save** button. Save copies the generated USDZ into `Documents/SavedRooms`, writes a `.usdz.meta` sidecar, persists `roomCoordinateFrame=depth_anything_image_depth_meters`, dimensions, photo orientation, and display name, then refreshes the home list.
+- Depth Anything saved rooms must keep `roomCoordinateFrame=depth_anything_image_depth_meters`. Do not let them fall back to SHARP/classic behavior on reopen.
+- `RoomCoordinateFrame.depthAnythingImageDepthMeters` uses native meter scene units and a front-facing RealityKit camera. This is separate from SHARP classic PLY behavior.
+- SHARP still saves `Room_*_classic.ply` plus sidecars and a binary `.splatcache`; `.splatcache` remains the fast path for SHARP rooms, with PLY parsing as fallback.
+- `SwiftSharpMathRoomReconstructor` exists as a no-ML flat-plane prototype path, not the quality target.
 - Room/furniture size and overlay scale details live in `docs/IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`.
+
+Important caveats:
+
+- The Depth Anything route is a single-image relief mesh, not a true metric 3D reconstruction. It is useful as a license-clean replacement prototype and visual path, but it should not be treated as fit-grade measurement.
+- Old generated USDZ files keep whatever UVs/metadata they were exported with. Regenerate rooms after exporter/camera fixes before judging preview orientation.
+- The long-term fit-grade replacement remains **LiDAR-first sweep fusion**: ARKit pose + `smoothedSceneDepth` capture, validator gate, then fused AR-world-meter output.
+
+### LiDAR Sweep Fusion Status
+
+LiDAR sweep fusion is the intended fit-grade commercial v1 path because it avoids SHARP licensing, monocular scale ambiguity, COLMAP/ICP complexity, and viewer downgrade.
+
+Important files:
+
+- `Furnit/Models/PosedFrameSweep.swift` — persists `frames/*.jpg`, `depth/*.bin`, `confidence/*.bin`, and `poses.json`.
+- `Furnit/Views/Components/ARRoomSweepCaptureView.swift` — LiDAR-gated AR sweep capture using `smoothedSceneDepth`, ARKit camera poses, and keyframe filtering.
+- `Furnit/Services/RoomReconstruction/PosedFrameSweepValidator.swift` — validates pose/depth/intrinsics convention, writes debug PLYs, reports NN and plane residuals.
+- `Furnit/Services/RoomReconstruction/PosedFrameSweepFusion.swift` — fuses posed depth points into a saved AR-world-meter room artifact.
+- `Furnit/Views/Components/LiDARRoomSweepCreationView.swift` — user-facing sweep capture, validation, fusion, and preview flow.
+
+Current contract:
+
+- Capture stores ARKit `camera.transform` as world-from-camera and depth in metric meters.
+- Validator unprojects with ARKit convention `(x, y, -depth)` transformed by world-from-camera, scales RGB intrinsics to the depth grid, filters confidence/tracking, and can compare selectable frame indices.
+- Nearest-neighbor residuals catch gross misregistration. Plane residuals catch normal-offset/double-wall drift. A pure in-plane tangential slide can still look numerically clean, so the overlay PLY remains the visual truth gate.
+- LiDAR fused/saved rooms must use `roomCoordinateFrame=ar_world_meters`, native meter units, and no SHARP/classic Y/Z flip.
+- Next real gate is on-device LiDAR capture and validation before treating fusion as production-quality.
 
 ## Current Android Architecture
 
