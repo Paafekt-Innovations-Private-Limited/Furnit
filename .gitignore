@@ -212,6 +212,9 @@ android/app/src/main/assets/bundled_rooms/*.glb
 # iOS mlpackage models (large, stored locally)
 *.mlpackage/
 *.mlmodelc/
+!Furnit/Models/DepthAnything/
+!Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/
+!Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/**
 Furnit/Models/RTMDet/*.mlpackage/
 Furnit/Models/RTMDet/*.mlmodelc/
 
@@ -246,6 +249,7 @@ android/app/src/main/cpp/ncnn-android-vulkan-old/
 # Ignore NCNN Sharp model backup files (not needed in version control)
 android/sharp_ncnn_models_backup/
 *.bin
+!Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/Data/com.apple.CoreML/weights/weight.bin
 *.param
 
 # ML model binaries (too large for git; backup to external HD — see scripts/backup_large_files_to_external.sh)

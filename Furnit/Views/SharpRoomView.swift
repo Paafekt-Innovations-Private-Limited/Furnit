@@ -93,6 +93,8 @@ struct SharpRoomView: View {
     private let viewerPlyURL: URL
     /// Whether this room should use SHARP classic orientation/rendering even without `_classic` in the file name.
     private let viewerUsesClassicPlyBehavior: Bool
+    /// Coordinate-frame contract for save/load/render behavior.
+    private let viewerRoomCoordinateFrame: RoomCoordinateFrame
 
     /// SHARP **`_classic.ply`** write-time AABB (scene units); set when pushing from ``SinglePhotoRoomViewer`` after generation.
     private let sharpPlyAabbW: Float?
@@ -119,6 +121,7 @@ struct SharpRoomView: View {
         sharpRoomWidth: Float? = nil,
         sharpRoomHeight: Float? = nil,
         sharpRoomDepth: Float? = nil,
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly,
         sourcePhotoPixelWidth: Int? = nil,
         sourcePhotoPixelHeight: Int? = nil
     ) {
@@ -139,6 +142,7 @@ struct SharpRoomView: View {
 
         self.viewerPlyURL = plyURL
         self.viewerUsesClassicPlyBehavior = self.viewerPlyURL.path.hasSuffix("_classic.ply") || (savedRoomModel?.isClassicPly ?? false)
+        self.viewerRoomCoordinateFrame = savedRoomModel?.roomCoordinateFrame ?? roomCoordinateFrame
     }
 
     /// Bounds from the splat PLY (computed when loading; see `GaussianSplatView.onBoundsAvailable`).
@@ -1436,7 +1440,18 @@ struct SharpRoomView: View {
 
     private var activeRoomMetersDimensionsSource: String {
         if savedRoomStrictMeters != nil { return "SAVED_META_STRICT" }
-        if sharpGenerationRoomMeters != nil { return "SHARP_ROOM_DIMS_V7" }
+        if sharpGenerationRoomMeters != nil {
+            switch viewerRoomCoordinateFrame {
+            case .arWorldMeters:
+                return "LIDAR_SWEEP_FUSION"
+            case .swiftSharpPlaneMeters:
+                return "SWIFT_SHARP_MATH"
+            case .depthAnythingImageDepthMeters:
+                return "DEPTH_ANYTHING_METRIC"
+            case .sharpClassicPly, .sharpCanonicalPly:
+                return "SHARP_ROOM_DIMS_V7"
+            }
+        }
         if persistedEnhancedRoomMeters != nil { return "ENHANCED_METADATA_ROOM_MODEL" }
         if measuredRoomDimensions != nil { return "ASYNC_V7_PLY_MEASURE" }
         if let s = savedRoomModel,
@@ -1452,6 +1467,9 @@ struct SharpRoomView: View {
             if let inf = inferredMetersFromPlyScene, inf.depth > 0.05 {
                 return "SAVED_META_PARTIAL_PLUS_PLY_INFERRED_DEPTH"
             }
+        }
+        if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits, plySceneExtent != nil {
+            return viewerRoomCoordinateFrame == .swiftSharpPlaneMeters ? "PLY_SWIFT_SHARP_MATH_METERS" : "PLY_AR_WORLD_METERS"
         }
         if inferredMetersFromPlyScene != nil { return "PLY_INFERRED_REFERENCE_HEIGHT" }
         return "UNAVAILABLE"
@@ -1495,6 +1513,9 @@ struct SharpRoomView: View {
         if let triple = sharpGenerationRoomMeters { return triple }
         if let triple = persistedEnhancedRoomMeters { return triple }
         if let measured = measuredRoomDimensions { return (measured.width, measured.height, measured.depth) }
+        if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits, let p = plySceneExtent {
+            return p
+        }
         if let s = savedRoomModel,
            let w = s.roomWidth, let h = s.roomHeight,
            w > 0.05, h > 0.05, w.isFinite, h.isFinite {
@@ -1511,6 +1532,9 @@ struct SharpRoomView: View {
     }
 
     private var initialSharpRoomYaw: Float {
+        if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits {
+            return 0
+        }
         let stem = viewerPlyURL.deletingPathExtension().lastPathComponent
         let isSavedBasePly = !allowSave &&
             savedRoomModel != nil &&
@@ -2552,7 +2576,9 @@ struct SharpRoomView: View {
                     roomDimsApproach: roomDimsApproachForSave,
                     roomSceneWidth: sceneExtentForMeta?.width,
                     roomSceneHeight: sceneExtentForMeta?.height,
-                    roomSceneDepth: sceneExtentForMeta?.depth
+                    roomSceneDepth: sceneExtentForMeta?.depth,
+                    isClassicPly: viewerUsesClassicPlyBehavior,
+                    roomCoordinateFrame: viewerRoomCoordinateFrame
                 ) { success, error in
                     logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
                     Task { @MainActor in

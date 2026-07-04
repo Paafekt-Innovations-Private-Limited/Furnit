@@ -126,6 +126,12 @@ struct HomeTab: View {
     @State private var showRenameErrorAlert = false
     @State private var createRoomHintExplanationVisible = false
     @State private var createRoomHintHideTextTask: Task<Void, Never>?
+    @AppStorage("roomGeneration.implementation")
+    private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
+
+    private var roomGenerationImplementation: RoomGenerationImplementation {
+        RoomGenerationImplementation(rawValue: roomGenerationImplementationRawValue) ?? .defaultImplementation
+    }
 
     var body: some View {
         NavigationStack {
@@ -274,16 +280,10 @@ struct HomeTab: View {
                     .accessibilityLabel("accessibility.settings".localized)
                 }
             }
-            // Photo Room Creator Sheet
+            // Room Creator Sheet
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
-                    SinglePhotoRoomView()
-                }
-                .overlay(alignment: .bottom) {
-                    SharpGenerationBottomBar()
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .zIndex(1000)
+                    roomCreatorView
                 }
             }
             // Refresh models when sheet closes
@@ -431,6 +431,16 @@ struct HomeTab: View {
         cancelCreateRoomHintTasks()
         createRoomHintExplanationVisible = true
         scheduleCreateRoomHintTextAutoHide(seconds: 3)
+    }
+
+    @ViewBuilder
+    private var roomCreatorView: some View {
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ, .swiftSharpMath, .sharpCoreML:
+            SinglePhotoRoomView()
+        case .lidarSweepFusion:
+            LiDARRoomSweepCreationView()
+        }
     }
 
     private var createRoomHintAccessibilityLabel: String {

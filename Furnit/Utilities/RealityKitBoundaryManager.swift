@@ -249,10 +249,45 @@ class RealityKitBoundaryManager {
             lookAt: SIMD3<Float>(targetX, targetY, targetZ)
         )
     }
+
+    /// Camera in front of image-depth meshes where near geometry is negative Z and the far wall is max Z.
+    func getCameraAtFrontCenter() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        guard let bounds = roomBounds else {
+            let defaultPosition = SIMD3<Float>(0, 1.5, -3)
+            let defaultLookAt = SIMD3<Float>(0, 1.4, 0)
+            return (position: defaultPosition, lookAt: defaultLookAt)
+        }
+
+        let roomCenter = getRoomCenter()
+        let depth = max(bounds.max.z - bounds.min.z, 0.1)
+        let frontOffset = max(depth * 0.08, 0.35)
+
+        let camX = roomCenter.x
+        let camY = roomCenter.y + 0.4
+        let camZ = bounds.min.z - frontOffset
+
+        let targetX = roomCenter.x
+        let targetY = roomCenter.y
+        let targetZ = bounds.max.z
+
+        if debugMode {
+            logDebug("🎯 [BoundaryManager] getCameraAtFrontCenter depth=\(depth) offset=\(frontOffset) pos=(\(camX),\(camY),\(camZ)) lookAt=(\(targetX),\(targetY),\(targetZ))")
+        }
+
+        return (
+            position: SIMD3<Float>(camX, camY, camZ),
+            lookAt: SIMD3<Float>(targetX, targetY, targetZ)
+        )
+    }
     
     // ✅ Get optimal camera position for viewing the room (delegates to Android-matching back-center formula)
     // Used when room is opened from list or when room is created.
-    func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+    func getOptimalCameraPosition(roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+        if roomCoordinateFrame.usesFrontFacingRealityKitCamera {
+            return getCameraAtFrontCenter()
+        }
         return getCameraAtBackCenter()
     }
     
@@ -264,4 +299,3 @@ class RealityKitBoundaryManager {
 }
 
 // MARK: - Extensions for SIMD operations are defined in RealityKitObjectPlacementManager.swift
-

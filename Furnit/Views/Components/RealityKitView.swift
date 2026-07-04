@@ -80,7 +80,7 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
+                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
                 cameraAnchor.transform.translation = cameraPosition
 
                 let lookDirection = normalize(lookAtPosition - cameraPosition)
@@ -113,7 +113,7 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
+                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
                 cameraAnchor.transform.translation = cameraPosition
 
                 let lookDirection = normalize(lookAtPosition - cameraPosition)
@@ -486,7 +486,7 @@ struct RealityKitView: UIViewRepresentable {
                     logDebug("   Room bounds max: \(bounds.max)")
 
                     // ✅ Use BACK-LEFT CORNER camera positioning
-                    let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
+                    let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
 
                     logDebug("📍 [RealityKitView] Camera position from getOptimalCameraPosition():")
                     logDebug("   Position: \(cameraPosition)")

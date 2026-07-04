@@ -1,6 +1,31 @@
 import Foundation
 import UIKit
 
+enum RoomCoordinateFrame: String, Codable, Sendable {
+    case sharpClassicPly = "sharp_classic_ply"
+    case sharpCanonicalPly = "sharp_canonical_ply"
+    case arWorldMeters = "ar_world_meters"
+    case swiftSharpPlaneMeters = "swift_sharp_plane_meters"
+    case depthAnythingImageDepthMeters = "depth_anything_image_depth_meters"
+
+    var isARWorldMeters: Bool {
+        self == .arWorldMeters
+    }
+
+    var usesNativeMeterSceneUnits: Bool {
+        switch self {
+        case .arWorldMeters, .swiftSharpPlaneMeters, .depthAnythingImageDepthMeters:
+            return true
+        case .sharpClassicPly, .sharpCanonicalPly:
+            return false
+        }
+    }
+
+    var usesFrontFacingRealityKitCamera: Bool {
+        self == .depthAnythingImageDepthMeters
+    }
+}
+
 struct USDZModel: Identifiable, Hashable {
     let id = UUID()
     let name: String
@@ -32,6 +57,8 @@ struct USDZModel: Identifiable, Hashable {
     let customDisplayName: String?
     /// Saved PLY should be treated like SHARP classic orientation/rendering even without `_classic` filename suffix.
     let isClassicPly: Bool
+    /// Coordinate/render contract persisted for saved rooms.
+    let roomCoordinateFrame: RoomCoordinateFrame
     /// Cached on-disk URL for saved rooms so SwiftUI body reevaluation does not restat the filesystem repeatedly.
     let cachedResolvedURL: URL?
 
@@ -55,6 +82,7 @@ struct USDZModel: Identifiable, Hashable {
         self.sharpRoomHeightAtCapture = nil
         self.customDisplayName = customDisplayName
         self.isClassicPly = false
+        self.roomCoordinateFrame = Self.inferredCoordinateFrame(fileName: fileName, requested: .sharpCanonicalPly)
         self.cachedResolvedURL = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
@@ -80,6 +108,7 @@ struct USDZModel: Identifiable, Hashable {
         sharpRoomHeightAtCapture: Float? = nil,
         customDisplayName: String? = nil,
         isClassicPly: Bool = false,
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly,
         cachedResolvedURL: URL? = nil
     ) {
         self.name = name
@@ -100,9 +129,18 @@ struct USDZModel: Identifiable, Hashable {
         self.sharpRoomHeightAtCapture = sharpRoomHeightAtCapture
         self.customDisplayName = customDisplayName
         self.isClassicPly = isClassicPly
+        self.roomCoordinateFrame = Self.inferredCoordinateFrame(fileName: fileName, requested: roomCoordinateFrame)
         self.cachedResolvedURL = cachedResolvedURL
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
+    }
+
+    private static func inferredCoordinateFrame(fileName: String, requested: RoomCoordinateFrame) -> RoomCoordinateFrame {
+        guard requested == .sharpCanonicalPly else { return requested }
+        if fileName.hasPrefix("DepthAnythingRoom_") {
+            return .depthAnythingImageDepthMeters
+        }
+        return requested
     }
     
     var displayName: String {

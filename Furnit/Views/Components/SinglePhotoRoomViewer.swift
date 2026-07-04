@@ -831,15 +831,18 @@ private struct SplatViewerDestination: Identifiable, Hashable {
     let roomDepth: Float?
     let sourcePhotoPxW: Int?
     let sourcePhotoPxH: Int?
+    let roomCoordinateFrame: RoomCoordinateFrame
 
     init(
         plyURL: URL,
         sharpPlyAabb: (Float, Float, Float)? = nil,
         roomMeters: (Float, Float, Float)? = nil,
-        sourcePhotoPixels: (Int, Int)? = nil
+        sourcePhotoPixels: (Int, Int)? = nil,
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly
     ) {
         self.id = UUID()
         self.plyURL = plyURL
+        self.roomCoordinateFrame = roomCoordinateFrame
         if let a = sharpPlyAabb {
             self.sharpPlyW = a.0
             self.sharpPlyH = a.1
@@ -866,6 +869,12 @@ private struct SplatViewerDestination: Identifiable, Hashable {
             self.sourcePhotoPxH = nil
         }
     }
+}
+
+private struct USDZViewerDestination: Identifiable, Hashable {
+    let id = UUID()
+    let model: USDZModel
+    let summary: String
 }
 
 struct SinglePhotoRoomView: View {
@@ -896,7 +905,11 @@ struct SinglePhotoRoomView: View {
     @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
     @State private var showBackMethodAlert = false
     @State private var showSharpProgressOverlay = false
+    @State private var singlePhotoGenerationStatus: String?
+    @State private var usdzViewerDestination: USDZViewerDestination?
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("roomGeneration.implementation")
+    private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
     /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
     @State private var sharpSourceImageURL: URL?
     /// In-app camera metadata (`mediaMetadata`) — EXIF including SubjectDistance when available.
@@ -905,6 +918,10 @@ struct SinglePhotoRoomView: View {
     @State private var sharpPhotoLibraryAssetLocalId: String?
     /// ARKit capture intrinsics / depth flags (see ``ARRoomPhotoCaptureViewController``) merged into `camera_exif.json`.
     @State private var sharpSupplementalCameraDoubles: [String: Double]?
+
+    private var roomGenerationImplementation: RoomGenerationImplementation {
+        RoomGenerationImplementation(rawValue: roomGenerationImplementationRawValue) ?? .defaultImplementation
+    }
 
     var body: some View {
         ZStack {
@@ -929,29 +946,23 @@ struct SinglePhotoRoomView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
 
-                    // Method 1: SHARP (AI-powered) - Single photo to 3D
+                    // Method 1: selected single-photo reconstruction backend.
                     Button(action: {
-                        logDebug("🤖 [View] SHARP method selected")
+                        logDebug("🤖 [View] \(roomGenerationImplementation.displayName) method selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
-                        showMethodPicker = false
-                        showSharpProgressOverlay = true
-                        sharpService.beginForegroundGenerationProgress()
-                        Task { @MainActor in
-                            await Task.yield()
-                            startSHARPGeneration(image: image)
-                        }
+                        startPrimaryPhotoGeneration(image: image)
                     }) {
                         HStack(spacing: 16) {
-                            Image(systemName: "wand.and.stars")
+                            Image(systemName: primaryGenerationIconName)
                                 .font(.system(size: 30))
-                                .foregroundColor(.purple)
+                                .foregroundColor(primaryGenerationColor)
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(NSLocalizedString("photoRoom.title", comment: ""))
+                                Text(primaryGenerationTitle)
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text(NSLocalizedString("photoRoom.aiPowered", comment: ""))
+                                Text(primaryGenerationSubtitle)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -960,11 +971,11 @@ struct SinglePhotoRoomView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                        .background(Color.purple.opacity(0.1))
+                        .background(primaryGenerationColor.opacity(0.1))
                         .cornerRadius(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.purple, lineWidth: 2)
+                                .stroke(primaryGenerationColor, lineWidth: 2)
                         )
                     }
                     .padding(.horizontal)
@@ -1132,6 +1143,22 @@ struct SinglePhotoRoomView: View {
                 )
             }
 
+            if let singlePhotoGenerationStatus {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.35)
+                    Text(singlePhotoGenerationStatus)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(28)
+                .background(Color(.systemBackground).opacity(0.95))
+                .cornerRadius(16)
+                .shadow(radius: 10)
+                .padding(24)
+            }
+
             // Progress overlay for manual room reconstruction
             if reconstructor.isProcessing {
                 VStack(spacing: 16) {
@@ -1180,16 +1207,10 @@ struct SinglePhotoRoomView: View {
             }
         }
         .alert(L10n.PhotoRoom.backAlertTitle, isPresented: $showBackMethodAlert) {
-            Button(L10n.PhotoRoom.backAlertAI) {
+            Button(primaryGenerationTitle) {
                 guard let image = selectedImage else { return }
-                logDebug("🤖 [View] Back alert: AI SHARP selected")
-                showMethodPicker = false
-                showSharpProgressOverlay = true
-                sharpService.beginForegroundGenerationProgress()
-                Task { @MainActor in
-                    await Task.yield()
-                    startSHARPGeneration(image: image)
-                }
+                logDebug("🤖 [View] Back alert: \(roomGenerationImplementation.displayName) selected")
+                startPrimaryPhotoGeneration(image: image)
             }
             Button(L10n.PhotoRoom.backAlertManual) {
                 guard let image = selectedImage else { return }
@@ -1345,6 +1366,7 @@ struct SinglePhotoRoomView: View {
                                 sharpRoomWidth: dest.roomWidth,
                                 sharpRoomHeight: dest.roomHeight,
                                 sharpRoomDepth: dest.roomDepth,
+                                roomCoordinateFrame: dest.roomCoordinateFrame,
                                 sourcePhotoPixelWidth: dest.sourcePhotoPxW,
                                 sourcePhotoPixelHeight: dest.sourcePhotoPxH
                             )
@@ -1357,6 +1379,16 @@ struct SinglePhotoRoomView: View {
             .onDisappear {
                 splatViewerDestination = nil
             }
+        }
+        .navigationDestination(item: $usdzViewerDestination) { destination in
+            ModelViewerView(model: destination.model)
+                .onAppear {
+                    logDebug("🚀 [Navigation] ModelViewerView (Depth Anything USDZ)")
+                    logDebug("   \(destination.summary)")
+                }
+                .onDisappear {
+                    usdzViewerDestination = nil
+                }
         }
         // Success alert for API-generated PLY file
         .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
@@ -1411,6 +1443,154 @@ struct SinglePhotoRoomView: View {
         case 0.7...1.0: return .green
         case 0.4..<0.7: return .orange
         default: return .red
+        }
+    }
+
+    private var primaryGenerationTitle: String {
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ:
+            return "Depth Anything Room"
+        case .swiftSharpMath:
+            return "Swift SHARP Math"
+        case .sharpCoreML:
+            return NSLocalizedString("photoRoom.title", comment: "")
+        case .lidarSweepFusion:
+            return "LiDAR Sweep"
+        }
+    }
+
+    private var primaryGenerationSubtitle: String {
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ:
+            return "Metric depth mesh to USDZ"
+        case .swiftSharpMath:
+            return "No ML flat point-room preview"
+        case .sharpCoreML:
+            return NSLocalizedString("photoRoom.aiPowered", comment: "")
+        case .lidarSweepFusion:
+            return "Capture a metric AR sweep"
+        }
+    }
+
+    private var primaryGenerationIconName: String {
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ:
+            return "camera.metering.matrix"
+        case .swiftSharpMath:
+            return "square.grid.3x3"
+        case .sharpCoreML:
+            return "wand.and.stars"
+        case .lidarSweepFusion:
+            return "arkit"
+        }
+    }
+
+    private var primaryGenerationColor: Color {
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ:
+            return .blue
+        case .swiftSharpMath:
+            return .teal
+        case .sharpCoreML:
+            return .purple
+        case .lidarSweepFusion:
+            return .indigo
+        }
+    }
+
+    private func startPrimaryPhotoGeneration(image: UIImage) {
+        showMethodPicker = false
+        switch roomGenerationImplementation {
+        case .depthAnythingMetricUSDZ:
+            startDepthAnythingGeneration(image: image)
+        case .swiftSharpMath:
+            startSwiftSharpMathGeneration(image: image)
+        case .sharpCoreML:
+            showSharpProgressOverlay = true
+            sharpService.beginForegroundGenerationProgress()
+            Task { @MainActor in
+                await Task.yield()
+                startSHARPGeneration(image: image)
+            }
+        case .lidarSweepFusion:
+            dismiss()
+        }
+    }
+
+    private func startDepthAnythingGeneration(image: UIImage) {
+        let generationImage = image.fixedOrientation()
+        let orientation = selectedOrientation
+        selectedImage = nil
+        fixedImageItem = nil
+        splatViewerDestination = nil
+        usdzViewerDestination = nil
+        singlePhotoGenerationStatus = "Running Depth Anything..."
+
+        Task {
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    let reconstructor = try DepthAnythingRoomReconstructor()
+                    return try await reconstructor.reconstructWithResult(image: generationImage)
+                }.value
+                logDebug("✅ [DepthAnythingRoom] USDZ generated: \(result.summary)")
+                let model = USDZModel(
+                    name: result.usdzURL.deletingPathExtension().lastPathComponent,
+                    fileName: result.usdzURL.lastPathComponent,
+                    isSavedRoom: true,
+                    fileType: .usdz,
+                    fileSize: (try? result.usdzURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init),
+                    photoOrientation: orientation,
+                    roomWidth: result.roomWidthMeters,
+                    roomHeight: result.roomHeightMeters,
+                    roomDepth: result.roomDepthMeters,
+                    roomCoordinateFrame: .depthAnythingImageDepthMeters,
+                    cachedResolvedURL: result.usdzURL
+                )
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    usdzViewerDestination = USDZViewerDestination(model: model, summary: result.summary)
+                }
+            } catch {
+                logDebug("❌ [DepthAnythingRoom] generation failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    sharpService.status = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func startSwiftSharpMathGeneration(image: UIImage) {
+        let generationImage = image.fixedOrientation()
+        selectedImage = nil
+        fixedImageItem = nil
+        splatViewerDestination = nil
+        usdzViewerDestination = nil
+        singlePhotoGenerationStatus = "Generating Swift SHARP Math room..."
+
+        Task {
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try SwiftSharpMathRoomReconstructor.reconstruct(image: generationImage)
+                }.value
+                logDebug("✅ [SwiftSharpMath] generated: \(result.summary)")
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    splatViewerDestination = SplatViewerDestination(
+                        plyURL: result.plyURL,
+                        sharpPlyAabb: (result.roomWidthMeters, result.roomHeightMeters, result.roomDepthMeters),
+                        roomMeters: (result.roomWidthMeters, result.roomHeightMeters, result.roomDepthMeters),
+                        sourcePhotoPixels: (result.imageWidth, result.imageHeight),
+                        roomCoordinateFrame: .swiftSharpPlaneMeters
+                    )
+                }
+            } catch {
+                logDebug("❌ [SwiftSharpMath] generation failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    sharpService.status = .failed(error.localizedDescription)
+                }
+            }
         }
     }
 

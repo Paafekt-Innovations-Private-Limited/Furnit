@@ -38,6 +38,7 @@ private struct SavedRoomDiskMetadata {
     /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
     let displayName: String?
     let isClassicPly: Bool
+    let roomCoordinateFrame: RoomCoordinateFrame
 
     static let empty = SavedRoomDiskMetadata(
         orientation: .portrait,
@@ -52,7 +53,8 @@ private struct SavedRoomDiskMetadata {
         savedRefImageHeightPx: nil,
         sharpRoomHeightAtCapture: nil,
         displayName: nil,
-        isClassicPly: false
+        isClassicPly: false,
+        roomCoordinateFrame: .sharpCanonicalPly
     )
 
     static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
@@ -67,6 +69,8 @@ private struct SavedRoomDiskMetadata {
         let savedRefH = metadata["savedRefImageHeightPx"].flatMap { Int($0) }
         let sharpCap = metadata["sharpRoomHeightAtCapture"].flatMap { Float($0) }
         let isClassicPly = metadata["isClassicPly"].flatMap { Bool($0) } ?? false
+        let roomCoordinateFrame = metadata["roomCoordinateFrame"].flatMap(RoomCoordinateFrame.init(rawValue:))
+            ?? (isClassicPly ? .sharpClassicPly : .sharpCanonicalPly)
         var furnMap: [String: Float]?
         if let json = metadata["savedFurnitureHeightFracByClass"],
            let data = json.data(using: .utf8),
@@ -88,7 +92,8 @@ private struct SavedRoomDiskMetadata {
             savedRefImageHeightPx: savedRefH,
             sharpRoomHeightAtCapture: sharpCap,
             displayName: displayName,
-            isClassicPly: isClassicPly
+            isClassicPly: isClassicPly,
+            roomCoordinateFrame: roomCoordinateFrame
         )
     }
 
@@ -106,7 +111,8 @@ private struct SavedRoomDiskMetadata {
             savedRefImageHeightPx: savedRefImageHeightPx,
             sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
             displayName: displayName,
-            isClassicPly: isClassicPly
+            isClassicPly: isClassicPly,
+            roomCoordinateFrame: roomCoordinateFrame
         )
     }
 
@@ -124,7 +130,27 @@ private struct SavedRoomDiskMetadata {
             savedRefImageHeightPx: savedRefImageHeightPx,
             sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
             displayName: displayName,
-            isClassicPly: newValue
+            isClassicPly: newValue,
+            roomCoordinateFrame: newValue ? .sharpClassicPly : roomCoordinateFrame
+        )
+    }
+
+    func replacingCoordinateFrame(_ newValue: RoomCoordinateFrame) -> SavedRoomDiskMetadata {
+        SavedRoomDiskMetadata(
+            orientation: orientation,
+            width: width,
+            height: height,
+            depth: depth,
+            sceneWidth: sceneWidth,
+            sceneHeight: sceneHeight,
+            sceneDepth: sceneDepth,
+            savedWallHeightFrac: savedWallHeightFrac,
+            savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
+            savedRefImageHeightPx: savedRefImageHeightPx,
+            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
+            displayName: displayName,
+            isClassicPly: isClassicPly,
+            roomCoordinateFrame: newValue
         )
     }
 }
@@ -297,11 +323,19 @@ class USDZModelManager: ObservableObject {
         )
     }
 
-    private func displayNameForSavedRoom(fileName: String, fileType: ModelFileType, metadataDisplayName: String?) -> String? {
+    private func displayNameForSavedRoom(
+        fileName: String,
+        fileType: ModelFileType,
+        metadataDisplayName: String?,
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly
+    ) -> String? {
         guard fileType == .ply else { return metadataDisplayName }
         let canonicalStem = canonicalPlyStem(for: fileName)
         let fallbackDisplayName = canonicalStem.replacingOccurrences(of: "_", with: " ").capitalized
         let baseName = normalizedSavedRoomDisplayName(metadataDisplayName ?? fallbackDisplayName)
+        if roomCoordinateFrame.usesNativeMeterSceneUnits {
+            return baseName
+        }
         if fileName.hasSuffix("_classic") {
             return "\(baseName) (Classic PLY)"
         }
@@ -1047,9 +1081,11 @@ class USDZModelManager: ObservableObject {
                     customDisplayName: displayNameForSavedRoom(
                         fileName: fileName,
                         fileType: fileType,
-                        metadataDisplayName: metadata.displayName
+                        metadataDisplayName: metadata.displayName,
+                        roomCoordinateFrame: metadata.roomCoordinateFrame
                     ),
                     isClassicPly: metadata.isClassicPly,
+                    roomCoordinateFrame: metadata.roomCoordinateFrame,
                     cachedResolvedURL: fileURL
                 )
                 savedRoomModels.append(model)
@@ -1538,6 +1574,8 @@ class USDZModelManager: ObservableObject {
         roomSceneWidth: Float? = nil,
         roomSceneHeight: Float? = nil,
         roomSceneDepth: Float? = nil,
+        isClassicPly: Bool = true,
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly,
         completion: @escaping (Bool, String?) -> Void
     ) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
@@ -1623,7 +1661,7 @@ class USDZModelManager: ObservableObject {
             }
 
             let variantDestinations: [(label: String, url: URL, isClassic: Bool)] = [
-                ("base_ply", destinationURL, true),
+                ("base_ply", destinationURL, isClassicPly),
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
@@ -1772,6 +1810,7 @@ class USDZModelManager: ObservableObject {
                     metadata["roomDimsApproach"] = "preview_active_room_dimensions"
                 }
                 metadata["isClassicPly"] = variant.isClassic ? "true" : "false"
+                metadata["roomCoordinateFrame"] = roomCoordinateFrame.rawValue
 
                 let metadataURL = metadataURL(forSavedPlyURL: variant.url)
                 let metadataData = try JSONEncoder().encode(metadata)
@@ -1822,6 +1861,9 @@ class USDZModelManager: ObservableObject {
             base.isClassicPly ||
             (!fileName.hasSuffix("_classic") && !fileName.hasSuffix("_3dgs") && FileManager.default.fileExists(atPath: legacyClassicSidecarURL.path))
         )
+        let normalizedFrame = normalizedBase.roomCoordinateFrame.usesNativeMeterSceneUnits
+            ? normalizedBase
+            : normalizedBase.replacingCoordinateFrame(normalizedBase.isClassicPly ? .sharpClassicPly : .sharpCanonicalPly)
 
         // Opening from list: AR roll uses `photoOrientation`. Prefer thumbnail inference when present so orientation
         // matches creation if `.meta` defaulted to portrait or was stale — but do **not** overwrite an explicit
@@ -1830,7 +1872,7 @@ class USDZModelManager: ObservableObject {
            let image = UIImage(contentsOfFile: thumbURL.path) {
             let fromThumb = PhotoOrientation.detectFromStoredRoomThumbnail(image)
             let reconciled: PhotoOrientation
-            if normalizedBase.orientation == .landscape && fromThumb == .portrait {
+            if normalizedFrame.orientation == .landscape && fromThumb == .portrait {
                 reconciled = .landscape
                 if AppStateManager.shared.qualitySettings.debugMode {
                     logDebug("📐 [USDZModelManager] PLY list orientation: keep meta landscape over thumbnail portrait (\(thumbURL.lastPathComponent))")
@@ -1838,9 +1880,9 @@ class USDZModelManager: ObservableObject {
             } else {
                 reconciled = fromThumb
             }
-            if reconciled != normalizedBase.orientation {
+            if reconciled != normalizedFrame.orientation {
                 if AppStateManager.shared.qualitySettings.debugMode {
-                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) → \(reconciled.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
+                    logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedFrame.orientation.rawValue) → \(reconciled.rawValue) (\(thumbURL.lastPathComponent)); persisting to .meta")
                 }
                 try? mergePhotoOrientationIntoSavedRoomMetadata(
                     fileName: fileName,
@@ -1851,12 +1893,12 @@ class USDZModelManager: ObservableObject {
                     self?.refreshModels()
                 }
             } else if AppStateManager.shared.qualitySettings.debugMode {
-                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedBase.orientation.rawValue) matches reconciled thumbnail (\(thumbURL.lastPathComponent))")
+                logDebug("📐 [USDZModelManager] PLY list orientation: meta=\(normalizedFrame.orientation.rawValue) matches reconciled thumbnail (\(thumbURL.lastPathComponent))")
             }
-            return normalizedBase.replacingOrientation(reconciled)
+            return normalizedFrame.replacingOrientation(reconciled)
         }
 
-        return normalizedBase
+        return normalizedFrame
     }
 
     private func savedRoomThumbnailURL(stem: String) -> URL? {
