@@ -297,7 +297,7 @@ def build_textured_mesh_glb(
                 continue
             vertex_indices[ri * grid_w + ci] = len(vertices)
             vertices.append([
-                (float(col) - center_x) * pixel_scale,
+                -(float(col) - center_x) * pixel_scale,
                 (float(row) - center_y) * pixel_scale,
                 -(depth_max - d),
             ])
@@ -333,8 +333,8 @@ def build_textured_mesh_glb(
             if max(abs(a - b) for i, a in enumerate(depths) for b in depths[i + 1:]) > max_depth_jump:
                 continue
 
-            faces.append([v00, v11, v10])
-            faces.append([v00, v01, v11])
+            faces.append([v00, v10, v11])
+            faces.append([v00, v11, v01])
 
     if not faces:
         raise ValueError("Could not build any mesh faces from depth map.")
