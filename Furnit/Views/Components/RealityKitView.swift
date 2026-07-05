@@ -402,6 +402,9 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Ensure model has proper materials for visibility
                 ensureModelHasMaterials(modelEntity)
+                if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+                    applyNoFaceCulling(to: modelEntity)
+                }
 
                 // Calculate model bounds for camera positioning
                 let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
@@ -727,6 +730,30 @@ struct RealityKitView: UIViewRepresentable {
     }
 
     // Ensure loaded model has proper materials for visibility
+    private func applyNoFaceCulling(to entity: Entity) {
+        if var modelComponent = entity.components[ModelComponent.self] {
+            modelComponent.materials = modelComponent.materials.map { material in
+                if var pbr = material as? PhysicallyBasedMaterial {
+                    pbr.faceCulling = .none
+                    return pbr
+                }
+                if var unlit = material as? UnlitMaterial {
+                    unlit.faceCulling = .none
+                    return unlit
+                }
+                if var simple = material as? SimpleMaterial {
+                    simple.faceCulling = .none
+                    return simple
+                }
+                return material
+            }
+            entity.components.set(modelComponent)
+        }
+        for child in entity.children {
+            applyNoFaceCulling(to: child)
+        }
+    }
+
     private func ensureModelHasMaterials(_ entity: Entity) {
         // Check if entity itself has a model component and materials
         if var modelComponent = entity.components[ModelComponent.self] {

@@ -178,7 +178,7 @@ final class DepthAnythingRoomReconstructor {
                 guard depth.isFinite, depth > 0 else { continue }
 
                 let x = (Float(column) - centerX) * pixelScale
-                let y = -(Float(row) - centerY) * pixelScale
+                let y = (Float(row) - centerY) * pixelScale
                 let z = -(depthMax - depth)
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
@@ -240,11 +240,11 @@ final class DepthAnythingRoomReconstructor {
                 }
 
                 indexData.appendUInt32LE(UInt32(v00))
+                indexData.appendUInt32LE(UInt32(v11))
                 indexData.appendUInt32LE(UInt32(v10))
-                indexData.appendUInt32LE(UInt32(v11))
                 indexData.appendUInt32LE(UInt32(v00))
-                indexData.appendUInt32LE(UInt32(v11))
                 indexData.appendUInt32LE(UInt32(v01))
+                indexData.appendUInt32LE(UInt32(v11))
                 indexCount += 6
             }
         }
