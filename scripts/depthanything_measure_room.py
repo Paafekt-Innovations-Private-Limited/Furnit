@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Predict room dimensions from a single photo using Depth Anything V2 metric depth.
+"""Estimate depth and projected frame dimensions from Depth Anything V2 metric depth.
 
 No manual measurements required. Auto-writes:
   - measurements JSON
@@ -22,9 +22,9 @@ import numpy as np
 from PIL import ExifTags, Image, ImageOps
 
 DEFAULT_IMAGE = Path("/Users/al/Downloads/USRoom.jpeg")
-DEFAULT_ONNX = Path(
-    "/Volumes/LaCie/apr8th2026depth/android/depthanything_metric_handoff/"
-    "DepthAnythingV2MetricIndoorSmall.onnx"
+DEFAULT_ONNX = (
+    Path(__file__).resolve().parents[1]
+    / "Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.onnx"
 )
 DEFAULT_OUT_DIR = Path("/tmp/depthanything_splat")
 DEFAULT_INPUT_SIZE = 518
@@ -391,7 +391,8 @@ def main() -> int:
     payload["onnx_path"] = str(args.onnx.expanduser().resolve())
     outputs: dict[str, str] = {"measurements_json": str(json_path)}
     payload["note"] = (
-        "Model-predicted dimensions only. Width/height assume the visible frame is one wall surface; "
+        "Depth Anything outputs per-pixel metric depth, not room width/height. "
+        "Width/height here are projection estimates that assume the visible frame is one wall surface; "
         "depth is camera-to-wall at center. EXIF missing -> 28mm-equiv fallback affects X/Y scale."
     )
 

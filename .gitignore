@@ -255,6 +255,12 @@ android/app/src/main/cpp/ncnn-android-vulkan-old/
 android/sharp_ncnn_models_backup/
 *.bin
 !Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/Data/com.apple.CoreML/weights/weight.bin
+!Furnit/Models/GeoCalib/
+!Furnit/Models/GeoCalib/**
+Furnit/Models/GeoCalib/weights/*.tar
+!Furnit/Models/GeoCalib/weights/.gitkeep
+!Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage/
+!Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage/**
 *.param
 
 # ML model binaries (too large for git; backup to external HD — see scripts/backup_large_files_to_external.sh)

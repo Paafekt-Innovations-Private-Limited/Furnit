@@ -13,11 +13,13 @@ struct DepthAnythingRoomResult: Sendable {
     let triangleCount: Int
     let imageWidth: Int
     let imageHeight: Int
-    /// From ``measureWall`` on the Core ML depth map only (same as `scripts/depthanything_measure_room.py`).
+    /// Display/saved dimensions from Depth Anything metric depth.
+    /// Width/height are projected from Depth Anything metric depth using the best available camera intrinsics.
     /// Never derived from USDZ mesh, point cloud, or RealityKit bounds.
     let roomWidthMeters: Float
     let roomHeightMeters: Float
     let roomDepthMeters: Float
+    let calibrationMetadata: [String: Double]
 
     var photoOrientation: PhotoOrientation {
         if imageWidth == imageHeight { return .square }
@@ -53,6 +55,7 @@ final class DepthAnythingRoomReconstructor {
     private static let usesFlatMesh = true
     private static let minimumRoomWidthMeters: Float = 2.0
     private static let fallbackFocal35mmEquivalent: Float = 28.0
+    private static let objectBBoxConfidenceThreshold: Float = 0.30
 
     init(
         pixelStep: Int = 2,
@@ -79,7 +82,10 @@ final class DepthAnythingRoomReconstructor {
         return result.usdzURL
     }
 
-    func reconstructWithResult(image: UIImage) async throws -> DepthAnythingRoomResult {
+    func reconstructWithResult(
+        image: UIImage,
+        cameraMetadata: [String: Double]? = nil
+    ) async throws -> DepthAnythingRoomResult {
         let sourcePixelWidth = max(1, Int(ceil(Double(image.size.width * image.scale))))
         let sourcePixelHeight = max(1, Int(ceil(Double(image.size.height * image.scale))))
         let fixedImage = image.fixedOrientation()
@@ -88,11 +94,21 @@ final class DepthAnythingRoomReconstructor {
         let fixedPixelHeight = fixedImage.cgImage?.height ?? sourcePixelHeight
         let workingPixelWidth = workingImage.cgImage?.width ?? fixedPixelWidth
         let workingPixelHeight = workingImage.cgImage?.height ?? fixedPixelHeight
+        let geoCalibCalibration = await GeoCalibCalibrationService.shared.estimateCalibration(image: workingImage)
         let depthMap = try await inferDepth(image: workingImage)
         let imageWidth = depthMap.first?.count ?? 0
         let imageHeight = depthMap.count
-        let focal = Self.focalPixelDetails(image: workingImage, imageWidth: imageWidth, imageHeight: imageHeight)
-        let measured = Self.measureWall(
+        let calibrationMetadata = Self.mergedCameraMetadata(
+            cameraMetadata,
+            geoCalibCalibration?.metadata
+        )
+        let focal = Self.focalPixelDetails(
+            image: workingImage,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            cameraMetadata: calibrationMetadata
+        )
+        let wallMeasured = Self.measureWall(
             depthMap: depthMap,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
@@ -100,16 +116,41 @@ final class DepthAnythingRoomReconstructor {
             fy: focal.fy,
             wallMargin: wallMargin
         )
+        let depthSpreadMeasured = Self.measureDepthSpread(
+            depthMap: depthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focal.fx,
+            fy: focal.fy,
+            wallMargin: wallMargin
+        ) ?? wallMeasured
+        let objectMeasured = Self.measureObjectBBox(
+            image: workingImage,
+            depthMap: depthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focal.fx,
+            fy: focal.fy
+        )
+        // Depth-unprojected spread is the room estimate; wall rect is frustum-at-center-depth only.
+        let measured = depthSpreadMeasured
         let stats = Self.depthMapStats(depthMap)
         let rect = Self.measureWallSampleRect(imageWidth: imageWidth, imageHeight: imageHeight, wallMargin: wallMargin)
         let rectWidthPixels = max(0, rect.rightX - rect.leftX)
         let rectHeightPixels = max(0, rect.bottomY - rect.topY)
-        let widthFormula = "\(rectWidthPixels)px*\(String(format: "%.4f", measured.depth))m/\(String(format: "%.2f", focal.fx))fx"
-        let heightFormula = "\(rectHeightPixels)px*\(String(format: "%.4f", measured.depth))m/\(String(format: "%.2f", focal.fy))fy"
+        let wallWidthFormula = "\(rectWidthPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focal.fx))fx"
+        let wallHeightFormula = "\(rectHeightPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focal.fy))fy"
+        let objectDimsSummary: String
+        if let objectMeasured {
+            objectDimsSummary = "W:\(String(format: "%.4f", objectMeasured.width)),H:\(String(format: "%.4f", objectMeasured.height)),D:\(String(format: "%.4f", objectMeasured.depth))"
+        } else {
+            objectDimsSummary = "nil"
+        }
         logDebug(
             "[DepthAnythingRoom][InferenceDims] model=\(modelName) " +
             "source_px=\(sourcePixelWidth)x\(sourcePixelHeight) fixed_px=\(fixedPixelWidth)x\(fixedPixelHeight) " +
             "working_px=\(workingPixelWidth)x\(workingPixelHeight) depth_map=\(imageWidth)x\(imageHeight) " +
+            "geocalib=\(geoCalibCalibration == nil ? "nil" : "available") " +
             "valid_depths=\(stats.validCount) invalid_depths=\(stats.invalidCount) " +
             "depth_min=\(Self.formatMeters(stats.min)) depth_p05=\(Self.formatMeters(stats.p05)) " +
             "depth_median=\(Self.formatMeters(stats.median)) depth_p95=\(Self.formatMeters(stats.p95)) " +
@@ -118,23 +159,35 @@ final class DepthAnythingRoomReconstructor {
             "fx=\(String(format: "%.2f", focal.fx)) fy=\(String(format: "%.2f", focal.fy)) " +
             "wall_margin=\(String(format: "%.3f", wallMargin)) " +
             "rect_px=x:\(rect.leftX)-\(rect.rightX),y:\(rect.topY)-\(rect.bottomY),sample:\(rect.sampleCenterX),\(rect.sampleCenterY) " +
-            "dims_source=depth_map_center_depth_plus_projected_wall_rect " +
-            "width_formula=\(widthFormula) height_formula=\(heightFormula) " +
-            "dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
+            "wall_dims_source=depth_map_center_depth_plus_projected_wall_rect " +
+            "wall_width_formula=\(wallWidthFormula) wall_height_formula=\(wallHeightFormula) " +
+            "wall_dims_m=W:\(String(format: "%.4f", wallMeasured.width)),H:\(String(format: "%.4f", wallMeasured.height)),D:\(String(format: "%.4f", wallMeasured.depth)) " +
+            "depth_spread_dims_m=W:\(String(format: "%.4f", depthSpreadMeasured.width)),H:\(String(format: "%.4f", depthSpreadMeasured.height)),D:\(String(format: "%.4f", depthSpreadMeasured.depth)) " +
+            "object_bbox_dims_m=\(objectDimsSummary) " +
+            "result_dims_source=depth_unprojected_spread " +
+            "result_dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
         )
         logDebug(
-            "[DepthAnythingRoom] measureWall image=\(imageWidth)x\(imageHeight) " +
+            "[DepthAnythingRoom] depth_spread image=\(imageWidth)x\(imageHeight) " +
             "fx=\(String(format: "%.1f", focal.fx)) fy=\(String(format: "%.1f", focal.fy)) " +
             "W=\(String(format: "%.3f", measured.width)) " +
             "H=\(String(format: "%.3f", measured.height)) " +
             "D=\(String(format: "%.3f", measured.depth)) m"
         )
         let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
+        let meshRoomHeightMeters = max(measured.height, Self.minimumRoomWidthMeters * Float(imageHeight) / Float(max(imageWidth, 1)))
+        logDebug(
+            "[DepthAnythingRoom][MeshScale] source=depth_spread_dims " +
+            "mesh_width_m=\(String(format: "%.4f", meshRoomWidthMeters)) " +
+            "mesh_height_m=\(String(format: "%.4f", meshRoomHeightMeters)) " +
+            "result_dims_source=depth_unprojected_spread"
+        )
         let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(depthMap) : depthMap
         let mesh = try buildMesh(
             image: workingImage,
             depthMap: meshDepthMap,
-            roomWidthMeters: meshRoomWidthMeters
+            roomWidthMeters: meshRoomWidthMeters,
+            roomHeightMeters: meshRoomHeightMeters
         )
         let url = try exportUSDZ(mesh: mesh, textureImage: workingImage)
         return DepthAnythingRoomResult(
@@ -145,7 +198,8 @@ final class DepthAnythingRoomReconstructor {
             imageHeight: imageHeight,
             roomWidthMeters: measured.width,
             roomHeightMeters: measured.height,
-            roomDepthMeters: measured.depth
+            roomDepthMeters: measured.depth,
+            calibrationMetadata: calibrationMetadata ?? [:]
         )
     }
 
@@ -186,7 +240,12 @@ final class DepthAnythingRoomReconstructor {
         return rows
     }
 
-    func buildMesh(image: UIImage, depthMap: [[Float]], roomWidthMeters: Float) throws -> MDLMesh {
+    func buildMesh(
+        image: UIImage,
+        depthMap: [[Float]],
+        roomWidthMeters: Float,
+        roomHeightMeters: Float
+    ) throws -> MDLMesh {
         let fixedImage = image.fixedOrientation()
         let raster = try DepthAnythingRasterImage(image: fixedImage)
         let imageWidth = raster.width
@@ -215,7 +274,8 @@ final class DepthAnythingRoomReconstructor {
         vertexData.reserveCapacity(rowCount * columnCount * DepthAnythingVertex.byteStride)
         var vertexCount = 0
 
-        let pixelScale = roomWidthMeters / Float(imageWidth)
+        let pixelScaleX = roomWidthMeters / Float(imageWidth)
+        let pixelScaleY = roomHeightMeters / Float(imageHeight)
         let centerX = Float(imageWidth) / 2.0
         let centerY = Float(imageHeight) / 2.0
 
@@ -224,8 +284,8 @@ final class DepthAnythingRoomReconstructor {
                 let depth = depthMap[row][column]
                 guard depth.isFinite, depth > 0 else { continue }
 
-                let x = -(Float(column) - centerX) * pixelScale
-                let y = (Float(row) - centerY) * pixelScale
+                let x = -(Float(column) - centerX) * pixelScaleX
+                let y = (Float(row) - centerY) * pixelScaleY
                 let z = -(depthMax - depth)
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
@@ -836,6 +896,296 @@ final class DepthAnythingRoomReconstructor {
         )
     }
 
+    private static func measureDepthSpread(
+        depthMap: [[Float]],
+        imageWidth: Int,
+        imageHeight: Int,
+        fx: Float,
+        fy: Float,
+        wallMargin: Float,
+        sampleStep: Int = 8
+    ) -> (width: Float, height: Float, depth: Float)? {
+        guard imageWidth > 1, imageHeight > 1, fx > 1, fy > 1 else { return nil }
+
+        let margin = min(max(wallMargin, 0), 0.45)
+        let leftX = Int(round(margin * Float(imageWidth)))
+        let rightX = Int(round((1.0 - margin) * Float(imageWidth))) - 1
+        let topY = Int(round(margin * Float(imageHeight)))
+        let bottomY = Int(round((1.0 - margin) * Float(imageHeight))) - 1
+        guard leftX < rightX, topY < bottomY else { return nil }
+
+        let centerX = Float(imageWidth - 1) * 0.5
+        let centerY = Float(imageHeight - 1) * 0.5
+        var projectedX: [Float] = []
+        var projectedY: [Float] = []
+        var depths: [Float] = []
+        projectedX.reserveCapacity((rightX - leftX) * (bottomY - topY) / max(1, sampleStep * sampleStep))
+        projectedY.reserveCapacity(projectedX.capacity)
+        depths.reserveCapacity(projectedX.capacity)
+
+        var y = topY
+        while y <= bottomY {
+            var x = leftX
+            while x <= rightX {
+                let depth = depthMap[y][x]
+                if depth.isFinite, depth > 0 {
+                    projectedX.append((Float(x) - centerX) * depth / fx)
+                    projectedY.append((Float(y) - centerY) * depth / fy)
+                    depths.append(depth)
+                }
+                x += sampleStep
+            }
+            y += sampleStep
+        }
+
+        guard projectedX.count >= 32 else { return nil }
+        projectedX.sort()
+        projectedY.sort()
+        depths.sort()
+
+        let lowIndex = max(0, projectedX.count / 20)
+        let highIndex = min(projectedX.count - 1, projectedX.count * 19 / 20)
+        guard highIndex > lowIndex else { return nil }
+
+        let width = projectedX[highIndex] - projectedX[lowIndex]
+        let height = projectedY[highIndex] - projectedY[lowIndex]
+        let depth = depths[depths.count / 2]
+        guard width.isFinite, height.isFinite, depth.isFinite, width > 0, height > 0, depth > 0 else {
+            return nil
+        }
+        return (width, height, depth)
+    }
+
+    private struct ObjectBBoxMeasurement {
+        let width: Float
+        let height: Float
+        let depth: Float
+    }
+
+    private static func measureObjectBBox(
+        image: UIImage,
+        depthMap: [[Float]],
+        imageWidth: Int,
+        imageHeight: Int,
+        fx: Float,
+        fy: Float
+    ) -> ObjectBBoxMeasurement? {
+        guard let objectModel = loadObjectBBoxModel() else {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=rtmdet_model_not_found")
+            return nil
+        }
+
+        let inference: RTMDetInferenceResult
+        do {
+            inference = try RTMDetImageInference.runInstanceSegmentation(
+                image: image,
+                model: objectModel,
+                confidenceThreshold: objectBBoxConfidenceThreshold,
+                maxMaskCount: 1,
+                maxDetectionCount: 25,
+                buildInstanceMasks: false,
+                cacheMaskBuildInputs: false,
+                debug: false
+            )
+        } catch {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=rtmdet_failed error=\(error.localizedDescription)")
+            return nil
+        }
+
+        guard let detection = selectMeasurementObjectBBox(
+            from: inference.detections,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        ) else {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=no_valid_object_bbox detections=\(inference.detections.count)")
+            return nil
+        }
+
+        let rect = clampedBBox(detection, imageWidth: imageWidth, imageHeight: imageHeight)
+        guard rect.leftX < rect.rightX, rect.topY < rect.bottomY else {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=empty_bbox cls=\(detection.classIdx)")
+            return nil
+        }
+
+        guard let depthSample = depthPercentile(
+            depthMap: depthMap,
+            leftX: rect.leftX,
+            rightX: rect.rightX,
+            topY: rect.topY,
+            bottomY: rect.bottomY,
+            fraction: 0.20
+        ) else {
+            logDebug("[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=no_bbox_depth cls=\(detection.classIdx)")
+            return nil
+        }
+
+        let bboxWidthPixels = Float(rect.rightX - rect.leftX)
+        let bboxHeightPixels = Float(rect.bottomY - rect.topY)
+        let widthMeters = bboxWidthPixels * depthSample.value / fx
+        let heightMeters = bboxHeightPixels * depthSample.value / fy
+        guard widthMeters.isFinite, heightMeters.isFinite, depthSample.value.isFinite,
+              widthMeters > 0.03, heightMeters > 0.03, depthSample.value > 0.1 else {
+            logDebug(
+                "[DepthAnythingRoom][ObjectBBoxDims] unavailable reason=invalid_projected_dims " +
+                "cls=\(detection.classIdx) bbox_px=\(Int(bboxWidthPixels))x\(Int(bboxHeightPixels)) " +
+                "depth=\(String(format: "%.4f", depthSample.value)) " +
+                "W=\(String(format: "%.4f", widthMeters)) H=\(String(format: "%.4f", heightMeters))"
+            )
+            return nil
+        }
+
+        logDebug(
+            "[DepthAnythingRoom][ObjectBBoxDims] selected cls=\(detection.classIdx) " +
+            "conf=\(String(format: "%.3f", detection.confidence)) " +
+            "bbox_px=x:\(rect.leftX)-\(rect.rightX),y:\(rect.topY)-\(rect.bottomY),size:\(Int(bboxWidthPixels))x\(Int(bboxHeightPixels)) " +
+            "depth_p20=\(String(format: "%.4f", depthSample.value)) depth_samples=\(depthSample.count) " +
+            "fx=\(String(format: "%.2f", fx)) fy=\(String(format: "%.2f", fy)) " +
+            "formula=W:\(Int(bboxWidthPixels))px*\(String(format: "%.4f", depthSample.value))m/\(String(format: "%.2f", fx))fx," +
+            "H:\(Int(bboxHeightPixels))px*\(String(format: "%.4f", depthSample.value))m/\(String(format: "%.2f", fy))fy " +
+            "dims_m=W:\(String(format: "%.4f", widthMeters)),H:\(String(format: "%.4f", heightMeters)),D:\(String(format: "%.4f", depthSample.value))"
+        )
+
+        return ObjectBBoxMeasurement(
+            width: widthMeters,
+            height: heightMeters,
+            depth: depthSample.value
+        )
+    }
+
+    private static func selectMeasurementObjectBBox(
+        from detections: [FurnitureFitDetection],
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> FurnitureFitDetection? {
+        let imageArea = max(1, Float(imageWidth * imageHeight))
+        let centerX = Float(imageWidth) * 0.5
+        let centerY = Float(imageHeight) * 0.5
+        let maxCenterDistance = max(1, (centerX * centerX + centerY * centerY).squareRoot())
+
+        return detections
+            .filter { detection in
+                let area = detection.w * detection.h
+                let areaFraction = area / imageArea
+                return detection.confidence >= objectBBoxConfidenceThreshold &&
+                    detection.w >= 8 &&
+                    detection.h >= 8 &&
+                    areaFraction >= 0.002 &&
+                    areaFraction <= 0.85
+            }
+            .max { lhs, rhs in
+                objectBBoxScore(lhs, imageArea: imageArea, centerX: centerX, centerY: centerY, maxCenterDistance: maxCenterDistance) <
+                    objectBBoxScore(rhs, imageArea: imageArea, centerX: centerX, centerY: centerY, maxCenterDistance: maxCenterDistance)
+            }
+    }
+
+    private static func objectBBoxScore(
+        _ detection: FurnitureFitDetection,
+        imageArea: Float,
+        centerX: Float,
+        centerY: Float,
+        maxCenterDistance: Float
+    ) -> Float {
+        let areaFraction = max(0, min((detection.w * detection.h) / imageArea, 1))
+        let dx = detection.x - centerX
+        let dy = detection.y - centerY
+        let centerDistance = (dx * dx + dy * dy).squareRoot() / maxCenterDistance
+        return detection.confidence * 0.55 + areaFraction.squareRoot() * 0.45 - centerDistance * 0.10
+    }
+
+    private static func clampedBBox(
+        _ detection: FurnitureFitDetection,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> (leftX: Int, rightX: Int, topY: Int, bottomY: Int) {
+        let maxX = max(0, imageWidth - 1)
+        let maxY = max(0, imageHeight - 1)
+        let leftX = min(max(Int(floor(detection.x - detection.w * 0.5)), 0), maxX)
+        let rightX = min(max(Int(ceil(detection.x + detection.w * 0.5)), 0), maxX)
+        let topY = min(max(Int(floor(detection.y - detection.h * 0.5)), 0), maxY)
+        let bottomY = min(max(Int(ceil(detection.y + detection.h * 0.5)), 0), maxY)
+        return (leftX, rightX, topY, bottomY)
+    }
+
+    private static func depthPercentile(
+        depthMap: [[Float]],
+        leftX: Int,
+        rightX: Int,
+        topY: Int,
+        bottomY: Int,
+        fraction: Float
+    ) -> (value: Float, count: Int)? {
+        let imageHeight = depthMap.count
+        let imageWidth = depthMap.first?.count ?? 0
+        guard imageWidth > 0, imageHeight > 0 else { return nil }
+        let x0 = min(max(leftX, 0), imageWidth - 1)
+        let x1 = min(max(rightX, 0), imageWidth - 1)
+        let y0 = min(max(topY, 0), imageHeight - 1)
+        let y1 = min(max(bottomY, 0), imageHeight - 1)
+        guard x0 < x1, y0 < y1 else { return nil }
+
+        let maxSpan = max(x1 - x0, y1 - y0)
+        let step = max(1, maxSpan / 160)
+        var samples: [Float] = []
+        samples.reserveCapacity(((y1 - y0) / step + 1) * ((x1 - x0) / step + 1))
+        for y in stride(from: y0, through: y1, by: step) {
+            for x in stride(from: x0, through: x1, by: step) {
+                let depth = depthMap[y][x]
+                if depth.isFinite, depth > 0.1, depth < 50 {
+                    samples.append(depth)
+                }
+            }
+        }
+        guard !samples.isEmpty else { return nil }
+        samples.sort()
+        return (percentile(sorted: samples, fraction: fraction) ?? samples[samples.count / 2], samples.count)
+    }
+
+    private static func loadObjectBBoxModel() -> MLModel? {
+        let candidates: [(name: String, ext: String)] = [
+            ("rtmdet-ins-m", "mlmodelc"),
+            ("rtmdet-ins-m", "mlpackage"),
+            ("rtmdet_ins_m", "mlmodelc"),
+            ("rtmdet_ins_m", "mlpackage"),
+            ("rtmdet-ins-m-coreml", "mlmodelc"),
+            ("rtmdet-ins-m-coreml", "mlpackage"),
+        ]
+        let subdirectories: [String?] = [
+            nil,
+            "Models/RTMDet",
+            "Furnit/Models/RTMDet",
+        ]
+        let computeUnitFallbacks: [MLComputeUnits] = [
+            .cpuAndNeuralEngine,
+            .cpuAndGPU,
+            .all,
+            .cpuOnly,
+        ]
+        for computeUnits in computeUnitFallbacks {
+            let config = MLModelConfiguration()
+            config.computeUnits = computeUnits
+            for subdirectory in subdirectories {
+                for candidate in candidates {
+                    guard let url = Bundle.main.url(
+                        forResource: candidate.name,
+                        withExtension: candidate.ext,
+                        subdirectory: subdirectory
+                    ) else {
+                        continue
+                    }
+                    do {
+                        let loadURL = candidate.ext == "mlpackage"
+                            ? try MLModel.compileModel(at: url)
+                            : url
+                        return try MLModel(contentsOf: loadURL, configuration: config)
+                    } catch {
+                        logDebug("[DepthAnythingRoom][ObjectBBoxDims] rtmdet_load_failed compute=\(computeUnits) file=\(candidate.name).\(candidate.ext) error=\(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
     private static func measureWallSampleRect(
         imageWidth: Int,
         imageHeight: Int,
@@ -1007,15 +1357,29 @@ final class DepthAnythingRoomReconstructor {
     }
 
     private static func focalPixels(image: UIImage, imageWidth: Int, imageHeight: Int) -> (fx: Float, fy: Float) {
-        let details = focalPixelDetails(image: image, imageWidth: imageWidth, imageHeight: imageHeight)
+        let details = focalPixelDetails(
+            image: image,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            cameraMetadata: nil
+        )
         return (details.fx, details.fy)
     }
 
     private static func focalPixelDetails(
         image: UIImage,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        cameraMetadata: [String: Double]? = nil
     ) -> (fx: Float, fy: Float, focal35mm: Float, source: String) {
+        if let metadataFocal = focalPixelDetailsFromCameraMetadata(
+            cameraMetadata,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        ) {
+            return metadataFocal
+        }
+
         let focal35mm: Float
         let source: String
         if let exifFocal = focal35mmEquivalent(from: image), exifFocal > 1 {
@@ -1029,6 +1393,106 @@ final class DepthAnythingRoomReconstructor {
         // Do NOT set fy = fx * H/W — that cancels aspect ratio and forces W == H in measureWall().
         let focalPx = (focal35mm / 36.0) * Float(imageWidth)
         return (focalPx, focalPx, focal35mm, source)
+    }
+
+    private static func focalPixelDetailsFromCameraMetadata(
+        _ metadata: [String: Double]?,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> (fx: Float, fy: Float, focal35mm: Float, source: String)? {
+        guard let metadata, imageWidth > 1, imageHeight > 1 else { return nil }
+
+        let targetWidth = Float(imageWidth)
+        let targetHeight = Float(imageHeight)
+
+        if let geoFocal = metadataFloat(metadata, keys: ["geoCalibFocalLengthPx", "geocalibFocalLengthPx"]),
+           geoFocal > 1 {
+            let geoWidth = metadataFloat(metadata, keys: ["geoCalibImageWidthPx", "geocalibImageWidthPx"]) ?? targetWidth
+            let focalPx = geoFocal * targetWidth / max(1, geoWidth)
+            if focalPx.isFinite, focalPx > 1 {
+                return (focalPx, focalPx, 36.0 * focalPx / targetWidth, "geocalib_square_focal")
+            }
+        }
+
+        let sourceWidth = metadataFloat(
+            metadata,
+            keys: ["imageWidthPx", "exifPixelXDimension", "sourceImageWidthPx"]
+        )
+        let sourceHeight = metadataFloat(
+            metadata,
+            keys: ["imageHeightPx", "exifPixelYDimension", "sourceImageHeightPx"]
+        )
+
+        if let sourceFx = metadataFloat(
+            metadata,
+            keys: ["focalLengthPx", "arkitFocalLengthXPx", "predictedFocalLengthPx"]
+        ),
+           sourceFx > 1 {
+            let sourceFy = metadataFloat(
+                metadata,
+                keys: ["arkitFocalLengthYPx", "focalLengthYPx", "predictedFocalLengthYPx"]
+            ) ?? sourceFx
+
+            if let sourceWidth,
+               let sourceHeight,
+               sourceWidth > 1,
+               sourceHeight > 1 {
+                let normalError = abs(sourceWidth - targetWidth) + abs(sourceHeight - targetHeight)
+                let rotatedError = abs(sourceWidth - targetHeight) + abs(sourceHeight - targetWidth)
+                let rotated = rotatedError < normalError
+
+                let fx: Float
+                let fy: Float
+                let source: String
+                if rotated {
+                    fx = sourceFy * targetWidth / sourceHeight
+                    fy = sourceFx * targetHeight / sourceWidth
+                    source = "sidecar_focal_px_rotated_scaled"
+                } else {
+                    fx = sourceFx * targetWidth / sourceWidth
+                    fy = sourceFy * targetHeight / sourceHeight
+                    source = "sidecar_focal_px_scaled"
+                }
+
+                if fx.isFinite, fy.isFinite, fx > 1, fy > 1 {
+                    return (fx, fy, 36.0 * fx / targetWidth, source)
+                }
+            }
+        }
+
+        if let focal35mm = metadataFloat(
+            metadata,
+            keys: ["focalLength35mmEquivMm", "focalLength35mmEquivalentMm", "focalLength35mmEquivalentMM"]
+        ), focal35mm > 1 {
+            let focalPx = (focal35mm / 36.0) * targetWidth
+            return (focalPx, focalPx, focal35mm, "sidecar_35mm")
+        }
+
+        return nil
+    }
+
+    private static func mergedCameraMetadata(
+        _ first: [String: Double]?,
+        _ second: [String: Double]?
+    ) -> [String: Double]? {
+        var merged = first ?? [:]
+        if let second {
+            for (key, value) in second {
+                merged[key] = value
+            }
+        }
+        return merged.isEmpty ? nil : merged
+    }
+
+    private static func metadataFloat(_ metadata: [String: Double], keys: [String]) -> Float? {
+        for key in keys {
+            guard let value = metadata[key] else { continue }
+            let floatValue = Float(value)
+            if floatValue.isFinite, floatValue > 0 {
+                return floatValue
+            }
+        }
+        return nil
     }
 
     private static func focal35mmEquivalent(from image: UIImage) -> Float? {

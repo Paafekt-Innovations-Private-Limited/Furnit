@@ -1129,6 +1129,7 @@ private func copyDepthAnythingRoomToSavedRooms(sourceURL: URL, metadata: [String
 
     let destinationURL = uniqueDepthAnythingSavedRoomURL(in: savedRoomsURL, sourceURL: sourceURL)
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+    CameraExifSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
 
     let metadataURL = savedRoomsURL.appendingPathComponent("\(destinationURL.deletingPathExtension().lastPathComponent).usdz.meta")
     let metadataData = try JSONEncoder().encode(metadata)
@@ -1578,6 +1579,10 @@ struct SinglePhotoRoomView: View {
     private func startDepthAnythingGeneration(image: UIImage) {
         let generationImage = image.fixedOrientation()
         let orientation = selectedOrientation
+        let generationSourceImageURL = sourceImageURL
+        let generationMediaMetadata = captureMediaMetadata
+        let generationPhotoLibraryAssetLocalId = photoLibraryAssetLocalId
+        let generationSupplementalCameraDoubles = supplementalCameraDoubles
         selectedImage = nil
         fixedImageItem = nil
         usdzViewerDestination = nil
@@ -1586,10 +1591,31 @@ struct SinglePhotoRoomView: View {
 
         Task {
             do {
+                let cameraMetadata = await CameraExifSidecar.collectMerged(
+                    imageURL: generationSourceImageURL,
+                    mediaMetadata: generationMediaMetadata,
+                    photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
+                    supplementalDoubles: generationSupplementalCameraDoubles
+                )
+                if cameraMetadata.isEmpty {
+                    logDebug("[DepthAnythingRoom][CameraMetadata] unavailable; focal will use EXIF on UIImage or fallback")
+                } else {
+                    logDebug("[DepthAnythingRoom][CameraMetadata] keys=\(cameraMetadata.keys.sorted())")
+                }
                 let result = try await Task.detached(priority: .userInitiated) {
                     let reconstructor = try DepthAnythingRoomReconstructor()
-                    return try await reconstructor.reconstructWithResult(image: generationImage)
+                    return try await reconstructor.reconstructWithResult(
+                        image: generationImage,
+                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata
+                    )
                 }.value
+                var persistedCameraMetadata = cameraMetadata
+                for (key, value) in result.calibrationMetadata {
+                    persistedCameraMetadata[key] = value
+                }
+                if !persistedCameraMetadata.isEmpty {
+                    CameraExifSidecar.mergeDerivedValues(roomURL: result.usdzURL, additions: persistedCameraMetadata)
+                }
                 logDebug("✅ [DepthAnythingRoom] USDZ generated: \(result.summary)")
                 logDebug(
                     "[DepthAnythingRoom][InferenceDims][UIResult] " +
