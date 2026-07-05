@@ -37,6 +37,7 @@ struct RealityKitView: UIViewRepresentable {
         // Configure ARView for room viewing in non-AR mode
         arView.renderOptions.insert(.disablePersonOcclusion)
         arView.renderOptions.insert(.disableMotionBlur)
+        Self.configureViewerBackground(arView, roomCoordinateFrame: model.roomCoordinateFrame)
         
         // Apply quality settings
         let quality = appState.currentQuality
@@ -94,6 +95,8 @@ struct RealityKitView: UIViewRepresentable {
 
             context.coordinator.currentModelID = model.id
         }
+
+        Self.configureViewerBackground(uiView, roomCoordinateFrame: model.roomCoordinateFrame)
 
         // Update rendering quality if settings changed
         let currentQuality = appState.currentQuality
@@ -238,7 +241,8 @@ struct RealityKitView: UIViewRepresentable {
         func setupCustomCamera(for arView: ARView) {
             // Create perspective camera entity with reasonable field of view
             cameraEntity = PerspectiveCamera()
-            cameraEntity?.camera.fieldOfViewInDegrees = 60.0 // Reduced from 75 for better framing
+            cameraEntity?.camera.fieldOfViewOrientation = .vertical
+            cameraEntity?.camera.fieldOfViewInDegrees = 60.0
 
             // Create camera anchor - initial position will be set after model loads and bounds are calculated
             cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0)) // Temporary position
@@ -706,6 +710,15 @@ struct RealityKitView: UIViewRepresentable {
         logDebug("💡 Added dedicated lighting for placed 3D objects")
     }
     
+    /// Depth Anything flat planes use cover framing; neutral backdrop hides any residual letterbox void.
+    private static func configureViewerBackground(_ arView: ARView, roomCoordinateFrame: RoomCoordinateFrame) {
+        if roomCoordinateFrame == .depthAnythingImageDepthMeters {
+            arView.environment.background = .color(.init(white: 0.12, alpha: 1.0))
+        } else {
+            arView.environment.background = .color(.init(white: 0, alpha: 1.0))
+        }
+    }
+
     // Configure rendering quality based on user settings
     private func configureRenderingQuality(arView: ARView, quality: AssetQuality) {
         switch quality {

@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreML
 import Foundation
+import simd
 import UIKit
 
 struct GeoCalibCalibrationResult: Sendable {
@@ -24,6 +25,47 @@ struct GeoCalibCalibrationResult: Sendable {
             "geoCalibFinalCost": Double(finalCost),
             "geoCalibIterations": Double(iterations),
         ]
+    }
+
+    /// GeoCalib leveling reference in the pinhole camera frame (+X right, +Y down, +Z forward).
+    /// At zero roll/pitch this is (0, -1, 0), so leveling is identity for an already-level image.
+    var gravityVectorCamera: SIMD3<Float> {
+        Self.gravityVector(rollRadians: rollRadians, pitchRadians: pitchRadians)
+    }
+
+    static func gravityVector(rollRadians: Float, pitchRadians: Float) -> SIMD3<Float> {
+        let sr = sin(rollRadians)
+        let cr = cos(rollRadians)
+        let sp = sin(pitchRadians)
+        let cp = cos(pitchRadians)
+        return simd_normalize(SIMD3(-sr * cp, -cr * cp, sp))
+    }
+
+    /// Maps camera-frame points (+X right, +Y down, +Z forward) into a gravity-leveled frame (+Y up).
+    func levelingRotationMatrix() -> simd_float3x3 {
+        Self.levelingRotationMatrix(gravityDown: gravityVectorCamera)
+    }
+
+    static func levelingRotationMatrix(gravityDown: SIMD3<Float>) -> simd_float3x3 {
+        rotationMatrix(from: simd_normalize(gravityDown), to: SIMD3(0, -1, 0))
+    }
+
+    private static func rotationMatrix(from source: SIMD3<Float>, to target: SIMD3<Float>) -> simd_float3x3 {
+        let src = simd_normalize(source)
+        let tgt = simd_normalize(target)
+        let cosine = simd_dot(src, tgt)
+        if cosine > 0.9999 {
+            return matrix_identity_float3x3
+        }
+        if cosine < -0.9999 {
+            return simd_float3x3(
+                SIMD3(1, 0, 0),
+                SIMD3(0, -1, 0),
+                SIMD3(0, 0, -1)
+            )
+        }
+        let axis = simd_normalize(simd_cross(src, tgt))
+        return simd_float3x3(simd_quaternion(acos(simd_clamp(cosine, -1, 1)), axis))
     }
 }
 
@@ -250,13 +292,18 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
 
         let ptr = array.dataPointer.assumingMemoryBound(to: Float.self)
         let planeSize = side * side
+        let mean = SIMD3<Float>(0.485, 0.456, 0.406)
+        let std = SIMD3<Float>(0.229, 0.224, 0.225)
         for y in 0..<side {
             for x in 0..<side {
                 let pixelIndex = (y * side + x) * 4
                 let outIndex = y * side + x
-                ptr[outIndex] = Float(pixels[pixelIndex]) / 255.0
-                ptr[planeSize + outIndex] = Float(pixels[pixelIndex + 1]) / 255.0
-                ptr[2 * planeSize + outIndex] = Float(pixels[pixelIndex + 2]) / 255.0
+                let red = Float(pixels[pixelIndex]) / 255.0
+                let green = Float(pixels[pixelIndex + 1]) / 255.0
+                let blue = Float(pixels[pixelIndex + 2]) / 255.0
+                ptr[outIndex] = (red - mean.x) / std.x
+                ptr[planeSize + outIndex] = (green - mean.y) / std.y
+                ptr[2 * planeSize + outIndex] = (blue - mean.z) / std.z
             }
         }
         return array
