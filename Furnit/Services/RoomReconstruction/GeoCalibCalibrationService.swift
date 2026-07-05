@@ -92,9 +92,12 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
             return nil
         }
 
-        let cropSide = min(sourceWidth, sourceHeight)
-        let scaleToSource = Float(cropSide) / Float(fields.width)
-        let focalPx = optimized.focalPixels * scaleToSource
+        let letterbox = ImageLetterboxLayout.layout(
+            sourceWidth: sourceWidth,
+            sourceHeight: sourceHeight,
+            canvasSide: fields.width
+        )
+        let focalPx = optimized.focalPixels * letterbox.focalScaleToSource
 
         guard focalPx.isFinite, focalPx > 1 else {
             logDebug("[GeoCalib][LM] unavailable reason=invalid_focal focal=\(focalPx)")
@@ -103,7 +106,8 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
 
         logDebug(
             "[GeoCalib][LM] focal_model_px=\(String(format: "%.2f", optimized.focalPixels)) " +
-            "focal_source_px=\(String(format: "%.2f", focalPx)) crop_side=\(cropSide) " +
+            "focal_source_px=\(String(format: "%.2f", focalPx)) " +
+            "letterbox=\(letterbox.contentWidth)x\(letterbox.contentHeight)@\(letterbox.offsetX),\(letterbox.offsetY) " +
             "roll=\(String(format: "%.4f", optimized.rollRadians)) " +
             "pitch=\(String(format: "%.4f", optimized.pitchRadians)) " +
             "cost=\(String(format: "%.6f", optimized.finalCost)) " +
@@ -213,9 +217,11 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
         let side = 320
         let sourceWidth = cgImage.width
         let sourceHeight = cgImage.height
-        let cropSide = min(sourceWidth, sourceHeight)
-        let cropOriginX = (sourceWidth - cropSide) / 2
-        let cropOriginY = (sourceHeight - cropSide) / 2
+        let letterbox = ImageLetterboxLayout.layout(
+            sourceWidth: sourceWidth,
+            sourceHeight: sourceHeight,
+            canvasSide: side
+        )
 
         guard let array = try? MLMultiArray(
             shape: [1, 3, NSNumber(value: side), NSNumber(value: side)],
@@ -238,18 +244,9 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
             return nil
         }
         context.interpolationQuality = .high
-        let cropRect = CGRect(
-            x: CGFloat(cropOriginX),
-            y: CGFloat(sourceHeight - cropOriginY - cropSide),
-            width: CGFloat(cropSide),
-            height: CGFloat(cropSide)
-        )
-        guard let croppedImage = cgImage.cropping(to: cropRect) else {
-            return nil
-        }
         context.translateBy(x: 0, y: CGFloat(side))
         context.scaleBy(x: 1, y: -1)
-        context.draw(croppedImage, in: CGRect(x: 0, y: 0, width: side, height: side))
+        ImageLetterboxRenderer.drawLetterboxedFlipped(cgImage: cgImage, into: context, layout: letterbox)
 
         let ptr = array.dataPointer.assumingMemoryBound(to: Float.self)
         let planeSize = side * side

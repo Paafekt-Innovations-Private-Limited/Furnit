@@ -56,6 +56,13 @@ final class DepthAnythingRoomReconstructor {
     private static let minimumRoomWidthMeters: Float = 2.0
     private static let fallbackFocal35mmEquivalent: Float = 28.0
     private static let objectBBoxConfidenceThreshold: Float = 0.30
+    private static let geoExifFocalMatchRatioRange: ClosedRange<Float> = 0.85...1.15
+    private static let depthMetricScaleRange: ClosedRange<Float> = 0.55...1.45
+
+    /// COCO class index → expected physical height in meters for metric depth anchoring.
+    private static let objectAnchorHeightMeters: [Int: Float] = [
+        56: 1.15, // chair
+    ]
 
     init(
         pixelStep: Int = 2,
@@ -94,10 +101,14 @@ final class DepthAnythingRoomReconstructor {
         let fixedPixelHeight = fixedImage.cgImage?.height ?? sourcePixelHeight
         let workingPixelWidth = workingImage.cgImage?.width ?? fixedPixelWidth
         let workingPixelHeight = workingImage.cgImage?.height ?? fixedPixelHeight
+        // 1–3: one measurement grid — GeoCalib and Depth Anything both use the full working frame.
         let geoCalibCalibration = await GeoCalibCalibrationService.shared.estimateCalibration(image: workingImage)
         let depthMap = try await inferDepth(image: workingImage)
         let imageWidth = depthMap.first?.count ?? 0
         let imageHeight = depthMap.count
+        guard imageWidth == workingPixelWidth, imageHeight == workingPixelHeight else {
+            throw DepthAnythingRoomError.depthImageSizeMismatch
+        }
         let calibrationMetadata = Self.mergedCameraMetadata(
             cameraMetadata,
             geoCalibCalibration?.metadata
@@ -108,68 +119,123 @@ final class DepthAnythingRoomReconstructor {
             imageHeight: imageHeight,
             cameraMetadata: calibrationMetadata
         )
-        let wallMeasured = Self.measureWall(
-            depthMap: depthMap,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            fx: focal.fx,
-            fy: focal.fy,
-            wallMargin: wallMargin
-        )
-        let depthSpreadMeasured = Self.measureDepthSpread(
-            depthMap: depthMap,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            fx: focal.fx,
-            fy: focal.fy,
-            wallMargin: wallMargin
-        ) ?? wallMeasured
-        let objectMeasured = Self.measureObjectBBox(
+        var focalPx = focal.fx
+        let rawObjectMeasured = Self.measureObjectBBox(
             image: workingImage,
             depthMap: depthMap,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            fx: focal.fx,
-            fy: focal.fy
+            fx: focalPx,
+            fy: focalPx
+        )
+        let metricCalibration = Self.resolveMetricCalibration(
+            geoFocalPx: focalPx,
+            cameraMetadata: calibrationMetadata,
+            imageWidth: imageWidth,
+            rawObjectMeasurement: rawObjectMeasured
+        )
+        focalPx = metricCalibration.focalPx
+        let calibratedDepthMap = Self.scaleDepthMap(depthMap, scale: metricCalibration.depthScale)
+        var enrichedCalibrationMetadata = calibrationMetadata ?? [:]
+        enrichedCalibrationMetadata["depthMetricScale"] = Double(metricCalibration.depthScale)
+        enrichedCalibrationMetadata["depthMetricCalibrationSource"] = Double(metricCalibration.sourceCode)
+        enrichedCalibrationMetadata["metricFocalLengthPx"] = Double(focalPx)
+        if let exifFocalPx = metricCalibration.exifFocalPx {
+            enrichedCalibrationMetadata["exifFocalLengthPx"] = Double(exifFocalPx)
+        }
+        if let anchorClassIdx = metricCalibration.anchorClassIdx {
+            enrichedCalibrationMetadata["depthAnchorClassIdx"] = Double(anchorClassIdx)
+        }
+        if let anchorExpectedHeight = metricCalibration.anchorExpectedHeightMeters {
+            enrichedCalibrationMetadata["depthAnchorExpectedHeightM"] = Double(anchorExpectedHeight)
+        }
+        if let anchorMeasuredHeight = metricCalibration.anchorMeasuredHeightMeters {
+            enrichedCalibrationMetadata["depthAnchorMeasuredHeightM"] = Double(anchorMeasuredHeight)
+        }
+
+        let rawStats = Self.depthMapStats(depthMap)
+        let stats = Self.depthMapStats(calibratedDepthMap)
+        logDebug(
+            "[DepthAnythingRoom][MetricCalib] source=\(metricCalibration.sourceLabel) " +
+            "geo_focal_px=\(String(format: "%.1f", metricCalibration.geoFocalPx)) " +
+            "exif_focal_px=\(metricCalibration.exifFocalPx.map { String(format: "%.1f", $0) } ?? "nil") " +
+            "final_focal_px=\(String(format: "%.1f", focalPx)) " +
+            "depth_scale=\(String(format: "%.4f", metricCalibration.depthScale)) " +
+            "anchor_cls=\(metricCalibration.anchorClassIdx.map(String.init) ?? "nil") " +
+            "anchor_h_expected=\(metricCalibration.anchorExpectedHeightMeters.map { String(format: "%.3f", $0) } ?? "nil") " +
+            "anchor_h_raw=\(metricCalibration.anchorMeasuredHeightMeters.map { String(format: "%.3f", $0) } ?? "nil") " +
+            "depth_median_raw=\(Self.formatMeters(rawStats.median)) depth_median_cal=\(Self.formatMeters(stats.median))"
+        )
+
+        let wallMeasured = Self.measureWall(
+            depthMap: calibratedDepthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focalPx,
+            fy: focalPx,
+            wallMargin: wallMargin
+        )
+        let depthSpreadMeasured = Self.measureDepthSpread(
+            depthMap: calibratedDepthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focalPx,
+            fy: focalPx,
+            wallMargin: wallMargin
+        ) ?? wallMeasured
+        let objectMeasured = Self.measureObjectBBox(
+            image: workingImage,
+            depthMap: calibratedDepthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focalPx,
+            fy: focalPx
         )
         // Depth-unprojected spread is the room estimate; wall rect is frustum-at-center-depth only.
         let measured = depthSpreadMeasured
-        let stats = Self.depthMapStats(depthMap)
         let rect = Self.measureWallSampleRect(imageWidth: imageWidth, imageHeight: imageHeight, wallMargin: wallMargin)
         let rectWidthPixels = max(0, rect.rightX - rect.leftX)
         let rectHeightPixels = max(0, rect.bottomY - rect.topY)
-        let wallWidthFormula = "\(rectWidthPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focal.fx))fx"
-        let wallHeightFormula = "\(rectHeightPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focal.fy))fy"
+        let wallWidthFormula = "\(rectWidthPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focalPx))f"
+        let wallHeightFormula = "\(rectHeightPixels)px*\(String(format: "%.4f", wallMeasured.depth))m/\(String(format: "%.2f", focalPx))f"
         let objectDimsSummary: String
         if let objectMeasured {
             objectDimsSummary = "W:\(String(format: "%.4f", objectMeasured.width)),H:\(String(format: "%.4f", objectMeasured.height)),D:\(String(format: "%.4f", objectMeasured.depth))"
         } else {
             objectDimsSummary = "nil"
         }
+        let rawObjectDimsSummary: String
+        if let rawObjectMeasured {
+            rawObjectDimsSummary = "W:\(String(format: "%.4f", rawObjectMeasured.width)),H:\(String(format: "%.4f", rawObjectMeasured.height)),D:\(String(format: "%.4f", rawObjectMeasured.depth))"
+        } else {
+            rawObjectDimsSummary = "nil"
+        }
         logDebug(
             "[DepthAnythingRoom][InferenceDims] model=\(modelName) " +
             "source_px=\(sourcePixelWidth)x\(sourcePixelHeight) fixed_px=\(fixedPixelWidth)x\(fixedPixelHeight) " +
-            "working_px=\(workingPixelWidth)x\(workingPixelHeight) depth_map=\(imageWidth)x\(imageHeight) " +
+            "working_px=\(workingPixelWidth)x\(workingPixelHeight) measurement_grid=\(imageWidth)x\(imageHeight) grid_aligned=true " +
             "geocalib=\(geoCalibCalibration == nil ? "nil" : "available") " +
             "valid_depths=\(stats.validCount) invalid_depths=\(stats.invalidCount) " +
             "depth_min=\(Self.formatMeters(stats.min)) depth_p05=\(Self.formatMeters(stats.p05)) " +
             "depth_median=\(Self.formatMeters(stats.median)) depth_p95=\(Self.formatMeters(stats.p95)) " +
             "depth_max=\(Self.formatMeters(stats.max)) center_depth=\(Self.formatMeters(stats.centerDepth)) " +
             "focal35mm=\(String(format: "%.2f", focal.focal35mm)) focal_source=\(focal.source) " +
-            "fx=\(String(format: "%.2f", focal.fx)) fy=\(String(format: "%.2f", focal.fy)) " +
+            "focal_px=\(String(format: "%.2f", focalPx)) fx=fy=\(String(format: "%.2f", focalPx)) " +
             "wall_margin=\(String(format: "%.3f", wallMargin)) " +
             "rect_px=x:\(rect.leftX)-\(rect.rightX),y:\(rect.topY)-\(rect.bottomY),sample:\(rect.sampleCenterX),\(rect.sampleCenterY) " +
             "wall_dims_source=depth_map_center_depth_plus_projected_wall_rect " +
             "wall_width_formula=\(wallWidthFormula) wall_height_formula=\(wallHeightFormula) " +
             "wall_dims_m=W:\(String(format: "%.4f", wallMeasured.width)),H:\(String(format: "%.4f", wallMeasured.height)),D:\(String(format: "%.4f", wallMeasured.depth)) " +
             "depth_spread_dims_m=W:\(String(format: "%.4f", depthSpreadMeasured.width)),H:\(String(format: "%.4f", depthSpreadMeasured.height)),D:\(String(format: "%.4f", depthSpreadMeasured.depth)) " +
-            "object_bbox_dims_m=\(objectDimsSummary) " +
+            "object_bbox_dims_raw_m=\(rawObjectDimsSummary) object_bbox_dims_m=\(objectDimsSummary) " +
+            "depth_metric_scale=\(String(format: "%.4f", metricCalibration.depthScale)) " +
+            "depth_metric_source=\(metricCalibration.sourceLabel) " +
             "result_dims_source=depth_unprojected_spread " +
             "result_dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
         )
         logDebug(
             "[DepthAnythingRoom] depth_spread image=\(imageWidth)x\(imageHeight) " +
-            "fx=\(String(format: "%.1f", focal.fx)) fy=\(String(format: "%.1f", focal.fy)) " +
+            "focal_px=\(String(format: "%.1f", focalPx)) " +
             "W=\(String(format: "%.3f", measured.width)) " +
             "H=\(String(format: "%.3f", measured.height)) " +
             "D=\(String(format: "%.3f", measured.depth)) m"
@@ -182,7 +248,7 @@ final class DepthAnythingRoomReconstructor {
             "mesh_height_m=\(String(format: "%.4f", meshRoomHeightMeters)) " +
             "result_dims_source=depth_unprojected_spread"
         )
-        let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(depthMap) : depthMap
+        let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(calibratedDepthMap) : calibratedDepthMap
         let mesh = try buildMesh(
             image: workingImage,
             depthMap: meshDepthMap,
@@ -199,7 +265,7 @@ final class DepthAnythingRoomReconstructor {
             roomWidthMeters: measured.width,
             roomHeightMeters: measured.height,
             roomDepthMeters: measured.depth,
-            calibrationMetadata: calibrationMetadata ?? [:]
+            calibrationMetadata: enrichedCalibrationMetadata
         )
     }
 
@@ -214,17 +280,40 @@ final class DepthAnythingRoomReconstructor {
         let observation = try await runVisionDepthRequest(cgImage: cgImage)
         let dense = try Self.depthGrid(from: observation)
         let rawStats = Self.depthValueStats(dense.values)
+        let letterbox = ImageLetterboxLayout.layout(
+            sourceWidth: targetWidth,
+            sourceHeight: targetHeight,
+            canvasSide: max(dense.width, dense.height)
+        )
+        let contentValues: [Float]
+        let contentWidth: Int
+        let contentHeight: Int
+        if let cropped = letterbox.cropValuesFromCanvas(
+            dense.values,
+            canvasWidth: dense.width,
+            canvasHeight: dense.height
+        ) {
+            contentValues = cropped
+            contentWidth = letterbox.contentWidth
+            contentHeight = letterbox.contentHeight
+        } else {
+            logDebug("[DepthAnythingRoom][InferenceRaw] letterbox_crop_failed canvas=\(dense.width)x\(dense.height)")
+            contentValues = dense.values
+            contentWidth = dense.width
+            contentHeight = dense.height
+        }
         let remapped = Self.resizeBilinear(
-            values: dense.values,
-            width: dense.width,
-            height: dense.height,
+            values: contentValues,
+            width: contentWidth,
+            height: contentHeight,
             targetWidth: targetWidth,
             targetHeight: targetHeight
         )
         let resizedStats = Self.depthValueStats(remapped)
         logDebug(
             "[DepthAnythingRoom][InferenceRaw] observation=\(String(describing: type(of: observation))) " +
-            "raw_depth_map=\(dense.width)x\(dense.height) target_px=\(targetWidth)x\(targetHeight) " +
+            "raw_depth_map=\(dense.width)x\(dense.height) letterbox_content=\(contentWidth)x\(contentHeight) " +
+            "target_px=\(targetWidth)x\(targetHeight) " +
             "raw_valid=\(rawStats.validCount) raw_invalid=\(rawStats.invalidCount) " +
             "raw_min=\(Self.formatMeters(rawStats.min)) raw_median=\(Self.formatMeters(rawStats.median)) raw_max=\(Self.formatMeters(rawStats.max)) " +
             "resized_valid=\(resizedStats.validCount) resized_invalid=\(resizedStats.invalidCount) " +
@@ -525,7 +614,7 @@ final class DepthAnythingRoomReconstructor {
                 }
                 continuation.resume(returning: observation)
             }
-            request.imageCropAndScaleOption = .scaleFill
+            request.imageCropAndScaleOption = .scaleFit
 
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
@@ -957,9 +1046,22 @@ final class DepthAnythingRoomReconstructor {
     }
 
     private struct ObjectBBoxMeasurement {
+        let classIdx: Int
         let width: Float
         let height: Float
         let depth: Float
+    }
+
+    private struct DepthMetricCalibration {
+        let depthScale: Float
+        let focalPx: Float
+        let geoFocalPx: Float
+        let exifFocalPx: Float?
+        let sourceLabel: String
+        let sourceCode: Int
+        let anchorClassIdx: Int?
+        let anchorExpectedHeightMeters: Float?
+        let anchorMeasuredHeightMeters: Float?
     }
 
     private static func measureObjectBBox(
@@ -1046,10 +1148,95 @@ final class DepthAnythingRoomReconstructor {
         )
 
         return ObjectBBoxMeasurement(
+            classIdx: detection.classIdx,
             width: widthMeters,
             height: heightMeters,
             depth: depthSample.value
         )
+    }
+
+    private static func resolveMetricCalibration(
+        geoFocalPx: Float,
+        cameraMetadata: [String: Double]?,
+        imageWidth: Int,
+        rawObjectMeasurement: ObjectBBoxMeasurement?
+    ) -> DepthMetricCalibration {
+        let exifFocalPx = exifFocalPixels(from: cameraMetadata, imageWidth: imageWidth)
+        var focalPx = geoFocalPx
+        var depthScale: Float = 1.0
+        var sourceLabel = "unchanged"
+        var sourceCode = 0
+
+        let anchorClassIdx = rawObjectMeasurement?.classIdx
+        let anchorExpectedHeight = anchorClassIdx.flatMap { objectAnchorHeightMeters[$0] }
+        let anchorMeasuredHeight = rawObjectMeasurement?.height
+        let anchorDepthScale: Float? = {
+            guard let expected = anchorExpectedHeight,
+                  let measured = anchorMeasuredHeight,
+                  measured > 0.2 else {
+                return nil
+            }
+            return (expected / measured).clamped(to: depthMetricScaleRange)
+        }()
+
+        if let exifFocalPx, exifFocalPx > 1 {
+            let focalRatio = geoFocalPx / exifFocalPx
+            if geoExifFocalMatchRatioRange.contains(focalRatio) {
+                if let anchorDepthScale {
+                    depthScale = anchorDepthScale
+                    sourceLabel = "depth_anchor_exif_confirms_focal"
+                    sourceCode = 1
+                } else {
+                    sourceLabel = "exif_confirms_focal_no_anchor"
+                    sourceCode = 2
+                }
+            } else if exifFocalPx > geoFocalPx * geoExifFocalMatchRatioRange.upperBound {
+                focalPx = exifFocalPx
+                sourceLabel = "exif_focal_override"
+                sourceCode = 3
+            } else if let anchorDepthScale {
+                depthScale = anchorDepthScale
+                sourceLabel = "depth_anchor_focal_mismatch"
+                sourceCode = 4
+            }
+        } else if let anchorDepthScale {
+            depthScale = anchorDepthScale
+            sourceLabel = "depth_anchor_no_exif"
+            sourceCode = 5
+        }
+
+        return DepthMetricCalibration(
+            depthScale: depthScale,
+            focalPx: focalPx,
+            geoFocalPx: geoFocalPx,
+            exifFocalPx: exifFocalPx,
+            sourceLabel: sourceLabel,
+            sourceCode: sourceCode,
+            anchorClassIdx: anchorClassIdx,
+            anchorExpectedHeightMeters: anchorExpectedHeight,
+            anchorMeasuredHeightMeters: anchorMeasuredHeight
+        )
+    }
+
+    private static func exifFocalPixels(from metadata: [String: Double]?, imageWidth: Int) -> Float? {
+        guard let metadata,
+              let focal35mm = metadataFloat(
+                metadata,
+                keys: ["focalLength35mmEquivMm", "focalLength35mmEquivalentMm", "focalLength35mmEquivalentMM"]
+              ),
+              focal35mm > 1 else {
+            return nil
+        }
+        return (focal35mm / 36.0) * Float(imageWidth)
+    }
+
+    private static func scaleDepthMap(_ depthMap: [[Float]], scale: Float) -> [[Float]] {
+        guard abs(scale - 1.0) > 1e-4 else { return depthMap }
+        return depthMap.map { row in
+            row.map { depth in
+                depth.isFinite && depth > 0 ? depth * scale : depth
+            }
+        }
     }
 
     private static func selectMeasurementObjectBBox(
@@ -1608,6 +1795,12 @@ enum DepthAnythingRoomError: LocalizedError, Equatable {
             }
             return "Could not export the reconstructed room as USDZ."
         }
+    }
+}
+
+private extension Float {
+    func clamped(to range: ClosedRange<Float>) -> Float {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }
 
