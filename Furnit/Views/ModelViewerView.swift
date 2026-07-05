@@ -72,23 +72,16 @@ struct ModelViewerView: View {
     @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
 
     @State private var isCapturingSnapshot = false
+    @Environment(\.modelViewerSuppressBuiltInTopChrome) private var suppressBuiltInTopChrome
+    @Environment(\.modelViewerExternalCameraReset) private var externalCameraReset
+    @State private var shouldResetCamera = false
 
-    let suppressBuiltInTopChrome: Bool
-    private let shouldResetCameraOverride: Binding<Bool>?
-    @State private var internalShouldResetCamera = false
-
-    init(
-        model: USDZModel,
-        suppressBuiltInTopChrome: Bool = false,
-        shouldResetCamera: Binding<Bool>? = nil
-    ) {
+    init(model: USDZModel) {
         self.model = model
-        self.suppressBuiltInTopChrome = suppressBuiltInTopChrome
-        self.shouldResetCameraOverride = shouldResetCamera
     }
 
     private var cameraResetBinding: Binding<Bool> {
-        shouldResetCameraOverride ?? $internalShouldResetCamera
+        externalCameraReset ?? $shouldResetCamera
     }
 
     private var canSegmentSelectedFurniture: Bool {
@@ -101,7 +94,18 @@ struct ModelViewerView: View {
     }
 
     private var effectiveRoomDimensions: (width: Float, height: Float, depth: Float) {
-        (
+        if let width = model.roomWidth,
+           let height = model.roomHeight,
+           let depth = model.roomDepth,
+           width.isFinite, height.isFinite, depth.isFinite,
+           width > 0.05, height > 0.05, depth > 0.05 {
+            return (width, height, depth)
+        }
+        // Depth Anything / LiDAR / Swift SHARP rooms must not fall back to Settings defaults.
+        if model.roomCoordinateFrame.usesNativeMeterSceneUnits {
+            return (0, 0, 0)
+        }
+        return (
             model.roomWidth ?? Float(defaultRoomWidth),
             model.roomHeight ?? Float(defaultRoomHeight),
             model.roomDepth ?? Float(defaultRoomDepth)
@@ -623,10 +627,14 @@ struct ModelViewerView: View {
         let dims = effectiveRoomDimensions
         if dims.width > 0.05, dims.height > 0.05, dims.depth > 0.05,
            dims.width.isFinite, dims.height.isFinite, dims.depth.isFinite {
-            if model.roomWidth != nil || model.roomHeight != nil || model.roomDepth != nil {
+            if model.roomCoordinateFrame.usesNativeMeterSceneUnits ||
+                model.roomWidth != nil || model.roomHeight != nil || model.roomDepth != nil {
                 return L10n.RoomViewer.roomDimensionsWHDAIChip(width: dims.width, height: dims.height, depth: dims.depth)
             }
             return L10n.RoomViewer.roomDimensionsWHDManualChip(width: dims.width, height: dims.height, depth: dims.depth)
+        }
+        if model.roomCoordinateFrame.usesNativeMeterSceneUnits {
+            return "ROOM_DIMS unavailable"
         }
         if dims.width > 0.05, dims.height > 0.05,
            dims.width.isFinite, dims.height.isFinite {
@@ -1476,5 +1484,25 @@ private enum ModelViewerPlacementIntelligenceRoomStub {
             cameraInfo: nil,
             sceneToMeters: 1.0
         )
+    }
+}
+
+private struct ModelViewerSuppressBuiltInTopChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct ModelViewerExternalCameraResetKey: EnvironmentKey {
+    static let defaultValue: Binding<Bool>? = nil
+}
+
+extension EnvironmentValues {
+    var modelViewerSuppressBuiltInTopChrome: Bool {
+        get { self[ModelViewerSuppressBuiltInTopChromeKey.self] }
+        set { self[ModelViewerSuppressBuiltInTopChromeKey.self] = newValue }
+    }
+
+    var modelViewerExternalCameraReset: Binding<Bool>? {
+        get { self[ModelViewerExternalCameraResetKey.self] }
+        set { self[ModelViewerExternalCameraResetKey.self] = newValue }
     }
 }

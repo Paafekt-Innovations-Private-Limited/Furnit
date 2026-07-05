@@ -93,6 +93,7 @@ final class DepthAnythingRoomReconstructor {
             wallMargin: wallMargin
         )
         let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
+        let meshRoomHeightMeters = meshRoomWidthMeters * Float(imageHeight) / Float(max(imageWidth, 1))
         let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(depthMap) : depthMap
         let mesh = try buildMesh(
             image: workingImage,
@@ -106,8 +107,8 @@ final class DepthAnythingRoomReconstructor {
             triangleCount: mesh.submeshes?.compactMap { $0 as? MDLSubmesh }.reduce(0) { $0 + $1.indexCount / 3 } ?? 0,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            roomWidthMeters: measured.width,
-            roomHeightMeters: measured.height,
+            roomWidthMeters: meshRoomWidthMeters,
+            roomHeightMeters: meshRoomHeightMeters,
             roomDepthMeters: measured.depth
         )
     }

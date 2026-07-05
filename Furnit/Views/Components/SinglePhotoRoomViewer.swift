@@ -892,17 +892,54 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
     @State private var showDiscardUnsavedAlert = false
+    @State private var roomDimensionsHintVisible = false
+    @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+
+    private var depthAnythingRoomDimensions: (width: Float, height: Float, depth: Float)? {
+        let model = destination.model
+        guard let width = model.roomWidth,
+              let height = model.roomHeight,
+              let depth = model.roomDepth,
+              width.isFinite, height.isFinite, depth.isFinite,
+              width > 0.05, height > 0.05, depth > 0.05 else {
+            return nil
+        }
+        return (width, height, depth)
+    }
 
     var body: some View {
         ZStack {
             ModelViewerView(
-                model: destination.model,
-                suppressBuiltInTopChrome: true,
-                shouldResetCamera: $shouldResetCamera
+                model: destination.model
             )
+            .environment(\.modelViewerSuppressBuiltInTopChrome, true)
+            .environment(\.modelViewerExternalCameraReset, $shouldResetCamera)
 
             if isSavingRoom {
                 saveRoomProgressOverlay
+            }
+
+            if roomDimensionsHintVisible, let dimensions = depthAnythingRoomDimensions {
+                VStack {
+                    Text(
+                        L10n.RoomViewer.roomDimensionsWHDAIChip(
+                            width: dimensions.width,
+                            height: dimensions.height,
+                            depth: dimensions.depth
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 240)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    .padding(.top, 8)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .zIndex(100_001)
             }
         }
         .navigationTitle("")
@@ -974,15 +1011,13 @@ private struct DepthAnythingPreviewRoomView: View {
                 .accessibilityLabel(L10n.RoomViewer.recenterView)
 
                 Button {
-                    if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        roomName = RoomDisplayName.myRoomWithTimestamp()
-                    }
+                    roomName = ""
                     showRoomNameInput = true
                 } label: {
                     Image(systemName: "square.and.arrow.down")
                         .font(.title3)
                 }
-                .disabled(isSavingRoom || saveWasSuccessful)
+                .disabled(isSavingRoom)
                 .accessibilityLabel(L10n.RoomViewer.saveRoom)
             }
         }
@@ -990,22 +1025,40 @@ private struct DepthAnythingPreviewRoomView: View {
 
     @ViewBuilder
     private var previewRoomMeasurementPrincipal: some View {
-        if let width = destination.model.roomWidth,
-           let height = destination.model.roomHeight,
-           let depth = destination.model.roomDepth,
-           width.isFinite, height.isFinite, depth.isFinite,
-           width > 0.05, height > 0.05, depth > 0.05 {
-            VStack(spacing: 1) {
-                Text("W × H × D")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
-                Text(String(format: "%.2f × %.2f × %.2f m", width, height, depth))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
+        Button(action: onPreviewRoomDimensionsRulerTapped) {
+            if let dimensions = depthAnythingRoomDimensions {
+                VStack(spacing: 1) {
+                    Text("W × H × D")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                    Text(String(format: "%.2f × %.2f × %.2f m", dimensions.width, dimensions.height, dimensions.depth))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+            } else {
+                Image(systemName: "ruler.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Color.black.opacity(0.55)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
+    }
+
+    private func onPreviewRoomDimensionsRulerTapped() {
+        guard depthAnythingRoomDimensions != nil else { return }
+        roomDimensionsHintHideTask?.cancel()
+        roomDimensionsHintVisible.toggle()
+        if roomDimensionsHintVisible {
+            roomDimensionsHintHideTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                roomDimensionsHintVisible = false
+            }
         }
     }
 

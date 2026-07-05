@@ -372,10 +372,12 @@ def main() -> int:
     margin = args.wall_margin
     rect = wall_rect_px(width, height, margin)
     width_m, height_m, depth_m = measure_wall(depth, rect, fx, fy, width, height)
+    mesh_room_width_m = max(width_m, 2.0)
+    mesh_room_height_m = mesh_room_width_m * height / width
 
     result = RoomMeasurements(
-        width_m=round(width_m, 3),
-        height_m=round(height_m, 3),
+        width_m=round(mesh_room_width_m, 3),
+        height_m=round(mesh_room_height_m, 3),
         depth_m=round(depth_m, 3),
         image_width=width,
         image_height=height,
@@ -412,7 +414,7 @@ def main() -> int:
         mesh_vertices, mesh_faces = build_textured_mesh_glb(
             rgb_image=image,
             depth=mesh_depth,
-            room_width_m=max(width_m, 2.0),
+            room_width_m=mesh_room_width_m,
             glb_path=glb_path,
             mesh_step=args.mesh_step,
             max_depth_jump=args.max_depth_jump,
