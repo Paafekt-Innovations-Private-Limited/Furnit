@@ -875,6 +875,10 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let id = UUID()
     let model: USDZModel
     let summary: String
+    /// Depth Anything metric dims at generation — same pattern as ``SplatViewerDestination`` room metres for SHARP.
+    let roomWidthMeters: Float
+    let roomHeightMeters: Float
+    let roomDepthMeters: Float
 }
 
 /// Pre-save Depth Anything preview — matches SHARP ML navigation chrome (nav-bar save, name prompt, discard alert).
@@ -892,15 +896,12 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
     @State private var showDiscardUnsavedAlert = false
-    @State private var roomDimensionsHintVisible = false
-    @State private var roomDimensionsHintHideTask: Task<Void, Never>?
 
     private var depthAnythingRoomDimensions: (width: Float, height: Float, depth: Float)? {
-        let model = destination.model
-        guard let width = model.roomWidth,
-              let height = model.roomHeight,
-              let depth = model.roomDepth,
-              width.isFinite, height.isFinite, depth.isFinite,
+        let width = destination.roomWidthMeters
+        let height = destination.roomHeightMeters
+        let depth = destination.roomDepthMeters
+        guard width.isFinite, height.isFinite, depth.isFinite,
               width > 0.05, height > 0.05, depth > 0.05 else {
             return nil
         }
@@ -917,29 +918,6 @@ private struct DepthAnythingPreviewRoomView: View {
 
             if isSavingRoom {
                 saveRoomProgressOverlay
-            }
-
-            if roomDimensionsHintVisible, let dimensions = depthAnythingRoomDimensions {
-                VStack {
-                    Text(
-                        L10n.RoomViewer.roomDimensionsWHDAIChip(
-                            width: dimensions.width,
-                            height: dimensions.height,
-                            depth: dimensions.depth
-                        )
-                    )
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 240)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .padding(.top, 8)
-                    Spacer()
-                }
-                .allowsHitTesting(false)
-                .zIndex(100_001)
             }
         }
         .navigationTitle("")
@@ -978,6 +956,15 @@ private struct DepthAnythingPreviewRoomView: View {
         }
         .disableBackSwipeIf(true)
         .onAppear {
+            if let dimensions = depthAnythingRoomDimensions {
+                logDebug(
+                    "[DepthAnythingRoom][Preview] nav dims W=\(String(format: "%.3f", dimensions.width)) " +
+                    "H=\(String(format: "%.3f", dimensions.height)) " +
+                    "D=\(String(format: "%.3f", dimensions.depth))"
+                )
+            } else {
+                logDebug("[DepthAnythingRoom][Preview] nav dims unavailable")
+            }
             if destination.model.photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
@@ -996,9 +983,6 @@ private struct DepthAnythingPreviewRoomView: View {
                 Image(systemName: "chevron.left")
             }
             .accessibilityLabel(L10n.Common.back)
-        }
-        ToolbarItem(placement: .principal) {
-            previewRoomMeasurementPrincipal
         }
         ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: 14) {
@@ -1019,45 +1003,6 @@ private struct DepthAnythingPreviewRoomView: View {
                 }
                 .disabled(isSavingRoom)
                 .accessibilityLabel(L10n.RoomViewer.saveRoom)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var previewRoomMeasurementPrincipal: some View {
-        Button(action: onPreviewRoomDimensionsRulerTapped) {
-            if let dimensions = depthAnythingRoomDimensions {
-                VStack(spacing: 1) {
-                    Text("W × H × D")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                    Text(String(format: "%.2f × %.2f × %.2f m", dimensions.width, dimensions.height, dimensions.depth))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Color.black.opacity(0.55)))
-            } else {
-                Image(systemName: "ruler.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
-    }
-
-    private func onPreviewRoomDimensionsRulerTapped() {
-        guard depthAnythingRoomDimensions != nil else { return }
-        roomDimensionsHintHideTask?.cancel()
-        roomDimensionsHintVisible.toggle()
-        if roomDimensionsHintVisible {
-            roomDimensionsHintHideTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled else { return }
-                roomDimensionsHintVisible = false
             }
         }
     }
@@ -1209,91 +1154,70 @@ private func uniqueDepthAnythingSavedRoomURL(in directory: URL, sourceURL: URL) 
 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
-    @ObservedObject private var sharpService = SHARPService.shared
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showCameraCapture = false  // Show camera capture view
     @State private var captureOrientation: CaptureOrientation = .standard  // Camera mode selection
+    @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
-    // Identifiable wrapper for reliable sheet(item:) presentation
     @State private var fixedImageItem: IdentifiedImage?
+    @State private var singlePhotoGenerationStatus: String?
+    @State private var generationErrorMessage: String?
+    @State private var usdzViewerDestination: USDZViewerDestination?
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
+    @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
+    @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
+    @State private var sourceImageURL: URL?
+    @State private var captureMediaMetadata: [AnyHashable: Any]?
+    @State private var photoLibraryAssetLocalId: String?
+    @State private var supplementalCameraDoubles: [String: Double]?
 
     struct IdentifiedImage: Identifiable {
         let id = UUID()
         let image: UIImage
     }
 
-    // Read dimensions from settings
-    @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
-    @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
-    @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
-    @State private var showGenerationSuccess = false
-    @State private var splatViewerDestination: SplatViewerDestination?
-    @State private var showMethodPicker = false  // Show method choice after photo selection
-    @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
-    @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
-    @State private var showBackMethodAlert = false
-    @State private var showSharpProgressOverlay = false
-    @State private var singlePhotoGenerationStatus: String?
-    @State private var usdzViewerDestination: USDZViewerDestination?
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage("roomGeneration.implementation")
-    private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
-    @AppStorage("qwen.ollamaBaseURL") private var qwenOllamaBaseURL: String = "https://spd-production-2d9b.up.railway.app"
-    /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
-    @State private var sharpSourceImageURL: URL?
-    /// In-app camera metadata (`mediaMetadata`) — EXIF including SubjectDistance when available.
-    @State private var sharpCaptureMediaMetadata: [AnyHashable: Any]?
-    /// Library asset id for EXIF via `PHImageManager.requestImageDataAndOrientation` when `imageURL` is nil.
-    @State private var sharpPhotoLibraryAssetLocalId: String?
-    /// ARKit capture intrinsics / depth flags (see ``ARRoomPhotoCaptureViewController``) merged into `camera_exif.json`.
-    @State private var sharpSupplementalCameraDoubles: [String: Double]?
-
-    private var roomGenerationImplementation: RoomGenerationImplementation {
-        RoomGenerationImplementation(rawValue: roomGenerationImplementationRawValue) ?? .defaultImplementation
-    }
-
     var body: some View {
         ZStack {
             VStack {
-                if let image = selectedImage, showMethodPicker {
-                    // Show image preview and method selection
+                if let image = selectedImage {
+                    // Show image preview and the only supported room generator.
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxHeight: 250)
                         .cornerRadius(12)
                         .padding()
-                        .onAppear { logDebug("🖼️ [View] Displaying selected image with method picker") }
+                        .onAppear { logDebug("🖼️ [View] Displaying selected image for Depth Anything generation") }
 
                     VStack(spacing: 4) {
-                        Text(NSLocalizedString("photoRoom.howToCreate", comment: ""))
+                        Text("Depth Anything Room")
                             .font(.headline)
-                        Text(NSLocalizedString("photoRoom.tapOption", comment: ""))
+                        Text("Metric depth mesh to USDZ")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
 
-                    // Method 1: selected single-photo reconstruction backend.
                     Button(action: {
-                        logDebug("🤖 [View] \(roomGenerationImplementation.displayName) method selected")
+                        logDebug("🤖 [View] Depth Anything method selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
-                        startPrimaryPhotoGeneration(image: image)
+                        startDepthAnythingGeneration(image: image)
                     }) {
                         HStack(spacing: 16) {
-                            Image(systemName: primaryGenerationIconName)
+                            Image(systemName: "camera.metering.matrix")
                                 .font(.system(size: 30))
-                                .foregroundColor(primaryGenerationColor)
+                                .foregroundColor(.blue)
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(primaryGenerationTitle)
+                                Text("Create Depth Anything Room")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text(primaryGenerationSubtitle)
+                                Text("Measurements come from Depth Anything inference")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -1302,20 +1226,18 @@ struct SinglePhotoRoomView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                        .background(primaryGenerationColor.opacity(0.1))
+                        .background(Color.blue.opacity(0.1))
                         .cornerRadius(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(primaryGenerationColor, lineWidth: 2)
+                                .stroke(Color.blue, lineWidth: 2)
                         )
                     }
                     .padding(.horizontal)
 
-                    // Method 2: Manual Boundaries
                     Button(action: {
-                        logDebug("🏠 [View] Manual boundaries method selected")
+                        logDebug("🏠 [View] Manual setup selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
-                        showMethodPicker = false
                         fixedImageItem = IdentifiedImage(image: image)
                     }) {
                         HStack(spacing: 16) {
@@ -1346,10 +1268,8 @@ struct SinglePhotoRoomView: View {
                     }
                     .padding(.horizontal)
 
-                    // Change photo button
                     Button("Choose Different Photo") {
                         selectedImage = nil
-                        showMethodPicker = false
                         showImagePicker = true
                     }
                     .font(.subheadline)
@@ -1458,22 +1378,6 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
-            if showSharpProgressOverlay && sharpService.hasActiveSharpWork && !sharpService.isBackgroundGenerationActive {
-                SharpGenerationProgressOverlay(
-                    sharpService: sharpService,
-                    onRunInBackground: {
-                        sharpService.clearProgressFooterNotice()
-                        sharpService.isBackgroundGenerationActive = true
-                        showSharpProgressOverlay = false
-                        NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-                    },
-                    onCancel: {
-                        sharpService.cancelGeneration()
-                        showSharpProgressOverlay = false
-                    }
-                )
-            }
-
             if let singlePhotoGenerationStatus {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -1490,7 +1394,6 @@ struct SinglePhotoRoomView: View {
                 .padding(24)
             }
 
-            // Progress overlay for manual room reconstruction
             if reconstructor.isProcessing {
                 VStack(spacing: 16) {
                     ZStack {
@@ -1537,37 +1440,18 @@ struct SinglePhotoRoomView: View {
                 }
             }
         }
-        .alert(L10n.PhotoRoom.backAlertTitle, isPresented: $showBackMethodAlert) {
-            Button(primaryGenerationTitle) {
-                guard let image = selectedImage else { return }
-                logDebug("🤖 [View] Back alert: \(roomGenerationImplementation.displayName) selected")
-                startPrimaryPhotoGeneration(image: image)
-            }
-            Button(L10n.PhotoRoom.backAlertManual) {
-                guard let image = selectedImage else { return }
-                logDebug("🏠 [View] Back alert: Manual boundaries selected")
-                showMethodPicker = false
-                fixedImageItem = IdentifiedImage(image: image)
-            }
-            Button(L10n.Common.ok, role: .cancel) {
-                dismiss()
-            }
-        } message: {
-            Text(L10n.PhotoRoom.backAlertMessage)
-        }
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(
                 selectedImage: $selectedImage,
-                sourceImageURL: $sharpSourceImageURL,
-                captureMediaMetadata: $sharpCaptureMediaMetadata,
-                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
-                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
+                sourceImageURL: $sourceImageURL,
+                captureMediaMetadata: $captureMediaMetadata,
+                photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                supplementalCameraDoubles: $supplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
                     if selectedImage != nil {
-                        logDebug("✅ [View] Image selected, showing method picker...")
-                        showMethodPicker = true
+                        logDebug("✅ [View] Image selected, ready for Depth Anything")
                     } else {
                         logDebug("⚠️ [View] No image selected")
                     }
@@ -1577,16 +1461,15 @@ struct SinglePhotoRoomView: View {
             CameraCaptureView(
                 selectedImage: $selectedImage,
                 selectedOrientation: $captureOrientation,
-                sourceImageURL: $sharpSourceImageURL,
-                captureMediaMetadata: $sharpCaptureMediaMetadata,
-                photoLibraryAssetLocalId: $sharpPhotoLibraryAssetLocalId,
-                supplementalCameraDoubles: $sharpSupplementalCameraDoubles,
+                sourceImageURL: $sourceImageURL,
+                captureMediaMetadata: $captureMediaMetadata,
+                photoLibraryAssetLocalId: $photoLibraryAssetLocalId,
+                supplementalCameraDoubles: $supplementalCameraDoubles,
             )
                 .onDisappear {
                     logDebug("📷 [View] Camera capture dismissed")
                     if selectedImage != nil {
-                        logDebug("✅ [View] Photo captured with orientation: \(captureOrientation.rawValue), showing method picker...")
-                        showMethodPicker = true
+                        logDebug("✅ [View] Photo captured with orientation: \(captureOrientation.rawValue), ready for Depth Anything")
                     } else {
                         logDebug("⚠️ [View] No photo captured")
                     }
@@ -1594,14 +1477,14 @@ struct SinglePhotoRoomView: View {
         }
         .onChange(of: selectedImage) { _, newValue in
             if newValue == nil {
-                sharpSourceImageURL = nil
-                sharpCaptureMediaMetadata = nil
-                sharpPhotoLibraryAssetLocalId = nil
-                sharpSupplementalCameraDoubles = nil
+                sourceImageURL = nil
+                captureMediaMetadata = nil
+                photoLibraryAssetLocalId = nil
+                supplementalCameraDoubles = nil
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
-            logDebug("🤖 [View] SHARP model load deferred until Photo to 3D Room is tapped")
+            logDebug("🤖 [View] Depth Anything generation ready")
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
             selectedOrientation = detectedOrientation
@@ -1625,7 +1508,6 @@ struct SinglePhotoRoomView: View {
             )
             .onAppear {
                 logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
-                // Lock orientation based on photo orientation
                 if selectedOrientation == .landscape {
                     OrientationLockManager.shared.lockToLandscape()
                 } else {
@@ -1633,37 +1515,19 @@ struct SinglePhotoRoomView: View {
                 }
             }
             .onDisappear {
-                // Unlock orientation when leaving
                 OrientationLockManager.shared.unlock()
             }
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
-            // Do not preload SHARP here — holding FP32 Core ML + a 4K `selectedImage` after returning from
-            // SharpRoomView/WebKit was peaking RAM on the 2nd room. `generateGaussians` loads on demand.
         }
-        // Do **not** use `.onDisappear` here for SHARP/splatViewerDestination: SwiftUI can call it when
-        // *pushing* `SharpRoomView` on the stack (parent briefly disappears), which released SHARP mid-splat load.
-        // Sheet-dismiss cleanup lives in `ContentView` `onChange(of: showingPhotoRoomCreator)`.
-        // ✅ Watch for boundary changes - log when boundaries are updated
-        .onChange(of: adjustedBoundaries) { oldValue, newValue in
-            logDebug("📋 [View] adjustedBoundaries onChange triggered")
-            logDebug("   oldValue: \(oldValue != nil ? "set" : "nil")")
-            logDebug("   newValue: \(newValue != nil ? "set" : "nil")")
-            if let bounds = newValue {
-                logDebug("   Boundaries: L=\(bounds.leftX), R=\(bounds.rightX), T=\(bounds.ceilingY), B=\(bounds.floorY)")
-            }
-            // Navigation is triggered by onProcessingComplete callback, not here
-            // This just logs the boundary update for debugging
+        .onChange(of: adjustedBoundaries) { _, newValue in
+            guard let bounds = newValue else { return }
+            logDebug("📋 [View] adjustedBoundaries updated")
+            logDebug("   Boundaries: L=\(bounds.leftX), R=\(bounds.rightX), T=\(bounds.ceilingY), B=\(bounds.floorY)")
         }
         .navigationDestination(isPresented: $navigateToViewer) {
             if let image = selectedImage, let boundaries = adjustedBoundaries {
-                let _ = {
-                    logDebug("🎯 [Navigation] MeshRoomView with boundaries")
-                    logDebug("   Boundaries: L=\(boundaries.leftX), R=\(boundaries.rightX), T=\(boundaries.ceilingY), B=\(boundaries.floorY)")
-                    logDebug("   Image size: \(image.size)")
-                }()
-
                 MeshRoomView(
                     roomWidth: Float(roomWidth),
                     roomHeight: Float(roomHeight),
@@ -1685,32 +1549,6 @@ struct SinglePhotoRoomView: View {
                 )
             }
         }
-        .navigationDestination(item: $splatViewerDestination) { dest in
-                            SharpRoomView(
-                                plyURL: dest.plyURL,
-                                photoOrientation: selectedOrientation,
-                                savedRoomWidth: nil,
-                                savedRoomHeight: nil,
-                                sharpPlyAabbWidth: dest.sharpPlyW,
-                                sharpPlyAabbHeight: dest.sharpPlyH,
-                                sharpPlyAabbDepth: dest.sharpPlyD,
-                                sharpRoomWidth: dest.roomWidth,
-                                sharpRoomHeight: dest.roomHeight,
-                                sharpRoomDepth: dest.roomDepth,
-                                roomCoordinateFrame: dest.roomCoordinateFrame,
-                                sourcePhotoPixelWidth: dest.sourcePhotoPxW,
-                                sourcePhotoPixelHeight: dest.sourcePhotoPxH
-                            )
-            .onAppear {
-                logDebug("🚀 [Navigation] SharpRoomView (post-SHARP, pre-save; title from WebGL when ready)")
-                logDebug("   plyURL = \(dest.plyURL.lastPathComponent)")
-            }
-            // Clear `item` when popping so NavigationStack releases SharpRoomView + Metal splat promptly.
-            // Leaving this non-nil caused retained destinations and peak RAM on a 2nd SHARP flow (see onAppear note above).
-            .onDisappear {
-                splatViewerDestination = nil
-            }
-        }
         .navigationDestination(item: $usdzViewerDestination) { destination in
             DepthAnythingPreviewRoomView(destination: destination)
                 .onAppear {
@@ -1721,187 +1559,20 @@ struct SinglePhotoRoomView: View {
                     usdzViewerDestination = nil
                 }
         }
-        // Success alert for API-generated PLY file
-        .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
-            Button(L10n.Common.done) {
-                // Dismiss the sheet and notify home to refresh
-                NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-            }
-        } message: {
-            if let url = splatViewerDestination?.plyURL {
-                let fileName = url.lastPathComponent
-                Text(L10n.PhotoRoom.downloadSuccess(fileName: fileName))
-            } else {
-                Text(L10n.PhotoRoom.saveSuccessMessage)
-            }
-        }
-        // Handle generation errors
         .alert(L10n.PhotoRoom.generationFailedTitle, isPresented: Binding(
-            get: {
-                if case .failed = sharpService.status { return true }
-                return false
-            },
-            set: { _ in }
+            get: { generationErrorMessage != nil },
+            set: { if !$0 { generationErrorMessage = nil } }
         )) {
             Button(L10n.Common.ok, role: .cancel) {
                 selectedImage = nil
             }
-            Button(L10n.Common.retry) {
-                if let image = selectedImage {
-                    startPrimaryPhotoGeneration(image: image)
-                }
-            }
         } message: {
-            if case .failed(let errorMessage) = sharpService.status {
-                Text(errorMessage)
-            } else {
-                Text(L10n.PhotoRoom.errorMessage)
-            }
+            Text(generationErrorMessage ?? L10n.PhotoRoom.errorMessage)
         }
     }
 
-    /// Leading Back: if user still owes AI vs Manual choice, prompt; otherwise dismiss sheet.
     private func handlePhotoRoomBackTap() {
-        if selectedImage != nil && showMethodPicker {
-            showBackMethodAlert = true
-        } else {
-            dismiss()
-        }
-    }
-
-    private func confidenceColor(_ confidence: Float) -> Color {
-        switch confidence {
-        case 0.7...1.0: return .green
-        case 0.4..<0.7: return .orange
-        default: return .red
-        }
-    }
-
-    private var primaryGenerationTitle: String {
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ:
-            return "Depth Anything Room"
-        case .qwenImageToRoom:
-            return "Qwen Room"
-        case .swiftSharpMath:
-            return "Swift SHARP Math"
-        case .sharpCoreML:
-            return NSLocalizedString("photoRoom.title", comment: "")
-        case .lidarSweepFusion:
-            return "LiDAR Sweep"
-        }
-    }
-
-    private var primaryGenerationSubtitle: String {
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ:
-            return "Metric depth mesh to USDZ"
-        case .qwenImageToRoom:
-            return "Qwen backend test hook"
-        case .swiftSharpMath:
-            return "No ML flat point-room preview"
-        case .sharpCoreML:
-            return NSLocalizedString("photoRoom.aiPowered", comment: "")
-        case .lidarSweepFusion:
-            return "Capture a metric AR sweep"
-        }
-    }
-
-    private var primaryGenerationIconName: String {
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ:
-            return "camera.metering.matrix"
-        case .qwenImageToRoom:
-            return "sparkles.rectangle.stack"
-        case .swiftSharpMath:
-            return "square.grid.3x3"
-        case .sharpCoreML:
-            return "wand.and.stars"
-        case .lidarSweepFusion:
-            return "arkit"
-        }
-    }
-
-    private var primaryGenerationColor: Color {
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ:
-            return .blue
-        case .qwenImageToRoom:
-            return .pink
-        case .swiftSharpMath:
-            return .teal
-        case .sharpCoreML:
-            return .purple
-        case .lidarSweepFusion:
-            return .indigo
-        }
-    }
-
-    private func startPrimaryPhotoGeneration(image: UIImage) {
-        showMethodPicker = false
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ:
-            startDepthAnythingGeneration(image: image)
-        case .qwenImageToRoom:
-            startQwenGeneration(image: image)
-        case .swiftSharpMath:
-            startSwiftSharpMathGeneration(image: image)
-        case .sharpCoreML:
-            showSharpProgressOverlay = true
-            sharpService.beginForegroundGenerationProgress()
-            Task { @MainActor in
-                await Task.yield()
-                startSHARPGeneration(image: image)
-            }
-        case .lidarSweepFusion:
-            dismiss()
-        }
-    }
-
-    private func startQwenGeneration(image: UIImage) {
-        let generationImage = image.fixedOrientation()
-        let orientation = selectedOrientation
-        selectedImage = nil
-        fixedImageItem = nil
-        splatViewerDestination = nil
-        usdzViewerDestination = nil
-        singlePhotoGenerationStatus = "Running Qwen..."
-
-        Task {
-            do {
-                guard let baseURL = URL(string: qwenOllamaBaseURL), baseURL.scheme != nil else {
-                    throw QwenRoomError.requestFailed("Invalid Ollama URL in Settings.")
-                }
-                let result = try await Task.detached(priority: .userInitiated) {
-                    let reconstructor = QwenRoomReconstructor(baseURL: baseURL)
-                    return try await reconstructor.reconstructWithResult(image: generationImage)
-                }.value
-                logDebug("✅ [QwenRoom] USDZ generated: \(result.summary)")
-                let model = USDZModel(
-                    name: result.usdzURL.deletingPathExtension().lastPathComponent,
-                    fileName: result.usdzURL.lastPathComponent,
-                    isSavedRoom: true,
-                    fileType: .usdz,
-                    fileSize: (try? result.usdzURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init),
-                    photoOrientation: orientation,
-                    roomWidth: result.roomWidthMeters,
-                    roomHeight: result.roomHeightMeters,
-                    roomDepth: result.roomDepthMeters,
-                    roomCoordinateFrame: .depthAnythingImageDepthMeters,
-                    cachedResolvedURL: result.usdzURL
-                )
-                await MainActor.run {
-                    singlePhotoGenerationStatus = nil
-                    usdzViewerDestination = USDZViewerDestination(model: model, summary: result.summary)
-                }
-            } catch {
-                logDebug("❌ [QwenRoom] generation failed: \(error.localizedDescription)")
-                await MainActor.run {
-                    singlePhotoGenerationStatus = nil
-                    sharpService.status = .failed(error.localizedDescription)
-                }
-            }
-        }
+        dismiss()
     }
 
     private func startDepthAnythingGeneration(image: UIImage) {
@@ -1909,8 +1580,8 @@ struct SinglePhotoRoomView: View {
         let orientation = selectedOrientation
         selectedImage = nil
         fixedImageItem = nil
-        splatViewerDestination = nil
         usdzViewerDestination = nil
+        generationErrorMessage = nil
         singlePhotoGenerationStatus = "Running Depth Anything..."
 
         Task {
@@ -1935,47 +1606,19 @@ struct SinglePhotoRoomView: View {
                 )
                 await MainActor.run {
                     singlePhotoGenerationStatus = nil
-                    usdzViewerDestination = USDZViewerDestination(model: model, summary: result.summary)
+                    usdzViewerDestination = USDZViewerDestination(
+                        model: model,
+                        summary: result.summary,
+                        roomWidthMeters: result.roomWidthMeters,
+                        roomHeightMeters: result.roomHeightMeters,
+                        roomDepthMeters: result.roomDepthMeters
+                    )
                 }
             } catch {
                 logDebug("❌ [DepthAnythingRoom] generation failed: \(error.localizedDescription)")
                 await MainActor.run {
                     singlePhotoGenerationStatus = nil
-                    sharpService.status = .failed(error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    private func startSwiftSharpMathGeneration(image: UIImage) {
-        let generationImage = image.fixedOrientation()
-        selectedImage = nil
-        fixedImageItem = nil
-        splatViewerDestination = nil
-        usdzViewerDestination = nil
-        singlePhotoGenerationStatus = "Generating Swift SHARP Math room..."
-
-        Task {
-            do {
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try SwiftSharpMathRoomReconstructor.reconstruct(image: generationImage)
-                }.value
-                logDebug("✅ [SwiftSharpMath] generated: \(result.summary)")
-                await MainActor.run {
-                    singlePhotoGenerationStatus = nil
-                    splatViewerDestination = SplatViewerDestination(
-                        plyURL: result.plyURL,
-                        sharpPlyAabb: (result.roomWidthMeters, result.roomHeightMeters, result.roomDepthMeters),
-                        roomMeters: (result.roomWidthMeters, result.roomHeightMeters, result.roomDepthMeters),
-                        sourcePhotoPixels: (result.imageWidth, result.imageHeight),
-                        roomCoordinateFrame: .swiftSharpPlaneMeters
-                    )
-                }
-            } catch {
-                logDebug("❌ [SwiftSharpMath] generation failed: \(error.localizedDescription)")
-                await MainActor.run {
-                    singlePhotoGenerationStatus = nil
-                    sharpService.status = .failed(error.localizedDescription)
+                    generationErrorMessage = error.localizedDescription
                 }
             }
         }
@@ -2028,117 +1671,6 @@ struct SinglePhotoRoomView: View {
         return croppedImage
     }
 
-    private func startSHARPGeneration(image: UIImage) {
-        let orientation = selectedOrientation  // Capture current selection
-        logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
-        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=begin orientation=\(orientation.rawValue)")
-
-        sharpService.beginForegroundGenerationProgress()
-        splatViewerDestination = nil
-        let pxW = max(1, Int(ceil(Double(image.size.width * image.scale))))
-        let pxH = max(1, Int(ceil(Double(image.size.height * image.scale))))
-        let generationImage = SHARPService.prepareImageForSharp(image)
-        let generationSourceImageURL = sharpSourceImageURL
-        let generationCaptureMediaMetadata = sharpCaptureMediaMetadata
-        let generationPhotoLibraryAssetLocalId = sharpPhotoLibraryAssetLocalId
-        let generationSupplementalCameraDoubles = sharpSupplementalCameraDoubles
-        logDebug(
-            "🤖 [View] SHARP generation image prepared source=\(pxW)x\(pxH) " +
-            "working=\(Int(generationImage.size.width * generationImage.scale))x\(Int(generationImage.size.height * generationImage.scale))"
-        )
-        selectedImage = nil
-        fixedImageItem = nil
-
-        URLCache.shared.removeAllCachedResponses()
-        logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_cache_clear")
-
-        Task {
-            do {
-                // Let any previous SharpRoomView / MTKView teardown complete before SHARP allocates 1536² buffers + PLY.
-                try await Task.sleep(nanoseconds: 120_000_000)
-                let gen = try await sharpService.generateGaussians(
-                    from: generationImage,
-                    sourceImageURL: generationSourceImageURL,
-                    captureMediaMetadata: generationCaptureMediaMetadata,
-                    photoLibraryAssetLocalId: generationPhotoLibraryAssetLocalId,
-                    supplementalCameraDoubles: generationSupplementalCameraDoubles,
-                )
-
-                logDebug("✅ [View] PLY file generated: \(gen.plyURL.path)")
-                logMemorySnapshot("SinglePhotoRoomViewer.startSHARPGeneration", details: "phase=after_generate ply=\(gen.plyURL.lastPathComponent)")
-                await MainActor.run {
-                    showSharpProgressOverlay = false
-                    let roomMeters: (Float, Float, Float)? = {
-                        if let width = gen.roomWidth, let height = gen.roomHeight, let depth = gen.roomDepth {
-                            return (width, height, depth)
-                        }
-                        return nil
-                    }()
-                    if sharpService.isBackgroundGenerationActive {
-                        saveGeneratedSharpRoomInBackground(
-                            gen,
-                            orientation: orientation,
-                            roomMeters: roomMeters
-                        )
-                    } else {
-                        splatViewerDestination = SplatViewerDestination(
-                            plyURL: gen.plyURL,
-                            sharpPlyAabb: (gen.plyAabbWidth, gen.plyAabbHeight, gen.plyAabbDepth),
-                            roomMeters: roomMeters,
-                            sourcePhotoPixels: (pxW, pxH)
-                        )
-                    }
-                }
-            } catch {
-                logDebug("❌ [View] Generation failed: \(error)")
-                await MainActor.run {
-                    let wasBackgroundGenerationActive = sharpService.isBackgroundGenerationActive
-                    showSharpProgressOverlay = false
-                    sharpService.isBackgroundGenerationActive = false
-                    if wasBackgroundGenerationActive {
-                        sharpService.showProgressFooterNotice(L10n.Sharp.couldNotCreateRoom, autoHideAfter: 4.0)
-                    }
-                }
-            }
-        }
-    }
-
-    private func saveGeneratedSharpRoomInBackground(
-        _ gen: SHARPGenerationResult,
-        orientation: PhotoOrientation,
-        roomMeters: (Float, Float, Float)?
-    ) {
-        sharpService.statusMessage = NSLocalizedString("sharp.savingRoom", value: "Saving room...", comment: "Saving generated room in the background")
-        let roomName = RoomDisplayName.aiRoomWithTimestamp()
-        let manager = USDZModelManager()
-        manager.savePLY(
-            from: gen.plyURL,
-            name: roomName,
-            photoOrientation: orientation,
-            roomWidth: roomMeters?.0,
-            roomHeight: roomMeters?.1,
-            roomDepth: roomMeters?.2,
-            roomDimsApproach: roomMeters == nil ? nil : "room_dims_v7_sharp"
-        ) { success, error in
-            Task { @MainActor in
-                logDebug(success ? "✅ [View] Background SHARP room saved: \(roomName)" : "❌ [View] Background SHARP save failed: \(error ?? "unknown")")
-                sharpService.isBackgroundGenerationActive = false
-                sharpService.progress = 1.0
-                if success {
-                    sharpService.status = .completed(fileURL: gen.plyURL)
-                    sharpService.statusMessage = L10n.RoomViewer.roomSavedAlertTitle
-                    sharpService.showProgressFooterNotice(L10n.RoomViewer.roomSavedAlertTitle, autoHideAfter: 2.5)
-                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
-                } else {
-                    let failureMessage = error ?? L10n.Sharp.couldNotCreateRoom
-                    sharpService.status = .failed(failureMessage)
-                    sharpService.statusMessage = failureMessage
-                    sharpService.showProgressFooterNotice(failureMessage, autoHideAfter: 4.0)
-                }
-                sharpService.releaseResources()
-            }
-        }
-    }
 }
 
 // MARK: - Photo Picker View

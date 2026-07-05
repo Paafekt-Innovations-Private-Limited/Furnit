@@ -94,6 +94,17 @@ struct ModelViewerView: View {
     }
 
     private var effectiveRoomDimensions: (width: Float, height: Float, depth: Float) {
+        // Depth Anything: only persisted inference dims — never Settings defaults or mesh/bounds.
+        if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+            guard let width = model.roomWidth,
+                  let height = model.roomHeight,
+                  let depth = model.roomDepth,
+                  width.isFinite, height.isFinite, depth.isFinite,
+                  width > 0.05, height > 0.05, depth > 0.05 else {
+                return (0, 0, 0)
+            }
+            return (width, height, depth)
+        }
         if let width = model.roomWidth,
            let height = model.roomHeight,
            let depth = model.roomDepth,
@@ -236,6 +247,13 @@ struct ModelViewerView: View {
     }
 
     @ViewBuilder
+    private var modelViewerRoomDimensionsHintLayer: some View {
+        if !suppressBuiltInTopChrome {
+            roomDimensionsHintOverlay
+        }
+    }
+
+    @ViewBuilder
     private var modelViewerTopChromeLayer: some View {
         if !suppressBuiltInTopChrome {
             modelViewerTopChrome
@@ -335,7 +353,7 @@ struct ModelViewerView: View {
     private var modelViewerInteractiveStack: some View {
         ZStack {
             modelViewerRealityAndFurnitureUnderlay
-            roomDimensionsHintOverlay
+            modelViewerRoomDimensionsHintLayer
             fullVideoToolbarHelperOverlay
             topTrailingPinchAndSizingHintsOverlay
             fullVideoFurnitureTapBubbleOverlay

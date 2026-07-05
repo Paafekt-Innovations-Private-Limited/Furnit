@@ -126,12 +126,6 @@ struct HomeTab: View {
     @State private var showRenameErrorAlert = false
     @State private var createRoomHintExplanationVisible = false
     @State private var createRoomHintHideTextTask: Task<Void, Never>?
-    @AppStorage("roomGeneration.implementation")
-    private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
-
-    private var roomGenerationImplementation: RoomGenerationImplementation {
-        RoomGenerationImplementation(rawValue: roomGenerationImplementationRawValue) ?? .defaultImplementation
-    }
 
     var body: some View {
         NavigationStack {
@@ -435,12 +429,7 @@ struct HomeTab: View {
 
     @ViewBuilder
     private var roomCreatorView: some View {
-        switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ, .qwenImageToRoom, .swiftSharpMath, .sharpCoreML:
-            SinglePhotoRoomView()
-        case .lidarSweepFusion:
-            LiDARRoomSweepCreationView()
-        }
+        SinglePhotoRoomView()
     }
 
     private var createRoomHintAccessibilityLabel: String {

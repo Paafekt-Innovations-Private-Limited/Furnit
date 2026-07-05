@@ -13,6 +13,8 @@ struct DepthAnythingRoomResult: Sendable {
     let triangleCount: Int
     let imageWidth: Int
     let imageHeight: Int
+    /// From ``measureWall`` on the Core ML depth map only (same as `scripts/depthanything_measure_room.py`).
+    /// Never derived from USDZ mesh, point cloud, or RealityKit bounds.
     let roomWidthMeters: Float
     let roomHeightMeters: Float
     let roomDepthMeters: Float
@@ -92,8 +94,14 @@ final class DepthAnythingRoomReconstructor {
             fy: focal.fy,
             wallMargin: wallMargin
         )
+        logDebug(
+            "[DepthAnythingRoom] measureWall image=\(imageWidth)x\(imageHeight) " +
+            "fx=\(String(format: "%.1f", focal.fx)) fy=\(String(format: "%.1f", focal.fy)) " +
+            "W=\(String(format: "%.3f", measured.width)) " +
+            "H=\(String(format: "%.3f", measured.height)) " +
+            "D=\(String(format: "%.3f", measured.depth)) m"
+        )
         let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
-        let meshRoomHeightMeters = meshRoomWidthMeters * Float(imageHeight) / Float(max(imageWidth, 1))
         let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(depthMap) : depthMap
         let mesh = try buildMesh(
             image: workingImage,
@@ -107,8 +115,8 @@ final class DepthAnythingRoomReconstructor {
             triangleCount: mesh.submeshes?.compactMap { $0 as? MDLSubmesh }.reduce(0) { $0 + $1.indexCount / 3 } ?? 0,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            roomWidthMeters: meshRoomWidthMeters,
-            roomHeightMeters: meshRoomHeightMeters,
+            roomWidthMeters: measured.width,
+            roomHeightMeters: measured.height,
             roomDepthMeters: measured.depth
         )
     }
@@ -828,14 +836,16 @@ final class DepthAnythingRoomReconstructor {
     }
 
     private static func focalPixels(image: UIImage, imageWidth: Int, imageHeight: Int) -> (fx: Float, fy: Float) {
-        if let focal35mm = focal35mmEquivalent(from: image), focal35mm > 1 {
-            let fx = (focal35mm / 36.0) * Float(imageWidth)
-            let fy = fx * Float(imageHeight) / Float(max(imageWidth, 1))
-            return (fx, fy)
+        let focal35mm: Float
+        if let exifFocal = focal35mmEquivalent(from: image), exifFocal > 1 {
+            focal35mm = exifFocal
+        } else {
+            focal35mm = fallbackFocal35mmEquivalent
         }
-        let fx = (fallbackFocal35mmEquivalent / 36.0) * Float(imageWidth)
-        let fy = fx * Float(imageHeight) / Float(max(imageWidth, 1))
-        return (fx, fy)
+        // 35mm-equiv → horizontal FOV on 36mm sensor. Square pixels: same f_px on both axes.
+        // Do NOT set fy = fx * H/W — that cancels aspect ratio and forces W == H in measureWall().
+        let focalPx = (focal35mm / 36.0) * Float(imageWidth)
+        return (focalPx, focalPx)
     }
 
     private static func focal35mmEquivalent(from image: UIImage) -> Float? {

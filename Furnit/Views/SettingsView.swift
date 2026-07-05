@@ -8,14 +8,11 @@ struct SettingsView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionErrorMessage: String?
     @State private var isDeletingAccount = false
-    
-    // Single Photo Room Dimensions
+
+    // Manual single-photo room dimensions.
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
-    @AppStorage("roomGeneration.implementation")
-    private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
-    @AppStorage("qwen.ollamaBaseURL") private var qwenOllamaBaseURL: String = "https://spd-production-2d9b.up.railway.app"
 
     // Room Viewer Settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
@@ -27,10 +24,6 @@ struct SettingsView: View {
     /// Minimum confidence for choosing the **primary** furniture detection (largest box among those above this threshold).
     @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidence: Double = 0.57
     @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-
-    private var selectedRoomGenerationImplementation: RoomGenerationImplementation {
-        RoomGenerationImplementation(rawValue: roomGenerationImplementationRawValue) ?? .defaultImplementation
-    }
 
     var body: some View {
         NavigationView {
@@ -46,11 +39,9 @@ struct SettingsView: View {
                 } header: {
                     Text(L10n.Settings.appInfo)
                 }
-                
-                // Single Photo Room Dimensions Section
+
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        // Width slider
                         HStack {
                             Image(systemName: "arrow.left.and.right")
                                 .foregroundColor(.blue)
@@ -64,7 +55,6 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        // Depth slider
                         HStack {
                             Image(systemName: "arrow.up.and.down")
                                 .foregroundColor(.green)
@@ -78,7 +68,6 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        // Height slider
                         HStack {
                             Image(systemName: "arrow.up.to.line")
                                 .foregroundColor(.orange)
@@ -95,49 +84,6 @@ struct SettingsView: View {
                 } footer: {
                     Text(L10n.Settings.roomDimensionsFooter)
                         .font(.footnote)
-                }
-
-                Section {
-                    Picker(selection: $roomGenerationImplementationRawValue) {
-                        ForEach(RoomGenerationImplementation.allCases) { implementation in
-                            Text(implementation.displayName)
-                                .tag(implementation.rawValue)
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "shippingbox.and.arrow.backward")
-                                .foregroundColor(.indigo)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Room backend")
-                                    .font(.headline)
-                                Text(selectedRoomGenerationImplementation.displayName)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .pickerStyle(.navigationLink)
-
-                    if selectedRoomGenerationImplementation == .qwenImageToRoom {
-                        HStack {
-                            Image(systemName: "link")
-                                .foregroundColor(.pink)
-                            TextField("Ollama URL", text: $qwenOllamaBaseURL)
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.URL)
-                                .autocorrectionDisabled()
-                        }
-                    }
-                } header: {
-                    Text("Sharp Room")
-                } footer: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(selectedRoomGenerationImplementation.settingsDescription)
-                        if selectedRoomGenerationImplementation == .qwenImageToRoom {
-                            Text("Default uses Railway. For local testing, use http://127.0.0.1:11434 in Simulator or your Mac LAN IP on device.")
-                        }
-                    }
-                    .font(.footnote)
                 }
 
                 // Room Viewer Settings Section

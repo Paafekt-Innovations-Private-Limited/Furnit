@@ -130,12 +130,10 @@ def focal_from_exif(path: Path, image_width: int, image_height: int) -> tuple[fl
     tags = {ExifTags.TAGS.get(k, str(k)): v for k, v in exif.items()}
     focal_35mm = tags.get("FocalLengthIn35mmFilm") or tags.get("FocalLenIn35mmFilm")
     if focal_35mm and float(focal_35mm) > 1:
-        fx = (float(focal_35mm) / 36.0) * image_width
-        fy = fx * image_height / image_width
-        return fx, fy, f"exif_35mm_equiv_{float(focal_35mm):.1f}mm"
-    fx = (fallback_35mm / 36.0) * image_width
-    fy = fx * image_height / image_width
-    return fx, fy, f"fallback_35mm_equiv_{fallback_35mm:.1f}mm"
+        focal_px = (float(focal_35mm) / 36.0) * image_width
+        return focal_px, focal_px, f"exif_35mm_equiv_{float(focal_35mm):.1f}mm"
+    focal_px = (fallback_35mm / 36.0) * image_width
+    return focal_px, focal_px, f"fallback_35mm_equiv_{fallback_35mm:.1f}mm"
 
 
 def preprocess(image: Image.Image, input_size: int) -> np.ndarray:
@@ -373,11 +371,10 @@ def main() -> int:
     rect = wall_rect_px(width, height, margin)
     width_m, height_m, depth_m = measure_wall(depth, rect, fx, fy, width, height)
     mesh_room_width_m = max(width_m, 2.0)
-    mesh_room_height_m = mesh_room_width_m * height / width
 
     result = RoomMeasurements(
-        width_m=round(mesh_room_width_m, 3),
-        height_m=round(mesh_room_height_m, 3),
+        width_m=round(width_m, 3),
+        height_m=round(height_m, 3),
         depth_m=round(depth_m, 3),
         image_width=width,
         image_height=height,
