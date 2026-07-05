@@ -877,6 +877,283 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let summary: String
 }
 
+/// Pre-save Depth Anything preview — matches SHARP ML navigation chrome (nav-bar save, name prompt, discard alert).
+private struct DepthAnythingPreviewRoomView: View {
+    let destination: USDZViewerDestination
+
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var modelManager = USDZModelManager()
+    @State private var shouldResetCamera = false
+    @State private var isSavingRoom = false
+    @State private var saveProgress: Double = 0
+    @State private var showRoomNameInput = false
+    @State private var roomName = ""
+    @State private var showSaveAlert = false
+    @State private var saveAlertMessage = ""
+    @State private var saveWasSuccessful = false
+    @State private var showDiscardUnsavedAlert = false
+
+    var body: some View {
+        ZStack {
+            ModelViewerView(
+                model: destination.model,
+                suppressBuiltInTopChrome: true,
+                shouldResetCamera: $shouldResetCamera
+            )
+
+            if isSavingRoom {
+                saveRoomProgressOverlay
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar { previewToolbarContent }
+        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+            TextField(L10n.RoomViewer.roomName, text: $roomName)
+                .autocorrectionDisabled(true)
+            Button(L10n.Common.cancel, role: .cancel) {
+                roomName = ""
+            }
+            Button(L10n.Common.save) {
+                startSavingRoom()
+            }
+            .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text(L10n.RoomViewer.enterName)
+        }
+        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
+            Button(L10n.Common.ok, role: .cancel) {
+                if saveWasSuccessful {
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                }
+            }
+        } message: {
+            Text(saveAlertMessage)
+        }
+        .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
+            Button(L10n.RoomPreview.stay, role: .cancel) {}
+            Button(L10n.RoomPreview.leave, role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text(L10n.RoomPreview.unsavedMessage)
+        }
+        .disableBackSwipeIf(true)
+        .onAppear {
+            if destination.model.photoOrientation == .landscape {
+                OrientationLockManager.shared.lockToLandscape()
+            } else {
+                OrientationLockManager.shared.lockToPortrait()
+            }
+        }
+        .onDisappear {
+            OrientationLockManager.shared.unlock()
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var previewToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button(action: handleBackTap) {
+                Image(systemName: "chevron.left")
+            }
+            .accessibilityLabel(L10n.Common.back)
+        }
+        ToolbarItem(placement: .principal) {
+            previewRoomMeasurementPrincipal
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 14) {
+                Button {
+                    shouldResetCamera = true
+                } label: {
+                    Image(systemName: "viewfinder")
+                        .font(.title3)
+                }
+                .accessibilityLabel(L10n.RoomViewer.recenterView)
+
+                Button {
+                    if roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        roomName = RoomDisplayName.myRoomWithTimestamp()
+                    }
+                    showRoomNameInput = true
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.title3)
+                }
+                .disabled(isSavingRoom || saveWasSuccessful)
+                .accessibilityLabel(L10n.RoomViewer.saveRoom)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var previewRoomMeasurementPrincipal: some View {
+        if let width = destination.model.roomWidth,
+           let height = destination.model.roomHeight,
+           let depth = destination.model.roomDepth,
+           width.isFinite, height.isFinite, depth.isFinite,
+           width > 0.05, height > 0.05, depth > 0.05 {
+            VStack(spacing: 1) {
+                Text("W × H × D")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                Text(String(format: "%.2f × %.2f × %.2f m", width, height, depth))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+        }
+    }
+
+    private var saveRoomProgressOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: 100, height: 100)
+
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 40))
+                        .foregroundColor(.green)
+                }
+
+                Text(L10n.RoomViewer.savingRoomEllipsis)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+
+                ProgressView(value: saveProgress)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                    .frame(width: 200)
+
+                Text("\(Int(saveProgress * 100))%")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+
+    private func handleBackTap() {
+        if saveWasSuccessful {
+            dismiss()
+        } else {
+            showDiscardUnsavedAlert = true
+        }
+    }
+
+    private func startSavingRoom() {
+        let trimmedRoomName = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomName.isEmpty else { return }
+        guard !modelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
+            saveAlertMessage = L10n.RoomViewer.duplicateRoomName
+            saveWasSuccessful = false
+            showSaveAlert = true
+            return
+        }
+        guard let sourceURL = destination.model.cachedResolvedURL ?? destination.model.temporaryURL else {
+            saveAlertMessage = "Could not find generated room file."
+            saveWasSuccessful = false
+            showSaveAlert = true
+            return
+        }
+
+        showRoomNameInput = false
+        withAnimation(.easeIn(duration: 0.2)) {
+            isSavingRoom = true
+            saveProgress = 0
+        }
+
+        let metadata = depthAnythingSavedRoomMetadata(for: destination.model, displayName: trimmedRoomName)
+
+        Task {
+            await MainActor.run { saveProgress = 0.35 }
+            do {
+                let savedURL = try await Task.detached(priority: .userInitiated) {
+                    try copyDepthAnythingRoomToSavedRooms(sourceURL: sourceURL, metadata: metadata)
+                }.value
+                await MainActor.run {
+                    saveProgress = 1.0
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        isSavingRoom = false
+                    }
+                    saveAlertMessage = L10n.RoomViewer.saveSuccess(trimmedRoomName)
+                    saveWasSuccessful = true
+                    showSaveAlert = true
+                    roomName = ""
+                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
+                    logDebug("✅ [DepthAnythingRoom] Saved room to \(savedURL.lastPathComponent)")
+                }
+            } catch {
+                await MainActor.run {
+                    isSavingRoom = false
+                    saveAlertMessage = error.localizedDescription
+                    saveWasSuccessful = false
+                    showSaveAlert = true
+                    logDebug("❌ [DepthAnythingRoom] Save failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+}
+
+private func depthAnythingSavedRoomMetadata(for model: USDZModel, displayName: String) -> [String: String] {
+    var metadata: [String: String] = [
+        "photoOrientation": model.photoOrientation.rawValue,
+        "roomCoordinateFrame": model.roomCoordinateFrame.rawValue,
+        "displayName": displayName
+    ]
+
+    if let roomWidth = model.roomWidth, roomWidth.isFinite, roomWidth > 0 {
+        metadata["roomWidth"] = String(format: "%.2f", roomWidth)
+    }
+    if let roomHeight = model.roomHeight, roomHeight.isFinite, roomHeight > 0 {
+        metadata["roomHeight"] = String(format: "%.2f", roomHeight)
+    }
+    if let roomDepth = model.roomDepth, roomDepth.isFinite, roomDepth > 0 {
+        metadata["roomDepth"] = String(format: "%.2f", roomDepth)
+    }
+
+    return metadata
+}
+
+private func copyDepthAnythingRoomToSavedRooms(sourceURL: URL, metadata: [String: String]) throws -> URL {
+    let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let savedRoomsURL = documentsURL.appendingPathComponent("SavedRooms", isDirectory: true)
+    try FileManager.default.createDirectory(at: savedRoomsURL, withIntermediateDirectories: true)
+
+    let destinationURL = uniqueDepthAnythingSavedRoomURL(in: savedRoomsURL, sourceURL: sourceURL)
+    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+    let metadataURL = savedRoomsURL.appendingPathComponent("\(destinationURL.deletingPathExtension().lastPathComponent).usdz.meta")
+    let metadataData = try JSONEncoder().encode(metadata)
+    try metadataData.write(to: metadataURL, options: [.atomic])
+    return destinationURL
+}
+
+private func uniqueDepthAnythingSavedRoomURL(in directory: URL, sourceURL: URL) -> URL {
+    let baseName = sourceURL.deletingPathExtension().lastPathComponent
+    let fileExtension = sourceURL.pathExtension.isEmpty ? "usdz" : sourceURL.pathExtension
+    var candidate = directory.appendingPathComponent(baseName).appendingPathExtension(fileExtension)
+    var suffix = 1
+
+    while FileManager.default.fileExists(atPath: candidate.path) {
+        candidate = directory
+            .appendingPathComponent("\(baseName)_\(suffix)")
+            .appendingPathExtension(fileExtension)
+        suffix += 1
+    }
+
+    return candidate
+}
+
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @ObservedObject private var sharpService = SHARPService.shared
@@ -907,11 +1184,6 @@ struct SinglePhotoRoomView: View {
     @State private var showSharpProgressOverlay = false
     @State private var singlePhotoGenerationStatus: String?
     @State private var usdzViewerDestination: USDZViewerDestination?
-    @State private var depthAnythingSaveInProgress = false
-    @State private var depthAnythingSavedDestinationIDs: Set<UUID> = []
-    @State private var showDepthAnythingSaveAlert = false
-    @State private var depthAnythingSaveAlertMessage = ""
-    @State private var depthAnythingSaveWasSuccessful = false
     @Environment(\.dismiss) private var dismiss
     @AppStorage("roomGeneration.implementation")
     private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
@@ -1387,17 +1659,14 @@ struct SinglePhotoRoomView: View {
             }
         }
         .navigationDestination(item: $usdzViewerDestination) { destination in
-            ZStack {
-                ModelViewerView(model: destination.model)
-                depthAnythingSaveOverlay(destination: destination)
-            }
-            .onAppear {
-                logDebug("🚀 [Navigation] ModelViewerView (Depth Anything USDZ)")
-                logDebug("   \(destination.summary)")
-            }
-            .onDisappear {
-                usdzViewerDestination = nil
-            }
+            DepthAnythingPreviewRoomView(destination: destination)
+                .onAppear {
+                    logDebug("🚀 [Navigation] DepthAnythingPreviewRoomView (Depth Anything USDZ)")
+                    logDebug("   \(destination.summary)")
+                }
+                .onDisappear {
+                    usdzViewerDestination = nil
+                }
         }
         // Success alert for API-generated PLY file
         .alert(L10n.PhotoRoom.modelGeneratedTitle, isPresented: $showGenerationSuccess) {
@@ -1412,15 +1681,6 @@ struct SinglePhotoRoomView: View {
             } else {
                 Text(L10n.PhotoRoom.saveSuccessMessage)
             }
-        }
-        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showDepthAnythingSaveAlert) {
-            Button(L10n.Common.ok, role: .cancel) {
-                if depthAnythingSaveWasSuccessful {
-                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-                }
-            }
-        } message: {
-            Text(depthAnythingSaveAlertMessage)
         }
         // Handle generation errors
         .alert(L10n.PhotoRoom.generationFailedTitle, isPresented: Binding(
@@ -1456,130 +1716,6 @@ struct SinglePhotoRoomView: View {
         }
     }
 
-    private func depthAnythingSaveOverlay(destination: USDZViewerDestination) -> some View {
-        let isSaved = depthAnythingSavedDestinationIDs.contains(destination.id)
-
-        return VStack {
-            Spacer()
-            Button {
-                saveDepthAnythingRoom(destination)
-            } label: {
-                HStack(spacing: 8) {
-                    if depthAnythingSaveInProgress {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                            .scaleEffect(0.75)
-                    } else {
-                        Image(systemName: isSaved ? "checkmark.circle.fill" : "square.and.arrow.down")
-                    }
-                    Text(isSaved ? L10n.RoomViewer.roomSavedAlertTitle : L10n.Common.save)
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .frame(height: 46)
-                .background(
-                    Capsule()
-                        .fill(isSaved ? Color.green.opacity(0.9) : Color.blue.opacity(0.92))
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 7, x: 0, y: 3)
-            }
-            .disabled(depthAnythingSaveInProgress || isSaved)
-            .padding(.bottom, 30)
-        }
-        .zIndex(100_000)
-    }
-
-    private func saveDepthAnythingRoom(_ destination: USDZViewerDestination) {
-        guard !depthAnythingSaveInProgress else { return }
-        guard let sourceURL = destination.model.cachedResolvedURL ?? destination.model.temporaryURL else {
-            depthAnythingSaveWasSuccessful = false
-            depthAnythingSaveAlertMessage = "Could not find generated room file."
-            showDepthAnythingSaveAlert = true
-            return
-        }
-
-        depthAnythingSaveInProgress = true
-        let destinationID = destination.id
-        let metadata = Self.depthAnythingSavedRoomMetadata(for: destination.model)
-
-        Task {
-            do {
-                let savedURL = try await Task.detached(priority: .userInitiated) {
-                    try Self.copyDepthAnythingRoomToSavedRooms(sourceURL: sourceURL, metadata: metadata)
-                }.value
-                await MainActor.run {
-                    depthAnythingSaveInProgress = false
-                    depthAnythingSavedDestinationIDs.insert(destinationID)
-                    depthAnythingSaveWasSuccessful = true
-                    depthAnythingSaveAlertMessage = L10n.RoomViewer.roomSavedAlertTitle
-                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
-                    showDepthAnythingSaveAlert = true
-                    logDebug("✅ [DepthAnythingRoom] Saved room to \(savedURL.lastPathComponent)")
-                }
-            } catch {
-                await MainActor.run {
-                    depthAnythingSaveInProgress = false
-                    depthAnythingSaveWasSuccessful = false
-                    depthAnythingSaveAlertMessage = error.localizedDescription
-                    showDepthAnythingSaveAlert = true
-                    logDebug("❌ [DepthAnythingRoom] Save failed: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
-    nonisolated private static func depthAnythingSavedRoomMetadata(for model: USDZModel) -> [String: String] {
-        var metadata: [String: String] = [
-            "photoOrientation": model.photoOrientation.rawValue,
-            "roomCoordinateFrame": model.roomCoordinateFrame.rawValue,
-            "displayName": RoomDisplayName.aiRoomWithTimestamp()
-        ]
-
-        if let roomWidth = model.roomWidth, roomWidth.isFinite, roomWidth > 0 {
-            metadata["roomWidth"] = String(format: "%.2f", roomWidth)
-        }
-        if let roomHeight = model.roomHeight, roomHeight.isFinite, roomHeight > 0 {
-            metadata["roomHeight"] = String(format: "%.2f", roomHeight)
-        }
-        if let roomDepth = model.roomDepth, roomDepth.isFinite, roomDepth > 0 {
-            metadata["roomDepth"] = String(format: "%.2f", roomDepth)
-        }
-
-        return metadata
-    }
-
-    nonisolated private static func copyDepthAnythingRoomToSavedRooms(sourceURL: URL, metadata: [String: String]) throws -> URL {
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let savedRoomsURL = documentsURL.appendingPathComponent("SavedRooms", isDirectory: true)
-        try FileManager.default.createDirectory(at: savedRoomsURL, withIntermediateDirectories: true)
-
-        let destinationURL = uniqueDepthAnythingSavedRoomURL(in: savedRoomsURL, sourceURL: sourceURL)
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-
-        let metadataURL = savedRoomsURL.appendingPathComponent("\(destinationURL.deletingPathExtension().lastPathComponent).usdz.meta")
-        let metadataData = try JSONEncoder().encode(metadata)
-        try metadataData.write(to: metadataURL, options: [.atomic])
-        return destinationURL
-    }
-
-    nonisolated private static func uniqueDepthAnythingSavedRoomURL(in directory: URL, sourceURL: URL) -> URL {
-        let baseName = sourceURL.deletingPathExtension().lastPathComponent
-        let fileExtension = sourceURL.pathExtension.isEmpty ? "usdz" : sourceURL.pathExtension
-        var candidate = directory.appendingPathComponent(baseName).appendingPathExtension(fileExtension)
-        var suffix = 1
-
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = directory
-                .appendingPathComponent("\(baseName)_\(suffix)")
-                .appendingPathExtension(fileExtension)
-            suffix += 1
-        }
-
-        return candidate
-    }
-    
     private func confidenceColor(_ confidence: Float) -> Color {
         switch confidence {
         case 0.7...1.0: return .green

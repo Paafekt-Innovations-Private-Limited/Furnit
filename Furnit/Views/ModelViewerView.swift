@@ -21,7 +21,6 @@ struct ModelViewerView: View {
 
     // Camera movement state
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
-    @State private var shouldResetCamera = false  // ✅ Trigger camera reset on appear
 
     // Required for RealityKitView
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
@@ -74,8 +73,22 @@ struct ModelViewerView: View {
 
     @State private var isCapturingSnapshot = false
 
-    init(model: USDZModel) {
+    let suppressBuiltInTopChrome: Bool
+    private let shouldResetCameraOverride: Binding<Bool>?
+    @State private var internalShouldResetCamera = false
+
+    init(
+        model: USDZModel,
+        suppressBuiltInTopChrome: Bool = false,
+        shouldResetCamera: Binding<Bool>? = nil
+    ) {
         self.model = model
+        self.suppressBuiltInTopChrome = suppressBuiltInTopChrome
+        self.shouldResetCameraOverride = shouldResetCamera
+    }
+
+    private var cameraResetBinding: Binding<Bool> {
+        shouldResetCameraOverride ?? $internalShouldResetCamera
     }
 
     private var canSegmentSelectedFurniture: Bool {
@@ -182,7 +195,7 @@ struct ModelViewerView: View {
                 isARActive: isARActive,
                 shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
                 capturedSnapshot: $roomSnapshot,
-                shouldResetCamera: $shouldResetCamera  // ✅ Camera reset trigger
+                shouldResetCamera: cameraResetBinding  // ✅ Camera reset trigger
             )
             .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
             .ignoresSafeArea(.all)
@@ -215,6 +228,13 @@ struct ModelViewerView: View {
                 .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(9002)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var modelViewerTopChromeLayer: some View {
+        if !suppressBuiltInTopChrome {
+            modelViewerTopChrome
         }
     }
 
@@ -316,7 +336,7 @@ struct ModelViewerView: View {
             topTrailingPinchAndSizingHintsOverlay
             fullVideoFurnitureTapBubbleOverlay
             fullVideoModeFloatingButtonOverlay
-            modelViewerTopChrome
+            modelViewerTopChromeLayer
             modelViewerBrainAndPlacementChrome
             modelViewerSnapshotChrome
         }
@@ -329,10 +349,18 @@ struct ModelViewerView: View {
     }
 
     private var modelViewerNavigationChrome: some View {
-        modelViewerInGeometry
-            .navigationBarHidden(true)
-            .statusBarHidden(true)
-            .preferredColorScheme(.dark)
+        Group {
+            if suppressBuiltInTopChrome {
+                modelViewerInGeometry
+                    .statusBarHidden(true)
+                    .preferredColorScheme(.dark)
+            } else {
+                modelViewerInGeometry
+                    .navigationBarHidden(true)
+                    .statusBarHidden(true)
+                    .preferredColorScheme(.dark)
+            }
+        }
     }
 
     private var modelViewerWithSessionObservers: some View {
@@ -407,7 +435,7 @@ struct ModelViewerView: View {
         rtmdetService.ensureModelLoaded()
         // Deferred reset so RealityKit has a frame to settle before reframing.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            shouldResetCamera = true
+            cameraResetBinding.wrappedValue = true
         }
         if model.photoOrientation == .landscape {
             OrientationLockManager.shared.lockToLandscape()
@@ -520,7 +548,7 @@ struct ModelViewerView: View {
             .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
 
             Button(action: {
-                shouldResetCamera = true
+                cameraResetBinding.wrappedValue = true
             }) {
                 Image(systemName: "viewfinder")
                     .font(.system(size: 18, weight: .medium))
