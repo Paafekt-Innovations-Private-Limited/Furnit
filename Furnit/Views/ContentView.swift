@@ -436,7 +436,7 @@ struct HomeTab: View {
     @ViewBuilder
     private var roomCreatorView: some View {
         switch roomGenerationImplementation {
-        case .depthAnythingMetricUSDZ, .swiftSharpMath, .sharpCoreML:
+        case .depthAnythingMetricUSDZ, .qwenImageToRoom, .swiftSharpMath, .sharpCoreML:
             SinglePhotoRoomView()
         case .lidarSweepFusion:
             LiDARRoomSweepCreationView()

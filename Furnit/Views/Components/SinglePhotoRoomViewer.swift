@@ -915,6 +915,7 @@ struct SinglePhotoRoomView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("roomGeneration.implementation")
     private var roomGenerationImplementationRawValue: String = RoomGenerationImplementation.defaultImplementation.rawValue
+    @AppStorage("qwen.ollamaBaseURL") private var qwenOllamaBaseURL: String = "https://spd-production-2d9b.up.railway.app"
     /// For `camera_exif.json` / wall depth: library photo file URL when UIImagePicker provides it.
     @State private var sharpSourceImageURL: URL?
     /// In-app camera metadata (`mediaMetadata`) — EXIF including SubjectDistance when available.
@@ -1434,7 +1435,7 @@ struct SinglePhotoRoomView: View {
             }
             Button(L10n.Common.retry) {
                 if let image = selectedImage {
-                    startSHARPGeneration(image: image)
+                    startPrimaryPhotoGeneration(image: image)
                 }
             }
         } message: {
@@ -1591,6 +1592,8 @@ struct SinglePhotoRoomView: View {
         switch roomGenerationImplementation {
         case .depthAnythingMetricUSDZ:
             return "Depth Anything Room"
+        case .qwenImageToRoom:
+            return "Qwen Room"
         case .swiftSharpMath:
             return "Swift SHARP Math"
         case .sharpCoreML:
@@ -1604,6 +1607,8 @@ struct SinglePhotoRoomView: View {
         switch roomGenerationImplementation {
         case .depthAnythingMetricUSDZ:
             return "Metric depth mesh to USDZ"
+        case .qwenImageToRoom:
+            return "Qwen backend test hook"
         case .swiftSharpMath:
             return "No ML flat point-room preview"
         case .sharpCoreML:
@@ -1617,6 +1622,8 @@ struct SinglePhotoRoomView: View {
         switch roomGenerationImplementation {
         case .depthAnythingMetricUSDZ:
             return "camera.metering.matrix"
+        case .qwenImageToRoom:
+            return "sparkles.rectangle.stack"
         case .swiftSharpMath:
             return "square.grid.3x3"
         case .sharpCoreML:
@@ -1630,6 +1637,8 @@ struct SinglePhotoRoomView: View {
         switch roomGenerationImplementation {
         case .depthAnythingMetricUSDZ:
             return .blue
+        case .qwenImageToRoom:
+            return .pink
         case .swiftSharpMath:
             return .teal
         case .sharpCoreML:
@@ -1644,6 +1653,8 @@ struct SinglePhotoRoomView: View {
         switch roomGenerationImplementation {
         case .depthAnythingMetricUSDZ:
             startDepthAnythingGeneration(image: image)
+        case .qwenImageToRoom:
+            startQwenGeneration(image: image)
         case .swiftSharpMath:
             startSwiftSharpMathGeneration(image: image)
         case .sharpCoreML:
@@ -1655,6 +1666,52 @@ struct SinglePhotoRoomView: View {
             }
         case .lidarSweepFusion:
             dismiss()
+        }
+    }
+
+    private func startQwenGeneration(image: UIImage) {
+        let generationImage = image.fixedOrientation()
+        let orientation = selectedOrientation
+        selectedImage = nil
+        fixedImageItem = nil
+        splatViewerDestination = nil
+        usdzViewerDestination = nil
+        singlePhotoGenerationStatus = "Running Qwen..."
+
+        Task {
+            do {
+                guard let baseURL = URL(string: qwenOllamaBaseURL), baseURL.scheme != nil else {
+                    throw QwenRoomError.requestFailed("Invalid Ollama URL in Settings.")
+                }
+                let result = try await Task.detached(priority: .userInitiated) {
+                    let reconstructor = QwenRoomReconstructor(baseURL: baseURL)
+                    return try await reconstructor.reconstructWithResult(image: generationImage)
+                }.value
+                logDebug("✅ [QwenRoom] USDZ generated: \(result.summary)")
+                let model = USDZModel(
+                    name: result.usdzURL.deletingPathExtension().lastPathComponent,
+                    fileName: result.usdzURL.lastPathComponent,
+                    isSavedRoom: true,
+                    fileType: .usdz,
+                    fileSize: (try? result.usdzURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init),
+                    photoOrientation: orientation,
+                    roomWidth: result.roomWidthMeters,
+                    roomHeight: result.roomHeightMeters,
+                    roomDepth: result.roomDepthMeters,
+                    roomCoordinateFrame: .depthAnythingImageDepthMeters,
+                    cachedResolvedURL: result.usdzURL
+                )
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    usdzViewerDestination = USDZViewerDestination(model: model, summary: result.summary)
+                }
+            } catch {
+                logDebug("❌ [QwenRoom] generation failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    singlePhotoGenerationStatus = nil
+                    sharpService.status = .failed(error.localizedDescription)
+                }
+            }
         }
     }
 
