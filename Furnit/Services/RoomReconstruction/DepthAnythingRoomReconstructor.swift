@@ -80,12 +80,18 @@ final class DepthAnythingRoomReconstructor {
     }
 
     func reconstructWithResult(image: UIImage) async throws -> DepthAnythingRoomResult {
+        let sourcePixelWidth = max(1, Int(ceil(Double(image.size.width * image.scale))))
+        let sourcePixelHeight = max(1, Int(ceil(Double(image.size.height * image.scale))))
         let fixedImage = image.fixedOrientation()
         let workingImage = try Self.downsampledImage(fixedImage, maxDimension: maxReconstructionImageDimension)
+        let fixedPixelWidth = fixedImage.cgImage?.width ?? sourcePixelWidth
+        let fixedPixelHeight = fixedImage.cgImage?.height ?? sourcePixelHeight
+        let workingPixelWidth = workingImage.cgImage?.width ?? fixedPixelWidth
+        let workingPixelHeight = workingImage.cgImage?.height ?? fixedPixelHeight
         let depthMap = try await inferDepth(image: workingImage)
         let imageWidth = depthMap.first?.count ?? 0
         let imageHeight = depthMap.count
-        let focal = Self.focalPixels(image: workingImage, imageWidth: imageWidth, imageHeight: imageHeight)
+        let focal = Self.focalPixelDetails(image: workingImage, imageWidth: imageWidth, imageHeight: imageHeight)
         let measured = Self.measureWall(
             depthMap: depthMap,
             imageWidth: imageWidth,
@@ -93,6 +99,28 @@ final class DepthAnythingRoomReconstructor {
             fx: focal.fx,
             fy: focal.fy,
             wallMargin: wallMargin
+        )
+        let stats = Self.depthMapStats(depthMap)
+        let rect = Self.measureWallSampleRect(imageWidth: imageWidth, imageHeight: imageHeight, wallMargin: wallMargin)
+        let rectWidthPixels = max(0, rect.rightX - rect.leftX)
+        let rectHeightPixels = max(0, rect.bottomY - rect.topY)
+        let widthFormula = "\(rectWidthPixels)px*\(String(format: "%.4f", measured.depth))m/\(String(format: "%.2f", focal.fx))fx"
+        let heightFormula = "\(rectHeightPixels)px*\(String(format: "%.4f", measured.depth))m/\(String(format: "%.2f", focal.fy))fy"
+        logDebug(
+            "[DepthAnythingRoom][InferenceDims] model=\(modelName) " +
+            "source_px=\(sourcePixelWidth)x\(sourcePixelHeight) fixed_px=\(fixedPixelWidth)x\(fixedPixelHeight) " +
+            "working_px=\(workingPixelWidth)x\(workingPixelHeight) depth_map=\(imageWidth)x\(imageHeight) " +
+            "valid_depths=\(stats.validCount) invalid_depths=\(stats.invalidCount) " +
+            "depth_min=\(Self.formatMeters(stats.min)) depth_p05=\(Self.formatMeters(stats.p05)) " +
+            "depth_median=\(Self.formatMeters(stats.median)) depth_p95=\(Self.formatMeters(stats.p95)) " +
+            "depth_max=\(Self.formatMeters(stats.max)) center_depth=\(Self.formatMeters(stats.centerDepth)) " +
+            "focal35mm=\(String(format: "%.2f", focal.focal35mm)) focal_source=\(focal.source) " +
+            "fx=\(String(format: "%.2f", focal.fx)) fy=\(String(format: "%.2f", focal.fy)) " +
+            "wall_margin=\(String(format: "%.3f", wallMargin)) " +
+            "rect_px=x:\(rect.leftX)-\(rect.rightX),y:\(rect.topY)-\(rect.bottomY),sample:\(rect.sampleCenterX),\(rect.sampleCenterY) " +
+            "dims_source=depth_map_center_depth_plus_projected_wall_rect " +
+            "width_formula=\(widthFormula) height_formula=\(heightFormula) " +
+            "dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
         )
         logDebug(
             "[DepthAnythingRoom] measureWall image=\(imageWidth)x\(imageHeight) " +
@@ -131,12 +159,22 @@ final class DepthAnythingRoomReconstructor {
         let targetHeight = cgImage.height
         let observation = try await runVisionDepthRequest(cgImage: cgImage)
         let dense = try Self.depthGrid(from: observation)
+        let rawStats = Self.depthValueStats(dense.values)
         let remapped = Self.resizeBilinear(
             values: dense.values,
             width: dense.width,
             height: dense.height,
             targetWidth: targetWidth,
             targetHeight: targetHeight
+        )
+        let resizedStats = Self.depthValueStats(remapped)
+        logDebug(
+            "[DepthAnythingRoom][InferenceRaw] observation=\(String(describing: type(of: observation))) " +
+            "raw_depth_map=\(dense.width)x\(dense.height) target_px=\(targetWidth)x\(targetHeight) " +
+            "raw_valid=\(rawStats.validCount) raw_invalid=\(rawStats.invalidCount) " +
+            "raw_min=\(Self.formatMeters(rawStats.min)) raw_median=\(Self.formatMeters(rawStats.median)) raw_max=\(Self.formatMeters(rawStats.max)) " +
+            "resized_valid=\(resizedStats.validCount) resized_invalid=\(resizedStats.invalidCount) " +
+            "resized_min=\(Self.formatMeters(resizedStats.min)) resized_median=\(Self.formatMeters(resizedStats.median)) resized_max=\(Self.formatMeters(resizedStats.max))"
         )
 
         var rows: [[Float]] = []
@@ -798,6 +836,139 @@ final class DepthAnythingRoomReconstructor {
         )
     }
 
+    private static func measureWallSampleRect(
+        imageWidth: Int,
+        imageHeight: Int,
+        wallMargin: Float
+    ) -> (leftX: Int, rightX: Int, topY: Int, bottomY: Int, sampleCenterX: Int, sampleCenterY: Int) {
+        let margin = min(max(wallMargin, 0), 0.45)
+        let rectX = margin * Float(imageWidth)
+        let rectY = margin * Float(imageHeight)
+        let rectWidth = (1.0 - 2.0 * margin) * Float(imageWidth)
+        let rectHeight = (1.0 - 2.0 * margin) * Float(imageHeight)
+        return (
+            Int(round(rectX)),
+            Int(round(rectX + rectWidth - 1)),
+            Int(round(rectY)),
+            Int(round(rectY + rectHeight - 1)),
+            Int(round(rectX + rectWidth * 0.5)),
+            Int(round(rectY + rectHeight * 0.5))
+        )
+    }
+
+    private struct DepthMapStats {
+        let validCount: Int
+        let invalidCount: Int
+        let min: Float?
+        let p05: Float?
+        let median: Float?
+        let p95: Float?
+        let max: Float?
+        let centerDepth: Float?
+    }
+
+    private struct DepthValueStats {
+        let validCount: Int
+        let invalidCount: Int
+        let min: Float?
+        let median: Float?
+        let max: Float?
+    }
+
+    private static func depthValueStats(_ values: [Float]) -> DepthValueStats {
+        var validDepths: [Float] = []
+        validDepths.reserveCapacity(values.count)
+        var invalidCount = 0
+        for depth in values {
+            if depth.isFinite, depth > 0 {
+                validDepths.append(depth)
+            } else {
+                invalidCount += 1
+            }
+        }
+        guard !validDepths.isEmpty else {
+            return DepthValueStats(
+                validCount: 0,
+                invalidCount: invalidCount,
+                min: nil,
+                median: nil,
+                max: nil
+            )
+        }
+        validDepths.sort()
+        return DepthValueStats(
+            validCount: validDepths.count,
+            invalidCount: invalidCount,
+            min: validDepths.first,
+            median: percentile(sorted: validDepths, fraction: 0.5),
+            max: validDepths.last
+        )
+    }
+
+    private static func depthMapStats(_ depthMap: [[Float]]) -> DepthMapStats {
+        let imageHeight = depthMap.count
+        let imageWidth = depthMap.first?.count ?? 0
+        var validDepths: [Float] = []
+        validDepths.reserveCapacity(imageHeight * max(imageWidth, 0))
+        var invalidCount = 0
+        for row in depthMap {
+            for depth in row {
+                if depth.isFinite, depth > 0 {
+                    validDepths.append(depth)
+                } else {
+                    invalidCount += 1
+                }
+            }
+        }
+        guard !validDepths.isEmpty else {
+            return DepthMapStats(
+                validCount: 0,
+                invalidCount: invalidCount,
+                min: nil,
+                p05: nil,
+                median: nil,
+                p95: nil,
+                max: nil,
+                centerDepth: nil
+            )
+        }
+        validDepths.sort()
+        let centerDepth: Float?
+        if imageWidth > 0, imageHeight > 0 {
+            centerDepth = medianAt(
+                depthMap: depthMap,
+                x: imageWidth / 2,
+                y: imageHeight / 2,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight
+            )
+        } else {
+            centerDepth = nil
+        }
+        return DepthMapStats(
+            validCount: validDepths.count,
+            invalidCount: invalidCount,
+            min: validDepths.first,
+            p05: percentile(sorted: validDepths, fraction: 0.05),
+            median: percentile(sorted: validDepths, fraction: 0.5),
+            p95: percentile(sorted: validDepths, fraction: 0.95),
+            max: validDepths.last,
+            centerDepth: centerDepth
+        )
+    }
+
+    private static func percentile(sorted values: [Float], fraction: Float) -> Float? {
+        guard !values.isEmpty else { return nil }
+        let clamped = min(max(fraction, 0), 1)
+        let index = Int(round(clamped * Float(values.count - 1)))
+        return values[index]
+    }
+
+    private static func formatMeters(_ value: Float?) -> String {
+        guard let value, value.isFinite else { return "nil" }
+        return String(format: "%.4f", value)
+    }
+
     private static func centerDepthFallback(_ depthMap: [[Float]]) -> Float {
         var validDepths: [Float] = []
         for row in depthMap {
@@ -836,16 +1007,28 @@ final class DepthAnythingRoomReconstructor {
     }
 
     private static func focalPixels(image: UIImage, imageWidth: Int, imageHeight: Int) -> (fx: Float, fy: Float) {
+        let details = focalPixelDetails(image: image, imageWidth: imageWidth, imageHeight: imageHeight)
+        return (details.fx, details.fy)
+    }
+
+    private static func focalPixelDetails(
+        image: UIImage,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> (fx: Float, fy: Float, focal35mm: Float, source: String) {
         let focal35mm: Float
+        let source: String
         if let exifFocal = focal35mmEquivalent(from: image), exifFocal > 1 {
             focal35mm = exifFocal
+            source = "exif"
         } else {
             focal35mm = fallbackFocal35mmEquivalent
+            source = "fallback"
         }
         // 35mm-equiv → horizontal FOV on 36mm sensor. Square pixels: same f_px on both axes.
         // Do NOT set fy = fx * H/W — that cancels aspect ratio and forces W == H in measureWall().
         let focalPx = (focal35mm / 36.0) * Float(imageWidth)
-        return (focalPx, focalPx)
+        return (focalPx, focalPx, focal35mm, source)
     }
 
     private static func focal35mmEquivalent(from image: UIImage) -> Float? {

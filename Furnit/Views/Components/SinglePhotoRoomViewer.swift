@@ -1591,6 +1591,14 @@ struct SinglePhotoRoomView: View {
                     return try await reconstructor.reconstructWithResult(image: generationImage)
                 }.value
                 logDebug("✅ [DepthAnythingRoom] USDZ generated: \(result.summary)")
+                logDebug(
+                    "[DepthAnythingRoom][InferenceDims][UIResult] " +
+                    "image=\(result.imageWidth)x\(result.imageHeight) " +
+                    "W=\(String(format: "%.4f", result.roomWidthMeters)) " +
+                    "H=\(String(format: "%.4f", result.roomHeightMeters)) " +
+                    "D=\(String(format: "%.4f", result.roomDepthMeters)) " +
+                    "usdz=\(result.usdzURL.lastPathComponent)"
+                )
                 let model = USDZModel(
                     name: result.usdzURL.deletingPathExtension().lastPathComponent,
                     fileName: result.usdzURL.lastPathComponent,
