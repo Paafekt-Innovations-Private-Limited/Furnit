@@ -1,6 +1,8 @@
 # Wall measurement + YOLO-E (on save)
 
-This document describes how **room width/height** are estimated when saving a SHARP **PLY** from **SharpRoomView**, and what **YOLO-E detection** means in this codebase.
+This document describes how **room width/height** were estimated when saving a legacy **SHARP PLY** from **SharpRoomView**, and what **YOLO-E detection** means in this codebase.
+
+**Current iOS default:** single-photo rooms use **GeoCalib + Depth Anything** (`DepthAnythingRoomReconstructor.swift`); W×H×D come from depth-unprojected spread and chair-anchor calibration, not wall measurement on save.
 
 Related code:
 

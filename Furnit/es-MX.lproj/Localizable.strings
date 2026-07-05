@@ -144,6 +144,10 @@
 "licenses.openSourceSection" = "Licencias de código abierto";
 "licenses.openSourceIntro" = "Esta app utiliza el siguiente software de código abierto.";
 "licenses.viewFullLicense" = "Ver licencia completa";
+"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalibTitle" = "GeoCalib";
+"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
 "licenses.sharpTitle" = "Reconstrucción 3D de habitación (SHARP)";
 "licenses.sharp" = "Copyright (c) colaboradores de SharpML. Bajo licencia MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -195,7 +199,7 @@
 "faq.twoMethods" = "¿Cuáles son las dos opciones para crear un cuarto?";
 "faq.twoMethodsAnswer" = "Al elegir una foto: 1) Cuarto 3D con IA – crea automáticamente un cuarto realista, o 2) Configuración manual – dibujas los límites tú mismo para más control.";
 "faq.whatIsAIRoom" = "¿Qué es el cuarto 3D con IA?";
-"faq.whatIsAIRoomAnswer" = "Convierte tu foto automáticamente en un cuarto 3D que puedes recorrer. Elige una foto y la app hace el resto.";
+"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
 "faq.whatIsManualRoom" = "¿Qué es la configuración manual?";
 "faq.whatIsManualRoomAnswer" = "Dibujas el contorno de las paredes en la foto para controlar mejor la forma del cuarto 3D.";
 "faq.whichMethodBetter" = "¿Qué método elijo?";
@@ -240,9 +244,9 @@
 "faq.sampleRoom" = "¿Puedo usar un cuarto de ejemplo en lugar del mío?";
 "faq.sampleRoomAnswer" = "¡Sí! La app proporciona cuartos de ejemplo para experimentar. Accede a ellos desde la sección Explorar para probar la colocación de muebles sin crear primero tu propio cuarto.";
 "faq.accuracy" = "¿Qué tan preciso es el modelo 3D?";
-"faq.accuracyAnswer" = "El cuarto 3D es una estimación hecha a partir de una sola foto. Las dimensiones pueden servir como guía, pero no son de precisión profesional. La medición de muebles es más confiable en teléfonos con AR/profundidad.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "¿Puedo ajustar las dimensiones del cuarto?";
-"faq.adjustDimensionsAnswer" = "No directamente en cuartos SHARP generados por IA. Usa la regla en el visor para revisar el ancho, alto y fondo estimados. Para mejores resultados, toma una foto clara del cuarto con esquinas visibles; los cuartos manuales siguen los límites que tú marques.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Muebles y medidas";
 "faq.arAssistedSizing" = "¿Qué es el tamaño de muebles asistido por AR?";
 "faq.arAssistedSizingAnswer" = "Primero toca el ícono del cerebro, selecciona los elementos detectados y luego toca Segmentar. Usa el control de tamaño cuando quieras escala relativa al cuarto. En teléfonos con AR/profundidad, la app usa profundidad en vivo de la cámara para un tamaño de mueble más realista; sin profundidad, las medidas son aproximadas.";
@@ -466,7 +470,7 @@
 "settings.roomMeasurementSection" = "Medidas del cuarto";
 "settings.wallAssumedDepthM" = "Distancia supuesta al muro (m)";
 "settings.wallAssumedCeilingM" = "Altura supuesta del muro/techo (m)";
-"settings.roomMeasurementFooter" = "Sin monoprofundidad en SHARP iOS, al guardar se usa la profundidad supuesta y a veces esta altura de techo. Si el ancho es bajo respecto a la cinta, aumenta la distancia supuesta (el ancho escala casi linealmente). Ajusta la altura del muro cerca de tu medida (p. ej. 2,86 m). O usa ⋮ → Calibrar por pared antes de guardar.";
+"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "Tomar foto";
 "camera.chooseOrientationShort" = "Vertical u horizontal";
 "sharp.downloadingEngine" = "Descargando motor 3D...";
@@ -535,7 +539,7 @@
 "credits.disclaimer" = "Estos reconocimientos se proporcionan únicamente por transparencia. Las referencias a empresas, productos o modelos de terceros no implican patrocinio, respaldo ni afiliación.";
 "credits.visitWebsite" = "Visitar sitio web";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Los frameworks, plataformas y referencias técnicas de Apple influyeron en partes de nuestro flujo de trabajo de desarrollo 3D y de aprendizaje automático en el dispositivo, incluido el trabajo relacionado con Sharp ML en plataformas Apple.";
+"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "Las herramientas de OpenAI, incluido ChatGPT, se utilizaron para apoyar la ideación del producto, la ayuda de implementación, la redacción y la exploración técnica durante el desarrollo.";
 "credits.anthropicTitle" = "Anthropic";

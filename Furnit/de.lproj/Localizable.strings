@@ -144,6 +144,10 @@
 "licenses.openSourceSection" = "Open-Source-Lizenzen";
 "licenses.openSourceIntro" = "Diese App verwendet die folgende Open-Source-Software.";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
+"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalibTitle" = "GeoCalib";
+"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
 "licenses.sharpTitle" = "3D-Raumrekonstruktion (SHARP)";
 "licenses.sharp" = "Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -193,7 +197,7 @@
 "faq.twoMethods" = "Was sind die beiden Optionen zur Raumerstellung?";
 "faq.twoMethodsAnswer" = "Nach der Fotowahl können Sie wählen: 1) KI-gestützter 3D-Raum – erstellt automatisch einen realistischen 3D-Raum, oder 2) Manuelle Einrichtung – Sie zeichnen die Raumgrenzen selbst für mehr Kontrolle.";
 "faq.whatIsAIRoom" = "Was ist der KI-gestützte 3D-Raum?";
-"faq.whatIsAIRoomAnswer" = "Diese Option verwendet intelligente Technologie, um Ihr Foto automatisch in einen begehbaren 3D-Raum zu verwandeln. Wählen Sie ein Foto – der Rest geht von selbst.";
+"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
 "faq.whatIsManualRoom" = "Was ist die manuelle Einrichtung?";
 "faq.whatIsManualRoomAnswer" = "Bei der manuellen Einrichtung zeichnen Sie den Umriss der Wände auf dem Foto. So haben Sie mehr Kontrolle über die Form des 3D-Raums.";
 "faq.whichMethodBetter" = "Welche Methode soll ich wählen?";
@@ -237,9 +241,9 @@
 "faq.sampleRoom" = "Kann ich einen Beispielraum anstelle meines eigenen verwenden?";
 "faq.sampleRoomAnswer" = "Ja! Die App bietet Beispielräume zum Experimentieren. Greifen Sie über den Entdecken-Bereich darauf zu, um die Möbelplatzierung auszuprobieren, ohne zuerst Ihren eigenen Raum zu erstellen.";
 "faq.accuracy" = "Wie genau ist das 3D-Modell?";
-"faq.accuracyAnswer" = "Das 3D-Modell bietet eine gute Annäherung an Ihr Raumlayout. Für beste Genauigkeit stellen Sie sicher, dass Ihr Originalfoto die Raummaße deutlich mit sichtbaren Ecken und Kanten erfasst.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Kann ich die Raummaße anpassen?";
-"faq.adjustDimensionsAnswer" = "Ja, gehen Sie zu Einstellungen und suchen Sie nach Raummaße-Optionen, wo Sie die Größe und Proportionen Ihres generierten Raums feinabstimmen können.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Möbel & Maße";
 "faq.arAssistedSizing" = "Was ist AR-gestützte Möbelgröße?";
 "faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, wählen Sie erkannte Elemente aus und tippen Sie dann auf Segment. Nutzen Sie die Größensteuerung, wenn die Größe relativ zum Raum angepasst werden soll. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
@@ -475,7 +479,7 @@
 "settings.roomMeasurementSection" = "Raummaße";
 "settings.wallAssumedDepthM" = "Angenommener Abstand zur Wand (m)";
 "settings.wallAssumedCeilingM" = "Angenommene Wand-/Deckenhöhe (m)";
-"settings.roomMeasurementFooter" = "Ohne Monotiefe auf SHARP iOS nutzt das Speichern die angenommene Tiefe und manchmal diese Deckenhöhe. Ist die Breite im Vergleich zum Maßband zu gering, erhöhen Sie den angenommenen Abstand (Breite skaliert etwa linear). Stellen Sie die Wandhöhe nahe am Maßband ein (z. B. 2,86 m). Oder ⋮ → „Nach Wand kalibrieren“ vor dem Speichern.";
+"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "Foto aufnehmen";
 "camera.chooseOrientationShort" = "Hoch- oder Querformat";
 "sharp.downloadingEngine" = "3D-Engine wird heruntergeladen...";
@@ -557,7 +561,7 @@
 "credits.disclaimer" = "Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.";
 "credits.visitWebsite" = "Website besuchen";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple-Frameworks, -Plattformen und technische Referenzen haben Teile unseres On-Device-3D- und Machine-Learning-Workflows beeinflusst, einschließlich Arbeiten rund um Sharp ML auf Apple-Plattformen.";
+"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.";
 "credits.anthropicTitle" = "Anthropic";

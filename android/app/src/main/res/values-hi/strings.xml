@@ -432,7 +432,7 @@
     <string name="credits_disclaimer">ये उल्लेख केवल पारदर्शिता के लिए दिए गए हैं। तृतीय-पक्ष कंपनियों, उत्पादों या मॉडलों का संदर्भ किसी प्रायोजन, समर्थन या औपचारिक संबद्धता का संकेत नहीं देता।</string>
     <string name="credits_visit_website">वेबसाइट देखें</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple के फ़्रेमवर्क, प्लेटफ़ॉर्म और तकनीकी संदर्भों ने हमारे ऑन-डिवाइस 3D और मशीन लर्निंग विकास वर्कफ़्लो के कुछ हिस्सों को प्रभावित किया, जिनमें Apple प्लेटफ़ॉर्म पर Sharp ML से संबंधित कार्य भी शामिल है।</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI के टूल्स, जिनमें ChatGPT शामिल है, का उपयोग उत्पाद विचार, इम्प्लीमेंटेशन सहायता, ड्राफ्टिंग और तकनीकी अन्वेषण के लिए किया गया।</string>
     <string name="credits_anthropic_title">Anthropic</string>

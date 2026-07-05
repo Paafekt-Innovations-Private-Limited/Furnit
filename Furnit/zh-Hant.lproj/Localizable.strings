@@ -144,6 +144,10 @@
 "licenses.openSourceSection" = "開源授權";
 "licenses.openSourceIntro" = "本應用使用以下開源軟體。";
 "licenses.viewFullLicense" = "檢視完整授權";
+"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalibTitle" = "GeoCalib";
+"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
 "licenses.sharpTitle" = "3D 房間重建 (SHARP)";
 "licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -193,7 +197,7 @@
 "faq.twoMethods" = "兩種房間建立方式是什麼？";
 "faq.twoMethodsAnswer" = "選擇照片後，您可以選擇：1) AI 驅動的 3D 房間 - 使用人工智慧自動建立逼真的 3D 房間，或 2) 手動設定 - 您自己繪製房間邊界以獲得更多控制。";
 "faq.whatIsAIRoom" = "什麼是 AI 驅動的 3D 房間？";
-"faq.whatIsAIRoomAnswer" = "此選項使用智能技術自動將您的照片轉換為可漫步的 3D 房間。只需選擇一張照片，應用程式會完成其餘工作，無需繪製或調整。";
+"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
 "faq.whatIsManualRoom" = "什麼是手動設定？";
 "faq.whatIsManualRoomAnswer" = "手動設定時，您在照片上繪製房間牆壁的輪廓。這樣您可以更精確地控制 3D 房間的外觀。當您想自己微調房間形狀時非常有用。";
 "faq.whichMethodBetter" = "我該選哪種方式？";
@@ -238,9 +242,9 @@
 "faq.sampleRoom" = "我可以使用範例房間嗎？";
 "faq.sampleRoomAnswer" = "可以！應用程式提供範例房間供你體驗。從探索部分存取它們，無需先建立自己的房間即可嘗試傢俱佈置。";
 "faq.accuracy" = "3D模型有多準確？";
-"faq.accuracyAnswer" = "3D模型能很好地近似你的房間佈局。為獲得最佳準確度，請確保原始照片清晰地捕捉房間尺寸，包括可見的角落和邊緣。";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
-"faq.adjustDimensionsAnswer" = "可以，進入設定並找到房間尺寸選項，你可以微調產生房間的大小和比例。";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "傢俱與測量";
 "faq.arAssistedSizing" = "什麼是 AR 輔助傢俱尺寸？";
 "faq.arAssistedSizingAnswer" = "先點擊大腦圖示，選擇偵測到的物體，然後點擊分割。需要依房間比例縮放時再使用尺寸控制。在支援 AR/depth 的手機上，app 會使用即時相機深度給出更真實的家具大小；沒有深度時，家具測量只是近似值。";
@@ -464,7 +468,7 @@
 "settings.roomMeasurementSection" = "房間測量";
 "settings.wallAssumedDepthM" = "假設到牆距離（公尺）";
 "settings.wallAssumedCeilingM" = "假設牆／頂高度（公尺）";
-"settings.roomMeasurementFooter" = "在 SHARP iOS 無單眼深度時，儲存會使用假設深度並有時用此頂高。若寬度相對捲尺偏小，增大假設距離（寬度約線性縮放）。將牆高設為接近捲尺讀數（如 2.86 公尺）。或在儲存前使用 ⋮ → 依牆校準。";
+"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "拍照";
 "camera.chooseOrientationShort" = "直向或橫向";
 "sharp.downloadingEngine" = "正在下載3D引擎...";
@@ -544,7 +548,7 @@
 "credits.disclaimer" = "這些鳴謝僅用於透明說明。提及第三方公司、產品或模型，並不表示存在贊助、背書或正式關聯。";
 "credits.visitWebsite" = "造訪網站";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple 的框架、平台與技術參考為我們裝置端 3D 與機器學習開發流程中的部分工作提供了依據，其中包括與 Apple 平台上的 Sharp ML 相關工作。";
+"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI 工具（包括 ChatGPT）被用於支援產品構想、實作協助、內容草擬以及開發期間的技術探索。";
 "credits.anthropicTitle" = "Anthropic";

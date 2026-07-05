@@ -1,5 +1,7 @@
 # SHARP iOS Swift Plan
 
+> **Superseded:** iOS default room creation is **GeoCalib + Depth Anything → USDZ** (`DepthAnythingRoomReconstructor.swift`, `GeoCalibCalibrationService.swift`). This plan applied to the retired **SHARP** Core ML path.
+
 This document is based on the current iOS project at `/Users/al/Documents/tries01/Furnit`.
 
 ## Goal

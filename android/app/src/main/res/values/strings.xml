@@ -164,7 +164,7 @@
     <string name="licenses_open_source_section">Open Source Licenses</string>
     <string name="licenses_open_source_intro">This app uses the following open source software.</string>
     <string name="licenses_view_full_license">View full license</string>
-    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp_title">Sharp ML (Android room generation)</string>
     <string name="licenses_sharp">Copyright (c) SharpML contributors. Licensed under the MIT License.</string>
     <string name="licenses_metal_splatter_title">MetalSplatter</string>
     <string name="licenses_metal_splatter">On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.</string>
@@ -177,7 +177,7 @@
     <string name="credits_disclaimer">These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.</string>
     <string name="credits_visit_website">Visit website</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including work related to Sharp ML on Apple platforms.</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI tools, including ChatGPT, were used to support product ideation, implementation assistance, drafting, and technical exploration during development.</string>
     <string name="credits_anthropic_title">Anthropic</string>
@@ -233,7 +233,7 @@
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
     <string name="faq_what_is_ai_room">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_ai_room_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_ai_room_answer">On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room from your photo. On Android, AI rooms use on-device SHARP Gaussian-splat reconstruction. Pick a photo and the app handles the rest — no drawing required.</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>
@@ -277,7 +277,7 @@
     <string name="faq_accuracy">How accurate is the 3D model?</string>
     <string name="faq_accuracy_answer">The 3D room is an estimate from one photo. Room dimensions can be useful as guidance, but they are not survey-grade. Furniture measurement is most reliable on phones with AR/depth support.</string>
     <string name="faq_adjust_dimensions">Can I adjust room dimensions?</string>
-    <string name="faq_adjust_dimensions_answer">Not directly for AI-generated SHARP rooms. Use the ruler in the room viewer to inspect the current estimated width, height, and depth. For better results, capture a clear room photo with visible corners; manual rooms follow the boundaries you set.</string>
+    <string name="faq_adjust_dimensions_answer">Not directly for AI-generated rooms. Use the ruler in the room viewer to inspect estimated width, height, and depth (GeoCalib + Depth Anything on iPhone; SHARP on Android). For better results, capture a clear room photo with visible corners; manual rooms follow the boundaries you set.</string>
 
     <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>

@@ -2,6 +2,8 @@
 
 Android/ExecuTorch/ONNX/LiteRT/NCNN inference knowledge for the Furnit app. Query this RAG before implementing or changing ML backends.
 
+> **iOS room generation** uses **GeoCalib + Depth Anything → USDZ** (see `CONTEXT.md`), not SHARP. This RAG corpus is primarily for **Android SHARP / ExecuTorch** inference work.
+
 ## Do it all (ExecuTorch Vulkan approach)
 
 1. **Index** (after adding or editing chunks in `index_all.py`):

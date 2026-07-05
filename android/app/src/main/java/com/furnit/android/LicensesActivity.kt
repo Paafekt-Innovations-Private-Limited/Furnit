@@ -13,7 +13,8 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Shows Open Source Licenses (Sharp ML, MetalSplatter, Firebase, RTMDet/MMDetection).
+ * Android: Sharp ML (SHARP room generation). iOS uses Depth Anything + GeoCalib instead.
+ * Also: MetalSplatter, Firebase, RTMDet/MMDetection.
  */
 class LicensesActivity : AppCompatActivity() {
 

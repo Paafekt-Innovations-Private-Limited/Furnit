@@ -1,6 +1,8 @@
 # Invention Disclosure — Furnit / Paafekt On-Device Spatial Computing
 
-Technical disclosure describing the implemented system: single-image neural room reconstruction (SHARP-class), live furniture instance segmentation (YOLO-E-class), metric scaling and dimension extraction, and supporting mobile infrastructure. Intended as specification-ready background for patent drafting.
+Technical disclosure describing the implemented system: single-image neural room reconstruction (GeoCalib + Depth Anything on iOS; SHARP-class on Android), live furniture instance segmentation (RTMDet / YOLO-E-class), metric scaling and dimension extraction, and supporting mobile infrastructure. Intended as specification-ready background for patent drafting.
+
+> **Note (2025+):** iOS default room creation moved from SHARP Gaussian splats to **GeoCalib + Depth Anything → USDZ**. Android still uses SHARP. Sections below may reference SHARP as the historical iOS path.
 
 ---
 

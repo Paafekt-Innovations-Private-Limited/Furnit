@@ -43,45 +43,47 @@ Current behavior:
 - **Thermal backoff**: observes `ProcessInfo.thermalStateDidChangeNotification`. Maps `.nominal/.fair` → 200ms, `.serious` → 400ms, `.critical` → pause inference entirely while keeping last-displayed boxes.
 - **Camera ownership**: AR↔AVCapture transitions use a 150ms settle delay after AR pause before AVCapture starts, reducing `-17281` contention errors.
 
-### Room Generation / SHARP Replacement
+### Room Generation — GeoCalib + Depth Anything (default)
 
-The active iOS single-photo room-generation backend is now **Depth Anything Metric USDZ**, selected by `RoomGenerationImplementation.defaultImplementation`.
-The older SHARP Core ML path is still present for comparison/debugging, but it is not the default shipping path because SHARP model weights are not license-clean for commercial release.
+The active iOS single-photo room-generation backend is **Depth Anything V2 Metric Indoor + GeoCalib**, selected by `RoomGenerationImplementation.defaultImplementation` (`.depthAnythingMetricUSDZ` only).
 
 Important files:
 
-- `Furnit/Models/RoomGenerationImplementation.swift` — room-generation enum and default backend (`.depthAnythingMetricUSDZ`).
-- `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift` — Depth Anything V2 Metric Indoor Core ML inference, proportional-XY/depth-relief mesh construction, USDZ export.
+- `Furnit/Models/RoomGenerationImplementation.swift` — room-generation enum and default backend.
+- `Furnit/Services/RoomReconstruction/GeoCalibCalibrationService.swift` — on-device GeoCalib CNN + Swift LM optimizer; letterboxed full-frame input; square-pixel focal (`fx = fy`) in the working image grid.
+- `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift` — Depth Anything Core ML inference, letterbox-aware depth upsample, depth-spread room sizing, chair-anchor metric depth scale, proportional-XY mesh, USDZ export.
 - `Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage` — bundled Apache-licensed metric indoor depth model.
-- `Furnit/Views/Components/SinglePhotoRoomViewer.swift` — dispatches the selected generation backend, opens Depth Anything USDZ preview, and saves generated USDZ rooms.
+- `Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage` — bundled GeoCalib perspective-field CNN (LM refinement in Swift).
+- `Furnit/Utilities/ImageLetterboxLayout.swift` — shared aspect-preserving letterbox math for GeoCalib and Depth Anything.
+- `Furnit/Views/Components/SinglePhotoRoomViewer.swift` — dispatches generation, opens USDZ preview, saves rooms + camera sidecars.
 - `Furnit/Views/ModelViewerView.swift` / `Furnit/Views/Components/RealityKitView.swift` — RealityKit USDZ preview and camera framing.
-- `Furnit/Utilities/RealityKitBoundaryManager.swift` — front-facing camera placement for image-depth meshes.
-- `Furnit/Models/USDZModel.swift` / `Furnit/Models/USDZModelManager.swift` — saved room metadata, coordinate-frame persistence, and list loading.
-- `Furnit/Services/RoomReconstruction/SwiftSharpMathRoomReconstructor.swift` — no-ML flat-plane prototype/debug backend.
-- `Furnit/Services/OnDevice/SHARPService.swift`, `Furnit/Views/SharpRoomView.swift`, `Furnit/Views/Components/GaussianSplatView.swift` — retained SHARP/Core ML Gaussian-splat path and viewer.
-- `Furnit/diagrams/sharp-swift-flow.svg` — visual flow.
+- `Furnit/Utilities/RealityKitBoundaryManager.swift` — front-facing camera for `.depthAnythingImageDepthMeters` rooms.
+- `scripts/run_geocalib.py`, `scripts/geocalib_write_sidecar.py`, `scripts/export_geocalib_to_coreml.py` — GeoCalib export and offline validation.
+- `scripts/depthanything_measure_room.py` — Python reference for metric depth + mesh export.
+
+Pipeline order (one measurement grid):
+
+1. **Full working frame** (e.g. 1200×1600 after downsample) — same grid for everything.
+2. **GeoCalib** on the full frame (letterbox to 320², not crop/squish) → focal + gravity in working pixels (`fx = fy`).
+3. **Depth Anything** on the full frame (`scaleFit`, crop letterbox, upsample depth to working resolution).
+4. **Metric calibration** — compare GeoCalib vs EXIF focal; when focal is trusted, scale the **depth map** using RTMDet chair height anchor (~1.15 m for COCO cls 56).
+5. **Unproject together** — depth spread + object bboxes + dimensions in the same pixel grid.
 
 Current behavior:
 
-- **Depth Anything Metric USDZ is default.** It runs the metric indoor model through Vision/Core ML (`computeUnits = .all`), resizes depth back to the working image, builds a connected grid mesh, skips triangles across >0.4m depth discontinuities, and exports USDZ.
-- Depth Anything geometry uses proportional image-space X/Y, not pinhole `pixel * depth / focalLength`; Z is depth relief (`-(depthMax - depth)`) so near geometry comes toward the viewer.
-- The generated USDZ uses a texture image plus UVs. After the camera-facing fix, the exporter uses non-inverted V coordinates so newly generated rooms are not upside down in the preview.
-- Fresh Depth Anything previews have a bottom-center **Save** button. Save copies the generated USDZ into `Documents/SavedRooms`, writes a `.usdz.meta` sidecar, persists `roomCoordinateFrame=depth_anything_image_depth_meters`, dimensions, photo orientation, and display name, then refreshes the home list.
-- Depth Anything saved rooms must keep `roomCoordinateFrame=depth_anything_image_depth_meters`. Do not let them fall back to SHARP/classic behavior on reopen.
-- `RoomCoordinateFrame.depthAnythingImageDepthMeters` uses native meter scene units and a front-facing RealityKit camera. This is separate from SHARP classic PLY behavior.
-- SHARP still saves `Room_*_classic.ply` plus sidecars and a binary `.splatcache`; `.splatcache` remains the fast path for SHARP rooms, with PLY parsing as fallback.
-- `SwiftSharpMathRoomReconstructor` exists as a no-ML flat-plane prototype path, not the quality target.
-- Room/furniture size and overlay scale details live in `docs/IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`.
+- Default export is **USDZ** with texture UVs; preview/save UX in `DepthAnythingPreviewRoomView`.
+- Room W×H×D in the nav bar and `.usdz.meta` come from **depth-unprojected spread** on the calibrated depth map, not mesh bounds or wall-rect frustum math.
+- Saved rooms use `roomCoordinateFrame=depth_anything_image_depth_meters`.
+- Legacy SHARP / Gaussian-splat code may remain in the tree for comparison but is **not** the shipping room-creation path on iOS.
 
 Important caveats:
 
-- The Depth Anything route is a single-image relief mesh, not a true metric 3D reconstruction. It is useful as a license-clean replacement prototype and visual path, but it should not be treated as fit-grade measurement.
-- Old generated USDZ files keep whatever UVs/metadata they were exported with. Regenerate rooms after exporter/camera fixes before judging preview orientation.
-- The long-term fit-grade replacement remains **LiDAR-first sweep fusion**: ARKit pose + `smoothedSceneDepth` capture, validator gate, then fused AR-world-meter output.
+- Single-image relief mesh, not full metric reconstruction; chair anchor + EXIF disambiguation improve scale but are not tape-measure grade.
+- Long-term fit-grade path remains **LiDAR sweep fusion** (below).
 
 ### LiDAR Sweep Fusion Status
 
-LiDAR sweep fusion is the intended fit-grade commercial v1 path because it avoids SHARP licensing, monocular scale ambiguity, COLMAP/ICP complexity, and viewer downgrade.
+LiDAR sweep fusion is the intended fit-grade commercial v1 path because it avoids monocular scale ambiguity, COLMAP/ICP complexity, and viewer downgrade.
 
 Important files:
 
@@ -96,12 +98,12 @@ Current contract:
 - Capture stores ARKit `camera.transform` as world-from-camera and depth in metric meters.
 - Validator unprojects with ARKit convention `(x, y, -depth)` transformed by world-from-camera, scales RGB intrinsics to the depth grid, filters confidence/tracking, and can compare selectable frame indices.
 - Nearest-neighbor residuals catch gross misregistration. Plane residuals catch normal-offset/double-wall drift. A pure in-plane tangential slide can still look numerically clean, so the overlay PLY remains the visual truth gate.
-- LiDAR fused/saved rooms must use `roomCoordinateFrame=ar_world_meters`, native meter units, and no SHARP/classic Y/Z flip.
+- LiDAR fused/saved rooms must use `roomCoordinateFrame=ar_world_meters`, native meter units, and no legacy splat Y/Z flip.
 - Next real gate is on-device LiDAR capture and validation before treating fusion as production-quality.
 
 ## Current Android Architecture
 
-Android SHARP work is centered on ExecuTorch debug flavors.
+Android room generation still uses the legacy **SHARP** Gaussian-splat stack (ExecuTorch debug flavors). iOS uses **GeoCalib + Depth Anything → USDZ** instead.
 
 Important files/docs:
 

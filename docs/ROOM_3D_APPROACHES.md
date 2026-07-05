@@ -226,11 +226,32 @@
 
 ---
 
+## Approach 12: GeoCalib + Depth Anything → USDZ (iOS production) ✓
+
+**Files:** `Furnit/Services/RoomReconstruction/GeoCalibCalibrationService.swift`, `DepthAnythingRoomReconstructor.swift`, `Furnit/Utilities/ImageLetterboxLayout.swift`
+
+**Models:**
+- **GeoCalib** Pinhole CNN (`GeoCalibPinholeCNN.mlpackage`) — focal length + gravity from full frame (letterbox 320², `fx = fy` in working pixels); LM refinement in Swift.
+- **Depth Anything V2 Metric Indoor Small** (`DepthAnythingV2MetricIndoorSmall.mlpackage`) — per-pixel metric depth on the same working grid.
+
+**Method:**
+1. Downsample working frame (e.g. 1200×1600).
+2. GeoCalib on letterboxed full frame → square-pixel focal in working grid.
+3. Depth Anything `scaleFit`, strip letterbox padding, upsample depth to working resolution.
+4. RTMDet chair anchor (COCO cls 56, ~1.15 m) scales depth when EXIF agrees focal is correct.
+5. Room W×H×D from **depth-unprojected point spread** (p5–p95), not mesh bounds.
+6. Proportional-XY relief mesh + texture → **USDZ** export.
+
+**Verdict:** Current iOS shipping path. Combines learned metric depth with learned intrinsics; chair anchor fixes residual scale drift without tape-measure claims.
+
+---
+
 ## Summary: What Works
 
 | Component | Best Solution | Why |
 |-----------|--------------|-----|
-| Depth source | Depth Anything V2 (ML model) | Accurate per-pixel depth, no VLM hallucination |
+| Camera intrinsics (iOS) | GeoCalib CNN + Swift LM | Focal/gravity from full frame; square pixels (`fx = fy`) |
+| Depth source | Depth Anything V2 Metric Indoor (Core ML) | Accurate per-pixel metric depth, no VLM hallucination |
 | XY positioning | Proportional to pixel (no depth multiplication) | Avoids funnel distortion |
 | Z positioning | Depth relief only, negated for correct facing | Near objects in front, not behind |
 | Mesh connectivity | Grid triangulation with depth-jump skip | One solid surface without rubber-banding |
@@ -240,6 +261,7 @@
 
 | Model | Size | License | Type |
 |-------|------|---------|------|
+| GeoCalib Pinhole CNN (.mlpackage) | export-dependent | see `third_party/GeoCalib/` | Focal + gravity, Core ML + Swift LM |
 | DA2 Metric Indoor Small (.mlpackage) | 50 MB | Apache 2.0 | Metric meters, CoreML |
 | DA2 Small F16+INT8 (.mlpackage) | 27 MB | Apache 2.0 | Relative depth, quantized |
 | DA2 Metric Hypersim ViTS (.pth) | ~50 MB | Apache 2.0 | Metric meters, PyTorch |

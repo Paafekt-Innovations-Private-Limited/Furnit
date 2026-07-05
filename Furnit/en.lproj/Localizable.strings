@@ -162,7 +162,7 @@
 "settings.roomMeasurementSection" = "Room measurement";
 "settings.wallAssumedDepthM" = "Assumed distance to wall (m)";
 "settings.wallAssumedCeilingM" = "Assumed wall height ceiling (m)";
-"settings.roomMeasurementFooter" = "Without monodepth on SHARP iOS, save uses assumed depth and sometimes this ceiling for height. If width is low vs a tape measure, increase Assumed distance (width scales about linearly). Set Assumed wall height near your tape measure (e.g. 2.86 m). Or use ⋮ → Calibrate by wall before Save.";
+"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
@@ -170,6 +170,10 @@
 "licenses.openSourceSection" = "Open Source Licenses";
 "licenses.openSourceIntro" = "This app uses the following open source software.";
 "licenses.viewFullLicense" = "View full license";
+"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalibTitle" = "GeoCalib";
+"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
 "licenses.sharpTitle" = "Sharp ML";
 "licenses.sharp" = "Copyright (c) SharpML contributors. Licensed under the MIT License.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -219,7 +223,7 @@
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
+"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
 "faq.whatIsManualRoom" = "What is Manual Setup?";
 "faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
 "faq.whichMethodBetter" = "Which method should I choose?";
@@ -261,9 +265,9 @@
 "faq.sampleRoom" = "Can I use a sample room instead of my own?";
 "faq.sampleRoomAnswer" = "Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.";
 "faq.accuracy" = "How accurate is the 3D model?";
-"faq.accuracyAnswer" = "The 3D room is an estimate from one photo. Room dimensions can be useful as guidance, but they are not survey-grade. Furniture measurement is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";
-"faq.adjustDimensionsAnswer" = "Not directly for AI-generated SHARP rooms. Use the ruler in the room viewer to inspect the current estimated width, height, and depth. For better results, capture a clear room photo with visible corners; manual rooms follow the boundaries you set.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Furniture & measurements";
 "faq.arAssistedSizing" = "How is furniture overlay size estimated?";
 "faq.arAssistedSizingAnswer" = "First tap the brain icon, select detected items, then tap Segment. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.";
@@ -548,7 +552,7 @@
 "credits.disclaimer" = "These acknowledgements are provided for transparency only. References to third-party companies, products, or models do not imply sponsorship, endorsement, or affiliation.";
 "credits.visitWebsite" = "Visit website";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including work related to Sharp ML on Apple platforms.";
+"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI tools, including ChatGPT, were used to support product ideation, implementation assistance, drafting, and technical exploration during development.";
 "credits.anthropicTitle" = "Anthropic";

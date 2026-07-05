@@ -431,7 +431,7 @@
     <string name="credits_disclaimer">Ces remerciements sont fournis uniquement à titre de transparence. Les références à des entreprises, produits ou modèles tiers n’impliquent aucun parrainage, soutien ou affiliation.</string>
     <string name="credits_visit_website">Visiter le site</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Les frameworks, plateformes et références techniques d’Apple ont contribué à certaines parties de notre flux de travail de développement 3D et machine learning sur appareil, y compris les travaux liés à Sharp ML sur les plateformes Apple.</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">Les outils OpenAI, y compris ChatGPT, ont été utilisés pour soutenir l’idéation produit, l’assistance à l’implémentation, la rédaction et l’exploration technique pendant le développement.</string>
     <string name="credits_anthropic_title">Anthropic</string>

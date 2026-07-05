@@ -1,5 +1,7 @@
 # SHARP 3D Room Black Patches Fix
 
+> **Legacy (iOS):** Default room creation is now **GeoCalib + Depth Anything → USDZ**. This document describes a fix in the retired **SHARP** Gaussian-splat renderer path.
+
 ## Problem
 When generating 3D rooms from photos using the SHARP (Single-image House-scale Accurate Reconstruction with Priors) model, black patches appeared on walls, ceilings, and corners of the rendered room.
 

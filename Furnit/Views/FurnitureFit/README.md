@@ -14,7 +14,7 @@ Current implementation notes:
 - `RTMDetImageInference` owns raw-head decoding (`cls/bbox/kernel` at 80/40/20 plus `mask_feat`), confidence-first class-aware NMS, per-instance mask building, mask-affinity grouping, and cached mask rebuilds for live selection.
 - `SettingsFurnitureFitImageScanView` uses the same uncapped RTMDet still-image path as the live flow: `maxDetectionCount: nil`, no fixed detection cap, fused instance masks, and pixel-level RGBA union.
 - `FurnitureFitContainerView` displays the cutout in `maskImageView`; pinch/pan transforms are applied through `userPinchScale`, `userPanOffset`, and `FurnitureFitOverlayScaling.resolvedTransform`.
-- In SHARP/GLB/Mesh room viewers, the room layer also owns pinch zoom. When a segmented mask is visible, the FurnitureFit overlay must claim two-finger touches so the user scales the segmented cluster rather than the room camera.
+- In USDZ / GLB / legacy splat room viewers, the room layer also owns pinch zoom. When a segmented mask is visible, the FurnitureFit overlay must claim two-finger touches so the user scales the segmented cluster rather than the room camera.
 
 ## Problems & Solutions
 
@@ -197,7 +197,7 @@ This is class-agnostic and applies to every detected object, not chair-specific 
 
 ### 7. Segmented Cluster Pinch / Main Flow Gesture Ownership
 
-**Problem:** In room viewers, the SHARP/GLB/Mesh room layer also handles pinch zoom. If the FurnitureFit overlay rejects a touch or returns `nil` from `hitTest`, pinch goes to the room camera instead of resizing the segmented cutout.
+**Problem:** In room viewers, the USDZ / GLB / legacy splat room layer also handles pinch zoom. If the FurnitureFit overlay rejects a touch or returns `nil` from `hitTest`, pinch goes to the room camera instead of resizing the segmented cutout.
 
 **Solution:** When a segmented mask is visible, `FurnitureFitContainerView` claims two-finger touches for overlay pinch. Single-finger pan remains stricter and requires touching actual mask pixels. A padded cluster-bounds hit target makes disconnected object parts easier to pinch.
 

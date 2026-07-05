@@ -1087,7 +1087,7 @@ struct PrivacySettingsView: View {
     var body: some View {
         Form {
             Section("Privacy") {
-                Text("Paafekt uses your verified phone number for sign-in and stores basic account details on-device. Room photos are processed on-device for room generation in this build and are not retained by Paafekt.")
+                Text("Paafekt uses your verified phone number for sign-in and stores basic account details on-device. Room photos are processed on-device with GeoCalib and Depth Anything for room generation in this build and are not retained by Paafekt.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -1137,10 +1137,22 @@ struct AboutView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Licenses.sharpTitle)
+                    Text(L10n.Licenses.depthAnythingTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Licenses.sharp)
+                    Text(L10n.Licenses.depthAnything)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.geoCalibTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.geoCalib)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1164,7 +1176,7 @@ struct AboutView: View {
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Includes Sharp ML (MIT), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything + GeoCalib (Apache-2.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0).
 struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
@@ -1183,13 +1195,27 @@ struct LicensesView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.Licenses.sharpTitle)
+                    Text(L10n.Licenses.depthAnythingTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(L10n.Licenses.sharp)
+                    Text(L10n.Licenses.depthAnything)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.geoCalibTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.geoCalib)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)

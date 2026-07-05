@@ -12,6 +12,8 @@ numbersections: false
 
 # 0. Scope, Method, and Disclaimers
 
+> **Platform update (2025+):** iOS default room creation is **GeoCalib + Depth Anything → USDZ**, not SHARP Core ML. Android still uses SHARP. This audit references SHARP where it matches Android or legacy iOS code paths.
+
 **What this document is.** A technical, file-grounded audit comparing the six provisional patent applications in `Untitled_PAAFEKT_INC_USPTO_PROVISIONAL_PATENT_Bur_kS4r.txt` against the actual code at `/Users/al/Documents/tries01/Furnit/`. It produces:
 
 - **§2** — Per-patent verdict with bulleted inaccuracies (patent says X, code does Y)

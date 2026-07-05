@@ -79,7 +79,7 @@
 ### Segmented Overlay Gestures
 - **Location**: `FurnitureFitView.swift`
 - Pinch on a segmented cutout updates `userPinchScale` and is applied through `FurnitureFitOverlayScaling`.
-- In SHARP/GLB/Mesh room viewers, the FurnitureFit overlay must capture two-finger touches when a cutout is visible so the room viewer does not steal pinch zoom.
+- In USDZ / GLB / legacy splat room viewers, the FurnitureFit overlay must capture two-finger touches when a cutout is visible so the room viewer does not steal pinch zoom.
 
 ### Repeated Swift RTMDet Test Fixture
 - **Location**: `RTMDetVideoIntegrationTests.swift`, `FurnitTests/rtmdet_repeated_chair_frame.jpg`

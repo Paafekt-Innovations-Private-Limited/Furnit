@@ -76,7 +76,7 @@ The Settings image scan intentionally mirrors the RTMDet live path:
 
 ## Main-flow overlay gestures
 
-The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible, `FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster (`userPinchScale`) rather than zooming the SHARP/GLB/Mesh room.
+The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible, `FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster (`userPinchScale`) rather than zooming the USDZ / GLB / legacy splat room underneath.
 
 Relevant code:
 

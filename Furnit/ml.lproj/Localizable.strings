@@ -144,6 +144,10 @@
 "licenses.openSourceSection" = "ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ";
 "licenses.openSourceIntro" = "ഈ ആപ്പ് ഇനിപ്പറയുന്ന ഓപ്പൺ സോഴ്‌സ് സോഫ്റ്റ്വെയർ ഉപയോഗിക്കുന്നു.";
 "licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
+"licenses.depthAnythingTitle" = "Depth Anything V2";
+"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalibTitle" = "GeoCalib";
+"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
 "licenses.sharpTitle" = "3D റൂം റീകൺസ്ട്രക്ഷൻ (SHARP)";
 "licenses.sharp" = "കൃതിസ്വാമ്യം (c) SharpML സംഭാവനക്കാർ. MIT ലൈസൻസ് അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
@@ -193,7 +197,7 @@
 "faq.twoMethods" = "മുറി സൃഷ്ടിക്കാനുള്ള രണ്ട് ഓപ്ഷനുകൾ എന്താണ്?";
 "faq.twoMethodsAnswer" = "ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുമ്പോൾ നിങ്ങൾക്ക് തിരഞ്ഞെടുക്കാം: 1) AI-നിയന്ത്രിത 3D മുറി - കൃത്രിമ ബുദ്ധി ഉപയോഗിച്ച് യഥാർത്ഥ 3D മുറി സ്വയമേവ സൃഷ്ടിക്കുന്നു, അല്ലെങ്കിൽ 2) മാനുവൽ സെറ്റപ്പ് - കൂടുതൽ നിയന്ത്രണത്തിനായി മുറി അതിർത്തികൾ നിങ്ങൾ സ്വയം വരയ്ക്കാം.";
 "faq.whatIsAIRoom" = "AI-നിയന്ത്രിത 3D മുറി എന്താണ്?";
-"faq.whatIsAIRoomAnswer" = "നിങ്ങളുടെ ഫോട്ടോ സ്വയം 3D മുറിയാക്കി മാറ്റാൻ ഈ ഓപ്ഷൻ സ്മാർട്ട് ടെക്നോളജി ഉപയോഗിക്കുന്നു. ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുക, ബാക്കി ആപ്പ് ചെയ്യും - വരയ്ക്കലോ ക്രമീകരണമോ ആവശ്യമില്ല. മാന്ത്രികം പോലെ പ്രവർത്തിക്കുന്നു!";
+"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
 "faq.whatIsManualRoom" = "മാനുവൽ സെറ്റപ്പ് എന്താണ്?";
 "faq.whatIsManualRoomAnswer" = "മാനുവൽ സെറ്റപ്പിൽ, ഫോട്ടോയിൽ നിങ്ങളുടെ മുറിയുടെ ചുവരുകളുടെ ഔട്ട്ലൈൻ വരയ്ക്കുക. 3D മുറി കൃത്യമായി എങ്ങനെ കാണപ്പെടുന്നു എന്നതിൽ കൂടുതൽ നിയന്ത്രണം നൽകുന്നു. മുറിയുടെ ആകൃതി സ്വയം ഫൈൻ-ട്യൂൺ ചെയ്യാൻ ആഗ്രഹിക്കുമ്പോൾ മികച്ചത്.";
 "faq.whichMethodBetter" = "ഞാൻ ഏത് രീതി തിരഞ്ഞെടുക്കണം?";
@@ -224,9 +228,9 @@
 "faq.sampleRoom" = "എന്റേതിന് പകരം സാമ്പിൾ റൂം ഉപയോഗിക്കാമോ?";
 "faq.sampleRoomAnswer" = "അതെ! ആപ്പ് പരീക്ഷിക്കാൻ സാമ്പിൾ റൂമുകൾ നൽകുന്നു. ആദ്യം നിങ്ങളുടെ സ്വന്തം മുറി സൃഷ്ടിക്കാതെ ഫർണിച്ചർ പ്ലേസ്മെന്റ് പരീക്ഷിക്കാൻ എക്സ്പ്ലോർ വിഭാഗത്തിൽ നിന്ന് അവ ആക്സസ് ചെയ്യുക.";
 "faq.accuracy" = "3D മോഡൽ എത്ര കൃത്യമാണ്?";
-"faq.accuracyAnswer" = "3D മോഡൽ നിങ്ങളുടെ മുറി ലേഔട്ടിന്റെ നല്ല ഏകദേശ കണക്ക് നൽകുന്നു. മികച്ച കൃത്യതയ്ക്ക്, നിങ്ങളുടെ യഥാർത്ഥ ഫോട്ടോ കാണാവുന്ന കോണുകളും അരികുകളും ഉള്ള മുറി അളവുകൾ വ്യക്തമായി പിടിച്ചെടുക്കുന്നുവെന്ന് ഉറപ്പാക്കുക.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "മുറി അളവുകൾ ക്രമീകരിക്കാമോ?";
-"faq.adjustDimensionsAnswer" = "അതെ, ക്രമീകരണങ്ങളിലേക്ക് പോയി മുറി അളവ് ഓപ്ഷനുകൾ കണ്ടെത്തുക അവിടെ നിങ്ങൾക്ക് സൃഷ്ടിച്ച മുറിയുടെ വലുപ്പവും അനുപാതങ്ങളും ഫൈൻ-ട്യൂൺ ചെയ്യാം.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "ഫർണിച്ചറും അളവുകളും";
 "faq.arAssistedSizing" = "AR-സഹായിത ഫർണിച്ചർ സൈസിംഗ് എന്താണ്?";
 "faq.arAssistedSizingAnswer" = "ആദ്യം brain icon ടാപ്പ് ചെയ്ത് detected items തിരഞ്ഞെടുക്കുക, പിന്നെ Segment ടാപ്പ് ചെയ്യുക. Room-relative scale വേണമെങ്കിൽ sizing control ഉപയോഗിക്കുക. AR/depth support ഉള്ള ഫോണുകളിൽ app live camera depth ഉപയോഗിച്ച് കൂടുതൽ realistic furniture size നൽകും; depth ഇല്ലെങ്കിൽ furniture measurements approximate ആയിരിക്കും.";
@@ -463,7 +467,7 @@
 "settings.roomMeasurementSection" = "മുറി അളവുകൾ";
 "settings.wallAssumedDepthM" = "മതിലിലേക്ക് കരുതിയ ദൂരം (മീ)";
 "settings.wallAssumedCeilingM" = "കരുതിയ മതിൽ/സീലിംഗ് ഉയരം (മീ)";
-"settings.roomMeasurementFooter" = "SHARP iOS-ൽ മോണോഡെപ്ത് ഇല്ലാതെ സേവ് കരുതിയ ആഴവും ചിലപ്പോൾ ഈ സീലിംഗ് ഉയരവും ഉപയോഗിക്കുന്നു. ടേപ്പ് അളവിനോട് താരതമ്യത്തിൽ വീതി കുറവാണെങ്കിൽ കരുതിയ ദൂരം കൂട്ടുക (വീതി ഏകദേശം രേഖീയം). മതിൽ ഉയരം ടേപ്പ് അളവിന് അടുത്ത് സെറ്റ് ചെയ്യുക (ഉദാ. 2.86 മീ). അല്ലെങ്കിൽ സേവ് ചെയ്യുന്നതിന് മുമ്പ് ⋮ → മതിൽ വഴി കാലിബ്രേറ്റ്.";
+"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "ഫോട്ടോ എടുക്കുക";
 "camera.chooseOrientationShort" = "പോർട്രെയ്റ്റ് അല്ലെങ്കിൽ ലാൻഡ്സ്കേപ്പ്";
 "sharp.downloadingEngine" = "3D എഞ്ചിൻ ഡൗൺലോഡ് ചെയ്യുന്നു...";
@@ -543,7 +547,7 @@
 "credits.disclaimer" = "ഈ അംഗീകാരങ്ങൾ പരസ്യതയ്ക്കായി മാത്രമാണ് നൽകുന്നത്. മൂന്നാം കക്ഷി കമ്പനികൾ, ഉൽപ്പന്നങ്ങൾ, മോഡലുകൾ എന്നിവയിലേക്കുള്ള പരാമർശങ്ങൾ പ്രായോജകത്വം, പിന്തുണ, അല്ലെങ്കിൽ ഔദ്യോഗിക ബന്ധം സൂചിപ്പിക്കുന്നതല്ല.";
 "credits.visitWebsite" = "വെബ്സൈറ്റ് സന്ദർശിക്കുക";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple ഫ്രെയിംവർക്കുകളും പ്ലാറ്റ്ഫോങ്ങളും സാങ്കേതിക റഫറൻസുകളും ഞങ്ങളുടെ ഓൺ-ഡിവൈസ് 3D, മെഷീൻ ലേണിംഗ് വികസന പ്രവാഹത്തിലെ ചില ഭാഗങ്ങളെ സ്വാധീനിച്ചു; Apple പ്ലാറ്റ്ഫോമുകളിലെ Sharp ML സംബന്ധമായ പ്രവർത്തനവും ഇതിൽ ഉൾപ്പെടുന്നു.";
+"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT ഉൾപ്പെടെയുള്ള OpenAI ഉപകരണങ്ങൾ ഉൽപ്പന്ന ആശയവത്കരണം, ഇംപ്ലിമെന്റേഷൻ സഹായം, കരട് തയ്യാറാക്കൽ, സാങ്കേതിക അന്വേഷണങ്ങൾ എന്നിവയിൽ ഉപയോഗിച്ചു.";
 "credits.anthropicTitle" = "Anthropic";

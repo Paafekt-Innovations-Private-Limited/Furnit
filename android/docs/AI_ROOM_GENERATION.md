@@ -1,5 +1,7 @@
 # AI Room Generation - Technical Documentation
 
+> **Platform note:** **iOS** (default) uses **GeoCalib + Depth Anything V2 Metric Indoor → USDZ** (`DepthAnythingRoomReconstructor.swift`, `GeoCalibCalibrationService.swift`). This document describes the **Android** legacy **SHARP** Gaussian-splat pipeline.
+
 ## Overview
 
 The Furnit Android app generates 3D Gaussian Splat rooms from a single 2D image using the **SHARP (Single-image House-scale Avatar Reconstruction Pipeline)** model. This document describes the architecture, model backends, and deployment process.

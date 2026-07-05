@@ -1,8 +1,10 @@
 # Furnit Android
 
-Android app for Furnit (3D room models, SHARP inference, etc.).
+Android app for Furnit (3D room models, furniture fit, etc.).
 
-## SHARP models: local (fast) vs friend APK (bundled)
+> **iOS room creation** uses **GeoCalib + Depth Anything → USDZ**, not SHARP. See repo `CONTEXT.md` and `Furnit/Services/RoomReconstruction/`.
+
+## SHARP models (Android only): local (fast) vs friend APK (bundled)
 
 **Default (`skipExecutorchAssets=true` in `gradle.properties`):** Android Studio Run is **fast**; the APK does **not** include `.pte`. Push models to the device (below) for SHARP.
 

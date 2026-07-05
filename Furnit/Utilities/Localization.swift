@@ -215,8 +215,10 @@ enum L10n {
         static let openSourceSection = "licenses.openSourceSection".localized
         static let openSourceIntro = "licenses.openSourceIntro".localized
         static let viewFullLicense = "licenses.viewFullLicense".localized
-        static let sharpTitle = "licenses.sharpTitle".localized
-        static let sharp = "licenses.sharp".localized
+        static let depthAnythingTitle = "licenses.depthAnythingTitle".localized
+        static let depthAnything = "licenses.depthAnything".localized
+        static let geoCalibTitle = "licenses.geoCalibTitle".localized
+        static let geoCalib = "licenses.geoCalib".localized
         static let metalSplatterTitle = "licenses.metalSplatterTitle".localized
         static let metalSplatter = "licenses.metalSplatter".localized
         static let firebaseTitle = "licenses.firebaseTitle".localized

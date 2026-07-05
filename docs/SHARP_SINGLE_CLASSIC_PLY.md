@@ -1,5 +1,7 @@
 # SHARP room export: single PLY on iOS (`_classic.ply`)
 
+> **Legacy (iOS):** Default room creation is now **GeoCalib + Depth Anything → USDZ** (`DepthAnythingRoomReconstructor.swift`). This document describes the retired **SHARP** Gaussian-splat export path only.
+
 ## What changed (iOS)
 
 Previously, on-device SHARP room creation wrote **three** large binary PLY files under the temp `SHARPModels` folder for each generation:

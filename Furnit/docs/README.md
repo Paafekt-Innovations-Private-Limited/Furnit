@@ -8,8 +8,10 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance-segmentation
   ("brain") live/still loop: camera or Settings image scan → Core ML image input → raw-head decode
   → confidence-first NMS → mask affinity → pixel-union cutout → overlay gestures/display.
-- [`sharp-swift-flow.svg`](../diagrams/sharp-swift-flow.svg) — SHARP room reconstruction: single
-  photo → Core ML Gaussian-splat → PLY + `.splatcache` → SharpRoomView render → dimensions.
+
+Room generation (default): **GeoCalib + Depth Anything → USDZ** — see `CONTEXT.md` and
+`DepthAnythingRoomReconstructor.swift` (no separate diagram yet; legacy `sharp-swift-flow.svg`
+describes the retired Gaussian-splat path).
 
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — the RTMDet mask-head matmul: problem statement,
@@ -26,7 +28,7 @@ These are cross-linked with each other (and with `Furnit/Views/FurnitureFit/READ
 - `docs/RTMDET_IOS_SWIFT_SPIKE.md`
 - `docs/ON_DEMAND_RESOURCES.md`
 - `docs/apple-review-checklist.md`
-- `docs/SHARP_BLACK_PATCHES_FIX.md`, `docs/SHARP_SINGLE_CLASSIC_PLY.md`
+- `CONTEXT.md` — GeoCalib + Depth Anything pipeline, metric calibration, one-grid rule
 
 > To consolidate everything under `Furnit/docs/`, the `docs/…` references inside those files and in
 > `Furnit/Views/FurnitureFit/README.md` must be rewritten in the same move.

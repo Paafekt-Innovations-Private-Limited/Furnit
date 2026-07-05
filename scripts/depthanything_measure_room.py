@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Estimate depth and projected frame dimensions from Depth Anything V2 metric depth.
 
+Offline reference for the iOS pipeline: GeoCalib focal (see scripts/run_geocalib.py)
++ Depth Anything metric depth + pinhole unprojection. Pair with geocalib sidecar when
+EXIF/chair-anchor calibration is needed on device.
+
 No manual measurements required. Auto-writes:
   - measurements JSON
   - depth preview PNG

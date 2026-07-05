@@ -432,7 +432,7 @@
     <string name="credits_disclaimer">这些鸣谢仅用于透明说明。提及第三方公司、产品或模型，并不表示存在赞助、背书或正式关联。</string>
     <string name="credits_visit_website">访问网站</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple 的框架、平台和技术资料为我们设备端 3D 与机器学习开发流程中的部分工作提供了参考，其中包括与 Apple 平台上的 Sharp ML 相关的工作。</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI 工具（包括 ChatGPT）被用于支持产品构思、实现辅助、文稿起草和开发过程中的技术探索。</string>
     <string name="credits_anthropic_title">Anthropic</string>

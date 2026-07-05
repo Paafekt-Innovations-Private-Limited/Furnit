@@ -432,7 +432,7 @@
     <string name="credits_disclaimer">ಈ ಕೃತಜ್ಞತೆಗಳನ್ನು ಪಾರದರ್ಶಕತೆಗಾಗಿ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ತೃತೀಯ ಪಕ್ಷದ ಕಂಪನಿಗಳು, ಉತ್ಪನ್ನಗಳು ಅಥವಾ ಮಾದರಿಗಳ ಉಲ್ಲೇಖವು ಪ್ರಾಯೋಜಕತ್ವ, ಅನುಮೋದನೆ ಅಥವಾ ಅಧಿಕೃತ ಸಂಬಂಧವನ್ನು ಸೂಚಿಸುವುದಿಲ್ಲ.</string>
     <string name="credits_visit_website">ಜಾಲತಾಣಕ್ಕೆ ಭೇಟಿ ನೀಡಿ</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple ನ ಫ್ರೇಮ್‌ವರ್ಕ್‌ಗಳು, ವೇದಿಕೆಗಳು ಮತ್ತು ತಾಂತ್ರಿಕ ಉಲ್ಲೇಖಗಳು ನಮ್ಮ ಆನ್-ಡಿವೈಸ್ 3D ಮತ್ತು ಮೆಷಿನ್ ಲರ್ನಿಂಗ್ ಅಭಿವೃದ್ಧಿ ವರ್ಕ್‌ಫ್ಲೋನ ಕೆಲವು ಭಾಗಗಳಿಗೆ ಮಾರ್ಗದರ್ಶಕವಾಗಿವೆ; ಇದರಲ್ಲಿ Apple ವೇದಿಕೆಗಳ ಮೇಲಿನ Sharp ML ಸಂಬಂಧಿತ ಕೆಲಸವೂ ಸೇರಿದೆ.</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">ChatGPT ಸೇರಿದಂತೆ OpenAI ಸಾಧನಗಳನ್ನು ಉತ್ಪನ್ನ ಕಲ್ಪನೆ, ಅನುಷ್ಠಾನ ಸಹಾಯ, ಕರಡು ರೂಪಿಕೆ ಮತ್ತು ತಾಂತ್ರಿಕ ಅನ್ವೇಷಣೆಗೆ ಬಳಸಲಾಗಿದೆ.</string>
     <string name="credits_anthropic_title">Anthropic</string>
