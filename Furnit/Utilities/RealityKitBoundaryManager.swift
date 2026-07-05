@@ -124,9 +124,27 @@ class RealityKitBoundaryManager {
         guard let bounds = roomBounds else {
             return position // No constraints if bounds not calculated
         }
-        
+
         var constrainedPosition = position
-        
+        let depthZ = bounds.max.z - bounds.min.z
+        let planeZ = (bounds.min.z + bounds.max.z) * 0.5
+
+        // Zero-thickness flat photo plane (Depth Anything --flat-mesh): keep camera on the −Z
+        // photographer side; the default min/max Z clamp breaks when min.z ≈ max.z.
+        if depthZ < boundaryPadding * 2 {
+            let minConstraint = bounds.min + SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
+            let maxConstraint = bounds.max - SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
+            constrainedPosition.x = max(minConstraint.x, min(maxConstraint.x, position.x))
+            constrainedPosition.y = max(bounds.min.y + 0.5, min(bounds.max.y + 2.0, position.y))
+            let maxCameraZ = planeZ - 0.05
+            if position.z > maxCameraZ {
+                constrainedPosition.z = maxCameraZ
+            } else {
+                constrainedPosition.z = position.z
+            }
+            return constrainedPosition
+        }
+
         // Apply padding to create boundaries inside the room
         let minConstraint = bounds.min + SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
         let maxConstraint = bounds.max - SIMD3<Float>(boundaryPadding, 0, boundaryPadding)
@@ -250,6 +268,38 @@ class RealityKitBoundaryManager {
         )
     }
 
+    /// Photographer viewpoint for Depth Anything `--flat-mesh` USDZ: plane at z≈0, camera on −Z.
+    func getCameraForDepthAnythingImagePlane() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        guard let bounds = roomBounds else {
+            return (SIMD3(0, 0, -2.5), SIMD3(0, 0, 0))
+        }
+
+        let center = getRoomCenter()
+        let width = max(bounds.max.x - bounds.min.x, 0.1)
+        let height = max(bounds.max.y - bounds.min.y, 0.1)
+        let span = max(width, height)
+        let planeZ = (bounds.min.z + bounds.max.z) * 0.5
+
+        // Frame the full photo at ~60° vertical FOV (matches typical GLB viewers).
+        let halfFovRadians = Float.pi / 6.0
+        let standoff = max(span / (2 * tan(halfFovRadians)), span * 0.5, 1.0)
+
+        let position = SIMD3<Float>(center.x, center.y, planeZ - standoff)
+        let lookAt = SIMD3<Float>(center.x, center.y, planeZ)
+
+        if debugMode {
+            logDebug(
+                "🎯 [BoundaryManager] getCameraForDepthAnythingImagePlane "
+                    + "span=\(span)m standoff=\(standoff)m planeZ=\(planeZ) "
+                    + "pos=\(position) lookAt=\(lookAt)"
+            )
+        }
+
+        return (position, lookAt)
+    }
+
     /// Camera in front of image-depth meshes where near geometry is negative Z and the far wall is max Z.
     func getCameraAtFrontCenter() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
@@ -285,6 +335,9 @@ class RealityKitBoundaryManager {
     // ✅ Get optimal camera position for viewing the room (delegates to Android-matching back-center formula)
     // Used when room is opened from list or when room is created.
     func getOptimalCameraPosition(roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+        if roomCoordinateFrame == .depthAnythingImageDepthMeters {
+            return getCameraForDepthAnythingImagePlane()
+        }
         if roomCoordinateFrame.usesFrontFacingRealityKitCamera {
             return getCameraAtFrontCenter()
         }

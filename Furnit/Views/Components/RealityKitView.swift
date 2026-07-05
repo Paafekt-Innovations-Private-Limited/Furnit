@@ -524,11 +524,13 @@ struct RealityKitView: UIViewRepresentable {
                 logDebug("   boundaryManager.bounds exists: \(boundaryManager.bounds != nil)")
 
                 if let cameraAnchor = coordinator.cameraAnchor, let bounds = boundaryManager.bounds {
-                    logDebug("✅ [RealityKitView] BOUNDS AVAILABLE - using BACK-LEFT CORNER positioning")
+                    let placementLabel = model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                        ? "DEPTH ANYTHING front-center"
+                        : (model.roomCoordinateFrame.usesFrontFacingRealityKitCamera ? "front-center" : "back-left corner")
+                    logDebug("✅ [RealityKitView] BOUNDS AVAILABLE - using \(placementLabel) positioning")
                     logDebug("   Room bounds min: \(bounds.min)")
                     logDebug("   Room bounds max: \(bounds.max)")
 
-                    // ✅ Use BACK-LEFT CORNER camera positioning
                     let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
 
                     logDebug("📍 [RealityKitView] Camera position from getOptimalCameraPosition():")
@@ -545,7 +547,7 @@ struct RealityKitView: UIViewRepresentable {
                     logDebug("   OLD position: \(oldPosition)")
                     logDebug("   NEW position: \(cameraAnchor.transform.translation)")
 
-                    logDebug("📷 [RealityKitView] Camera BACK-LEFT CORNER positioned:")
+                    logDebug("📷 [RealityKitView] Camera \(placementLabel) positioned:")
                     logDebug("   📍 Final Position: \(cameraAnchor.transform.translation)")
                     logDebug("   👁️ Looking at: \(lookAtPosition)")
                     logDebug("   🧭 Direction: \(lookDirection)")
@@ -559,14 +561,21 @@ struct RealityKitView: UIViewRepresentable {
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
                     logDebug("⚠️ [RealityKitView] NO BOUNDS - using DEFAULT position")
-                    let defaultPosition = SIMD3<Float>(0, 1.5, 3)
+                    let defaultPosition: SIMD3<Float>
+                    let defaultLookAt: SIMD3<Float>
+                    if model.roomCoordinateFrame == .depthAnythingImageDepthMeters {
+                        defaultPosition = SIMD3(0, 0, -2.5)
+                        defaultLookAt = SIMD3(0, 0, 0)
+                    } else {
+                        defaultPosition = SIMD3(0, 1.5, 3)
+                        defaultLookAt = SIMD3(0, 1.4, 0)
+                    }
                     cameraAnchor.transform.translation = defaultPosition
 
-                    // Look toward origin
                     _ = Self.applyCameraPose(
                         cameraAnchor,
                         position: defaultPosition,
-                        lookAt: SIMD3<Float>(0, 1.4, 0)
+                        lookAt: defaultLookAt
                     )
 
                     logDebug("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")

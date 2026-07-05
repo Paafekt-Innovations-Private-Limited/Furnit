@@ -260,7 +260,7 @@ def build_textured_mesh_glb(
     mesh_step: int,
     max_depth_jump: float,
 ) -> tuple[int, int]:
-    """Build a relief mesh matching DepthAnythingRoomReconstructor (iOS) conventions.
+    """Build a flat/relief mesh aligned with DepthAnythingRoomReconstructor on iOS.
 
     XY is proportional to pixel position. Z is depth relief only (or flat if depth is constant).
     Uses UV texture mapping so colors stay pinned to pixels instead of smearing via vertex colors.

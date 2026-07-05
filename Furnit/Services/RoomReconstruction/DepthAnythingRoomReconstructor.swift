@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreML
 import Foundation
+import ImageIO
 import ModelIO
 import SceneKit
 import UIKit
@@ -42,22 +43,27 @@ final class DepthAnythingRoomReconstructor {
     private let modelName: String
     private let pixelStep: Int
     private let depthDiscontinuityThresholdMeters: Float
-    private let roomWidthMeters: Float
     private let maxReconstructionImageDimension: Int
     private let outputDirectory: URL?
+    private let wallMargin: Float
+
+    /// Matches `scripts/depthanything_measure_room.py --flat-mesh` (photo on a flat plane).
+    private static let usesFlatMesh = true
+    private static let minimumRoomWidthMeters: Float = 2.0
+    private static let fallbackFocal35mmEquivalent: Float = 28.0
 
     init(
         pixelStep: Int = 2,
-        depthDiscontinuityThresholdMeters: Float = 0.4,
-        roomWidthMeters: Float = 4.5,
+        depthDiscontinuityThresholdMeters: Float = 0.15,
         maxReconstructionImageDimension: Int = 1600,
-        outputDirectory: URL? = nil
+        outputDirectory: URL? = nil,
+        wallMargin: Float = 0.05
     ) throws {
         self.pixelStep = max(1, pixelStep)
         self.depthDiscontinuityThresholdMeters = depthDiscontinuityThresholdMeters
-        self.roomWidthMeters = roomWidthMeters
         self.maxReconstructionImageDimension = max(256, maxReconstructionImageDimension)
         self.outputDirectory = outputDirectory
+        self.wallMargin = min(max(wallMargin, 0), 0.45)
 
         let config = MLModelConfiguration()
         config.computeUnits = .all
@@ -67,29 +73,42 @@ final class DepthAnythingRoomReconstructor {
     }
 
     func reconstruct(image: UIImage) async throws -> URL {
-        let fixedImage = image.fixedOrientation()
-        let workingImage = try Self.downsampledImage(fixedImage, maxDimension: maxReconstructionImageDimension)
-        let depthMap = try await inferDepth(image: workingImage)
-        let mesh = try buildMesh(image: workingImage, depthMap: depthMap)
-        return try exportUSDZ(mesh: mesh, textureImage: workingImage)
+        let result = try await reconstructWithResult(image: image)
+        return result.usdzURL
     }
 
     func reconstructWithResult(image: UIImage) async throws -> DepthAnythingRoomResult {
         let fixedImage = image.fixedOrientation()
         let workingImage = try Self.downsampledImage(fixedImage, maxDimension: maxReconstructionImageDimension)
         let depthMap = try await inferDepth(image: workingImage)
-        let mesh = try buildMesh(image: workingImage, depthMap: depthMap)
+        let imageWidth = depthMap.first?.count ?? 0
+        let imageHeight = depthMap.count
+        let focal = Self.focalPixels(image: workingImage, imageWidth: imageWidth, imageHeight: imageHeight)
+        let measured = Self.measureWall(
+            depthMap: depthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focal.fx,
+            fy: focal.fy,
+            wallMargin: wallMargin
+        )
+        let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
+        let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(depthMap) : depthMap
+        let mesh = try buildMesh(
+            image: workingImage,
+            depthMap: meshDepthMap,
+            roomWidthMeters: meshRoomWidthMeters
+        )
         let url = try exportUSDZ(mesh: mesh, textureImage: workingImage)
-        let dimensions = Self.meshDimensions(mesh)
         return DepthAnythingRoomResult(
             usdzURL: url,
             vertexCount: mesh.vertexCount,
             triangleCount: mesh.submeshes?.compactMap { $0 as? MDLSubmesh }.reduce(0) { $0 + $1.indexCount / 3 } ?? 0,
-            imageWidth: depthMap.first?.count ?? 0,
-            imageHeight: depthMap.count,
-            roomWidthMeters: dimensions.width,
-            roomHeightMeters: dimensions.height,
-            roomDepthMeters: max(dimensions.depth, 0.051)
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            roomWidthMeters: measured.width,
+            roomHeightMeters: measured.height,
+            roomDepthMeters: measured.depth
         )
     }
 
@@ -120,7 +139,7 @@ final class DepthAnythingRoomReconstructor {
         return rows
     }
 
-    func buildMesh(image: UIImage, depthMap: [[Float]]) throws -> MDLMesh {
+    func buildMesh(image: UIImage, depthMap: [[Float]], roomWidthMeters: Float) throws -> MDLMesh {
         let fixedImage = image.fixedOrientation()
         let raster = try DepthAnythingRasterImage(image: fixedImage)
         let imageWidth = raster.width
@@ -163,7 +182,7 @@ final class DepthAnythingRoomReconstructor {
                 let z = -(depthMax - depth)
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
-                let v = Float(row) / Float(max(imageHeight - 1, 1))
+                let v = 1.0 - Float(row) / Float(max(imageHeight - 1, 1))
 
                 vertexData.appendFloat32LE(x)
                 vertexData.appendFloat32LE(y)
@@ -706,14 +725,142 @@ final class DepthAnythingRoomReconstructor {
         return formatter.string(from: Date())
     }
 
-    private static func meshDimensions(_ mesh: MDLMesh) -> (width: Float, height: Float, depth: Float) {
-        let minBounds = mesh.boundingBox.minBounds
-        let maxBounds = mesh.boundingBox.maxBounds
+    private static func flattenDepthForMesh(_ depthMap: [[Float]]) -> [[Float]] {
+        var validDepths: [Float] = []
+        validDepths.reserveCapacity(depthMap.count * max(depthMap.first?.count ?? 0, 0))
+        for row in depthMap {
+            for depth in row where depth.isFinite && depth > 0 {
+                validDepths.append(depth)
+            }
+        }
+        guard !validDepths.isEmpty else { return depthMap }
+        let planeDepth = median(validDepths)
+        return depthMap.map { row in
+            row.map { depth in
+                depth.isFinite && depth > 0 ? planeDepth : depth
+            }
+        }
+    }
+
+    private static func measureWall(
+        depthMap: [[Float]],
+        imageWidth: Int,
+        imageHeight: Int,
+        fx: Float,
+        fy: Float,
+        wallMargin: Float
+    ) -> (width: Float, height: Float, depth: Float) {
+        let margin = min(max(wallMargin, 0), 0.45)
+        let rectX = margin * Float(imageWidth)
+        let rectY = margin * Float(imageHeight)
+        let rectWidth = (1.0 - 2.0 * margin) * Float(imageWidth)
+        let rectHeight = (1.0 - 2.0 * margin) * Float(imageHeight)
+
+        let centerX = Float(imageWidth - 1) * 0.5
+        let centerY = Float(imageHeight - 1) * 0.5
+        let leftX = Int(round(rectX))
+        let rightX = Int(round(rectX + rectWidth - 1))
+        let topY = Int(round(rectY))
+        let bottomY = Int(round(rectY + rectHeight - 1))
+        let sampleCenterX = Int(round(rectX + rectWidth * 0.5))
+        let sampleCenterY = Int(round(rectY + rectHeight * 0.5))
+
+        guard let centerDepth = medianAt(
+            depthMap: depthMap,
+            x: sampleCenterX,
+            y: sampleCenterY,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        ) else {
+            let fallbackDepth = centerDepthFallback(depthMap)
+            let fallbackWidth = max(minimumRoomWidthMeters, Float(imageWidth) / fx * fallbackDepth)
+            let fallbackHeight = fallbackWidth * Float(imageHeight) / Float(max(imageWidth, 1))
+            return (fallbackWidth, fallbackHeight, fallbackDepth)
+        }
+
+        let leftPlane = (Float(leftX) - centerX) * centerDepth / fx
+        let rightPlane = (Float(rightX) - centerX) * centerDepth / fx
+        let topPlane = (Float(topY) - centerY) * centerDepth / fy
+        let bottomPlane = (Float(bottomY) - centerY) * centerDepth / fy
         return (
-            maxBounds.x - minBounds.x,
-            maxBounds.y - minBounds.y,
-            maxBounds.z - minBounds.z
+            abs(rightPlane - leftPlane),
+            abs(bottomPlane - topPlane),
+            centerDepth
         )
+    }
+
+    private static func centerDepthFallback(_ depthMap: [[Float]]) -> Float {
+        var validDepths: [Float] = []
+        for row in depthMap {
+            for depth in row where depth.isFinite && depth > 0 {
+                validDepths.append(depth)
+            }
+        }
+        return validDepths.isEmpty ? 3.0 : median(validDepths)
+    }
+
+    private static func medianAt(
+        depthMap: [[Float]],
+        x: Int,
+        y: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        radius: Int = 5
+    ) -> Float? {
+        let clampedX = min(max(x, 0), imageWidth - 1)
+        let clampedY = min(max(y, 0), imageHeight - 1)
+        var samples: [Float] = []
+        let y0 = max(0, clampedY - radius)
+        let y1 = min(imageHeight, clampedY + radius + 1)
+        let x0 = max(0, clampedX - radius)
+        let x1 = min(imageWidth, clampedX + radius + 1)
+        for row in y0..<y1 {
+            for column in x0..<x1 {
+                let depth = depthMap[row][column]
+                if depth.isFinite, depth > 0 {
+                    samples.append(depth)
+                }
+            }
+        }
+        guard !samples.isEmpty else { return nil }
+        return median(samples)
+    }
+
+    private static func focalPixels(image: UIImage, imageWidth: Int, imageHeight: Int) -> (fx: Float, fy: Float) {
+        if let focal35mm = focal35mmEquivalent(from: image), focal35mm > 1 {
+            let fx = (focal35mm / 36.0) * Float(imageWidth)
+            let fy = fx * Float(imageHeight) / Float(max(imageWidth, 1))
+            return (fx, fy)
+        }
+        let fx = (fallbackFocal35mmEquivalent / 36.0) * Float(imageWidth)
+        let fy = fx * Float(imageHeight) / Float(max(imageWidth, 1))
+        return (fx, fy)
+    }
+
+    private static func focal35mmEquivalent(from image: UIImage) -> Float? {
+        guard let data = image.jpegData(compressionQuality: 0.95) else { return nil }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] else {
+            return nil
+        }
+        if let value = exif[kCGImagePropertyExifFocalLenIn35mmFilm] as? NSNumber, value.floatValue > 1 {
+            return value.floatValue
+        }
+        if let value = exif["FocalLenIn35mmFilm" as CFString] as? NSNumber, value.floatValue > 1 {
+            return value.floatValue
+        }
+        return nil
+    }
+
+    private static func median(_ values: [Float]) -> Float {
+        guard !values.isEmpty else { return 0 }
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) * 0.5
+        }
+        return sorted[middle]
     }
 }
 
