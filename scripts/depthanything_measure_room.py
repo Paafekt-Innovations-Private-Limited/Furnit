@@ -107,6 +107,52 @@ def parse_args() -> argparse.Namespace:
         default=7,
         help="Median-filter kernel for depth before meshing (0=off). Reduces wall rippling.",
     )
+    parser.add_argument(
+        "--geocalib-json",
+        type=Path,
+        default=None,
+        help="Optional JSON from scripts/run_geocalib.py for gravity/focal room-box prototype.",
+    )
+    parser.add_argument(
+        "--room-box-prototype",
+        action="store_true",
+        help="Also run gravity-leveled Manhattan room-box prototype instead of only frustum wall math.",
+    )
+    parser.add_argument(
+        "--camera-height-prior",
+        type=float,
+        default=1.40,
+        help="Handheld camera-height prior used to rescale depth in prototype (default 1.40m).",
+    )
+    parser.add_argument(
+        "--tile-grid-prototype",
+        action="store_true",
+        help="Detect floor tile/grid lines and estimate dimensions from an assumed tile size.",
+    )
+    parser.add_argument(
+        "--tile-size-m",
+        type=float,
+        default=0.60,
+        help="Assumed square tile size for --tile-grid-prototype (default 0.60m).",
+    )
+    parser.add_argument(
+        "--tile-width-count",
+        type=float,
+        default=None,
+        help="Manual/visual tile count across room width. Produces authoritative tile-count W×H×D when all three counts are supplied.",
+    )
+    parser.add_argument(
+        "--tile-height-count",
+        type=float,
+        default=None,
+        help="Manual/visual tile count from floor to ceiling.",
+    )
+    parser.add_argument(
+        "--tile-depth-count",
+        type=float,
+        default=None,
+        help="Manual/visual tile count from camera/front side to back wall.",
+    )
     return parser.parse_args()
 
 
@@ -218,6 +264,618 @@ def depth_summary(depth: np.ndarray) -> tuple[float, float, float]:
     if valid.size == 0:
         return math.nan, math.nan, math.nan
     return float(valid.min()), float(np.median(valid)), float(valid.max())
+
+
+def rotation_matrix_from_to(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    source = source.astype(np.float32)
+    target = target.astype(np.float32)
+    source = source / max(float(np.linalg.norm(source)), 1e-6)
+    target = target / max(float(np.linalg.norm(target)), 1e-6)
+    dot = float(np.clip(np.dot(source, target), -1.0, 1.0))
+    if dot > 0.9999:
+        return np.eye(3, dtype=np.float32)
+    if dot < -0.9999:
+        return np.diag([1.0, -1.0, -1.0]).astype(np.float32)
+    axis = np.cross(source, target)
+    axis = axis / max(float(np.linalg.norm(axis)), 1e-6)
+    x, y, z = axis
+    k = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]], dtype=np.float32)
+    return np.eye(3, dtype=np.float32) + math.sin(math.acos(dot)) * k + (1.0 - dot) * (k @ k)
+
+
+def unproject_depth(depth: np.ndarray, fx: float, fy: float) -> np.ndarray:
+    h, w = depth.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cx = (w - 1) * 0.5
+    cy = (h - 1) * 0.5
+    z = depth.astype(np.float32)
+    x = (xx - cx) * z / float(fx)
+    y = (yy - cy) * z / float(fy)
+    points = np.stack([x, y, z], axis=-1)
+    points[~(np.isfinite(z) & (z > 0))] = np.nan
+    return points
+
+
+def leveled_points(depth: np.ndarray, fx: float, fy: float, gravity: list[float]) -> tuple[np.ndarray, np.ndarray]:
+    points = unproject_depth(depth, fx, fy)
+    # GeoCalib gravity vector is the same leveling reference used in Swift: at rest it is (0, -1, 0).
+    rot = rotation_matrix_from_to(np.asarray(gravity, dtype=np.float32), np.array([0, -1, 0], dtype=np.float32))
+    leveled = points @ rot.T
+    return leveled, rot
+
+
+def grid_normals(points: np.ndarray) -> np.ndarray:
+    h, w, _ = points.shape
+    normals = np.full_like(points, np.nan, dtype=np.float32)
+    left = points[1:-1, :-2]
+    right = points[1:-1, 2:]
+    up = points[:-2, 1:-1]
+    down = points[2:, 1:-1]
+    dx = right - left
+    dy = down - up
+    normal = np.cross(dx, dy)
+    norm = np.linalg.norm(normal, axis=-1, keepdims=True)
+    good = np.isfinite(norm[..., 0]) & (norm[..., 0] > 1e-5)
+    normal = np.divide(normal, np.maximum(norm, 1e-6))
+    normals[1:-1, 1:-1][good] = normal[good]
+    return normals
+
+
+def strongest_peak(values: np.ndarray, bin_size: float = 0.05, minimum_count: int = 20) -> tuple[float, int] | None:
+    values = values[np.isfinite(values)]
+    if values.size < minimum_count:
+        return None
+    lo, hi = np.percentile(values, [2, 98])
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        return None
+    bins = max(8, min(512, int(math.ceil((hi - lo) / bin_size)) + 1))
+    hist, edges = np.histogram(values[(values >= lo) & (values <= hi)], bins=bins, range=(lo, hi))
+    smooth = np.convolve(hist, np.ones(3, dtype=np.int32), mode="same")
+    idx = int(np.argmax(smooth))
+    count = int(smooth[idx])
+    if count < minimum_count:
+        return None
+    return float((edges[idx] + edges[idx + 1]) * 0.5), count
+
+
+def axis_extent(values: np.ndarray, require_two_sides: bool) -> tuple[float, int] | None:
+    values = values[np.isfinite(values)]
+    if values.size < 24:
+        return None
+    lo, hi = np.percentile(values, [2, 98])
+    if hi <= lo:
+        return None
+    hist, edges = np.histogram(values[(values >= lo) & (values <= hi)], bins=max(8, min(512, int(math.ceil((hi - lo) / 0.05)) + 1)))
+    smooth = np.convolve(hist, np.ones(3, dtype=np.int32), mode="same")
+    nz = smooth[smooth > 0]
+    if nz.size == 0:
+        return None
+    threshold = max(8, int(values.size * 0.03), int(np.median(nz) * 2))
+    peaks = np.flatnonzero(smooth >= threshold)
+    if peaks.size == 0:
+        return None
+    first, last = int(peaks[0]), int(peaks[-1])
+    if require_two_sides and first == last:
+        return None
+    low = float((edges[first] + edges[first + 1]) * 0.5)
+    high = float((edges[last] + edges[last + 1]) * 0.5)
+    extent = abs(high - low) if require_two_sides else max(abs(high), abs(high - low))
+    if not np.isfinite(extent) or extent <= 0:
+        return None
+    return extent, int(smooth[first] + (0 if last == first else smooth[last]))
+
+
+def prototype_room_box(
+    depth: np.ndarray,
+    fx: float,
+    fy: float,
+    gravity: list[float],
+    camera_height_prior: float,
+) -> dict:
+    leveled, _ = leveled_points(depth, fx, fy, gravity)
+    normals = grid_normals(leveled)
+    valid = np.isfinite(leveled[..., 2])
+
+    horizontal = valid & np.isfinite(normals[..., 1]) & (np.abs(normals[..., 1]) >= 0.85)
+    vertical = valid & np.isfinite(normals[..., 1]) & (np.abs(normals[..., 1]) <= 0.45)
+    y_values = leveled[..., 1]
+    floor_candidates = y_values[horizontal & (y_values > 0)]
+    floor_peak = strongest_peak(floor_candidates, bin_size=0.05, minimum_count=20)
+    camera_height_raw = floor_peak[0] if floor_peak else math.nan
+    scale = 1.0
+    if math.isfinite(camera_height_raw) and 0.45 <= camera_height_raw <= 5.0:
+        scale = camera_height_prior / camera_height_raw
+        depth = depth * scale
+        leveled, _ = leveled_points(depth, fx, fy, gravity)
+        normals = grid_normals(leveled)
+        valid = np.isfinite(leveled[..., 2])
+        horizontal = valid & np.isfinite(normals[..., 1]) & (np.abs(normals[..., 1]) >= 0.85)
+        vertical = valid & np.isfinite(normals[..., 1]) & (np.abs(normals[..., 1]) <= 0.45)
+        y_values = leveled[..., 1]
+        floor_candidates = y_values[horizontal & (y_values > 0)]
+        floor_peak = strongest_peak(floor_candidates, bin_size=0.05, minimum_count=20)
+
+    ceiling_peak = strongest_peak(y_values[horizontal & (y_values < 0)], bin_size=0.05, minimum_count=20)
+    height_source = "prior"
+    height = 2.40
+    if floor_peak and ceiling_peak:
+        measured_height = abs(floor_peak[0] - ceiling_peak[0])
+        if 1.8 <= measured_height <= 4.5:
+            height = measured_height
+            height_source = "measured_floor_ceiling"
+    elif floor_peak:
+        height = camera_height_prior + 1.0
+        height_source = "camera_height_plus_headroom_estimate"
+
+    wall_points = leveled[vertical]
+    wall_normals = normals[vertical]
+    floor_footprint = None
+    if floor_peak:
+        floor_band = horizontal & (np.abs(y_values - floor_peak[0]) <= 0.12)
+        floor_points = leveled[floor_band]
+        if floor_points.shape[0] >= 64:
+            x_lo, x_hi = np.percentile(floor_points[:, 0], [2, 98])
+            z_lo, z_hi = np.percentile(floor_points[:, 2], [2, 98])
+            floor_footprint = {
+                "width_m": float(abs(x_hi - x_lo)),
+                "depth_m": float(abs(z_hi - z_lo)),
+                "samples": int(floor_points.shape[0]),
+            }
+    width = math.nan
+    room_depth = math.nan
+    yaw = math.nan
+    yaw_source = "none"
+    wall_support = int(wall_points.shape[0])
+    if wall_points.shape[0] >= 32:
+        hn = wall_normals[:, [0, 2]]
+        hn_norm = np.linalg.norm(hn, axis=1)
+        good = hn_norm > 1e-4
+        wall_points = wall_points[good]
+        hn = hn[good] / hn_norm[good, None]
+        angles = np.mod(np.arctan2(hn[:, 1], hn[:, 0]), math.pi / 2)
+        hist, edges = np.histogram(angles, bins=36, range=(0, math.pi / 2))
+        if hist.max() >= max(8, angles.size // 6):
+            yaw = float((edges[int(np.argmax(hist))] + edges[int(np.argmax(hist)) + 1]) * 0.5)
+            yaw_source = "dominant_normal_histogram"
+        else:
+            yaw = 0.0
+            yaw_source = "fallback_camera_axes"
+        if math.isfinite(yaw):
+            c, s = math.cos(-yaw), math.sin(-yaw)
+            xz = wall_points[:, [0, 2]]
+            rx = c * xz[:, 0] - s * xz[:, 1]
+            rz = s * xz[:, 0] + c * xz[:, 1]
+            x_extent = axis_extent(rx, require_two_sides=True)
+            z_extent = axis_extent(rz, require_two_sides=False)
+            if x_extent:
+                width = x_extent[0]
+            if z_extent:
+                room_depth = z_extent[0]
+
+    if floor_footprint:
+        if not math.isfinite(width) or width < 0.6:
+            width = floor_footprint["width_m"]
+        if not math.isfinite(room_depth) or room_depth < 0.6:
+            room_depth = floor_footprint["depth_m"]
+
+    return {
+        "width_m": None if not math.isfinite(width) else round(width, 3),
+        "height_m": round(height, 3),
+        "depth_m": None if not math.isfinite(room_depth) else round(room_depth, 3),
+        "height_source": height_source,
+        "depth_scale_from_camera_height": round(scale, 4),
+        "camera_height_raw_m": None if not math.isfinite(camera_height_raw) else round(camera_height_raw, 3),
+        "floor_peak": None if not floor_peak else {"y": round(floor_peak[0], 3), "count": floor_peak[1]},
+        "ceiling_peak": None if not ceiling_peak else {"y": round(ceiling_peak[0], 3), "count": ceiling_peak[1]},
+        "horizontal_samples": int(np.count_nonzero(horizontal)),
+        "vertical_samples": wall_support,
+        "manhattan_yaw_rad": None if not math.isfinite(yaw) else round(yaw, 4),
+        "manhattan_yaw_source": yaw_source,
+        "floor_footprint": None if not floor_footprint else {
+            "width_m": round(floor_footprint["width_m"], 3),
+            "depth_m": round(floor_footprint["depth_m"], 3),
+            "samples": floor_footprint["samples"],
+        },
+    }
+
+
+def angle_distance_mod_pi(a: float, b: float) -> float:
+    d = abs((a - b + math.pi / 2) % math.pi - math.pi / 2)
+    return float(d)
+
+
+def cluster_offsets(values: list[float], merge_distance: float) -> list[tuple[float, int]]:
+    if not values:
+        return []
+    values = sorted(v for v in values if math.isfinite(v))
+    clusters: list[list[float]] = [[values[0]]]
+    for value in values[1:]:
+        if abs(value - float(np.mean(clusters[-1]))) <= merge_distance:
+            clusters[-1].append(value)
+        else:
+            clusters.append([value])
+    return [(float(np.mean(cluster)), len(cluster)) for cluster in clusters]
+
+
+def tile_grid_from_bev(
+    rgb: np.ndarray,
+    leveled: np.ndarray,
+    floor_band: np.ndarray,
+    tile_size_m: float,
+    debug_path: Path | None = None,
+) -> dict:
+    """Rectify floor pixels into a top-down XZ raster and estimate tile spacing there."""
+    try:
+        import cv2
+    except Exception as exc:
+        return {"error": f"opencv_unavailable: {exc}"}
+
+    coords = leveled[floor_band]
+    colors = rgb[floor_band]
+    if coords.shape[0] < 512:
+        return {"error": "not_enough_floor_pixels_for_bev", "samples": int(coords.shape[0])}
+
+    x_lo, x_hi = np.percentile(coords[:, 0], [1, 99])
+    z_lo, z_hi = np.percentile(coords[:, 2], [1, 99])
+    x_span = float(x_hi - x_lo)
+    z_span = float(z_hi - z_lo)
+    if not (math.isfinite(x_span) and math.isfinite(z_span)) or x_span <= 0 or z_span <= 0:
+        return {"error": "invalid_bev_extent"}
+
+    max_side = 900
+    pixels_per_raw_meter = min(max_side / max(x_span, z_span), 280.0)
+    bev_w = max(32, int(math.ceil(x_span * pixels_per_raw_meter)))
+    bev_h = max(32, int(math.ceil(z_span * pixels_per_raw_meter)))
+    bev_accum = np.zeros((bev_h, bev_w, 3), dtype=np.uint32)
+    count = np.zeros((bev_h, bev_w), dtype=np.uint16)
+
+    ix = np.clip(((coords[:, 0] - x_lo) * pixels_per_raw_meter).astype(np.int32), 0, bev_w - 1)
+    iz = np.clip(((coords[:, 2] - z_lo) * pixels_per_raw_meter).astype(np.int32), 0, bev_h - 1)
+    # Flip Z for display so farther floor is visually upward in the BEV image.
+    iy = bev_h - 1 - iz
+    np.add.at(bev_accum, (iy, ix), colors.astype(np.uint32))
+    np.add.at(count, (iy, ix), 1)
+    mask = count > 0
+    bev = np.zeros((bev_h, bev_w, 3), dtype=np.uint8)
+    bev[mask] = (bev_accum[mask].astype(np.float32) / count[mask, None]).astype(np.uint8)
+    mask_u8 = (mask.astype(np.uint8) * 255)
+    if np.count_nonzero(mask_u8) > 0:
+        bev = cv2.inpaint(bev, 255 - mask_u8, 3, cv2.INPAINT_TELEA)
+
+    gray = cv2.cvtColor(bev, cv2.COLOR_RGB2GRAY)
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(gray, 45, 140, apertureSize=3)
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180.0,
+        threshold=35,
+        minLineLength=max(24, min(bev_w, bev_h) // 16),
+        maxLineGap=14,
+    )
+
+    debug = bev.copy()
+    if lines is not None:
+        for x1, y1, x2, y2 in lines[:, 0, :]:
+            cv2.line(debug, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
+    if debug_path is not None:
+        debug_path.expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(debug).save(debug_path.expanduser().resolve())
+
+    if lines is None:
+        return {
+            "error": "no_bev_hough_lines",
+            "bev_size_px": [bev_w, bev_h],
+            "floor_samples": int(coords.shape[0]),
+            "debug_bev_png": str(debug_path.expanduser().resolve()) if debug_path else None,
+        }
+
+    segments = []
+    for x1, y1, x2, y2 in lines[:, 0, :]:
+        dx = float(x2 - x1)
+        dy = float(y2 - y1)
+        length = math.hypot(dx, dy)
+        if length < 20:
+            continue
+        angle = math.atan2(dy, dx) % math.pi
+        midpoint = np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=np.float32)
+        segments.append({"angle": angle, "midpoint": midpoint, "length": length})
+
+    if len(segments) < 4:
+        return {
+            "error": "not_enough_bev_segments",
+            "hough_lines": int(lines.shape[0]),
+            "usable_segments": len(segments),
+            "debug_bev_png": str(debug_path.expanduser().resolve()) if debug_path else None,
+        }
+
+    angle_mod = np.array([segment["angle"] % (math.pi / 2) for segment in segments], dtype=np.float32)
+    hist, angle_edges = np.histogram(angle_mod, bins=36, range=(0, math.pi / 2))
+    yaw = float((angle_edges[int(np.argmax(hist))] + angle_edges[int(np.argmax(hist)) + 1]) * 0.5)
+    u = np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32)
+    v = np.array([-math.sin(yaw), math.cos(yaw)], dtype=np.float32)
+    offsets_u: list[float] = []
+    offsets_v: list[float] = []
+    for segment in segments:
+        angle = segment["angle"]
+        midpoint = segment["midpoint"]
+        if angle_distance_mod_pi(angle, yaw) <= math.radians(18):
+            offsets_v.append(float(np.dot(midpoint, v)))
+        elif angle_distance_mod_pi(angle, yaw + math.pi / 2) <= math.radians(18):
+            offsets_u.append(float(np.dot(midpoint, u)))
+
+    clusters_u = cluster_offsets(offsets_u, merge_distance=10.0)
+    clusters_v = cluster_offsets(offsets_v, merge_distance=10.0)
+
+    def spacing_px(clusters: list[tuple[float, int]]) -> float | None:
+        if len(clusters) < 2:
+            return None
+        centers = [center for center, _ in clusters]
+        diffs = [b - a for a, b in zip(centers, centers[1:]) if 8 <= (b - a) <= 260]
+        return float(np.median(diffs)) if diffs else None
+
+    spacing_u = spacing_px(clusters_u)
+    spacing_v = spacing_px(clusters_v)
+    spacings = [value for value in (spacing_u, spacing_v) if value is not None]
+    if not spacings:
+        return {
+            "error": "bev_tile_spacing_not_found",
+            "usable_segments": len(segments),
+            "clusters_u": len(clusters_u),
+            "clusters_v": len(clusters_v),
+            "debug_bev_png": str(debug_path.expanduser().resolve()) if debug_path else None,
+        }
+
+    raw_tile_spacing_px = float(np.median(spacings))
+    meters_per_pixel = tile_size_m / raw_tile_spacing_px
+    return {
+        "source": "bev_rectified_tile_grid",
+        "bev_size_px": [bev_w, bev_h],
+        "hough_lines": int(lines.shape[0]),
+        "usable_segments": len(segments),
+        "yaw_rad": round(yaw, 4),
+        "tile_spacing_px": round(raw_tile_spacing_px, 2),
+        "meters_per_bev_pixel": round(meters_per_pixel, 5),
+        "floor_axis_u_m": round(bev_w * meters_per_pixel, 3),
+        "floor_axis_v_m": round(bev_h * meters_per_pixel, 3),
+        "clusters_u": [{"offset_px": round(c, 1), "count": n} for c, n in clusters_u],
+        "clusters_v": [{"offset_px": round(c, 1), "count": n} for c, n in clusters_v],
+        "debug_bev_png": str(debug_path.expanduser().resolve()) if debug_path else None,
+    }
+
+
+def manual_tile_count_measurement(
+    width_count: float | None,
+    height_count: float | None,
+    depth_count: float | None,
+    tile_size_m: float,
+) -> dict | None:
+    if width_count is None or height_count is None or depth_count is None:
+        return None
+    if min(width_count, height_count, depth_count, tile_size_m) <= 0:
+        return {
+            "source": "manual_tile_count",
+            "error": "tile counts and tile size must be positive",
+        }
+    width_m = width_count * tile_size_m
+    height_m = height_count * tile_size_m
+    depth_m = depth_count * tile_size_m
+    return {
+        "source": "manual_tile_count",
+        "order": "width_height_depth",
+        "tile_size_m": round(tile_size_m, 3),
+        "tile_counts": {
+            "width": round(width_count, 3),
+            "height": round(height_count, 3),
+            "depth": round(depth_count, 3),
+        },
+        "width_m": round(width_m, 3),
+        "height_m": round(height_m, 3),
+        "depth_m": round(depth_m, 3),
+        "w_h_d": f"{width_m:.3f} × {height_m:.3f} × {depth_m:.3f} m",
+        "note": "Direct tile-count estimate: dimensions = visible tile count × assumed tile size. This bypasses Depth Anything scale.",
+    }
+
+
+def tile_grid_prototype(
+    image: Image.Image,
+    depth: np.ndarray,
+    fx: float,
+    fy: float,
+    gravity: list[float],
+    tile_size_m: float,
+    debug_bev_path: Path | None = None,
+) -> dict:
+    try:
+        import cv2
+    except Exception as exc:
+        return {"error": f"opencv_unavailable: {exc}", "source": "measured_from_tile_grid"}
+
+    leveled_raw, _ = leveled_points(depth, fx, fy, gravity)
+    normals_raw = grid_normals(leveled_raw)
+    valid = np.isfinite(leveled_raw[..., 2])
+    horizontal = valid & np.isfinite(normals_raw[..., 1]) & (np.abs(normals_raw[..., 1]) >= 0.85)
+    y_values = leveled_raw[..., 1]
+    floor_peak = strongest_peak(y_values[horizontal & (y_values > 0)], bin_size=0.05, minimum_count=20)
+    if not floor_peak:
+        return {"error": "floor_peak_not_found", "source": "measured_from_tile_grid"}
+
+    floor_band = horizontal & (np.abs(y_values - floor_peak[0]) <= 0.22)
+    floor_points = leveled_raw[floor_band]
+    if floor_points.shape[0] < 64:
+        return {
+            "error": "not_enough_floor_points",
+            "source": "measured_from_tile_grid",
+            "floor_samples": int(floor_points.shape[0]),
+        }
+
+    rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    floor_mask = (floor_band.astype(np.uint8) * 255)
+    floor_mask = cv2.dilate(floor_mask, np.ones((7, 7), np.uint8), iterations=1)
+    edges = cv2.bitwise_and(edges, edges, mask=floor_mask)
+
+    h, w = depth.shape
+    min_line_length = max(35, int(min(w, h) * 0.04))
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180.0,
+        threshold=40,
+        minLineLength=min_line_length,
+        maxLineGap=18,
+    )
+    if lines is None:
+        return {
+            "error": "no_hough_lines",
+            "source": "measured_from_tile_grid",
+            "floor_samples": int(floor_points.shape[0]),
+        }
+
+    segments: list[dict] = []
+    for raw_line in lines[:, 0, :]:
+        x1, y1, x2, y2 = [int(v) for v in raw_line]
+        if not (0 <= x1 < w and 0 <= x2 < w and 0 <= y1 < h and 0 <= y2 < h):
+            continue
+
+        sample_count = 13
+        xs = np.linspace(x1, x2, sample_count).round().astype(np.int32)
+        ys = np.linspace(y1, y2, sample_count).round().astype(np.int32)
+        xs = np.clip(xs, 0, w - 1)
+        ys = np.clip(ys, 0, h - 1)
+        mask_hits = floor_mask[ys, xs] > 0
+        if np.count_nonzero(mask_hits) < max(5, sample_count // 2):
+            continue
+
+        samples = leveled_raw[ys, xs]
+        finite = np.isfinite(samples).all(axis=1)
+        near_floor = np.abs(samples[:, 1] - floor_peak[0]) <= 0.35
+        good = mask_hits & finite & near_floor
+        samples = samples[good]
+        if samples.shape[0] < 5:
+            continue
+
+        xz = samples[:, [0, 2]].astype(np.float32)
+        midpoint = np.mean(xz, axis=0)
+        centered = xz - midpoint
+        try:
+            _, _, vh = np.linalg.svd(centered, full_matrices=False)
+        except np.linalg.LinAlgError:
+            continue
+        direction = vh[0].astype(np.float32)
+        direction /= max(float(np.linalg.norm(direction)), 1e-6)
+        projections = centered @ direction
+        length = float(np.percentile(projections, 95) - np.percentile(projections, 5))
+        if length < 0.20 or length > 4.0:
+            continue
+        angle = math.atan2(float(direction[1]), float(direction[0])) % math.pi
+        segments.append({"angle": angle, "midpoint": midpoint, "length": length, "sample_count": int(samples.shape[0])})
+
+    if len(segments) < 4:
+        return {
+            "error": "not_enough_floor_grid_segments",
+            "source": "measured_from_tile_grid",
+            "hough_lines": int(lines.shape[0]),
+            "usable_segments": len(segments),
+            "floor_samples": int(floor_points.shape[0]),
+        }
+
+    angle_mod = np.array([segment["angle"] % (math.pi / 2) for segment in segments], dtype=np.float32)
+    hist, edges_angle = np.histogram(angle_mod, bins=36, range=(0, math.pi / 2))
+    best_index = int(np.argmax(hist))
+    yaw = float((edges_angle[best_index] + edges_angle[best_index + 1]) * 0.5)
+    u = np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32)
+    v = np.array([-math.sin(yaw), math.cos(yaw)], dtype=np.float32)
+
+    offsets_u: list[float] = []
+    offsets_v: list[float] = []
+    for segment in segments:
+        angle = segment["angle"]
+        midpoint = segment["midpoint"]
+        if angle_distance_mod_pi(angle, yaw) <= math.radians(20):
+            # Line is parallel to u, so adjacent tiles change along v.
+            offsets_v.append(float(np.dot(midpoint, v)))
+        elif angle_distance_mod_pi(angle, yaw + math.pi / 2) <= math.radians(20):
+            # Line is parallel to v, so adjacent tiles change along u.
+            offsets_u.append(float(np.dot(midpoint, u)))
+
+    clusters_u = cluster_offsets(offsets_u, merge_distance=0.10)
+    clusters_v = cluster_offsets(offsets_v, merge_distance=0.10)
+
+    def cluster_spacing(clusters: list[tuple[float, int]]) -> float | None:
+        if len(clusters) < 2:
+            return None
+        centers = [center for center, count in clusters if count >= 1]
+        diffs = [b - a for a, b in zip(centers, centers[1:]) if 0.12 <= (b - a) <= 3.0]
+        return float(np.median(diffs)) if diffs else None
+
+    spacing_u = cluster_spacing(clusters_u)
+    spacing_v = cluster_spacing(clusters_v)
+    spacings = [value for value in (spacing_u, spacing_v) if value is not None and value > 0]
+    if not spacings:
+        return {
+            "error": "tile_spacing_not_found",
+            "source": "measured_from_tile_grid",
+            "usable_segments": len(segments),
+            "clusters_u": len(clusters_u),
+            "clusters_v": len(clusters_v),
+        }
+
+    raw_tile_spacing = float(np.median(spacings))
+    tile_scale = tile_size_m / raw_tile_spacing
+
+    def tiled_extent(clusters: list[tuple[float, int]], raw_spacing: float) -> float | None:
+        if len(clusters) >= 2:
+            return (clusters[-1][0] - clusters[0][0] + raw_spacing) * tile_scale
+        return None
+
+    width_from_lines = tiled_extent(clusters_u, raw_tile_spacing)
+    depth_from_lines = tiled_extent(clusters_v, raw_tile_spacing)
+    x_lo, x_hi = np.percentile(floor_points[:, 0], [2, 98])
+    z_lo, z_hi = np.percentile(floor_points[:, 2], [2, 98])
+    width_from_floor = abs(float(x_hi - x_lo)) * tile_scale
+    depth_from_floor = abs(float(z_hi - z_lo)) * tile_scale
+    bev_grid = tile_grid_from_bev(
+        rgb=rgb,
+        leveled=leveled_raw,
+        floor_band=floor_band,
+        tile_size_m=tile_size_m,
+        debug_path=debug_bev_path,
+    )
+
+    height_raw = None
+    ceiling_peak = strongest_peak(y_values[horizontal & (y_values < 0)], bin_size=0.05, minimum_count=20)
+    if ceiling_peak:
+        height_raw = abs(floor_peak[0] - ceiling_peak[0])
+    height = height_raw * tile_scale if height_raw else None
+
+    return {
+        "source": "measured_from_tile_grid",
+        "tile_size_m": tile_size_m,
+        "raw_tile_spacing_m": round(raw_tile_spacing, 3),
+        "tile_depth_scale": round(tile_scale, 4),
+        "floor_axis_u_m": None if width_from_lines is None else round(width_from_lines, 3),
+        "floor_axis_v_m": None if depth_from_lines is None else round(depth_from_lines, 3),
+        "vertical_scaled_candidate_m": None if height is None else round(height, 3),
+        "note": "Tile grid measures floor axes only. Do not use vertical_scaled_candidate_m as room height unless independently validated.",
+        "floor_footprint_scaled": {
+            "width_m": round(width_from_floor, 3),
+            "depth_m": round(depth_from_floor, 3),
+        },
+        "bev_rectified_grid": bev_grid,
+        "floor_peak_raw_y": round(floor_peak[0], 3),
+        "ceiling_peak_raw_y": None if not ceiling_peak else round(ceiling_peak[0], 3),
+        "hough_lines": int(lines.shape[0]),
+        "usable_segments": len(segments),
+        "yaw_rad": round(yaw, 4),
+        "clusters_u": [{"offset": round(c, 3), "count": n} for c, n in clusters_u],
+        "clusters_v": [{"offset": round(c, 3), "count": n} for c, n in clusters_v],
+    }
 
 
 def save_depth_png(depth: np.ndarray, path: Path) -> None:
@@ -399,6 +1057,77 @@ def main() -> int:
         "Width/height here are projection estimates that assume the visible frame is one wall surface; "
         "depth is camera-to-wall at center. EXIF missing -> 28mm-equiv fallback affects X/Y scale."
     )
+    manual_tiles = manual_tile_count_measurement(
+        width_count=args.tile_width_count,
+        height_count=args.tile_height_count,
+        depth_count=args.tile_depth_count,
+        tile_size_m=args.tile_size_m,
+    )
+    if manual_tiles is not None:
+        payload["manual_tile_count"] = manual_tiles
+    if args.room_box_prototype:
+        geocalib_payload = None
+        if args.geocalib_json and args.geocalib_json.expanduser().exists():
+            geocalib_payload = json.loads(args.geocalib_json.expanduser().read_text(encoding="utf-8"))
+        if geocalib_payload is None:
+            payload["room_box_prototype_error"] = "missing --geocalib-json"
+        else:
+            proto_fx = float(geocalib_payload.get("focal_x_px") or geocalib_payload.get("focalLengthPx") or fx)
+            proto_fy = float(geocalib_payload.get("focal_y_px") or geocalib_payload.get("focalLengthYPx") or proto_fx)
+            gravity = geocalib_payload.get("gravity")
+            if not gravity:
+                payload["room_box_prototype_error"] = "geocalib JSON has no gravity vector"
+            else:
+                payload["room_box_prototype"] = prototype_room_box(
+                    depth=depth,
+                    fx=proto_fx,
+                    fy=proto_fy,
+                    gravity=gravity,
+                    camera_height_prior=args.camera_height_prior,
+                )
+                payload["room_box_prototype"]["focal_px"] = round(proto_fx, 2)
+                payload["room_box_prototype"]["geocalib_json"] = str(args.geocalib_json.expanduser().resolve()) if args.geocalib_json else None
+                if args.tile_grid_prototype:
+                    debug_bev_path = json_path.with_name(f"{json_path.stem}_tile_bev.png")
+                    payload["tile_grid_prototype"] = tile_grid_prototype(
+                        image=image,
+                        depth=depth,
+                        fx=proto_fx,
+                        fy=proto_fy,
+                        gravity=gravity,
+                        tile_size_m=args.tile_size_m,
+                        debug_bev_path=debug_bev_path,
+                    )
+                    tile = payload["tile_grid_prototype"]
+                    box = payload["room_box_prototype"]
+                    axis_u = tile.get("floor_axis_u_m")
+                    axis_v = tile.get("floor_axis_v_m")
+                    vertical = box.get("height_m")
+                    if axis_u is not None and axis_v is not None and vertical is not None:
+                        payload["hybrid_interpretation"] = {
+                            "source": "tile_grid_floor_axes_plus_room_box_vertical",
+                            "w_h_d": {
+                                "width_m": axis_u,
+                                "height_m": vertical,
+                                "depth_m": axis_v,
+                            },
+                            "swapped_floor_axes_w_h_d": {
+                                "width_m": axis_v,
+                                "height_m": vertical,
+                                "depth_m": axis_u,
+                            },
+                            "note": "Use the swapped candidate when the CV grid axes are tilted/swapped relative to semantic room width/depth.",
+                        }
+            if manual_tiles is not None and "error" not in manual_tiles:
+                payload["recommended_dimensions"] = {
+                    "source": "manual_tile_count",
+                    "order": "width_height_depth",
+                    "width_m": manual_tiles["width_m"],
+                    "height_m": manual_tiles["height_m"],
+                    "depth_m": manual_tiles["depth_m"],
+                    "w_h_d": manual_tiles["w_h_d"],
+                    "note": "Using manual/visual tile counts as the most reliable estimate for tiled rooms.",
+                }
 
     json_path.parent.mkdir(parents=True, exist_ok=True)
     if not args.no_depth_png:
