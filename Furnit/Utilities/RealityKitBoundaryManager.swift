@@ -277,35 +277,23 @@ class RealityKitBoundaryManager {
         }
 
         let center = getRoomCenter()
-        let halfW = max((bounds.max.x - bounds.min.x) * 0.5, 0.05)
-        let halfH = max((bounds.max.y - bounds.min.y) * 0.5, 0.05)
+        let width = max(bounds.max.x - bounds.min.x, 0.1)
+        let height = max(bounds.max.y - bounds.min.y, 0.1)
+        let span = max(width, height)
         let planeZ = (bounds.min.z + bounds.max.z) * 0.5
 
-        // Match PerspectiveCamera in RealityKitView — vertical FOV, set explicitly there.
-        let fovDegrees: Float = 60.0
-        let halfVFov = fovDegrees * Float.pi / 180.0 * 0.5
-
-        let viewportAspect: Float = {
-            guard let arView, arView.bounds.height > 0 else { return 9.0 / 16.0 }
-            return Float(arView.bounds.width / arView.bounds.height)
-        }()
-        let halfHFov = atan(tan(halfVFov) * viewportAspect)
-
-        let distForHeight = halfH / tan(halfVFov)
-        let distForWidth = halfW / tan(halfHFov)
-        // Cover framing: fill the binding viewport axis; the other axis may extend off-screen (pan to reach).
-        let standoff = max(min(distForHeight, distForWidth), 1.0)
+        // Frame the full photo at ~60° vertical FOV (matches typical GLB viewers).
+        let halfFovRadians = Float.pi / 6.0
+        let standoff = max(span / (2 * tan(halfFovRadians)), span * 0.5, 1.0)
 
         let position = SIMD3<Float>(center.x, center.y, planeZ - standoff)
         let lookAt = SIMD3<Float>(center.x, center.y, planeZ)
 
         if debugMode {
-            let binding = distForWidth <= distForHeight ? "width" : "height"
             logDebug(
                 "🎯 [BoundaryManager] getCameraForDepthAnythingImagePlane "
-                    + "framing=cover planeW=\(halfW * 2)m planeH=\(halfH * 2)m viewportAspect=\(viewportAspect) "
-                    + "distH=\(distForHeight)m distW=\(distForWidth)m binding=\(binding) "
-                    + "standoff=\(standoff)m planeZ=\(planeZ) pos=\(position) lookAt=\(lookAt)"
+                    + "span=\(span)m standoff=\(standoff)m planeZ=\(planeZ) "
+                    + "pos=\(position) lookAt=\(lookAt)"
             )
         }
 

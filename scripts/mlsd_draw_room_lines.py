@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--score-thr", type=float, default=0.10)
     parser.add_argument("--dist-thr", type=float, default=20.0)
+    parser.add_argument(
+        "--box-connected",
+        action="store_true",
+        help="Draw thick wall quad + only blues on the box + red/green touching those blues.",
+    )
     return parser.parse_args()
 
 
@@ -289,7 +294,19 @@ def main() -> int:
     analyses = [family_analysis(lines, fa) for fa in families]
 
     overlay_path = out_dir / f"{stem}_lines.png"
-    draw_overlay(rgb, lines, families, overlay_path)
+    if args.box_connected:
+        from structure_box_measure_room import (
+            classify_line_segments,
+            draw_box_connected_overlay,
+        )
+
+        min_len = max(24.0, 0.04 * min(w, h))
+        classified = classify_line_segments(lines, families, min_len)
+        overlay_path = out_dir / f"{stem}_box_connected.png"
+        connected_filter = draw_box_connected_overlay(rgb, classified, overlay_path)
+        color_summary["box_connected_filter"] = connected_filter
+    else:
+        draw_overlay(rgb, lines, families, overlay_path)
 
     payload: dict = {
         "image": str(image_path),

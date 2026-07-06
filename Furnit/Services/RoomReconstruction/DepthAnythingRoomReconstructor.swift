@@ -59,20 +59,10 @@ final class DepthAnythingRoomReconstructor {
     private static let objectBBoxConfidenceThreshold: Float = 0.30
     private static let geoExifFocalMatchRatioRange: ClosedRange<Float> = 0.85...1.15
     private static let depthMetricScaleRange: ClosedRange<Float> = 0.55...1.45
-    /// Empirical correction when Depth Anything Metric Indoor over-reads and no RTMDet anchor is found.
-    private static let noAnchorDefaultDepthScale: Float = 0.60
-    /// Typical hand-held capture height above floor for camera-height gravity anchor.
-    private static let expectedHandHeldCameraHeightMeters: Float = 1.40
-    /// Used only when the ceiling plane is not visible enough to produce a reliable gravity-height peak.
-    private static let fallbackCeilingHeightMeters: Float = 2.40
 
     /// COCO class index → expected physical height in meters for metric depth anchoring.
     private static let objectAnchorHeightMeters: [Int: Float] = [
-        0: 1.68,  // person (standing adult, approximate)
         56: 1.15, // chair
-        57: 0.85, // couch (seat/back height)
-        61: 0.70, // toilet (floor to rim)
-        71: 0.85, // sink (counter height)
     ]
 
     init(
@@ -144,10 +134,7 @@ final class DepthAnythingRoomReconstructor {
             cameraMetadata: calibrationMetadata,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            fx: focalPx,
-            rawObjectMeasurement: rawObjectMeasured,
-            rawDepthMap: depthMap,
-            geoCalib: geoCalibCalibration
+            rawObjectMeasurement: rawObjectMeasured
         )
         focalPx = metricCalibration.focalPx
         let calibratedDepthMap = Self.scaleDepthMap(depthMap, scale: metricCalibration.depthScale)
@@ -179,11 +166,6 @@ final class DepthAnythingRoomReconstructor {
             "anchor_cls=\(metricCalibration.anchorClassIdx.map(String.init) ?? "nil") " +
             "anchor_h_expected=\(metricCalibration.anchorExpectedHeightMeters.map { String(format: "%.3f", $0) } ?? "nil") " +
             "anchor_h_raw=\(metricCalibration.anchorMeasuredHeightMeters.map { String(format: "%.3f", $0) } ?? "nil") " +
-            "camera_h_raw=\(metricCalibration.cameraHeightRawMeters.map { String(format: "%.3f", $0) } ?? "nil") " +
-            "camera_h_cal=\(metricCalibration.cameraHeightRawMeters.map { String(format: "%.3f", $0 * metricCalibration.depthScale) } ?? "nil") " +
-            "focal_disagree=\(metricCalibration.exifFocalPx.map { String(format: "%.3f", abs(metricCalibration.geoFocalPx - $0) / $0) } ?? "nil") " +
-            "geo_roll=\(geoCalibCalibration.map { String(format: "%.4f", $0.rollRadians) } ?? "nil") " +
-            "geo_pitch=\(geoCalibCalibration.map { String(format: "%.4f", $0.pitchRadians) } ?? "nil") " +
             "depth_median_raw=\(Self.formatMeters(rawStats.median)) depth_median_cal=\(Self.formatMeters(stats.median))"
         )
 
@@ -195,73 +177,14 @@ final class DepthAnythingRoomReconstructor {
             fy: focalPx,
             wallMargin: wallMargin
         )
-        let depthSpreadMeasured: (width: Float, height: Float, depth: Float)
-        let heightMeasurementSource: String
-        if let geoCalibCalibration {
-            if let gravityMeasured = Self.measureGravityAlignedSpread(
-                depthMap: calibratedDepthMap,
-                imageWidth: imageWidth,
-                imageHeight: imageHeight,
-                fx: focalPx,
-                fy: focalPx,
-                rollRadians: geoCalibCalibration.rollRadians,
-                pitchRadians: geoCalibCalibration.pitchRadians,
-                wallMargin: wallMargin
-            ) {
-                depthSpreadMeasured = (
-                    width: gravityMeasured.width,
-                    height: gravityMeasured.height,
-                    depth: gravityMeasured.depth
-                )
-                heightMeasurementSource = gravityMeasured.heightSource
-            } else {
-                depthSpreadMeasured = (
-                    width: wallMeasured.width,
-                    height: Self.fallbackCeilingHeightMeters,
-                    depth: wallMeasured.depth
-                )
-                heightMeasurementSource = "ceiling_prior_no_peak"
-            }
-        } else {
-            depthSpreadMeasured = Self.measureDepthSpread(
-                depthMap: calibratedDepthMap,
-                imageWidth: imageWidth,
-                imageHeight: imageHeight,
-                fx: focalPx,
-                fy: focalPx,
-                wallMargin: wallMargin
-            ) ?? wallMeasured
-            heightMeasurementSource = "image_plane_spread_no_geocalib"
-        }
-        enrichedCalibrationMetadata["depthHeightMeasurementSource"] = {
-            switch heightMeasurementSource {
-            case "gravity_aligned_floor_ceiling": return 1.0
-            case "ceiling_prior_no_peak": return 2.0
-            default: return 0.0
-            }
-        }()
-        if heightMeasurementSource == "ceiling_prior_no_peak" {
-            enrichedCalibrationMetadata["depthHeightLowConfidence"] = 1.0
-        }
-        if metricCalibration.sourceLabel == "no_anchor_default_depth_scale" ||
-            metricCalibration.sourceLabel == "camera_height_gravity" {
-            enrichedCalibrationMetadata["depthMetricEstimatedNoAnchor"] = 1.0
-        }
-        if let cameraHeightRaw = metricCalibration.cameraHeightRawMeters {
-            enrichedCalibrationMetadata["depthCameraHeightRawM"] = Double(cameraHeightRaw)
-            let calibratedCameraHeight = cameraHeightRaw * metricCalibration.depthScale
-            enrichedCalibrationMetadata["depthCameraHeightCalibratedM"] = Double(calibratedCameraHeight)
-            if !(0.8...2.0).contains(calibratedCameraHeight) {
-                enrichedCalibrationMetadata["depthCameraHeightImplausible"] = 1.0
-            }
-        }
-        if let exifFocal = metricCalibration.exifFocalPx, exifFocal > 1 {
-            let focalDisagreement = abs(metricCalibration.geoFocalPx - exifFocal) / exifFocal
-            enrichedCalibrationMetadata["geoExifFocalDisagreementRatio"] = Double(focalDisagreement)
-            if focalDisagreement > 0.15 {
-                enrichedCalibrationMetadata["geoExifFocalDisagreementHigh"] = 1.0
-            }
-        }
+        let depthSpreadMeasured = Self.measureDepthSpread(
+            depthMap: calibratedDepthMap,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            fx: focalPx,
+            fy: focalPx,
+            wallMargin: wallMargin
+        ) ?? wallMeasured
         let objectMeasured = Self.measureObjectBBox(
             image: workingImage,
             depthMap: calibratedDepthMap,
@@ -309,8 +232,7 @@ final class DepthAnythingRoomReconstructor {
             "object_bbox_dims_raw_m=\(rawObjectDimsSummary) object_bbox_dims_m=\(objectDimsSummary) " +
             "depth_metric_scale=\(String(format: "%.4f", metricCalibration.depthScale)) " +
             "depth_metric_source=\(metricCalibration.sourceLabel) " +
-            "height_measurement_source=\(heightMeasurementSource) " +
-            "result_dims_source=\(heightMeasurementSource) " +
+            "result_dims_source=depth_unprojected_spread " +
             "result_dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
         )
         logDebug(
@@ -333,10 +255,7 @@ final class DepthAnythingRoomReconstructor {
             image: workingImage,
             depthMap: meshDepthMap,
             roomWidthMeters: meshRoomWidthMeters,
-            roomHeightMeters: meshRoomHeightMeters,
-            roomDepthMeters: max(measured.depth, 0.1),
-            focalPx: focalPx,
-            geoCalib: geoCalibCalibration
+            roomHeightMeters: meshRoomHeightMeters
         )
         let url = try exportUSDZ(mesh: mesh, textureImage: workingImage)
         return DepthAnythingRoomResult(
@@ -416,10 +335,7 @@ final class DepthAnythingRoomReconstructor {
         image: UIImage,
         depthMap: [[Float]],
         roomWidthMeters: Float,
-        roomHeightMeters: Float,
-        roomDepthMeters: Float,
-        focalPx: Float,
-        geoCalib: GeoCalibCalibrationResult?
+        roomHeightMeters: Float
     ) throws -> MDLMesh {
         let fixedImage = image.fixedOrientation()
         let raster = try DepthAnythingRasterImage(image: fixedImage)
@@ -449,79 +365,19 @@ final class DepthAnythingRoomReconstructor {
         vertexData.reserveCapacity(rowCount * columnCount * DepthAnythingVertex.byteStride)
         var vertexCount = 0
 
-        let centerX = Float(imageWidth) / 2.0
-        let centerY = Float(imageHeight) / 2.0
-        let useGravityLeveledMesh = geoCalib != nil && focalPx > 1
-        let levelRot = geoCalib?.levelingRotationMatrix()
-        var leveledCenter = SIMD3<Float>(repeating: 0)
-        if useGravityLeveledMesh, let levelRot {
-            var xs: [Float] = []
-            var ys: [Float] = []
-            var zs: [Float] = []
-            xs.reserveCapacity(sampledRows.count * sampledColumns.count)
-            ys.reserveCapacity(xs.capacity)
-            zs.reserveCapacity(xs.capacity)
-            for row in sampledRows {
-                for column in sampledColumns {
-                    let depth = depthMap[row][column]
-                    guard depth.isFinite, depth > 0 else { continue }
-                    let cameraPoint = Self.unprojectCameraPoint(
-                        column: Float(column),
-                        row: Float(row),
-                        depth: depth,
-                        fx: focalPx,
-                        fy: focalPx,
-                        centerX: centerX,
-                        centerY: centerY
-                    )
-                    let leveledPoint = levelRot * cameraPoint
-                    xs.append(leveledPoint.x)
-                    ys.append(leveledPoint.y)
-                    zs.append(leveledPoint.z)
-                }
-            }
-            if !xs.isEmpty, !ys.isEmpty, !zs.isEmpty {
-                xs.sort()
-                ys.sort()
-                zs.sort()
-                leveledCenter = SIMD3(xs[xs.count / 2], ys[ys.count / 2], zs[zs.count / 2])
-            }
-        }
-
         let pixelScaleX = roomWidthMeters / Float(imageWidth)
         let pixelScaleY = roomHeightMeters / Float(imageHeight)
-        let halfRoomWidth = max(roomWidthMeters * 0.5, 0.05)
-        let halfRoomHeight = max(roomHeightMeters * 0.5, 0.05)
-        let halfRoomDepth = max(roomDepthMeters * 0.5, 0.05)
+        let centerX = Float(imageWidth) / 2.0
+        let centerY = Float(imageHeight) / 2.0
 
         for (sampledRowIndex, row) in sampledRows.enumerated() {
             for (sampledColumnIndex, column) in sampledColumns.enumerated() {
                 let depth = depthMap[row][column]
                 guard depth.isFinite, depth > 0 else { continue }
 
-                let x: Float
-                let y: Float
-                let z: Float
-                if useGravityLeveledMesh, let levelRot {
-                    let cameraPoint = Self.unprojectCameraPoint(
-                        column: Float(column),
-                        row: Float(row),
-                        depth: depth,
-                        fx: focalPx,
-                        fy: focalPx,
-                        centerX: centerX,
-                        centerY: centerY
-                    )
-                    let leveledPoint = levelRot * cameraPoint
-                    let centered = leveledPoint - leveledCenter
-                    x = (-centered.x).clamped(to: -halfRoomWidth...halfRoomWidth)
-                    y = centered.y.clamped(to: -halfRoomHeight...halfRoomHeight)
-                    z = centered.z.clamped(to: -halfRoomDepth...halfRoomDepth)
-                } else {
-                    x = -(Float(column) - centerX) * pixelScaleX
-                    y = (Float(row) - centerY) * pixelScaleY
-                    z = -(depthMax - depth)
-                }
+                let x = -(Float(column) - centerX) * pixelScaleX
+                let y = (Float(row) - centerY) * pixelScaleY
+                let z = -(depthMax - depth)
                 let color = raster.color(x: column, y: row).floatRGB
                 let u = Float(column) / Float(max(imageWidth - 1, 1))
                 let v = 1.0 - Float(row) / Float(max(imageHeight - 1, 1))
@@ -537,16 +393,6 @@ final class DepthAnythingRoomReconstructor {
                 vertexIndices[sampledRowIndex * columnCount + sampledColumnIndex] = Int32(vertexCount)
                 vertexCount += 1
             }
-        }
-
-        if useGravityLeveledMesh {
-            logDebug(
-                "[DepthAnythingRoom][MeshLevel] source=geocalib_gravity_leveled " +
-                "roll=\(String(format: "%.4f", geoCalib?.rollRadians ?? 0)) " +
-                "pitch=\(String(format: "%.4f", geoCalib?.pitchRadians ?? 0)) " +
-                "center=\(leveledCenter) " +
-                "clip_box=W:\(String(format: "%.4f", roomWidthMeters)),H:\(String(format: "%.4f", roomHeightMeters)),D:\(String(format: "%.4f", roomDepthMeters))"
-            )
         }
 
         guard vertexCount > 0 else {
@@ -1201,439 +1047,6 @@ final class DepthAnythingRoomReconstructor {
         return (width, height, depth)
     }
 
-    private struct GravityRoomBoxMeasurement {
-        let width: Float
-        let height: Float
-        let depth: Float
-        let heightSource: String
-    }
-
-    /// Room-box estimate in a gravity-leveled frame. Height may be a low-confidence prior when no ceiling peak is found.
-    private static func measureGravityAlignedSpread(
-        depthMap: [[Float]],
-        imageWidth: Int,
-        imageHeight: Int,
-        fx: Float,
-        fy: Float,
-        rollRadians: Float,
-        pitchRadians: Float,
-        wallMargin: Float,
-        sampleStep: Int = 8
-    ) -> GravityRoomBoxMeasurement? {
-        guard imageWidth > 1, imageHeight > 1, fx > 1, fy > 1 else { return nil }
-
-        let levelRot = GeoCalibCalibrationResult.levelingRotationMatrix(
-            gravityDown: GeoCalibCalibrationResult.gravityVector(
-                rollRadians: rollRadians,
-                pitchRadians: pitchRadians
-            )
-        )
-
-        let margin = min(max(wallMargin, 0), 0.45)
-        let leftX = Int(round(margin * Float(imageWidth)))
-        let rightX = Int(round((1.0 - margin) * Float(imageWidth))) - 1
-        let topY = Int(round(margin * Float(imageHeight)))
-        let bottomY = Int(round((1.0 - margin) * Float(imageHeight))) - 1
-        guard leftX < rightX, topY < bottomY else { return nil }
-
-        let centerX = Float(imageWidth - 1) * 0.5
-        let centerY = Float(imageHeight - 1) * 0.5
-        let sampleRows = Array(stride(from: topY, through: bottomY, by: sampleStep))
-        let sampleColumns = Array(stride(from: leftX, through: rightX, by: sampleStep))
-        let rowCount = sampleRows.count
-        let columnCount = sampleColumns.count
-        var leveledGrid = [SIMD3<Float>?](repeating: nil, count: rowCount * columnCount)
-        var leveledX: [Float] = []
-        var leveledY: [Float] = []
-        var leveledZ: [Float] = []
-        var depths: [Float] = []
-        leveledX.reserveCapacity(rowCount * columnCount)
-        leveledY.reserveCapacity(leveledX.capacity)
-        leveledZ.reserveCapacity(leveledX.capacity)
-        depths.reserveCapacity(leveledX.capacity)
-
-        for (sampledRowIndex, y) in sampleRows.enumerated() {
-            for (sampledColumnIndex, x) in sampleColumns.enumerated() {
-                let depth = depthMap[y][x]
-                if depth.isFinite, depth > 0 {
-                    let cameraPoint = unprojectCameraPoint(
-                        column: Float(x),
-                        row: Float(y),
-                        depth: depth,
-                        fx: fx,
-                        fy: fy,
-                        centerX: centerX,
-                        centerY: centerY
-                    )
-                    let leveledPoint = levelRot * cameraPoint
-                    leveledGrid[sampledRowIndex * columnCount + sampledColumnIndex] = leveledPoint
-                    leveledX.append(leveledPoint.x)
-                    leveledY.append(leveledPoint.y)
-                    leveledZ.append(leveledPoint.z)
-                    depths.append(depth)
-                }
-            }
-        }
-
-        guard leveledY.count >= 32 else { return nil }
-        let supportSamples = planeSupportSamples(
-            grid: leveledGrid,
-            rowCount: rowCount,
-            columnCount: columnCount
-        )
-        let floorCeiling = floorCeilingPeakHeight(from: supportSamples.horizontalHeights)
-        if floorCeiling == nil {
-            logDebug(
-                "[DepthAnythingRoom][GravityHeight] unavailable reason=floor_ceiling_peak_not_found " +
-                "leveled_samples=\(leveledY.count) horizontal_samples=\(supportSamples.horizontalHeights.count)"
-            )
-        }
-        guard let floorPlan = estimateFloorPlanExtent(
-            from: supportSamples.verticalPoints,
-            normals: supportSamples.verticalNormals,
-            floorCeiling: floorCeiling
-        ) else {
-            logDebug(
-                "[DepthAnythingRoom][RoomBox] unavailable reason=wall_floorplan_fit_failed " +
-                "vertical_samples=\(supportSamples.verticalPoints.count)"
-            )
-            return nil
-        }
-        leveledX.sort()
-        leveledY.sort()
-        leveledZ.sort()
-        depths.sort()
-
-        let lowIndex = max(0, leveledY.count / 20)
-        let highIndex = min(leveledY.count - 1, leveledY.count * 19 / 20)
-        guard highIndex > lowIndex else { return nil }
-
-        let width = floorPlan.width
-        let height = floorCeiling?.height ?? fallbackCeilingHeightMeters
-        let heightSource = floorCeiling == nil ? "ceiling_prior_no_peak" : "gravity_aligned_floor_ceiling"
-        let depth = floorPlan.depth
-        guard width.isFinite, height.isFinite, depth.isFinite,
-              width > 0, height > 0, depth > 0 else {
-            return nil
-        }
-
-        let floorPeakSummary = floorCeiling.map {
-            "floor_peak=\(String(format: "%.4f", $0.floorY)) ceiling_peak=\(String(format: "%.4f", $0.ceilingY)) " +
-            "floor_count=\($0.floorCount) ceiling_count=\($0.ceilingCount) bin_m=\(String(format: "%.3f", $0.binSize)) "
-        } ?? "floor_peak=nil ceiling_peak=nil floor_count=0 ceiling_count=0 bin_m=nil "
-        logDebug(
-            "[DepthAnythingRoom][GravityHeight] floor_ceiling_m=\(String(format: "%.4f", height)) " +
-            "room_width_m=\(String(format: "%.4f", width)) room_depth_m=\(String(format: "%.4f", depth)) " +
-            floorPeakSummary +
-            "height_source=\(heightSource) " +
-            "leveled_samples=\(leveledY.count) horizontal_samples=\(supportSamples.horizontalHeights.count) " +
-            "vertical_samples=\(supportSamples.verticalPoints.count) manhattan_yaw=\(String(format: "%.4f", floorPlan.yawRadians)) " +
-            "width_count=\(floorPlan.widthSupport) depth_count=\(floorPlan.depthSupport)"
-        )
-
-        return GravityRoomBoxMeasurement(width: width, height: height, depth: depth, heightSource: heightSource)
-    }
-
-    private struct PlaneSupportSamples {
-        let horizontalHeights: [Float]
-        let verticalPoints: [SIMD3<Float>]
-        let verticalNormals: [SIMD3<Float>]
-    }
-
-    private static func planeSupportSamples(
-        grid: [SIMD3<Float>?],
-        rowCount: Int,
-        columnCount: Int
-    ) -> PlaneSupportSamples {
-        guard rowCount >= 3, columnCount >= 3, grid.count == rowCount * columnCount else {
-            return PlaneSupportSamples(horizontalHeights: [], verticalPoints: [], verticalNormals: [])
-        }
-
-        func point(row: Int, column: Int) -> SIMD3<Float>? {
-            grid[row * columnCount + column]
-        }
-
-        let minimumNeighborDistance: Float = 0.01
-        let maximumNeighborDistance: Float = 1.0
-        let minimumVerticalNormal: Float = 0.85
-        let maximumHorizontalNormalY: Float = 0.45
-        var heights: [Float] = []
-        var verticalPoints: [SIMD3<Float>] = []
-        var verticalNormals: [SIMD3<Float>] = []
-        heights.reserveCapacity(grid.count / 4)
-        verticalPoints.reserveCapacity(grid.count / 4)
-        verticalNormals.reserveCapacity(grid.count / 4)
-
-        for row in 1..<(rowCount - 1) {
-            for column in 1..<(columnCount - 1) {
-                guard let center = point(row: row, column: column),
-                      let left = point(row: row, column: column - 1),
-                      let right = point(row: row, column: column + 1),
-                      let up = point(row: row - 1, column: column),
-                      let down = point(row: row + 1, column: column) else {
-                    continue
-                }
-
-                let dx = right - left
-                let dz = down - up
-                let dxLength = simd_length(dx)
-                let dzLength = simd_length(dz)
-                guard dxLength >= minimumNeighborDistance,
-                      dzLength >= minimumNeighborDistance,
-                      dxLength <= maximumNeighborDistance,
-                      dzLength <= maximumNeighborDistance else {
-                    continue
-                }
-
-                let normal = simd_cross(dx, dz)
-                let normalLength = simd_length(normal)
-                guard normalLength >= 1e-5 else { continue }
-                let unitNormal = normal / normalLength
-                if abs(unitNormal.y) >= minimumVerticalNormal {
-                    heights.append(center.y)
-                } else if abs(unitNormal.y) <= maximumHorizontalNormalY {
-                    verticalPoints.append(center)
-                    verticalNormals.append(unitNormal)
-                }
-            }
-        }
-
-        return PlaneSupportSamples(
-            horizontalHeights: heights,
-            verticalPoints: verticalPoints,
-            verticalNormals: verticalNormals
-        )
-    }
-
-    private struct FloorCeilingPeakMeasurement {
-        let floorY: Float
-        let ceilingY: Float
-        let height: Float
-        let floorCount: Int
-        let ceilingCount: Int
-        let binSize: Float
-    }
-
-    private struct FloorPlanMeasurement {
-        let width: Float
-        let depth: Float
-        let yawRadians: Float
-        let widthSupport: Int
-        let depthSupport: Int
-    }
-
-    private static func estimateFloorPlanExtent(
-        from points: [SIMD3<Float>],
-        normals: [SIMD3<Float>],
-        floorCeiling: FloorCeilingPeakMeasurement?
-    ) -> FloorPlanMeasurement? {
-        guard points.count == normals.count, points.count >= 32 else { return nil }
-
-        let wallBand: (lowY: Float, highY: Float)?
-        if let floorCeiling {
-            let lowY = min(floorCeiling.floorY, floorCeiling.ceilingY) + 0.10
-            let highY = max(floorCeiling.floorY, floorCeiling.ceilingY) - 0.10
-            wallBand = highY > lowY ? (lowY, highY) : nil
-        } else {
-            wallBand = nil
-        }
-
-        var wallPoints: [SIMD2<Float>] = []
-        var wallNormalAngles: [Float] = []
-        wallPoints.reserveCapacity(points.count)
-        wallNormalAngles.reserveCapacity(normals.count)
-
-        for (point, normal) in zip(points, normals) {
-            if let wallBand, !(point.y > wallBand.lowY && point.y < wallBand.highY) {
-                continue
-            }
-            let horizontalNormal = SIMD2<Float>(normal.x, normal.z)
-            let normalLength = simd_length(horizontalNormal)
-            guard normalLength > 1e-4 else { continue }
-            let unitNormal = horizontalNormal / normalLength
-            wallPoints.append(SIMD2(point.x, point.z))
-            wallNormalAngles.append(atan2(unitNormal.y, unitNormal.x))
-        }
-
-        guard wallPoints.count >= 32,
-              let yaw = dominantManhattanYaw(from: wallNormalAngles) else {
-            return nil
-        }
-
-        let cosYaw = cos(-yaw)
-        let sinYaw = sin(-yaw)
-        var rotatedX: [Float] = []
-        var rotatedZ: [Float] = []
-        rotatedX.reserveCapacity(wallPoints.count)
-        rotatedZ.reserveCapacity(wallPoints.count)
-
-        for point in wallPoints {
-            let x = cosYaw * point.x - sinYaw * point.y
-            let z = sinYaw * point.x + cosYaw * point.y
-            rotatedX.append(x)
-            rotatedZ.append(z)
-        }
-
-        guard let xExtent = wallAxisExtent(values: rotatedX, requireTwoSides: true),
-              let zExtent = wallAxisExtent(values: rotatedZ, requireTwoSides: false) else {
-            return nil
-        }
-        guard (0.6...20.0).contains(xExtent.extent),
-              (0.6...20.0).contains(zExtent.extent),
-              max(xExtent.extent, zExtent.extent) / max(min(xExtent.extent, zExtent.extent), 0.01) <= 10 else {
-            return nil
-        }
-
-        return FloorPlanMeasurement(
-            width: xExtent.extent,
-            depth: zExtent.extent,
-            yawRadians: yaw,
-            widthSupport: xExtent.support,
-            depthSupport: zExtent.support
-        )
-    }
-
-    private static func dominantManhattanYaw(from angles: [Float]) -> Float? {
-        guard angles.count >= 16 else { return nil }
-        let period = Float.pi / 2.0
-        let binCount = 36
-        var bins = [Int](repeating: 0, count: binCount)
-        for angle in angles where angle.isFinite {
-            var normalized = angle.truncatingRemainder(dividingBy: period)
-            if normalized < 0 { normalized += period }
-            let index = min(max(Int((normalized / period) * Float(binCount)), 0), binCount - 1)
-            bins[index] += 1
-        }
-        guard let maxCount = bins.max(), maxCount >= max(8, angles.count / 6),
-              let bestIndex = bins.firstIndex(of: maxCount) else {
-            return nil
-        }
-        return (Float(bestIndex) + 0.5) * period / Float(binCount)
-    }
-
-    private static func wallAxisExtent(values: [Float], requireTwoSides: Bool) -> (extent: Float, support: Int)? {
-        let valid = values.filter { $0.isFinite }.sorted()
-        guard valid.count >= 24,
-              let minValue = percentile(sorted: valid, fraction: 0.02),
-              let maxValue = percentile(sorted: valid, fraction: 0.98),
-              maxValue > minValue else {
-            return nil
-        }
-
-        let binSize: Float = 0.05
-        let binCount = min(max(Int(ceil((maxValue - minValue) / binSize)) + 1, 8), 512)
-        var bins = [Int](repeating: 0, count: binCount)
-        for value in valid where value >= minValue && value <= maxValue {
-            let index = min(max(Int(floor((value - minValue) / binSize)), 0), binCount - 1)
-            bins[index] += 1
-        }
-        let smoothed = bins.indices.map { index in
-            let start = max(0, index - 1)
-            let end = min(binCount - 1, index + 1)
-            return bins[start...end].reduce(0, +)
-        }
-        let nonZeroBins = smoothed.filter { $0 > 0 }.sorted()
-        guard !nonZeroBins.isEmpty else { return nil }
-        let medianBinCount = nonZeroBins[nonZeroBins.count / 2]
-        let threshold = max(8, max(Int(Float(valid.count) * 0.03), medianBinCount * 2))
-        let peakIndices = smoothed.indices.filter { smoothed[$0] >= threshold }
-        guard let firstPeak = peakIndices.first, let lastPeak = peakIndices.last else { return nil }
-
-        if requireTwoSides {
-            guard lastPeak > firstPeak else { return nil }
-        }
-
-        let low = minValue + (Float(firstPeak) + 0.5) * binSize
-        let high = minValue + (Float(lastPeak) + 0.5) * binSize
-        let extent: Float
-        if requireTwoSides {
-            extent = abs(high - low)
-        } else {
-            // Depth is distance to the far supported wall when the near wall is not visible.
-            extent = max(abs(high), abs(high - low))
-        }
-        let support = smoothed[firstPeak] + (lastPeak == firstPeak ? 0 : smoothed[lastPeak])
-        guard extent.isFinite, extent > 0 else { return nil }
-        return (extent, support)
-    }
-
-    private static func floorCeilingPeakHeight(from heights: [Float]) -> FloorCeilingPeakMeasurement? {
-        var valid = heights.filter { $0.isFinite }
-        guard valid.count >= 64 else { return nil }
-        valid.sort()
-        let robustMin = percentile(sorted: valid, fraction: 0.02) ?? valid.first
-        let robustMax = percentile(sorted: valid, fraction: 0.98) ?? valid.last
-        guard let minY = robustMin, let maxY = robustMax, maxY > minY else { return nil }
-
-        let binSize: Float = 0.02
-        let binCount = min(max(Int(ceil((maxY - minY) / binSize)) + 1, 8), 512)
-        var bins = [Int](repeating: 0, count: binCount)
-        for value in valid {
-            guard value >= minY, value <= maxY else { continue }
-            let index = min(max(Int(floor((value - minY) / binSize)), 0), binCount - 1)
-            bins[index] += 1
-        }
-
-        let smoothed = bins.indices.map { index in
-            let start = max(0, index - 1)
-            let end = min(binCount - 1, index + 1)
-            return bins[start...end].reduce(0, +)
-        }
-        let nonZeroBins = smoothed.filter { $0 > 0 }.sorted()
-        guard !nonZeroBins.isEmpty else { return nil }
-        let medianBinCount = nonZeroBins[nonZeroBins.count / 2]
-        let minimumPeakCount = max(12, Int(Float(valid.count) * 0.04))
-        let minimumProminentCount = max(minimumPeakCount, medianBinCount * 2)
-
-        func bestPeak(in range: Range<Int>) -> (index: Int, count: Int)? {
-            guard !range.isEmpty else { return nil }
-            var bestIndex = range.lowerBound
-            var bestCount = -1
-            for index in range {
-                let count = smoothed[index]
-                if count > bestCount {
-                    bestIndex = index
-                    bestCount = count
-                }
-            }
-            guard bestCount >= minimumProminentCount else { return nil }
-            return (bestIndex, bestCount)
-        }
-
-        // Split by height value, not by sample count. That keeps wall continuums from defining the endpoints.
-        let lowerEnd = max(1, Int(Float(binCount) * 0.45))
-        let upperStart = min(binCount - 1, Int(Float(binCount) * 0.55))
-        guard let lowerPeak = bestPeak(in: 0..<lowerEnd),
-              let upperPeak = bestPeak(in: upperStart..<binCount) else {
-            logDebug(
-                "[DepthAnythingRoom][GravityHeight] peak_guard_failed " +
-                "samples=\(valid.count) bins=\(binCount) min_peak=\(minimumProminentCount) median_bin=\(medianBinCount)"
-            )
-            return nil
-        }
-
-        let lowerY = minY + (Float(lowerPeak.index) + 0.5) * binSize
-        let upperY = minY + (Float(upperPeak.index) + 0.5) * binSize
-        let height = abs(upperY - lowerY)
-        guard height.isFinite, (1.8...4.0).contains(height) else {
-            logDebug(
-                "[DepthAnythingRoom][GravityHeight] peak_height_rejected " +
-                "height=\(String(format: "%.4f", height)) lower_count=\(lowerPeak.count) upper_count=\(upperPeak.count)"
-            )
-            return nil
-        }
-
-        // Semantics are convention-independent here: the lower/upper peaks may be ceiling/floor depending on Y sign.
-        return FloorCeilingPeakMeasurement(
-            floorY: max(lowerY, upperY),
-            ceilingY: min(lowerY, upperY),
-            height: height,
-            floorCount: upperY >= lowerY ? upperPeak.count : lowerPeak.count,
-            ceilingCount: upperY >= lowerY ? lowerPeak.count : upperPeak.count,
-            binSize: binSize
-        )
-    }
-
     private static func unprojectCameraPoint(
         column: Float,
         row: Float,
@@ -1648,56 +1061,6 @@ final class DepthAnythingRoomReconstructor {
             (row - centerY) * depth / fy,
             depth
         )
-    }
-
-    /// Distance from camera (origin) to floor along GeoCalib gravity — hand-held height anchor input.
-    private static func measureCameraHeightAboveFloor(
-        depthMap: [[Float]],
-        imageWidth: Int,
-        imageHeight: Int,
-        fx: Float,
-        fy: Float,
-        rollRadians: Float,
-        pitchRadians: Float
-    ) -> Float? {
-        guard imageWidth > 1, imageHeight > 1, fx > 1, fy > 1 else { return nil }
-
-        let gravity = GeoCalibCalibrationResult.gravityVector(
-            rollRadians: rollRadians,
-            pitchRadians: pitchRadians
-        )
-        let centerX = Float(imageWidth - 1) * 0.5
-        let centerY = Float(imageHeight - 1) * 0.5
-        let floorRowStart = Int(Float(imageHeight) * 0.55)
-        var floorDots: [Float] = []
-        floorDots.reserveCapacity((imageHeight - floorRowStart) * (imageWidth / 4))
-
-        for row in floorRowStart..<imageHeight {
-            var column = 0
-            while column < imageWidth {
-                let depth = depthMap[row][column]
-                if depth.isFinite, depth > 0 {
-                    let cameraPoint = unprojectCameraPoint(
-                        column: Float(column),
-                        row: Float(row),
-                        depth: depth,
-                        fx: fx,
-                        fy: fy,
-                        centerX: centerX,
-                        centerY: centerY
-                    )
-                    // GeoCalib's vector is the leveling/up reference; camera height needs physical down.
-                    floorDots.append(-simd_dot(cameraPoint, gravity))
-                }
-                column += 4
-            }
-        }
-
-        guard floorDots.count >= 16 else { return nil }
-        floorDots.sort()
-        let floorDot = floorDots[Int(Float(floorDots.count) * 0.90)]
-        guard floorDot.isFinite, floorDot > 0.45, floorDot < 3.0 else { return nil }
-        return floorDot
     }
 
     private struct ObjectBBoxMeasurement {
@@ -1717,7 +1080,6 @@ final class DepthAnythingRoomReconstructor {
         let anchorClassIdx: Int?
         let anchorExpectedHeightMeters: Float?
         let anchorMeasuredHeightMeters: Float?
-        let cameraHeightRawMeters: Float?
     }
 
     private static func measureObjectBBox(
@@ -1816,31 +1178,13 @@ final class DepthAnythingRoomReconstructor {
         cameraMetadata: [String: Double]?,
         imageWidth: Int,
         imageHeight: Int,
-        fx: Float,
-        rawObjectMeasurement: ObjectBBoxMeasurement?,
-        rawDepthMap: [[Float]],
-        geoCalib: GeoCalibCalibrationResult?
+        rawObjectMeasurement: ObjectBBoxMeasurement?
     ) -> DepthMetricCalibration {
         let exifFocalPx = exifFocalPixels(from: cameraMetadata, imageWidth: imageWidth, imageHeight: imageHeight)
         var focalPx = geoFocalPx
         var depthScale: Float = 1.0
         var sourceLabel = "unchanged"
         var sourceCode = 0
-
-        let cameraHeightRawMeters: Float? = geoCalib.flatMap { geo in
-            measureCameraHeightAboveFloor(
-                depthMap: rawDepthMap,
-                imageWidth: imageWidth,
-                imageHeight: imageHeight,
-                fx: fx,
-                fy: fx,
-                rollRadians: geo.rollRadians,
-                pitchRadians: geo.pitchRadians
-            )
-        }
-        let cameraHeightDepthScale: Float? = cameraHeightRawMeters.map {
-            (expectedHandHeldCameraHeightMeters / $0).clamped(to: depthMetricScaleRange)
-        }
 
         let anchorClassIdx = rawObjectMeasurement?.classIdx
         let anchorExpectedHeight = anchorClassIdx.flatMap { objectAnchorHeightMeters[$0] }
@@ -1855,7 +1199,6 @@ final class DepthAnythingRoomReconstructor {
         }()
 
         if let exifFocalPx, exifFocalPx > 1 {
-            focalPx = exifFocalPx
             let focalRatio = geoFocalPx / exifFocalPx
             if geoExifFocalMatchRatioRange.contains(focalRatio) {
                 if let anchorDepthScale {
@@ -1863,10 +1206,11 @@ final class DepthAnythingRoomReconstructor {
                     sourceLabel = "depth_anchor_exif_confirms_focal"
                     sourceCode = 1
                 } else {
-                    sourceLabel = "exif_focal_trusted_no_object_anchor"
+                    sourceLabel = "exif_confirms_focal_no_anchor"
                     sourceCode = 2
                 }
             } else if exifFocalPx > geoFocalPx * geoExifFocalMatchRatioRange.upperBound {
+                focalPx = exifFocalPx
                 sourceLabel = "exif_focal_override"
                 sourceCode = 3
             } else if let anchorDepthScale {
@@ -1880,18 +1224,6 @@ final class DepthAnythingRoomReconstructor {
             sourceCode = 5
         }
 
-        if anchorDepthScale == nil, abs(depthScale - 1.0) < 1e-4 {
-            if let cameraHeightDepthScale {
-                depthScale = cameraHeightDepthScale
-                sourceLabel = "camera_height_gravity"
-                sourceCode = 7
-            } else {
-                depthScale = noAnchorDefaultDepthScale.clamped(to: depthMetricScaleRange)
-                sourceLabel = "no_anchor_default_depth_scale"
-                sourceCode = 6
-            }
-        }
-
         return DepthMetricCalibration(
             depthScale: depthScale,
             focalPx: focalPx,
@@ -1901,8 +1233,7 @@ final class DepthAnythingRoomReconstructor {
             sourceCode: sourceCode,
             anchorClassIdx: anchorClassIdx,
             anchorExpectedHeightMeters: anchorExpectedHeight,
-            anchorMeasuredHeightMeters: anchorMeasuredHeight,
-            cameraHeightRawMeters: cameraHeightRawMeters
+            anchorMeasuredHeightMeters: anchorMeasuredHeight
         )
     }
 
