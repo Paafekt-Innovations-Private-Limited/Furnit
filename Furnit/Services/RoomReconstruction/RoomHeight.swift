@@ -4,8 +4,19 @@ struct RoomHeightResult {
     let height: Float
     let confidence: Float
     let approximate: Bool
+    let vFloor: Float?
+    let vCeil: Float?
+    let vHorizon: Float?
+    let normalSign: Float
     let debug: String
     let selfCheckDebug: String
+}
+
+struct RoomWidthResult {
+    let width: Float
+    let confidence: Float
+    let approximate: Bool
+    let debug: String
 }
 
 enum RoomHeight {
@@ -55,6 +66,10 @@ enum RoomHeight {
             height: 0,
             confidence: 0.2,
             approximate: true,
+            vFloor: nil,
+            vCeil: nil,
+            vHorizon: nil,
+            normalSign: 1,
             debug: "height_unavailable",
             selfCheckDebug: "ok=false no_variants"
         )
@@ -98,6 +113,10 @@ enum RoomHeight {
                 height: 0,
                 confidence: 0.2,
                 approximate: true,
+                vFloor: nil,
+                vCeil: nil,
+                vHorizon: horizonRow,
+                normalSign: normalSign,
                 debug: "junctions_missing f=\(floorRows.count) c=\(ceilingRows.count) \(variantLabel)",
                 selfCheckDebug: "vCeil=nan vHorizon=\(horizonRow) vFloor=nan ok=false \(variantLabel)"
             )
@@ -122,6 +141,10 @@ enum RoomHeight {
                 height: 0,
                 confidence: 0.2,
                 approximate: true,
+                vFloor: floorRow,
+                vCeil: ceilingRow,
+                vHorizon: horizonRow,
+                normalSign: normalSign,
                 debug: String(
                     format: "bad_angles a=%.3f b=%.3f vH=%.1f vF=%.1f vC=%.1f %@",
                     alpha,
@@ -164,6 +187,10 @@ enum RoomHeight {
             height: roomHeight,
             confidence: confidence,
             approximate: confidence < 0.7,
+            vFloor: floorRow,
+            vCeil: ceilingRow,
+            vHorizon: horizonRow,
+            normalSign: normalSign,
             debug: debug,
             selfCheckDebug: selfCheck
         )
@@ -285,5 +312,125 @@ enum RoomHeight {
             }
         }
         return lastCeiling >= 0 ? Float(lastCeiling) : nil
+    }
+
+    static func roomWidthSingleView(
+        depth: [Float],
+        width: Int,
+        height: Int,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        rotation: simd_float3x3,
+        vFloor: Float?,
+        vHorizon: Float?,
+        vCeil: Float?,
+        normalSign: Float,
+        cameraHeight: Float = 1.60
+    ) -> RoomWidthResult {
+        guard let vFloor,
+              let vHorizon,
+              let vCeil,
+              vFloor > vHorizon,
+              vFloor > vCeil else {
+            return RoomWidthResult(width: 0, confidence: 0.2, approximate: true, debug: "junctions_missing")
+        }
+
+        let backWall = backWallPixelWidth(
+            depth: depth,
+            width: width,
+            height: height,
+            fx: fx,
+            fy: fy,
+            cx: cx,
+            cy: cy,
+            rotation: rotation,
+            vFloor: vFloor,
+            vCeil: vCeil,
+            normalSign: normalSign
+        )
+        let denominator = vFloor - vHorizon
+        guard backWall.span > 0, denominator > 1 else {
+            return RoomWidthResult(
+                width: 0,
+                confidence: 0.2,
+                approximate: true,
+                debug: "backwall_missing count=\(backWall.count) denom=\(Int(denominator))"
+            )
+        }
+
+        let clampedCameraHeight = min(1.75, max(1.55, cameraHeight))
+        var roomWidth = backWall.span * clampedCameraHeight / denominator
+        var confidence: Float = backWall.count > 2_000 ? 0.8 : 0.5
+        if !(1.0...12.0).contains(roomWidth) {
+            confidence = 0.3
+        }
+        roomWidth = min(12.0, max(1.0, roomWidth))
+        return RoomWidthResult(
+            width: roomWidth,
+            confidence: confidence,
+            approximate: confidence < 0.7,
+            debug: String(
+                format: "W=%.3f span=%dpx xL=%d xR=%d count=%d denom=%d",
+                roomWidth,
+                Int(backWall.span),
+                backWall.xLeft,
+                backWall.xRight,
+                backWall.count,
+                Int(denominator)
+            )
+        )
+    }
+
+    private static func backWallPixelWidth(
+        depth: [Float],
+        width: Int,
+        height: Int,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        rotation: simd_float3x3,
+        vFloor: Float,
+        vCeil: Float,
+        normalSign: Float
+    ) -> (span: Float, count: Int, xLeft: Int, xRight: Int) {
+        let view = rotation * SIMD3<Float>(0, 0, 1)
+        let viewHorizontal = SIMD2<Float>(view.x, view.z)
+        let viewLength = simd_length(viewHorizontal)
+        guard viewLength > 1e-4 else { return (0, 0, 0, 0) }
+        let viewDirection = viewHorizontal / viewLength
+
+        func isBackWall(_ normal: SIMD3<Float>) -> Bool {
+            let horizontal = SIMD2<Float>(normal.x, normal.z)
+            let length = simd_length(horizontal)
+            if length < 0.3 { return false }
+            return abs(simd_dot(horizontal / length, viewDirection)) > 0.7
+        }
+
+        let yTop = Int(vCeil + (vFloor - vCeil) * 0.35)
+        let yBottom = Int(vCeil + (vFloor - vCeil) * 0.65)
+        let minY = max(1, min(height - 2, yTop))
+        let maxY = max(1, min(height - 2, yBottom))
+        guard minY <= maxY else { return (0, 0, 0, 0) }
+
+        var xs: [Int] = []
+        xs.reserveCapacity((maxY - minY + 1) * width / 2)
+        for y in minY...maxY {
+            for x in 1..<(width - 1) {
+                guard let normal = worldNormal(depth, width, height, x, y, fx, fy, cx, cy, rotation, normalSign) else { continue }
+                if isBackWall(normal) {
+                    xs.append(x)
+                }
+            }
+        }
+        guard xs.count > 200 else { return (0, xs.count, 0, 0) }
+        xs.sort()
+        let leftIndex = min(xs.count - 1, max(0, Int(Double(xs.count - 1) * 0.025)))
+        let rightIndex = min(xs.count - 1, max(0, Int(Double(xs.count - 1) * 0.975)))
+        let xLeft = xs[leftIndex]
+        let xRight = xs[rightIndex]
+        return (Float(xRight - xLeft), xs.count, xLeft, xRight)
     }
 }
