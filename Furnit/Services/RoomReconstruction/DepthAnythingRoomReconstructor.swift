@@ -250,6 +250,7 @@ final class DepthAnythingRoomReconstructor {
             imageWidth: imageWidth,
             imageHeight: imageHeight,
             trustedFocal: focal,
+            trustCaptureFocal: Self.hasARKitCaptureMetadata(calibrationMetadata),
             fallbackFx: focalPx,
             fallbackFy: focalPx
         )
@@ -280,9 +281,9 @@ final class DepthAnythingRoomReconstructor {
         enrichedCalibrationMetadata["measurementFocalLengthYPx"] = Double(measurementFocal.fy)
         // 0 = fallback metric focal, 1 = geocalib CNN, 2 = trusted sidecar/EXIF capture intrinsics.
         let measurementFocalSourceCode: Double
-        if measurementFocal.source == "geocalib" {
+        if measurementFocal.source == "geocalib" || measurementFocal.source == "geocalib_clamped" || measurementFocal.source == "vp" {
             measurementFocalSourceCode = 1
-        } else if measurementFocal.source == "fallback_metric_focal" {
+        } else if measurementFocal.source == "fallback_metric_focal" || measurementFocal.source == "default_70deg" {
             measurementFocalSourceCode = 0
         } else {
             measurementFocalSourceCode = 2
@@ -351,6 +352,69 @@ final class DepthAnythingRoomReconstructor {
             levelingRotation: measurementCalibration.levelingRotation,
             cameraHeightPriorMeters: measurementCalibration.cameraHeightPriorMeters
         ) ?? wallMeasured
+        let rawDepthFlat = Self.flattenDepthMap(depthMap)
+        let depthMask = RoomExtent.buildInvalidDepthMask(
+            depth: rawDepthFlat,
+            width: imageWidth,
+            height: imageHeight,
+            detections: objectRect.map {
+                [(
+                    cls: $0.classIdx,
+                    box: (x0: $0.leftX, y0: $0.topY, x1: $0.rightX, y1: $0.bottomY),
+                    conf: $0.confidence
+                )]
+            } ?? [],
+            focalPx: measurementFocal.fx,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5
+        )
+        logDebug("[DepthMask] \(depthMask.debug)")
+        let roomExtentPoints = RoomExtent.unprojectLeveled(
+            depth: rawDepthFlat,
+            width: imageWidth,
+            height: imageHeight,
+            valid: depthMask.valid,
+            focalPx: measurementFocal.fx,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5,
+            gravity: measurementCalibration.levelingRotation,
+            stride: 2
+        )
+        let roomExtentMeasured = RoomExtent.roomExtentFromWalls(
+            points: roomExtentPoints,
+            scale: measurementCalibration.depthScale,
+            cameraHeight: measurementCalibration.cameraHeightPriorMeters
+        )
+        logDebug(
+            "[RoomExtent] \(roomExtentMeasured.debug) " +
+            "conf=\(String(format: "%.2f", roomExtentMeasured.confidence)) " +
+            "approx=\(roomExtentMeasured.approximate)"
+        )
+        let importedCameraHeightForSingleView: Float = measurementCalibration.cameraHeightPriorSourceCode == 1
+            ? measurementCalibration.cameraHeightPriorMeters
+            : 1.60
+        let gravityPitchForHeight = Self.measurementPitchRadians(
+            geoCalib: geoCalibCalibration,
+            gravitySourceCode: measurementCalibration.gravitySourceCode
+        )
+        let roomHeightMeasured = RoomHeight.roomHeightSingleView(
+            depth: rawDepthFlat,
+            width: imageWidth,
+            height: imageHeight,
+            fx: measurementFocal.fx,
+            fy: measurementFocal.fy,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5,
+            pitch: gravityPitchForHeight,
+            rotation: measurementCalibration.levelingRotation,
+            cameraHeight: importedCameraHeightForSingleView
+        )
+        logDebug("[HeightSelfCheck] \(roomHeightMeasured.selfCheckDebug)")
+        logDebug(
+            "[RoomHeight] \(roomHeightMeasured.debug) " +
+            "conf=\(String(format: "%.2f", roomHeightMeasured.confidence)) " +
+            "approx=\(roomHeightMeasured.approximate)"
+        )
         // Same detection, calibrated depth — RTMDet does not need to run again.
         let objectMeasured = Self.measureObjectBBox(
             objectRect: objectRect,
@@ -358,11 +422,16 @@ final class DepthAnythingRoomReconstructor {
             fx: focalPx,
             fy: focalPx
         )
-        // Depth-unprojected spread is the room estimate; wall rect is frustum-at-center-depth only.
-        let measured = Self.sanitizeRoomMeasurement(
-            depthSpreadMeasured,
-            wallFallback: wallMeasured
-        )
+        let authoritativeHeight = roomHeightMeasured.confidence >= 0.5
+            ? roomHeightMeasured.height
+            : min(3.6, max(2.0, roomExtentMeasured.height))
+        let measured = roomExtentMeasured.width > 0 && roomExtentMeasured.height > 0 && roomExtentMeasured.depth > 0
+            ? (width: roomExtentMeasured.width, height: authoritativeHeight, depth: roomExtentMeasured.depth)
+            : Self.sanitizeRoomMeasurement(depthSpreadMeasured, wallFallback: wallMeasured)
+        enrichedCalibrationMetadata["roomExtentConfidence"] = Double(roomExtentMeasured.confidence)
+        enrichedCalibrationMetadata["roomExtentApproximate"] = roomExtentMeasured.approximate ? 1 : 0
+        enrichedCalibrationMetadata["singleViewHeightConfidence"] = Double(roomHeightMeasured.confidence)
+        enrichedCalibrationMetadata["singleViewHeightApproximate"] = roomHeightMeasured.approximate ? 1 : 0
         let rect = Self.measureWallSampleRect(imageWidth: imageWidth, imageHeight: imageHeight, wallMargin: wallMargin)
         let rectWidthPixels = max(0, rect.rightX - rect.leftX)
         let rectHeightPixels = max(0, rect.bottomY - rect.topY)
@@ -397,16 +466,18 @@ final class DepthAnythingRoomReconstructor {
             "wall_width_formula=\(wallWidthFormula) wall_height_formula=\(wallHeightFormula) " +
             "wall_dims_m=W:\(String(format: "%.4f", wallMeasured.width)),H:\(String(format: "%.4f", wallMeasured.height)),D:\(String(format: "%.4f", wallMeasured.depth)) " +
             "depth_spread_dims_m=W:\(String(format: "%.4f", depthSpreadMeasured.width)),H:\(String(format: "%.4f", depthSpreadMeasured.height)),D:\(String(format: "%.4f", depthSpreadMeasured.depth)) " +
+            "room_extent_dims_m=W:\(String(format: "%.4f", roomExtentMeasured.width)),H:\(String(format: "%.4f", roomExtentMeasured.height)),D:\(String(format: "%.4f", roomExtentMeasured.depth)),conf:\(String(format: "%.2f", roomExtentMeasured.confidence)),approx:\(roomExtentMeasured.approximate) " +
+            "single_view_height_m=H:\(String(format: "%.4f", roomHeightMeasured.height)),conf:\(String(format: "%.2f", roomHeightMeasured.confidence)),approx:\(roomHeightMeasured.approximate) " +
             "object_bbox_dims_raw_m=\(rawObjectDimsSummary) object_bbox_dims_m=\(objectDimsSummary) " +
             "depth_metric_scale=\(String(format: "%.4f", metricCalibration.depthScale)) " +
             "measurement_depth_scale=\(String(format: "%.4f", measurementCalibration.depthScale)) " +
             "measurement_source=\(measurementCalibration.sourceLabel) " +
             "depth_metric_source=\(metricCalibration.sourceLabel) " +
-            "result_dims_source=leveled_wall_spread_wd_ceiling_anchored_h_camera_height_1.7m " +
+            "result_dims_source=room_extent_wd_single_view_height " +
             "result_dims_m=W:\(String(format: "%.4f", measured.width)),H:\(String(format: "%.4f", measured.height)),D:\(String(format: "%.4f", measured.depth))"
         )
         logDebug(
-            "[DepthAnythingRoom] depth_spread image=\(imageWidth)x\(imageHeight) " +
+            "[DepthAnythingRoom] room_extent_wd_single_view_height image=\(imageWidth)x\(imageHeight) " +
             "focal_px=\(String(format: "%.1f", focalPx)) " +
             "W=\(String(format: "%.3f", measured.width)) " +
             "H=\(String(format: "%.3f", measured.height)) " +
@@ -415,10 +486,10 @@ final class DepthAnythingRoomReconstructor {
         let meshRoomWidthMeters = max(measured.width, Self.minimumRoomWidthMeters)
         let meshRoomHeightMeters = max(measured.height, Self.minimumRoomWidthMeters * Float(imageHeight) / Float(max(imageWidth, 1)))
         logDebug(
-            "[DepthAnythingRoom][MeshScale] source=depth_spread_dims " +
+            "[DepthAnythingRoom][MeshScale] source=room_extent_dims " +
             "mesh_width_m=\(String(format: "%.4f", meshRoomWidthMeters)) " +
             "mesh_height_m=\(String(format: "%.4f", meshRoomHeightMeters)) " +
-            "result_dims_source=depth_unprojected_spread"
+            "result_dims_source=room_extent_wd_single_view_height"
         )
         let measurementEnd = CFAbsoluteTimeGetCurrent()
         let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(calibratedDepthMap) : calibratedDepthMap
@@ -1361,28 +1432,26 @@ final class DepthAnythingRoomReconstructor {
         imageWidth: Int,
         imageHeight: Int,
         trustedFocal: (fx: Float, fy: Float, focal35mm: Float, source: String)?,
+        trustCaptureFocal: Bool,
         fallbackFx: Float,
         fallbackFy: Float
     ) -> (fx: Float, fy: Float, source: String) {
-        // In-app captures carry real intrinsics (sidecar/ARKit/EXIF); those beat the
-        // on-device mini GeoCalib CNN, which desktop Python only used because WhatsApp
-        // imports have no EXIF. Prefer trusted capture focal; GeoCalib is the fallback.
+        // Imported photos often carry stripped or misleading EXIF/35mm focal values.
+        // Only ARKit capture intrinsics bypass the EXIF-free geometric resolver.
         if let trustedFocal,
-           trustedFocal.source == "exif" || trustedFocal.source.hasPrefix("sidecar"),
+           trustCaptureFocal,
+           trustedFocal.source.hasPrefix("sidecar_focal_px"),
            trustedFocal.fx.isFinite, trustedFocal.fx > 1 {
             return (trustedFocal.fx, trustedFocal.fy, trustedFocal.source)
         }
-        // Python parity: geocalib focal is square (fx == fy) in source-image pixels.
-        // Rescale uniformly, and reject implausible values (CNN misfires).
-        if let geoCalib, geoCalib.sourceWidth > 0 {
-            let uniformScale = Float(imageWidth) / Float(max(geoCalib.sourceWidth, 1))
-            let focal = geoCalib.focalLengthXPixels * uniformScale
-            let heightRatio = focal / Float(max(imageHeight, 1))
-            if focal.isFinite, focal > 1, measurementFocalHeightRatioRange.contains(heightRatio) {
-                return (focal, focal, "geocalib")
-            }
-        }
-        return (fallbackFx, fallbackFy, "fallback_metric_focal")
+
+        let resolved = FocalResolver.resolve(
+            vpFocalPx: nil,
+            geoCalib: geoCalib,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        )
+        return (resolved.fx, resolved.fy, resolved.source)
     }
 
     private static func sanitizeRoomMeasurement(
@@ -1581,6 +1650,25 @@ final class DepthAnythingRoomReconstructor {
             return nil
         }
         return simd_normalize(vector)
+    }
+
+    private static func hasARKitCaptureMetadata(_ metadata: [String: Double]?) -> Bool {
+        guard let metadata else { return false }
+        return metadata["arkitCameraHeightM"] != nil ||
+            metadata["arkitGravityDownImageX"] != nil ||
+            metadata["arkitFocalLengthXPx"] != nil
+    }
+
+    private static func measurementPitchRadians(
+        geoCalib: GeoCalibCalibrationResult?,
+        gravitySourceCode: Int
+    ) -> Float {
+        guard let geoCalib,
+              gravitySourceCode == 1,
+              abs(geoCalib.pitchRadians) <= maxPlausiblePitchRadians else {
+            return 0
+        }
+        return geoCalib.pitchRadians
     }
 
     /// Python parity (`camera_height_from_floor_samples` in scripts/structure_box_measure_room.py):
@@ -1877,6 +1965,15 @@ final class DepthAnythingRoomReconstructor {
                 depth.isFinite && depth > 0 ? depth * scale : depth
             }
         }
+    }
+
+    private static func flattenDepthMap(_ depthMap: [[Float]]) -> [Float] {
+        var flattened: [Float] = []
+        flattened.reserveCapacity(depthMap.reduce(0) { $0 + $1.count })
+        for row in depthMap {
+            flattened.append(contentsOf: row)
+        }
+        return flattened
     }
 
     private static func selectMeasurementObjectBBox(

@@ -47,6 +47,9 @@ MIN_CEILING_CLEARANCE_M = 0.3
 CEILING_ANCHORED_HEIGHT_RANGE = (1.9, 4.2)
 PLAUSIBLE_ROOM_SPAN = (1.2, 8.0)
 FALLBACK_FOCAL_35MM = 28.0
+MIN_HFOV_DEG = 55.0
+MAX_HFOV_DEG = 88.0
+DEFAULT_HFOV_DEG = 70.0
 # Rejected candidate fix (kept for reference): flattening the observed floor band to
 # cancel residual pitch made all dims worse on the living room (DA depth error is not
 # a pure rotation) and mis-fires on rooms where the bottom band is not floor.
@@ -144,6 +147,23 @@ def working_image(image: Image.Image) -> Image.Image:
         return image
     scale = MAX_WORKING_DIMENSION / longest
     return image.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.Resampling.BILINEAR)
+
+
+def focal_from_hfov(width: int, hfov_deg: float) -> float:
+    return (width * 0.5) / np.tan(np.radians(hfov_deg * 0.5))
+
+
+def hfov_from_focal(width: int, focal_px: float) -> float:
+    return float(np.degrees(2 * np.arctan((width * 0.5) / max(focal_px, 1e-6))))
+
+
+def resolve_focal(width: int, candidate_focal: float | None = None) -> tuple[float, str, bool]:
+    min_focal = focal_from_hfov(width, MAX_HFOV_DEG)
+    max_focal = focal_from_hfov(width, MIN_HFOV_DEG)
+    if candidate_focal is not None and np.isfinite(candidate_focal) and candidate_focal > 1:
+        clamped = float(np.clip(candidate_focal, min_focal, max_focal))
+        return clamped, "geocalib_clamped" if abs(clamped - candidate_focal) > 0.5 else "geocalib", abs(clamped - candidate_focal) > 0.5
+    return focal_from_hfov(width, DEFAULT_HFOV_DEG), "default_70deg", False
 
 
 def infer_depth(image: Image.Image) -> np.ndarray:
@@ -731,8 +751,10 @@ def run_case(image_path: str, focal_35mm: float | None, cache_name: str,
     f35 = focal_35mm or exif_f35 or FALLBACK_FOCAL_35MM
     work = working_image(image)
     w, h = work.size
-    fx = fy = (f35 / 36.0) * w
-    print(f"  working={w}x{h} f35={f35}mm -> f={fx:.1f}px")
+    fx, focal_source, focal_clamped = resolve_focal(w)
+    fy = fx
+    print(f"  working={w}x{h} EXIF ignored -> f={fx:.1f}px source={focal_source} "
+          f"hFOV={hfov_from_focal(w, fx):.1f} clamped={focal_clamped}")
 
     depth = infer_depth(work)
     roll, pitch = geocalib_roll_pitch(work)
