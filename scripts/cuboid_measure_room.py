@@ -53,7 +53,7 @@ def parse_args():
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--rtmdet-model", type=Path, default=DEFAULT_RTMDET)
     parser.add_argument("--no-rtmdet", action="store_true", help="Skip RTMDet furniture masking.")
-    parser.add_argument("--camera-height-prior", type=float, default=1.40)
+    parser.add_argument("--camera-height-prior", type=float, default=1.70)
     parser.add_argument("--region-inset-px", type=int, default=12)
     parser.add_argument("--max-samples-per-region", type=int, default=2500)
     parser.add_argument("--score-thr", type=float, default=0.10)

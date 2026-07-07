@@ -129,16 +129,23 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
             "source=\(sourceWidth)x\(sourceHeight)"
         )
 
-        guard let optimized = GeoCalibLMSolver.solve(fields: fields) else {
-            logDebug("[GeoCalib][LM] unavailable reason=optimizer_failed")
-            return nil
-        }
-
+        // The CNN input is letterboxed with black padding; field values inside the padding are
+        // garbage and must not be fed to the solver (desktop GeoCalib never sees padding).
         let letterbox = ImageLetterboxLayout.layout(
             sourceWidth: sourceWidth,
             sourceHeight: sourceHeight,
             canvasSide: fields.width
         )
+        guard let optimized = GeoCalibLMSolver.solve(
+            fields: fields,
+            contentMinX: letterbox.offsetX,
+            contentMinY: letterbox.offsetY,
+            contentMaxX: letterbox.offsetX + letterbox.contentWidth - 1,
+            contentMaxY: letterbox.offsetY + letterbox.contentHeight - 1
+        ) else {
+            logDebug("[GeoCalib][LM] unavailable reason=optimizer_failed")
+            return nil
+        }
         let focalPx = optimized.focalPixels * letterbox.focalScaleToSource
 
         guard focalPx.isFinite, focalPx > 1 else {
@@ -190,7 +197,9 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
         let urls = Self.candidateModelURLs(baseNames: candidates, extensions: extensions)
 
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        // On the target device GeoCalib logs ANE compiler failures and then falls back,
+        // adding many seconds. Prefer CPU+GPU until VP gravity can replace GeoCalib.
+        config.computeUnits = .cpuAndGPU
 
         for sourceURL in urls {
             do {
@@ -201,7 +210,7 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
                 lock.lock()
                 cachedModel = model
                 lock.unlock()
-                logDebug("[GeoCalib][CNN] loaded model=\(sourceURL.lastPathComponent)")
+                logDebug("[GeoCalib][CNN] loaded model=\(sourceURL.lastPathComponent) compute=cpuAndGPU")
                 return model
             } catch {
                 logDebug("[GeoCalib][CNN] load_failed file=\(sourceURL.lastPathComponent) error=\(error.localizedDescription)")
@@ -292,18 +301,15 @@ final class GeoCalibCalibrationService: @unchecked Sendable {
 
         let ptr = array.dataPointer.assumingMemoryBound(to: Float.self)
         let planeSize = side * side
-        let mean = SIMD3<Float>(0.485, 0.456, 0.406)
-        let std = SIMD3<Float>(0.229, 0.224, 0.225)
+        // GeoCalib expects plain [0, 1] input (`numpy_image_to_torch`: image / 255).
+        // Do NOT apply ImageNet mean/std here — that collapses the perspective fields.
         for y in 0..<side {
             for x in 0..<side {
                 let pixelIndex = (y * side + x) * 4
                 let outIndex = y * side + x
-                let red = Float(pixels[pixelIndex]) / 255.0
-                let green = Float(pixels[pixelIndex + 1]) / 255.0
-                let blue = Float(pixels[pixelIndex + 2]) / 255.0
-                ptr[outIndex] = (red - mean.x) / std.x
-                ptr[planeSize + outIndex] = (green - mean.y) / std.y
-                ptr[2 * planeSize + outIndex] = (blue - mean.z) / std.z
+                ptr[outIndex] = Float(pixels[pixelIndex]) / 255.0
+                ptr[planeSize + outIndex] = Float(pixels[pixelIndex + 1]) / 255.0
+                ptr[2 * planeSize + outIndex] = Float(pixels[pixelIndex + 2]) / 255.0
             }
         }
         return array
@@ -429,8 +435,21 @@ enum GeoCalibLMSolver {
         var logFocal: Float
     }
 
-    static func solve(fields: Fields) -> Result? {
-        let samples = makeSamples(fields: fields, stride: 8)
+    static func solve(
+        fields: Fields,
+        contentMinX: Int = 0,
+        contentMinY: Int = 0,
+        contentMaxX: Int = .max,
+        contentMaxY: Int = .max
+    ) -> Result? {
+        let samples = makeSamples(
+            fields: fields,
+            stride: 8,
+            contentMinX: contentMinX,
+            contentMinY: contentMinY,
+            contentMaxX: contentMaxX,
+            contentMaxY: contentMaxY
+        )
         guard samples.count >= 64 else { return nil }
 
         let initialFocal = max(12, 0.7 * Float(max(fields.width, fields.height)))
@@ -485,13 +504,20 @@ enum GeoCalibLMSolver {
         )
     }
 
-    private static func makeSamples(fields: Fields, stride: Int) -> [Sample] {
+    private static func makeSamples(
+        fields: Fields,
+        stride: Int,
+        contentMinX: Int,
+        contentMinY: Int,
+        contentMaxX: Int,
+        contentMaxY: Int
+    ) -> [Sample] {
         var samples: [Sample] = []
         samples.reserveCapacity((fields.width / stride) * (fields.height / stride))
-        var y = stride / 2
-        while y < fields.height {
-            var x = stride / 2
-            while x < fields.width {
+        var y = max(stride / 2, contentMinY)
+        while y < min(fields.height, contentMaxY + 1) {
+            var x = max(stride / 2, contentMinX)
+            while x < min(fields.width, contentMaxX + 1) {
                 let i = y * fields.width + x
                 let ux = fields.upX[i]
                 let uy = fields.upY[i]

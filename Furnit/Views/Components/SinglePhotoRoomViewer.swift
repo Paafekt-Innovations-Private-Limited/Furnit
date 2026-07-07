@@ -879,6 +879,8 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let roomWidthMeters: Float
     let roomHeightMeters: Float
     let roomDepthMeters: Float
+    /// Debug-mode overlay: measurement calibration inputs (camera height, scale, focal source).
+    let measurementDebugLine: String?
 }
 
 /// Pre-save Depth Anything preview — matches SHARP ML navigation chrome (nav-bar save, name prompt, discard alert).
@@ -915,6 +917,21 @@ private struct DepthAnythingPreviewRoomView: View {
             )
             .environment(\.modelViewerSuppressBuiltInTopChrome, true)
             .environment(\.modelViewerExternalCameraReset, $shouldResetCamera)
+
+            if let debugLine = destination.measurementDebugLine,
+               AppStateManager.shared.qualitySettings.debugMode {
+                VStack {
+                    Spacer()
+                    Text(debugLine)
+                        .font(.caption2.monospaced())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.6), in: Capsule())
+                        .padding(.bottom, 96)
+                }
+                .allowsHitTesting(false)
+            }
 
             if isSavingRoom {
                 saveRoomProgressOverlay
@@ -1645,7 +1662,8 @@ struct SinglePhotoRoomView: View {
                         summary: result.summary,
                         roomWidthMeters: result.roomWidthMeters,
                         roomHeightMeters: result.roomHeightMeters,
-                        roomDepthMeters: result.roomDepthMeters
+                        roomDepthMeters: result.roomDepthMeters,
+                        measurementDebugLine: result.measurementDebugLine
                     )
                 }
             } catch {

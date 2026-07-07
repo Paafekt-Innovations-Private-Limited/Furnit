@@ -73,6 +73,9 @@ final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegat
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             config.frameSemantics.insert(.sceneDepth)
         }
+        // Floor detection: measures the real camera height so room scaling doesn't
+        // have to assume the 1.7 m eye-level prior.
+        config.planeDetection = [.horizontal]
         arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         CameraOwnershipDiagnostics.log(owner: "ARRoomPhotoCaptureViewController", event: "ar_session_run", details: "sceneDepth=\(ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth))")
     }
@@ -173,7 +176,65 @@ final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegat
         } else {
             out["arkitSceneDepthAvailable"] = 0.0
         }
+        if let gravityDown = gravityDownInFixedImageFrame(camera: cam) {
+            out["arkitGravityDownImageX"] = Double(gravityDown.x)
+            out["arkitGravityDownImageY"] = Double(gravityDown.y)
+            out["arkitGravityDownImageZ"] = Double(gravityDown.z)
+        }
+        if let cameraHeight = cameraHeightAboveFloor(frame: frame) {
+            out["arkitCameraHeightM"] = Double(cameraHeight)
+        }
         return out
+    }
+
+    /// Real camera height above the detected floor plane (ARKit world is gravity-aligned,
+    /// +Y up). Replaces the fixed 1.7 m eye-level prior when available. The floor is taken
+    /// as the lowest sizeable horizontal plane below the camera.
+    private static func cameraHeightAboveFloor(frame: ARFrame) -> Float? {
+        let cameraY = frame.camera.transform.columns.3.y
+        var floorY: Float?
+        for anchor in frame.anchors {
+            guard let plane = anchor as? ARPlaneAnchor, plane.alignment == .horizontal else { continue }
+            let planeY = (anchor.transform * SIMD4<Float>(plane.center.x, plane.center.y, plane.center.z, 1)).y
+            let extent = plane.planeExtent
+            // Ignore tiny surfaces (shelves, seats) — the floor is large and below the camera.
+            guard min(extent.width, extent.height) > 0.25, planeY < cameraY - 0.4 else { continue }
+            if floorY == nil || planeY < floorY! {
+                floorY = planeY
+            }
+        }
+        guard let floorY else { return nil }
+        let height = cameraY - floorY
+        guard height.isFinite, (0.5...2.5).contains(height) else { return nil }
+        return height
+    }
+
+    /// World-down direction expressed in the pixel frame of the **fixed-orientation** captured image
+    /// (pinhole convention: +X right, +Y down, +Z forward). ARKit world is gravity-aligned (+Y up),
+    /// so this is exact device gravity — used for leveling instead of the GeoCalib CNN estimate.
+    private static func gravityDownInFixedImageFrame(camera: ARCamera) -> SIMD3<Float>? {
+        let t = camera.transform
+        let rotation = simd_float3x3(
+            SIMD3(t.columns.0.x, t.columns.0.y, t.columns.0.z),
+            SIMD3(t.columns.1.x, t.columns.1.y, t.columns.1.z),
+            SIMD3(t.columns.2.x, t.columns.2.y, t.columns.2.z)
+        )
+        // World down in ARKit camera space (+X right, +Y up, +Z backward, landscape-right sensor).
+        let downCamera = simd_transpose(rotation) * SIMD3<Float>(0, -1, 0)
+        guard downCamera.x.isFinite, downCamera.y.isFinite, downCamera.z.isFinite else { return nil }
+        // ARKit camera space -> pinhole sensor frame (+X right, +Y down, +Z forward).
+        let downSensor = simd_normalize(SIMD3<Float>(downCamera.x, -downCamera.y, -downCamera.z))
+        // Apply the same rotation `fixedOrientation()` applies to the pixels.
+        switch uiImageOrientationForInterface() {
+        case .right: // sensor rotated 90° CW (portrait)
+            return SIMD3(-downSensor.y, downSensor.x, downSensor.z)
+        case .left: // 90° CCW (portrait upside down)
+            return SIMD3(downSensor.y, -downSensor.x, downSensor.z)
+        case .down: // 180°
+            return SIMD3(-downSensor.x, -downSensor.y, downSensor.z)
+        default: // .up, landscape-right: pixels match sensor
+            return downSensor
+        }
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {

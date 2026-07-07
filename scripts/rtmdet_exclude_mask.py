@@ -200,7 +200,7 @@ def build_rtmdet_exclude_mask(
         "detections": [],
     }
     exclude = np.zeros((height, width), dtype=bool)
-    if not model_path.is_file():
+    if not model_path.exists():
         meta["source"] = "model_missing"
         return exclude, meta
 

@@ -121,8 +121,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--camera-height-prior",
         type=float,
-        default=1.40,
-        help="Handheld camera-height prior used to rescale depth in prototype (default 1.40m).",
+        default=1.70,
+        help="Handheld camera-height prior used to rescale depth in prototype (default 1.70m).",
     )
     parser.add_argument(
         "--tile-grid-prototype",

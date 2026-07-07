@@ -103,7 +103,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--onnx", type=Path, default=DEFAULT_ONNX)
     parser.add_argument("--input-size", type=int, default=518)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
-    parser.add_argument("--camera-height-prior", type=float, default=1.40)
+    parser.add_argument("--camera-height-prior", type=float, default=1.70)
     parser.add_argument("--region-inset-px", type=int, default=12)
     parser.add_argument("--max-samples-per-region", type=int, default=2500)
     parser.add_argument("--score-thr", type=float, default=0.10, help="M-LSD score threshold.")
