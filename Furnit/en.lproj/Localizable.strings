@@ -55,6 +55,7 @@
 "home.noModels" = "No 3D Models Found";
 "home.noModelsDescription" = "Create your first room from a photo!";
 "home.createRoom" = "Create Room from Photo";
+"home.createRoomToolbarLabel" = "Photo → 3D";
 "home.createRoomHint" = "Tap here to create room";
 "home.roomsRemaining" = "%d of %d rooms remaining";
 "home.deleteHint" = "Delete old rooms to create new ones";

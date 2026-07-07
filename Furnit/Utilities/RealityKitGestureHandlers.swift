@@ -503,8 +503,6 @@ class RealityKitGestureHandlers: NSObject {
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
 
-            logDebug("📷 Camera zoom: \(zoomFactor)")
-
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
             

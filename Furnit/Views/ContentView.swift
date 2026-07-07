@@ -124,8 +124,6 @@ struct HomeTab: View {
     @State private var renameDraft = ""
     @State private var renameErrorMessage = ""
     @State private var showRenameErrorAlert = false
-    @State private var createRoomHintExplanationVisible = false
-    @State private var createRoomHintHideTextTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -237,19 +235,20 @@ struct HomeTab: View {
             .navigationTitle(L10n.Home.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                // Create room + helper hand (same hand symbol as SharpRoomView brain hint)
                 ToolbarItem(placement: .navigationBarLeading) {
-                    HStack(spacing: 10) {
-                        Button {
-                            checkRoomLimitAndCreate()
-                        } label: {
+                    Button {
+                        checkRoomLimitAndCreate()
+                    } label: {
+                        HStack(spacing: 8) {
                             Image(systemName: "photo.badge.plus")
                                 .font(.title3)
+                            Text(L10n.Home.createRoomToolbarLabel)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
-                        .accessibilityLabel("accessibility.createRoom".localized)
-
-                        createRoomToolbarHint
                     }
+                    .accessibilityLabel("accessibility.createRoom".localized)
                 }
                 
                 // Help Button
@@ -290,10 +289,6 @@ struct HomeTab: View {
                         }
                     }
                     refreshSavedRoomsList(forceUIReload: true)
-                    restartCreateRoomHint()
-                } else {
-                    cancelCreateRoomHintTasks()
-                    createRoomHintExplanationVisible = false
                 }
             }
             // Listen for room save completion to dismiss sheet
@@ -375,10 +370,6 @@ struct HomeTab: View {
                 logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
             }
             refreshSavedRoomsList()
-            restartCreateRoomHint()
-        }
-        .onDisappear {
-            cancelCreateRoomHintTasks()
         }
         // File info snackbar overlay for PLY files
         .overlay(alignment: .bottom) {
@@ -393,26 +384,6 @@ struct HomeTab: View {
     
     // MARK: - Helper Functions
 
-    private func cancelCreateRoomHintTasks() {
-        createRoomHintHideTextTask?.cancel()
-        createRoomHintHideTextTask = nil
-    }
-
-    private func scheduleCreateRoomHintTextAutoHide(seconds: UInt64 = 3) {
-        createRoomHintHideTextTask?.cancel()
-        createRoomHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            createRoomHintExplanationVisible = false
-        }
-    }
-
-    private func restartCreateRoomHint() {
-        cancelCreateRoomHintTasks()
-        createRoomHintExplanationVisible = true
-        scheduleCreateRoomHintTextAutoHide(seconds: 3)
-    }
-
     private func refreshSavedRoomsList(forceUIReload: Bool = false) {
         modelManager.refreshModels()
         limitManager.updateRoomCount()
@@ -421,50 +392,9 @@ struct HomeTab: View {
         }
     }
 
-    private func onCreateRoomHintIconTapped() {
-        cancelCreateRoomHintTasks()
-        createRoomHintExplanationVisible = true
-        scheduleCreateRoomHintTextAutoHide(seconds: 3)
-    }
-
     @ViewBuilder
     private var roomCreatorView: some View {
         SinglePhotoRoomView()
-    }
-
-    private var createRoomHintAccessibilityLabel: String {
-        L10n.Home.createRoomHint + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var createRoomToolbarHint: some View {
-        HStack(alignment: .center, spacing: 6) {
-            if createRoomHintExplanationVisible {
-                Text(L10n.Home.createRoomHint)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .frame(maxWidth: 158, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.12))
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
-            }
-            Button(action: onCreateRoomHintIconTapped) {
-                Image(systemName: "hand.tap.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(createRoomHintAccessibilityLabel)
-        }
-        .fixedSize(horizontal: true, vertical: true)
     }
 
     /// Check room limit before creating a new room
