@@ -81,19 +81,35 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
-                cameraAnchor.transform.translation = cameraPosition
-
-                _ = Self.applyCameraPose(
-                    cameraAnchor,
-                    position: cameraPosition,
-                    lookAt: lookAtPosition
+                Self.repositionOptimalCamera(
+                    cameraAnchor: cameraAnchor,
+                    cameraEntity: context.coordinator.cameraEntity,
+                    boundaryManager: boundaryManager,
+                    model: model
                 )
 
-                logDebug("📷 [RealityKitView.updateUIView] Camera RESET to: \(cameraPosition)")
+                logDebug("📷 [RealityKitView.updateUIView] Camera RESET to: \(cameraAnchor.transform.translation)")
             }
 
             context.coordinator.currentModelID = model.id
+            context.coordinator.lastViewportSize = .zero
+        }
+
+        if model.roomCoordinateFrame == .depthAnythingImageDepthMeters,
+           model.photoOrientation == .landscape,
+           let cameraAnchor = context.coordinator.cameraAnchor,
+           let boundaryManager = context.coordinator.boundaryManager,
+           boundaryManager.bounds != nil {
+            let viewportSize = uiView.bounds.size
+            if context.coordinator.shouldReframeForViewportChange(viewportSize) {
+                Self.repositionOptimalCamera(
+                    cameraAnchor: cameraAnchor,
+                    cameraEntity: context.coordinator.cameraEntity,
+                    boundaryManager: boundaryManager,
+                    model: model
+                )
+                context.coordinator.gestureHandlers?.syncRotationState()
+            }
         }
 
         Self.configureViewerBackground(uiView, roomCoordinateFrame: model.roomCoordinateFrame)
@@ -118,17 +134,15 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
-                cameraAnchor.transform.translation = cameraPosition
-
-                _ = Self.applyCameraPose(
-                    cameraAnchor,
-                    position: cameraPosition,
-                    lookAt: lookAtPosition
+                Self.repositionOptimalCamera(
+                    cameraAnchor: cameraAnchor,
+                    cameraEntity: context.coordinator.cameraEntity,
+                    boundaryManager: boundaryManager,
+                    model: model
                 )
 
                 if debugMode {
-                    logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraPosition)")
+                    logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraAnchor.transform.translation)")
                 }
             } else {
                 if debugMode {
@@ -178,6 +192,47 @@ struct RealityKitView: UIViewRepresentable {
         return direction
     }
 
+    private static func configureDepthAnythingCameraFieldOfView(
+        _ cameraEntity: PerspectiveCamera?,
+        roomCoordinateFrame: RoomCoordinateFrame,
+        photoOrientation: PhotoOrientation
+    ) {
+        guard let cameraEntity,
+              roomCoordinateFrame == .depthAnythingImageDepthMeters else {
+            return
+        }
+        if photoOrientation == .landscape {
+            cameraEntity.camera.fieldOfViewOrientation = .horizontal
+        } else {
+            cameraEntity.camera.fieldOfViewOrientation = .vertical
+        }
+        cameraEntity.camera.fieldOfViewInDegrees = 60.0
+    }
+
+    private static func repositionOptimalCamera(
+        cameraAnchor: AnchorEntity,
+        cameraEntity: PerspectiveCamera?,
+        boundaryManager: RealityKitBoundaryManager,
+        model: USDZModel
+    ) {
+        guard boundaryManager.bounds != nil else { return }
+        configureDepthAnythingCameraFieldOfView(
+            cameraEntity,
+            roomCoordinateFrame: model.roomCoordinateFrame,
+            photoOrientation: model.photoOrientation
+        )
+        let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(
+            roomCoordinateFrame: model.roomCoordinateFrame,
+            photoOrientation: model.photoOrientation
+        )
+        cameraAnchor.transform.translation = cameraPosition
+        _ = applyCameraPose(
+            cameraAnchor,
+            position: cameraPosition,
+            lookAt: lookAtPosition
+        )
+    }
+
     private static func normalizedDirection(from position: SIMD3<Float>, to target: SIMD3<Float>) -> SIMD3<Float> {
         let delta = target - position
         let lengthSquared = simd_length_squared(delta)
@@ -223,6 +278,18 @@ struct RealityKitView: UIViewRepresentable {
         // ✅ Track current model to detect room changes
         var currentModelID: UUID?
         var boundaryManager: RealityKitBoundaryManager?
+        var lastViewportSize: CGSize = .zero
+
+        func shouldReframeForViewportChange(_ size: CGSize) -> Bool {
+            guard size.width > 1, size.height > 1 else { return false }
+            let deltaWidth = abs(size.width - lastViewportSize.width)
+            let deltaHeight = abs(size.height - lastViewportSize.height)
+            guard lastViewportSize == .zero || deltaWidth > 8 || deltaHeight > 8 else {
+                return false
+            }
+            lastViewportSize = size
+            return true
+        }
         
         func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
@@ -538,25 +605,26 @@ struct RealityKitView: UIViewRepresentable {
                     logDebug("   Room bounds min: \(bounds.min)")
                     logDebug("   Room bounds max: \(bounds.max)")
 
-                    let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(roomCoordinateFrame: model.roomCoordinateFrame)
-
-                    logDebug("📍 [RealityKitView] Camera position from getOptimalCameraPosition():")
-                    logDebug("   Position: \(cameraPosition)")
-                    logDebug("   LookAt: \(lookAtPosition)")
-
-                    let oldPosition = cameraAnchor.transform.translation
-                    let lookDirection = Self.applyCameraPose(
-                        cameraAnchor,
-                        position: cameraPosition,
-                        lookAt: lookAtPosition
+                    Self.repositionOptimalCamera(
+                        cameraAnchor: cameraAnchor,
+                        cameraEntity: coordinator.cameraEntity,
+                        boundaryManager: boundaryManager,
+                        model: model
                     )
-                    logDebug("📷 [RealityKitView] Camera translation SET:")
-                    logDebug("   OLD position: \(oldPosition)")
-                    logDebug("   NEW position: \(cameraAnchor.transform.translation)")
+                    coordinator.lastViewportSize = arView.bounds.size
 
+                    let lookAt = SIMD3<Float>(
+                        (bounds.min.x + bounds.max.x) * 0.5,
+                        (bounds.min.y + bounds.max.y) * 0.5,
+                        (bounds.min.z + bounds.max.z) * 0.5
+                    )
+                    let lookDirection = Self.normalizedDirection(
+                        from: cameraAnchor.transform.translation,
+                        to: lookAt
+                    )
                     logDebug("📷 [RealityKitView] Camera \(placementLabel) positioned:")
                     logDebug("   📍 Final Position: \(cameraAnchor.transform.translation)")
-                    logDebug("   👁️ Looking at: \(lookAtPosition)")
+                    logDebug("   👁️ Looking at: \(lookAt)")
                     logDebug("   🧭 Direction: \(lookDirection)")
 
                     // ✅ Add camera to scene AFTER model and AFTER positioning (ensures camera takes precedence)

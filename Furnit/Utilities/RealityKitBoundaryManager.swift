@@ -268,8 +268,40 @@ class RealityKitBoundaryManager {
         )
     }
 
+    private func depthAnythingViewportAspect(photoOrientation: PhotoOrientation) -> Float {
+        if let arView,
+           arView.bounds.width > 1,
+           arView.bounds.height > 1 {
+            return Float(arView.bounds.width / arView.bounds.height)
+        }
+        return photoOrientation == .landscape ? (19.5 / 9.0) : (9.0 / 19.5)
+    }
+
+    private func depthAnythingImagePlaneStandoff(
+        width: Float,
+        height: Float,
+        span: Float,
+        photoOrientation: PhotoOrientation
+    ) -> Float {
+        let halfFovRadians = Float.pi / 6.0
+        let viewportAspect = max(depthAnythingViewportAspect(photoOrientation: photoOrientation), 1.0)
+
+        if photoOrientation == .landscape {
+            // Match RealityKit horizontal FOV in landscape: fit the full photo plane in view.
+            let fitWidth = width / (2 * tan(halfFovRadians))
+            let verticalHalfFov = atan(tan(halfFovRadians) / viewportAspect)
+            let fitHeight = height / (2 * tan(verticalHalfFov))
+            return max(max(fitWidth, fitHeight) * 0.86, 0.85)
+        }
+
+        let fitHeight = height / (2 * tan(halfFovRadians))
+        let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
+        let fitWidth = width / (2 * tan(horizontalHalfFov))
+        return max(max(span / (2 * tan(halfFovRadians)), fitHeight, fitWidth, span * 0.5), 1.0)
+    }
+
     /// Photographer viewpoint for Depth Anything `--flat-mesh` USDZ: plane at z≈0, camera on −Z.
-    func getCameraForDepthAnythingImagePlane() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+    func getCameraForDepthAnythingImagePlane(photoOrientation: PhotoOrientation = .portrait) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         guard let bounds = roomBounds else {
@@ -281,17 +313,22 @@ class RealityKitBoundaryManager {
         let height = max(bounds.max.y - bounds.min.y, 0.1)
         let span = max(width, height)
         let planeZ = (bounds.min.z + bounds.max.z) * 0.5
-
-        // Frame the full photo at ~60° vertical FOV (matches typical GLB viewers).
-        let halfFovRadians = Float.pi / 6.0
-        let standoff = max(span / (2 * tan(halfFovRadians)), span * 0.5, 1.0)
+        let standoff = depthAnythingImagePlaneStandoff(
+            width: width,
+            height: height,
+            span: span,
+            photoOrientation: photoOrientation
+        )
 
         let position = SIMD3<Float>(center.x, center.y, planeZ - standoff)
         let lookAt = SIMD3<Float>(center.x, center.y, planeZ)
 
         if debugMode {
+            let viewportAspect = depthAnythingViewportAspect(photoOrientation: photoOrientation)
             logDebug(
                 "🎯 [BoundaryManager] getCameraForDepthAnythingImagePlane "
+                    + "orientation=\(photoOrientation.rawValue) width=\(width)m height=\(height)m "
+                    + "viewportAspect=\(String(format: "%.2f", viewportAspect)) "
                     + "span=\(span)m standoff=\(standoff)m planeZ=\(planeZ) "
                     + "pos=\(position) lookAt=\(lookAt)"
             )
@@ -334,9 +371,12 @@ class RealityKitBoundaryManager {
     
     // ✅ Get optimal camera position for viewing the room (delegates to Android-matching back-center formula)
     // Used when room is opened from list or when room is created.
-    func getOptimalCameraPosition(roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+    func getOptimalCameraPosition(
+        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly,
+        photoOrientation: PhotoOrientation = .portrait
+    ) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         if roomCoordinateFrame == .depthAnythingImageDepthMeters {
-            return getCameraForDepthAnythingImagePlane()
+            return getCameraForDepthAnythingImagePlane(photoOrientation: photoOrientation)
         }
         if roomCoordinateFrame.usesFrontFacingRealityKitCamera {
             return getCameraAtFrontCenter()

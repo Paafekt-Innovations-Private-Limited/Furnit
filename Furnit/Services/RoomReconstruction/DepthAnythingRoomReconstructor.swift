@@ -25,29 +25,7 @@ struct DepthAnythingRoomResult: Sendable {
     /// Compact on-screen diagnostic (Settings → Debug Mode): shows the inputs behind W×H×D
     /// so calibration issues can be read off a screenshot without console access.
     var measurementDebugLine: String? {
-        guard let scale = calibrationMetadata["measurementDepthScale"],
-              let focal = calibrationMetadata["measurementFocalLengthPx"] else {
-            return nil
-        }
-        let focalSource: String
-        switch calibrationMetadata["measurementFocalSourceCode"] {
-        case 2: focalSource = "capture"
-        case 1: focalSource = "geocalib"
-        default: focalSource = "fallback"
-        }
-        let gravitySource: String
-        switch calibrationMetadata["measurementGravitySourceCode"] {
-        case 2: gravitySource = "arkit"
-        case 1: gravitySource = "geo"
-        default: gravitySource = "none"
-        }
-        return String(
-            format: "scale %.2f · f %.0fpx (%@) · grav %@",
-            scale,
-            focal,
-            focalSource,
-            gravitySource
-        )
+        nil
     }
 
     var photoOrientation: PhotoOrientation {
