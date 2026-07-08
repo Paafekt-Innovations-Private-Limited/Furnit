@@ -164,7 +164,6 @@ enum RoomHeight {
         variantLabel: String
     ) -> RoomHeightResult {
         let width = pointGrid.width
-        let height = pointGrid.height
         let clampedCameraHeight = min(1.75, max(1.55, cameraHeight))
         let horizonRow = cy + fy * tan(pitch)
 

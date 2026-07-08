@@ -4276,7 +4276,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     decoderOffsets: rankedDecoderOffsets,
                     graph: result.maskAffinityGraph
                 )
-                let matchedCandidates = matchedIndices.map { candidates[$0] }
                 guard let selectedIndex = matchedIndices.first else {
                     if debugMode {
                         logDebug("🧠 [RTMDet segment] no selected candidate matched current frame pins=\(pins.count) candidates=\(candidates.count)")
