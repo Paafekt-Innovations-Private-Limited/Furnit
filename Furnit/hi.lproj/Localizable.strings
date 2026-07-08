@@ -190,7 +190,7 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "कमरा निर्माण";
 "faq.howToCreate" = "3D कमरा कैसे बनाएं?";
-"faq.howToCreateAnswer" = "होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। आपको अपना 3D कमरा बनाने के लिए दो विकल्प दिखाई देंगे।";
+"faq.howToCreateAnswer" = "होम स्क्रीन के ऊपरी-बाएँ कोने में Photo → 3D टैप करें, फिर अपने कमरे की फ़ोटो लें या चुनें। आपको 3D कमरा बनाने के दो विकल्प दिखेंगे।";
 "faq.howToTakePhoto" = "कमरा बनाने के लिए फोटो कैसे लें?";
 "faq.howToTakePhotoAnswer" = "सीधे फोटो लेने के लिए होम स्क्रीन पर कैमरा आइकन टैप करें। आप स्टैंडर्ड (1x) या वाइड एंगल (0.5x अल्ट्रा-वाइड) लेंस में से चुन सकते हैं। अपने डिवाइस को स्थिर रखें और कैप्चर बटन टैप करें। फोटो का उपयोग आपका 3D कमरा बनाने के लिए किया जाएगा।";
 "faq.depthAwareRoomPhoto" = "क्या ऐप में फोटो लेने से कमरे की गुणवत्ता बेहतर होती है?";
@@ -213,13 +213,13 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "फर्नीचर सेगमेंटेशन";
 "faq.whatIsSegmentation" = "फर्नीचर सेगमेंटेशन क्या है?";
-"faq.whatIsSegmentationAnswer" = "फर्नीचर सेगमेंटेशन अब लाइव रूम व्यूअर से काम करता है। पहले detected labels चुनें, फिर Segment सिर्फ चुने हुए फर्नीचर आइटम के लिए cut-out overlay बनाता है ताकि आप 3D कमरे में फिट देख सकें।";
-"faq.howToSegment" = "फोटो से फर्नीचर कैसे सेगमेंट करें?";
-"faq.howToSegmentAnswer" = "रूम व्यूअर में ब्रेन आइकन टैप करें, कैमरा फर्नीचर की ओर करें, एक या अधिक detected labels चुनें, फिर Segment टैप करें। लाइव पहचान पर लौटने के लिए Stop टैप करें।";
+"faq.whatIsSegmentationAnswer" = "फर्नीचर सेगमेंटेशन लाइव रूम व्यूअर से चलता है। ब्रेन डिफ़ॉल्ट रूप से एक प्राथमिक आइटम ऑटो-सेगमेंट करता है। full-video मोड में पहले आइटम चुनें; Segment केवल उनके लिए पारदर्शी कटआउट बनाता है।";
+"faq.howToSegment" = "रूम व्यूअर में फर्नीचर कैसे सेगमेंट करें?";
+"faq.howToSegmentAnswer" = "रूम व्यूअर में ब्रेन आइकन टैप करें। त्वरित जाँच के लिए यह मुख्य आइटम ऑटो-सेगमेंट करता है। विशिष्ट टुकड़े चुनने के लिए: viewfinder टैप करें, कैमरा फर्नीचर की ओर करें, बॉक्स टैप करें, फिर Segment। Stop से लाइव पहचान।";
 "faq.notDetected" = "मेरा फर्नीचर क्यों नहीं पहचाना जा रहा?";
 "faq.notDetectedAnswer" = "फर्नीचर पहचान स्पष्ट, अच्छी रोशनी वाली फोटो में सबसे अच्छा काम करती है जहां फर्नीचर स्पष्ट रूप से दिखाई देता है। सुनिश्चित करें कि फर्नीचर आंशिक रूप से छिपा नहीं है या पृष्ठभूमि के साथ मिश्रित नहीं है।";
 "faq.multiplePieces" = "क्या मैं एक से अधिक फर्नीचर पीस सेगमेंट कर सकता हूं?";
-"faq.multiplePiecesAnswer" = "हां! AI एक ही फोटो में कई फर्नीचर पीस का पता लगा सकता है। प्रत्येक पहचाना गया आइटम अलग से दिखाया जाएगा ताकि आप चुन सकें कि कौन से उपयोग करने हैं।";
+"faq.multiplePiecesAnswer" = "हाँ! full-video मोड में कई बॉक्स टैप करके एक बार Segment से सभी चुने हुए टुकड़े एक साथ 3D कमरे पर काट सकते हैं। डिफ़ॉल्ट ब्रेन फ़्लो से एक-एक करके भी कर सकते हैं।";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "अपना 3D कमरा कैसे देखें?";
@@ -231,16 +231,16 @@
 "faq.accuracy" = "3D मॉडल कितना सटीक है?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "क्या मैं कमरे के आयाम समायोजित कर सकता हूं?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "AI कमरे के आयाम मैन्युअल रूप से संपादित नहीं कर सकते। अनुमानित चौड़ाई, ऊँचाई और गहराई देखने के लिए रूम व्यूअर में ruler टैप करें। बेहतर परिणाम के लिए स्पष्ट कोनों वाली फ़ोटो लें; manual rooms आपकी सीमाएँ अपनाते हैं।";
 "faq.furnitureMeasurements" = "फर्नीचर और माप";
 "faq.arAssistedSizing" = "AR-सहायता वाला फर्नीचर साइज़िंग क्या है?";
-"faq.arAssistedSizingAnswer" = "पहले ब्रेन आइकन टैप करें, detected items चुनें, फिर Segment टैप करें। कमरे के अनुपात में scale चाहिए तो sizing control इस्तेमाल करें। AR/depth support वाले फोन पर ऐप live camera depth से अधिक realistic furniture size देती है; depth न होने पर furniture measurements approximate होते हैं।";
+"faq.arAssistedSizingAnswer" = "पहले ब्रेन आइकन से फर्नीचर सेगमेंट करें। कमरे के अनुपात में स्केल के लिए sizing control उपयोग करें। AR/depth वाले फ़ोन पर लाइव कैमरा गहराई से अधिक यथार्थवादी आकार मिलता है; बिना depth अनुमानित होता है।";
 "faq.measurementPill" = "छोटा माप रीडआउट क्या है?";
 "faq.measurementPillAnswer" = "SmartyPants चालू होने पर अनुमानित फर्नीचर और कमरे की ऊँचाई दिख सकती है। सटीकता के लिए टैप करके वास्तविक माप दर्ज करें। अगर कमरे की फोटो वाइड-एंगल (0.5×) से ली गई हो तो उसे चिह्नित करें।";
 "faq.resetOverlayScale" = "मास्क गलत ज़ूम लग रहा है—क्या करें?";
 "faq.resetOverlayScaleAnswer" = "3D कमरे में ओवरफ़्लो मेनू (⋮) खोलकर Reset overlay scale चुनें। डिटेक्शन मास्क पर लगा ऑटो ज़ूम हट जाएगा।";
 "faq.roomFitment" = "फर्नीचर फिट है या नहीं कैसे जांचें?";
-"faq.roomFitmentAnswer" = "फर्नीचर जोड़ने के बाद अपने 3D कमरे में इसका आकार बदलकर और स्थान बदलकर देखें कि यह आपकी जगह और अन्य फर्नीचर के साथ कैसा बैठता है।";
+"faq.roomFitmentAnswer" = "सेगमेंटेशन के बाद 3D कमरे में कटआउट का आकार बदलें और स्थान बदलें। full-video में Segment चुने हुए टुकड़े कमरे पर रखकर कई आइटम एक साथ तुलना करने देता है।";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "प्लेसमेंट इंटेलिजेंस और सौंदर्य";
@@ -394,7 +394,9 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI सुविधाएं";
 "faq.whatIsBrainIcon" = "ब्रेन आइकन क्या करता है?";
-"faq.whatIsBrainIconAnswer" = "ब्रेन आइकन SmartyPants identify mode शुरू करता है। यह लाइव कैमरा से फर्नीचर और वस्तुओं को ढूँढता है, लेबल और बॉक्स दिखाता है, और Segment टैप करने से पहले आपको एक या अधिक लेबल चुनने देता है।";
+"faq.whatIsBrainIconAnswer" = "ब्रेन आइकन रूम व्यूअर में SmartyPants शुरू करता है। डिफ़ॉल्ट रूप से यह सबसे भरोसेमंद फर्नीचर को आपके 3D कमरे पर पारदर्शी कटआउट के रूप में ऑटो-सेगमेंट करता है। टैप-से-चुनने के लिए पहले viewfinder बटन टैप करें।";
+"faq.whatIsViewfinderButton" = "रूम व्यूअर में viewfinder बटन क्या करता है?";
+"faq.whatIsViewfinderButtonAnswer" = "SmartyPants चालू होने पर viewfinder बटन (ऊपर-दाएँ) full-video मोड टॉगल करता है। लाइव कैमरा और डिटेक्शन बॉक्स दिखते हैं, एक या अधिक आइटम टैप करें, फिर Segment। कैमरा छिप जाता है और पारदर्शी कटआउट आपके 3D कमरे पर दिखते हैं। Stop से लाइव पहचान पर लौटें।";
 "faq.howToScreenshot" = "स्क्रीनशॉट कैसे लें?";
 "faq.howToScreenshotAnswer" = "जब SmartyPants सक्रिय हो (ब्रेन आइकन हरा), नीचे-दाईं ओर एक शेयर आइकन दिखाई देता है। AI डिटेक्शन के साथ व्यू का स्क्रीनशॉट अपनी फोटो लाइब्रेरी में सेव करने के लिए इसे टैप करें।";
 "faq.howToSaveRoom" = "रूम कैसे सेव करें?";
@@ -508,11 +510,11 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "मापन सूचना";
 "help.measurementAccuracyBody" = "जिन फ़ोन में AR depth सपोर्ट नहीं है, वे कमरे और फ़र्नीचर का प्रीव्यू दिखा सकते हैं, लेकिन कमरे और खासकर फ़र्नीचर के माप केवल अनुमानित होंगे।";
-"faq.whatIsBrainIconAnswer" = "ब्रेन आइकन SmartyPants identify mode शुरू करता है। यह लाइव कैमरा से फर्नीचर और वस्तुओं को ढूँढता है, लेबल और बॉक्स दिखाता है, और Segment टैप करने से पहले आपको एक या अधिक लेबल चुनने देता है।";
-"faq.howToSegmentAnswer" = "रूम व्यूअर में ब्रेन आइकन टैप करें, कैमरा फर्नीचर की ओर करें, एक या अधिक detected labels चुनें, फिर Segment टैप करें। लाइव पहचान पर लौटने के लिए Stop टैप करें।";
+"faq.whatIsBrainIconAnswer" = "ब्रेन आइकन रूम व्यूअर में SmartyPants शुरू करता है। डिफ़ॉल्ट रूप से यह सबसे भरोसेमंद फर्नीचर को आपके 3D कमरे पर पारदर्शी कटआउट के रूप में ऑटो-सेगमेंट करता है। टैप-से-चुनने के लिए पहले viewfinder बटन टैप करें।";
+"faq.howToSegmentAnswer" = "रूम व्यूअर में ब्रेन आइकन टैप करें। त्वरित जाँच के लिए यह मुख्य आइटम ऑटो-सेगमेंट करता है। विशिष्ट टुकड़े चुनने के लिए: viewfinder टैप करें, कैमरा फर्नीचर की ओर करें, बॉक्स टैप करें, फिर Segment। Stop से लाइव पहचान।";
 "faq.accuracyAnswer" = "3D कमरा एक फोटो से बना अनुमान है। कमरे की डाइमेंशन मार्गदर्शन के लिए उपयोगी हो सकती हैं, लेकिन वे सर्वे-ग्रेड नहीं हैं। फ़र्नीचर मापन AR या depth सपोर्ट वाले फ़ोन पर सबसे अधिक भरोसेमंद होता है।";
-"faq.adjustDimensionsAnswer" = "AI-generated Splat कमरों में सीधे नहीं। कमरे के व्यूअर में ruler का उपयोग करके वर्तमान अनुमानित चौड़ाई, ऊँचाई और गहराई देखें। बेहतर परिणाम के लिए कोने दिखाई देने वाली साफ कमरे की फोटो लें; manual rooms आपकी सेट की गई boundaries का पालन करते हैं।";
-"faq.arAssistedSizingAnswer" = "पहले ब्रेन आइकन टैप करें, detected items चुनें, फिर Segment टैप करें। कमरे के अनुपात में scale चाहिए तो sizing control इस्तेमाल करें। AR/depth support वाले फोन पर ऐप live camera depth से अधिक realistic furniture size देती है; depth न होने पर furniture measurements approximate होते हैं।";
+"faq.adjustDimensionsAnswer" = "AI कमरे के आयाम मैन्युअल रूप से संपादित नहीं कर सकते। अनुमानित चौड़ाई, ऊँचाई और गहराई देखने के लिए रूम व्यूअर में ruler टैप करें। बेहतर परिणाम के लिए स्पष्ट कोनों वाली फ़ोटो लें; manual rooms आपकी सीमाएँ अपनाते हैं।";
+"faq.arAssistedSizingAnswer" = "पहले ब्रेन आइकन से फर्नीचर सेगमेंट करें। कमरे के अनुपात में स्केल के लिए sizing control उपयोग करें। AR/depth वाले फ़ोन पर लाइव कैमरा गहराई से अधिक यथार्थवादी आकार मिलता है; बिना depth अनुमानित होता है।";
 "faq.measurementPillAnswer" = "फ़र्नीचर साइज पिल तभी दिखती है जब sizing mode चालू हो और ऐप के पास उपयोगी live height estimate हो। ruler बटन एक छोटे कार्ड में कमरे की मौजूदा चौड़ाई, ऊँचाई और गहराई दिखाता है। non-AR फ़ोन पर ये रीडिंग, खासकर फ़र्नीचर के लिए, कम भरोसेमंद होती हैं।";
 "faq.resetOverlayScaleAnswer" = "अब कोई overflow menu नहीं है। अगर ओवरले गलत दिखे तो ब्रेन आइकन बंद करके फिर चालू करें, या फ़र्नीचर को pinch करके हाथ से ठीक आकार दें।";
 

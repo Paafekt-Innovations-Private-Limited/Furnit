@@ -65,6 +65,8 @@ The composited mask uses a **uniform** scale on the image view. Roughly:
 - **User pinch** still applies on top.  
 - Console: **`[FurnitureFitOverlay]`** shows **`roomStored`** vs **`roomUsed`** (when AR is valid, **`roomUsed`** is 1 so only AR × pinch drives the scale).
 
+In **full-video segment** mode, transparent cutouts composite directly over the 3D room (camera preview hidden). Pinch still scales the segmented cluster via `FurnitureFitContainerView`; the room camera underneath does not receive two-finger gestures while a cutout is visible.
+
 ---
 
 ## Technical reference
@@ -79,6 +81,8 @@ The composited mask uses a **uniform** scale on the image view. Roughly:
 | Overlay ratios | `Furnit/Models/RoomFitmentMeasurement.swift` — `OverlayScale.ratios`, `OverlayScale.compute`, `FitmentCheck` |
 | Room-based overlay scale + AR product | `FurnitureFitView.swift` — `updateAutoScaleFromRoom`, `applyCurrentOverlayScaleTransform`, `updateAssistedOverlayScale` |
 | Segmented-overlay gestures | `FurnitureFitView.swift` — `handlePinch(_:)`, `handlePan(_:)`, `hitTest(_:with:)`, `gestureRecognizer(_:shouldReceive:)` |
+| Room viewer brain / full-video modes | `ModelViewerView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift`, `SplatRoomView.swift` — `toggleFurnitureFit`, `toggleFullVideoIdentifications` |
+| Segmentation mode enum | `FurnitureFitOverlaySupport.swift` — `FurnitureFitSegmentationMode` |
 | Depth raycast room + PLY bounds logs | `Furnit/Views/Components/GaussianSplatView.swift` — `measureRoomFromDepthBuffer`, `logPlyBoundsDiagnostic` |
 | USDZ / Depth Anything preview dims | `SinglePhotoRoomViewer.swift` — `DepthAnythingPreviewRoomView`, saved `.usdz.meta` |
 | Saved PLY room UI (raycast-first title) | `Furnit/Views/SplatRoomView.swift` — `navigationRoomMetersLine`, `raycastRoomDimensions` |

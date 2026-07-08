@@ -190,7 +190,7 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "房間建立";
 "faq.howToCreate" = "如何建立3D房間？";
-"faq.howToCreateAnswer" = "點擊主畫面左上角的照片圖示，然後拍攝或選擇房間的照片。您將看到兩個選項來建立您的3D房間。";
+"faq.howToCreateAnswer" = "點按主畫面左上角的 Photo → 3D，然後拍攝或選擇房間照片。您將看到兩個建立 3D 房間的選項。";
 "faq.howToTakePhoto" = "如何拍照來建立房間？";
 "faq.howToTakePhotoAnswer" = "點擊主畫面上的相機圖示直接拍照。您可以選擇標準(1x)或廣角(0.5x超廣角)鏡頭。保持裝置穩定並點擊拍攝按鈕。照片將用於建立您的3D房間。";
 "faq.depthAwareRoomPhoto" = "用應用程式內建相機拍照會比較好嗎？";
@@ -213,17 +213,17 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "傢俱分割";
 "faq.whatIsSegmentation" = "什麼是傢俱分割？";
-"faq.whatIsSegmentationAnswer" = "家具分割現在從即時房間檢視器中完成。先選擇偵測到的標籤，然後分割只會為這些選取的家具產生去背疊圖，方便你判斷它們在 3D 房間裡的效果。";
-"faq.howToSegment" = "如何從照片中分割傢俱？";
-"faq.howToSegmentAnswer" = "在房間檢視器中，點擊大腦圖示，把相機對準家具，點擊一個或多個偵測標籤進行選取，然後點擊分割。點擊停止可返回即時識別。";
+"faq.whatIsSegmentationAnswer" = "家具分割在即時房間檢視器中進行。大腦圖示預設自動分割一個主要物件。全影片模式下先選擇偵測到的物件，分割只為所選物件產生透明去背。";
+"faq.howToSegment" = "如何在房間檢視器中分割家具？";
+"faq.howToSegmentAnswer" = "在房間檢視器中點大腦圖示。快速檢查時會自動分割主要物件。若要指定多件：點 viewfinder，對準家具，點一個或多個偵測框，再點分割。點停止返回即時識別。";
 "faq.notDetected" = "為什麼我的傢俱沒有被偵測到？";
 "faq.notDetectedAnswer" = "傢俱偵測在清晰、光線充足且傢俱明顯可見的照片中效果最佳。確保傢俱沒有被部分遮擋或與背景融合。";
 "faq.multiplePieces" = "我可以分割多件傢俱嗎？";
-"faq.multiplePiecesAnswer" = "可以！AI可以在單張照片中偵測多件傢俱。每個偵測到的物品將單獨顯示，供你選擇使用。";
+"faq.multiplePiecesAnswer" = "可以！全影片模式下可點多個偵測框，再點一次分割，將所有選中物件一起去背到 3D 房間上。也可用預設大腦流程逐個分割。";
 
 // FAQ - 3D Room & Fitment
 "faq.roomFitment" = "如何確認傢俱是否合適？";
-"faq.roomFitmentAnswer" = "加入傢俱後，可在 3D 房間中縮放與移動，對照現有空間與其他傢俱查看是否合適。";
+"faq.roomFitmentAnswer" = "分割後可在 3D 房間中縮放和移動去背。全影片模式下，分割會將所選物件疊加在房間上，便於同時對比多件家具與空間。";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "擺放智慧與美學";
@@ -245,10 +245,10 @@
 "faq.accuracy" = "3D模型有多準確？";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "無法手動編輯 AI 房間尺寸。點房間檢視器中的尺子查看估計的寬、高、深。請拍攝角落清晰的照片；手動房間遵循您繪製的邊界。";
 "faq.furnitureMeasurements" = "傢俱與測量";
 "faq.arAssistedSizing" = "什麼是 AR 輔助傢俱尺寸？";
-"faq.arAssistedSizingAnswer" = "先點擊大腦圖示，選擇偵測到的物體，然後點擊分割。需要依房間比例縮放時再使用尺寸控制。在支援 AR/depth 的手機上，app 會使用即時相機深度給出更真實的家具大小；沒有深度時，家具測量只是近似值。";
+"faq.arAssistedSizingAnswer" = "先點大腦圖示分割家具。需要相對房間比例時使用尺寸控制。支援 AR/深度的手機會用即時相機深度；無深度時測量僅為近似值。";
 "faq.measurementPill" = "畫面上小小的測量資訊是什麼？";
 "faq.measurementPillAnswer" = "SmartyPants 開啟時，可能會顯示預估的傢俱高度與房間高度。點一下可輸入實際尺寸以提高準確度。若房間照片以廣角（0.5×）拍攝，請一併標示，畫面構圖才會一致。";
 "faq.resetOverlayScale" = "偵測遮罩的縮放看起來不對，怎麼辦？";
@@ -395,7 +395,9 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI 功能";
 "faq.whatIsBrainIcon" = "大腦圖標有什麼作用？";
-"faq.whatIsBrainIconAnswer" = "大腦圖示會啟動 SmartyPants 識別模式。它使用即時相機尋找家具和物體，顯示標籤與框，並讓你先選擇一個或多個標籤，再點擊分割。";
+"faq.whatIsBrainIconAnswer" = "大腦圖示在房間檢視器中啟動 SmartyPants。預設會自動分割置信度最高的家具，並以透明去背疊加在 3D 房間上。若要點選，請先點 viewfinder 按鈕。";
+"faq.whatIsViewfinderButton" = "房間檢視器中的 viewfinder 按鈕有什麼作用？";
+"faq.whatIsViewfinderButtonAnswer" = "SmartyPants 開啟時，viewfinder 按鈕（右上角）切換全影片模式。您會看到帶偵測框的即時相機畫面，點選一個或多個物件，再點分割。相機會隱藏，透明家具去背疊加在 3D 房間上以便檢查是否合適。點停止返回即時識別。";
 "faq.howToScreenshot" = "如何截圖？";
 "faq.howToScreenshotAnswer" = "當 SmartyPants 啟動時（大腦圖標變綠），右下角會出現分享圖標。點擊它將帶有 AI 檢測的視圖截圖儲存到您的照片圖庫。";
 "faq.howToSaveRoom" = "如何儲存房間？";
@@ -509,11 +511,11 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "測量提示";
 "help.measurementAccuracyBody" = "沒有 AR 深度支援的手機仍可預覽房間與家具，但房間尺寸，尤其是家具尺寸，只能作為近似參考。";
-"faq.whatIsBrainIconAnswer" = "大腦圖示會啟動 SmartyPants 識別模式。它使用即時相機尋找家具和物體，顯示標籤與框，並讓你先選擇一個或多個標籤，再點擊分割。";
-"faq.howToSegmentAnswer" = "在房間檢視器中，點擊大腦圖示，把相機對準家具，點擊一個或多個偵測標籤進行選取，然後點擊分割。點擊停止可返回即時識別。";
+"faq.whatIsBrainIconAnswer" = "大腦圖示在房間檢視器中啟動 SmartyPants。預設會自動分割置信度最高的家具，並以透明去背疊加在 3D 房間上。若要點選，請先點 viewfinder 按鈕。";
+"faq.howToSegmentAnswer" = "在房間檢視器中點大腦圖示。快速檢查時會自動分割主要物件。若要指定多件：點 viewfinder，對準家具，點一個或多個偵測框，再點分割。點停止返回即時識別。";
 "faq.accuracyAnswer" = "3D 房間是根據一張照片生成的估計結果。房間尺寸可作為參考，但不是專業測量等級。家具測量在支援 AR 或深度的手機上最可靠。";
-"faq.adjustDimensionsAnswer" = "AI 生成的 Splat 房間目前不能直接手動調整。請使用房間檢視器中的尺子查看目前估計的寬度、高度與深度。若想獲得更好的結果，請拍攝角落清楚可見的房間照片；手動房間則會遵循你設定的邊界。";
-"faq.arAssistedSizingAnswer" = "先點擊大腦圖示，選擇偵測到的物體，然後點擊分割。需要依房間比例縮放時再使用尺寸控制。在支援 AR/depth 的手機上，app 會使用即時相機深度給出更真實的家具大小；沒有深度時，家具測量只是近似值。";
+"faq.adjustDimensionsAnswer" = "無法手動編輯 AI 房間尺寸。點房間檢視器中的尺子查看估計的寬、高、深。請拍攝角落清晰的照片；手動房間遵循您繪製的邊界。";
+"faq.arAssistedSizingAnswer" = "先點大腦圖示分割家具。需要相對房間比例時使用尺寸控制。支援 AR/深度的手機會用即時相機深度；無深度時測量僅為近似值。";
 "faq.measurementPillAnswer" = "家具尺寸小標籤只會在尺寸模式開啟且 app 拿到可用的即時高度估計時出現。尺子按鈕會以小卡片顯示目前房間的寬度、高度與深度。在不支援 AR 的手機上，這些讀數會更不可靠，尤其是家具尺寸。";
 "faq.resetOverlayScaleAnswer" = "現在已經沒有更多選單了。如果疊圖看起來不對，請先關閉再重新開啟大腦圖示，或手動雙指縮放家具來微調大小。";
 

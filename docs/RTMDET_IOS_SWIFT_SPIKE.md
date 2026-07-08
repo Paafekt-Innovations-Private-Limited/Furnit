@@ -46,6 +46,8 @@ The service tries the configured model with a compute-unit fallback chain; test 
 
 ## How to test in the iOS app
 
+### Settings still-image scan
+
 1. Add the RTMDet Core ML package to the `Furnit` target.
    Preferred location: `Furnit/Models/RTMDet/`
 2. Launch the app.
@@ -64,6 +66,17 @@ The Settings image scan intentionally mirrors the RTMDet live path:
 - fused `instanceMaskImages`
 - no bbox-overlap-only clustering
 - no `UIGraphicsImageRenderer` mask blending
+
+### Room viewer full-video smoke test
+
+1. Home → **Photo → 3D** → create or open a saved AI room.
+2. Tap **brain** (bottom-left). Default `segmentPrimary` should auto-segment one primary item over the 3D room.
+3. Tap **text.viewfinder** (top-right). Live camera preview + cluster boxes should appear.
+4. Tap two or more clusters, then tap **Segment**. Preview should hide; transparent cutouts should show over the 3D room.
+5. Tap **Stop** to return to live boxes, or brain again to exit.
+
+Relevant room viewers: `ModelViewerView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift`, `SplatRoomView.swift`.
+Console filters: `BRAIN FLOW`, `FurnitureFit`, `RTMDet`.
 
 ## Current Swift postprocess behavior
 

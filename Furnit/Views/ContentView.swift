@@ -1336,6 +1336,7 @@ struct SupportView: View {
                 icon: "brain.head.profile",
                 items: [
                     FAQItem(question: "faq.whatIsBrainIcon".localized, answer: "faq.whatIsBrainIconAnswer".localized),
+                    FAQItem(question: "faq.whatIsViewfinderButton".localized, answer: "faq.whatIsViewfinderButtonAnswer".localized),
                     FAQItem(question: "faq.howToScreenshot".localized, answer: "faq.howToScreenshotAnswer".localized),
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),

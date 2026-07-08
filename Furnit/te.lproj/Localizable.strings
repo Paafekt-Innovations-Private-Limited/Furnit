@@ -190,7 +190,7 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "గది సృష్టి";
 "faq.howToCreate" = "3D గదిని ఎలా సృష్టించాలి?";
-"faq.howToCreateAnswer" = "హోమ్ స్క్రీన్ ఎగువ-ఎడమ మూలలో ఫోటో ఐకాన్ ట్యాప్ చేయండి, తర్వాత మీ గది ఫోటో తీయండి లేదా ఎంచుకోండి. మీ 3D గది సృష్టించడానికి రెండు ఆప్షన్లు మీకు కనిపిస్తాయి.";
+"faq.howToCreateAnswer" = "హోమ్ స్క్రీన్ ఎగువ-ఎడమ Photo → 3D ట్యాప్ చేయండి, తర్వాత మీ గది ఫోటో తీయండి లేదా ఎంచుకోండి. 3D గది సృష్టించడానికి రెండు ఎంపికలు కనిపిస్తాయి.";
 "faq.howToTakePhoto" = "గది సృష్టించడానికి ఫోటో ఎలా తీయాలి?";
 "faq.howToTakePhotoAnswer" = "నేరుగా ఫోటో తీయడానికి హోమ్ స్క్రీన్‌లో కెమెరా ఐకాన్ ట్యాప్ చేయండి. స్టాండర్డ్ (1x) లేదా వైడ్ యాంగిల్ (0.5x అల్ట్రా-వైడ్) లెన్స్ మీరు ఎంచుకోవచ్చు. మీ పరికరాన్ని స్థిరంగా పట్టుకొని క్యాప్చర్ బటన్ ట్యాప్ చేయండి. ఫోటో మీ 3D గది సృష్టించడానికి ఉపయోగించబడుతుంది.";
 "faq.depthAwareRoomPhoto" = "యాప్‌లో ఫోటో తీయడం గది నాణ్యతకు సహాయపడుతుందా?";
@@ -213,13 +213,13 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్";
 "faq.whatIsSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation ఇప్పుడు live room viewer నుంచే పనిచేస్తుంది. ముందుగా detected labels ఎంచుకోండి; తర్వాత Segment ఎంచుకున్న furniture items కోసం మాత్రమే cut-out overlay సృష్టిస్తుంది, 3D గదిలో fit ఎలా ఉందో చూడడానికి.";
-"faq.howToSegment" = "ఫోటో నుండి ఫర్నిచర్‌ను ఎలా సెగ్మెంట్ చేయాలి?";
-"faq.howToSegmentAnswer" = "Room viewer లో brain icon ట్యాప్ చేసి, camera ను furniture వైపు చూపించి, ఒకటి లేదా ఎక్కువ detected labels ఎంచుకుని, తర్వాత Segment ట్యాప్ చేయండి. Live identifications కు తిరిగి రావడానికి Stop ట్యాప్ చేయండి.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation live room viewer నుండి. brain default గా primary item auto-segment. full-video mode లో items ముందు select; Segment selected pieces కు cutouts.";
+"faq.howToSegment" = "Room viewer లో furniture ఎలా segment చేయాలి?";
+"faq.howToSegmentAnswer" = "Room viewer లో brain icon tap. quick check కు main item auto-segment. specific pieces: viewfinder, camera furniture వైపు, boxes tap, Segment. Stop live identifications.";
 "faq.notDetected" = "నా ఫర్నిచర్ ఎందుకు గుర్తించబడలేదు?";
 "faq.notDetectedAnswer" = "ఫర్నిచర్ డిటెక్షన్ స్పష్టమైన, మంచి వెలుతురు ఫోటోలలో ఫర్నిచర్ స్పష్టంగా కనిపించినప్పుడు బాగా పని చేస్తుంది. ఫర్నిచర్ పాక్షికంగా కప్పబడలేదని లేదా బ్యాక్‌గ్రౌండ్‌తో కలిసిపోలేదని నిర్ధారించుకోండి.";
 "faq.multiplePieces" = "అనేక ఫర్నిచర్ ముక్కలను సెగ్మెంట్ చేయవచ్చా?";
-"faq.multiplePiecesAnswer" = "అవును! AI ఒకే ఫోటోలో అనేక ఫర్నిచర్ ముక్కలను గుర్తించగలదు. గుర్తించిన ప్రతి ఐటెమ్ విడిగా ప్రదర్శించబడుతుంది, మీరు ఏది ఉపయోగించాలో ఎంచుకోవడానికి.";
+"faq.multiplePiecesAnswer" = "అవును! full-video mode లో several boxes tap చేసి once Segment — selected pieces అన్నీ కలిపి 3D room పై. default brain flow లో one-by-one segment చేయవచ్చు.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "నా 3D గదిని ఎలా చూడాలి?";
@@ -231,16 +231,16 @@
 "faq.accuracy" = "3D మోడల్ ఎంత ఖచ్చితమైనది?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "గది కొలతలను సర్దుబాటు చేయవచ్చా?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit చేయలేరు. ruler tap చేసి estimated width, height, depth చూడండి. clear corners photo; manual rooms మీ boundaries follow.";
 "faq.furnitureMeasurements" = "ఫర్నిచర్ & కొలతలు";
 "faq.arAssistedSizing" = "AR-సహాయ ఫర్నిచర్ సైజింగ్ అంటే ఏమిటి?";
-"faq.arAssistedSizingAnswer" = "ముందుగా brain icon ట్యాప్ చేసి detected items ఎంచుకోండి, తర్వాత Segment ట్యాప్ చేయండి. Room-relative scale కావాలంటే sizing control వాడండి. AR/depth support ఉన్న ఫోన్లలో app live camera depth తో మరింత realistic furniture size ఇస్తుంది; depth లేకపోతే furniture measurements approximate గా ఉంటాయి.";
+"faq.arAssistedSizingAnswer" = "ముందుగా brain icon తో furniture segment. room-relative scale కు sizing control. AR/depth phones live camera depth; లేకపోతే approximate.";
 "faq.measurementPill" = "చిన్న కొలత చూపు ఏమిటి?";
 "faq.measurementPillAnswer" = "SmartyPants సక్రియంగా ఉన్నప్పుడు, అంచనా వేసిన ఫర్నిచర్ మరియు గది ఎత్తు చూపబడవచ్చు. ఖచ్చితత్వం కోసం నిజమైన కొలతలను నమోదు చేయడానికి ట్యాప్ చేయండి. గది ఫోటో వైడ్-ఆంగిల్ (0.5×) తో తీస్తే దాన్ని గుర్తించండి.";
 "faq.resetOverlayScale" = "మాస్క్ తప్పుగా జూమ్ అయినట్లు అనిపిస్తే?";
 "faq.resetOverlayScaleAnswer" = "3D గదిలో ఓవర్‌ఫ్లో మెనూ (⋮) తెరిచి Reset overlay scale ఎంచుకోండి. గుర్తింపు మాస్క్‌కు వర్తించిన ఆటో జూమ్ క్లియర్ అవుతుంది.";
 "faq.roomFitment" = "ఫర్నిచర్ సరిగా ఉందో ఎలా తనిఖీ చేయాలి?";
-"faq.roomFitmentAnswer" = "ఫర్నిచర్ జోడించిన తర్వాత, మీ 3D గదిలో దాన్ని పునఃపరిమాణం చేసి తరలించి మీ స్థలం మరియు ఇతర ఫర్నిచర్‌తో ఎలా సరిపోతుందో చూడండి.";
+"faq.roomFitmentAnswer" = "segmentation తర్వాత 3D room లో cutouts resize/reposition. full-video లో Segment selected pieces room పై composite చేసి several items compare.";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "ప్లేస్‌మెంట్ ఇంటెలిజెన్స్ & సౌందర్యం";
@@ -394,7 +394,9 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI ఫీచర్లు";
 "faq.whatIsBrainIcon" = "బ్రెయిన్ ఐకాన్ ఏమి చేస్తుంది?";
-"faq.whatIsBrainIconAnswer" = "బ్రెయిన్ ఐకాన్ SmartyPants identify mode ను ప్రారంభిస్తుంది. ఇది live camera తో furniture మరియు objects ను కనుగొని labels మరియు boxes చూపిస్తుంది, Segment ట్యాప్ చేసే ముందు ఒకటి లేదా ఎక్కువ labels ఎంచుకోవడానికి వీలు ఇస్తుంది.";
+"faq.whatIsBrainIconAnswer" = "బ్రెయిన్ ఐకాన్ room viewer లో SmartyPants ప్రారంభిస్తుంది. డిఫాల్ట్‌గా అత్యధిక-confidence furniture ను 3D room పై transparent cutout గా auto-segment చేస్తుంది. tap-to-select కు viewfinder బటన్ ముందు ట్యాప్ చేయండి.";
+"faq.whatIsViewfinderButton" = "Room viewer లో viewfinder బటన్ ఏమి చేస్తుంది?";
+"faq.whatIsViewfinderButtonAnswer" = "SmartyPants active గా ఉన్నప్పుడు viewfinder (పై-కుడి) full-video mode toggle. live camera + detection boxes, ఒకటి లేదా ఎక్కువ items tap, తర్వాత Segment. camera hide, transparent cutouts 3D room పై. Stop live identifications.";
 "faq.howToScreenshot" = "స్క్రీన్‌షాట్ ఎలా తీయాలి?";
 "faq.howToScreenshotAnswer" = "SmartyPants యాక్టివ్‌గా ఉన్నప్పుడు (బ్రెయిన్ ఐకాన్ ఆకుపచ్చ), కింద-కుడివైపు షేర్ ఐకాన్ కనిపిస్తుంది. AI డిటెక్షన్‌లతో వ్యూ స్క్రీన్‌షాట్‌ను మీ ఫోటో లైబ్రరీలో సేవ్ చేయడానికి దాన్ని ట్యాప్ చేయండి.";
 "faq.howToSaveRoom" = "గదిని ఎలా సేవ్ చేయాలి?";
@@ -508,11 +510,11 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "కొలత సూచన";
 "help.measurementAccuracyBody" = "AR depth మద్దతు లేని ఫోన్లలో కూడా గది మరియు ఫర్నిచర్ ప్రివ్యూ కనిపిస్తుంది, కానీ గది కొలతలు మరియు ముఖ్యంగా ఫర్నిచర్ కొలతలు కేవలం అంచనాలే.";
-"faq.whatIsBrainIconAnswer" = "బ్రెయిన్ ఐకాన్ SmartyPants identify mode ను ప్రారంభిస్తుంది. ఇది live camera తో furniture మరియు objects ను కనుగొని labels మరియు boxes చూపిస్తుంది, Segment ట్యాప్ చేసే ముందు ఒకటి లేదా ఎక్కువ labels ఎంచుకోవడానికి వీలు ఇస్తుంది.";
-"faq.howToSegmentAnswer" = "Room viewer లో brain icon ట్యాప్ చేసి, camera ను furniture వైపు చూపించి, ఒకటి లేదా ఎక్కువ detected labels ఎంచుకుని, తర్వాత Segment ట్యాప్ చేయండి. Live identifications కు తిరిగి రావడానికి Stop ట్యాప్ చేయండి.";
+"faq.whatIsBrainIconAnswer" = "బ్రెయిన్ ఐకాన్ room viewer లో SmartyPants ప్రారంభిస్తుంది. డిఫాల్ట్‌గా అత్యధిక-confidence furniture ను 3D room పై transparent cutout గా auto-segment చేస్తుంది. tap-to-select కు viewfinder బటన్ ముందు ట్యాప్ చేయండి.";
+"faq.howToSegmentAnswer" = "Room viewer లో brain icon tap. quick check కు main item auto-segment. specific pieces: viewfinder, camera furniture వైపు, boxes tap, Segment. Stop live identifications.";
 "faq.accuracyAnswer" = "3D గది ఒక ఫోటో ఆధారంగా చేసిన అంచనా. గది కొలతలు మార్గదర్శకంగా ఉపయోగపడవచ్చు, కానీ అవి survey-grade ఖచ్చితత్వం కావు. ఫర్నిచర్ కొలతలు AR లేదా depth మద్దతు ఉన్న ఫోన్లలో ఎక్కువగా నమ్మదగినవి.";
-"faq.adjustDimensionsAnswer" = "AI-generated Splat గదులలో నేరుగా కాదు. ప్రస్తుత అంచనా వెడల్పు, ఎత్తు, లోతు చూడటానికి రూమ్ వ్యూవర్‌లో ruler ఉపయోగించండి. మంచి ఫలితాల కోసం మూలలు స్పష్టంగా కనిపించే గది ఫోటో తీయండి; manual rooms మీరు పెట్టిన boundaries ను అనుసరిస్తాయి.";
-"faq.arAssistedSizingAnswer" = "ముందుగా brain icon ట్యాప్ చేసి detected items ఎంచుకోండి, తర్వాత Segment ట్యాప్ చేయండి. Room-relative scale కావాలంటే sizing control వాడండి. AR/depth support ఉన్న ఫోన్లలో app live camera depth తో మరింత realistic furniture size ఇస్తుంది; depth లేకపోతే furniture measurements approximate గా ఉంటాయి.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit చేయలేరు. ruler tap చేసి estimated width, height, depth చూడండి. clear corners photo; manual rooms మీ boundaries follow.";
+"faq.arAssistedSizingAnswer" = "ముందుగా brain icon తో furniture segment. room-relative scale కు sizing control. AR/depth phones live camera depth; లేకపోతే approximate.";
 "faq.measurementPillAnswer" = "furniture size pill అనేది sizing mode ఆన్ అయ్యి, యాప్‌కు ఉపయోగపడే live height estimate ఉన్నప్పుడే కనిపిస్తుంది. ruler button ప్రస్తుత గది వెడల్పు, ఎత్తు, లోతును ఒక చిన్న card లో చూపిస్తుంది. non-AR ఫోన్లలో ఈ రీడింగులు, ముఖ్యంగా ఫర్నిచర్‌కు, తక్కువ నమ్మదగినవి.";
 "faq.resetOverlayScaleAnswer" = "ఇప్పుడు overflow menu లేదు. overlay తప్పుగా కనిపిస్తే బ్రెయిన్ ఐకాన్ ఆఫ్ చేసి మళ్లీ ఆన్ చేయండి, లేదా pinch చేసి ఫర్నిచర్ పరిమాణాన్ని చేతితో సరిచేయండి.";
 

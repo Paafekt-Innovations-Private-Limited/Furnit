@@ -190,7 +190,7 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "அறை உருவாக்கம்";
 "faq.howToCreate" = "3D அறையை எப்படி உருவாக்குவது?";
-"faq.howToCreateAnswer" = "முகப்பு திரையின் மேல்-இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். உங்கள் 3D அறையை உருவாக்க இரண்டு விருப்பங்களைக் காண்பீர்கள்.";
+"faq.howToCreateAnswer" = "முகப்பு திரையின் மேல்-இடது Photo → 3D ஐ தட்டவும், பின்னர் உங்கள் அறை புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். 3D அறை உருவாக்க இரண்டு விருப்பங்கள் தெரியும்.";
 "faq.howToTakePhoto" = "அறை உருவாக்க புகைப்படம் எப்படி எடுப்பது?";
 "faq.howToTakePhotoAnswer" = "நேரடியாக புகைப்படம் எடுக்க முகப்பு திரையில் கேமரா ஐகானைத் தட்டவும். நிலையான (1x) அல்லது அகலக்கோண (0.5x அல்ட்ரா-வைட்) லென்ஸைத் தேர்வு செய்யலாம். உங்கள் சாதனத்தை நிலையாகப் பிடித்து, படப்பிடிப்பு பொத்தானைத் தட்டவும். புகைப்படம் உங்கள் 3D அறையை உருவாக்க பயன்படுத்தப்படும்.";
 "faq.depthAwareRoomPhoto" = "பயன்பாட்டில் புகைப்படம் எடுப்பது உதவுமா?";
@@ -213,13 +213,13 @@
 // FAQ - Furniture Segmentation
 "faq.furnitureSegmentation" = "தளபாட பிரிப்பு";
 "faq.whatIsSegmentation" = "தளபாட பிரிப்பு என்றால் என்ன?";
-"faq.whatIsSegmentationAnswer" = "Furniture segmentation இப்போது live room viewer-இலிருந்தே செயல்படுகிறது. முதலில் detected labels-ஐ தேர்வு செய்யுங்கள்; பிறகு Segment தேர்ந்தெடுத்த furniture items-க்கு மட்டும் cut-out overlay உருவாக்கும், 3D அறையில் பொருத்தத்தை பார்க்க.";
-"faq.howToSegment" = "புகைப்படத்திலிருந்து தளபாடங்களை எப்படி பிரிப்பது?";
-"faq.howToSegmentAnswer" = "Room viewer-ல் brain icon-ஐ தட்டவும், camera-ஐ furniture-க்கு நோக்கி வைத்துக் கொள்ளவும், ஒரு அல்லது பல detected labels-ஐ தேர்வு செய்து Segment தட்டவும். Live identifications-க்கு திரும்ப Stop தட்டவும்.";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation live room viewer-லிருந்து. brain இயல்பாக ஒரு primary item auto-segment. full-video mode-ல் items முதலில் select; Segment selected pieces-க்கு மட்டும் cutouts.";
+"faq.howToSegment" = "Room viewer-ல் furniture எப்படி segment செய்வது?";
+"faq.howToSegmentAnswer" = "Room viewer-ல் brain icon தட்டவும். quick check-க்கு main item auto-segment. specific pieces: viewfinder, camera furniture நோக்கி, boxes தட்டி Segment. Stop live identifications.";
 "faq.notDetected" = "என் தளபாடங்கள் ஏன் கண்டறியப்படவில்லை?";
 "faq.notDetectedAnswer" = "தளபாட கண்டறிதல் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படங்களில் தளபாடங்கள் தெளிவாகத் தெரியும்போது சிறப்பாக செயல்படுகிறது. தளபாடங்கள் பகுதியளவு மறைக்கப்படவில்லை அல்லது பின்னணியுடன் கலக்கவில்லை என்பதை உறுதிப்படுத்தவும்.";
 "faq.multiplePieces" = "பல தளபாடங்களை பிரிக்க முடியுமா?";
-"faq.multiplePiecesAnswer" = "ஆம்! AI ஒரு புகைப்படத்தில் பல தளபாடங்களைக் கண்டறிய முடியும். கண்டறியப்பட்ட ஒவ்வொரு பொருளும் தனித்தனியாகக் காட்டப்படும், எதைப் பயன்படுத்த வேண்டும் என்பதை நீங்கள் தேர்வு செய்யலாம்.";
+"faq.multiplePiecesAnswer" = "ஆம்! full-video mode-ல் several boxes தட்டி once Segment — அனைத்து selected pieces ஒன்றாக 3D room மேல். default brain flow-லும் one-by-one segment செய்யலாம்.";
 
 // FAQ - 3D Room & Fitment
 "faq.howToView" = "என் 3D அறையை எப்படி பார்ப்பது?";
@@ -231,16 +231,16 @@
 "faq.accuracy" = "3D மாதிரி எவ்வளவு துல்லியமானது?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "அறை பரிமாணங்களை சரிசெய்ய முடியுமா?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit செய்ய முடியாது. ruler தட்டி estimated width, height, depth பார்க்கவும். clear corners photo; manual rooms உங்கள் boundaries follow.";
 "faq.furnitureMeasurements" = "தளபாடம் & அளவீடுகள்";
 "faq.arAssistedSizing" = "AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?";
-"faq.arAssistedSizingAnswer" = "முதலில் brain icon-ஐ தட்டி detected items-ஐ தேர்வு செய்யுங்கள், பிறகு Segment தட்டுங்கள். Room-relative scale வேண்டும் என்றால் sizing control பயன்படுத்துங்கள். AR/depth support உள்ள போன்களில் app live camera depth மூலம் இன்னும் realistic furniture size தரும்; depth இல்லையெனில் furniture measurements approximate ஆகும்.";
+"faq.arAssistedSizingAnswer" = "முதலில் brain icon மூலம் furniture segment. room-relative scale-க்கு sizing control. AR/depth phones live camera depth; இல்லையெனில் approximate.";
 "faq.measurementPill" = "சிறிய அளவீட்டுக் குறிப்பு என்ன?";
 "faq.measurementPillAnswer" = "SmartyPants செயலில் இருக்கும்போது, மதிப்பிடப்பட்ட தளபாடம் மற்றும் அறை உயரம் காட்டப்படலாம். துல்லியத்திற்கு உண்மையான அளவுகளை உள்ளிட தட்டவும். அறைப் படம் வைட்-ஆங்கிள் (0.5×) என்றால் அதைக் குறிக்கவும்.";
 "faq.resetOverlayScale" = "முகமூடி தவறாக பெரிதாக்கப்பட்டது போல் தெரிகிறது — என்ன செய்வது?";
 "faq.resetOverlayScaleAnswer" = "3D அறையில் மேலதிக மெனுவை (⋮) திறந்து Reset overlay scale ஐத் தேர்ந்தெடுக்கவும். கண்டறிதல் முகமூடிக்கு பயன்பட்ட தானியங்கு பெரிதாக்கம் அழிக்கப்படும்.";
 "faq.roomFitment" = "தளபாடம் பொருந்துகிறதா எப்படி சரிபார்ப்பது?";
-"faq.roomFitmentAnswer" = "தளபாடத்தைச் சேர்த்த பிறகு, உங்கள் 3D அறையில் அதை மறுஅளவிட்டு நகர்த்தி, உங்கள் இடம் மற்றும் மற்ற தளபாடங்களுடன் எப்படி பொருந்துகிறது என்பதைப் பார்க்கலாம்.";
+"faq.roomFitmentAnswer" = "segmentation-க்குப் பிறகு 3D room-ல் cutouts resize/reposition. full-video-ல் Segment selected pieces room மேல் composite செய்து several items compare.";
 
 // FAQ - Placement intelligence & aesthetic
 "faq.placementIntelligence" = "இடமமைவு நுண்ணறிவும் அழகியலும்";
@@ -394,7 +394,9 @@
 // FAQ - AI Features (added)
 "faq.aiFeatures" = "AI அம்சங்கள்";
 "faq.whatIsBrainIcon" = "மூளை ஐகான் என்ன செய்கிறது?";
-"faq.whatIsBrainIconAnswer" = "மூளை ஐகான் SmartyPants identify mode-ஐ தொடங்குகிறது. இது live camera மூலம் furniture மற்றும் objects-ஐ கண்டுபிடித்து labels மற்றும் boxes காட்டும்; Segment தட்டுவதற்கு முன் ஒரு அல்லது பல labels தேர்வு செய்யலாம்.";
+"faq.whatIsBrainIconAnswer" = "மூளை ஐகான் room viewer-ல் SmartyPants தொடங்குகிறது. இயல்பாக அதிக confidence furniture-ஐ 3D room மேல் transparent cutout ஆக auto-segment செய்கிறது. tap-to-select க்கு viewfinder பொத்தானை முதலில் தட்டவும்.";
+"faq.whatIsViewfinderButton" = "Room viewer-ல் viewfinder பொத்தான் என்ன செய்கிறது?";
+"faq.whatIsViewfinderButtonAnswer" = "SmartyPants செயலில் இருக்கும்போது viewfinder (மேல்-வலது) full-video mode ஐ toggle செய்கிறது. live camera + detection boxes, ஒன்ற或以上 items தட்டி Segment. camera மறைந்து transparent cutouts 3D room மேல். Stop live identifications.";
 "faq.howToScreenshot" = "ஸ்கிரீன்ஷாட் எப்படி எடுப்பது?";
 "faq.howToScreenshotAnswer" = "SmartyPants செயலில் இருக்கும்போது (மூளை ஐகான் பச்சை), கீழே-வலதுபுறத்தில் பகிர் ஐகான் தோன்றும். AI கண்டறிதல்களுடன் பார்வையின் ஸ்கிரீன்ஷாட்டை உங்கள் புகைப்பட நூலகத்தில் சேமிக்க அதைத் தட்டவும்.";
 "faq.howToSaveRoom" = "அறையை எப்படி சேமிப்பது?";
@@ -508,11 +510,11 @@
 // FAQ overrides
 "help.measurementAccuracyTitle" = "அளவீட்டு குறிப்பு";
 "help.measurementAccuracyBody" = "AR depth ஆதரவு இல்லாத போன்களிலும் அறை மற்றும் பொருட்களின் முன்னோட்டம் காணலாம், ஆனால் அறை அளவுகளும் குறிப்பாக பொருட்களின் அளவுகளும் சுமார் கணிப்பாக மட்டுமே இருக்கும்.";
-"faq.whatIsBrainIconAnswer" = "மூளை ஐகான் SmartyPants identify mode-ஐ தொடங்குகிறது. இது live camera மூலம் furniture மற்றும் objects-ஐ கண்டுபிடித்து labels மற்றும் boxes காட்டும்; Segment தட்டுவதற்கு முன் ஒரு அல்லது பல labels தேர்வு செய்யலாம்.";
-"faq.howToSegmentAnswer" = "Room viewer-ல் brain icon-ஐ தட்டவும், camera-ஐ furniture-க்கு நோக்கி வைத்துக் கொள்ளவும், ஒரு அல்லது பல detected labels-ஐ தேர்வு செய்து Segment தட்டவும். Live identifications-க்கு திரும்ப Stop தட்டவும்.";
+"faq.whatIsBrainIconAnswer" = "மூளை ஐகான் room viewer-ல் SmartyPants தொடங்குகிறது. இயல்பாக அதிக confidence furniture-ஐ 3D room மேல் transparent cutout ஆக auto-segment செய்கிறது. tap-to-select க்கு viewfinder பொத்தானை முதலில் தட்டவும்.";
+"faq.howToSegmentAnswer" = "Room viewer-ல் brain icon தட்டவும். quick check-க்கு main item auto-segment. specific pieces: viewfinder, camera furniture நோக்கி, boxes தட்டி Segment. Stop live identifications.";
 "faq.accuracyAnswer" = "3D அறை ஒரு புகைப்படத்தை அடிப்படையாகக் கொண்ட கணிப்பு. அறை அளவுகள் வழிகாட்டுதலுக்கு உதவலாம், ஆனால் அவை survey அளவிலான துல்லியம் அல்ல. மரச்சாமான் அளவீடு AR அல்லது depth ஆதரவு உள்ள போன்களில் அதிகம் நம்பகமானது.";
-"faq.adjustDimensionsAnswer" = "AI-generated Splat அறைகளில் நேரடியாக முடியாது. தற்போதைய கணிக்கப்பட்ட அகலம், உயரம், ஆழம் ஆகியவற்றைப் பார்க்க room viewer-இல் உள்ள ruler-ஐ பயன்படுத்துங்கள். நல்ல முடிவிற்கு மூலைகள் தெளிவாகத் தெரியும் அறை புகைப்படம் எடுக்கவும்; manual rooms நீங்கள் அமைக்கும் boundary-ஐப் பின்பற்றும்.";
-"faq.arAssistedSizingAnswer" = "முதலில் brain icon-ஐ தட்டி detected items-ஐ தேர்வு செய்யுங்கள், பிறகு Segment தட்டுங்கள். Room-relative scale வேண்டும் என்றால் sizing control பயன்படுத்துங்கள். AR/depth support உள்ள போன்களில் app live camera depth மூலம் இன்னும் realistic furniture size தரும்; depth இல்லையெனில் furniture measurements approximate ஆகும்.";
+"faq.adjustDimensionsAnswer" = "AI room dimensions manually edit செய்ய முடியாது. ruler தட்டி estimated width, height, depth பார்க்கவும். clear corners photo; manual rooms உங்கள் boundaries follow.";
+"faq.arAssistedSizingAnswer" = "முதலில் brain icon மூலம் furniture segment. room-relative scale-க்கு sizing control. AR/depth phones live camera depth; இல்லையெனில் approximate.";
 "faq.measurementPillAnswer" = "furniture size pill என்பது sizing mode ஆன் ஆகி app-க்கு பயன்படுத்தக்கூடிய live height estimate கிடைக்கும் போது மட்டுமே தோன்றும். ruler button தற்போதைய அறையின் அகலம், உயரம், ஆழத்தை ஒரு சிறிய card-ல் காட்டும். non-AR போன்களில் இந்த மதிப்புகள், குறிப்பாக மரச்சாமான்களுக்கு, குறைவாக நம்பகமானவை.";
 "faq.resetOverlayScaleAnswer" = "இப்போது overflow menu இல்லை. overlay தவறாகத் தோன்றினால் brain icon-ஐ off செய்து மீண்டும் on செய்யுங்கள், அல்லது pinch செய்து மரச்சாமானின் அளவை கையால் சரிசெய்யுங்கள்.";
 

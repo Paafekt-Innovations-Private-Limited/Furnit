@@ -30,7 +30,8 @@ Current behavior:
 - Object-piece fusion is class-agnostic mask-affinity grouping, not chair-specific logic.
 - Settings image scan should mirror the live RTMDet path: uncapped detections, fused instance masks, and pixel-level RGBA union.
 - In room viewers, the room layer also owns pinch zoom; when a segmented cutout is visible, Furniture Fit must capture two-finger touches so pinch scales the furniture cluster instead of the room camera.
-- **Full video mode** displays cluster-level bounding boxes (union bbox per affinity group) rather than individual detection boxes; tapping a cluster selects all its members.
+- **Full video mode** displays cluster-level bounding boxes (union bbox per affinity group) rather than individual detection boxes; tapping a cluster selects all its members. During `segmentSelected`, the live camera preview hides and transparent cutouts composite over the 3D room.
+- **Brain default** opens in `segmentPrimary`: auto-segments the highest-confidence detection with no tap. Tap-to-select lives behind the in-room **text.viewfinder** button (`showFullVideoWithIdentifications`).
 - **Multi-select placement** (Regime A): when multiple items are selected and segmented, each gets an independent overlay with stable `UUID` identity. Items are frozen at selection, not updated from live detections. Each can be independently panned/pinched.
 - **Onboarding hints**: priority-ordered, one-at-a-time transient hints with `@AppStorage` persistence. A "?" button shows all eligible hints on demand. Hints are mode-scoped (browsing, furnitureFit, fullVideo).
 - **Toolbar dimensions**: W×H×D room measurements displayed directly in the navigation bar when available (replaces the old ruler icon and floating chip).
@@ -105,8 +106,13 @@ Current contract:
 
 ## Current Android Architecture
 
-Android room generation uses its own ExecuTorch Gaussian-splat stack. iOS uses
-**GeoCalib + Depth Anything + RTMDet object anchor → USDZ** instead.
+Android room generation uses **flat full-photo GLB** (GeoCalib + Depth Anything parity path in progress).
+iOS uses **GeoCalib + Depth Anything + RTMDet object anchor → USDZ** instead.
+
+Both platforms share the same inline brain / full-video segmentation UX:
+
+- Brain default: auto-segment highest-confidence primary over the 3D room.
+- **Viewfinder** button (Android `ic_text_viewfinder`, Swift `text.viewfinder`): live camera + cluster boxes → multi-select → Segment → transparent cutouts over 3D room.
 
 Important files/docs:
 

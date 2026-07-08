@@ -16,6 +16,28 @@ Current implementation notes:
 - `FurnitureFitContainerView` displays the cutout in `maskImageView`; pinch/pan transforms are applied through `userPinchScale`, `userPanOffset`, and `FurnitureFitOverlayScaling.resolvedTransform`.
 - In USDZ / GLB / saved PLY room viewers, the room layer also owns pinch zoom. When a segmented mask is visible, the FurnitureFit overlay must claim two-finger touches so the user scales the segmented cluster rather than the room camera.
 
+## Room viewer brain flow
+
+Room viewers (`ModelViewerView`, `GLBRoomView`, `MeshRoomView`, `SplatRoomView`) embed
+`FurnitureFitView` as an inline overlay. Modes are driven by `FurnitureFitSegmentationMode`:
+
+| User action | Mode | Camera preview | Result |
+|---|---|---|---|
+| Tap **brain** | `segmentPrimary` | Hidden (analysis only) | Auto-segment highest-confidence primary over 3D room |
+| Tap **text.viewfinder** | `identifyOnly` + full-video | Live AVCapture preview | Cluster union boxes; tap to pin items |
+| Tap **Segment** pill | `segmentSelected` + full-video | Hidden again | Transparent cutout(s) over 3D room for multi-item fitment |
+| Tap **Stop** / exit brain | — | — | Return to room browsing |
+
+Key implementation details:
+
+- Brain opens with `segmentPrimary` by default (`toggleFurnitureFit` in room viewer files).
+- Full-video is toggled by `showFullVideoWithIdentifications` via the **text.viewfinder** button.
+- `shouldShowLiveCameraPreview` is true only in `identifyOnly` (including full-video identify).
+- During full-video `segmentSelected`, inference stays live but `previewLayer` hides so mask alpha reveals the room underneath (`isFullVideoSelectedSegmentation`).
+- Tap selection is gated to full-video identify (`shouldAllowBoundingBoxTapSelection`).
+
+See `Furnit/diagrams/rtmdet-swift-flow.svg` and `Furnit/docs/README.md` for the smoke test checklist.
+
 ## Problems & Solutions
 
 ### 1. Memory Crash After Extended Use

@@ -1,10 +1,16 @@
 # Furnit iOS - Recent Changes
 
+## Docs & Diagrams — Brain / Full-Video Parity
+
+- Updated `Furnit/diagrams/rtmdet-swift-flow.svg` for room-viewer inline brain, text.viewfinder full-video modes, and transparent cutout compositing over 3D room.
+- Updated `Furnit/diagrams/room-generation-flow.svg` for **Photo → 3D** home entry and room-viewer brain hook.
+- Updated `Furnit/docs/README.md`, `Furnit/diagrams/README.md`, `Furnit/Views/FurnitureFit/README.md`, `docs/IOS_FURNITURE_FIT_ONNX_STYLE_PIPELINE.md`, `docs/RTMDET_IOS_SWIFT_SPIKE.md`, `docs/IOS_ROOM_FURNITURE_DIMENSIONS_AND_OVERLAY.md`, `CONTEXT.md`, and root `README.md`.
+
 ## Room Generation Documentation Cleanup
 
-### Current Photo to 3D Room Path
+### Current Photo → 3D Room Path
 - **Location**: `SinglePhotoRoomViewer.swift`, `DepthAnythingRoomReconstructor.swift`, `CameraExifSidecar.swift`, `USDZModel.swift`
-- Default single-photo room creation is documented as: photo capture/library image → camera metadata sidecar → parallel GeoCalib, Depth Anything, and RTMDet object-anchor work → measurement grid → textured USDZ export → `DepthAnythingPreviewRoomView` / `ModelViewerView`.
+- Default single-photo room creation is documented as: home **Photo → 3D** → photo capture/library image → camera metadata sidecar → parallel GeoCalib, Depth Anything, and RTMDet object-anchor work → measurement grid → textured USDZ export → room viewer with inline brain.
 - Progress UI uses existing generic localized copy: "Generating 3D Model" and "Creating your 3D room..." so backend names are not user-facing.
 - Added `Furnit/diagrams/room-generation-flow.svg` and updated the iOS docs index to point at it.
 - The old model-backed splat generation service/model path is no longer part of the Swift active path. Saved PLY/splat viewing remains for existing room assets and LiDAR/sweep outputs.

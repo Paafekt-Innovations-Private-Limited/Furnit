@@ -20,8 +20,8 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">Photo to 3D Room — iOS (Swift)</text>
-  <text x="32" y="62" class="sub">Default single-photo room generation. SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → ModelViewerView.</text>
+  <text x="32" y="40" class="title">Photo → 3D Room — iOS (Swift)</text>
+  <text x="32" y="62" class="sub">Home toolbar Photo → 3D → SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → room viewer with inline brain.</text>
 
   <rect x="570" y="78" width="14" height="14" rx="3" class="ane"/><text x="590" y="90" class="legtxt">Core ML</text>
   <rect x="652" y="78" width="14" height="14" rx="3" class="cpu"/><text x="672" y="90" class="legtxt">CPU math</text>
@@ -30,7 +30,7 @@
   <g>
     <rect x="270" y="112" width="360" height="56" class="box cam"/>
     <text x="450" y="135" text-anchor="middle" class="bt">Photo input</text>
-    <text x="450" y="154" text-anchor="middle" class="bs">camera capture or photo-library image</text>
+    <text x="450" y="154" text-anchor="middle" class="bs">Home Photo → 3D · camera capture or photo-library image</text>
   </g>
   <path class="edge" d="M450,168 L450,206" marker-end="url(#arrow)"/>
 
@@ -99,8 +99,8 @@
   <g>
     <rect x="270" y="944" width="360" height="72" class="box disp"/>
     <text x="450" y="968" text-anchor="middle" class="bt">Open room viewer</text>
-    <text x="450" y="987" text-anchor="middle" class="bs">DepthAnythingPreviewRoomView → ModelViewerView</text>
-    <text x="450" y="1005" text-anchor="middle" class="bs">toolbar shows W × H × D from generated metadata</text>
+    <text x="450" y="987" text-anchor="middle" class="bs">DepthAnythingPreviewRoomView → ModelViewerView / GLBRoomView / MeshRoomView</text>
+    <text x="450" y="1005" text-anchor="middle" class="bs">nav bar W × H × D · brain auto-segments primary · viewfinder toggles full-video multi-select</text>
   </g>
 
   <g>
@@ -109,5 +109,5 @@
     <text x="96" y="1083" class="bs">Uses existing generic localized strings: "Generating 3D Model" / "Creating your 3D room...". Backend names stay out of the UI.</text>
   </g>
 
-  <text x="32" y="1130" class="sub">See also: rtmdet-swift-flow.svg for the live FurnitureFit segmentation loop.</text>
+  <text x="32" y="1130" class="sub">See also: rtmdet-swift-flow.svg for inline brain / full-video FurnitureFit segmentation in room viewers.</text>
 </svg>

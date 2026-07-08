@@ -19,18 +19,33 @@ There is no ONNX Runtime dependency in the iOS app.
 ## Flow
 
 ```text
-camera/still frame
+room viewer brain tap OR Settings image scan
   -> frame gate + thermal cadence
+  -> AVCapture live feed (preview on in identifyOnly; hidden in full-video segmentSelected)
   -> resize to model input
   -> Core ML image input
   -> RTMDet raw heads
   -> decode candidates
   -> confidence-first class-aware NMS
-  -> mask planes
-  -> mask-affinity grouping
+  -> mask planes + affinity clusters (union bboxes in full-video)
   -> pixel-level RGBA cutout union
-  -> overlay display + gesture ownership
+  -> overlay display + gesture ownership over USDZ / GLB / PLY room
 ```
+
+## Room viewer modes
+
+`GLBRoomView`, `ModelViewerView`, `MeshRoomView`, and `SplatRoomView` host inline Furniture Fit.
+Modes map to `FurnitureFitSegmentationMode` in `FurnitureFitOverlaySupport.swift`:
+
+| Mode | Camera preview | Overlay | Purpose |
+|---|---|---|---|
+| **Brain default** (`segmentPrimary`) | Hidden (analysis only) | Auto-segment highest-confidence primary; transparent cutout over 3D room | Quick single-furniture check |
+| **Full video — Identify** (`identifyOnly` + viewfinder) | Live `AVCaptureVideoPreviewLayer` | Cluster detection boxes; tap to pin furniture | Select one or more items against the live feed |
+| **Full video — Segment** (`segmentSelected` + viewfinder) | Hidden again | Transparent cutout(s) over 3D room | Check multi-item fitment in the saved room |
+
+Toggle full-video with the in-room **text.viewfinder** button (top-right while brain is active).
+This matches Android `GLBRoomActivity`'s viewfinder toggle. A legacy Settings switch still exists
+but room viewers drive the mode from the in-room button.
 
 ## Current Behavior
 
@@ -42,7 +57,8 @@ camera/still frame
 - Object-piece fusion uses mask affinity over raw mask planes. The grouping is class-agnostic, so a
   multi-piece physical object can be segmented as one object without hard-coded chair rules.
 - Full video mode displays cluster-level union boxes. Tapping a cluster selects all members for
-  segmentation.
+  segmentation. During `segmentSelected`, the camera preview hides so transparent cutouts composite
+  over the 3D room underneath.
 - When segmented furniture is visible over a USDZ / GLB / saved PLY room, the Furniture Fit overlay
   must claim two-finger touches so pinch scales the furniture cutout, not the room camera.
 
