@@ -31,6 +31,9 @@ data class SegmentationResult(
     val detections: List<DetectionResult>,
     val inputSize: Int = 640,
     val primaryDetection: DetectionResult? = null,
+    val detectionClusters: List<List<Int>> = emptyList(),
+    val sourceWidth: Int = inputSize,
+    val sourceHeight: Int = inputSize,
 )
 
 /**
@@ -61,6 +64,8 @@ class FurnitureFitManager(private val context: Context) {
         private const val RTMDET_MASK_KEEP_THRESHOLD = 0.80f
         private const val DEFAULT_NMS_IOU_THRESHOLD = 0.50f
         private const val DEFAULT_MAX_DETECTIONS = 1000
+        private const val RAW_MASK_AFFINITY_THRESHOLD = 0.12f
+        private const val RAW_MASK_AFFINITY_BIT_THRESHOLD = 0.50f
         private val RTMDET_ALLOWED_CLASS_IDS = setOf(56, 57, 59, 60)
         /** When true, RTMDet only surfaces the curated furniture classes in RTMDET_ALLOWED_CLASS_IDS.
          *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
@@ -1247,17 +1252,30 @@ class FurnitureFitManager(private val context: Context) {
             "RTMDet raw detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${parseNmsMillis}ms",
         )
 
+        val rawMaskPlaneStartNanos = System.nanoTime()
+        val rawMaskPlanes = keepDets.map { buildRtmdetRawMaskPlane(it, raw.maskFeat) }
+        val affinityGraph = makeMaskAffinityGraph(rawMaskPlanes)
+        val rawMaskPlaneMillis = elapsedMillis(rawMaskPlaneStartNanos)
+        LogUtil.i(
+            TAG,
+            "RTMDet raw mask affinity: planes=${rawMaskPlanes.count { it != null }} clusters=${affinityGraph.clusterCount()} in ${rawMaskPlaneMillis}ms",
+        )
+
         val pinList = pinnedDetections.orEmpty()
+        val selectedSeedIndices = if (pinList.isNotEmpty()) {
+            selectedSeedIndicesForPins(keepDets, pinList, affinityGraph)
+        } else {
+            emptyList()
+        }
+        val selectedMaskRawIndices = if (selectedSeedIndices.isNotEmpty()) {
+            affinityGraph.transitiveGroup(selectedSeedIndices).ifEmpty { selectedSeedIndices }.sorted()
+        } else {
+            emptyList()
+        }
         val restrictToSelection = selectedClassIds.isNotEmpty() || pinList.isNotEmpty()
         val primaryCandidates = when {
-            pinList.isNotEmpty() -> {
-                val iouPinThreshold = 0.45f
-                keepDets.filter { det ->
-                    pinList.any { pin ->
-                        det.classId == pin.classId && calculateIoU(det, pin) >= iouPinThreshold
-                    }
-                }
-            }
+            selectedMaskRawIndices.isNotEmpty() -> selectedMaskRawIndices.mapNotNull { keepDets.getOrNull(it) }
+            pinList.isNotEmpty() -> emptyList()
             selectedClassIds.isEmpty() -> keepDets
             else -> keepDets.filter { it.classId in selectedClassIds }
         }
@@ -1267,7 +1285,6 @@ class FurnitureFitManager(private val context: Context) {
             frameHeight = inputH.toFloat(),
             minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
         )
-        val maskDetectionsForBuild = if (restrictToSelection) primaryCandidates else listOfNotNull(primaryDet)
 
         val orderedDisplayDetections = if (primaryDet != null) {
             buildList {
@@ -1279,6 +1296,11 @@ class FurnitureFitManager(private val context: Context) {
         } else {
             keepDets
         }
+        val orderedDisplayRawIndices = orderedDisplayDetections
+            .take(DEFAULT_MAX_DETECTIONS)
+            .map { displayDetection ->
+                keepDets.indexOfFirst { it.anchorIdx == displayDetection.anchorIdx }
+            }
         val detectionResults = orderedDisplayDetections
             .take(DEFAULT_MAX_DETECTIONS)
             .map { detection ->
@@ -1292,16 +1314,52 @@ class FurnitureFitManager(private val context: Context) {
                     classId = detection.classId,
                 )
             }
+        val detectionClusters = buildDisplayClustersFromAffinityGraph(
+            orderedDisplayRawIndices = orderedDisplayRawIndices,
+            affinityGraph = affinityGraph,
+        )
+
+        val primaryRawIndex = primaryDet?.let { primary ->
+            keepDets.indexOfFirst { it.anchorIdx == primary.anchorIdx }
+        } ?: -1
+        val primaryGroupRawIndices = if (primaryRawIndex >= 0) {
+            affinityGraph.transitiveGroup(listOf(primaryRawIndex)).ifEmpty { listOf(primaryRawIndex) }.sorted()
+        } else {
+            emptyList()
+        }
+        val selectedClassRawIndices = if (selectedClassIds.isNotEmpty() && pinList.isEmpty()) {
+            primaryCandidates.mapNotNull { candidate ->
+                keepDets.indexOfFirst { it.anchorIdx == candidate.anchorIdx }.takeIf { it >= 0 }
+            }
+        } else {
+            emptyList()
+        }
+        val maskRawIndices = when {
+            selectedMaskRawIndices.isNotEmpty() -> selectedMaskRawIndices
+            pinList.isNotEmpty() -> emptyList()
+            selectedClassRawIndices.isNotEmpty() -> selectedClassRawIndices
+            !restrictToSelection -> primaryGroupRawIndices
+            else -> emptyList()
+        }
+        val maskDetectionsForBuild = maskRawIndices.mapNotNull { keepDets.getOrNull(it) }
 
         if (!includeMask) {
             LogUtil.i(TAG, "RTMDet raw total (detections only): ${elapsedMillis(totalStartNanos)}ms")
             LogUtil.i(
                 TAG,
                 "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
-                    "parse+nms=$parseNmsMillis maskBuild=0 total=${elapsedMillis(totalStartNanos)} " +
-                    "(planes=0 includeMask=false)",
+                    "parse+nms=$parseNmsMillis maskPlanes=$rawMaskPlaneMillis maskBuild=0 total=${elapsedMillis(totalStartNanos)} " +
+                    "(planes=${rawMaskPlanes.count { it != null }} includeMask=false)",
             )
-            return SegmentationResult(null, detectionResults, inputW, detectionResults.firstOrNull())
+            return SegmentationResult(
+                mask = null,
+                detections = detectionResults,
+                inputSize = inputW,
+                primaryDetection = detectionResults.firstOrNull(),
+                detectionClusters = detectionClusters,
+                sourceWidth = frame.width,
+                sourceHeight = frame.height,
+            )
         }
 
         var maskBuildMillis = 0L
@@ -1311,8 +1369,9 @@ class FurnitureFitManager(private val context: Context) {
             val protoW = 80
             val protoH = 80
             val maskProto = FloatArray(protoW * protoH)
-            for (detection in maskDetectionsForBuild) {
-                val plane = buildRtmdetRawMaskPlane(detection, raw.maskFeat) ?: continue
+            for (rawIndex in maskRawIndices) {
+                val detection = keepDets.getOrNull(rawIndex) ?: continue
+                val plane = rawMaskPlanes.getOrNull(rawIndex) ?: continue
                 val refinedPlane = refineRtmdetMaskPlaneForDetection(
                     plane = plane,
                     detection = detection,
@@ -1388,10 +1447,18 @@ class FurnitureFitManager(private val context: Context) {
         LogUtil.i(
             TAG,
             "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
-                "parse+nms=$parseNmsMillis maskBuild=$maskBuildMillis total=${elapsedMillis(totalStartNanos)} " +
+                "parse+nms=$parseNmsMillis maskPlanes=$rawMaskPlaneMillis maskBuild=$maskBuildMillis total=${elapsedMillis(totalStartNanos)} " +
                 "(planes=${maskDetectionsForBuild.size} includeMask=true)",
         )
-        return SegmentationResult(maskResult, detectionResults, inputW, detectionResults.firstOrNull())
+        return SegmentationResult(
+            mask = maskResult,
+            detections = detectionResults,
+            inputSize = inputW,
+            primaryDetection = detectionResults.firstOrNull(),
+            detectionClusters = detectionClusters,
+            sourceWidth = frame.width,
+            sourceHeight = frame.height,
+        )
     }
 
     private fun extractRtmdetRawOutputs(
@@ -1653,6 +1720,163 @@ class FurnitureFitManager(private val context: Context) {
                 "raw=$rawPixels kept=$keptPixels bboxProto=${x1 - x0 + 1}x${y1 - y0 + 1} best=$bestCount",
         )
         return refined
+    }
+
+    private data class MaskBitset(
+        val words: LongArray,
+        val onCount: Int,
+    )
+
+    private class MaskAffinityGraph(private val neighbors: List<List<Int>>) {
+        val nodeCount: Int
+            get() = neighbors.size
+
+        fun transitiveGroup(seedIndices: List<Int>): List<Int> {
+            if (seedIndices.isEmpty() || neighbors.isEmpty()) return emptyList()
+            val inGroup = linkedSetOf<Int>()
+            val frontier = ArrayDeque<Int>()
+            for (seed in seedIndices) {
+                if (seed in neighbors.indices && inGroup.add(seed)) {
+                    frontier.add(seed)
+                }
+            }
+            while (frontier.isNotEmpty()) {
+                val current = frontier.removeLast()
+                for (neighbor in neighbors[current]) {
+                    if (neighbor in neighbors.indices && inGroup.add(neighbor)) {
+                        frontier.add(neighbor)
+                    }
+                }
+            }
+            return inGroup.sorted()
+        }
+
+        fun clusterCount(): Int {
+            if (neighbors.isEmpty()) return 0
+            val visited = BooleanArray(neighbors.size)
+            var clusters = 0
+            for (index in neighbors.indices) {
+                if (visited[index]) continue
+                clusters++
+                for (member in transitiveGroup(listOf(index))) {
+                    visited[member] = true
+                }
+            }
+            return clusters
+        }
+    }
+
+    private fun makeMaskAffinityGraph(planes: List<FloatArray?>): MaskAffinityGraph {
+        val bitsets = planes.map { maskBitsetForPlane(it) }
+        val neighbors = Array(planes.size) { mutableListOf<Int>() }
+        if (bitsets.size <= 1) return MaskAffinityGraph(neighbors.map { it.toList() })
+
+        for (leftIndex in 0 until bitsets.lastIndex) {
+            val left = bitsets[leftIndex]
+            if (left.onCount <= 0) continue
+            for (rightIndex in (leftIndex + 1) until bitsets.size) {
+                val right = bitsets[rightIndex]
+                if (right.onCount <= 0) continue
+                val intersection = bitsetIntersectionCount(left.words, right.words)
+                val affinity = intersection.toFloat() / max(1, min(left.onCount, right.onCount)).toFloat()
+                if (affinity >= RAW_MASK_AFFINITY_THRESHOLD) {
+                    neighbors[leftIndex].add(rightIndex)
+                    neighbors[rightIndex].add(leftIndex)
+                }
+            }
+        }
+        return MaskAffinityGraph(neighbors.map { it.toList() })
+    }
+
+    private fun maskBitsetForPlane(plane: FloatArray?): MaskBitset {
+        if (plane == null || plane.isEmpty()) return MaskBitset(LongArray(0), 0)
+        val words = LongArray((plane.size + 63) / 64)
+        var onCount = 0
+        for (index in plane.indices) {
+            val value = plane[index]
+            if (value.isFinite() && value > RAW_MASK_AFFINITY_BIT_THRESHOLD) {
+                words[index shr 6] = words[index shr 6] or (1L shl (index and 63))
+                onCount++
+            }
+        }
+        return MaskBitset(words, onCount)
+    }
+
+    private fun bitsetIntersectionCount(left: LongArray, right: LongArray): Int {
+        val count = min(left.size, right.size)
+        var total = 0
+        for (index in 0 until count) {
+            total += java.lang.Long.bitCount(left[index] and right[index])
+        }
+        return total
+    }
+
+    private fun buildDisplayClustersFromAffinityGraph(
+        orderedDisplayRawIndices: List<Int>,
+        affinityGraph: MaskAffinityGraph,
+    ): List<List<Int>> {
+        if (orderedDisplayRawIndices.isEmpty()) return emptyList()
+        if (affinityGraph.nodeCount <= 0) return orderedDisplayRawIndices.indices.map { listOf(it) }
+
+        val rawToDisplay = mutableMapOf<Int, Int>()
+        for ((displayIndex, rawIndex) in orderedDisplayRawIndices.withIndex()) {
+            if (rawIndex >= 0) rawToDisplay[rawIndex] = displayIndex
+        }
+
+        val visited = BooleanArray(orderedDisplayRawIndices.size)
+        val clusters = mutableListOf<List<Int>>()
+        for (displayIndex in orderedDisplayRawIndices.indices) {
+            if (visited[displayIndex]) continue
+            val rawIndex = orderedDisplayRawIndices[displayIndex]
+            val rawGroup = if (rawIndex >= 0) {
+                affinityGraph.transitiveGroup(listOf(rawIndex)).ifEmpty { listOf(rawIndex) }
+            } else {
+                emptyList()
+            }
+            val displayGroup = rawGroup.mapNotNull { rawToDisplay[it] }.distinct().sorted()
+                .ifEmpty { listOf(displayIndex) }
+            for (member in displayGroup) {
+                if (member in visited.indices) visited[member] = true
+            }
+            clusters += displayGroup
+        }
+        return clusters
+    }
+
+    private fun selectedSeedIndicesForPins(
+        detections: List<Detection>,
+        pins: List<DetectionResult>,
+        affinityGraph: MaskAffinityGraph,
+    ): List<Int> {
+        if (detections.isEmpty() || pins.isEmpty()) return emptyList()
+        val seedIndices = mutableListOf<Int>()
+        val coveredClusterMembers = mutableSetOf<Int>()
+        val usedDetectionIndices = mutableSetOf<Int>()
+        val pinMatchIouThreshold = 0.45f
+
+        for (pin in pins) {
+            var bestIndex = -1
+            var bestIou = 0f
+            for ((index, detection) in detections.withIndex()) {
+                if (index in usedDetectionIndices || detection.classId != pin.classId) continue
+                val iou = calculateIoU(detection, pin)
+                if (iou > bestIou) {
+                    bestIou = iou
+                    bestIndex = index
+                }
+            }
+            if (bestIndex < 0 || bestIou < pinMatchIouThreshold) continue
+
+            usedDetectionIndices += bestIndex
+            val clusterMembers = affinityGraph.transitiveGroup(listOf(bestIndex)).ifEmpty { listOf(bestIndex) }
+            if (clusterMembers.any { it in coveredClusterMembers }) {
+                coveredClusterMembers += clusterMembers
+                continue
+            }
+            seedIndices += bestIndex
+            coveredClusterMembers += clusterMembers
+        }
+        return seedIndices
     }
 
     private fun primaryDetectionScore(

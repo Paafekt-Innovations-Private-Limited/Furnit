@@ -25,7 +25,10 @@ data class DetectionResult(
 class FurnitureFitOverlayView(context: Context) : View(context) {
     private var maskBitmap: Bitmap? = null
     private var detections: List<DetectionResult> = emptyList()
+    private var detectionClusters: List<List<Int>> = emptyList()
     private var inputSize = 640 // Model input size
+    private var sourceFrameWidth = 640
+    private var sourceFrameHeight = 640
     private var lastPrimaryLabel: String? = null
     private var hitTestPixels: IntArray? = null
     private var hitTestWidth = 0
@@ -44,6 +47,7 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var assistedOverlayScale = 1f
     private var displayedFurnitureHeightMeters: Float? = null
     private var roomHeightMeters: Float? = null
+    private var liveFrameAlignedOverlay = false
     private var translateX = 0f
     private var translateY = 0f
 
@@ -277,36 +281,144 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         return isTouchOnMask(touchX, touchY)
     }
 
-    private fun findDetectionAt(touchX: Float, touchY: Float): DetectionResult? {
-        if (width == 0 || height == 0) return null
-        if (detections.isEmpty() || inputSize <= 0) return null
+    private data class DetectionTransform(
+        val scaleX: Float,
+        val scaleY: Float,
+        val offsetX: Float,
+        val offsetY: Float,
+        val modelToSourceX: Float = 1f,
+        val modelToSourceY: Float = 1f,
+    )
+
+    private data class Quad(
+        val first: Float,
+        val second: Float,
+        val third: Float,
+        val fourth: Float,
+    )
+
+    private fun currentDetectionTransform(): DetectionTransform {
+        if (liveFrameAlignedOverlay) {
+            val srcW = sourceFrameWidth.takeIf { it > 0 } ?: inputSize
+            val srcH = sourceFrameHeight.takeIf { it > 0 } ?: inputSize
+            val scale = max(width / srcW.toFloat(), height / srcH.toFloat())
+            return DetectionTransform(
+                scaleX = scale,
+                scaleY = scale,
+                offsetX = (width - srcW * scale) * 0.5f,
+                offsetY = (height - srcH * scale) * 0.5f,
+                modelToSourceX = srcW.toFloat() / inputSize.coerceAtLeast(1).toFloat(),
+                modelToSourceY = srcH.toFloat() / inputSize.coerceAtLeast(1).toFloat(),
+            )
+        }
+
         val screenCenterX = width / 2f
         val screenCenterY = overlayScreenCenterY()
         val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
         val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
         val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
-        val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScaleX + translateX
-        val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScaleY + translateY
-        for (det in detections) {
-            val left = (det.x - det.w / 2) * totalScaleX + centerOffsetX
-            val top = (det.y - det.h / 2) * totalScaleY + centerOffsetY
-            val right = (det.x + det.w / 2) * totalScaleX + centerOffsetX
-            val bottom = (det.y + det.h / 2) * totalScaleY + centerOffsetY
-            if (touchX in left..right && touchY in top..bottom) return det
+        return DetectionTransform(
+            scaleX = totalScaleX,
+            scaleY = totalScaleY,
+            offsetX = screenCenterX - (inputSize / 2f) * totalScaleX + translateX,
+            offsetY = screenCenterY - (inputSize / 2f) * totalScaleY + translateY,
+        )
+    }
+
+    private fun rectForDetection(det: DetectionResult, transform: DetectionTransform): RectF {
+        val leftModel = (det.x - det.w / 2f) * transform.modelToSourceX
+        val topModel = (det.y - det.h / 2f) * transform.modelToSourceY
+        val rightModel = (det.x + det.w / 2f) * transform.modelToSourceX
+        val bottomModel = (det.y + det.h / 2f) * transform.modelToSourceY
+        return RectF(
+            leftModel * transform.scaleX + transform.offsetX,
+            topModel * transform.scaleY + transform.offsetY,
+            rightModel * transform.scaleX + transform.offsetX,
+            bottomModel * transform.scaleY + transform.offsetY,
+        )
+    }
+
+    private fun visibleClusterGroups(): List<List<Int>> {
+        val normalized = detectionClusters
+            .map { group -> group.filter { it in detections.indices }.distinct().sorted() }
+            .filter { it.isNotEmpty() }
+        return normalized.ifEmpty { detections.indices.map { listOf(it) } }
+    }
+
+    private fun representativeDetection(group: List<Int>): DetectionResult? {
+        return group
+            .mapNotNull { detections.getOrNull(it) }
+            .maxWithOrNull(
+                compareBy<DetectionResult> { it.confidence }
+                    .thenBy { it.w * it.h }
+            )
+    }
+
+    private fun clusterRect(group: List<Int>, transform: DetectionTransform): RectF? {
+        var union: RectF? = null
+        for (index in group) {
+            val det = detections.getOrNull(index) ?: continue
+            val rect = rectForDetection(det, transform)
+            if (union == null) {
+                union = RectF(rect)
+            } else {
+                union.union(rect)
+            }
         }
-        return null
+        return union
+    }
+
+    private fun isClusterSelected(group: List<Int>): Boolean {
+        return group.any { index ->
+            val det = detections.getOrNull(index) ?: return@any false
+            selectedPins.any { pin ->
+                det.classId == pin.classId && iou(det, pin) >= 0.45f
+            }
+        }
+    }
+
+    private fun clusterLabel(group: List<Int>, representative: DetectionResult): String {
+        val labels = group
+            .mapNotNull { detections.getOrNull(it)?.label }
+            .distinct()
+            .sorted()
+        return if (labels.size > 1) labels.joinToString(", ") else representative.label
+    }
+
+    private fun findDetectionAt(touchX: Float, touchY: Float): DetectionResult? {
+        if (width == 0 || height == 0) return null
+        if (detections.isEmpty() || inputSize <= 0) return null
+        val transform = currentDetectionTransform()
+        return visibleClusterGroups()
+            .mapNotNull { group ->
+                val rect = clusterRect(group, transform) ?: return@mapNotNull null
+                if (!rect.contains(touchX, touchY)) return@mapNotNull null
+                val representative = representativeDetection(group) ?: return@mapNotNull null
+                Triple(rect.width() * rect.height(), group, representative)
+            }
+            .minByOrNull { it.first }
+            ?.third
     }
 
     private fun isTouchOnMask(touchX: Float, touchY: Float): Boolean {
         if (width == 0 || height == 0) return false
-        val screenCenterX = width / 2f
-        val screenCenterY = overlayScreenCenterY()
         val bmp = maskBitmap ?: return false
-        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-        val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
-        val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
-        val maskLeft = screenCenterX - (bmp.width / 2f) * totalScaleX + translateX
-        val maskTop = screenCenterY - (bmp.height / 2f) * totalScaleY + translateY
+        val (totalScaleX, totalScaleY, maskLeft, maskTop) = if (liveFrameAlignedOverlay) {
+            val scale = max(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+            Quad(scale, scale, (width - bmp.width * scale) * 0.5f, (height - bmp.height * scale) * 0.5f)
+        } else {
+            val screenCenterX = width / 2f
+            val screenCenterY = overlayScreenCenterY()
+            val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+            val scaleX = baseScale * furnitureScale * assistedOverlayScale
+            val scaleY = scaleX * computeVerticalClampFactor(scaleX)
+            Quad(
+                scaleX,
+                scaleY,
+                screenCenterX - (bmp.width / 2f) * scaleX + translateX,
+                screenCenterY - (bmp.height / 2f) * scaleY + translateY,
+            )
+        }
         val bmpX = ((touchX - maskLeft) / totalScaleX).toInt()
         val bmpY = ((touchY - maskTop) / totalScaleY).toInt()
         if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) return false
@@ -422,7 +534,10 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     fun setDetections(dets: List<DetectionResult>, modelInputSize: Int = 640) {
         maybeResetTransformForPrimaryDetection(dets)
         detections = dets
+        detectionClusters = emptyList()
         inputSize = modelInputSize
+        sourceFrameWidth = modelInputSize
+        sourceFrameHeight = modelInputSize
         invalidate()
     }
 
@@ -464,14 +579,22 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         assistedScale: Float = 1f,
         displayedHeightMeters: Float? = null,
         roomHeightMeters: Float? = null,
+        clusters: List<List<Int>> = emptyList(),
+        frameAlignedOverlay: Boolean = false,
+        sourceWidth: Int = mask?.width ?: modelInputSize,
+        sourceHeight: Int = mask?.height ?: modelInputSize,
     ) {
         maybeResetTransformForPrimaryDetection(dets)
         replaceMaskBitmap(mask)
         detections = dets
+        detectionClusters = clusters
         inputSize = modelInputSize
+        sourceFrameWidth = sourceWidth.takeIf { it > 0 } ?: modelInputSize
+        sourceFrameHeight = sourceHeight.takeIf { it > 0 } ?: modelInputSize
+        liveFrameAlignedOverlay = frameAlignedOverlay
         this.displayedFurnitureHeightMeters = displayedHeightMeters
         this.roomHeightMeters = roomHeightMeters
-        assistedOverlayScale = if (mask == null) {
+        assistedOverlayScale = if (mask == null || frameAlignedOverlay) {
             1f
         } else {
             assistedScale.coerceIn(0.25f, 4f)
@@ -501,59 +624,57 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                         "overlayBg=${background != null} parentBg=${(parent as? View)?.background != null}",
                 )
             }
-            val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-            val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
-            val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
-
             drawMatrix.reset()
-            drawMatrix.postScale(totalScaleX, totalScaleY, bmp.width / 2f, bmp.height / 2f)
-            val screenCenterX = width / 2f
-            val screenCenterY = overlayScreenCenterY()
-            drawMatrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
-            drawMatrix.postTranslate(translateX, translateY)
+            if (liveFrameAlignedOverlay) {
+                val scale = max(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+                drawMatrix.postScale(scale, scale)
+                drawMatrix.postTranslate(
+                    (width - bmp.width * scale) * 0.5f,
+                    (height - bmp.height * scale) * 0.5f,
+                )
+            } else {
+                val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+                val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
+                val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
+                drawMatrix.postScale(totalScaleX, totalScaleY, bmp.width / 2f, bmp.height / 2f)
+                val screenCenterX = width / 2f
+                val screenCenterY = overlayScreenCenterY()
+                drawMatrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
+                drawMatrix.postTranslate(translateX, translateY)
+            }
 
             canvas.drawBitmap(bmp, drawMatrix, maskPaint)
         }
 
         val shouldDrawDetectionBoxes = detections.isNotEmpty() && (showDetectionBoxes || DebugLogger.isDebugMode)
         if (shouldDrawDetectionBoxes) {
-            val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
-            val totalScaleX = baseScale * furnitureScale * assistedOverlayScale
-            val totalScaleY = totalScaleX * computeVerticalClampFactor(totalScaleX)
-            val screenCenterX = width / 2f
-            val screenCenterY = overlayScreenCenterY()
-            val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScaleX + translateX
-            val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScaleY + translateY
+            val transform = currentDetectionTransform()
 
-            for (det in detections) {
-                val left = (det.x - det.w / 2) * totalScaleX + centerOffsetX
-                val top = (det.y - det.h / 2) * totalScaleY + centerOffsetY
-                val right = (det.x + det.w / 2) * totalScaleX + centerOffsetX
-                val bottom = (det.y + det.h / 2) * totalScaleY + centerOffsetY
-                val isSelected = selectedPins.any { pin ->
-                    det.classId == pin.classId && iou(det, pin) >= 0.45f
-                }
+            for (group in visibleClusterGroups()) {
+                val rect = clusterRect(group, transform) ?: continue
+                val representative = representativeDetection(group) ?: continue
+                val isSelected = isClusterSelected(group)
                 val activeBoxPaint = if (isSelected) selectedBoxPaint else boxPaint
                 val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
                 val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
 
                 // Draw bounding box
-                canvas.drawRect(left, top, right, bottom, activeBoxPaint)
+                canvas.drawRect(rect, activeBoxPaint)
 
                 // Prepare label text
-                val label = "${det.label} ${String.format("%.0f%%", det.confidence * 100)}"
+                val label = "${clusterLabel(group, representative)} ${String.format("%.0f%%", representative.confidence * 100)}"
                 val textWidth = activeTextPaint.measureText(label)
                 val textHeight = activeTextPaint.textSize
 
                 // Draw label background
-                val bgLeft = left
-                val bgTop = top - textHeight - 8
-                val bgRight = left + textWidth + 16
-                val bgBottom = top
+                val bgLeft = rect.left
+                val bgTop = rect.top - textHeight - 8
+                val bgRight = rect.left + textWidth + 16
+                val bgBottom = rect.top
                 canvas.drawRect(bgLeft, bgTop, bgRight, bgBottom, activeTextBgPaint)
 
                 // Draw label text
-                canvas.drawText(label, left + 8, top - 8, activeTextPaint)
+                canvas.drawText(label, rect.left + 8, rect.top - 8, activeTextPaint)
             }
         }
     }

@@ -86,6 +86,10 @@ class GLBRoomActivity : AppCompatActivity() {
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
     private var brainButton: TextView? = null
+    private var brainSegmentButton: TextView? = null
+    @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
+    @Volatile private var inlineBrainFullVideoEnabled = false
+    @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
     private var glbPath: String? = null
     private var roomName: String = "3D Room"
     private var roomId: String? = null
@@ -95,6 +99,12 @@ class GLBRoomActivity : AppCompatActivity() {
     // Room dimensions
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
+
+    private enum class InlineBrainMode {
+        DEFAULT_SEGMENT,
+        IDENTIFY,
+        SEGMENT_SELECTED,
+    }
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -226,8 +236,22 @@ class GLBRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
             onTouchOutsideFurniture = { event -> webView.dispatchTouchEvent(event) }
+            onDetectionTapped = { detection -> toggleInlineBrainSelectedCluster(detection) }
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
+        brainSegmentButton = createInlineBrainSegmentButton().apply {
+            visibility = View.GONE
+        }
+        brainDetectionOverlay.addView(
+            brainSegmentButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                bottomMargin = dpToPx(100)
+            },
+        )
         rootLayout.addView(
             brainDetectionOverlay,
             FrameLayout.LayoutParams(
@@ -506,6 +530,23 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun createInlineBrainSegmentButton(): TextView {
+        return TextView(this).apply {
+            text = getString(R.string.segment_furniture_action)
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(24).toFloat()
+                setColor(Color.parseColor("#34C759"))
+            }
+            setOnClickListener { toggleInlineBrainSegmentMode() }
+        }
+    }
+
     private fun toggleInlineBrainSegmentation() {
         if (::brainDetectionOverlay.isInitialized && brainDetectionOverlay.visibility == View.VISIBLE) {
             stopInlineBrainSegmentation()
@@ -521,12 +562,26 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun startInlineBrainSegmentation() {
         LogUtil.d(TAG, "Inline brain: start")
         val generation = brainSessionGeneration.incrementAndGet()
+        inlineBrainFullVideoEnabled = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
+        inlineBrainMode = if (inlineBrainFullVideoEnabled) {
+            InlineBrainMode.IDENTIFY
+        } else {
+            InlineBrainMode.DEFAULT_SEGMENT
+        }
+        inlineBrainSelectedPins = emptyList()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
         brainDetectionOverlay.visibility = View.VISIBLE
-        brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        brainDetectionOverlayView.setMaskAndDetections(
+            mask = null,
+            dets = emptyList(),
+            frameAlignedOverlay = inlineBrainFullVideoEnabled,
+        )
+        brainDetectionOverlayView.setDetectionBoxVisibility(inlineBrainFullVideoEnabled)
+        brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
         brainProgressOverlay.visibility = View.VISIBLE
         setBrainButtonActive(true)
+        updateInlineBrainSegmentButton()
 
         lifecycleScope.launch {
             val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
@@ -541,6 +596,74 @@ class GLBRoomActivity : AppCompatActivity() {
             furnitureFitManager = manager
             bindInlineBrainCamera(manager, generation)
         }
+    }
+
+    private fun toggleInlineBrainSelectedCluster(detection: DetectionResult) {
+        if (!inlineBrainFullVideoEnabled || inlineBrainMode != InlineBrainMode.IDENTIFY) return
+        val current = inlineBrainSelectedPins.toMutableList()
+        val existingIndex = current.indexOfFirst { pin ->
+            pin.classId == detection.classId && detectionIoU(pin, detection) >= 0.50f
+        }
+        if (existingIndex >= 0) {
+            current.removeAt(existingIndex)
+        } else {
+            current += detection
+        }
+        inlineBrainSelectedPins = current
+        brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
+        updateInlineBrainSegmentButton()
+    }
+
+    private fun toggleInlineBrainSegmentMode() {
+        if (!inlineBrainFullVideoEnabled) return
+        if (inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED) {
+            inlineBrainMode = InlineBrainMode.IDENTIFY
+            brainDetectionOverlayView.setMaskAndDetections(
+                mask = null,
+                dets = emptyList(),
+                frameAlignedOverlay = true,
+            )
+            brainDetectionOverlayView.setDetectionBoxVisibility(true)
+            brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
+        } else if (inlineBrainSelectedPins.isNotEmpty()) {
+            inlineBrainMode = InlineBrainMode.SEGMENT_SELECTED
+            brainDetectionOverlayView.setDetectionBoxVisibility(false)
+            brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
+            brainProgressOverlay.visibility = View.VISIBLE
+        }
+        updateInlineBrainSegmentButton()
+    }
+
+    private fun updateInlineBrainSegmentButton() {
+        val button = brainSegmentButton ?: return
+        if (!inlineBrainFullVideoEnabled || brainDetectionOverlay.visibility != View.VISIBLE) {
+            button.visibility = View.GONE
+            return
+        }
+        button.visibility = View.VISIBLE
+        val segmenting = inlineBrainMode == InlineBrainMode.SEGMENT_SELECTED
+        button.text = getString(if (segmenting) R.string.segment_stop_action else R.string.segment_furniture_action)
+        button.alpha = if (segmenting || inlineBrainSelectedPins.isNotEmpty()) 1f else 0.55f
+    }
+
+    private fun detectionIoU(first: DetectionResult, second: DetectionResult): Float {
+        val firstLeft = first.x - first.w / 2f
+        val firstTop = first.y - first.h / 2f
+        val firstRight = first.x + first.w / 2f
+        val firstBottom = first.y + first.h / 2f
+        val secondLeft = second.x - second.w / 2f
+        val secondTop = second.y - second.h / 2f
+        val secondRight = second.x + second.w / 2f
+        val secondBottom = second.y + second.h / 2f
+        val intersectionLeft = maxOf(firstLeft, secondLeft)
+        val intersectionTop = maxOf(firstTop, secondTop)
+        val intersectionRight = minOf(firstRight, secondRight)
+        val intersectionBottom = minOf(firstBottom, secondBottom)
+        val intersectionWidth = maxOf(0f, intersectionRight - intersectionLeft)
+        val intersectionHeight = maxOf(0f, intersectionBottom - intersectionTop)
+        val intersectionArea = intersectionWidth * intersectionHeight
+        val unionArea = first.w * first.h + second.w * second.h - intersectionArea
+        return if (unionArea > 0f) intersectionArea / unionArea else 0f
     }
 
     @SuppressLint("UnsafeOptInUsageError")
@@ -571,13 +694,24 @@ class GLBRoomActivity : AppCompatActivity() {
                     val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
                     if (bitmap !== rawBitmap) rawBitmap.recycle()
                     isBrainInferenceRunning.set(true)
-                    manager.segmentWithDetectionsAsync(bitmap) { result ->
+                    val modeSnapshot = inlineBrainMode
+                    val fullVideoSnapshot = inlineBrainFullVideoEnabled
+                    val selectedPinsSnapshot = inlineBrainSelectedPins
+                    val callback: (SegmentationResult?) -> Unit = { result ->
                         bitmap.recycle()
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
                             applyInlineBrainResult(result)
                         }
+                    }
+                    when {
+                        fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
+                            manager.detectWithDetectionsAsync(bitmap, callback)
+                        fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
+                            manager.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
+                        else ->
+                            manager.segmentWithDetectionsAsync(bitmap, callback)
                     }
                 } finally {
                     imageProxy.close()
@@ -603,17 +737,50 @@ class GLBRoomActivity : AppCompatActivity() {
         brainProgressOverlay.visibility = View.GONE
         val mask = result?.mask
         val detections = result?.detections ?: emptyList()
-        brainDetectionOverlayView.setMaskAndDetections(
-            mask,
-            emptyList(),
-            result?.inputSize ?: 640,
-            1f,
-            null,
-            roomHeight,
-        )
+        if (inlineBrainFullVideoEnabled) {
+            when (inlineBrainMode) {
+                InlineBrainMode.IDENTIFY -> {
+                    brainDetectionOverlayView.setMaskAndDetections(
+                        mask = null,
+                        dets = detections,
+                        modelInputSize = result?.inputSize ?: 640,
+                        clusters = result?.detectionClusters ?: emptyList(),
+                        frameAlignedOverlay = true,
+                        sourceWidth = result?.sourceWidth ?: 640,
+                        sourceHeight = result?.sourceHeight ?: 640,
+                    )
+                    brainDetectionOverlayView.setDetectionBoxVisibility(true)
+                    brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
+                }
+                InlineBrainMode.SEGMENT_SELECTED -> {
+                    brainDetectionOverlayView.setMaskAndDetections(
+                        mask = mask,
+                        dets = emptyList(),
+                        modelInputSize = result?.inputSize ?: 640,
+                        frameAlignedOverlay = true,
+                        sourceWidth = result?.sourceWidth ?: mask?.width ?: 640,
+                        sourceHeight = result?.sourceHeight ?: mask?.height ?: 640,
+                    )
+                    brainDetectionOverlayView.setDetectionBoxVisibility(false)
+                    brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
+                }
+                InlineBrainMode.DEFAULT_SEGMENT -> Unit
+            }
+            updateInlineBrainSegmentButton()
+        } else {
+            brainDetectionOverlayView.setMaskAndDetections(
+                mask,
+                emptyList(),
+                result?.inputSize ?: 640,
+                1f,
+                null,
+                roomHeight,
+            )
+        }
         LogUtil.i(
             TAG,
             "Inline brain result: mask=${mask != null} alpha=${mask?.hasAlpha()} dets=${detections.size} " +
+                "clusters=${result?.detectionClusters?.size ?: 0} mode=$inlineBrainMode " +
                 "primary=${result?.primaryDetection?.label}:${result?.primaryDetection?.confidence}",
         )
     }
@@ -623,9 +790,15 @@ class GLBRoomActivity : AppCompatActivity() {
         brainSessionGeneration.incrementAndGet()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
+        inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
+        inlineBrainFullVideoEnabled = false
+        inlineBrainSelectedPins = emptyList()
         brainProgressOverlay.visibility = View.GONE
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
+        brainDetectionOverlayView.setDetectionBoxVisibility(false)
+        brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
+        brainSegmentButton?.visibility = View.GONE
         setBrainButtonActive(false)
         try {
             cameraProvider?.unbindAll()
