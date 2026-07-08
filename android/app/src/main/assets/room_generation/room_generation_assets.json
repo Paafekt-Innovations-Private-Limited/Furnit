@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "pipeline": "photo_to_3d_room",
+  "swiftReference": {
+    "reconstructor": "Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift",
+    "depthModel": "Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.onnx",
+    "geoCalibModel": "Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage",
+    "rtmDetModel": "Furnit/Models/RTMDet/rtmdet-ins-m.mlpackage"
+  },
+  "models": [
+    {
+      "id": "depth_anything_metric_indoor_small",
+      "role": "metric_depth",
+      "runtime": "onnxruntime",
+      "status": "packaged",
+      "assetPath": "room_generation/depth_anything/depth_anything_v2_metric_indoor_small.onnx",
+      "sourcePath": "Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.onnx"
+    },
+    {
+      "id": "geocalib_pinhole_cnn",
+      "role": "camera_calibration",
+      "runtime": "onnxruntime_or_tflite",
+      "status": "needs_android_export",
+      "expectedAssetPath": "room_generation/geocalib/geocalib_pinhole_cnn.onnx",
+      "sourcePath": "Furnit/Models/GeoCalib/GeoCalibPinholeCNN.mlpackage",
+      "note": "Only Core ML/checkpoint artifacts exist in this repo today; Android needs an ONNX or TFLite export."
+    },
+    {
+      "id": "rtmdet_ins_m",
+      "role": "object_masking",
+      "runtime": "onnxruntime",
+      "status": "packaged",
+      "assetPath": "rtmdet-ins-m-raw.onnx",
+      "sourcePath": "app/src/main/assets/rtmdet-ins-m-raw.onnx"
+    }
+  ]
+}

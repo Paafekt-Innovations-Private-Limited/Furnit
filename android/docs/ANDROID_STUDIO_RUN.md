@@ -1,56 +1,28 @@
-# Running the app from Android Studio
+# Running From Android Studio
 
-## "Installation failed" / "Unknown failure" / "Exception occurred"
+## Open And Run
 
-If the app **won’t install** (Error code UNKNOWN, "Exception occurred"), the APK is often **too large** because it embeds ExecuTorch .pte models (~1–2 GB). Some devices or ADB versions fail on huge APKs.
+1. Open the `android` folder as the Android Studio project.
+2. Wait for Gradle sync.
+3. Select an arm64 Android device.
+4. Run the `app` configuration.
 
-**Fix: build a small APK and push models yourself**
+## Terminal Build
 
-1. In Android Studio: **File → Settings → Build, Execution, Deployment → Compiler**. In **Command-line Options**, add:
-   ```text
-   -PskipExecutorchAssets
-   ```
-   (Or run from terminal: `./gradlew :app:assembleDebug -PskipExecutorchAssets`.)
-2. **Sync** and **Build → Rebuild Project**.
-3. **Run** the app — install should succeed (APK will be much smaller).
-4. Push models to the device once (with one device connected):
-   ```bash
-   cd android && ./push_sharp_executorch_int8_models.sh
-   ```
-   Or push to a specific device: `adb -s <device_id> push ...` (see script).
+```bash
+./gradlew :app:assembleDebug
+```
 
-After that, run from Android Studio as usual. The app reads models from internal/external storage.
+The project builds a single app variant. If the Build Variants tool window is visible in Android Studio, that is normal IDE UI; there are no old room-generation product flavors to select.
 
-**Other checks:** Free space on device/emulator (several GB). Uninstall the existing Furnit app and try Install again.
+## Device Notes
 
----
+The APK is configured for `arm64-v8a`. Use a physical Android phone or an ARM64 emulator image. A default x86 emulator will not be a good target for this project.
 
-## App not starting? (launcher / ABI)
+AR features require a real device with ARCore support.
 
-The project builds **only arm64-v8a** (smaller APK, real devices). It will **not** run on a default **x86/x86_64 emulator** — the APK has no matching ABI, so the app may not install or may not start.
+## Useful Logs
 
-### Fix: use an ARM64 device or emulator
-
-1. **Physical device**  
-   Connect an Android phone (almost all recent phones are arm64-v8a). Enable USB debugging and choose the device in the Run dropdown.
-
-2. **Emulator**  
-   Create an AVD that uses an **ARM64** system image:
-   - **Device Manager** → **Create Device** → pick a device (e.g. Pixel 6).
-   - **System image**: choose a **Google APIs** or **Google Play** image that is **ARM 64-bit** (e.g. "Tiramisu" or "UpsideDownCake" **ARM 64**), not x86_64.
-   - Finish and select this AVD when you Run.
-
-If your only image is x86_64, download an ARM64 image: **Create Device** → **System image** → **Other Images** → pick a release with "ARM 64" in the ABI column → **Download**.
-
-### Run configuration
-
-- **Module:** `app`
-- **Launch option:** Default (launches the **LAUNCHER** activity = **LoginActivity**).
-
-If you don’t see the app in the Run dropdown, use **Run → Edit Configurations**, add **Android App**, set module to **app**, then **Apply** and **Run**.
-
-### After a clean clone
-
-1. **File → Sync Project with Gradle Files**
-2. **Build → Make Project**
-3. Select an **arm64-v8a** device or emulator and click **Run**
+```bash
+adb logcat -s SinglePhotoRoom:D PhotoRoomGeneration:D RoomGenerationAssets:D GLBRoomActivity:D FurnitureFitManager:D -v time
+```

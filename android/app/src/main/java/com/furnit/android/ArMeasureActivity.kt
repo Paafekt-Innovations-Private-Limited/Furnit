@@ -44,7 +44,7 @@ import kotlin.math.sqrt
 
 /**
  * Experimental ARCore distance measure: tap two points on a tracked plane; metric length in meters.
- * Optional extras describe SHARP bbox for calibration UX in the caller.
+ * Optional extras describe room estimate for calibration UX in the caller.
  */
 class ArMeasureActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
@@ -433,9 +433,9 @@ class ArMeasureActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     }
 
     companion object {
-        const val EXTRA_SHARP_ROOM_WIDTH_M = "extra_sharp_room_width_m"
-        const val EXTRA_SHARP_ROOM_HEIGHT_M = "extra_sharp_room_height_m"
-        const val EXTRA_SHARP_ROOM_DEPTH_M = "extra_sharp_room_depth_m"
+        const val EXTRA_ROOM_WIDTH_M = "extra_room_width_m"
+        const val EXTRA_ROOM_HEIGHT_M = "extra_room_height_m"
+        const val EXTRA_ROOM_DEPTH_M = "extra_room_depth_m"
 
         const val RESULT_EXTRA_DISTANCE_M = "ar_result_distance_m"
         const val RESULT_EXTRA_ANCHOR_COUNT = "ar_result_anchor_count"

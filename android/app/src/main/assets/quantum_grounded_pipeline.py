@@ -159,7 +159,7 @@ points_filtered = points_ds[inlier_mask]
 colors_filtered = colors_ds[inlier_mask]
 print(f"    Points after outlier filter: {len(points_filtered):,}")
 
-# Voxel downsampling (sharp uniform grid)
+# Voxel downsampling (crisp uniform grid)
 voxel_size = 0.008
 voxel_indices = np.floor(points_filtered / voxel_size).astype(np.int32)
 _, unique_idx = np.unique(voxel_indices, axis=0, return_index=True)

@@ -37,13 +37,6 @@ object DebugLogger {
         get() = prefs?.getBoolean(DEBUG_MODE_KEY, false) ?: false
 
     /**
-     * When SHARP ExecuTorch native (C++) should emit verbose logcat (debuggable build + debug_mode).
-     * Kotlin syncs this to JNI before pipeline / preload calls.
-     */
-    val isSharpNativeVerboseEnabled: Boolean
-        get() = isLoggingEnabled && isDebugMode
-
-    /**
      * Set debug mode
      */
     fun setDebugMode(enabled: Boolean) {

@@ -48,11 +48,11 @@ enum class PhotoOrientation(val value: String) {
          *    for this app’s primary use case (phone held straight).
          */
         /**
-         * Orientation implied by **pixel layout** of the bitmap actually passed to SHARP / saved as thumbnail.
+         * Orientation implied by **pixel layout** of the bitmap actually passed to generated room / saved as thumbnail.
          *
-         * Use this for room **metadata and SharpRoom viewer** after decode (and optional EXIF rotation).
+         * Use this for room **metadata and generated room viewer viewer** after decode (and optional EXIF rotation).
          * [detect] on the file URI can disagree: e.g. portrait-first bias when EXIF rotation is 0 but the
-         * buffer is still landscape-wide — that caused ~90° tilt (viewer thought portrait, PLY from landscape tensor).
+         * buffer is still landscape-wide — that caused ~90° tilt (viewer thought portrait, generated room from landscape tensor).
          */
         fun fromBitmapDimensions(bitmap: Bitmap): PhotoOrientation {
             val w = bitmap.width
@@ -75,7 +75,7 @@ enum class PhotoOrientation(val value: String) {
         }
 
         /**
-         * Same EXIF + encoded-dimension rules as [detect], for a filesystem path (gallery export, SharpInference, temp camera file).
+         * Same EXIF + encoded-dimension rules as [detect], for a filesystem path (gallery export, temp camera, temp camera file).
          */
         fun detectFromFile(imagePath: String): PhotoOrientation {
             val rawWidth: Int
@@ -144,9 +144,8 @@ enum class PhotoOrientation(val value: String) {
          * Decode a full-resolution bitmap and apply JPEG/WebP **EXIF orientation** so pixels match what
          * the user sees in the gallery (upright portrait, etc.).
          *
-         * [BitmapFactory.decodeStream] ignores EXIF; Vulkan / ExecuTorch SHARP were fed the raw sensor
-         * buffer while [SharpRoomActivity] rotated the PLY for **display** orientation → ~90° mismatch
-         * for typical portrait camera JPEGs.
+         * [BitmapFactory.decodeStream] ignores EXIF; applying it here keeps generated rooms aligned
+         * with the upright photo the user saw in the picker.
          */
         fun loadBitmapApplyingExif(context: Context, uri: Uri): Bitmap? {
             val bitmap = context.contentResolver.openInputStream(uri).use { stream ->
@@ -162,7 +161,7 @@ enum class PhotoOrientation(val value: String) {
             return applyExifRotation(bitmap, rotation)
         }
 
-        /** Same as [loadBitmapApplyingExif] for a filesystem path (e.g. SharpInferenceActivity). */
+        /** Same as [loadBitmapApplyingExif] for a filesystem path. */
         fun loadBitmapApplyingExifFromFile(imagePath: String): Bitmap? {
             val bitmap = BitmapFactory.decodeFile(imagePath) ?: return null
             val rotation = try {

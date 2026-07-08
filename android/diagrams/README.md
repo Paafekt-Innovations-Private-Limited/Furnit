@@ -1,13 +1,10 @@
-# Furnit — Android diagrams
+# Furnit Android Diagrams
 
-Real SVG flow diagrams for the Android (Kotlin) app. Open in any browser or Android Studio.
+Open these SVG diagrams in a browser or Android Studio.
 
 | Diagram | Flow |
 |---|---|
-| [`rtmdet-android-flow.svg`](rtmdet-android-flow.svg) | RTMDet instance segmentation ("brain") live loop — `FurnitureFitManager` + same-activity overlays in `GLBRoomActivity` / `SharpRoomActivity`. Hidden CameraX analysis → ONNX Runtime → decode/NMS → mask build → transparent cutout → display over the existing room. |
-| [`sharp-android-flow.svg`](sharp-android-flow.svg) | SHARP room reconstruction — `SharpService` → `ExecutorchInt8Sharp`. Single photo → sliding-pyramid ExecuTorch (.pte) → Gaussian-splat → PLY → render → dimensions. |
-
-Legend: green = ExecuTorch/ONNX accelerator (Vulkan/XNNPACK), blue = Kotlin CPU, gray = camera/data,
-purple = file/web, orange = display. ★ = accelerated stage, ☆ = scalar CPU stage.
+| [`photo-room-generation-android-flow.svg`](photo-room-generation-android-flow.svg) | Photo-to-room flow: photo input, AI/manual choice, GLB generation, metadata, preview, save, and `GLBRoomActivity`. |
+| [`rtmdet-android-flow.svg`](rtmdet-android-flow.svg) | RTMDet furniture segmentation loop: CameraX analysis frame, ONNX Runtime inference, mask construction, and transparent overlay on the current GLB room. |
 
 Written Android docs live in [`android/docs/`](../docs/).

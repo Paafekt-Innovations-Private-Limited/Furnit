@@ -145,19 +145,19 @@ class FurnitureFitArCameraController(
 
     /**
      * Called on the main thread after debounced AR metric sizing is applied (including
-     * [lastEstimatedHeightMeters]). Used so the Sharp room calibration pill refreshes — the pill
+     * [lastEstimatedHeightMeters]). Used so the generated room calibration pill refreshes — the pill
      * is not driven by the GL thread every frame.
      */
     var onAssistedMeasurementUpdated: (() -> Unit)? = null
 
     /**
-     * Room photo lock from FurnitureFit / Sharp room (`"portrait"` or `"landscape"`), matching CameraX
+     * Room photo lock from FurnitureFit / generated room (`"portrait"` or `"landscape"`), matching CameraX
      * target rotation so segmentation bitmap aspect matches the locked activity.
      */
     var lockedPhotoOrientation: String = "portrait"
 
     /**
-     * Calibrated front-wall height (m) from SHARP — logged for diagnostics only (not used for
+     * Calibrated front-wall height (m) from the generated room — logged for diagnostics only (not used for
      * furniture height; room×bbox fraction is not distance-invariant).
      */
     @Volatile

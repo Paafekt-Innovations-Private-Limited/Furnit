@@ -659,7 +659,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 addView(progress)
 
                 val text = TextView(this@GLBRoomActivity).apply {
-                    text = getString(R.string.sharp_room_loading)
+                    text = getString(R.string.photo_room_loading)
                     textSize = 16f
                     setTextColor(Color.parseColor("#333333"))
                     gravity = Gravity.CENTER

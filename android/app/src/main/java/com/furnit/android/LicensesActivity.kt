@@ -13,8 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Android: Sharp ML (SHARP room generation). iOS uses Depth Anything + GeoCalib instead.
- * Also: MetalSplatter, Firebase, RTMDet/MMDetection.
+ * Includes attributions for bundled rendering, Firebase, and RTMDet/MMDetection.
  */
 class LicensesActivity : AppCompatActivity() {
 
@@ -50,7 +49,6 @@ class LicensesActivity : AppCompatActivity() {
         layout.addView(titleView)
 
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
-        addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp), licenseUrl = urlMit)
         addSection(layout, getString(R.string.licenses_metal_splatter_title), getString(R.string.licenses_metal_splatter), licenseUrl = urlMit)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)

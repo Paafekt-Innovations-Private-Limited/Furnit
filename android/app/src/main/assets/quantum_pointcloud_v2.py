@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quantum Point Cloud Pipeline v2 — Sharp & Clear
+Quantum Point Cloud Pipeline v2 - Clear Detail
 ==================================================
 Fixes: middle-section gap repair, voxel downsampling for grain removal,
 normal estimation for smooth lighting, aggressive outlier pruning.
@@ -206,7 +206,7 @@ mesh = trimesh.Trimesh(vertices=all_verts, faces=all_faces, vertex_colors=all_co
 mesh.export(OUTPUT_GLB)
 print(f"    GLB saved: {OUTPUT_GLB}")
 
-print(f"\n[SUCCESS] Sharp, clear room model compiled:")
+print(f"\n[SUCCESS] Clear room model compiled:")
 print(f"  PLY: {OUTPUT_PLY} (with normals for lighting)")
 print(f"  GLB: {OUTPUT_GLB} (filled quads, no grain)")
 print(f"  {len(points_voxel):,} voxelized points, middle filled, stripes removed")

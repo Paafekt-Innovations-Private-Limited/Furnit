@@ -7,11 +7,10 @@ import java.io.File
 /**
  * Single source of truth for per-room viewer + list fields on disk.
  *
- * - **room_meta.json** — canonical (written on Sharp generation, save, and lazily migrated from metadata.txt).
+ * - **room_meta.json** — canonical per-room metadata.
  * - **metadata.txt** — legacy key=value; still written for older tooling; read when JSON is missing.
  *
- * [readFromFolder] is used by [com.furnit.android.models.ModelManager] (list) and
- * [com.furnit.android.SharpRoomActivity] (viewer) so orientation/dims always match.
+ * [readFromFolder] is used by [com.furnit.android.models.ModelManager] so orientation/dims stay consistent.
  */
 object RoomFolderMetadata {
 
@@ -36,7 +35,7 @@ object RoomFolderMetadata {
         val roomSceneWidth: Float? = null,
         val roomSceneHeight: Float? = null,
         val roomSceneDepth: Float? = null,
-        /** Isotropic display scale vs raw SHARP bbox (e.g. from ARCore calibration). 1 = unchanged. */
+        /** Isotropic display scale from ARCore calibration. 1 = unchanged. */
         val arDisplayScale: Float? = null,
         /**
          * Normalized wall strip height (or 1.0 = full frame proxy) from one-shot detection on the reference image.
@@ -48,12 +47,7 @@ object RoomFolderMetadata {
         val savedFurnitureHeightFracByClass: Map<String, Float> = emptyMap(),
         /** Reference image height in px when ratios were captured (diagnostics / staleness). */
         val savedRefImageHeightPx: Int? = null,
-        /** SHARP room height (internal / "Navarro" units) at ratio capture time — dimensionless pairing with calibration fractions. */
-        val sharpNavarroRoomHeightAtCapture: Float? = null,
-        /**
-         * When true, the room exists only as a SHARP preview under `files/sharp_rooms/` and was not committed via Save.
-         * Omitted or false means the room should appear in the library (legacy folders without the key are treated as saved).
-         */
+        /** When true, the room exists only as a preview and was not committed via Save. */
         val previewOnly: Boolean? = null,
     ) {
         fun normalizedOrientation(): String =
@@ -105,7 +99,6 @@ object RoomFolderMetadata {
             savedWallHeightFrac = prev.savedWallHeightFrac,
             savedFurnitureHeightFracByClass = prev.savedFurnitureHeightFracByClass,
             savedRefImageHeightPx = prev.savedRefImageHeightPx,
-            sharpNavarroRoomHeightAtCapture = prev.sharpNavarroRoomHeightAtCapture,
         )
     }
 
@@ -138,9 +131,6 @@ object RoomFolderMetadata {
             jo.put("savedFurnitureHeightFracByClass", sub)
         }
         snapshot.savedRefImageHeightPx?.let { if (it > 0) jo.put("savedRefImageHeightPx", it) }
-        snapshot.sharpNavarroRoomHeightAtCapture?.takeIf { it > 0f }?.let {
-            jo.put("sharpNavarroRoomHeightAtCapture", it.toDouble())
-        }
         when (snapshot.previewOnly) {
             null -> { /* legacy: omit */ }
             true -> jo.put("previewOnly", true)
@@ -178,7 +168,6 @@ object RoomFolderMetadata {
             savedWallHeightFrac = optFloat("savedWallHeightFrac"),
             savedFurnitureHeightFracByClass = furnitureFracs,
             savedRefImageHeightPx = if (jo.has("savedRefImageHeightPx")) jo.optInt("savedRefImageHeightPx", 0).takeIf { it > 0 } else null,
-            sharpNavarroRoomHeightAtCapture = optFloat("sharpNavarroRoomHeightAtCapture"),
             previewOnly = when {
                 !jo.has("previewOnly") -> null
                 else -> jo.optBoolean("previewOnly", false)
@@ -237,7 +226,6 @@ object RoomFolderMetadata {
             savedWallHeightFrac = map["savedWallHeightFrac"]?.toFloatOrNull(),
             savedFurnitureHeightFracByClass = emptyMap(),
             savedRefImageHeightPx = map["savedRefImageHeightPx"]?.toIntOrNull(),
-            sharpNavarroRoomHeightAtCapture = map["sharpNavarroRoomHeightAtCapture"]?.toFloatOrNull(),
             previewOnly = when {
                 !map.containsKey("previewOnly") -> null
                 map["previewOnly"]?.trim()?.lowercase() == "true" -> true

@@ -101,8 +101,6 @@
     <string name="licenses_open_source_section">Open-Source-Lizenzen</string>
     <string name="licenses_open_source_intro">Diese App verwendet die folgende Open-Source-Software.</string>
     <string name="licenses_view_full_license">Vollständige Lizenz anzeigen</string>
-    <string name="licenses_sharp_title">Sharp ML</string>
-    <string name="licenses_sharp">Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.</string>
     <string name="licenses_metal_splatter_title">MetalSplatter</string>
     <string name="licenses_metal_splatter">Gaussian-Splat-Rendering direkt auf dem Gerät. Copyright (c) Sean Cier. Lizenziert unter der MIT-Lizenz.</string>
     <string name="licenses_firebase_title">Firebase</string>
@@ -195,7 +193,7 @@
     <string name="faq_accuracy">Wie genau ist das 3D-Modell?</string>
     <string name="faq_accuracy_answer">Der 3D-Raum ist eine Schätzung aus nur einem Foto. Die Raummaße können als Orientierung dienen, sind aber keine exakten Vermessungsdaten. Möbelmaße sind auf Telefonen mit AR-/Tiefenunterstützung am zuverlässigsten.</string>
     <string name="faq_adjust_dimensions">Kann ich die Raummaße anpassen?</string>
-    <string name="faq_adjust_dimensions_answer">Nicht direkt bei KI-erzeugten SHARP-Räumen. Verwenden Sie das Lineal im Raum-Viewer, um die aktuell geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen den von Ihnen gesetzten Grenzen.</string>
+    <string name="faq_adjust_dimensions_answer">Nicht direkt bei KI-erzeugten AI room-Räumen. Verwenden Sie das Lineal im Raum-Viewer, um die aktuell geschätzte Breite, Höhe und Tiefe zu sehen. Für bessere Ergebnisse fotografieren Sie einen klaren Raum mit sichtbaren Ecken; manuelle Räume folgen den von Ihnen gesetzten Grenzen.</string>
     <string name="faq_furniture_measurements">Möbel &amp; Maße</string>
     <string name="faq_ar_assisted_sizing">Was ist AR-gestützte Möbelgröße?</string>
     <string name="faq_ar_assisted_sizing_answer">Tippen Sie zuerst auf das Gehirn-Symbol, wählen Sie erkannte Elemente aus und tippen Sie dann auf Segment. Nutzen Sie die Größensteuerung, wenn die Größe relativ zum Raum angepasst werden soll. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.</string>
@@ -274,19 +272,6 @@
     <string name="orientation_held_horizontally">horizontal gehalten</string>
     <string name="photo_room_screenshot_warning">Keine Screenshots wählen – sie können schwarze Flecken verursachen</string>
 
-    <!-- SharpRoom / PLY viewer -->
-    <string name="sharp_room_no_ply">Keine PLY-Datei angegeben</string>
-    <string name="sharp_room_ply_not_found">PLY-Datei nicht gefunden</string>
-    <string name="sharp_room_loading">3D-Raum wird geladen…</string>
-    <string name="sharp_room_screenshot_saved">Screenshot gespeichert: %s</string>
-    <string name="sharp_room_screenshot_failed">Screenshot konnte nicht erstellt werden</string>
-    <string name="sharp_room_smartypants_failed">SmartyPants konnte nicht initialisiert werden</string>
-    <string name="sharp_room_camera_error">Kamerafehler: %s</string>
-    <string name="sharp_room_cannot_save">Speichern nicht möglich: Raumordner nicht gefunden</string>
-    <string name="sharp_room_saved">Raum \'%s\' gespeichert!</string>
-    <string name="sharp_room_save_failed">Speichern fehlgeschlagen: %s</string>
-    <string name="sharp_room_share_failed">Teilen fehlgeschlagen: %s</string>
-
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initialisierung…</string>
     <string name="smartypants_drag_hint">Möbel ziehen zum Verschieben • Pinch zum Größenändern • Außen ziehen zum Schwenken</string>
@@ -336,16 +321,7 @@
     <string name="glb_room_error">Fehler: %s</string>
     <string name="glb_room_screenshot_saved">Screenshot gespeichert: %s</string>
     <string name="glb_room_screenshot_failed">Screenshot konnte nicht erstellt werden</string>
-
-    <!-- Sharp Inference -->
-    <string name="sharp_inference_no_image">Kein Bild-URI oder -pfad</string>
-    <string name="sharp_inference_loading_model">SHARP-Modell wird geladen…</string>
-    <string name="sharp_inference_running">SHARP 3D läuft…</string>
-    <string name="sharp_inference_preparing">Vorbereiten…</string>
-    <string name="sharp_room_pinch_gesture_hint">Zum Zoomen kneifen. Mit Furniture Fit skaliert Kneifen auch das Overlay.</string>
-    <string name="sharp_inference_model_unavailable">SHARP-Modell nicht verfügbar</string>
-    <string name="sharp_inference_writing_room_file">Vorschau wird vorbereitet…</string>
-    <string name="sharp_inference_room_ready">Ihr Raum ist bereit!</string>
+    <string name="room_generation_ready">Ihr Raum ist bereit!</string>
     <string name="detector_loading_model">Erkennungsmodell wird geladen…</string>
     <string name="detector_model_ready">Bereit</string>
     <string name="detector_model_unavailable">Erkennungsmodell nicht verfügbar</string>
@@ -401,14 +377,8 @@
     <string name="model_viewer_title">Modelle</string>
     <string name="model_viewer_view_3d">3D anzeigen</string>
     <string name="model_viewer_ar">AR</string>
-    <string name="sharp_room_brain_gesture_hint">Tippe auf 🧠, um Möbel zu erkennen</string>
-    <string name="sharp_room_snapshot_gesture_hint">Zum Speichern 📷 tippen</string>
-    <string name="sharp_room_ar_sizing_hint">📷 für bessere Passung</string>
 
     <!-- Settings (developer) -->
-    <string name="settings_inference_backend">Inferenz-Backend</string>
-    <string name="settings_onnx_default">ONNX (Standard)</string>
-    <string name="settings_onnx_description">Standard-Inferenz mit ONNX Runtime (FP32)</string>
 
     <!-- Auth / Login -->
     <string name="login_welcome">Willkommen bei Furnit</string>
@@ -432,7 +402,7 @@
     <string name="credits_disclaimer">Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.</string>
     <string name="credits_visit_website">Website besuchen</string>
     <string name="credits_apple_title">Apple</string>
-    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone and SHARP on Android where applicable.</string>
+    <string name="credits_apple_body">Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.</string>
     <string name="credits_openai_title">OpenAI</string>
     <string name="credits_openai_body">OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.</string>
     <string name="credits_anthropic_title">Anthropic</string>
@@ -451,18 +421,6 @@
     <string name="home_room_renamed">Renamed to %s</string>
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
-    <string name="settings_part4b_tiled">Part4b tiled (experimental)</string>
-    <string name="settings_part4b_tiled_description">Use window-tiled Part4b to reduce memory. Requires tiled .pte models on device.</string>
-    <string name="settings_cpp_executorch_int8">C++ ExecuTorch INT8</string>
-    <string name="settings_cpp_executorch_int8_description">Run the full SHARP pipeline (Part1–4b) in C++. Single Part4b only, no tiles. May reduce overhead.</string>
-    <string name="settings_executorch_int8_use_b4">Part1/Part2 batch=4</string>
-    <string name="settings_executorch_int8_use_b4_description">Use batch-4 models for faster 1x patches. Disable if app crashes after "Part1+Part2 ready".</string>
-    <string name="settings_max_gaussians">Max Gaussians</string>
-    <string name="settings_max_gaussians_description">Limit splat count (0 = unlimited). 300k saves ~10s PLY write + faster viewer. 1.18M = full quality.</string>
-    <string name="settings_sharp_part1_patches_1x">SHARP Part1 — 1× patches</string>
-    <string name="settings_sharp_part1_patches_1x_description">Default: 16 (4×4 grid, faster Part1+2). 25 = full 5×5 grid (best overlap, slower) with possible softness at patch boundaries when using 16.</string>
-    <string name="settings_executorch_int8_vulkan_hybrid_label">ExecuTorch INT8 (Part1+2 + Vulkan — Hybrid)</string>
-    <string name="settings_executorch_int8_vulkan_hybrid_footer">GPU Part3/4 on Vulkan. Requires portable Part1+2 (e.g. sharp_split_part1_int8.pte + sharp_split_part2_int8.pte, or matching fp16/fp32 pairs) in the same folder as your Vulkan stack — room creation will not start without them. Put all .pte in files/models_cpuvulkan_hybrid/ for one-folder sideload. Legacy files/models_vulkan/ is migrated into this folder on launch, then removed when empty.</string>
     <string name="settings_furniture_segmentation">Möbel-Segmentierung</string>
     <string name="settings_show_room_furniture_calibrate">Raum- und Möbel-Kalibrierung anzeigen</string>
     <string name="settings_show_room_furniture_calibrate_description">Zeigt „Wand kalibrieren“ im Raummenü und die „Tippen zum Kalibrieren“-Pille, wenn SmartyPants (Gehirn) aktiv ist.</string>
@@ -521,18 +479,6 @@
     <string name="failed_delete">Failed to delete: %s</string>
     <string name="total">Total</string>
     <string name="app_version_display">Furnit v1.0.0</string>
-    <string name="sharp_room_overflow_content_description">More options</string>
-    <string name="sharp_room_menu_share">Teilen</string>
-    <string name="sharp_room_menu_save">Save room</string>
-    <string name="sharp_room_menu_calibrate">Calibrate wall</string>
-    <string name="sharp_room_menu_recenter">Recenter view</string>
-    <string name="sharp_room_menu_reset_overlay">Reset overlay scale</string>
-    <string name="sharp_room_menu_help">Hilfe</string>
-    <string name="sharp_room_ruler_content_description">Room dimensions</string>
-    <string name="sharp_room_display_all_helpers_content_description">Show all room controls help</string>
-    <string name="sharp_room_dimensions_chip">W × H × D\n%1$.2f × %2$.2f × %3$.2f m</string>
-    <string name="sharp_room_dimensions_unavailable">Room dimensions unavailable</string>
-    <string name="sharp_room_measuring">Raum wird vermessen…</string>
     <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
@@ -553,12 +499,11 @@
     <string name="ar_measure_tracking_lost">Wait until tracking is stable, then tap again.</string>
     <string name="ar_measure_no_plane_hit">No surface hit — aim at a floor or wall.</string>
     <string name="ar_measure_need_two_points">Place two points first (tap surface twice).</string>
-    <string name="sharp_room_ar_measure_content_description">Measure with AR (beta)</string>
     <string name="ar_measure_apply_title">Apply ARCore measurement?</string>
-    <string name="ar_measure_apply_message">AR segment: %1$.3f m\nSHARP bbox: %2$.3f × %3$.3f × %4$.3f m\nChoose which axis this segment matches for isotropic scale.</string>
-    <string name="ar_measure_calib_width">Match width (SHARP %.2f m)</string>
-    <string name="ar_measure_calib_height">Match height (SHARP %.2f m)</string>
-    <string name="ar_measure_calib_depth">Match depth (SHARP %.2f m)</string>
+    <string name="ar_measure_apply_message">AR segment: %1$.3f m\nAI room bbox: %2$.3f × %3$.3f × %4$.3f m\nChoose which axis this segment matches for isotropic scale.</string>
+    <string name="ar_measure_calib_width">Match width (AI room %.2f m)</string>
+    <string name="ar_measure_calib_height">Match height (AI room %.2f m)</string>
+    <string name="ar_measure_calib_depth">Match depth (AI room %.2f m)</string>
     <string name="ar_measure_calib_invalid_ref">That axis is invalid for scaling.</string>
     <string name="ar_measure_calib_applied">Display scale updated (AR calibration).</string>
     <string name="ar_measure_calib_no_folder">Calibration updated for this session only (room not saved to disk yet).</string>
@@ -569,7 +514,7 @@
     <string name="single_photo_ai_stop">Stop AI room generation</string>
     <string name="single_photo_phase_finalize">Finalize</string>
     <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
-    <string name="home_sharp_generation_stopped">AI room generation stopped</string>
+    <string name="home_room_generation_stopped">AI room generation stopped</string>
     <string name="placement_title">Platzierungs-Intelligenz</string>
     <string name="placement_badge_style_only">Stil</string>
     <string name="placement_no_fit">Passt nicht</string>
@@ -588,7 +533,4 @@
     <string name="placement_harmony_split_complementary">Split complementary</string>
     <string name="placement_harmony_neutral">Neutral</string>
     <string name="placement_harmony_clash">Konflikt</string>
-    <string name="ai_models_missing_title">AI room models are not installed</string>
-    <string name="ai_models_missing_message">AI Room needs SHARP model files on this device. Install the model files or use Manual Setup for this photo.</string>
-    <string name="ai_models_missing_use_manual">Use Manual Setup</string>
 </resources>

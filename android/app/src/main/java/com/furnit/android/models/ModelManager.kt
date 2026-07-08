@@ -11,8 +11,7 @@ class ModelManager(private val context: Context) {
     companion object {
         private const val TAG = "ModelManager"
         private const val ROOMS_DIR = "rooms"
-        private const val SHARP_ROOMS_DIR = "sharp_rooms"
-        /** Built-in demo GLBs under `assets/bundled_rooms/` (SHARP `.pte` use assets/models_cpu + models_cpuvulkan_hybrid via Gradle). */
+        /** Built-in demo GLBs under `assets/bundled_rooms/`. */
         const val BUNDLED_ROOM_ASSETS_DIR = "bundled_rooms"
 
         private fun normalizeRoomName(roomName: String): String {
@@ -55,9 +54,6 @@ class ModelManager(private val context: Context) {
         // Load from regular rooms directory
         loadRoomsFromDir(File(context.filesDir, ROOMS_DIR), userRooms)
 
-        // Load from sharp_rooms directory (AI-generated rooms)
-        loadRoomsFromDir(File(context.filesDir, SHARP_ROOMS_DIR), userRooms)
-
         // Sort user rooms by creation date descending (newest first)
         userRooms.sortByDescending { it.createdAt }
         models.addAll(userRooms)
@@ -76,9 +72,8 @@ class ModelManager(private val context: Context) {
             val frontWall = File(folder, "front_wall.png")
             val thumbnail = File(folder, "thumbnail.png")
             val glbFile = File(folder, "room.glb")
-            val plyFile = File(folder, "room.ply")
 
-            if (frontWall.exists() || glbFile.exists() || plyFile.exists()) {
+            if (frontWall.exists() || glbFile.exists()) {
                 // Read room name and created timestamp from metadata
                 var roomName = "My Room ${folder.name.substringAfter("room_")}"
                 var createdAt = folder.lastModified() // fallback to folder modification time
@@ -112,10 +107,9 @@ class ModelManager(private val context: Context) {
                     photoWideAngle = disk.photoWideAngle
                 }
 
-                // Use GLB/PLY file path if it exists, otherwise use folder path
+                // Use GLB file path if it exists, otherwise use folder path.
                 val assetPath = when {
                     glbFile.exists() -> glbFile.absolutePath
-                    plyFile.exists() -> plyFile.absolutePath
                     else -> folder.absolutePath
                 }
 

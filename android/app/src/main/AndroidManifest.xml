@@ -5,7 +5,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
-    <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
 
     <application
         android:name=".FurnitApplication"
@@ -17,11 +16,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
-
-        <!-- ExecuTorch AAR at build time: true = etVulkan flavor (executorch-android-vulkan), false = etCpu (executorch-android / XNNPACK). -->
-        <meta-data
-            android:name="com.furnit.executorch.USE_VULKAN_AAR"
-            android:value="${executorchVulkanAar}" />
 
         <!-- ARCore optional: app installs on non-AR devices; ArMeasureActivity checks support at runtime. -->
         <meta-data
@@ -63,11 +57,6 @@
         <activity
             android:name=".RoomViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.Furnit.FullScreen" />
-        <activity
-            android:name=".SharpRoomActivity"
-            android:exported="false"
-            android:hardwareAccelerated="true"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".ArMeasureActivity"

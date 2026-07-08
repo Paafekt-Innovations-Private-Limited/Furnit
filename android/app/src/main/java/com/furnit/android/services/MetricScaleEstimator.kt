@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 
 object MetricScaleEstimator {
 
-    data class SharpMonodepthInfo(
+    data class MonodepthInfo(
         val width: Int,
         val height: Int,
         val channels: Int,
@@ -23,7 +23,7 @@ object MetricScaleEstimator {
         val survivingAnchors: Int,
         val coefficientOfVariation: Float,
         val arcoreMedianDepthMeters: Float,
-        val sharpMedianDepthUnits: Float,
+        val modelMedianDepthUnits: Float,
         val rawMedianRatio: Float,
         val monodepthWidth: Int,
         val monodepthHeight: Int,
@@ -44,7 +44,7 @@ object MetricScaleEstimator {
                 survivingAnchors = 0,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = gaussianDepthUnits,
+                modelMedianDepthUnits = gaussianDepthUnits,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = 0,
                 monodepthHeight = 0,
@@ -70,7 +70,7 @@ object MetricScaleEstimator {
                 survivingAnchors = validCount,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = gaussianDepthUnits,
+                modelMedianDepthUnits = gaussianDepthUnits,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = 0,
                 monodepthHeight = 0,
@@ -109,7 +109,7 @@ object MetricScaleEstimator {
                 survivingAnchors = filteredCount,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = median(anchorDepths, validCount),
-                sharpMedianDepthUnits = gaussianDepthUnits,
+                modelMedianDepthUnits = gaussianDepthUnits,
                 rawMedianRatio = rawMedianRatio,
                 monodepthWidth = 0,
                 monodepthHeight = 0,
@@ -122,7 +122,7 @@ object MetricScaleEstimator {
         val variance = max(0f, sumSqRatio / filteredCount.toFloat() - meanRatio * meanRatio)
         val cv = if (meanRatio > 1e-6f) sqrt(variance) / meanRatio else Float.POSITIVE_INFINITY
         LogUtil.i(
-            "SHARP_METRIC_SCALE",
+            "ROOM_METRIC_SCALE",
             "[proxy] anchors=${anchors.size} filtered=$filteredCount gaussianDepth=$gaussianDepthUnits rawMedianRatio=$rawMedianRatio weightedScale=$weightedScale cv=$cv",
         )
         val valid = weightedScale.isFinite() && weightedScale in minScale..maxScale && cv.isFinite() && cv <= 0.5f
@@ -133,7 +133,7 @@ object MetricScaleEstimator {
             survivingAnchors = filteredCount,
             coefficientOfVariation = cv,
             arcoreMedianDepthMeters = median(filteredDepths, filteredCount),
-            sharpMedianDepthUnits = gaussianDepthUnits,
+            modelMedianDepthUnits = gaussianDepthUnits,
             rawMedianRatio = rawMedianRatio,
             monodepthWidth = 0,
             monodepthHeight = 0,
@@ -143,7 +143,7 @@ object MetricScaleEstimator {
 
     fun estimateFromMatchedMonodepth(
         anchors: List<MetricAnchor>,
-        monodepth: SharpMonodepthInfo?,
+        monodepth: MonodepthInfo?,
         sampleMonodepthChannel: (IntArray, IntArray, Int) -> FloatArray?,
         minScale: Float = 0.2f,
         maxScale: Float = 8.0f,
@@ -160,7 +160,7 @@ object MetricScaleEstimator {
                 survivingAnchors = 0,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = Float.NaN,
+                modelMedianDepthUnits = Float.NaN,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = monodepth?.width ?: 0,
                 monodepthHeight = monodepth?.height ?: 0,
@@ -183,7 +183,7 @@ object MetricScaleEstimator {
                 survivingAnchors = validAnchors.size,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = Float.NaN,
+                modelMedianDepthUnits = Float.NaN,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -209,7 +209,7 @@ object MetricScaleEstimator {
                 survivingAnchors = 0,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = Float.NaN,
+                modelMedianDepthUnits = Float.NaN,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -218,16 +218,16 @@ object MetricScaleEstimator {
 
         val pairingIndices = IntArray(validAnchors.size)
         val pairingRatios = FloatArray(validAnchors.size)
-        val pairingSharpDepths = FloatArray(validAnchors.size)
+        val pairingModelDepths = FloatArray(validAnchors.size)
         var pairingCount = 0
         for (i in validAnchors.indices) {
-            val sharpDepth = sampledDepths[i]
-            if (!sharpDepth.isFinite() || sharpDepth <= 0f) continue
-            val ratio = validAnchors[i].depthMeters / sharpDepth
+            val monodepthValue = sampledDepths[i]
+            if (!monodepthValue.isFinite() || monodepthValue <= 0f) continue
+            val ratio = validAnchors[i].depthMeters / monodepthValue
             if (!ratio.isFinite() || ratio <= 0f) continue
             pairingIndices[pairingCount] = i
             pairingRatios[pairingCount] = ratio
-            pairingSharpDepths[pairingCount] = sharpDepth
+            pairingModelDepths[pairingCount] = monodepthValue
             pairingCount++
         }
 
@@ -236,10 +236,10 @@ object MetricScaleEstimator {
             val pairingIndex = pairingIndices[index]
             val anchor = validAnchors[pairingIndex]
             LogUtil.i(
-                "SHARP_METRIC_SCALE",
+                "ROOM_METRIC_SCALE",
                 "[pairing] #$index anchor=(${anchor.pixelX},${anchor.pixelY}) " +
                     "arcore=${anchor.depthMeters}m conf=${anchor.confidence} " +
-                    "sharp=(${mappedXs[pairingIndex]},${mappedYs[pairingIndex]}) depth=${pairingSharpDepths[index]} " +
+                    "monodepth=(${mappedXs[pairingIndex]},${mappedYs[pairingIndex]}) depth=${pairingModelDepths[index]} " +
                     "ratio=${pairingRatios[index]}",
             )
         }
@@ -252,7 +252,7 @@ object MetricScaleEstimator {
                 survivingAnchors = pairingCount,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = Float.NaN,
-                sharpMedianDepthUnits = Float.NaN,
+                modelMedianDepthUnits = Float.NaN,
                 rawMedianRatio = Float.NaN,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -264,7 +264,7 @@ object MetricScaleEstimator {
         val filteredRatios = FloatArray(pairingCount)
         val filteredWeights = FloatArray(pairingCount)
         val filteredArDepths = FloatArray(pairingCount)
-        val filteredSharpDepths = FloatArray(pairingCount)
+        val filteredModelDepths = FloatArray(pairingCount)
         var filteredCount = 0
         var sumRatio = 0f
         var sumSqRatio = 0f
@@ -275,7 +275,7 @@ object MetricScaleEstimator {
             filteredRatios[filteredCount] = ratio
             filteredWeights[filteredCount] = anchor.confidence.coerceAtLeast(0.05f)
             filteredArDepths[filteredCount] = anchor.depthMeters
-            filteredSharpDepths[filteredCount] = pairingSharpDepths[i]
+            filteredModelDepths[filteredCount] = pairingModelDepths[i]
             filteredCount++
             sumRatio += ratio
             sumSqRatio += ratio * ratio
@@ -288,7 +288,7 @@ object MetricScaleEstimator {
                 survivingAnchors = filteredCount,
                 coefficientOfVariation = Float.POSITIVE_INFINITY,
                 arcoreMedianDepthMeters = medianPairingAnchorDepths(validAnchors, pairingIndices, pairingCount),
-                sharpMedianDepthUnits = median(pairingSharpDepths, pairingCount),
+                modelMedianDepthUnits = median(pairingModelDepths, pairingCount),
                 rawMedianRatio = rawMedianRatio,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -302,7 +302,7 @@ object MetricScaleEstimator {
         val cv = if (meanRatio > 1e-6f) sqrt(variance) / meanRatio else Float.POSITIVE_INFINITY
 
         LogUtil.i(
-            "SHARP_METRIC_SCALE",
+            "ROOM_METRIC_SCALE",
             "[estimate] anchors=${anchors.size} validAnchors=${validAnchors.size} pairings=$pairingCount " +
                 "filtered=$filteredCount rawMedianRatio=$rawMedianRatio weightedScale=$weightedScale cv=$cv",
         )
@@ -315,7 +315,7 @@ object MetricScaleEstimator {
                 survivingAnchors = filteredCount,
                 coefficientOfVariation = cv,
                 arcoreMedianDepthMeters = median(filteredArDepths, filteredCount),
-                sharpMedianDepthUnits = median(filteredSharpDepths, filteredCount),
+                modelMedianDepthUnits = median(filteredModelDepths, filteredCount),
                 rawMedianRatio = rawMedianRatio,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -330,7 +330,7 @@ object MetricScaleEstimator {
                 survivingAnchors = filteredCount,
                 coefficientOfVariation = cv,
                 arcoreMedianDepthMeters = median(filteredArDepths, filteredCount),
-                sharpMedianDepthUnits = median(filteredSharpDepths, filteredCount),
+                modelMedianDepthUnits = median(filteredModelDepths, filteredCount),
                 rawMedianRatio = rawMedianRatio,
                 monodepthWidth = monodepth.width,
                 monodepthHeight = monodepth.height,
@@ -345,7 +345,7 @@ object MetricScaleEstimator {
             survivingAnchors = filteredCount,
             coefficientOfVariation = cv,
             arcoreMedianDepthMeters = median(filteredArDepths, filteredCount),
-            sharpMedianDepthUnits = median(filteredSharpDepths, filteredCount),
+            modelMedianDepthUnits = median(filteredModelDepths, filteredCount),
             rawMedianRatio = rawMedianRatio,
             monodepthWidth = monodepth.width,
             monodepthHeight = monodepth.height,
@@ -354,7 +354,7 @@ object MetricScaleEstimator {
     }
 
     private fun logMonodepthDiagnostics(
-        monodepth: SharpMonodepthInfo,
+        monodepth: MonodepthInfo,
         sampleMonodepthChannel: (IntArray, IntArray, Int) -> FloatArray?,
     ) {
         val sampleGrid = 9
@@ -392,7 +392,7 @@ object MetricScaleEstimator {
         val probeYs = intArrayOf(centerY, cornerY)
         val probeDepths = sampleNearestSurfaceDepths(monodepth, probeXs, probeYs, sampleMonodepthChannel)
         LogUtil.i(
-            "SHARP_METRIC_SCALE",
+            "ROOM_METRIC_SCALE",
             "[monodepth] size=${monodepth.width}x${monodepth.height}x${monodepth.channels} " +
                 "min=$minDepth max=$maxDepth mean=${if (count > 0) (sumDepth / count).toFloat() else Float.NaN} " +
                 "center($centerX,$centerY)=${probeDepths?.getOrNull(0)} corner($cornerX,$cornerY)=${probeDepths?.getOrNull(1)}",
@@ -400,7 +400,7 @@ object MetricScaleEstimator {
     }
 
     private fun sampleNearestSurfaceDepths(
-        monodepth: SharpMonodepthInfo,
+        monodepth: MonodepthInfo,
         xs: IntArray,
         ys: IntArray,
         sampleMonodepthChannel: (IntArray, IntArray, Int) -> FloatArray?,

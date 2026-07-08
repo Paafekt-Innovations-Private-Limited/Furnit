@@ -21,8 +21,8 @@ import android.widget.ScrollView
 import android.widget.Toast
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.furnit.android.services.SharpGenerationUiState
-import com.furnit.android.services.SharpService
+import com.furnit.android.services.PhotoRoomGenerationService
+import com.furnit.android.services.RoomGenerationUiState
 import androidx.appcompat.app.AlertDialog
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
@@ -36,8 +36,8 @@ class ContentActivity : AppCompatActivity() {
     private lateinit var roomsContainer: LinearLayout
     private lateinit var statsText: TextView
     private lateinit var totalSizeText: TextView
-    private lateinit var sharpGlobalProgressBar: FrameLayout
-    private lateinit var sharpGlobalProgressLabel: TextView
+    private lateinit var roomGenerationProgressBar: FrameLayout
+    private lateinit var roomGenerationProgressLabel: TextView
 
     // Colors matching iOS dark theme
     private val backgroundColor = Color.parseColor("#1C1C1E")
@@ -81,11 +81,11 @@ class ContentActivity : AppCompatActivity() {
         // Refresh models when returning to this activity
         modelManager.refresh()
         refreshRoomsList()
-        syncSharpGlobalProgressBarFromState()
+        syncRoomGenerationProgressBarFromState()
     }
 
     override fun onDestroy() {
-        SharpGenerationUiState.setListener(null)
+        RoomGenerationUiState.setListener(null)
         super.onDestroy()
     }
 
@@ -239,22 +239,22 @@ class ContentActivity : AppCompatActivity() {
         setContentView(scrollView)
 
         val contentRoot = findViewById<FrameLayout>(android.R.id.content)
-        sharpGlobalProgressBar = createSharpGlobalProgressBar()
+        roomGenerationProgressBar = createRoomGenerationProgressBar()
         contentRoot.addView(
-            sharpGlobalProgressBar,
+            roomGenerationProgressBar,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM,
             ),
         )
-        SharpGenerationUiState.setListener { syncSharpGlobalProgressBarFromState() }
+        RoomGenerationUiState.setListener { syncRoomGenerationProgressBarFromState() }
 
         // Initial load
         refreshRoomsList()
     }
 
-    private fun createSharpGlobalProgressBar(): FrameLayout {
+    private fun createRoomGenerationProgressBar(): FrameLayout {
         val density = resources.displayMetrics.density
         return FrameLayout(this).apply {
             visibility = View.GONE
@@ -272,13 +272,13 @@ class ContentActivity : AppCompatActivity() {
                 row.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(14) + nav.bottom)
                 insets
             }
-            sharpGlobalProgressLabel = TextView(this@ContentActivity).apply {
+            roomGenerationProgressLabel = TextView(this@ContentActivity).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 textSize = 13f
                 setTextColor(Color.WHITE)
                 maxLines = 2
             }
-            row.addView(sharpGlobalProgressLabel)
+            row.addView(roomGenerationProgressLabel)
             val stopGlobal = TextView(this@ContentActivity).apply {
                 text = "⏹"
                 textSize = 11f
@@ -291,31 +291,31 @@ class ContentActivity : AppCompatActivity() {
                     setColor(Color.parseColor("#E53935"))
                 }
                 contentDescription = getString(R.string.single_photo_ai_stop)
-                setOnClickListener { onSharpGlobalStopClicked() }
+                setOnClickListener { onRoomGenerationStopClicked() }
             }
             row.addView(stopGlobal)
             addView(row)
         }
     }
 
-    private fun syncSharpGlobalProgressBarFromState() {
-        if (!::sharpGlobalProgressBar.isInitialized) return
-        val s = SharpGenerationUiState
+    private fun syncRoomGenerationProgressBarFromState() {
+        if (!::roomGenerationProgressBar.isInitialized) return
+        val s = RoomGenerationUiState
         if (!s.isGenerating) {
-            sharpGlobalProgressBar.visibility = View.GONE
+            roomGenerationProgressBar.visibility = View.GONE
             return
         }
-        sharpGlobalProgressBar.visibility = View.VISIBLE
-        sharpGlobalProgressLabel.text = s.statusLine
-        (sharpGlobalProgressBar.parent as? ViewGroup)?.bringChildToFront(sharpGlobalProgressBar)
-        ViewCompat.requestApplyInsets(sharpGlobalProgressBar)
+        roomGenerationProgressBar.visibility = View.VISIBLE
+        roomGenerationProgressLabel.text = s.statusLine
+        (roomGenerationProgressBar.parent as? ViewGroup)?.bringChildToFront(roomGenerationProgressBar)
+        ViewCompat.requestApplyInsets(roomGenerationProgressBar)
     }
 
-    private fun onSharpGlobalStopClicked() {
-        SharpService.getInstance(this).cancelGeneration()
-        SharpGenerationUiState.clear()
-        syncSharpGlobalProgressBarFromState()
-        Toast.makeText(this, getString(R.string.home_sharp_generation_stopped), Toast.LENGTH_SHORT).show()
+    private fun onRoomGenerationStopClicked() {
+        PhotoRoomGenerationService.getInstance(this).cancelGeneration()
+        RoomGenerationUiState.clear()
+        syncRoomGenerationProgressBarFromState()
+        Toast.makeText(this, getString(R.string.home_room_generation_stopped), Toast.LENGTH_SHORT).show()
     }
 
     private fun createIconButton(icon: String): TextView {
@@ -431,11 +431,9 @@ class ContentActivity : AppCompatActivity() {
         }
 
         if (model.isUserCreated) {
-            val isSharpRoom = model.assetPath.endsWith(".ply", ignoreCase = true)
             val isManualRoom = model.assetPath.endsWith(".glb", ignoreCase = true)
             (iconContainer.background as? GradientDrawable)?.setColor(
                 when {
-                    isSharpRoom -> cardBackgroundColor
                     isManualRoom -> Color.parseColor("#4A3318")
                     else -> cardBackgroundColor
                 },
@@ -444,7 +442,6 @@ class ContentActivity : AppCompatActivity() {
             val userRoomIcon = ImageView(this).apply {
                 setImageResource(
                     when {
-                        isSharpRoom -> R.drawable.ic_grid_3x3
                         isManualRoom -> R.drawable.ic_square_grid_3x3
                         else -> R.drawable.ic_grid_3x3
                     },
@@ -522,29 +519,7 @@ class ContentActivity : AppCompatActivity() {
             LogUtil.d("ContentActivity", "Room clicked: name=${clickedModel.name} id=${clickedModel.id} isUserCreated=${clickedModel.isUserCreated} assetPath=${clickedModel.assetPath}")
 
             if (clickedModel.isUserCreated) {
-                if (clickedModel.assetPath.endsWith(".ply")) {
-                    // Open SharpRoomActivity for PLY files (Gaussian splat)
-                    val plyFile = File(clickedModel.assetPath)
-                    val roomFolder = plyFile.parentFile
-                    LogUtil.d("ContentActivity", "Branch PLY: roomFolder=${roomFolder?.absolutePath} starting SharpRoomActivity")
-                    val intent = Intent(this, SharpRoomActivity::class.java)
-                    intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
-                    intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder?.absolutePath)
-                    intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
-                    clickedModel.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
-                    clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
-                    clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
-                    clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
-                    clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
-                    clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
-                    intent.putExtra(
-                        "photo_orientation",
-                        clickedModel.photoOrientation.trim().lowercase().takeIf { it == "landscape" } ?: "portrait"
-                    )
-                    intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
-                    LogUtil.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
-                    startActivity(intent)
-                } else if (clickedModel.assetPath.endsWith(".glb")) {
+                if (clickedModel.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
                     val glbFile = File(clickedModel.assetPath)
                     val roomFolderPath = glbFile.parent
@@ -562,31 +537,10 @@ class ContentActivity : AppCompatActivity() {
                 } else {
                     // Check for files in room folder (assetPath is folder path)
                     val roomFolder = File(clickedModel.assetPath)
-                    val plyFile = File(roomFolder, "room.ply")
                     val glbFile = File(roomFolder, "room.glb")
-                    LogUtil.d("ContentActivity", "Branch folder: ${roomFolder.absolutePath} plyExists=${plyFile.exists()} glbExists=${glbFile.exists()}")
+                    LogUtil.d("ContentActivity", "Branch folder: ${roomFolder.absolutePath} glbExists=${glbFile.exists()}")
 
                     when {
-                        plyFile.exists() -> {
-                            LogUtil.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
-                            val intent = Intent(this, SharpRoomActivity::class.java)
-                            intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
-                            intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
-                            intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
-                            clickedModel.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
-                            clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
-                            clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
-                            clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
-                            clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
-                            clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
-                            intent.putExtra(
-                                "photo_orientation",
-                                clickedModel.photoOrientation.trim().lowercase().takeIf { it == "landscape" } ?: "portrait"
-                            )
-                            intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
-                            LogUtil.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
-                            startActivity(intent)
-                        }
                         glbFile.exists() -> {
                             LogUtil.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${glbFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
                             val intent = Intent(this, GLBRoomActivity::class.java)
@@ -601,7 +555,7 @@ class ContentActivity : AppCompatActivity() {
                             startActivity(intent)
                         }
                         else -> {
-                            LogUtil.d("ContentActivity", "No PLY/GLB in folder, opening RoomViewerActivity: ${clickedModel.assetPath}")
+                            LogUtil.d("ContentActivity", "No room model in folder, opening RoomViewerActivity: ${clickedModel.assetPath}")
                             val intent = Intent(this, RoomViewerActivity::class.java)
                             intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, clickedModel.assetPath)
                             startActivity(intent)

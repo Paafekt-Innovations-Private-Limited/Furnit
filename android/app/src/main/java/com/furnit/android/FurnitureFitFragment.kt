@@ -54,14 +54,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import android.webkit.ConsoleMessage
-import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.webkit.WebViewAssetLoader
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.text.SimpleDateFormat
@@ -107,8 +104,6 @@ class FurnitureFitFragment : Fragment() {
     private var selectedRoomDepth: Float = 4.5f
     private var selectedPhotoOrientation: String = "portrait"
     private var selectedArAssistedSizingRequested: Boolean = false
-    private var usePlyBackground: Boolean = false  // True when background is PLY (WebView), false when GLB (SceneView) or none
-    private var roomPlyWebView: WebView? = null
 
     // Tap to calibrate (from Swift): estimated furniture height from detections, user-entered real height, scale factor
     private val defaultRoomHeightMeters = 3.0f
@@ -134,7 +129,7 @@ class FurnitureFitFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Get room info from arguments (same as SharpRoom so PLY viewer can use same camera framing)
+        // Get room info from arguments for the room background.
         selectedRoomId = arguments?.getString("ROOM_ID")
         selectedRoomName = arguments?.getString("ROOM_NAME")
         selectedRoomFolder = arguments?.getString("ROOM_FOLDER")
@@ -166,23 +161,10 @@ class FurnitureFitFragment : Fragment() {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
 
-        // Room background layer - SceneView for GLB, or WebView for PLY (splat)
+        // Room background layer - SceneView for GLB.
         roomSceneView = SceneView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             visibility = View.GONE
-        }
-        roomPlyWebView = WebView(requireContext()).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            visibility = View.GONE
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            setBackgroundColor(Color.TRANSPARENT)
-            webChromeClient = object : WebChromeClient() {
-                override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
-                    msg?.let { LogUtil.d("FurnitureFit", "PLY WebView: ${it.message()}") }
-                    return true
-                }
-            }
         }
         loadRoom3D()
 
@@ -331,20 +313,11 @@ class FurnitureFitFragment : Fragment() {
         val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
         if (hasRoomBackground) {
             previewView.visibility = View.GONE
-            // The PLY WebView is above SceneView in z-order. Only show it for real PLY rooms;
-            // otherwise it covers GLB rooms as a grey/curtain layer.
-            if (hasPlyRoomBackground()) {
-                roomPlyWebView?.visibility = View.VISIBLE
-                roomSceneView.visibility = View.GONE
-            } else {
-                roomSceneView.visibility = View.VISIBLE
-                roomPlyWebView?.visibility = View.GONE
-            }
+            roomSceneView.visibility = View.VISIBLE
         }
         val uiHost = if (hasRoomBackground) {
             createRoomViewport().apply {
                 addView(roomSceneView)
-                roomPlyWebView?.let { addView(it) }  // PLY splat background (shown when no room.glb)
                 addView(this@FurnitureFitFragment.overlay)
                 addView(touchLayer)
                 root.addView(this)
@@ -352,7 +325,6 @@ class FurnitureFitFragment : Fragment() {
         } else {
             root.addView(previewView)
             root.addView(roomSceneView)
-            roomPlyWebView?.let { root.addView(it) }
             root.addView(overlay)
             root.addView(touchLayer)
             root
@@ -525,13 +497,7 @@ class FurnitureFitFragment : Fragment() {
                 updateCalibrationPill()
 
                 if (showRoomBackground) {
-                    if (usePlyBackground) {
-                        roomPlyWebView?.visibility = View.VISIBLE
-                        roomSceneView.visibility = View.GONE
-                    } else {
-                        roomSceneView.visibility = View.VISIBLE
-                        roomPlyWebView?.visibility = View.GONE
-                    }
+                    roomSceneView.visibility = View.VISIBLE
                     previewView.visibility = View.GONE
                 }
             } else {
@@ -542,17 +508,10 @@ class FurnitureFitFragment : Fragment() {
                 statusLabel.text = getString(R.string.smartypants_scanning)
                 overlay.setMaskAndDetections(null, emptyList())
                 if (showRoomBackground) {
-                    if (usePlyBackground) {
-                        roomPlyWebView?.visibility = View.VISIBLE
-                        roomSceneView.visibility = View.GONE
-                    } else {
-                        roomSceneView.visibility = View.VISIBLE
-                        roomPlyWebView?.visibility = View.GONE
-                    }
+                    roomSceneView.visibility = View.VISIBLE
                     previewView.visibility = View.GONE
                 } else {
                     roomSceneView.visibility = View.GONE
-                    roomPlyWebView?.visibility = View.GONE
                     previewView.visibility = View.VISIBLE
                 }
             }
@@ -1162,7 +1121,6 @@ class FurnitureFitFragment : Fragment() {
                 lookAt(Position(0f, 1.4f, -baseDistance * scale))
             }
         }
-        // PLY WebView: scaling + camera reframe could be added via JS if the viewer supports it
     }
 
     private val Int.dp: Int
@@ -1206,19 +1164,8 @@ class FurnitureFitFragment : Fragment() {
 
     /**
      * Load 3D room background for furniture segmentation (brain icon).
-     * Uses room.glb in SceneView when present; uses room.ply (Gaussian splat) in a WebView when the folder has no room.glb.
-     * Bundled rooms (vintage, cozy_room) or rooms/ and sharp_rooms/ by ROOM_ID use room.glb when present.
-     * No fallback: if there is no room.glb and no room.ply, no background is shown.
+     * Uses room.glb in SceneView when present. No fallback is shown if the room has no GLB.
      */
-    private fun hasPlyRoomBackground(): Boolean {
-        val roomFolderPath = selectedRoomFolder
-        if (roomFolderPath.isNullOrBlank()) return usePlyBackground
-        val folder = java.io.File(roomFolderPath)
-        val glbFile = java.io.File(folder, "room.glb")
-        val plyFile = java.io.File(folder, "room.ply")
-        return !glbFile.exists() && plyFile.exists()
-    }
-
     private fun loadRoom3D() {
         val roomId = selectedRoomId
         val roomFolderPath = selectedRoomFolder
@@ -1234,40 +1181,29 @@ class FurnitureFitFragment : Fragment() {
                         LogUtil.d("FurnitureFit", "Using assets: $assetPath")
                         roomSceneView.modelLoader.createModelInstance(assetFileLocation = assetPath)
                     }
-                    // Explicit room folder – use room.glb if present, else room.ply (splat) as WebView background
+                    // Explicit room folder: use room.glb if present.
                     roomFolderPath != null && roomFolderPath.isNotBlank() -> {
                         val folder = java.io.File(roomFolderPath)
                         val glbFile = java.io.File(folder, "room.glb")
-                        val plyFile = java.io.File(folder, "room.ply")
                         if (glbFile.exists()) {
                             LogUtil.d("FurnitureFit", "Using opened folder room.glb: ${glbFile.absolutePath}")
                             val buffer = withContext(Dispatchers.IO) { mapFileReadOnly(glbFile) }
                             roomSceneView.modelLoader.createModelInstance(buffer)
-                        } else if (plyFile.exists()) {
-                            LogUtil.d("FurnitureFit", "Using opened folder room.ply as PLY background: ${plyFile.absolutePath}")
-                            usePlyBackground = true
-                            loadPlyBackground(plyFile)
-                            activity?.runOnUiThread {
-                                roomPlyWebView?.visibility = View.VISIBLE
-                            }
-                            null
                         } else {
-                            LogUtil.d("FurnitureFit", "No room.glb or room.ply in $roomFolderPath; no 3D background")
+                            LogUtil.d("FurnitureFit", "No room.glb in $roomFolderPath; no 3D background")
                             null
                         }
                     }
-                    // Look up by ROOM_ID in rooms/ and sharp_rooms/
+                    // Look up by ROOM_ID in saved rooms.
                     roomId != null && ctx != null -> {
                         val filesDir = ctx.filesDir
                         val glbInRooms = java.io.File(java.io.File(filesDir, "rooms"), roomId).let { java.io.File(it, "room.glb") }
-                        val glbInSharp = java.io.File(java.io.File(filesDir, "sharp_rooms"), roomId).let { java.io.File(it, "room.glb") }
                         val glbFile = when {
                             glbInRooms.exists() -> glbInRooms
-                            glbInSharp.exists() -> glbInSharp
                             else -> null
                         }
                         if (glbFile != null) {
-                            LogUtil.d("FurnitureFit", "Using rooms/sharp_rooms by id: ${glbFile.absolutePath}")
+                            LogUtil.d("FurnitureFit", "Using rooms by id: ${glbFile.absolutePath}")
                             val buffer = withContext(Dispatchers.IO) { mapFileReadOnly(glbFile) }
                             roomSceneView.modelLoader.createModelInstance(buffer)
                         } else {
@@ -1320,7 +1256,6 @@ class FurnitureFitFragment : Fragment() {
                     if (roomFolderPath != null || roomId != null) {
                         activity?.runOnUiThread {
                             roomSceneView.visibility = View.VISIBLE
-                            roomPlyWebView?.visibility = View.GONE
                         }
                     }
                 } else {
@@ -1340,120 +1275,6 @@ class FurnitureFitFragment : Fragment() {
         }
     }
 
-    /** Load PLY (Gaussian splat) as background via WebView + SparkJS. Same approach as SharpRoomActivity. */
-    private fun loadPlyBackground(plyFile: File) {
-        val webView = roomPlyWebView ?: return
-        val ctx = context ?: return
-        val internalDir = File(ctx.filesDir, "webview_assets")
-        internalDir.mkdirs()
-        val destPly = File(internalDir, "room.ply")
-        try {
-            plyFile.copyTo(destPly, overwrite = true)
-            LogUtil.d("FurnitureFit", "Copied PLY for background: ${destPly.absolutePath}")
-        } catch (e: Exception) {
-            LogUtil.e("FurnitureFit", "Failed to copy PLY for background", e)
-            CrashReporter.report(this, e, "Furniture fit — copy PLY for WebView background")
-            return
-        }
-        val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(ctx))
-            .addPathHandler("/files/", WebViewAssetLoader.InternalStoragePathHandler(ctx, internalDir))
-            .build()
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: android.webkit.WebResourceRequest?
-            ): android.webkit.WebResourceResponse? {
-                val url = request?.url ?: return null
-                return assetLoader.shouldInterceptRequest(url)
-            }
-        }
-        val isPortrait = selectedPhotoOrientation != "landscape"
-        val html = buildPlyViewerHtml(
-            isPortrait = isPortrait,
-            roomWidth = selectedRoomWidth,
-            roomHeight = selectedRoomHeight,
-            roomDepth = selectedRoomDepth,
-            encodedPlyFileName = Uri.encode(destPly.name),
-        )
-        webView.loadDataWithBaseURL(
-            "https://appassets.androidplatform.net/",
-            html,
-            "text/html",
-            "UTF-8",
-            null
-        )
-    }
-
-    /** Minimal SparkJS splat viewer for PLY background with a centered, straight-on front-wall camera. */
-    private fun buildPlyViewerHtml(
-        isPortrait: Boolean,
-        roomWidth: Float,
-        roomHeight: Float,
-        roomDepth: Float,
-        encodedPlyFileName: String,
-    ): String {
-        val w = roomWidth.toDouble()
-        val h = roomHeight.toDouble()
-        val d = roomDepth.toDouble()
-        return """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>* { margin: 0; padding: 0; } html, body { width: 100%; height: 100%; overflow: hidden; background: #808080; } canvas { display: block; width: 100%; height: 100%; }</style>
-    <script type="importmap">
-    {"imports":{"three":"https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","@sparkjsdev/spark":"https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"}}
-    </script>
-</head>
-<body>
-<script type="module">
-import * as THREE from 'three';
-import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x808080);
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.up.set(0, 1, 0);
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-document.body.appendChild(renderer.domElement);
-const spark = new SparkRenderer({ renderer: renderer, maxStdDev: 3.0, preBlurAmount: 0.5, blurAmount: 0.3, falloff: 0.8, focalAdjustment: 1.5 });
-camera.add(spark);
-const isPortrait = ${isPortrait};
-const fallbackW = $w;
-const fallbackH = $h;
-const fallbackD = $d;
-if (isPortrait) {
-    const frontWall = -fallbackD * 0.5;
-    camera.position.set(0, 0, 0);
-    camera.lookAt(new THREE.Vector3(frontWall, 0, 0));
-} else {
-    const frontWallZ = -fallbackD * 0.5;
-    camera.position.set(0, 0, 0);
-    camera.lookAt(new THREE.Vector3(0, 0, frontWallZ));
-}
-const plyURL = 'https://appassets.androidplatform.net/files/$encodedPlyFileName';
-const splatMesh = new SplatMesh({ url: plyURL, maxSh: 0 });
-if (isPortrait) splatMesh.rotation.y = Math.PI / 2;
-scene.add(splatMesh);
-function animate() {
-    requestAnimationFrame(animate);
-    spark.update({ scene });
-    renderer.render(scene, camera);
-}
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
-animate();
-</script>
-</body>
-</html>
-        """.trimIndent()
-    }
 }
 
 /**

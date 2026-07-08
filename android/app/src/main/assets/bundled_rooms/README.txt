@@ -6,6 +6,3 @@ Place asset paths used by ModelManager here:
 
 These *.glb files are gitignored (large). Copy from your USDZ exports or an older APK build
 under merge*Assets/models/ if you still have them.
-
-SHARP / ExecuTorch .pte files are NOT stored here. They are packaged by Gradle into
-assets/models_cpu/ and assets/models_cpuvulkan_hybrid/ (see android/docs/MODELS_APK_BUNDLE_TESTING.md).

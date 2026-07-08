@@ -14,7 +14,7 @@ object RoomDisplayName {
         return df.format(date)
     }
 
-    /** Default SHARP room label (preview + SharpService metadata). */
+    /** Default AI room label. */
     fun aiRoomWithTimestamp(date: Date = Date()): String = "AI Room ${formattedSuffix(date)}"
 
     /** Manual / photogrammetry-style room label (texture-only reconstructor, GLB save dialogs). */

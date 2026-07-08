@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="620" viewBox="0 0 920 620">
+  <defs>
+    <style>
+      .bg{fill:#f8fafc}
+      .title{font:700 22px Arial,sans-serif;fill:#111827}
+      .sub{font:400 13px Arial,sans-serif;fill:#4b5563}
+      .box{fill:#ffffff;stroke:#94a3b8;stroke-width:1.4}
+      .input{fill:#e0f2fe;stroke:#0284c7}
+      .service{fill:#dcfce7;stroke:#16a34a}
+      .asset{fill:#fef3c7;stroke:#d97706}
+      .out{fill:#ede9fe;stroke:#7c3aed}
+      .view{fill:#fce7f3;stroke:#db2777}
+      .txt{font:700 14px Arial,sans-serif;fill:#111827}
+      .small{font:400 12px Arial,sans-serif;fill:#374151}
+      .arrow{stroke:#475569;stroke-width:1.8;fill:none;marker-end:url(#arrow)}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="920" height="620"/>
+  <text x="32" y="42" class="title">Photo to 3D Room - Android</text>
+  <text x="32" y="64" class="sub">Current active flow: single app variant, GLB room output, ONNX assets tracked under room_generation.</text>
+
+  <rect class="input" x="70" y="108" width="220" height="74" rx="10"/>
+  <text x="180" y="137" text-anchor="middle" class="txt">SinglePhotoRoomActivity</text>
+  <text x="180" y="158" text-anchor="middle" class="small">Take photo or select photo</text>
+
+  <rect class="box" x="350" y="108" width="220" height="74" rx="10"/>
+  <text x="460" y="137" text-anchor="middle" class="txt">Choose Flow</text>
+  <text x="460" y="158" text-anchor="middle" class="small">AI generation or manual setup</text>
+
+  <rect class="service" x="630" y="108" width="220" height="74" rx="10"/>
+  <text x="740" y="137" text-anchor="middle" class="txt">PhotoRoomGenerationService</text>
+  <text x="740" y="158" text-anchor="middle" class="small">Job lifecycle and metadata</text>
+
+  <rect class="asset" x="72" y="274" width="222" height="92" rx="10"/>
+  <text x="183" y="302" text-anchor="middle" class="txt">RoomGenerationAssets</text>
+  <text x="183" y="325" text-anchor="middle" class="small">Depth Anything ONNX packaged</text>
+  <text x="183" y="346" text-anchor="middle" class="small">GeoCalib export pending</text>
+
+  <rect class="service" x="350" y="274" width="220" height="92" rx="10"/>
+  <text x="460" y="302" text-anchor="middle" class="txt">SinglePhotoRoomReconstructor</text>
+  <text x="460" y="325" text-anchor="middle" class="small">Default boundaries</text>
+  <text x="460" y="346" text-anchor="middle" class="small">Textured GLB output</text>
+
+  <rect class="out" x="630" y="274" width="220" height="92" rx="10"/>
+  <text x="740" y="302" text-anchor="middle" class="txt">Preview Folder</text>
+  <text x="740" y="325" text-anchor="middle" class="small">room.glb</text>
+  <text x="740" y="346" text-anchor="middle" class="small">metadata.txt</text>
+
+  <rect class="out" x="350" y="456" width="220" height="78" rx="10"/>
+  <text x="460" y="486" text-anchor="middle" class="txt">Save Room</text>
+  <text x="460" y="507" text-anchor="middle" class="small">Promote preview into files/rooms</text>
+
+  <rect class="view" x="630" y="456" width="220" height="78" rx="10"/>
+  <text x="740" y="486" text-anchor="middle" class="txt">GLBRoomActivity</text>
+  <text x="740" y="507" text-anchor="middle" class="small">Viewer and furniture overlay</text>
+
+  <path class="arrow" d="M290 145 H350"/>
+  <path class="arrow" d="M570 145 H630"/>
+  <path class="arrow" d="M740 182 V274"/>
+  <path class="arrow" d="M630 320 H570"/>
+  <path class="arrow" d="M350 320 H294"/>
+  <path class="arrow" d="M570 320 H630"/>
+  <path class="arrow" d="M740 366 V456"/>
+  <path class="arrow" d="M630 495 H570"/>
+  <path class="arrow" d="M570 495 H630"/>
+</svg>

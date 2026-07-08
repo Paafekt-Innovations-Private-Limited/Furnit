@@ -1,55 +1,31 @@
-# Test in Android Studio & Settings
+# Test And Settings
 
-## 1. Open and run in Android Studio
+## Build Test
 
-1. **Open the project**  
-   Open the **android** folder (e.g. `Furnit/android` or your worktree’s `ftf/android`).  
-   Use **File → Open** and select the `android` directory so Gradle sync runs correctly.
+```bash
+./gradlew :app:assembleDebug
+```
 
-2. **Sync and build**  
-   Let Gradle sync finish. Build once: **Build → Make Project** (or run `./gradlew assembleDebug` in the `android` folder).
+## Room Creation Smoke Test
 
-3. **Select device**  
-   In the device dropdown, pick a connected phone/emulator (USB debugging enabled for a physical device).
+1. Launch the app on an arm64 device.
+2. Open the photo-to-room flow.
+3. Select or capture a room photo.
+4. Choose AI generation.
+5. Confirm a GLB preview opens.
+6. Save the room.
+7. Confirm the saved room appears in the home room list and opens in `GLBRoomActivity`.
 
-4. **Run**  
-   Click **Run** (green play) or **Run → Run 'app'**. The app installs and launches.
+## Settings
 
----
+The old backend selection settings have been removed. Current developer settings focus on debug logging, furniture segmentation, room viewer behavior, and default manual/demo room dimensions.
 
-## 2. Settings to use for SHARP Vulkan room creation
+## Asset Check
 
-For the current known-good Vulkan room-creation recipe, see
-[`EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md`](EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md).
+At startup, `RoomGenerationAssets.logAvailability` logs packaged room-generation assets and any missing expected assets.
 
-In the app: **Profile → Settings** (or the gear icon), then scroll to the **Developer** section.
+Expected today:
 
-| Setting | What to set | Why |
-|--------|-------------|-----|
-| **Inference Backend** | **ExecuTorch INT8 (Vulkan)** | Uses the active Vulkan SHARP path. |
-| **Max Gaussians** | **All** | Matches the validated reference run. |
-| **Use true 1280x1280** | **Fixed OFF** | Hidden in the UI; keep the currently validated `1536` hybrid split pipeline. |
-| **Prefer Vulkan FP16 models** | **Fixed ON** | Hidden in the UI; prefer FP16 Vulkan exports when present. |
-| **Prefer single Part4b** | **Fixed OFF** | Hidden in the UI; keep the fine-split `tile_00` route instead of the old single-decoder path. |
-| **Record ETDump on next room creation** | **OFF** | Leave profiling off for normal runs. |
-
-Optional:
-
-- **Swap tile NDC X/Y**: Leave **OFF** unless you’ve been told to enable it for a specific device.
-- The three fixed ExecuTorch values above are now enforced by the Android app. This cleanup did **not** modify ExecuTorch itself; it only changed app-side settings UI and preference handling.
-
----
-
-## 3. Quick checklist
-
-- [ ] Project opened as `android` folder in Android Studio  
-- [ ] Gradle sync and build succeeded  
-- [ ] Device selected and app installed via Run  
-- [ ] **Settings → Inference Backend** = **ExecuTorch INT8 (Vulkan)**  
-- [ ] **Max Gaussians** = **All**  
-- [ ] Hidden fixed value: **Use true 1280x1280** = **OFF**  
-- [ ] Hidden fixed value: **Prefer Vulkan FP16 models** = **ON**  
-- [ ] Hidden fixed value: **Prefer single Part4b** = **OFF**  
-- [ ] Models pushed to device (e.g. `./push_sharp_executorch_int8_models.sh`), or already present in app storage  
-
-After that, use the SHARP / “New room” flow in the app; inference will use the above backend and options.
+- Depth Anything ONNX: present.
+- RTMDet ONNX: present.
+- GeoCalib Android export: missing until an ONNX or TFLite version is produced.

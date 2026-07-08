@@ -152,7 +152,7 @@ class AestheticAdvisor(
         }
         when {
             contrast < 0.15f -> result += "Contrast is low; the piece may blend into the room."
-            contrast > 0.80f -> result += "Contrast is strong; this piece will stand out sharply."
+            contrast > 0.80f -> result += "Contrast is strong; this piece will stand out clearly."
         }
         if (style < 0.30f && roomStyleTags.isNotEmpty()) {
             result += "Style fit looks weak against the room's dominant material cues."

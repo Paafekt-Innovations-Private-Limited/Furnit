@@ -20,7 +20,7 @@
   </defs>
 
   <text x="32" y="40" class="title">RTMDet instance segmentation — Android (Kotlin / ONNX Runtime)</text>
-  <text x="32" y="60" class="sub">Live "brain" loop. Same-activity overlays in GLBRoomActivity / SharpRoomActivity. ★ = ONNX Runtime EP, ☆ = scalar Kotlin.</text>
+  <text x="32" y="60" class="sub">Live "brain" loop. Same-activity overlay in GLBRoomActivity. ★ = ONNX Runtime EP, ☆ = scalar Kotlin.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ONNX RT (CPU/XNNPACK)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Kotlin CPU</text>

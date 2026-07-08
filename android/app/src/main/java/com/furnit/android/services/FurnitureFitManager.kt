@@ -51,7 +51,7 @@ class FurnitureFitManager(private val context: Context) {
 
     companion object {
         private const val TAG = "FurnitureFitManager"
-        private const val RTMDET_ONNX_MODEL_ASSET = "rtmdet-ins-m-raw.onnx"
+        private const val RTMDET_ONNX_MODEL_ASSET = RoomGenerationAssets.RTMDET_INS_M_RAW_ONNX
         private const val DEFAULT_ONNX_MODEL_ASSET = RTMDET_ONNX_MODEL_ASSET
         private const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
         private const val RTMDET_CONFIDENCE_THRESHOLD = 0.30f

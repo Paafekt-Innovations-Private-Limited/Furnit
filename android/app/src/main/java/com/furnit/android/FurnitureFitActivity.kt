@@ -67,7 +67,7 @@ class FurnitureFitActivity : AppCompatActivity() {
     private fun loadFragment() {
         val fragment = FurnitureFitFragment()
 
-        // Pass room info to fragment so the 3D background matches the opened room (same camera framing as SharpRoom).
+        // Pass room info to fragment so the 3D background matches the opened room (same camera framing as generated room viewer).
         var roomId = intent.getStringExtra("ROOM_ID")
         val roomName = intent.getStringExtra("ROOM_NAME")
         var roomFolder = intent.getStringExtra("ROOM_FOLDER")

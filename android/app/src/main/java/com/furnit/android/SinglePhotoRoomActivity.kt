@@ -41,10 +41,9 @@ import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.furnit.android.ar.ArSupportChecker
 import com.furnit.android.ar.MetricAnchor
 import com.furnit.android.models.PhotoOrientation
-import com.furnit.android.models.RoomStructure
-import com.furnit.android.services.SharpGenerationUiState
-import com.furnit.android.services.SharpService
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.services.PhotoRoomGenerationService
+import com.furnit.android.services.RoomGenerationUiState
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -57,9 +56,9 @@ import java.util.Locale
  *
  * Flow:
  * 1. User picks a photo from gallery
- * 2. Shows preview with two options: Manual Setup or AI Room (Sharp)
+ * 2. Shows preview with two options: Manual Setup or AI Room
  * 3. Manual Setup: boundary adjustment for room creation
- * 4. AI Room: Sharp-based 3D generation
+ * 4. AI Room: generic photo-to-room GLB generation
  */
 class SinglePhotoRoomActivity : AppCompatActivity() {
 
@@ -94,14 +93,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var photoWideAngle: Boolean = false
 
     /** AI generation started on photo select; cancel and release when user picks Manual/Back/Change. */
-    private var aiGenerationHandle: SharpService.GenerationHandle? = null
-    private var aiGenerationResult: SharpService.GenerationResult? = null
+    private var aiGenerationHandle: PhotoRoomGenerationService.GenerationHandle? = null
+    private var aiGenerationResult: PhotoRoomGenerationService.GenerationResult? = null
     private var aiGenerationRunning = false
     /** Set when user taps AI Room while generation is running - callback will show overlay and open on complete. */
     private var aiRoomOverlayRequested = false
     /** After "Run in background", AI option line shows percent; otherwise only friendly text (no %). */
     private var aiOptionShowPercent = false
-    /** Bumped on cancel/restart so stale [SharpService.ProgressCallback] completions are ignored and folders deleted. */
+    /** Bumped on cancel/restart so stale generation callbacks are ignored and folders deleted. */
     private var aiSessionId: Int = 0
     private var pendingMetricAnchors: ArrayList<MetricAnchor>? = null
     private val furnitureFitManager by lazy { FurnitureFitManager(this) }
@@ -183,7 +182,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    private val sharpRoomLauncher = registerForActivityResult(
+    private val generatedRoomLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         if (!isDestroyed) {
@@ -245,8 +244,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
             },
         )
-
-        // Do not preload SHARP here. Keep the heavy model load tied to the AI Room choice.
     }
 
     override fun onResume() {
@@ -928,7 +925,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 orientationUserOverridden = false
                 photoWideAngle = false
 
-                // Must match bitmap pixels fed to SHARP (see PhotoOrientation.fromBitmapDimensions KDoc).
+                // Must match bitmap pixels used for room generation (see PhotoOrientation.fromBitmapDimensions KDoc).
                 detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
                 DebugLogger.d(
                     "SinglePhotoRoom",
@@ -950,7 +947,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Matches room metadata / SharpService (ultra-wide portrait bias unless user locked orientation). */
+    /** Matches room metadata (ultra-wide portrait bias unless user locked orientation). */
     private fun metadataOrientationStringForViewer(): String {
         val o = if (orientationUserOverridden) {
             detectedOrientation
@@ -1039,27 +1036,27 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun deleteSharpRoomFolder(result: SharpService.GenerationResult?) {
-        val parent = result?.plyFile?.parentFile ?: return
+    private fun deleteGeneratedRoomFolder(result: PhotoRoomGenerationService.GenerationResult?) {
+        val parent = result?.roomFolder ?: return
         val disk = runCatching { RoomFolderMetadata.readFromFolder(parent) }.getOrNull()
-        if (disk?.previewOnly == false) {
+        if (!result.previewOnly || disk?.previewOnly == false) {
             DebugLogger.d("SinglePhotoRoom", "Skip delete — room already on Home list: ${parent.absolutePath}")
             return
         }
         try {
             if (parent.exists()) parent.deleteRecursively()
-            DebugLogger.d("SinglePhotoRoom", "Deleted SHARP room folder: ${parent.absolutePath}")
+            DebugLogger.d("SinglePhotoRoom", "Deleted generated room folder: ${parent.absolutePath}")
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to delete room folder", e)
         }
     }
 
-    /** User tapped Stop — remove folder even if it was promoted to Home ([deleteSharpRoomFolder] would skip). */
-    private fun deleteSharpRoomFolderUnconditional(result: SharpService.GenerationResult?) {
-        val parent = result?.plyFile?.parentFile ?: return
+    /** User tapped Stop — remove folder even if it was promoted to Home ([deleteGeneratedRoomFolder] would skip). */
+    private fun deleteGeneratedRoomFolderUnconditional(result: PhotoRoomGenerationService.GenerationResult?) {
+        val parent = result?.roomFolder ?: return
         try {
             if (parent.exists()) parent.deleteRecursively()
-            DebugLogger.d("SinglePhotoRoom", "Deleted SHARP room folder (stop): ${parent.absolutePath}")
+            DebugLogger.d("SinglePhotoRoom", "Deleted generated room folder (stop): ${parent.absolutePath}")
         } catch (e: Exception) {
             DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to delete room folder (stop)", e)
         }
@@ -1077,7 +1074,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiRoomOverlayRequested = false
         aiGenerationHandle?.cancel()
         aiGenerationHandle = null
-        aiGenerationResult?.let { deleteSharpRoomFolderUnconditional(it) }
+        aiGenerationResult?.let { deleteGeneratedRoomFolderUnconditional(it) }
         aiGenerationResult = null
         aiGenerationRunning = false
         aiOptionShowPercent = false
@@ -1085,32 +1082,24 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         lastAIGenerationProgress = 0f
         lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
         aiSessionId++
-        SharpService.getInstance(this).release()
+        PhotoRoomGenerationService.getInstance(this).cancelGeneration()
+        RoomGenerationUiState.clear()
         aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
         updateAiStopButtonVisibility()
         updateGlobalAiProgressOverlay()
     }
 
-    /** After \"Run in background\", mark folder so [ModelManager] shows it on Home (not preview-only). */
-    private fun promoteSharpRoomToLibrary(result: SharpService.GenerationResult) {
-        val folder = result.plyFile.parentFile ?: return
-        try {
-            val prev = RoomFolderMetadata.readFromFolder(folder) ?: return
-            val updated = RoomFolderMetadata.snapshotPreservingCalibrationFields(
-                folder,
-                prev.copy(previewOnly = false),
-            )
-            RoomFolderMetadata.writeToFolder(folder, updated)
-            val metaTxt = File(folder, "metadata.txt")
-            if (metaTxt.exists()) {
-                val lines = metaTxt.readLines().map { line ->
-                    if (line.trimStart().startsWith("previewOnly=")) "previewOnly=false" else line
-                }
-                metaTxt.writeText(lines.joinToString("\n").trimEnd() + "\n")
-            }
-            LogUtil.i("SinglePhotoRoom", "Promoted SHARP room to Home list: ${folder.absolutePath}")
+    /** After "Run in background", copy the generated room to Home (not preview-only). */
+    private fun promoteGeneratedRoomToLibrary(
+        result: PhotoRoomGenerationService.GenerationResult,
+    ): PhotoRoomGenerationService.GenerationResult {
+        return try {
+            val promoted = PhotoRoomGenerationService.getInstance(this).promoteToLibrary(result)
+            LogUtil.i("SinglePhotoRoom", "Promoted generated room to Home list: ${promoted.roomFolder.absolutePath}")
+            promoted
         } catch (e: Exception) {
-            DebugLogger.eDebugMode("SinglePhotoRoom", "promoteSharpRoomToLibrary failed", e)
+            DebugLogger.eDebugMode("SinglePhotoRoom", "promoteGeneratedRoomToLibrary failed", e)
+            result
         }
     }
 
@@ -1120,11 +1109,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         val session = aiSessionId
         aiGenerationResult = null
         aiGenerationRunning = true
-        val sharpService = SharpService.getInstance(this)
+        val generationService = PhotoRoomGenerationService.getInstance(this)
         val orientationForMetadata = metadataOrientationStringForViewer()
-        aiGenerationHandle = sharpService.startGenerationInBackground(
+        aiGenerationHandle = generationService.startGenerationInBackground(
             bitmap,
-            object : SharpService.ProgressCallback {
+            object : PhotoRoomGenerationService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
                     if (session != aiSessionId) return@runOnUiThread
@@ -1139,25 +1128,26 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     if (!isDestroyed) updateAiStopButtonVisibility()
                 }
             }
-            override fun onComplete(result: SharpService.GenerationResult) {
+            override fun onComplete(result: PhotoRoomGenerationService.GenerationResult) {
                 runOnUiThread {
                     if (session != aiSessionId) {
-                        deleteSharpRoomFolder(result)
+                        deleteGeneratedRoomFolder(result)
                         DebugLogger.d("SinglePhotoRoom", "Discarded stale AI completion (session mismatch)")
                         return@runOnUiThread
                     }
+                    var finalResult = result
                     aiGenerationRunning = false
-                    aiGenerationResult = result
                     aiGenerationHandle = null
                     if (aiOptionShowPercent) {
-                        promoteSharpRoomToLibrary(result)
+                        finalResult = promoteGeneratedRoomToLibrary(result)
                     }
+                    aiGenerationResult = finalResult
                     if (!isDestroyed) {
                         updateAIOptionProgress(1f, getString(R.string.detector_model_ready))
                         hideProgressOverlay()
                         if (aiRoomOverlayRequested) {
                             aiRoomOverlayRequested = false
-                            openSharpRoomWithResult(result)
+                            openGeneratedRoomWithResult(finalResult)
                         }
                         updateAiStopButtonVisibility()
                     } else {
@@ -1172,7 +1162,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             override fun onError(message: String) {
                 runOnUiThread {
                     if (session != aiSessionId) return@runOnUiThread
-                    if (message == "SHARP_CANCELLED") {
+                    if (message == "ROOM_CANCELLED") {
                         aiGenerationRunning = false
                         aiGenerationResult = null
                         aiGenerationHandle = null
@@ -1199,59 +1189,31 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         hideProgressOverlay()
                         Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
                         DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
-                        if (isMissingAiRoomModelsError(message)) {
-                            showMissingAiRoomModelsDialog(message)
-                        } else {
-                            CrashReporter.report(
-                                this@SinglePhotoRoomActivity,
-                                RuntimeException(message),
-                                "Single photo room — AI / SHARP generation",
-                            )
-                        }
+                        CrashReporter.report(
+                            this@SinglePhotoRoomActivity,
+                            RuntimeException(message),
+                            "Single photo room — AI generation",
+                        )
                         updateAiStopButtonVisibility()
                     } else {
-                        SharpGenerationUiState.clear()
+                        RoomGenerationUiState.clear()
                     }
                 }
             }
         },
             viewerPhotoOrientation = orientationForMetadata,
             viewerPhotoWideAngle = photoWideAngle,
-            orientationLockedByUser = orientationUserOverridden,
             sourcePhotoUri = selectedImageUri,
-            metricAnchors = pendingMetricAnchors,
         )
         updateAiStopButtonVisibility()
         updateGlobalAiProgressOverlay()
     }
 
-    private fun isMissingAiRoomModelsError(message: String): Boolean {
-        return message.contains("Missing models:", ignoreCase = true) ||
-            message.contains("models_cpu", ignoreCase = true) ||
-            message.contains("models_cpuvulkan_hybrid", ignoreCase = true)
-    }
-
-    private fun showMissingAiRoomModelsDialog(details: String) {
-        val setupHint = getString(R.string.ai_models_missing_message)
-        AlertDialog.Builder(this)
-            .setTitle(R.string.ai_models_missing_title)
-            .setMessage("$setupHint\n\n$details")
-            .setPositiveButton(R.string.ai_models_missing_use_manual) { _, _ ->
-                onManualSetupSelected()
-            }
-            .setNeutralButton(R.string.crash_report_copy_details) { _, _ ->
-                CrashReporter.copyReportToClipboard(this, details)
-                Toast.makeText(this, getString(R.string.crash_report_copy_details), Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton(android.R.string.ok, null)
-            .show()
-    }
-
-    /** Cancel AI generation, delete any room folder on disk, and release model memory. */
+    /** Cancel AI generation and delete any preview room folder on disk. */
     private fun cancelAndReleaseAI() {
         aiGenerationHandle?.cancel()
         aiGenerationHandle = null
-        deleteSharpRoomFolder(aiGenerationResult)
+        deleteGeneratedRoomFolder(aiGenerationResult)
         aiGenerationResult = null
         aiGenerationRunning = false
         aiRoomOverlayRequested = false
@@ -1260,8 +1222,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiSessionId++
         hideProgressOverlay()
         aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
-        SharpService.getInstance(this).release()
-        DebugLogger.d("SinglePhotoRoom", "AI cancelled and memory released (session=$aiSessionId)")
+        PhotoRoomGenerationService.getInstance(this).cancelGeneration()
+        RoomGenerationUiState.clear()
+        DebugLogger.d("SinglePhotoRoom", "AI cancelled (session=$aiSessionId)")
         updateAiStopButtonVisibility()
         updateGlobalAiProgressOverlay()
     }
@@ -1310,7 +1273,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         val result = aiGenerationResult
         if (result != null) {
             DebugLogger.d("SinglePhotoRoom", "Using cached AI result")
-            openSharpRoomWithResult(result)
+            openGeneratedRoomWithResult(result)
             return
         }
 
@@ -1335,39 +1298,22 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         showProgressOverlay(preserveProgress = false)
     }
 
-    private fun openSharpRoomWithResult(result: SharpService.GenerationResult) {
-        val intent = Intent(this, SharpRoomActivity::class.java).apply {
-            putExtra(SharpRoomActivity.EXTRA_PLY_PATH, result.classicPlyFile.absolutePath)
-            putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, result.plyFile.parentFile?.absolutePath)
-            if (result.roomWidth > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
-            if (result.roomHeight > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
-            if (result.roomDepth > 0f) putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
-            result.roomCenterX?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
-            result.roomCenterY?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
-            result.roomCenterZ?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
-            putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
-            putExtra("photo_orientation", metadataOrientationStringForViewer())
-            putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
-            // Preview-only / silent builds: delete on exit if never saved. Already on Home (e.g. Run in background) → not temp.
-            val folder = result.plyFile.parentFile
-            val snap = folder?.let { RoomFolderMetadata.readFromFolder(it) }
-            val isTempPreview = snap?.previewOnly != false
-            putExtra(SharpRoomActivity.EXTRA_IS_TEMP_SHARP_ROOM, isTempPreview)
-            putExtra(SharpRoomActivity.EXTRA_OPENED_FROM_SINGLE_PHOTO_ROOM, true)
+    private fun openGeneratedRoomWithResult(result: PhotoRoomGenerationService.GenerationResult) {
+        val intent = Intent(this, GLBRoomActivity::class.java).apply {
+            putExtra(GLBRoomActivity.EXTRA_GLB_PATH, result.glbFile.absolutePath)
+            putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
+            putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
+            putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
+            putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, result.previewOnly)
+            putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, result.photoOrientation)
+            putExtra("ROOM_FOLDER", result.roomFolder.absolutePath)
         }
         DebugLogger.i(
-            "SHARP_ROOM_MEAS",
-            if (result.roomWidth > 0f && result.roomHeight > 0f && result.roomDepth > 0f) {
-                "[open_sharp_viewer] W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
-                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
-                    "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}"
-            } else {
-                "[open_sharp_viewer] dims=deferred_async " +
-                    "center=(${result.roomCenterX},${result.roomCenterY},${result.roomCenterZ}) " +
-                    "folder=${result.plyFile.parentFile?.absolutePath} classic=${result.classicPlyFile.name}"
-            },
+            "ROOM_GENERATION",
+            "[open_glb_viewer] W×H×D=${result.roomWidth}×${result.roomHeight}×${result.roomDepth} " +
+                "folder=${result.roomFolder.absolutePath} glb=${result.glbFile.name} preview=${result.previewOnly}",
         )
-        sharpRoomLauncher.launch(intent)
+        generatedRoomLauncher.launch(intent)
     }
 
     private fun onManualSetupSelected() {
@@ -1386,7 +1332,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         boundaryActivityLauncher.launch(intent)
     }
 
-    /** Returns to Create 3D Room photo selection and cancels AI unless already finished (e.g. after Sharp viewer). */
+    /** Returns to Create 3D Room photo selection and cancels AI unless already finished. */
     private fun showInitialView() {
         singleImageScanRequestId++
         resetSingleImageOverlay()
@@ -1406,19 +1352,17 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun toFriendlyMessage(progress: Float, message: String): String {
         val m = message.lowercase()
         return when {
-            progress >= 1f -> getString(R.string.sharp_inference_room_ready)
-            m.contains("preprocess") || m.contains("1536") -> getString(R.string.ai_progress_getting_photo_ready)
+            progress >= 1f -> getString(R.string.room_generation_ready)
+            m.contains("preprocess") || m.contains("preparing") || m.contains("image") ->
+                getString(R.string.ai_progress_getting_photo_ready)
             m.contains("loading") && (m.contains("encoder") || m.contains("model")) -> getString(R.string.ai_progress_warming_up)
-            m.contains("part 1") || m.contains("part 2") || m.contains("patch") -> {
-                val step = Regex("""(\d+)\s*/\s*35""").find(message)?.groupValues?.get(1)
-                if (step != null) getString(R.string.ai_progress_building_room_step, step) else getString(R.string.ai_progress_building_room)
-            }
-            m.contains("part 3") || m.contains("image encoder") -> getString(R.string.ai_progress_understanding_picture)
-            m.contains("part 4a") || m.contains("tokens") -> getString(R.string.ai_progress_adding_depth_shape)
-            m.contains("part 4b") || m.contains("decoder") -> getString(R.string.ai_progress_finishing_touches)
-            m.contains("writing") || m.contains("room file") || m.contains("ply") || m.contains("gaussian") ->
+            m.contains("extracting") || m.contains("texture") -> getString(R.string.ai_progress_understanding_picture)
+            m.contains("building") || m.contains("3d model") -> getString(R.string.ai_progress_building_room)
+            m.contains("depth") || m.contains("shape") -> getString(R.string.ai_progress_adding_depth_shape)
+            m.contains("final") -> getString(R.string.ai_progress_finishing_touches)
+            m.contains("writing") || m.contains("room file") || m.contains("preview") ->
                 getString(R.string.ai_progress_preparing_preview)
-            m.contains("done") -> getString(R.string.sharp_inference_room_ready)
+            m.contains("done") -> getString(R.string.room_generation_ready)
             m.contains("error") || m.contains("failed") -> message
             progress < 0.15f -> getString(R.string.ai_progress_getting_started)
             progress < 0.45f -> getString(R.string.ai_progress_working_on_it)
@@ -1585,7 +1529,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 val phaseNames = listOf(
                     "Prepare",
-                    "SHARP",
+                    "Build",
                     getString(R.string.single_photo_phase_finalize),
                 )
                 phaseStripViews = Array(phaseNames.size) { index ->
@@ -1789,14 +1733,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             (globalAiProgressBar.parent as? ViewGroup)?.bringChildToFront(globalAiProgressBar)
             ViewCompat.requestApplyInsets(globalAiProgressBar)
         }
-        syncSharpGenerationUiStateForList()
+        syncRoomGenerationUiStateForList()
     }
 
     /** Shared with [com.furnit.android.ContentActivity] when this activity is in the background or destroyed. */
-    private fun syncSharpGenerationUiStateForList() {
+    private fun syncRoomGenerationUiStateForList() {
         val active = aiGenerationRunning || aiGenerationResult != null
         if (!active) {
-            SharpGenerationUiState.clear()
+            RoomGenerationUiState.clear()
             return
         }
         val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
@@ -1806,7 +1750,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         } else {
             "${lastAIGenerationMessage} · $pct%"
         }
-        SharpGenerationUiState.update(true, lastAIGenerationProgress, line)
+        RoomGenerationUiState.update(true, lastAIGenerationProgress, line)
     }
 
     private fun updateProgressOverlay(progress: Float, message: String) {
