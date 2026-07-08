@@ -22,6 +22,7 @@ import kotlin.math.min
  * Creates a GLB model file with:
  * - Floor, ceiling, and walls as textured planes
  * - Textures extracted from the photo based on boundary positions
+ * - Or, for AI/photo room generation, a Swift-parity flat full-photo mesh with no stretched plane crops
  */
 class SinglePhotoRoomReconstructor(private val context: Context) {
 
@@ -53,7 +54,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         image: Bitmap,
         boundaries: RoomStructure,
         dimensions: RoomDimensions = RoomDimensions(),
-        callback: ProgressCallback
+        callback: ProgressCallback,
+        flatPhotoMesh: Boolean = false,
     ) {
         LogUtil.d(TAG, "Starting room reconstruction...")
         LogUtil.d(TAG, "  Boundaries: floor=${boundaries.floorY}, ceiling=${boundaries.ceilingY}")
@@ -65,13 +67,25 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                 callback.onProgress(0.1f, "Preparing image...")
                 Thread.sleep(200)
 
-                // Extract textures from photo
                 callback.onProgress(0.3f, "Extracting textures...")
-                val frontWallTexture = extractFrontWallTexture(image, boundaries)
-                val floorTexture = extractFloorTexture(image, boundaries)
-                val ceilingTexture = extractCeilingTexture(image, boundaries)
-                val leftWallTexture = extractLeftWallTexture(image, boundaries)
-                val rightWallTexture = extractRightWallTexture(image, boundaries)
+                val frontWallTexture: Bitmap
+                val floorTexture: Bitmap
+                val ceilingTexture: Bitmap
+                val leftWallTexture: Bitmap
+                val rightWallTexture: Bitmap
+                if (flatPhotoMesh) {
+                    frontWallTexture = image
+                    floorTexture = image
+                    ceilingTexture = image
+                    leftWallTexture = image
+                    rightWallTexture = image
+                } else {
+                    frontWallTexture = extractFrontWallTexture(image, boundaries)
+                    floorTexture = extractFloorTexture(image, boundaries)
+                    ceilingTexture = extractCeilingTexture(image, boundaries)
+                    leftWallTexture = extractLeftWallTexture(image, boundaries)
+                    rightWallTexture = extractRightWallTexture(image, boundaries)
+                }
                 Thread.sleep(200)
 
                 callback.onProgress(0.5f, "Building 3D model...")
@@ -85,7 +99,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     floorTexture,
                     ceilingTexture,
                     leftWallTexture,
-                    rightWallTexture
+                    rightWallTexture,
+                    flatPhotoMesh
                 )
                 Thread.sleep(200)
 
@@ -208,7 +223,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         floor: Bitmap,
         ceiling: Bitmap,
         leftWall: Bitmap,
-        rightWall: Bitmap
+        rightWall: Bitmap,
+        flatPhotoMesh: Boolean = false,
     ): File {
         // Create room in preview directory (NOT in rooms folder yet)
         // Room will be moved to rooms folder when user clicks Save in preview
@@ -233,15 +249,23 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
             height = dimensions.height
         )
 
-        val success = generator.generateGlb(
-            outputFile = glbFile,
-            dimensions = glbDimensions,
-            frontWallTexture = frontWall,
-            floorTexture = floor,
-            ceilingTexture = ceiling,
-            leftWallTexture = leftWall,
-            rightWallTexture = rightWall
-        )
+        val success = if (flatPhotoMesh) {
+            generator.generateFlatPhotoGlb(
+                outputFile = glbFile,
+                dimensions = glbDimensions,
+                photoTexture = frontWall,
+            )
+        } else {
+            generator.generateGlb(
+                outputFile = glbFile,
+                dimensions = glbDimensions,
+                frontWallTexture = frontWall,
+                floorTexture = floor,
+                ceilingTexture = ceiling,
+                leftWallTexture = leftWall,
+                rightWallTexture = rightWall,
+            )
+        }
 
         if (!success) {
             LogUtil.e(TAG, "Failed to generate GLB, falling back to textures only")

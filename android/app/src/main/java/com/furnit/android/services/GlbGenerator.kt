@@ -12,13 +12,13 @@ import kotlin.math.max
 /**
  * GlbGenerator - Creates binary glTF 2.0 (GLB) files for room models
  *
- * Generates a 5-plane room structure with embedded textures:
- * - Floor, Ceiling, Front Wall, Left Wall, Right Wall
+ * Generates textured GLB room previews.
  */
 class GlbGenerator {
 
     companion object {
         private const val TAG = "GlbGenerator"
+        private const val GL_TEXTURE_CLAMP_TO_EDGE = 33071
 
         // GLB magic bytes and version
         private const val GLB_MAGIC = 0x46546C67 // "glTF" in little-endian
@@ -96,31 +96,61 @@ class GlbGenerator {
             val planes = listOf(floorPlane, ceilingPlane, frontWallPlane, leftWallPlane, rightWallPlane)
             val textures = listOf(floorTexture, ceilingTexture, frontWallTexture, leftWallTexture, rightWallTexture)
             val textureNames = listOf("floor", "ceiling", "front_wall", "left_wall", "right_wall")
-
-            // Convert textures to PNG bytes
-            val textureBytes = textures.map { bitmapToPngBytes(it) }
-
-            // Build binary buffer (geometry + textures)
-            val binaryData = buildBinaryBuffer(planes, textureBytes)
-
-            // Build JSON structure
-            val json = buildGltfJson(planes, textureBytes, textureNames)
-
-            // Assemble final GLB
-            val glbData = assembleGlb(json, binaryData)
-
-            // Write to file
-            FileOutputStream(outputFile).use { fos ->
-                fos.write(glbData)
-            }
-
-            LogUtil.d(TAG, "GLB generated: ${outputFile.length()} bytes")
-            true
-
+            writeGlb(outputFile, planes, textures, textureNames)
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to generate GLB", e)
             false
         }
+    }
+
+    /**
+     * Swift-parity photo room preview: one flat full-photo mesh. This avoids the old cuboid
+     * fallback's cropped ceiling/floor/wall textures being stretched into "dragged" pixels.
+     */
+    fun generateFlatPhotoGlb(
+        outputFile: File,
+        dimensions: RoomDimensions,
+        photoTexture: Bitmap,
+    ): Boolean {
+        return try {
+            LogUtil.d(TAG, "Generating flat photo GLB: ${outputFile.absolutePath}")
+            val plane = createFrontPhotoPlaneGeometry(
+                width = dimensions.width,
+                height = dimensions.height,
+            )
+            writeGlb(
+                outputFile = outputFile,
+                planes = listOf(plane),
+                textures = listOf(photoTexture),
+                textureNames = listOf("photo_room_flat"),
+            )
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "Failed to generate flat photo GLB", e)
+            false
+        }
+    }
+
+    private fun writeGlb(
+        outputFile: File,
+        planes: List<PlaneGeometry>,
+        textures: List<Bitmap>,
+        textureNames: List<String>,
+    ): Boolean {
+        require(planes.size == textures.size && planes.size == textureNames.size) {
+            "Plane, texture, and name counts must match"
+        }
+
+        val textureBytes = textures.map { bitmapToPngBytes(it) }
+        val binaryData = buildBinaryBuffer(planes, textureBytes)
+        val json = buildGltfJson(planes, textureBytes, textureNames)
+        val glbData = assembleGlb(json, binaryData)
+
+        FileOutputStream(outputFile).use { fos ->
+            fos.write(glbData)
+        }
+
+        LogUtil.d(TAG, "GLB generated: ${outputFile.length()} bytes")
+        return true
     }
 
     /**
@@ -223,6 +253,30 @@ class GlbGenerator {
         return PlaneGeometry(positions, normals, uvs, indices)
     }
 
+    private fun createFrontPhotoPlaneGeometry(width: Float, height: Float): PlaneGeometry {
+        val halfW = width / 2f
+        val positions = floatArrayOf(
+            -halfW, 0f, 0f,
+            halfW, 0f, 0f,
+            halfW, height, 0f,
+            -halfW, height, 0f,
+        )
+        val normals = floatArrayOf(
+            0f, 0f, 1f,
+            0f, 0f, 1f,
+            0f, 0f, 1f,
+            0f, 0f, 1f,
+        )
+        val uvs = floatArrayOf(
+            0f, 1f,
+            1f, 1f,
+            1f, 0f,
+            0f, 0f,
+        )
+        val indices = shortArrayOf(0, 1, 2, 0, 2, 3)
+        return PlaneGeometry(positions, normals, uvs, indices)
+    }
+
     /**
      * Compresses bitmap to PNG bytes
      */
@@ -287,6 +341,7 @@ class GlbGenerator {
 
         // Asset info
         sb.append("\"asset\":{\"version\":\"2.0\",\"generator\":\"Furnit Android\"},")
+        sb.append("\"extensionsUsed\":[\"KHR_materials_unlit\"],")
 
         // Scene
         sb.append("\"scene\":0,")
@@ -294,7 +349,8 @@ class GlbGenerator {
 
         // Nodes - root node with children for each plane
         sb.append("\"nodes\":[")
-        sb.append("{\"children\":[1,2,3,4,5]}")  // Root node
+        val childNodes = planes.indices.joinToString(",", prefix = "[", postfix = "]") { (it + 1).toString() }
+        sb.append("{\"children\":$childNodes}")  // Root node
         for (i in planes.indices) {
             sb.append(",{\"mesh\":$i,\"name\":\"${textureNames[i]}\"}")
         }
@@ -328,7 +384,7 @@ class GlbGenerator {
             sb.append("\"baseColorTexture\":{\"index\":$i},")
             sb.append("\"metallicFactor\":0.0,")
             sb.append("\"roughnessFactor\":1.0")
-            sb.append("},\"doubleSided\":true,\"name\":\"${textureNames[i]}_material\"}")
+            sb.append("},\"extensions\":{\"KHR_materials_unlit\":{}},\"doubleSided\":true,\"name\":\"${textureNames[i]}_material\"}")
         }
         sb.append("],")
 
@@ -350,7 +406,7 @@ class GlbGenerator {
         sb.append("],")
 
         // Samplers
-        sb.append("\"samplers\":[{\"magFilter\":9729,\"minFilter\":9729,\"wrapS\":10497,\"wrapT\":10497}],")
+        sb.append("\"samplers\":[{\"magFilter\":9729,\"minFilter\":9729,\"wrapS\":$GL_TEXTURE_CLAMP_TO_EDGE,\"wrapT\":$GL_TEXTURE_CLAMP_TO_EDGE}],")
 
         // Calculate buffer offsets for accessors and buffer views
         var offset = 0

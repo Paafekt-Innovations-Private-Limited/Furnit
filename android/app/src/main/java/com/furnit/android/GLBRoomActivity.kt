@@ -1016,17 +1016,19 @@ class GLBRoomActivity : AppCompatActivity() {
                 model.position.z = -center.z;
                 model.position.y = -box.min.y;
 
-                // Centered Android room view: camera in the middle of the room, looking straight at the front wall
+                // Centered Android room view: camera in the middle of cuboid rooms, or in
+                // front of Swift-parity flat photo meshes.
                 const roomWidth = size.x;
                 const roomHeight = size.y;
                 const roomDepth = size.z;
+                const isFlatPhotoMesh = roomDepth < 0.05;
                 const halfDepth = roomDepth * 0.5;
                 const camX = 0;
                 const camY = roomHeight * 0.5;
-                const camZ = 0;
+                const camZ = isFlatPhotoMesh ? Math.max(roomWidth, roomHeight) * 0.95 : 0;
                 const targetX = 0;
                 const targetY = camY;
-                const targetZ = -halfDepth;
+                const targetZ = isFlatPhotoMesh ? 0 : -halfDepth;
 
                 camera.position.set(camX, camY, camZ);
                 controls.target.set(targetX, targetY, targetZ);

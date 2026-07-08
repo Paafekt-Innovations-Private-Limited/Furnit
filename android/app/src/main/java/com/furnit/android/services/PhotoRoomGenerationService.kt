@@ -115,6 +115,7 @@ class PhotoRoomGenerationService private constructor(private val context: Contex
                     callback.onError(message)
                 }
             },
+            flatPhotoMesh = true,
         )
 
         return GenerationHandle(this, token)
