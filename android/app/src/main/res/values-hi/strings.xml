@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">रूम पूर्वावलोकन उपलब्ध नहीं</string>
     <string name="room_viewer_created_success">रूम सफलतापूर्वक बनाया गया!</string>
     <string name="room_viewer_created_message">आपके रूम की टेक्सचर फोटो से निकाले गए हैं। इसे रखने के लिए सहेजें टैप करें।</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">आयाम: %s</string>
     <string name="room_viewer_saved_toast">रूम सहेजा गया!</string>
 

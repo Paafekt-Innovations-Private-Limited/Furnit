@@ -367,6 +367,7 @@
     <string name="room_viewer_preview_unavailable">Aperçu non disponible</string>
     <string name="room_viewer_created_success">Pièce créée avec succès !</string>
     <string name="room_viewer_created_message">Les textures de votre pièce ont été extraites de la photo. Appuyez sur Enregistrer pour la conserver.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">Dimensions : %s</string>
     <string name="room_viewer_saved_toast">Pièce enregistrée !</string>
 

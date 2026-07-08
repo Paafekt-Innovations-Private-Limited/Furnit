@@ -491,8 +491,8 @@ class ContentActivity : AppCompatActivity() {
             "$orient - held ${if (model.photoOrientation == "landscape") "horizontally" else "vertically"}"
         } else "3D Model"
         // Show actual dimensions if available
-        val dimensionStr = if (model.roomWidth != null && model.roomHeight != null) {
-            String.format("%.1f × %.1f m", model.roomWidth, model.roomHeight)
+        val dimensionStr = if (model.roomHeight != null && model.roomHeight > 0) {
+            getString(R.string.approximate_room_height, model.roomHeight)
         } else {
             "3D Room"
         }

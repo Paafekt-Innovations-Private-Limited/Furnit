@@ -527,6 +527,7 @@
     <string name="room_viewer_created_success">Room Created Successfully!</string>
     <string name="room_viewer_created_message">Your room textures have been extracted from the photo. Tap Save to keep this room.</string>
     <string name="room_viewer_dimensions">Dimensions: %s</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_saved_toast">Room saved!</string>
 
     <!-- Model Viewer -->

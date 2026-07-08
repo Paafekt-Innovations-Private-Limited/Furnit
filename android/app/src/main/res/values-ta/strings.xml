@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">அறை முன்னோட்டம் இல்லை</string>
     <string name="room_viewer_created_success">அறை வெற்றிகரமாக உருவாக்கப்பட்டது!</string>
     <string name="room_viewer_created_message">உங்கள் அறை அமைப்புகள் படத்திலிருந்து எடுக்கப்பட்டன. வைக்க சேமிக்க தட்டவும்.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">பரிமாணங்கள்: %s</string>
     <string name="room_viewer_saved_toast">அறை சேமிக்கப்பட்டது!</string>
 

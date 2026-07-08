@@ -399,14 +399,9 @@ struct SplatRoomView: View {
                 }
             } label: {
                 if let d = activeRoomMetersDimensions {
-                    VStack(spacing: 1) {
-                        Text("W × H × D")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
-                        Text(String(format: "%.2f × %.2f × %.2f m", d.width, d.height, d.depth))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
+                    Text(L10n.RoomViewer.approximateRoomHeight(d.height))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Capsule().fill(Color.black.opacity(0.55)))

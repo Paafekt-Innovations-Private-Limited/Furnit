@@ -320,6 +320,7 @@
 "roomViewer.arSizingEnable" = "開啟相機輔助家具尺寸";
 "roomViewer.arSizingDisable" = "關閉相機輔助家具尺寸";
 "roomViewer.gestureHintToggleAccessibility" = "點此圖示可顯示或隱藏此提示。";
+"roomViewer.approximateRoomHeight" = "約高 - %.2f 公尺";
 "roomViewer.checkMeasurement" = "檢查測量";
 "roomViewer.roomDimensionsDefaultValues" = "預設值";
 "roomViewer.roomDimensionsWHDWithDefault" = "寬 × 高 × 深\n%.2f × %.2f × %.2f 公尺 (%@)";

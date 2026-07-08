@@ -189,31 +189,10 @@ struct USDZModel: Identifiable, Hashable {
         fileType == .meshroom || fileType == .glb
     }
 
-    /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
-    /// Manual-setup rooms append “(Default Values)”; Splat PLY (AI) rooms append “(Near accurate values)”.
+    /// Home list: approximate room height when saved dimensions exist.
     var roomDimensionsListLine: String? {
-        let baseLine: String?
-        if let w = roomWidth, let h = roomHeight, let d = roomDepth,
-           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
-            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
-        } else if let w = roomWidth, let h = roomHeight,
-                  w > 0.05, h > 0.05, w.isFinite, h.isFinite,
-                  let sh = roomSceneHeight, sh > 1e-4,
-                  let sd = roomSceneDepth, sd > 1e-4 {
-            let d = sd * (h / sh)
-            guard d > 0.05, d.isFinite else { return nil }
-            baseLine = String(format: "%.2f × %.2f × %.2f m", w, h, d)
-        } else {
-            return nil
-        }
-        guard let line = baseLine else { return nil }
-        if isManualSetupRoom {
-            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsDefaultValues)
-        }
-        if fileType == .ply {
-            return String(format: "%@ (%@)", line, L10n.RoomViewer.roomDimensionsNearAccurateValues)
-        }
-        return line
+        guard let h = roomHeight, h > 0.05, h.isFinite else { return nil }
+        return L10n.RoomViewer.approximateRoomHeight(h)
     }
     
     // ✅ UPDATED: Handle both bundle and saved rooms with debug-mode logging

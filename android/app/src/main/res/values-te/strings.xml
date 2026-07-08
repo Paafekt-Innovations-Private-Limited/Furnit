@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">గది ప్రివ్యూ అందుబాటులో లేదు</string>
     <string name="room_viewer_created_success">గది విజయవంతంగా సృష్టించబడింది!</string>
     <string name="room_viewer_created_message">మీ గది టెక్స్చర్‌లు ఫోటో నుండి సంగ్రహించబడ్డాయి. ఉంచడానికి సేవ్ ట్యాప్ చేయండి.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">డైమెన్షన్‌లు: %s</string>
     <string name="room_viewer_saved_toast">గది సేవ్ చేయబడింది!</string>
 

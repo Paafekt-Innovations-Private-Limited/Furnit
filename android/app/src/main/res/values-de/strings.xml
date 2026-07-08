@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">Raumvorschau nicht verfügbar</string>
     <string name="room_viewer_created_success">Raum erfolgreich erstellt!</string>
     <string name="room_viewer_created_message">Raumtexturen wurden aus dem Foto extrahiert. Tippen Sie auf Speichern, um den Raum zu behalten.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">Abmessungen: %s</string>
     <string name="room_viewer_saved_toast">Raum gespeichert!</string>
 

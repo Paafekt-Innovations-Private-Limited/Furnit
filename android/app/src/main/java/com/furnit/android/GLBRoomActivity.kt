@@ -336,8 +336,8 @@ class GLBRoomActivity : AppCompatActivity() {
 
             // Title with dimensions
             titleView = TextView(this@GLBRoomActivity).apply {
-                text = if (roomWidth > 0 && roomHeight > 0) {
-                    String.format("%.1f × %.1f m", roomWidth, roomHeight)
+                text = if (roomHeight > 0) {
+                    getString(R.string.approximate_room_height, roomHeight)
                 } else {
                     roomName
                 }

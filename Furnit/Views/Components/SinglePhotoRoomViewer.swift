@@ -2747,7 +2747,7 @@ struct SceneKitViewer: View {
             }
             .zIndex(99995)
         }
-        .navigationTitle(String(format: "%.1f m × %.1f m", roomWidth, roomHeight))
+        .navigationTitle(L10n.RoomViewer.approximateRoomHeight(roomHeight))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if allowSave {

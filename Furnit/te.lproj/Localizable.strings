@@ -319,6 +319,7 @@
 "roomViewer.arSizingEnable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ప్రారంభించు";
 "roomViewer.arSizingDisable" = "కెమెరా సహాయిత ఫర్నిచర్ పరిమాణాన్ని ఆపు";
 "roomViewer.gestureHintToggleAccessibility" = "ఈ చిట్కాను చూపించడానికి లేదా దాచడానికి ఈ ఐకాన్‌ను టాప్ చేయండి.";
+"roomViewer.approximateRoomHeight" = "అంచనా ఎత్తు - %.2f మీ";
 "roomViewer.checkMeasurement" = "కొలత తనిఖీ";
 "roomViewer.roomDimensionsDefaultValues" = "డిఫాల్ట్ విలువలు";
 "roomViewer.roomDimensionsWHDWithDefault" = "వెడల్పు × ఎత్తు × లోతు\n%.2f × %.2f × %.2f మీ (%@)";

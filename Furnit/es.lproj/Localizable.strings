@@ -322,6 +322,7 @@
 "roomViewer.arSizingEnable" = "Activar tamaño de muebles con ayuda de la cámara";
 "roomViewer.arSizingDisable" = "Desactivar tamaño de muebles con ayuda de la cámara";
 "roomViewer.gestureHintToggleAccessibility" = "Toca este icono para mostrar u ocultar este consejo.";
+"roomViewer.approximateRoomHeight" = "Alt. aprox. - %.2f m";
 "roomViewer.checkMeasurement" = "Comprobar medida";
 "roomViewer.roomDimensionsDefaultValues" = "Valores predeterminados";
 "roomViewer.roomDimensionsWHDWithDefault" = "A × Al × F\n%.2f × %.2f × %.2f m (%@)";

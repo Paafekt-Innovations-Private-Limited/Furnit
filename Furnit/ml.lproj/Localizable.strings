@@ -319,6 +319,7 @@
 "roomViewer.arSizingEnable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓൺ ചെയ്യുക";
 "roomViewer.arSizingDisable" = "ക്യാമറാ സഹായിത ഫർണിച്ചർ വലുപ്പം ഓഫ് ചെയ്യുക";
 "roomViewer.gestureHintToggleAccessibility" = "ഈ നുറുങ്ങ് കാണിക്കാനോ മറയ്ക്കാനോ ഈ ഐക്കൺ തട്ടുക.";
+"roomViewer.approximateRoomHeight" = "ഏകദേശ ഉയരം - %.2f മീ";
 "roomViewer.checkMeasurement" = "അളവ് പരിശോധിക്കുക";
 "roomViewer.roomDimensionsDefaultValues" = "ഡിഫോൾട്ട് മൂല്യങ്ങൾ";
 "roomViewer.roomDimensionsWHDWithDefault" = "വീതി × ഉയരം × ആഴം\n%.2f × %.2f × %.2f മീ (%@)";

@@ -349,6 +349,7 @@
 "roomViewer.arSizingEnable" = "Kameragestützte Möbelgröße aktivieren";
 "roomViewer.arSizingDisable" = "Kameragestützte Möbelgröße deaktivieren";
 "roomViewer.gestureHintToggleAccessibility" = "Tippe auf dieses Symbol, um diesen Hinweis ein- oder auszublenden.";
+"roomViewer.approximateRoomHeight" = "App. Höhe - %.2f m";
 "roomViewer.checkMeasurement" = "Messung prüfen";
 "roomViewer.roomDimensionsDefaultValues" = "Standardwerte";
 "roomViewer.roomDimensionsWHDWithDefault" = "B × H × T\n%.2f × %.2f × %.2f m (%@)";

@@ -319,6 +319,7 @@
 "roomViewer.arSizingEnable" = "கேமரா உதவித் தளபாட அளவை இயக்கு";
 "roomViewer.arSizingDisable" = "கேமரா உதவித் தளபாட அளவை முடக்கு";
 "roomViewer.gestureHintToggleAccessibility" = "இந்தக் குறிப்பைக் காட்ட அல்லது மறைக்க இந்த ஐகானைத் தட்டவும்.";
+"roomViewer.approximateRoomHeight" = "தோ. உயரம் - %.2f மீ";
 "roomViewer.checkMeasurement" = "அளவைச் சரிபார்";
 "roomViewer.roomDimensionsDefaultValues" = "இயல்புநிலை மதிப்புகள்";
 "roomViewer.roomDimensionsWHDWithDefault" = "அகலம் × உயரம் × ஆழம்\n%.2f × %.2f × %.2f மீ (%@)";

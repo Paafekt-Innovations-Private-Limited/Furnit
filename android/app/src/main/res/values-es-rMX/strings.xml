@@ -367,6 +367,7 @@
     <string name="room_viewer_preview_unavailable">Vista previa no disponible</string>
     <string name="room_viewer_created_success">¡Habitación creada con éxito!</string>
     <string name="room_viewer_created_message">Las texturas de tu habitación se han extraído de la foto. Toca Guardar para conservarla.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">Dimensiones: %s</string>
     <string name="room_viewer_saved_toast">¡Habitación guardada!</string>
 

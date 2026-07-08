@@ -319,6 +319,7 @@
 "roomViewer.arSizingEnable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.arSizingDisable" = "ಕ್ಯಾಮರಾ-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರವನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ";
 "roomViewer.gestureHintToggleAccessibility" = "ಈ ಸಲಹೆಯನ್ನು ತೋರಿಸಲು ಅಥವಾ ಮರೆಮಾಡಲು ಈ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ.";
+"roomViewer.approximateRoomHeight" = "ಅಂದಾಜು ಎತ್ತರ - %.2f ಮೀ";
 "roomViewer.checkMeasurement" = "ಅಳತೆ ಪರಿಶೀಲಿಸಿ";
 "roomViewer.roomDimensionsDefaultValues" = "ಡಿಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳು";
 "roomViewer.roomDimensionsWHDWithDefault" = "ಅಗಲ × ಎತ್ತರ × ಆಳ\n%.2f × %.2f × %.2f ಮೀ (%@)";

@@ -643,23 +643,11 @@ struct ModelViewerView: View {
 
     private var roomDimensionsHintText: String {
         let dims = effectiveRoomDimensions
-        if dims.width > 0.05, dims.height > 0.05, dims.depth > 0.05,
-           dims.width.isFinite, dims.height.isFinite, dims.depth.isFinite {
-            if model.roomCoordinateFrame.usesNativeMeterSceneUnits ||
-                model.roomWidth != nil || model.roomHeight != nil || model.roomDepth != nil {
-                return L10n.RoomViewer.roomDimensionsWHDAIChip(width: dims.width, height: dims.height, depth: dims.depth)
-            }
-            return L10n.RoomViewer.roomDimensionsWHDManualChip(width: dims.width, height: dims.height, depth: dims.depth)
+        if dims.height > 0.05, dims.height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(dims.height)
         }
         if model.roomCoordinateFrame.usesNativeMeterSceneUnits {
             return "ROOM_DIMS unavailable"
-        }
-        if dims.width > 0.05, dims.height > 0.05,
-           dims.width.isFinite, dims.height.isFinite {
-            if model.roomWidth != nil || model.roomHeight != nil {
-                return L10n.RoomViewer.roomDimensionsWHDAIChip(width: dims.width, height: dims.height, depth: max(dims.depth, 0.05))
-            }
-            return L10n.RoomViewer.roomDimensionsWHManualChip(width: dims.width, height: dims.height)
         }
         return "3D Room"
     }

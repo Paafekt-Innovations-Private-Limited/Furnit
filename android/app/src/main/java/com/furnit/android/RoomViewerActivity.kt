@@ -327,9 +327,18 @@ class RoomViewerActivity : AppCompatActivity() {
             // Read dimensions if available
             val dimensionsFile = File(roomFolder, "dimensions.txt")
             if (dimensionsFile.exists()) {
-                val dims = dimensionsFile.readText()
+                val heightMeters = dimensionsFile.readText()
+                    .lineSequence()
+                    .map { it.trim() }
+                    .firstOrNull { it.startsWith("height=") }
+                    ?.substringAfter("height=")
+                    ?.toFloatOrNull()
                 val dimsView = TextView(this@RoomViewerActivity).apply {
-                    text = getString(R.string.room_viewer_dimensions, dims.replace("\n", ", "))
+                    text = if (heightMeters != null && heightMeters > 0f) {
+                        getString(R.string.approximate_room_height, heightMeters)
+                    } else {
+                        getString(R.string.room_viewer_dimensions, dimensionsFile.readText().replace("\n", ", "))
+                    }
                     textSize = 12f
                     setTextColor(Color.GRAY)
                     setPadding(0, 8, 0, 0)

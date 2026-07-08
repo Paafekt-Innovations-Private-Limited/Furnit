@@ -426,6 +426,7 @@
 "roomViewer.arSizingDisable" = "Disable camera-assisted furniture sizing";
 "roomViewer.gestureHintToggleAccessibility" = "Tap this icon to show or hide this tip.";
 "roomViewer.checkMeasurement" = "Check measurement";
+"roomViewer.approximateRoomHeight" = "App. height - %.2f m";
 "roomViewer.roomDimensionsDefaultValues" = "Default Values";
 "roomViewer.roomDimensionsWHDWithDefault" = "W × H × D\n%.2f × %.2f × %.2f m (%@)";
 "roomViewer.roomDimensionsWHWithDefault" = "W × H\n%.2f × %.2f m (%@)";

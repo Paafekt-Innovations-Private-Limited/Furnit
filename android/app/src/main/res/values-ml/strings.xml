@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">മുറി പ്രിവ്യൂ ലഭ്യമല്ല</string>
     <string name="room_viewer_created_success">മുറി വിജയകരമായി സൃഷ്ടിച്ചു!</string>
     <string name="room_viewer_created_message">നിങ്ങളുടെ മുറിയുടെ ടെക്സ്ചറുകൾ ഫോട്ടോയിൽ നിന്ന് എടുത്തു. സൂക്ഷിക്കാൻ സേവ് ടാപ്പ് ചെയ്യുക.</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">അളവുകൾ: %s</string>
     <string name="room_viewer_saved_toast">മുറി സേവ് ചെയ്തു!</string>
 

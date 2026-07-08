@@ -368,6 +368,7 @@
     <string name="room_viewer_preview_unavailable">房间预览不可用</string>
     <string name="room_viewer_created_success">房间创建成功！</string>
     <string name="room_viewer_created_message">您的房间纹理已从照片中提取。点击保存以保留此房间。</string>
+    <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_dimensions">尺寸：%s</string>
     <string name="room_viewer_saved_toast">房间已保存！</string>
 

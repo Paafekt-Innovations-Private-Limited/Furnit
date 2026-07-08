@@ -339,6 +339,7 @@
 "roomViewer.arSizingEnable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ চালু করুন";
 "roomViewer.arSizingDisable" = "ক্যামেরা-সহায়িত ফার্নিচার সাইজ বন্ধ করুন";
 "roomViewer.gestureHintToggleAccessibility" = "এই আইকনে ট্যাপ করে টিপ দেখান বা লুকান।";
+"roomViewer.approximateRoomHeight" = "আনু. উচ্চতা - %.2f মি";
 "roomViewer.checkMeasurement" = "মাপ যাচাই করুন";
 "roomViewer.roomDimensionsDefaultValues" = "ডিফল্ট মান";
 "roomViewer.roomDimensionsWHDWithDefault" = "প্রস্থ × উচ্চতা × গভীরতা\n%.2f × %.2f × %.2f মি (%@)";

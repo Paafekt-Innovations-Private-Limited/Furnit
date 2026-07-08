@@ -638,16 +638,8 @@ struct GLBRoomView: View {
     }
 
     private var glbRoomDimensionsHintText: String {
-        if let w = calibratedRoomWidth ?? roomWidth,
-           let h = calibratedRoomHeight ?? roomHeight,
-           let d = calibratedRoomDepth ?? roomDepth,
-           w > 0.05, h > 0.05, d > 0.05, w.isFinite, h.isFinite, d.isFinite {
-            return L10n.RoomViewer.roomDimensionsWHDManualChip(width: w, height: h, depth: d)
-        }
-        if let w = calibratedRoomWidth ?? roomWidth,
-           let h = calibratedRoomHeight ?? roomHeight,
-           w > 0.05, h > 0.05, w.isFinite, h.isFinite {
-            return L10n.RoomViewer.roomDimensionsWHManualChip(width: w, height: h)
+        if let h = calibratedRoomHeight ?? roomHeight, h > 0.05, h.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(h)
         }
         return "3D Room"
     }

@@ -404,38 +404,22 @@ enum L10n {
         static let arSizingDisable = "roomViewer.arSizingDisable".localized
         static let gestureHintToggleAccessibility = "roomViewer.gestureHintToggleAccessibility".localized
         static let checkMeasurement = "roomViewer.checkMeasurement".localized
-        /// Shown after W×H×D numbers for manual-setup (mesh / GLB) rooms — list line and ruler chip.
-        static let roomDimensionsDefaultValues = "roomViewer.roomDimensionsDefaultValues".localized
-        static func roomDimensionsWHDManualChip(width: Float, height: Float, depth: Float) -> String {
+        /// User-facing room height label (width/depth kept internally; UI shows height only).
+        static func approximateRoomHeight(_ height: Float) -> String {
             String(
-                format: "roomViewer.roomDimensionsWHDWithDefault".localized,
+                format: "roomViewer.approximateRoomHeight".localized,
                 locale: .current,
-                width,
-                height,
-                depth,
-                roomDimensionsDefaultValues
+                height
             )
+        }
+        static func roomDimensionsWHDManualChip(width: Float, height: Float, depth: Float) -> String {
+            approximateRoomHeight(height)
         }
         static func roomDimensionsWHManualChip(width: Float, height: Float) -> String {
-            String(
-                format: "roomViewer.roomDimensionsWHWithDefault".localized,
-                locale: .current,
-                width,
-                height,
-                roomDimensionsDefaultValues
-            )
+            approximateRoomHeight(height)
         }
-        /// Splat / PLY AI-derived dimensions — home list line and ruler chip.
-        static let roomDimensionsNearAccurateValues = "roomViewer.roomDimensionsNearAccurateValues".localized
         static func roomDimensionsWHDAIChip(width: Float, height: Float, depth: Float) -> String {
-            String(
-                format: "roomViewer.roomDimensionsWHDWithNearAccurate".localized,
-                locale: .current,
-                width,
-                height,
-                depth,
-                roomDimensionsNearAccurateValues
-            )
+            approximateRoomHeight(height)
         }
         static let measuringRoom = "roomViewer.measuringRoom".localized
         static let goingBack = "roomViewer.goingBack".localized
@@ -458,7 +442,7 @@ enum L10n {
             )
         }
         static func roomMetersShort(_ value: Float) -> String {
-            String(format: "roomViewer.roomMetersShort".localized, locale: .current, value)
+            approximateRoomHeight(value)
         }
         static func furnitureMetersShort(_ value: Float) -> String {
             String(format: "roomViewer.furnitureMetersShort".localized, locale: .current, value)

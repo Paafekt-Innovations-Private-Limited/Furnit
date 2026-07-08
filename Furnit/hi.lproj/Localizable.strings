@@ -319,6 +319,7 @@
 "roomViewer.arSizingEnable" = "कैमरा सहायित फर्नीचर साइज़ चालू करें";
 "roomViewer.arSizingDisable" = "कैमरा सहायित फर्नीचर साइज़ बंद करें";
 "roomViewer.gestureHintToggleAccessibility" = "यह संकेत दिखाने या छिपाने के लिए इस आइकन पर टैप करें।";
+"roomViewer.approximateRoomHeight" = "अनु. ऊँचाई - %.2f मी";
 "roomViewer.checkMeasurement" = "माप जाँचें";
 "roomViewer.roomDimensionsDefaultValues" = "डिफ़ॉल्ट मान";
 "roomViewer.roomDimensionsWHDWithDefault" = "चौड़ाई × ऊँचाई × गहराई\n%.2f × %.2f × %.2f मी (%@)";
