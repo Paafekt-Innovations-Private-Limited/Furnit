@@ -1,7 +1,7 @@
 import UIKit
 
 // MARK: - Detection & Sizing Types
-/// High-level furniture size estimate surfaced to SharpRoom / viewers.
+/// High-level furniture size estimate surfaced to SplatRoom / viewers.
 struct FurnitureSizeEstimate {
     /// Width from room-model intrinsics when available, else bbox × room width (no-LiDAR fallback).
     let widthMeters: Float

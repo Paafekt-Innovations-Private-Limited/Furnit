@@ -112,7 +112,7 @@ struct ModelViewerView: View {
            width > 0.05, height > 0.05, depth > 0.05 {
             return (width, height, depth)
         }
-        // Depth Anything / LiDAR / Swift SHARP rooms must not fall back to Settings defaults.
+        // Depth Anything / LiDAR / Swift Splat rooms must not fall back to Settings defaults.
         if model.roomCoordinateFrame.usesNativeMeterSceneUnits {
             return (0, 0, 0)
         }
@@ -169,7 +169,7 @@ struct ModelViewerView: View {
                     // segmented cutout. INVARIANT: every screen hosting FurnitureFitUIView MUST pass this
                     // closure. Without it, a tap sets the view's segmentationMode internally but the @State
                     // stays .identifyOnly, so the next updateUIView clobbers it back and the cutout never
-                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SharpRoomView.
+                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SplatRoomView.
                     logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
                     furnitureFitSegmentationMode = mode
                 },
@@ -1346,7 +1346,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
 
-    // Room dimensions from SHARP (in meters) for furniture sizing
+    // Room dimensions from Splat (in meters) for furniture sizing
     var roomWidthMeters: Float = 4.0
     var roomHeightMeters: Float = 3.0
     var roomDepthMeters: Float = 4.0
@@ -1357,14 +1357,14 @@ struct FurnitureFitUIView: UIViewRepresentable {
 
     // Callback for reporting estimated furniture size (room-based + optional AR height, in meters)
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
-    /// Sharp Room: skip “Starting camera…” progress after the first segmentation this session.
+    /// Splat Room: skip “Starting camera…” progress after the first segmentation this session.
     var suppressStartupProgress: Bool = false
     var onFirstSegmentationComplete: (() -> Void)?
     /// Mean straight sRGB of the composited furniture cutout (throttled); optional for placement / aesthetic UI.
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)? = nil
-    /// Sharp Room only: splat depth for furniture sizing.
-    var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost? = nil
-    /// Per-view opt-in for AR-assisted sizing. Sharp Room keeps this off until the user taps the AR chip.
+    /// Splat Room only: splat depth for furniture sizing.
+    var splatRoomMeasurementHost: GaussianSplatMeasurementHost? = nil
+    /// Per-view opt-in for AR-assisted sizing. Splat Room keeps this off until the user taps the AR chip.
     var arAssistedSizingEnabled: Bool = true
     /// Optional manual override from the room calibrate sheet. When present, AR overlay sizing uses this
     /// height instead of the raw per-frame estimate so the mask scales to the user-confirmed furniture size.
@@ -1386,7 +1386,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomRaycastSceneDimensions = roomRaycastSceneDimensions
         view.roomModel = roomModel
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
-        view.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
+        view.splatRoomMeasurementHost = splatRoomMeasurementHost
         view.confidenceThreshold = scoreThreshold
         view.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
         view.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
@@ -1416,7 +1416,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.roomDepthMeters = roomDepthMeters
             uiView.roomRaycastSceneDimensions = roomRaycastSceneDimensions
             uiView.roomModel = roomModel
-            uiView.sharpRoomSplatMeasurementHost = sharpRoomSplatMeasurementHost
+            uiView.splatRoomMeasurementHost = splatRoomMeasurementHost
             uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
             uiView.confidenceThreshold = scoreThreshold
             uiView.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
@@ -1451,7 +1451,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
         uiView.setModel(nil)
-        uiView.sharpRoomSplatMeasurementHost = nil
+        uiView.splatRoomMeasurementHost = nil
         uiView.stop()
     }
 

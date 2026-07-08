@@ -10,7 +10,7 @@ Real SVG flow diagrams (open in any browser / Xcode preview):
   → confidence-first NMS → mask affinity → pixel-union cutout → overlay gestures/display.
 
 Room generation (default): **GeoCalib + Depth Anything → USDZ** — see `CONTEXT.md` and
-`DepthAnythingRoomReconstructor.swift` (no separate diagram yet; legacy `sharp-swift-flow.svg`
+`DepthAnythingRoomReconstructor.swift` (no separate diagram yet; legacy `splat-swift-flow.svg`
 describes the retired Gaussian-splat path).
 
 ## Docs here

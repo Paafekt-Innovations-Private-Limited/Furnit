@@ -315,7 +315,7 @@ private extension Data {
 
 /// A SwiftUI view that renders a Gaussian Splat scene from a .ply file using MetalSplatter.
 ///
-/// SHARP / SharpRoom: some saved PLYs need classic SHARP orientation/rendering even when the file name no longer carries `_classic`.
+/// Splat Room: some saved PLYs need classic Splat orientation/rendering even when the file name no longer carries `_classic`.
 /// For those loads, Y/Z are flipped to match view scale `(1,-1,-1)` after ``RoomBounds/defaultSplatCameraEyeAndTarget(photoOrientation:)`` (same min-Z back → max-Z front rail for portrait and landscape; ``photoOrientation`` is for AR roll).
 struct GaussianSplatView: UIViewRepresentable {
 
@@ -339,11 +339,11 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Source room/photo orientation.
     let arReferenceOrientation: PhotoOrientation
 
-    /// When true, apply SHARP classic camera/orientation behavior even if the file name does not include `_classic`.
+    /// When true, apply Splat classic camera/orientation behavior even if the file name does not include `_classic`.
     var treatAsClassicPly: Bool = false
 
-    /// Optional initial yaw offset for SHARP room framing.
-    var initialSharpRoomYaw: Float = 0
+    /// Optional initial yaw offset for Splat room framing.
+    var initialSplatRoomYaw: Float = 0
 
     /// Cached bounds / framing for this exact PLY file (used to avoid repeated CPU framing work).
     var cachedSplatLoadHint: SplatLoadHint?
@@ -354,7 +354,7 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Called after load when we have a validated / refreshed hint for future room opens.
     var onSplatLoadHintAvailable: ((SplatLoadHint) -> Void)?
 
-    /// Optional bridge so parents (e.g. ``SharpRoomView``) can call ``GaussianSplatMeasurementHost/measureRoom()`` after frames have rendered.
+    /// Optional bridge so parents (e.g. ``SplatRoomView``) can call ``GaussianSplatMeasurementHost/measureRoom()`` after frames have rendered.
     var measurementHost: GaussianSplatMeasurementHost? = nil
 
     // MARK: Concurrency guard
@@ -372,7 +372,7 @@ struct GaussianSplatView: UIViewRepresentable {
             infiniteZoom: infiniteZoom,
             arReferenceOrientation: arReferenceOrientation,
             treatAsClassicPly: treatAsClassicPly,
-            initialSharpRoomYaw: initialSharpRoomYaw,
+            initialSplatRoomYaw: initialSplatRoomYaw,
             cachedSplatLoadHint: cachedSplatLoadHint,
             onBoundsAvailable: onBoundsAvailable,
             onSplatLoadHintAvailable: onSplatLoadHintAvailable
@@ -511,10 +511,10 @@ struct GaussianSplatView: UIViewRepresentable {
         private var sceneBoundsMin: SIMD3<Float>?
         private var sceneBoundsMax: SIMD3<Float>?
         private var sceneCentroid: SIMD3<Float>?
-        /// True when viewing a SHARP `_classic.ply` splat; used to undo the extra (y,z) → (-y,-z) flip applied at export so the room is not upside down.
-        private var isSharpClassicPly: Bool = false
-        private var pendingFurnitureItem: SharpRoomFurnitureItem?
-        private var placedFurniture: [SharpRoomPlacedFurniture] = []
+        /// True when viewing a Splat `_classic.ply` splat; used to undo the extra (y,z) → (-y,-z) flip applied at export so the room is not upside down.
+        private var usesClassicSplatPly: Bool = false
+        private var pendingFurnitureItem: SplatRoomFurnitureItem?
+        private var placedFurniture: [SplatRoomPlacedFurniture] = []
         private var selectedFurnitureID: UUID?
         private weak var overlayView: UIView?
         private var furnitureShapeLayers: [UUID: CAShapeLayer] = [:]
@@ -526,7 +526,7 @@ struct GaussianSplatView: UIViewRepresentable {
         var cameraOffset: SIMD3<Float> = .zero
         var sceneScale:   SIMD2<Float> = SIMD2(1, 1)
 
-        private var didRegisterSharpRoomNotifications = false
+        private var didRegisterSplatRoomNotifications = false
         private var notificationTokens: [NSObjectProtocol] = []
         private var modalHeavyWorkPaused = false
         private var modalHeavyWorkPauseCount = 0
@@ -541,11 +541,11 @@ struct GaussianSplatView: UIViewRepresentable {
         let infiniteZoom: Bool
         let arReferenceOrientation: PhotoOrientation
         let treatAsClassicPly: Bool
-        let initialSharpRoomYaw: Float
+        let initialSplatRoomYaw: Float
         let cachedSplatLoadHint: SplatLoadHint?
 
         /// Linear RGB before S-curve composite (`BrightnessAdjust.metal`).
-        /// Slight lift so SHARP rooms do not look flatter/duller than the classic preview.
+        /// Slight lift so Splat rooms do not look flatter/duller than the classic preview.
         var splatCompositeExposure: Float = 1.12
         /// Additive lift on dark tonemapped samples (smoothstep mask).
         var splatCompositeShadowLift: Float = 0.05
@@ -567,7 +567,7 @@ struct GaussianSplatView: UIViewRepresentable {
             infiniteZoom: Bool,
             arReferenceOrientation: PhotoOrientation,
             treatAsClassicPly: Bool,
-            initialSharpRoomYaw: Float,
+            initialSplatRoomYaw: Float,
             cachedSplatLoadHint: SplatLoadHint?,
             onBoundsAvailable: ((RoomBounds) -> Void)?,
             onSplatLoadHintAvailable: ((SplatLoadHint) -> Void)?
@@ -578,7 +578,7 @@ struct GaussianSplatView: UIViewRepresentable {
             self.infiniteZoom = infiniteZoom
             self.arReferenceOrientation = arReferenceOrientation
             self.treatAsClassicPly = treatAsClassicPly
-            self.initialSharpRoomYaw = initialSharpRoomYaw
+            self.initialSplatRoomYaw = initialSplatRoomYaw
             self.cachedSplatLoadHint = cachedSplatLoadHint
             self.onBoundsAvailable = onBoundsAvailable
             self.onSplatLoadHintAvailable = onSplatLoadHintAvailable
@@ -611,7 +611,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 nc.removeObserver(token)
             }
             notificationTokens.removeAll()
-            didRegisterSharpRoomNotifications = false
+            didRegisterSplatRoomNotifications = false
 
             if Thread.isMainThread {
                 targetView?.delegate = nil
@@ -678,9 +678,9 @@ struct GaussianSplatView: UIViewRepresentable {
             currentURL        = plyURL
             splatCompositeExposure = 1.12
             splatCompositeShadowLift = 0.05
-            isSharpClassicPly = treatAsClassicPly || plyURL.lastPathComponent.contains("_classic")
+            usesClassicSplatPly = treatAsClassicPly || plyURL.lastPathComponent.contains("_classic")
             // Classic: camera framing uses bounds flipped to canonical space (matches (1,-1,-1) view scale); no extra yaw offset.
-            cameraYaw = initialSharpRoomYaw
+            cameraYaw = initialSplatRoomYaw
             let validatedCachedHint = cachedSplatLoadHint.flatMap { hint in
                 hint.matches(fileURL: plyURL) ? hint : nil
             }
@@ -732,9 +732,9 @@ struct GaussianSplatView: UIViewRepresentable {
             }
 
             // ── Notifications ─────────────────────────────────────────────────
-            if !didRegisterSharpRoomNotifications {
-                registerSharpRoomParityNotifications()
-                didRegisterSharpRoomNotifications = true
+            if !didRegisterSplatRoomNotifications {
+                registerSplatRoomNotifications()
+                didRegisterSplatRoomNotifications = true
             }
 
             // ── Load PLY ──────────────────────────────────────────────────────
@@ -903,7 +903,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     }
 
                     #if DEBUG
-                    if !isSharpClassicPly {
+                    if !usesClassicSplatPly {
                         logSphericalHarmonicsSanityCheck(points: points, plyFileName: plyURL.lastPathComponent)
                     } else {
                         logDebug("🔬 [GaussianSplatView] Skipping SH check — classic PLY uses uchar RGB (no SH)")
@@ -1100,7 +1100,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     logDebug("⚠️ [GaussianSplatView] dropped \(droppedFrameCount) frames (GPU backpressure)")
                 }
                 #endif
-                // If we are in warm-up, reschedule so we do not stall the sharpening loop.
+                // If we are in warm-up, reschedule so we do not stall the refinement loop.
                 if warmupEndTime != nil {
                     view.setNeedsDisplay()
                 }
@@ -1240,7 +1240,7 @@ struct GaussianSplatView: UIViewRepresentable {
             if !pendingScreenshotCompletions.isEmpty {
                 view.setNeedsDisplay()
             }
-            // During warm-up, keep requesting new frames so the room sharpens quickly even when idle.
+            // During warm-up, keep requesting new frames so the room refines quickly even when idle.
             if let warmupEndTime, CFAbsoluteTimeGetCurrent() < warmupEndTime {
                 view.setNeedsDisplay()
             } else {
@@ -1266,11 +1266,11 @@ struct GaussianSplatView: UIViewRepresentable {
                 farZ:         farZ
             )
 
-            // SHARP `_classic.ply` stores positions in a frame rotated by 180° around Y and Z relative to `_3dgs` / base:
+            // Splat `_classic.ply` stores positions in a frame rotated by 180° around Y and Z relative to `_3dgs` / base:
             // Pc = (x,  y,  z) = (x_a, -y_a, -z_a). To bring classic back into the canonical frame that `RoomBounds` / camera expects,
             // apply the same (1,-1,-1) again in view space when loading `_classic`.
-            let flipY: Float = isSharpClassicPly ? -1 : 1
-            let flipZ: Float = isSharpClassicPly ? -1 : 1
+            let flipY: Float = usesClassicSplatPly ? -1 : 1
+            let flipZ: Float = usesClassicSplatPly ? -1 : 1
             let scaleMatrix = matrix4x4Scale(sceneScale.x, sceneScale.y * flipY, flipZ)
 
             let boundsMin = sceneBoundsMin
@@ -1305,7 +1305,7 @@ struct GaussianSplatView: UIViewRepresentable {
             }
 
             // Classic PLY: apply the same Y/Z flip to the camera so it sees the room in the same space as the scaled geometry.
-            if isSharpClassicPly {
+            if usesClassicSplatPly {
                 camPos = SIMD3<Float>(camPos.x, -camPos.y, -camPos.z)
                 lookAt = SIMD3<Float>(lookAt.x, -lookAt.y, -lookAt.z)
             }
@@ -1373,14 +1373,14 @@ struct GaussianSplatView: UIViewRepresentable {
         }
 
         /// Orbit, zoom, and scene scale back to defaults.
-        func performSharpRoomRecenter() {
-            cameraYaw = initialSharpRoomYaw
+        func performSplatRoomRecenter() {
+            cameraYaw = initialSplatRoomYaw
             cameraPitch = 0
             cameraOffset = .zero
             appliedZoomLevel = 1.0
             zoomLevel = 1.0
             sceneScale = SIMD2(1, 1)
-            logDebug("🎯 [GaussianSplatView] Sharp room recenter: orbit/zoom reset yaw=\(initialSharpRoomYaw)")
+            logDebug("🎯 [GaussianSplatView] Splat room recenter: orbit/zoom reset yaw=\(initialSplatRoomYaw)")
             view?.setNeedsDisplay()
         }
 
@@ -1398,7 +1398,7 @@ struct GaussianSplatView: UIViewRepresentable {
             view?.setNeedsDisplay()
         }
 
-        func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {
+        func setPendingFurnitureItem(_ item: SplatRoomFurnitureItem?) {
             pendingFurnitureItem = item
             let text = item.map {
                 String(
@@ -1546,7 +1546,7 @@ struct GaussianSplatView: UIViewRepresentable {
             // Symmetric per-axis trim (6% each tail); see trimmedSceneDimensions / trimmedRange.
             let dims = trimmedSceneDimensions(points: sampledPoints, trimFraction: 0.06)
             let fname = currentURL?.lastPathComponent ?? "unknown"
-            let plyKind = isSharpClassicPly ? "classic_ply" : "base_ply"
+            let plyKind = usesClassicSplatPly ? "classic_ply" : "base_ply"
             logPlyBoundsDiagnostic(
                 "Metal depth raycast room (\(plyKind) file=\(fname)) su: " +
                 "W=\(String(format: "%.3f", dims.width)) H=\(String(format: "%.3f", dims.height)) D=\(String(format: "%.3f", dims.depth))"
@@ -1740,13 +1740,13 @@ struct GaussianSplatView: UIViewRepresentable {
             return SIMD3<Float>(world.x, world.y, world.z)
         }
 
-        private func placePendingFurniture(at screenPoint: CGPoint, item: SharpRoomFurnitureItem) {
+        private func placePendingFurniture(at screenPoint: CGPoint, item: SplatRoomFurnitureItem) {
             guard let hitPoint = floorIntersection(screenPoint: screenPoint) else {
                 measurementHost?.updateFurnitureStatus("No floor hit for \(item.category) tap", count: placedFurniture.count)
                 logDebug("❌ [GaussianSplatFurniture] no floor hit for pending furniture \(item.category)")
                 return
             }
-            var piece = SharpRoomPlacedFurniture(
+            var piece = SplatRoomPlacedFurniture(
                 id: UUID(),
                 item: item,
                 position: SIMD3<Float>(hitPoint.x, hitPoint.y + item.dimensions.y / 2, hitPoint.z),
@@ -1953,7 +1953,7 @@ struct GaussianSplatView: UIViewRepresentable {
             projectedFurnitureHitRects = nextRects
         }
 
-        private func projectedBoxPoints(for piece: SharpRoomPlacedFurniture) -> [CGPoint] {
+        private func projectedBoxPoints(for piece: SplatRoomPlacedFurniture) -> [CGPoint] {
             let half = piece.item.dimensions * 0.5
             let localPoints = [
                 SIMD3<Float>(-half.x, -half.y, -half.z),
@@ -2072,7 +2072,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: Notification Registration
 
-        func registerSharpRoomParityNotifications() {
+        func registerSplatRoomNotifications() {
             let nc = NotificationCenter.default
 
             // Recenter: restore default camera orientation
@@ -2082,7 +2082,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 queue:   nil
             ) { [weak self] _ in
                 DispatchQueue.main.async { [weak self] in
-                    self?.performSharpRoomRecenter()
+                    self?.performSplatRoomRecenter()
                 }
             }
             notificationTokens.append(recenterToken)

@@ -67,7 +67,7 @@ struct MeshRoomView: View {
     // Model manager for saving rooms (also used for the detector ratio metadata merge when viewing saved room)
     @StateObject private var modelManager = USDZModelManager()
 
-    /// Brain hint (above brain): 3s auto-hide; tap hand toggles — same as ``SharpRoomView``.
+    /// Brain hint (above brain): 3s auto-hide; tap hand toggles — same as ``SplatRoomView``.
     @State private var brainHintExplanationVisible = false
     @State private var brainHintHideTextTask: Task<Void, Never>?
     /// Snapshot hint (above camera): same behavior.
@@ -77,7 +77,7 @@ struct MeshRoomView: View {
     @State private var arSizingHintExplanationVisible = false
     @State private var arSizingHintHideTextTask: Task<Void, Never>?
     @State private var arSizingHintRequiresBrain = false
-    /// Ruler tap: show W×H×D chip below top safe area (matches Sharp room dimensions hint).
+    /// Ruler tap: show W×H×D chip below top safe area (matches Splat room dimensions hint).
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @State private var showFullVideoWithIdentifications = false
@@ -87,7 +87,7 @@ struct MeshRoomView: View {
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
     @State private var tapHintColorTimer: Timer?
-    /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView``.
+    /// Pinch-zoom hint (top-left with D-pad) — same as ``SplatRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
@@ -248,7 +248,7 @@ struct MeshRoomView: View {
                     // segmented cutout. INVARIANT: every screen hosting FurnitureFitUIView MUST pass this
                     // closure. Without it, a tap sets the view's segmentationMode internally but the @State
                     // stays .identifyOnly, so the next updateUIView clobbers it back and the cutout never
-                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SharpRoomView.
+                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SplatRoomView.
                     logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
                     furnitureFitSegmentationMode = mode
                 },
@@ -486,7 +486,7 @@ struct MeshRoomView: View {
             .disableBackSwipe()
     }
 
-    // MARK: - Ruler + hint tasks (matches SharpRoomView)
+    // MARK: - Ruler + hint tasks (matches SplatRoomView)
 
     private var canPresentMeshRoomDimensionsAlert: Bool {
         !showRoomNameInput &&
@@ -1425,7 +1425,7 @@ struct MeshRoomView: View {
         }
     }
 
-    /// D-pad cluster only (same notifications as ``SharpRoomView`` / GLB viewer).
+    /// D-pad cluster only (same notifications as ``SplatRoomView`` / GLB viewer).
     private var cameraDPadCluster: some View {
         HStack(spacing: 8) {
             Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
@@ -2183,7 +2183,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     }
                 } catch (e0) {}
 
-                // Orbit controls - single-finger rotate matches Sharp room feel (no inertia, ~0.005 rad/px).
+                // Orbit controls - single-finger rotate matches Splat room feel (no inertia, ~0.005 rad/px).
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = false;
                 controls.rotateSpeed = 0.7;
@@ -2203,7 +2203,7 @@ struct MeshWebGLView: UIViewRepresentable {
                 };
 
                 // Set initial camera position - back center of room looking at front wall.
-                // Target placed on the front wall so single-finger rotate orbits around it (matches Sharp room).
+                // Target placed on the front wall so single-finger rotate orbits around it (matches Splat room).
                 const targetY = roomHeight * 0.5;
                 controls.target.set(0, targetY, -roomDepth * 0.5);
                 camera.position.set(0, targetY, roomDepth * 0.35);
@@ -2240,7 +2240,7 @@ struct MeshWebGLView: UIViewRepresentable {
                     console.log('[MeshViewer] Room scaled by factor:', factor);
                 };
 
-                // D-pad: same behavior as Sharp WebGL — walk on XZ, vertical on Y (not orbit).
+                // D-pad: same behavior as Splat WebGL — walk on XZ, vertical on Y (not orbit).
                 const roomBoundsForClamping = {
                     minX: -roomWidth * 0.5,
                     maxX: roomWidth * 0.5,

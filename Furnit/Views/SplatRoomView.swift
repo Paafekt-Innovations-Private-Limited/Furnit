@@ -8,7 +8,7 @@ import simd
 // MARK: - Modal pause sync (AR + TextField responsiveness)
 
 /// Bundles alert/sheet flags so one `onChange` can pause ARKit without bloating the SwiftUI type checker.
-private struct SharpRoomModalPauseToken: Equatable {
+private struct SplatRoomModalPauseToken: Equatable {
     var showRoomNameInput: Bool
     var isSavingRoom: Bool
     var showSaveAlert: Bool
@@ -39,7 +39,7 @@ struct RoomBoundaryManager {
     var centerZ: Float { bounds.centerZ }
 
     /// Wall positions (maxZ = front wall in classic PLY, minZ = back wall)
-    /// In classic PLY from SHARP, Z is negative, and the wall closest to camera
+    /// In classic PLY from Splat, Z is negative, and the wall closest to camera
     /// is the one with the *largest* Z (least negative).
     var frontWallZ: Float { bounds.maxZ }  // closest to camera
     var backWallZ: Float { bounds.minZ }   // farthest from camera
@@ -77,8 +77,8 @@ struct RoomBoundaryManager {
     }
 }
 
-/// SHARP room viewer: **MetalSplatter** (Metal) for the splat layer.
-struct SharpRoomView: View {
+/// Splat room viewer: **MetalSplatter** (Metal) for the splat layer.
+struct SplatRoomView: View {
     let plyURL: URL
     let allowSave: Bool  // Show save button (true for new rooms, false for viewing from home)
     let photoOrientation: PhotoOrientation  // Source photo orientation (for UI layout)
@@ -91,19 +91,19 @@ struct SharpRoomView: View {
 
     /// Exact selected PLY for MetalSplatter.
     private let viewerPlyURL: URL
-    /// Whether this room should use SHARP classic orientation/rendering even without `_classic` in the file name.
+    /// Whether this room should use Splat classic orientation/rendering even without `_classic` in the file name.
     private let viewerUsesClassicPlyBehavior: Bool
     /// Coordinate-frame contract for save/load/render behavior.
     private let viewerRoomCoordinateFrame: RoomCoordinateFrame
 
-    /// SHARP **`_classic.ply`** write-time AABB (scene units); set when pushing from ``SinglePhotoRoomViewer`` after generation.
-    private let sharpPlyAabbW: Float?
-    private let sharpPlyAabbH: Float?
-    private let sharpPlyAabbD: Float?
-    /// ROOM_DIMS_V7 pre-computed room dimensions in **metres** from SHARP generation (no PLY re-measurement needed).
-    private let sharpRoomMetersW: Float?
-    private let sharpRoomMetersH: Float?
-    private let sharpRoomMetersD: Float?
+    /// Splat **`_classic.ply`** write-time AABB (scene units); set when pushing from ``SinglePhotoRoomViewer`` after generation.
+    private let splatPlyAabbW: Float?
+    private let splatPlyAabbH: Float?
+    private let splatPlyAabbD: Float?
+    /// ROOM_DIMS_V7 pre-computed room dimensions in **metres** from Splat generation (no PLY re-measurement needed).
+    private let splatRoomMetersW: Float?
+    private let splatRoomMetersH: Float?
+    private let splatRoomMetersD: Float?
     /// Oriented source photo pixel size (for proportion-style compare); nil when not from fresh generation.
     private let sourcePhotoPixelWidth: Int?
     private let sourcePhotoPixelHeight: Int?
@@ -115,13 +115,13 @@ struct SharpRoomView: View {
         savedRoomWidth: Float? = nil,
         savedRoomHeight: Float? = nil,
         savedRoomModel: USDZModel? = nil,
-        sharpPlyAabbWidth: Float? = nil,
-        sharpPlyAabbHeight: Float? = nil,
-        sharpPlyAabbDepth: Float? = nil,
-        sharpRoomWidth: Float? = nil,
-        sharpRoomHeight: Float? = nil,
-        sharpRoomDepth: Float? = nil,
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly,
+        splatPlyAabbWidth: Float? = nil,
+        splatPlyAabbHeight: Float? = nil,
+        splatPlyAabbDepth: Float? = nil,
+        splatRoomWidth: Float? = nil,
+        splatRoomHeight: Float? = nil,
+        splatRoomDepth: Float? = nil,
+        roomCoordinateFrame: RoomCoordinateFrame = .classicSplatPly,
         sourcePhotoPixelWidth: Int? = nil,
         sourcePhotoPixelHeight: Int? = nil
     ) {
@@ -131,12 +131,12 @@ struct SharpRoomView: View {
         self.savedRoomWidth = savedRoomWidth
         self.savedRoomHeight = savedRoomHeight
         self.savedRoomModel = savedRoomModel
-        self.sharpPlyAabbW = sharpPlyAabbWidth
-        self.sharpPlyAabbH = sharpPlyAabbHeight
-        self.sharpPlyAabbD = sharpPlyAabbDepth
-        self.sharpRoomMetersW = sharpRoomWidth
-        self.sharpRoomMetersH = sharpRoomHeight
-        self.sharpRoomMetersD = sharpRoomDepth
+        self.splatPlyAabbW = splatPlyAabbWidth
+        self.splatPlyAabbH = splatPlyAabbHeight
+        self.splatPlyAabbD = splatPlyAabbDepth
+        self.splatRoomMetersW = splatRoomWidth
+        self.splatRoomMetersH = splatRoomHeight
+        self.splatRoomMetersD = splatRoomDepth
         self.sourcePhotoPixelWidth = sourcePhotoPixelWidth
         self.sourcePhotoPixelHeight = sourcePhotoPixelHeight
 
@@ -228,7 +228,7 @@ struct SharpRoomView: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var isCapturingSnapshot = false
-    @State private var sharpRoomUIPauseApplied = false
+    @State private var splatRoomUIPauseApplied = false
     /// After first Furniture Fit segmentation this viewer session, skip startup progress when toggling brain on again.
     @State private var furnitureFitInitialSegmentationDone = false
     /// Pinch zoom for MetalSplatter (`GaussianSplatView`).
@@ -360,11 +360,11 @@ struct SharpRoomView: View {
     @State private var showFullVideoWithIdentifications = false
     @State private var measuredRoomDimensions: MeasuredPlyRoomDimensions?
     var body: some View {
-        sharpRoomBody
+        splatRoomBody
     }
 
     @ViewBuilder
-    private var sharpRoomBaseLayer: some View {
+    private var splatRoomBaseLayer: some View {
         ZStack {
             metalSplatAndGestureLayer
             allOverlaysLayer
@@ -446,7 +446,7 @@ struct SharpRoomView: View {
         return "\(labels.count) selected"
     }
 
-    private func handleSharpRoomBackTap() {
+    private func handleSplatRoomBackTap() {
         if allowSave {
             if saveWasSuccessful {
                 dismiss()
@@ -459,7 +459,7 @@ struct SharpRoomView: View {
     }
 
     private var navigationBarBackButton: some View {
-        Button(action: handleSharpRoomBackTap) {
+        Button(action: handleSplatRoomBackTap) {
             Image(systemName: "chevron.left")
         }
         .accessibilityLabel(L10n.Common.back)
@@ -467,8 +467,8 @@ struct SharpRoomView: View {
 
     private var navigationBarRecenterButton: some View {
         Button {
-            splatMeasurementHost.recenterSharpRoomCamera()
-            logDebug("🎯 [SharpRoomView] Recenter (toolbar)")
+            splatMeasurementHost.recenterSplatRoomCamera()
+            logDebug("🎯 [SplatRoomView] Recenter (toolbar)")
         } label: {
             Image(systemName: "viewfinder")
                 .font(.title3)
@@ -679,7 +679,7 @@ struct SharpRoomView: View {
     }
 
     @ToolbarContentBuilder
-    private var sharpRoomToolbarContent: some ToolbarContent {
+    private var splatRoomToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             navigationBarBackButton
         }
@@ -691,28 +691,28 @@ struct SharpRoomView: View {
         }
     }
 
-    private var sharpRoomNavigationView: some View {
-        sharpRoomBaseLayer
+    private var splatRoomNavigationView: some View {
+        splatRoomBaseLayer
             .navigationBarHidden(isCapturingSnapshot)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             // Always hide the system back: in landscape its touch target is often covered by the wide `.principal`
             // toolbar title: explicit leading `Back` stays tappable (saved list + new room).
             .navigationBarBackButtonHidden(true)
-            .toolbar { sharpRoomToolbarContent }
+            .toolbar { splatRoomToolbarContent }
     }
 
-    private func sharpRoomPerformOnAppear() {
+    private func splatRoomPerformOnAppear() {
         // Preload RTMDet when the room opens (async; not at app startup). First brain tap stays snappy.
         rtmdetService.ensureModelLoaded()
         if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
-        logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
+        logDebug("📐 [SplatRoomView] photoOrientation = \(photoOrientation)")
         loadPersistedRoomMetadataIfNeeded()
-        syncModalHeavyWorkPauseForSharpRoomUI()
+        syncModalHeavyWorkPauseForSplatRoomUI()
         warmRoomMeasurementInBackgroundIfNeeded()
     }
 
-    private func sharpRoomPerformOnDisappear() {
+    private func splatRoomPerformOnDisappear() {
         autoEnableARTask?.cancel()
         autoEnableARTask = nil
         roomMeasurementTask?.cancel()
@@ -724,11 +724,10 @@ struct SharpRoomView: View {
         onboardingHintDismissTask?.cancel()
         OrientationLockManager.shared.unlock()
         splatMeasurementHost.setModalHeavyWorkPaused(false)
-        SHARPService.shared.releaseResources()
         rtmdetService.releaseResources()
     }
 
-    private func sharpRoomHandleShowingFurnitureFitChange(isOn: Bool) {
+    private func splatRoomHandleShowingFurnitureFitChange(isOn: Bool) {
         logFurnitureFitSize(
             "phase=toggle active=\(isOn) suppressStartupProgress=\(furnitureFitInitialSegmentationDone) " +
             "room_m=\(String(format: "%.2f", furnitureFitRoomWidth))×\(String(format: "%.2f", furnitureFitRoomHeight))×\(String(format: "%.2f", displayRoomDepth))"
@@ -755,31 +754,31 @@ struct SharpRoomView: View {
         }
     }
 
-    private func sharpRoomHandleBrainArAssistedSizingChange(enabled: Bool) {
+    private func splatRoomHandleBrainArAssistedSizingChange(enabled: Bool) {
         if !enabled {
             detectedFurnitureHeightAR = nil
         }
-        logFurnitureFitSize("phase=sharp_room_ar_opt_in enabled=\(enabled) active=\(showingFurnitureFit)")
+        logFurnitureFitSize("phase=splat_room_ar_opt_in enabled=\(enabled) active=\(showingFurnitureFit)")
     }
 
-    private func sharpRoomHandleShowRoomFurnitureCalibrateChange(enabled: Bool) {
+    private func splatRoomHandleShowRoomFurnitureCalibrateChange(enabled: Bool) {
         if !enabled {
             showFurnitureDimensionsInput = false
             showWallCalibration = false
         }
     }
 
-    private func sharpRoomHandleIsLoadingForDefaultARCamera(loading: Bool) {
+    private func splatRoomHandleIsLoadingForDefaultARCamera(loading: Bool) {
         guard !loading, !didEnableDefaultARCamera else { return }
         didEnableDefaultARCamera = true
         if allowSave {
-            logDebug("📱 [SharpRoomView] Fresh SHARP room loaded")
+            logDebug("📱 [SplatRoomView] Fresh Splat room loaded")
         } else {
-            logDebug("📱 [SharpRoomView] Saved room loaded")
+            logDebug("📱 [SplatRoomView] Saved room loaded")
         }
     }
 
-    private func sharpRoomHandleIsLoadingForHints(loading: Bool) {
+    private func splatRoomHandleIsLoadingForHints(loading: Bool) {
         if loading {
             onboardingHintDismissTask?.cancel()
         } else {
@@ -789,30 +788,30 @@ struct SharpRoomView: View {
 
     // MARK: - Navigation chrome + lifecycle (split for Swift compiler type-check)
 
-    private var sharpRoomLifecycleStageAppear: some View {
-        sharpRoomNavigationView
+    private var splatRoomLifecycleStageAppear: some View {
+        splatRoomNavigationView
             .onAppear {
-                sharpRoomPerformOnAppear()
+                splatRoomPerformOnAppear()
             }
-            .onChange(of: sharpRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSharpRoomUI() }
+            .onChange(of: splatRoomModalPauseToken) { _, _ in syncModalHeavyWorkPauseForSplatRoomUI() }
     }
 
-    private var sharpRoomLifecycleStageFurnitureFit: some View {
-        sharpRoomLifecycleStageAppear
+    private var splatRoomLifecycleStageFurnitureFit: some View {
+        splatRoomLifecycleStageAppear
             .onChange(of: showingFurnitureFit) { _, isOn in
-                sharpRoomHandleShowingFurnitureFitChange(isOn: isOn)
+                splatRoomHandleShowingFurnitureFitChange(isOn: isOn)
             }
     }
 
-    private var sharpRoomLifecycleStageLabels: some View {
-        sharpRoomLifecycleStageFurnitureFit
+    private var splatRoomLifecycleStageLabels: some View {
+        splatRoomLifecycleStageFurnitureFit
             .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
                 restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
             }
     }
 
-    private var sharpRoomLifecycleStagePlacementSignals: some View {
-        sharpRoomLifecycleStageLabels
+    private var splatRoomLifecycleStagePlacementSignals: some View {
+        splatRoomLifecycleStageLabels
             .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
             .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
             .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
@@ -822,36 +821,36 @@ struct SharpRoomView: View {
             .onChange(of: enhancedRoomMetadata) { _, _ in updateRoomPlacementIntelligence() }
     }
 
-    private var sharpRoomLifecycleStageBrainAr: some View {
-        sharpRoomLifecycleStagePlacementSignals
+    private var splatRoomLifecycleStageBrainAr: some View {
+        splatRoomLifecycleStagePlacementSignals
             .onChange(of: brainArAssistedSizingEnabled) { _, enabled in
-                sharpRoomHandleBrainArAssistedSizingChange(enabled: enabled)
+                splatRoomHandleBrainArAssistedSizingChange(enabled: enabled)
             }
     }
 
-    private var sharpRoomLifecycleStageCalibratePref: some View {
-        sharpRoomLifecycleStageBrainAr
+    private var splatRoomLifecycleStageCalibratePref: some View {
+        splatRoomLifecycleStageBrainAr
             .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
-                sharpRoomHandleShowRoomFurnitureCalibrateChange(enabled: enabled)
+                splatRoomHandleShowRoomFurnitureCalibrateChange(enabled: enabled)
             }
     }
 
-    private var sharpRoomLifecycleStageLoadingLog: some View {
-        sharpRoomLifecycleStageCalibratePref
+    private var splatRoomLifecycleStageLoadingLog: some View {
+        splatRoomLifecycleStageCalibratePref
             .onChange(of: isLoading) { _, loading in
-                sharpRoomHandleIsLoadingForDefaultARCamera(loading: loading)
+                splatRoomHandleIsLoadingForDefaultARCamera(loading: loading)
             }
     }
 
-    private var sharpRoomSheetAndLifecycleView: some View {
-        sharpRoomLifecycleStageLoadingLog
+    private var splatRoomSheetAndLifecycleView: some View {
+        splatRoomLifecycleStageLoadingLog
             .onDisappear {
-                sharpRoomPerformOnDisappear()
+                splatRoomPerformOnDisappear()
             }
     }
 
-    private var sharpRoomAfterSaveRoomAlert: some View {
-        sharpRoomSheetAndLifecycleView
+    private var splatRoomAfterSaveRoomAlert: some View {
+        splatRoomSheetAndLifecycleView
             .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
                 TextField(L10n.RoomViewer.roomName, text: $roomName)
                     .autocorrectionDisabled(true)
@@ -863,14 +862,13 @@ struct SharpRoomView: View {
             } message: { Text(L10n.RoomViewer.enterName) }
     }
 
-    private var sharpRoomAfterSaveResultAlert: some View {
-        sharpRoomAfterSaveRoomAlert
+    private var splatRoomAfterSaveResultAlert: some View {
+        splatRoomAfterSaveRoomAlert
             .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
                 Button(L10n.Common.ok, role: .cancel) {
                     if saveWasSuccessful {
                         isDismissing = true
                         DispatchQueue.global(qos: .userInitiated).async {
-                            DispatchQueue.main.async { SHARPService.shared.releaseResources() }
                             Thread.sleep(forTimeInterval: 0.1)
                             DispatchQueue.main.async { NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil) }
                         }
@@ -879,13 +877,13 @@ struct SharpRoomView: View {
             } message: { Text(saveAlertMessage) }
     }
 
-    private var sharpRoomAfterCalibrationRejectAlert: some View {
-        sharpRoomAfterSaveResultAlert
+    private var splatRoomAfterCalibrationRejectAlert: some View {
+        splatRoomAfterSaveResultAlert
             .alert(L10n.RoomViewer.checkMeasurement, isPresented: $showCalibrationRejectAlert) { Button(L10n.Common.ok, role: .cancel) { } } message: { Text(calibrationRejectMessage) }
     }
 
-    private var sharpRoomAfterDiscardAlert: some View {
-        sharpRoomAfterCalibrationRejectAlert
+    private var splatRoomAfterDiscardAlert: some View {
+        splatRoomAfterCalibrationRejectAlert
             .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
                 Button(L10n.RoomPreview.stay, role: .cancel) {}
                 Button(L10n.RoomPreview.leave, role: .destructive) {
@@ -896,8 +894,8 @@ struct SharpRoomView: View {
             }
     }
 
-    private var sharpRoomAlertsAndOverlayView: some View {
-        sharpRoomAfterDiscardAlert
+    private var splatRoomAlertsAndOverlayView: some View {
+        splatRoomAfterDiscardAlert
             .overlay {
                 if isDismissing {
                     ZStack {
@@ -910,15 +908,15 @@ struct SharpRoomView: View {
                 }
             }
             .onChange(of: isLoading) { _, loading in
-                sharpRoomHandleIsLoadingForHints(loading: loading)
+                splatRoomHandleIsLoadingForHints(loading: loading)
             }
             // Omit `.leading` so the interactive pop gesture is not deferred behind splat gestures (saved rooms).
             .defersSystemGestures(on: [.top, .trailing])
             .disableBackSwipeIf(allowSave)
     }
 
-    private var sharpRoomBody: some View {
-        sharpRoomAlertsAndOverlayView
+    private var splatRoomBody: some View {
+        splatRoomAlertsAndOverlayView
     }
 
     /// Native Metal splats via MetalSplatter; gestures are on `MTKView`. Menu / D-pad use the same notifications as the old WebGL viewer (`GaussianSplatView` observes them).
@@ -931,7 +929,7 @@ struct SharpRoomView: View {
             infiniteZoom: infiniteZoomEnabled,
             arReferenceOrientation: photoOrientation,
             treatAsClassicPly: viewerUsesClassicPlyBehavior,
-            initialSharpRoomYaw: initialSharpRoomYaw,
+            initialSplatRoomYaw: initialSplatRoomYaw,
             cachedSplatLoadHint: persistedSplatLoadHint,
             onBoundsAvailable: { bounds in
                 DispatchQueue.main.async {
@@ -945,7 +943,7 @@ struct SharpRoomView: View {
                         "Y[\(String(format: "%.3f", bounds.minY)),\(String(format: "%.3f", bounds.maxY))] " +
                         "Z[\(String(format: "%.3f", bounds.minZ)),\(String(format: "%.3f", bounds.maxZ))]"
                     )
-                    logSharpRoomDimensionApproaches(metalBounds: bounds)
+                    logSplatRoomDimensionApproaches(metalBounds: bounds)
                 }
             },
             onSplatLoadHintAvailable: { hint in
@@ -956,9 +954,9 @@ struct SharpRoomView: View {
                     }
                     do {
                         try modelManager.saveSplatLoadHint(hint, nextTo: viewerPlyURL)
-                        logDebug("⏱️ [SplatLoad] metadata_persisted source=SharpRoomView file=\(viewerPlyURL.lastPathComponent) type=hint")
+                        logDebug("⏱️ [SplatLoad] metadata_persisted source=SplatRoomView file=\(viewerPlyURL.lastPathComponent) type=hint")
                     } catch {
-                        logDebug("❌ [SharpRoomView] Failed to persist splat load hint: \(error.localizedDescription)")
+                        logDebug("❌ [SplatRoomView] Failed to persist splat load hint: \(error.localizedDescription)")
                     }
                 }
             },
@@ -968,7 +966,7 @@ struct SharpRoomView: View {
         .onChange(of: isLoading) { _, loading in
             guard !loading else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                logDebug("📐 [SharpRoomView] Room geometry extraction remains disabled")
+                logDebug("📐 [SplatRoomView] Room geometry extraction remains disabled")
             }
         }
         .onAppear {
@@ -980,8 +978,8 @@ struct SharpRoomView: View {
         }
     }
 
-    private func logSharpRoomDimensionApproaches(metalBounds _: RoomBounds) {
-        logDebug("📐 [SharpRoomView] Skipped legacy SHARP room dimension comparison logging")
+    private func logSplatRoomDimensionApproaches(metalBounds _: RoomBounds) {
+        logDebug("📐 [SplatRoomView] Skipped legacy Splat room dimension comparison logging")
     }
 
     private func seedFrontWallDimensionsFromPlyBoundsIfNeeded() {}
@@ -998,7 +996,6 @@ struct SharpRoomView: View {
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
             selectedFurnitureFitLabels = []
-            SHARPService.shared.releaseResources()
             showingFurnitureFit = true
             selectionJustBecamePrimary = true
             scheduleOnboardingHintAutoDismiss()
@@ -1095,8 +1092,8 @@ struct SharpRoomView: View {
             logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=saved_meta_strict_available source=\(activeRoomMetersDimensionsSource)")
             return
         }
-        guard sharpGenerationRoomMeters == nil else {
-            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=sharp_v7_dims_available source=\(activeRoomMetersDimensionsSource)")
+        guard generationRoomMeters == nil else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=splat_v7_dims_available source=\(activeRoomMetersDimensionsSource)")
             return
         }
         guard persistedEnhancedRoomMeters == nil else {
@@ -1414,9 +1411,9 @@ struct SharpRoomView: View {
         return (width, height, depth)
     }
 
-    /// ROOM_DIMS_V7 pre-computed metres from SHARP generation — avoids PLY re-measurement.
-    private var sharpGenerationRoomMeters: (width: Float, height: Float, depth: Float)? {
-        guard let w = sharpRoomMetersW, let h = sharpRoomMetersH, let d = sharpRoomMetersD,
+    /// ROOM_DIMS_V7 pre-computed metres from Splat generation — avoids PLY re-measurement.
+    private var generationRoomMeters: (width: Float, height: Float, depth: Float)? {
+        guard let w = splatRoomMetersW, let h = splatRoomMetersH, let d = splatRoomMetersD,
               w.isFinite, h.isFinite, d.isFinite,
               w > 0.05, h > 0.05, d > 0.05 else {
             return nil
@@ -1440,16 +1437,16 @@ struct SharpRoomView: View {
 
     private var activeRoomMetersDimensionsSource: String {
         if savedRoomStrictMeters != nil { return "SAVED_META_STRICT" }
-        if sharpGenerationRoomMeters != nil {
+        if generationRoomMeters != nil {
             switch viewerRoomCoordinateFrame {
             case .arWorldMeters:
                 return "LIDAR_SWEEP_FUSION"
-            case .swiftSharpPlaneMeters:
-                return "SWIFT_SHARP_MATH"
+            case .planarRoomMeters:
+                return "PLANAR_ROOM"
             case .depthAnythingImageDepthMeters:
                 return "DEPTH_ANYTHING_METRIC"
-            case .sharpClassicPly, .sharpCanonicalPly:
-                return "SHARP_ROOM_DIMS_V7"
+            case .classicSplatPly, .canonicalSplatPly:
+                return "GENERATED_ROOM_DIMS"
             }
         }
         if persistedEnhancedRoomMeters != nil { return "ENHANCED_METADATA_ROOM_MODEL" }
@@ -1469,7 +1466,7 @@ struct SharpRoomView: View {
             }
         }
         if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits, plySceneExtent != nil {
-            return viewerRoomCoordinateFrame == .swiftSharpPlaneMeters ? "PLY_SWIFT_SHARP_MATH_METERS" : "PLY_AR_WORLD_METERS"
+            return viewerRoomCoordinateFrame == .planarRoomMeters ? "PLY_PLANAR_ROOM_METERS" : "PLY_AR_WORLD_METERS"
         }
         if inferredMetersFromPlyScene != nil { return "PLY_INFERRED_REFERENCE_HEIGHT" }
         return "UNAVAILABLE"
@@ -1477,17 +1474,17 @@ struct SharpRoomView: View {
 
     private var hasCalculatedRoomMeasurements: Bool {
         savedRoomStrictMeters != nil ||
-            sharpGenerationRoomMeters != nil ||
+            generationRoomMeters != nil ||
             persistedEnhancedRoomMeters != nil ||
             measuredRoomDimensions != nil
     }
 
-    /// Trimmed / SHARP AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
+    /// Trimmed / Splat AABB in **scene units** (Metal bounds preferred, else init-time PLY AABB from generation).
     private var plySceneExtent: (width: Float, height: Float, depth: Float)? {
         if let b = metalBounds, b.width > 0.05, b.height > 0.05, b.depth > 0.05 {
             return (b.width, b.height, b.depth)
         }
-        if let w = sharpPlyAabbW, let h = sharpPlyAabbH, let d = sharpPlyAabbD,
+        if let w = splatPlyAabbW, let h = splatPlyAabbH, let d = splatPlyAabbD,
            w > 0.05, h > 0.05, d > 0.05 {
             return (w, h, d)
         }
@@ -1507,10 +1504,10 @@ struct SharpRoomView: View {
         return (w, h, d)
     }
 
-    /// Nav, Furniture Fit, save, and overlay: saved meta → SHARP V7 → partial meta + scene depth → PLY-inferred metres.
+    /// Nav, Furniture Fit, save, and overlay: saved meta → Splat V7 → partial meta + scene depth → PLY-inferred metres.
     private var activeRoomMetersDimensions: (width: Float, height: Float, depth: Float)? {
         if let triple = savedRoomStrictMeters { return triple }
-        if let triple = sharpGenerationRoomMeters { return triple }
+        if let triple = generationRoomMeters { return triple }
         if let triple = persistedEnhancedRoomMeters { return triple }
         if let measured = measuredRoomDimensions { return (measured.width, measured.height, measured.depth) }
         if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits, let p = plySceneExtent {
@@ -1531,7 +1528,7 @@ struct SharpRoomView: View {
         return inferredMetersFromPlyScene
     }
 
-    private var initialSharpRoomYaw: Float {
+    private var initialSplatRoomYaw: Float {
         if viewerRoomCoordinateFrame.usesNativeMeterSceneUnits {
             return 0
         }
@@ -1693,7 +1690,7 @@ struct SharpRoomView: View {
             onSegmentationMaskMeanColorSRGB: { meanSRGB in
                 segmentedFurnitureMeanSRGB = meanSRGB
             },
-            sharpRoomSplatMeasurementHost: splatMeasurementHost,
+            splatRoomMeasurementHost: splatMeasurementHost,
             arAssistedSizingEnabled: brainArAssistedSizingEnabled && canOfferBrainArAssist,
             manualFurnitureHeightOverrideMeters: realFurnitureHeight,
             segmentationMode: furnitureFitSegmentationMode,
@@ -2207,11 +2204,11 @@ struct SharpRoomView: View {
             DispatchQueue.main.async {
                 if let image {
                     logDebug("📸 Splat screenshot captured (Metal readback), saving to Photos...")
-                    let composed = compositeSharpRoomSnapshotWithFurnitureFitIfNeeded(splatImage: image)
-                    saveSharpRoomSnapshotToPhotos(composed)
+                    let composed = compositeSplatRoomSnapshotWithFurnitureFitIfNeeded(splatImage: image)
+                    saveSplatRoomSnapshotToPhotos(composed)
                 } else {
                     logDebug("📸 Metal capture unavailable; falling back to window hierarchy...")
-                    captureSharpRoomSnapshotViaDrawHierarchy()
+                    captureSplatRoomSnapshotViaDrawHierarchy()
                     return
                 }
                 isCapturingSnapshot = false
@@ -2219,10 +2216,10 @@ struct SharpRoomView: View {
         }
     }
 
-    private func saveSharpRoomSnapshotToPhotos(_ image: UIImage) {
+    private func saveSplatRoomSnapshotToPhotos(_ image: UIImage) {
         let saveBlock = {
             UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            logDebug("✅ Saved Sharp Room snapshot to Photos")
+            logDebug("✅ Saved Splat Room snapshot to Photos")
         }
         if #available(iOS 14, *) {
             let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
@@ -2268,7 +2265,7 @@ struct SharpRoomView: View {
     }
 
     /// Metal capture is only the `MTKView`; Furniture Fit draws segmentation in ``FurnitureFitContainerView`` above it. Composite both into one full-window image.
-    private func compositeSharpRoomSnapshotWithFurnitureFitIfNeeded(splatImage: UIImage) -> UIImage {
+    private func compositeSplatRoomSnapshotWithFurnitureFitIfNeeded(splatImage: UIImage) -> UIImage {
         guard showingFurnitureFit else { return splatImage }
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let windows = scenes.flatMap { $0.windows }
@@ -2314,7 +2311,7 @@ struct SharpRoomView: View {
         return out
     }
 
-    private func captureSharpRoomSnapshotViaDrawHierarchy() {
+    private func captureSplatRoomSnapshotViaDrawHierarchy() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let windows = scenes.flatMap { $0.windows }
@@ -2331,7 +2328,7 @@ struct SharpRoomView: View {
                 targetView.drawHierarchy(in: targetView.bounds, afterScreenUpdates: true)
             }
             logDebug("📸 Hierarchy snapshot captured, saving to Photos...")
-            saveSharpRoomSnapshotToPhotos(image)
+            saveSplatRoomSnapshotToPhotos(image)
             isCapturingSnapshot = false
         }
     }
@@ -2436,8 +2433,8 @@ struct SharpRoomView: View {
         return nil
     }
 
-    private var sharpRoomModalPauseToken: SharpRoomModalPauseToken {
-        SharpRoomModalPauseToken(
+    private var splatRoomModalPauseToken: SplatRoomModalPauseToken {
+        SplatRoomModalPauseToken(
             showRoomNameInput: showRoomNameInput,
             isSavingRoom: isSavingRoom,
             showSaveAlert: showSaveAlert,
@@ -2452,7 +2449,7 @@ struct SharpRoomView: View {
     }
 
     /// Pauses ARKit while modal UI is up so `TextField` / alerts are not competing with per-frame `ARSession` main-queue work.
-    private func syncModalHeavyWorkPauseForSharpRoomUI() {
+    private func syncModalHeavyWorkPauseForSplatRoomUI() {
         let furnitureCalibSheet =
             showFurnitureDimensionsInput && showRoomFurnitureCalibrate && supportsMetricFurnitureMeasurementUI
         let pause =
@@ -2464,8 +2461,8 @@ struct SharpRoomView: View {
             showWallCalibration ||
             furnitureCalibSheet ||
             isCapturingSnapshot
-        guard pause != sharpRoomUIPauseApplied else { return }
-        sharpRoomUIPauseApplied = pause
+        guard pause != splatRoomUIPauseApplied else { return }
+        splatRoomUIPauseApplied = pause
         splatMeasurementHost.setModalHeavyWorkPaused(pause)
     }
 
@@ -2481,7 +2478,7 @@ struct SharpRoomView: View {
 
         let savedName = trimmedRoomName
         roomName = trimmedRoomName
-        logDebug("💾 [SharpRoomView] Starting room save: \(savedName)")
+        logDebug("💾 [SplatRoomView] Starting room save: \(savedName)")
 
         // Dismiss the name-entry alert before presenting the full-screen save progress overlay.
         showRoomNameInput = false
@@ -2489,7 +2486,7 @@ struct SharpRoomView: View {
         Task {
             await MainActor.run {
                 if showingFurnitureFit {
-                    logDebug("💾 [SharpRoomView] Save: stopping Furniture Fit before persist")
+                    logDebug("💾 [SplatRoomView] Save: stopping Furniture Fit before persist")
                     showingFurnitureFit = false
                 }
                 withAnimation(.easeIn(duration: 0.2)) {
@@ -2506,7 +2503,7 @@ struct SharpRoomView: View {
 
             await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }
 
-            if savedRoomStrictMeters == nil && sharpGenerationRoomMeters == nil && measuredRoomDimensions == nil {
+            if savedRoomStrictMeters == nil && generationRoomMeters == nil && measuredRoomDimensions == nil {
                 backgroundRoomMeasurementTask?.cancel()
                 backgroundRoomMeasurementTask = nil
                 let saveMeasured = await modelManager.measureRoomDimensionsAsync(
@@ -2541,17 +2538,17 @@ struct SharpRoomView: View {
             let roomH = fallbackDimensions?.height
             let roomD = fallbackDimensions?.depth
             let roomDimsApproachForSave: String? = await MainActor.run {
-                if sharpGenerationRoomMeters != nil { return "room_dims_v7_sharp" }
+                if generationRoomMeters != nil { return "room_dims_v7_splat" }
                 if measuredRoomDimensions != nil { return "room_dims_v7_async" }
                 return nil
             }
             if let roomW, let roomH, let roomD {
                 logDebug(
-                    "🟢 [SharpRoomView] Save: ROOM_DIMS W×H×D=" +
+                    "🟢 [SplatRoomView] Save: ROOM_DIMS W×H×D=" +
                         "\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))m"
                 )
             } else {
-                logDebug("🔴 [SharpRoomView] Save: room dimensions unavailable")
+                logDebug("🔴 [SplatRoomView] Save: room dimensions unavailable")
             }
 
             await MainActor.run { saveProgress = 0.5 }
@@ -2580,15 +2577,15 @@ struct SharpRoomView: View {
                     isClassicPly: viewerUsesClassicPlyBehavior,
                     roomCoordinateFrame: viewerRoomCoordinateFrame
                 ) { success, error in
-                    logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
+                    logDebug(success ? "✅ [SplatRoomView] Room saved" : "❌ [SplatRoomView] Save failed: \(error ?? "unknown")")
                     Task { @MainActor in
                         if success, let metadata = metadataForSave {
                             metadata.printSaveDiagnostics()
                             do {
                                 try modelManager.saveEnhancedMetadata(metadata, forSavedRoomNamed: savedName, fileType: .ply)
-                                logDebug("✅ [SharpRoomView] Save: enhanced metadata persisted for saved room")
+                                logDebug("✅ [SplatRoomView] Save: enhanced metadata persisted for saved room")
                             } catch {
-                                logDebug("❌ [SharpRoomView] Failed to save enhanced metadata for saved room: \(error.localizedDescription)")
+                                logDebug("❌ [SplatRoomView] Failed to save enhanced metadata for saved room: \(error.localizedDescription)")
                             }
                         } else if success {
                             let roomWString = roomW.map { String(format: "%.3f", $0) } ?? "nil"
@@ -2632,7 +2629,7 @@ struct SharpRoomView: View {
         }
 
         roomName = ""
-        logDebug("❌ [SharpRoomView] Room save cancelled")
+        logDebug("❌ [SplatRoomView] Room save cancelled")
     }
 
     private func loadPersistedRoomMetadataIfNeeded() {
@@ -2673,7 +2670,7 @@ struct SharpRoomView: View {
                         maxZ: metadata.aabbMax.z
                     )
                 }
-                logDebug("📐 [SharpRoomView] Loaded saved room geometry metadata")
+                logDebug("📐 [SplatRoomView] Loaded saved room geometry metadata")
                 return
             }
         }
@@ -2691,24 +2688,24 @@ struct SharpRoomView: View {
                     maxZ: metadata.aabbMax.z
                 )
             }
-            logDebug("📐 [SharpRoomView] Loaded fresh room geometry metadata")
+            logDebug("📐 [SplatRoomView] Loaded fresh room geometry metadata")
         }
     }
 
     private func scheduleRoomGeometryExtractionIfNeeded() {
-        logDebug("📐 [SharpRoomView] Room geometry extraction disabled")
+        logDebug("📐 [SplatRoomView] Room geometry extraction disabled")
     }
 
     private func triggerRoomGeometryExtractionIfNeeded(force: Bool = false) {
         let _ = force
-        logDebug("📐 [SharpRoomView] RoomGeometryEngine / RANSAC path disabled")
+        logDebug("📐 [SplatRoomView] RoomGeometryEngine / RANSAC path disabled")
     }
 
     private func persistEnhancedRoomMetadataIfPossible(_ metadata: EnhancedRoomMetadata) {
         do {
             try modelManager.saveEnhancedMetadata(metadata, nextTo: viewerPlyURL)
         } catch {
-            logDebug("❌ [SharpRoomView] Failed to persist enhanced room metadata: \(error.localizedDescription)")
+            logDebug("❌ [SplatRoomView] Failed to persist enhanced room metadata: \(error.localizedDescription)")
         }
     }
 
@@ -2927,6 +2924,6 @@ private enum PlacementIntelligenceRoomStub {
 #Preview {
     NavigationStack {
         // Preview with a sample URL (won't actually load)
-        SharpRoomView(plyURL: URL(fileURLWithPath: "/sample.ply"))
+        SplatRoomView(plyURL: URL(fileURLWithPath: "/sample.ply"))
     }
 }

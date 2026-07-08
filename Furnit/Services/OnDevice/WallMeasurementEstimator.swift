@@ -32,12 +32,12 @@ enum WallMeasurementEstimator {
     private static let keyCeiling = "wall_measurement_assumed_ceiling_m"
     private static let keySensorMm = "wall_measurement_sensor_width_mm"
     private static let keyAssumedZ = "wall_measurement_assumed_depth_m"
-    private static let keySharpGlobalScale = "wall_measurement_sharp_global_scale"
+    private static let keyGlobalSplatScale = "wall_measurement_global_splat_scale"
     private static let metricDepthCandidateFileNames = [
         "depthanything_metric_depth.bin",
         "depthpro_metric_depth.bin",
         "metric_depth.bin",
-        "sharp_metric_depth.bin",
+        "generated_metric_depth.bin",
     ]
 
     private static let calAuto = "auto"
@@ -62,8 +62,8 @@ enum WallMeasurementEstimator {
         logWallMeasurement(message.uppercased())
     }
 
-    private static var sharpGlobalMetricScale: Float {
-        floatPref(keySharpGlobalScale, default: 1.08)
+    private static var globalSplatMetricScale: Float {
+        floatPref(keyGlobalSplatScale, default: 1.08)
     }
 
     // MARK: - Vision horizon (PLY Z-span → angle-aware depth heuristic)
@@ -276,7 +276,7 @@ enum WallMeasurementEstimator {
 
         // --- Depth: monodepth → EXIF subject distance → assumed Z ---
 
-        let monoURL = roomFolder.appendingPathComponent("sharp_monodepth.bin")
+        let monoURL = roomFolder.appendingPathComponent("generated_monodepth.bin")
         let mono = MonodepthBuffer.load(url: monoURL)
         if mono != nil {
             logWallMeasurement("monodepth_file=true path=\(monoURL.path)")
@@ -289,7 +289,7 @@ enum WallMeasurementEstimator {
             let deg = hp * 180 / Float.pi
             logWallMeasurement(
                 "horizon observe pitch_rad=\(String(format: "%.5f", hp)) pitch_deg=\(String(format: "%.2f", deg)) " +
-                    "(VNDetectHorizonRequest; SHARP Z-span → cos/sin split)"
+                    "(VNDetectHorizonRequest; Splat Z-span → cos/sin split)"
             )
         } else {
             logWallMeasurement("horizon observe unavailable — no VN horizon angle (ply_z left un-tilt-corrected)")
@@ -466,9 +466,9 @@ enum WallMeasurementEstimator {
         let sensorMm = floatPref(keySensorMm, default: 6.4)
         let roomFolder = roomURL.deletingLastPathComponent()
         let exif = loadExifJson(roomURL: roomURL)
-        let sharpCamera = SharpCameraSidecar.load(roomURL: roomURL)
+        let roomGenerationCamera = RoomGenerationCameraSidecar.load(roomURL: roomURL)
         let fallbackImageSize = sourceImagePixelSize(for: thumbnail)
-        let imageSize: (width: Int, height: Int) = sharpCamera.map {
+        let imageSize: (width: Int, height: Int) = roomGenerationCamera.map {
             ($0.sourceImageWidthPx, $0.sourceImageHeightPx)
         } ?? fallbackImageSize
 
@@ -481,11 +481,11 @@ enum WallMeasurementEstimator {
             return nil
         }
 
-        if let sharpCamera,
+        if let roomGenerationCamera,
            let edgeLayout = measureUsingImageEdgeLayout(
                thumbnail: thumbnail,
                ply: ply,
-               sharpCamera: sharpCamera
+               roomGenerationCamera: roomGenerationCamera
            ) {
             logMetricDepthMeasurement(
                 "METRIC PLY ALIGN RESULT WIDTH_M=\(String(format: "%.4f", edgeLayout.result.widthMeters)) " +
@@ -496,7 +496,7 @@ enum WallMeasurementEstimator {
         }
         logMetricDepthMeasurement("METRIC PLY ALIGN EDGE LAYOUT FALLBACK=GLOBAL_SCALE_RANSAC")
 
-        if let globalRansac = measureUsingSharpGlobalScaleRansac(ply: ply) {
+        if let globalRansac = measureUsingGlobalSplatScaleRansac(ply: ply) {
             logMetricDepthMeasurement(
                 "METRIC PLY ALIGN RESULT WIDTH_M=\(String(format: "%.4f", globalRansac.result.widthMeters)) " +
                     "HEIGHT_M=\(String(format: "%.4f", globalRansac.result.heightMeters)) DEPTH_M=\(String(format: "%.4f", globalRansac.result.depthMeters)) " +
@@ -514,7 +514,7 @@ enum WallMeasurementEstimator {
             imageHeight: imageSize.height,
             exif: exif,
             sensorMmFallback: sensorMm,
-            sharpCamera: sharpCamera
+            roomGenerationCamera: roomGenerationCamera
         ) else {
             logMetricDepthMeasurement("METRIC PLY ALIGN FAILED TO RESOLVE CAMERA INTRINSICS")
             return nil
@@ -768,14 +768,14 @@ enum WallMeasurementEstimator {
     private static func measureUsingImageEdgeLayout(
         thumbnail: UIImage,
         ply: BinaryClassicPly,
-        sharpCamera: SharpCameraSidecar.Info
+        roomGenerationCamera: RoomGenerationCameraSidecar.Info
     ) -> (result: Result, source: String)? {
         guard let rawCentroid = rawCentroid(of: ply) else {
             logMetricDepthMeasurement("METRIC PLY ALIGN EDGE LAYOUT FAILED=NO_CENTROID")
             return nil
         }
 
-        if let voxelVoid = measureUsingSharpVoxelVoid(ply: ply, rawCentroid: rawCentroid) {
+        if let voxelVoid = measureUsingSplatVoxelVoid(ply: ply, rawCentroid: rawCentroid) {
             logMetricDepthMeasurement(
                 "METRIC PLY ALIGN RESULT WIDTH_M=\(String(format: "%.4f", voxelVoid.result.widthMeters)) " +
                     "HEIGHT_M=\(String(format: "%.4f", voxelVoid.result.heightMeters)) DEPTH_M=\(String(format: "%.4f", voxelVoid.result.depthMeters)) " +
@@ -785,18 +785,18 @@ enum WallMeasurementEstimator {
         }
         logMetricDepthMeasurement("METRIC PLY ALIGN VOXEL VOID FALLBACK=2D_OCCUPANCY")
 
-        if let occupancy = detectRoomBoundsFromOccupancy(ply: ply, sharpCamera: sharpCamera) {
+        if let occupancy = detectRoomBoundsFromOccupancy(ply: ply, roomGenerationCamera: roomGenerationCamera) {
             let rectSource = CGRect(
                 x: CGFloat(occupancy.leftX),
                 y: CGFloat(occupancy.topY),
                 width: CGFloat(max(1, occupancy.rightX - occupancy.leftX)),
                 height: CGFloat(max(1, occupancy.bottomY - occupancy.topY))
             )
-            let depthMeters = rawCentroid.z * sharpGlobalMetricScale
-            let fx = sharpCamera.sourceFocalPx
-            let fy = sharpCamera.sourceFocalPx
-            let cx = sharpCamera.sourceCxPx
-            let cy = sharpCamera.sourceCyPx
+            let depthMeters = rawCentroid.z * globalSplatMetricScale
+            let fx = roomGenerationCamera.sourceFocalPx
+            let fy = roomGenerationCamera.sourceFocalPx
+            let cx = roomGenerationCamera.sourceCxPx
+            let cy = roomGenerationCamera.sourceCyPx
 
             let leftM = (Float(rectSource.minX) - cx) * depthMeters / fx
             let rightM = (Float(rectSource.maxX) - cx) * depthMeters / fx
@@ -816,7 +816,7 @@ enum WallMeasurementEstimator {
             }
 
             logMetricDepthMeasurement(
-                "METRIC PLY ALIGN OCCUPANCY SCALE=\(String(format: "%.4f", sharpGlobalMetricScale)) " +
+                "METRIC PLY ALIGN OCCUPANCY SCALE=\(String(format: "%.4f", globalSplatMetricScale)) " +
                     "RAW_CENTROID=(\(String(format: "%.4f", rawCentroid.x)),\(String(format: "%.4f", rawCentroid.y)),\(String(format: "%.4f", rawCentroid.z))) " +
                     "DEPTH_M=\(String(format: "%.4f", depthMeters))"
             )
@@ -836,9 +836,9 @@ enum WallMeasurementEstimator {
                     widthMeters: widthMeters,
                     heightMeters: heightMeters,
                     depthMeters: depthMeters,
-                    calibrationMode: "sharp_occupancy_layout"
+                    calibrationMode: "splat_occupancy_layout"
                 ),
-                "OCCUPANCY_LAYOUT_SHARP_GLOBAL_SCALE_1_08"
+                "OCCUPANCY_LAYOUT_GLOBAL_SCALE_1_08"
             )
         }
 
@@ -893,8 +893,8 @@ enum WallMeasurementEstimator {
             return nil
         }
 
-        let sourceScaleX = CGFloat(sharpCamera.sourceImageWidthPx) / CGFloat(thumbWidth)
-        let sourceScaleY = CGFloat(sharpCamera.sourceImageHeightPx) / CGFloat(thumbHeight)
+        let sourceScaleX = CGFloat(roomGenerationCamera.sourceImageWidthPx) / CGFloat(thumbWidth)
+        let sourceScaleY = CGFloat(roomGenerationCamera.sourceImageHeightPx) / CGFloat(thumbHeight)
         let topSourceY = CGFloat(topY) * sourceScaleY
         let fallbackBottomSourceY = CGFloat(bottomY) * sourceScaleY
         let leftSourceX = CGFloat(leftX) * sourceScaleX
@@ -904,7 +904,7 @@ enum WallMeasurementEstimator {
         let xBandMax = rightSourceX - sourceXInset
         let floorJunctionSourceY = detectFloorWallJunction(
             ply: ply,
-            sharpCamera: sharpCamera,
+            roomGenerationCamera: roomGenerationCamera,
             minX: Float(xBandMin),
             maxX: Float(xBandMax),
             minY: Float(topSourceY),
@@ -924,11 +924,11 @@ enum WallMeasurementEstimator {
             height: max(1, bottomSourceY - topSourceY)
         )
 
-        let depthMeters = rawCentroid.z * sharpGlobalMetricScale
-        let fx = sharpCamera.sourceFocalPx
-        let fy = sharpCamera.sourceFocalPx
-        let cx = sharpCamera.sourceCxPx
-        let cy = sharpCamera.sourceCyPx
+        let depthMeters = rawCentroid.z * globalSplatMetricScale
+        let fx = roomGenerationCamera.sourceFocalPx
+        let fy = roomGenerationCamera.sourceFocalPx
+        let cx = roomGenerationCamera.sourceCxPx
+        let cy = roomGenerationCamera.sourceCyPx
 
         let leftM = (Float(rectSource.minX) - cx) * depthMeters / fx
         let rightM = (Float(rectSource.maxX) - cx) * depthMeters / fx
@@ -948,7 +948,7 @@ enum WallMeasurementEstimator {
         }
 
         logMetricDepthMeasurement(
-            "METRIC PLY ALIGN EDGE LAYOUT SCALE=\(String(format: "%.4f", sharpGlobalMetricScale)) " +
+            "METRIC PLY ALIGN EDGE LAYOUT SCALE=\(String(format: "%.4f", globalSplatMetricScale)) " +
                 "RAW_CENTROID=(\(String(format: "%.4f", rawCentroid.x)),\(String(format: "%.4f", rawCentroid.y)),\(String(format: "%.4f", rawCentroid.z))) " +
                 "DEPTH_M=\(String(format: "%.4f", depthMeters))"
         )
@@ -968,17 +968,17 @@ enum WallMeasurementEstimator {
                 widthMeters: widthMeters,
                 heightMeters: heightMeters,
                 depthMeters: depthMeters,
-                calibrationMode: "sharp_edge_layout"
+                calibrationMode: "splat_edge_layout"
             ),
-            "EDGE_LAYOUT_SHARP_GLOBAL_SCALE_1_08"
+            "EDGE_LAYOUT_GLOBAL_SCALE_1_08"
         )
     }
 
-    private static func measureUsingSharpVoxelVoid(
+    private static func measureUsingSplatVoxelVoid(
         ply: BinaryClassicPly,
         rawCentroid: SIMD3<Float>
     ) -> (result: Result, source: String)? {
-        let scale = sharpGlobalMetricScale
+        let scale = globalSplatMetricScale
         let baseVoxelSize: Float = 0.05
         let maxVoxelCount = 4_500_000
         let paddingVoxels = 2
@@ -1133,9 +1133,9 @@ enum WallMeasurementEstimator {
                 widthMeters: widthMeters,
                 heightMeters: heightMeters,
                 depthMeters: depthMeters,
-                calibrationMode: "sharp_voxel_void"
+                calibrationMode: "splat_voxel_void"
             ),
-            "VOXEL_VOID_SHARP_GLOBAL_SCALE_1_08"
+            "VOXEL_VOID_GLOBAL_SCALE_1_08"
         )
     }
 
@@ -1175,7 +1175,7 @@ enum WallMeasurementEstimator {
 
     private static func detectRoomBoundsFromOccupancy(
         ply: BinaryClassicPly,
-        sharpCamera: SharpCameraSidecar.Info
+        roomGenerationCamera: RoomGenerationCameraSidecar.Info
     ) -> (
         topY: Int,
         bottomY: Int,
@@ -1195,12 +1195,12 @@ enum WallMeasurementEstimator {
     )? {
         let gridW = 96
         let gridH = 96
-        let fx = sharpCamera.sourceFocalPx
-        let fy = sharpCamera.sourceFocalPx
-        let cx = sharpCamera.sourceCxPx
-        let cy = sharpCamera.sourceCyPx
-        let imgW = Float(sharpCamera.sourceImageWidthPx)
-        let imgH = Float(sharpCamera.sourceImageHeightPx)
+        let fx = roomGenerationCamera.sourceFocalPx
+        let fy = roomGenerationCamera.sourceFocalPx
+        let cx = roomGenerationCamera.sourceCxPx
+        let cy = roomGenerationCamera.sourceCyPx
+        let imgW = Float(roomGenerationCamera.sourceImageWidthPx)
+        let imgH = Float(roomGenerationCamera.sourceImageHeightPx)
         guard imgW > 1, imgH > 1 else { return nil }
 
         var grid = [Int](repeating: 0, count: gridW * gridH)
@@ -1326,17 +1326,17 @@ enum WallMeasurementEstimator {
 
     private static func detectFloorWallJunction(
         ply: BinaryClassicPly,
-        sharpCamera: SharpCameraSidecar.Info,
+        roomGenerationCamera: RoomGenerationCameraSidecar.Info,
         minX: Float,
         maxX: Float,
         minY: Float,
         fallbackY: Float
     ) -> Float? {
-        let fx = sharpCamera.sourceFocalPx
-        let fy = sharpCamera.sourceFocalPx
-        let cx = sharpCamera.sourceCxPx
-        let cy = sharpCamera.sourceCyPx
-        let imageHeight = Float(sharpCamera.sourceImageHeightPx)
+        let fx = roomGenerationCamera.sourceFocalPx
+        let fy = roomGenerationCamera.sourceFocalPx
+        let cx = roomGenerationCamera.sourceCxPx
+        let cy = roomGenerationCamera.sourceCyPx
+        let imageHeight = Float(roomGenerationCamera.sourceImageHeightPx)
         let bucketCount = 96
         var buckets = [[Float]](repeating: [], count: bucketCount)
         var projectedCount = 0
@@ -1436,7 +1436,7 @@ enum WallMeasurementEstimator {
         return junctionY
     }
 
-    private static func measureUsingSharpGlobalScaleRansac(
+    private static func measureUsingGlobalSplatScaleRansac(
         ply: BinaryClassicPly
     ) -> (result: Result, source: String)? {
         guard ply.vertexCount >= 4096 else {
@@ -1456,7 +1456,7 @@ enum WallMeasurementEstimator {
             centroidSum += point
             centroidCount += 1
             if index % stride == 0 {
-                sampled.append(point * sharpGlobalMetricScale)
+                sampled.append(point * globalSplatMetricScale)
             }
         }
 
@@ -1466,9 +1466,9 @@ enum WallMeasurementEstimator {
         }
 
         let centroid = centroidSum / Float(centroidCount)
-        let scaledCentroid = centroid * sharpGlobalMetricScale
+        let scaledCentroid = centroid * globalSplatMetricScale
         logMetricDepthMeasurement(
-            "METRIC PLY ALIGN GLOBAL SCALE SCALE=\(String(format: "%.4f", sharpGlobalMetricScale)) " +
+            "METRIC PLY ALIGN GLOBAL SCALE SCALE=\(String(format: "%.4f", globalSplatMetricScale)) " +
                 "RAW_CENTROID=(\(String(format: "%.4f", centroid.x)),\(String(format: "%.4f", centroid.y)),\(String(format: "%.4f", centroid.z))) " +
                 "SCALED_CENTROID=(\(String(format: "%.4f", scaledCentroid.x)),\(String(format: "%.4f", scaledCentroid.y)),\(String(format: "%.4f", scaledCentroid.z))) " +
                 "USED=\(sampled.count)"
@@ -1476,7 +1476,7 @@ enum WallMeasurementEstimator {
 
         guard let ransac = measureUsingPlaneRansac(
             points: sampled,
-            source: "RANSAC_PLANES_SHARP_GLOBAL_SCALE_1_08"
+            source: "RANSAC_PLANES_GLOBAL_SCALE_1_08"
         ) else {
             logMetricDepthMeasurement("METRIC PLY ALIGN GLOBAL SCALE RANSAC FAILED")
             return nil
@@ -1487,7 +1487,7 @@ enum WallMeasurementEstimator {
                 widthMeters: ransac.result.widthMeters,
                 heightMeters: ransac.result.heightMeters,
                 depthMeters: ransac.result.depthMeters,
-                calibrationMode: "sharp_global_scale_ransac"
+                calibrationMode: "splat_global_scale_ransac"
             ),
             ransac.source
         )
@@ -1942,23 +1942,23 @@ enum WallMeasurementEstimator {
         imageHeight: Int,
         exif: [String: Double]?,
         sensorMmFallback: Float,
-        sharpCamera: SharpCameraSidecar.Info? = nil
+        roomGenerationCamera: RoomGenerationCameraSidecar.Info? = nil
     ) -> CameraIntrinsics? {
         guard imageWidth > 0, imageHeight > 0 else { return nil }
-        if let sharpCamera,
-           sharpCamera.sourceImageWidthPx == imageWidth,
-           sharpCamera.sourceImageHeightPx == imageHeight,
-           sharpCamera.sourceFocalPx > 0.01 {
-            let fx = sharpCamera.sourceFocalPx
-            let fy = sharpCamera.sourceFocalPx
-            let cx = sharpCamera.sourceCxPx
-            let cy = sharpCamera.sourceCyPx
+        if let roomGenerationCamera,
+           roomGenerationCamera.sourceImageWidthPx == imageWidth,
+           roomGenerationCamera.sourceImageHeightPx == imageHeight,
+           roomGenerationCamera.sourceFocalPx > 0.01 {
+            let fx = roomGenerationCamera.sourceFocalPx
+            let fy = roomGenerationCamera.sourceFocalPx
+            let cx = roomGenerationCamera.sourceCxPx
+            let cy = roomGenerationCamera.sourceCyPx
             let hFov = 2 * atan(Float(imageWidth) / max(2 * fx, 1e-6)) * 180 / .pi
             let vFov = 2 * atan(Float(imageHeight) / max(2 * fy, 1e-6)) * 180 / .pi
 
             logMetricDepthMeasurement(
                 "METRIC INTRINSICS IMAGE=\(imageWidth)X\(imageHeight) FOCAL_PX=\(String(format: "%.2f", fx)) " +
-                    "SOURCE=SHARP_GENERATION_CAMERA HFOV_DEG=\(String(format: "%.2f", hFov)) VFOV_DEG=\(String(format: "%.2f", vFov)) " +
+                    "SOURCE=ROOM_GENERATION_CAMERA HFOV_DEG=\(String(format: "%.2f", hFov)) VFOV_DEG=\(String(format: "%.2f", vFov)) " +
                     "CX=\(String(format: "%.2f", cx)) CY=\(String(format: "%.2f", cy))"
             )
 
@@ -1973,7 +1973,7 @@ enum WallMeasurementEstimator {
                 imageHeight: imageHeight,
                 horizontalFOVDegrees: hFov,
                 verticalFOVDegrees: vFov,
-                source: "SHARP_GENERATION_CAMERA"
+                source: "ROOM_GENERATION_CAMERA"
             )
         }
         if let focalLengthPx = exif?["focalLengthPx"].map(Float.init), focalLengthPx > 0.01 {

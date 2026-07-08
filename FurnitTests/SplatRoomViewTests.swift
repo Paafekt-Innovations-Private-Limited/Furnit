@@ -1,5 +1,5 @@
-// SharpRoomViewTests.swift
-// Unit tests for SharpRoomView recent changes:
+// SplatRoomViewTests.swift
+// Unit tests for SplatRoomView recent changes:
 // - Calibration overlay
 // - Auto-orbit toggle (default off)
 // - Number pad input
@@ -10,7 +10,7 @@ import XCTest
 import SwiftUI
 @testable import Furnit
 
-final class SharpRoomViewTests: XCTestCase {
+final class SplatRoomViewTests: XCTestCase {
 
     // MARK: - Auto-Orbit Default Tests
 

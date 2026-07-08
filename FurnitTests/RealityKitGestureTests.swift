@@ -1,5 +1,5 @@
 // RealityKitGestureTests.swift
-// Tests for RealityKit gesture handling in Sharp ML rooms
+// Tests for RealityKit gesture handling in Splat ML rooms
 
 import XCTest
 import RealityKit

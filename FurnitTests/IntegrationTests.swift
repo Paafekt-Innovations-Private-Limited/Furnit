@@ -154,46 +154,46 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(result[0].confidence, 0.9, "Should keep detection with highest confidence")
     }
 
-    // MARK: - Sharp Room Integration Tests
+    // MARK: - Splat Room Integration Tests
 
-    /// Test that SharpRoomBoundsUtils calculations match RoomBounds computed properties
+    /// Test that SplatRoomBoundsUtils calculations match RoomBounds computed properties
     func testBoundsUtilsMatchRoomBoundsStruct() {
         let bounds = RoomBounds(minX: -2, maxX: 2, minY: 0, maxY: 3, minZ: -5, maxZ: -1)
 
         // Compare utility calculations with RoomBounds computed properties
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateCenter(min: bounds.minX, max: bounds.maxX),
+            SplatRoomBoundsUtils.calculateCenter(min: bounds.minX, max: bounds.maxX),
             bounds.centerX, accuracy: 0.001,
             "centerX calculation mismatch"
         )
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateCenter(min: bounds.minY, max: bounds.maxY),
+            SplatRoomBoundsUtils.calculateCenter(min: bounds.minY, max: bounds.maxY),
             bounds.centerY, accuracy: 0.001,
             "centerY calculation mismatch"
         )
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateCenter(min: bounds.minZ, max: bounds.maxZ),
+            SplatRoomBoundsUtils.calculateCenter(min: bounds.minZ, max: bounds.maxZ),
             bounds.centerZ, accuracy: 0.001,
             "centerZ calculation mismatch"
         )
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateDimension(min: bounds.minX, max: bounds.maxX),
+            SplatRoomBoundsUtils.calculateDimension(min: bounds.minX, max: bounds.maxX),
             bounds.width, accuracy: 0.001,
             "width calculation mismatch"
         )
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateDimension(min: bounds.minY, max: bounds.maxY),
+            SplatRoomBoundsUtils.calculateDimension(min: bounds.minY, max: bounds.maxY),
             bounds.height, accuracy: 0.001,
             "height calculation mismatch"
         )
         XCTAssertEqual(
-            SharpRoomBoundsUtils.calculateDimension(min: bounds.minZ, max: bounds.maxZ),
+            SplatRoomBoundsUtils.calculateDimension(min: bounds.minZ, max: bounds.maxZ),
             bounds.depth, accuracy: 0.001,
             "depth calculation mismatch"
         )
     }
 
-    /// `RoomBoundaryManager` delegates to `RoomBounds.defaultSplatCameraEyeAndTarget()` (depth-adaptive inset; not `SharpRoomCameraUtils` fixed insideFactor).
+    /// `RoomBoundaryManager` delegates to `RoomBounds.defaultSplatCameraEyeAndTarget()` (depth-adaptive inset; not `SplatRoomCameraUtils` fixed insideFactor).
     func testCameraUtilsMatchBoundaryManager() {
         let bounds = RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
         let manager = RoomBoundaryManager(bounds: bounds)
@@ -213,7 +213,7 @@ final class IntegrationTests: XCTestCase {
     /// Test plane normal calculation matches expected geometric behavior
     func testPlaneNormalGeometry() {
         // XY plane should have normal along Z
-        let xyPlaneNormal = SharpRoomPlaneUtils.calculatePlaneNormal(
+        let xyPlaneNormal = SplatRoomPlaneUtils.calculatePlaneNormal(
             p1: SIMD3<Float>(0, 0, 0),
             p2: SIMD3<Float>(1, 0, 0),
             p3: SIMD3<Float>(0, 1, 0)
@@ -222,7 +222,7 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(abs(xyPlaneNormal!.z), 1.0, accuracy: 0.001, "XY plane normal should be along Z")
 
         // XZ plane should have normal along Y
-        let xzPlaneNormal = SharpRoomPlaneUtils.calculatePlaneNormal(
+        let xzPlaneNormal = SplatRoomPlaneUtils.calculatePlaneNormal(
             p1: SIMD3<Float>(0, 0, 0),
             p2: SIMD3<Float>(1, 0, 0),
             p3: SIMD3<Float>(0, 0, 1)
@@ -231,7 +231,7 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(abs(xzPlaneNormal!.y), 1.0, accuracy: 0.001, "XZ plane normal should be along Y")
 
         // YZ plane should have normal along X
-        let yzPlaneNormal = SharpRoomPlaneUtils.calculatePlaneNormal(
+        let yzPlaneNormal = SplatRoomPlaneUtils.calculatePlaneNormal(
             p1: SIMD3<Float>(0, 0, 0),
             p2: SIMD3<Float>(0, 1, 0),
             p3: SIMD3<Float>(0, 0, 1)
@@ -256,7 +256,7 @@ final class IntegrationTests: XCTestCase {
         ]
 
         for (point, expected) in points {
-            let distance = SharpRoomPlaneUtils.distanceToPlane(
+            let distance = SplatRoomPlaneUtils.distanceToPlane(
                 point: point,
                 planePoint: planePoint,
                 planeNormal: planeNormal
@@ -345,25 +345,25 @@ final class IntegrationTests: XCTestCase {
     func testVectorAngleGeometry() {
         // Parallel vectors - 0 degrees
         XCTAssertEqual(
-            SharpRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(2, 0, 0)),
+            SplatRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(2, 0, 0)),
             0, accuracy: 0.001
         )
 
         // Perpendicular vectors - 90 degrees
         XCTAssertEqual(
-            SharpRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(0, 1, 0)),
+            SplatRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(0, 1, 0)),
             Float.pi / 2, accuracy: 0.001
         )
 
         // Opposite vectors - 180 degrees
         XCTAssertEqual(
-            SharpRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(-1, 0, 0)),
+            SplatRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(-1, 0, 0)),
             Float.pi, accuracy: 0.001
         )
 
         // 45 degree angle
         XCTAssertEqual(
-            SharpRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(1, 1, 0)),
+            SplatRoomVectorUtils.angleBetween(SIMD3<Float>(1, 0, 0), SIMD3<Float>(1, 1, 0)),
             Float.pi / 4, accuracy: 0.001
         )
     }
@@ -372,19 +372,19 @@ final class IntegrationTests: XCTestCase {
     func testDistanceCalculation() {
         // 3-4-5 triangle
         XCTAssertEqual(
-            SharpRoomVectorUtils.distance(SIMD3<Float>(0, 0, 0), SIMD3<Float>(3, 4, 0)),
+            SplatRoomVectorUtils.distance(SIMD3<Float>(0, 0, 0), SIMD3<Float>(3, 4, 0)),
             5.0, accuracy: 0.001
         )
 
         // Same point
         XCTAssertEqual(
-            SharpRoomVectorUtils.distance(SIMD3<Float>(5, 5, 5), SIMD3<Float>(5, 5, 5)),
+            SplatRoomVectorUtils.distance(SIMD3<Float>(5, 5, 5), SIMD3<Float>(5, 5, 5)),
             0.0, accuracy: 0.001
         )
 
         // 3D diagonal
         XCTAssertEqual(
-            SharpRoomVectorUtils.distance(SIMD3<Float>(0, 0, 0), SIMD3<Float>(1, 1, 1)),
+            SplatRoomVectorUtils.distance(SIMD3<Float>(0, 0, 0), SIMD3<Float>(1, 1, 1)),
             sqrt(3.0), accuracy: 0.001
         )
     }
@@ -445,12 +445,12 @@ final class IntegrationTests: XCTestCase {
             ))
         }
 
-        let result = SharpRoomBoundsUtils.calculateBoundingBox(points: points)
+        let result = SplatRoomBoundsUtils.calculateBoundingBox(points: points)
         XCTAssertNotNil(result)
 
         // Verify all points are inside bounds
         for point in points {
-            XCTAssertTrue(SharpRoomBoundsUtils.isPointInside(
+            XCTAssertTrue(SplatRoomBoundsUtils.isPointInside(
                 point: point,
                 minBound: result!.min,
                 maxBound: result!.max

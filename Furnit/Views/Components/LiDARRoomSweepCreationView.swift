@@ -64,16 +64,16 @@ struct LiDARRoomSweepCreationView: View {
             }
         }
         .navigationDestination(item: $viewerDestination) { destination in
-            SharpRoomView(
+            SplatRoomView(
                 plyURL: destination.result.plyURL,
                 allowSave: true,
                 photoOrientation: .portrait,
-                sharpPlyAabbWidth: destination.result.roomWidthMeters,
-                sharpPlyAabbHeight: destination.result.roomHeightMeters,
-                sharpPlyAabbDepth: destination.result.roomDepthMeters,
-                sharpRoomWidth: destination.result.roomWidthMeters,
-                sharpRoomHeight: destination.result.roomHeightMeters,
-                sharpRoomDepth: destination.result.roomDepthMeters,
+                splatPlyAabbWidth: destination.result.roomWidthMeters,
+                splatPlyAabbHeight: destination.result.roomHeightMeters,
+                splatPlyAabbDepth: destination.result.roomDepthMeters,
+                splatRoomWidth: destination.result.roomWidthMeters,
+                splatRoomHeight: destination.result.roomHeightMeters,
+                splatRoomDepth: destination.result.roomDepthMeters,
                 roomCoordinateFrame: .arWorldMeters
             )
             .onAppear {

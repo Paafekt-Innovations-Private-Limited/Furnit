@@ -48,13 +48,13 @@ enum FurnitureFitOnnxStylePipeline {
         let base = retinaMasksCompositeEnabled
             ? retinaMaskUpsampleLogitThreshold
             : nativeMaskUpsampleLogitThreshold
-        return base + nativeMaskBoundarySharpenExtra
+        return base + nativeMaskBoundaryRefineExtra
     }
 
     /// Added to the chosen base threshold when binarizing (GPU and CPU native paths).
     /// Increase slightly if physical see-through gaps (e.g. between legs) look too noisy; keeps
     /// true holes more transparent by requiring a higher logit.
-    static let nativeMaskBoundarySharpenExtra: Float = 0.0
+    static let nativeMaskBoundaryRefineExtra: Float = 0.0
 
     /// Expands the composite ``crop_mask`` band in pixels so bbox edges do not clip foreground.
     static let nativeCompositeBandMarginPx: Int = 1

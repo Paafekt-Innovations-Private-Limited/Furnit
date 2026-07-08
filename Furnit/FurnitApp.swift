@@ -82,8 +82,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         logDebug("🔥 [AppDelegate] didFinishLaunching START")
 
-        SHARPService.purgeTemporarySharpModelsDirectoryAtLaunch()
-
         FirebaseConfiguration.shared.setLoggerLevel(.error)
         logDebug("🔥 [AppDelegate] Firebase logging level set to .error")
 
@@ -102,18 +100,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         logDebug("🔥 [AppDelegate] Requested APNs registration for Firebase Phone Auth")
 
         return true
-    }
-
-    /// Best-effort unload of heavy Core ML before Jetsam.
-    /// Important: do **not** call ``SHARPService/releaseResources()`` here — that ends ODR access
-    /// (`endAccessingResources`) for the ~1.2 GB tagged SHARP pack. Stopping Xcode often triggers a
-    /// memory warning; releasing ODR makes the next standalone room creation fail until remount
-    /// succeeds. Unloading only the in-memory ``MLModel`` keeps the pack mounted and avoids that trap.
-    func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
-        Task { @MainActor in
-            logDebug("⚠️ [AppDelegate] Memory warning — unloading SHARP Core ML (keeping ODR mounts)")
-            SHARPService.shared.releaseInferenceMemoryAfterGeneration()
-        }
     }
 
     // URL handling for phone auth (reCAPTCHA) is done in SceneDelegate.scene(_:openURLContexts:)
@@ -181,12 +167,6 @@ struct RootView: View {
             } else {
                 LoginView()
             }
-        }
-        .overlay(alignment: .bottom) {
-            SharpGenerationBottomBar()
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .zIndex(1000)
         }
     }
 }

@@ -10,7 +10,7 @@ Real SVG flow diagrams for the iOS (Swift) app. Open in any browser, Xcode, or a
 
 | Legacy | Flow |
 |---|---|
-| [`sharp-swift-flow.svg`](sharp-swift-flow.svg) | Retired Gaussian-splat path — not used for default iOS room creation. |
+| [`splat-swift-flow.svg`](splat-swift-flow.svg) | Retired Gaussian-splat path — not used for default iOS room creation. |
 
 Legend: green = ANE/GPU (accelerated), blue = CPU, gray = camera/data, purple = file/web, orange =
 display. ★ = accelerated stage, ☆ = scalar CPU stage.

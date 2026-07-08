@@ -1,4 +1,4 @@
-// Modified antimatter15/splat main.js for SHARP rooms
+// Modified antimatter15/splat main.js for Splat rooms
 // Original: https://github.com/antimatter15/splat
 // Changes: Faster carousel animation (2000ms vs 5000ms)
 
@@ -369,7 +369,7 @@ function createWorker(self) {
         let sizeList = new Float32Array(vertexCount);
         let sizeIndex = new Uint32Array(vertexCount);
 
-        // SHARP: Track bounding box while processing
+        // Splat: Track bounding box while processing
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
@@ -591,7 +591,7 @@ void main () {
 
 `.trim();
 
-// View matrix looking straight at -Z (front wall of SHARP room)
+// View matrix looking straight at -Z (front wall of Splat room)
 // Camera at (0, 0, 6) looking toward origin
 let defaultViewMatrix = [
     1, 0, 0, 0,
@@ -602,7 +602,7 @@ let defaultViewMatrix = [
 let viewMatrix = defaultViewMatrix;
 
 async function main() {
-    let carousel = false;  // SHARP: Disable carousel by default
+    let carousel = false;  // Splat: Disable carousel by default
     const params = new URLSearchParams(location.search);
     try {
         viewMatrix = JSON.parse(decodeURIComponent(location.hash.slice(1)));

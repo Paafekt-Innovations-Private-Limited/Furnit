@@ -19,8 +19,8 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">SHARP room reconstruction — iOS (Swift / Core ML)</text>
-  <text x="32" y="60" class="sub">Single photo → 3D Gaussian-splat room. SHARPService.generateGaussians → SharpRoomView/GaussianSplatView. ★ = ANE/GPU.</text>
+  <text x="32" y="40" class="title">Splat room reconstruction — iOS (Swift / Core ML)</text>
+  <text x="32" y="60" class="sub">Saved PLY / sweep room rendering. SplatRoomView → GaussianSplatView. ★ = Metal renderer.</text>
 
   <rect x="600" y="74" width="14" height="14" rx="3" class="ane"/><text x="620" y="86" class="legtxt">ANE/GPU</text>
   <rect x="690" y="74" width="14" height="14" rx="3" class="cpu"/><text x="710" y="86" class="legtxt">CPU</text>
@@ -37,7 +37,7 @@
   <path class="edge" d="M430,242 L430,280" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="280" width="360" height="52" rx="12" class="ane"/>
-    <text x="430" y="302" text-anchor="middle" class="bt">★ Core ML SHARP inference</text>
+    <text x="430" y="302" text-anchor="middle" class="bt">★ Core ML Splat inference</text>
     <text x="430" y="320" text-anchor="middle" class="bs">preprocessAndRunInference · compiled .mlmodelc (ANE/GPU)</text></g>
   <path class="edge" d="M430,332 L430,370" marker-end="url(#arrow)"/>
 
@@ -57,7 +57,7 @@
   <path class="edge" d="M430,602 L430,640" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="640" width="360" height="52" rx="12" class="disp"/>
-    <text x="430" y="662" text-anchor="middle" class="bt">SharpRoomView render</text>
+    <text x="430" y="662" text-anchor="middle" class="bt">SplatRoomView render</text>
     <text x="430" y="680" text-anchor="middle" class="bs">MetalSplatter loads .splatcache fast path; PLY parser fallback</text></g>
   <path class="edge" d="M430,692 L430,730" marker-end="url(#arrow)"/>
 

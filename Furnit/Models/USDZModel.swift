@@ -2,10 +2,10 @@ import Foundation
 import UIKit
 
 enum RoomCoordinateFrame: String, Codable, Sendable {
-    case sharpClassicPly = "sharp_classic_ply"
-    case sharpCanonicalPly = "sharp_canonical_ply"
+    case classicSplatPly = "splat_classic_ply"
+    case canonicalSplatPly = "splat_canonical_ply"
     case arWorldMeters = "ar_world_meters"
-    case swiftSharpPlaneMeters = "swift_sharp_plane_meters"
+    case planarRoomMeters = "swift_splat_plane_meters"
     case depthAnythingImageDepthMeters = "depth_anything_image_depth_meters"
 
     var isARWorldMeters: Bool {
@@ -14,9 +14,9 @@ enum RoomCoordinateFrame: String, Codable, Sendable {
 
     var usesNativeMeterSceneUnits: Bool {
         switch self {
-        case .arWorldMeters, .swiftSharpPlaneMeters, .depthAnythingImageDepthMeters:
+        case .arWorldMeters, .planarRoomMeters, .depthAnythingImageDepthMeters:
             return true
-        case .sharpClassicPly, .sharpCanonicalPly:
+        case .classicSplatPly, .canonicalSplatPly:
             return false
         }
     }
@@ -51,11 +51,11 @@ struct USDZModel: Identifiable, Hashable {
     let savedFurnitureHeightFracByClass: [String: Float]?
     /// Reference image height in pixels at calibration time.
     let savedRefImageHeightPx: Int?
-    /// SHARP / metadata room height (m) when ratios were captured.
-    let sharpRoomHeightAtCapture: Float?
+    /// Splat / metadata room height (m) when ratios were captured.
+    let generatedRoomHeightAtCapture: Float?
     /// When set (from `*.meta` `displayName`), shown in the list instead of deriving from `name`.
     let customDisplayName: String?
-    /// Saved PLY should be treated like SHARP classic orientation/rendering even without `_classic` filename suffix.
+    /// Saved PLY should be treated like Splat classic orientation/rendering even without `_classic` filename suffix.
     let isClassicPly: Bool
     /// Coordinate/render contract persisted for saved rooms.
     let roomCoordinateFrame: RoomCoordinateFrame
@@ -79,10 +79,10 @@ struct USDZModel: Identifiable, Hashable {
         self.savedWallHeightFrac = nil
         self.savedFurnitureHeightFracByClass = nil
         self.savedRefImageHeightPx = nil
-        self.sharpRoomHeightAtCapture = nil
+        self.generatedRoomHeightAtCapture = nil
         self.customDisplayName = customDisplayName
         self.isClassicPly = false
-        self.roomCoordinateFrame = Self.inferredCoordinateFrame(fileName: fileName, requested: .sharpCanonicalPly)
+        self.roomCoordinateFrame = Self.inferredCoordinateFrame(fileName: fileName, requested: .canonicalSplatPly)
         self.cachedResolvedURL = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
@@ -105,10 +105,10 @@ struct USDZModel: Identifiable, Hashable {
         savedWallHeightFrac: Float? = nil,
         savedFurnitureHeightFracByClass: [String: Float]? = nil,
         savedRefImageHeightPx: Int? = nil,
-        sharpRoomHeightAtCapture: Float? = nil,
+        generatedRoomHeightAtCapture: Float? = nil,
         customDisplayName: String? = nil,
         isClassicPly: Bool = false,
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly,
+        roomCoordinateFrame: RoomCoordinateFrame = .canonicalSplatPly,
         cachedResolvedURL: URL? = nil
     ) {
         self.name = name
@@ -126,7 +126,7 @@ struct USDZModel: Identifiable, Hashable {
         self.savedWallHeightFrac = savedWallHeightFrac
         self.savedFurnitureHeightFracByClass = savedFurnitureHeightFracByClass
         self.savedRefImageHeightPx = savedRefImageHeightPx
-        self.sharpRoomHeightAtCapture = sharpRoomHeightAtCapture
+        self.generatedRoomHeightAtCapture = generatedRoomHeightAtCapture
         self.customDisplayName = customDisplayName
         self.isClassicPly = isClassicPly
         self.roomCoordinateFrame = Self.inferredCoordinateFrame(fileName: fileName, requested: roomCoordinateFrame)
@@ -136,7 +136,7 @@ struct USDZModel: Identifiable, Hashable {
     }
 
     private static func inferredCoordinateFrame(fileName: String, requested: RoomCoordinateFrame) -> RoomCoordinateFrame {
-        guard requested == .sharpCanonicalPly else { return requested }
+        guard requested == .canonicalSplatPly else { return requested }
         if fileName.hasPrefix("DepthAnythingRoom_") {
             return .depthAnythingImageDepthMeters
         }
@@ -184,13 +184,13 @@ struct USDZModel: Identifiable, Hashable {
         return fileType.displayName
     }
 
-    /// Saved meshroom / GLB rooms use manual (default) dimension workflow, not SHARP-measured PLY.
+    /// Saved meshroom / GLB rooms use manual (default) dimension workflow, not Splat-measured PLY.
     var isManualSetupRoom: Bool {
         fileType == .meshroom || fileType == .glb
     }
 
     /// Home list: one line when saved dimensions exist (or W×H + scene depth can reconstruct D).
-    /// Manual-setup rooms append “(Default Values)”; SHARP PLY (AI) rooms append “(Near accurate values)”.
+    /// Manual-setup rooms append “(Default Values)”; Splat PLY (AI) rooms append “(Near accurate values)”.
     var roomDimensionsListLine: String? {
         let baseLine: String?
         if let w = roomWidth, let h = roomHeight, let d = roomDepth,

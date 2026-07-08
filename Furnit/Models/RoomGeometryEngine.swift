@@ -640,7 +640,7 @@ public final class RoomGeometryEngine {
         let minCount  = max(3, Int(Float(candidates.count) * config.ransacMinInlierFraction))
 
         while remaining.count >= 3 {
-            // Walls: perpendicular to floor normal (not world Y — SHARP rooms can be tilted in YZ).
+            // Walls: perpendicular to floor normal (not world Y — Splat rooms can be tilted in YZ).
             guard let plane = ransacFitPlane(
                 points:                     remaining,
                 isHorizontal:               false,

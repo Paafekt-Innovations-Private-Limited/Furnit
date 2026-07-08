@@ -1,5 +1,5 @@
-// SharpRoomUtils.swift
-// Utility functions for Sharp Room functionality - extracted for testability
+// SplatRoomUtils.swift
+// Utility functions for Splat Room functionality - extracted for testability
 
 import Foundation
 import simd
@@ -7,7 +7,7 @@ import simd
 // MARK: - Room Bounds Utilities
 
 /// Utility functions for room bounds calculations
-public struct SharpRoomBoundsUtils {
+public struct SplatRoomBoundsUtils {
 
     /// Calculate center point from min/max bounds
     public static func calculateCenter(min: Float, max: Float) -> Float {
@@ -64,7 +64,7 @@ public struct SharpRoomBoundsUtils {
 // MARK: - Camera Position Calculator
 
 /// Utility for calculating camera positions in a room
-public struct SharpRoomCameraUtils {
+public struct SplatRoomCameraUtils {
 
     /// Calculate camera position inside room looking at center
     /// - Parameters:
@@ -124,7 +124,7 @@ public struct SharpRoomCameraUtils {
 // MARK: - Plane Detection Utilities
 
 /// Utility functions for plane detection and RANSAC
-public struct SharpRoomPlaneUtils {
+public struct SplatRoomPlaneUtils {
 
     /// Calculate plane normal from 3 points
     /// - Returns: Normalized plane normal, or nil if points are collinear
@@ -201,7 +201,7 @@ public struct SharpRoomPlaneUtils {
 // MARK: - Measurement Utilities
 
 /// Utility functions for room measurements
-public struct SharpRoomMeasurementUtils {
+public struct SplatRoomMeasurementUtils {
 
     /// Apply realistic height cap to measured room height
     public static func applyHeightCap(
@@ -260,7 +260,7 @@ public struct SharpRoomMeasurementUtils {
 // MARK: - Vector Utilities
 
 /// Utility functions for 3D vector operations
-public struct SharpRoomVectorUtils {
+public struct SplatRoomVectorUtils {
 
     /// Calculate angle between two vectors in radians
     public static func angleBetween(_ v1: SIMD3<Float>, _ v2: SIMD3<Float>) -> Float {

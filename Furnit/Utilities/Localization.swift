@@ -88,7 +88,7 @@ enum L10n {
         static let deleteHint = "home.deleteHint".localized
         static let swipeHint = "home.swipeHint".localized
         static let roomModel = "home.roomModel".localized
-        /// Saved PLY / SHARP Gaussian room (home list subtitle under room name).
+        /// Saved PLY / Splat Gaussian room (home list subtitle under room name).
         static let aiBased3DRoom = "home.aiBased3DRoom".localized
         /// Saved manual mesh / GLB room (home list subtitle under room name).
         static let manualBased3DRoom = "home.manualBased3DRoom".localized
@@ -180,33 +180,33 @@ enum L10n {
         static let accountDeleteFooter = "settings.accountDeleteFooter".localized
     }
 
-    /// SHARP on-device status messages (model load + generation)
-    enum Sharp {
-        static let downloadingEngine = "sharp.downloadingEngine".localized
+    /// Splat on-device status messages (model load + generation)
+    enum RoomGeneration {
+        static let downloadingEngine = "roomGeneration.downloadingEngine".localized
         static func downloadingEnginePercent(_ percent: Int) -> String {
-            String(format: "sharp.downloadingEnginePercent".localized, locale: .current, percent)
+            String(format: "roomGeneration.downloadingEnginePercent".localized, locale: .current, percent)
         }
-        static let downloadComplete = "sharp.downloadComplete".localized
-        static let downloadFailed = "sharp.downloadFailed".localized
-        static let gettingReady = "sharp.gettingReady".localized
-        static let notEnoughSpace = "sharp.notEnoughSpace".localized
-        static let settingThingsUp = "sharp.settingThingsUp".localized
-        static let ready = "sharp.ready".localized
-        static let couldNotGetReady = "sharp.couldNotGetReady".localized
-        static let somethingWentWrong = "sharp.somethingWentWrong".localized
-        static let preparingPhoto = "sharp.preparingPhoto".localized
-        static let creatingRoom = "sharp.creatingRoom".localized
-        static let almostDone = "sharp.almostDone".localized
-        static let done = "sharp.done".localized
-        static let couldNotCreateRoom = "sharp.couldNotCreateRoom".localized
-        static let cancelled = "sharp.cancelled".localized
+        static let downloadComplete = "roomGeneration.downloadComplete".localized
+        static let downloadFailed = "roomGeneration.downloadFailed".localized
+        static let gettingReady = "roomGeneration.gettingReady".localized
+        static let notEnoughSpace = "roomGeneration.notEnoughSpace".localized
+        static let settingThingsUp = "roomGeneration.settingThingsUp".localized
+        static let ready = "roomGeneration.ready".localized
+        static let couldNotGetReady = "roomGeneration.couldNotGetReady".localized
+        static let somethingWentWrong = "roomGeneration.somethingWentWrong".localized
+        static let preparingPhoto = "roomGeneration.preparingPhoto".localized
+        static let creatingRoom = "roomGeneration.creatingRoom".localized
+        static let almostDone = "roomGeneration.almostDone".localized
+        static let done = "roomGeneration.done".localized
+        static let couldNotCreateRoom = "roomGeneration.couldNotCreateRoom".localized
+        static let cancelled = "roomGeneration.cancelled".localized
         /// Motion-tracked splat camera (formerly labeled “AR”).
-        static let liveRoom = "sharp.liveRoom".localized
+        static let liveRoom = "roomGeneration.liveRoom".localized
         /// Touch/orbit splat camera (formerly labeled “Touch”).
-        static let stillRoom = "sharp.stillRoom".localized
-        static let liveRoomCameraMode = "sharp.liveRoomCameraMode".localized
-        static let stillRoomCameraMode = "sharp.stillRoomCameraMode".localized
-        static let cameraModeToggleAccessibilityHint = "sharp.cameraModeToggleAccessibilityHint".localized
+        static let stillRoom = "roomGeneration.stillRoom".localized
+        static let liveRoomCameraMode = "roomGeneration.liveRoomCameraMode".localized
+        static let stillRoomCameraMode = "roomGeneration.stillRoomCameraMode".localized
+        static let cameraModeToggleAccessibilityHint = "roomGeneration.cameraModeToggleAccessibilityHint".localized
     }
 
     // MARK: Licenses & Attributions
@@ -380,7 +380,7 @@ enum L10n {
         /// Generic save failure when no server message (manual mesh room).
         static let meshSaveFailedGeneric = "roomViewer.meshSaveFailedGeneric".localized
         static let exporting3DModelEllipsis = "roomViewer.exporting3DModelEllipsis".localized
-        /// Shown when saving a Sharp/ML room and the chosen name collides with an existing saved room.
+        /// Shown when saving a Splat/ML room and the chosen name collides with an existing saved room.
         static let duplicateRoomName = "roomViewer.duplicateRoomName".localized
         static let share = "roomViewer.share".localized
         static let calibrateWall = "roomViewer.calibrateWall".localized
@@ -423,7 +423,7 @@ enum L10n {
                 roomDimensionsDefaultValues
             )
         }
-        /// SHARP / PLY AI-derived dimensions — home list line and ruler chip.
+        /// Splat / PLY AI-derived dimensions — home list line and ruler chip.
         static let roomDimensionsNearAccurateValues = "roomViewer.roomDimensionsNearAccurateValues".localized
         static func roomDimensionsWHDAIChip(width: Float, height: Float, depth: Float) -> String {
             String(

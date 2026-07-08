@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import simd
 
-/// Bridges ``GaussianSplatView.Coordinator`` so SwiftUI parents (e.g. ``SharpRoomView``) can call ``measureRoom()`` after a frame has been rendered.
+/// Bridges ``GaussianSplatView.Coordinator`` so SwiftUI parents (e.g. ``SplatRoomView``) can call ``measureRoom()`` after a frame has been rendered.
 final class GaussianSplatMeasurementHost: ObservableObject {
     weak var coordinator: GaussianSplatView.Coordinator?
     @Published var furnitureStatusText: String = "Furniture: none"
@@ -22,8 +22,8 @@ final class GaussianSplatMeasurementHost: ObservableObject {
     }
 
     /// Resets orbit, zoom, and scene scale (same as Recenter toolbar / notification).
-    func recenterSharpRoomCamera() {
-        coordinator?.performSharpRoomRecenter()
+    func recenterSplatRoomCamera() {
+        coordinator?.performSplatRoomRecenter()
     }
 
     /// Euclidean distance from the **splat virtual camera** to the surface hit along the view ray, in **scene units**.
@@ -65,7 +65,7 @@ final class GaussianSplatMeasurementHost: ObservableObject {
         coordinator?.setModalHeavyWorkPaused(paused)
     }
 
-    func setPendingFurnitureItem(_ item: SharpRoomFurnitureItem?) {
+    func setPendingFurnitureItem(_ item: SplatRoomFurnitureItem?) {
         coordinator?.setPendingFurnitureItem(item)
     }
 

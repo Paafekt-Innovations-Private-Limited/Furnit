@@ -34,7 +34,7 @@ private struct SavedRoomDiskMetadata {
     let savedWallHeightFrac: Float?
     let savedFurnitureHeightFracByClass: [String: Float]?
     let savedRefImageHeightPx: Int?
-    let sharpRoomHeightAtCapture: Float?
+    let generatedRoomHeightAtCapture: Float?
     /// Optional display name stored in `*.meta` sidecar (list / UI only; file name unchanged).
     let displayName: String?
     let isClassicPly: Bool
@@ -51,10 +51,10 @@ private struct SavedRoomDiskMetadata {
         savedWallHeightFrac: nil,
         savedFurnitureHeightFracByClass: nil,
         savedRefImageHeightPx: nil,
-        sharpRoomHeightAtCapture: nil,
+        generatedRoomHeightAtCapture: nil,
         displayName: nil,
         isClassicPly: false,
-        roomCoordinateFrame: .sharpCanonicalPly
+        roomCoordinateFrame: .canonicalSplatPly
     )
 
     static func parse(dictionary metadata: [String: String]) -> SavedRoomDiskMetadata {
@@ -67,10 +67,10 @@ private struct SavedRoomDiskMetadata {
         let sceneD = metadata["roomSceneDepth"].flatMap { Float($0) }
         let savedWall = metadata["savedWallHeightFrac"].flatMap { Float($0) }
         let savedRefH = metadata["savedRefImageHeightPx"].flatMap { Int($0) }
-        let sharpCap = metadata["sharpRoomHeightAtCapture"].flatMap { Float($0) }
+        let generatedHeightAtCapture = metadata["generatedRoomHeightAtCapture"].flatMap { Float($0) }
         let isClassicPly = metadata["isClassicPly"].flatMap { Bool($0) } ?? false
         let roomCoordinateFrame = metadata["roomCoordinateFrame"].flatMap(RoomCoordinateFrame.init(rawValue:))
-            ?? (isClassicPly ? .sharpClassicPly : .sharpCanonicalPly)
+            ?? (isClassicPly ? .classicSplatPly : .canonicalSplatPly)
         var furnMap: [String: Float]?
         if let json = metadata["savedFurnitureHeightFracByClass"],
            let data = json.data(using: .utf8),
@@ -90,7 +90,7 @@ private struct SavedRoomDiskMetadata {
             savedWallHeightFrac: savedWall,
             savedFurnitureHeightFracByClass: furnMap,
             savedRefImageHeightPx: savedRefH,
-            sharpRoomHeightAtCapture: sharpCap,
+            generatedRoomHeightAtCapture: generatedHeightAtCapture,
             displayName: displayName,
             isClassicPly: isClassicPly,
             roomCoordinateFrame: roomCoordinateFrame
@@ -109,7 +109,7 @@ private struct SavedRoomDiskMetadata {
             savedWallHeightFrac: savedWallHeightFrac,
             savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
             savedRefImageHeightPx: savedRefImageHeightPx,
-            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
+            generatedRoomHeightAtCapture: generatedRoomHeightAtCapture,
             displayName: displayName,
             isClassicPly: isClassicPly,
             roomCoordinateFrame: roomCoordinateFrame
@@ -128,10 +128,10 @@ private struct SavedRoomDiskMetadata {
             savedWallHeightFrac: savedWallHeightFrac,
             savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
             savedRefImageHeightPx: savedRefImageHeightPx,
-            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
+            generatedRoomHeightAtCapture: generatedRoomHeightAtCapture,
             displayName: displayName,
             isClassicPly: newValue,
-            roomCoordinateFrame: newValue ? .sharpClassicPly : roomCoordinateFrame
+            roomCoordinateFrame: newValue ? .classicSplatPly : roomCoordinateFrame
         )
     }
 
@@ -147,7 +147,7 @@ private struct SavedRoomDiskMetadata {
             savedWallHeightFrac: savedWallHeightFrac,
             savedFurnitureHeightFracByClass: savedFurnitureHeightFracByClass,
             savedRefImageHeightPx: savedRefImageHeightPx,
-            sharpRoomHeightAtCapture: sharpRoomHeightAtCapture,
+            generatedRoomHeightAtCapture: generatedRoomHeightAtCapture,
             displayName: displayName,
             isClassicPly: isClassicPly,
             roomCoordinateFrame: newValue
@@ -327,7 +327,7 @@ class USDZModelManager: ObservableObject {
         fileName: String,
         fileType: ModelFileType,
         metadataDisplayName: String?,
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly
+        roomCoordinateFrame: RoomCoordinateFrame = .canonicalSplatPly
     ) -> String? {
         guard fileType == .ply else { return metadataDisplayName }
         let canonicalStem = canonicalPlyStem(for: fileName)
@@ -407,8 +407,8 @@ class USDZModelManager: ObservableObject {
         if fileName.hasSuffix("_thumbnail.png") {
             return String(fileName.dropLast("_thumbnail.png".count))
         }
-        if fileName.hasSuffix("_sharp_camera.json") {
-            return String(fileName.dropLast("_sharp_camera.json".count))
+        if fileName.hasSuffix("_generation_camera.json") {
+            return String(fileName.dropLast("_generation_camera.json".count))
         }
         if fileName.hasSuffix("_classic.ply") {
             return String(fileName.dropLast("_classic.ply".count))
@@ -809,10 +809,10 @@ class USDZModelManager: ObservableObject {
             )
         }
 
-        let sharpCamera = SharpCameraSidecar.load(roomURL: url)
-        let imageWidth = Float(sharpCamera?.sourceImageWidthPx ?? 0)
-        let imageHeight = Float(sharpCamera?.sourceImageHeightPx ?? 0)
-        let focalPx = sharpCamera?.sourceFocalPx ?? 0
+        let roomGenerationCamera = RoomGenerationCameraSidecar.load(roomURL: url)
+        let imageWidth = Float(roomGenerationCamera?.sourceImageWidthPx ?? 0)
+        let imageHeight = Float(roomGenerationCamera?.sourceImageHeightPx ?? 0)
+        let focalPx = roomGenerationCamera?.sourceFocalPx ?? 0
         let hasFocal = focalPx > 0.01
         let orientationLabel = imageWidth > imageHeight ? "LANDSCAPE" : "PORTRAIT"
         let maxSpan = max(trimmedXSpan, max(trimmedYSpan, trimmedZSpan))
@@ -1077,7 +1077,7 @@ class USDZModelManager: ObservableObject {
                     savedWallHeightFrac: metadata.savedWallHeightFrac,
                     savedFurnitureHeightFracByClass: metadata.savedFurnitureHeightFracByClass,
                     savedRefImageHeightPx: metadata.savedRefImageHeightPx,
-                    sharpRoomHeightAtCapture: metadata.sharpRoomHeightAtCapture,
+                    generatedRoomHeightAtCapture: metadata.generatedRoomHeightAtCapture,
                     customDisplayName: displayNameForSavedRoom(
                         fileName: fileName,
                         fileType: fileType,
@@ -1181,7 +1181,7 @@ class USDZModelManager: ObservableObject {
         wallHeightFrac: Float,
         furnitureFractionsByClass: [String: Float],
         referenceImageHeightPx: Int,
-        sharpRoomHeightAtCapture: Float?
+        generatedRoomHeightAtCapture: Float?
     ) throws {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
         var dict: [String: String] = [:]
@@ -1193,8 +1193,8 @@ class USDZModelManager: ObservableObject {
 
         dict["savedWallHeightFrac"] = String(format: "%.6f", wallHeightFrac)
         dict["savedRefImageHeightPx"] = String(referenceImageHeightPx)
-        if let h = sharpRoomHeightAtCapture {
-            dict["sharpRoomHeightAtCapture"] = String(format: "%.4f", h)
+        if let h = generatedRoomHeightAtCapture {
+            dict["generatedRoomHeightAtCapture"] = String(format: "%.4f", h)
         }
         if let jsonData = try? JSONEncoder().encode(furnitureFractionsByClass),
            let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -1575,7 +1575,7 @@ class USDZModelManager: ObservableObject {
         roomSceneHeight: Float? = nil,
         roomSceneDepth: Float? = nil,
         isClassicPly: Bool = true,
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly,
+        roomCoordinateFrame: RoomCoordinateFrame = .classicSplatPly,
         completion: @escaping (Bool, String?) -> Void
     ) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
@@ -1637,7 +1637,7 @@ class USDZModelManager: ObservableObject {
             }
 
             CameraExifSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
-            SharpCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
+            RoomGenerationCameraSidecar.copySidecarIfPresent(fromRoomURL: sourceURL, toSavedRoomURL: destinationURL)
             if let sourceHint = loadSplatLoadHint(forRoomURL: sourceURL) {
                 try saveSplatLoadHint(sourceHint, nextTo: destinationURL)
                 if debugMode {
@@ -1665,7 +1665,7 @@ class USDZModelManager: ObservableObject {
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
-                // Active saved-room dimensions now come from the live SHARP preview path
+                // Active saved-room dimensions now come from the live Splat preview path
                 // (ROOM_DIMS_V7). The older on-disk remeasurement path is kept here only as
                 // fallback/reference so saved list + ruler stay consistent with the room the
                 // user saw before tapping Save.
@@ -1821,8 +1821,8 @@ class USDZModelManager: ObservableObject {
                 }
             }
 
-            // Copy SHARP wall-measurement thumbnail next to saved PLY so list reload can infer capture orientation for AR/UI.
-            copyThumbnailFromSHARPSessionIfPresent(sourceURL: sourceURL, savedStem: fileName)
+            // Copy Splat wall-measurement thumbnail next to saved PLY so list reload can infer capture orientation for AR/UI.
+            copyThumbnailFromSplatSessionIfPresent(sourceURL: sourceURL, savedStem: fileName)
 
             if debugMode {
                 logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
@@ -1863,7 +1863,7 @@ class USDZModelManager: ObservableObject {
         )
         let normalizedFrame = normalizedBase.roomCoordinateFrame.usesNativeMeterSceneUnits
             ? normalizedBase
-            : normalizedBase.replacingCoordinateFrame(normalizedBase.isClassicPly ? .sharpClassicPly : .sharpCanonicalPly)
+            : normalizedBase.replacingCoordinateFrame(normalizedBase.isClassicPly ? .classicSplatPly : .canonicalSplatPly)
 
         // Opening from list: AR roll uses `photoOrientation`. Prefer thumbnail inference when present so orientation
         // matches creation if `.meta` defaulted to portrait or was stale — but do **not** overwrite an explicit
@@ -1938,8 +1938,8 @@ class USDZModelManager: ObservableObject {
         )
     }
 
-    /// Copies `RoomStamp_thumbnail.jpg` (or `.png`) from the SHARP session folder into SavedRooms as `savedStem_thumbnail.*`.
-    private func copyThumbnailFromSHARPSessionIfPresent(sourceURL: URL, savedStem: String) {
+    /// Copies `RoomStamp_thumbnail.jpg` (or `.png`) from the Splat session folder into SavedRooms as `savedStem_thumbnail.*`.
+    private func copyThumbnailFromSplatSessionIfPresent(sourceURL: URL, savedStem: String) {
         let sourceDir = sourceURL.deletingLastPathComponent()
         var sessionStem = sourceURL.deletingPathExtension().lastPathComponent
         if sessionStem.hasSuffix("_classic") {

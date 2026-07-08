@@ -1,51 +1,31 @@
-// SharpRoomTests.swift
-// Unit tests for Sharp Room functionality
+// SplatRoomTests.swift
+// Unit tests for Splat Room functionality
 
 import XCTest
 import simd
 import CoreGraphics
 @testable import Furnit
 
-final class SharpRoomTests: XCTestCase {
-
-    @MainActor
-    func testSharpAspectCorrectionIsIdentityForSquareImage() {
-        let factors = SHARPService.sharpAspectCorrectionFactors(for: CGSize(width: 1536, height: 1536))
-        XCTAssertEqual(factors.x, 1.0, accuracy: 0.0001)
-        XCTAssertEqual(factors.y, 1.0, accuracy: 0.0001)
-    }
-
-    @MainActor
-    func testSharpAspectCorrectionMatchesImageAspectRatio() {
-        let size = CGSize(width: 1170, height: 2532)
-        let factors = SHARPService.sharpAspectCorrectionFactors(for: size)
-
-        XCTAssertEqual(factors.x * factors.y, 1.0, accuracy: 0.0001)
-        XCTAssertEqual(
-            factors.x / factors.y,
-            Float(size.height / size.width),
-            accuracy: 0.0001
-        )
-    }
+final class SplatRoomTests: XCTestCase {
 
     // MARK: - Room Bounds Utils Tests
 
     func testCalculateCenter() {
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateCenter(min: 0, max: 10), 5.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateCenter(min: -5, max: 5), 0.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateCenter(min: -10, max: -2), -6.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateCenter(min: 0, max: 10), 5.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateCenter(min: -5, max: 5), 0.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateCenter(min: -10, max: -2), -6.0, accuracy: 0.001)
     }
 
     func testCalculateDimension() {
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateDimension(min: 0, max: 10), 10.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateDimension(min: -5, max: 5), 10.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateDimension(min: 2, max: 2), 0.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateDimension(min: 0, max: 10), 10.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateDimension(min: -5, max: 5), 10.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateDimension(min: 2, max: 2), 0.0, accuracy: 0.001)
     }
 
     func testCalculateVolume() {
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateVolume(width: 4, height: 3, depth: 5), 60.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateVolume(width: 2, height: 2, depth: 2), 8.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomBoundsUtils.calculateVolume(width: 0, height: 5, depth: 5), 0.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateVolume(width: 4, height: 3, depth: 5), 60.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateVolume(width: 2, height: 2, depth: 2), 8.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomBoundsUtils.calculateVolume(width: 0, height: 5, depth: 5), 0.0, accuracy: 0.001)
     }
 
     func testIsPointInside() {
@@ -53,15 +33,15 @@ final class SharpRoomTests: XCTestCase {
         let maxBound = SIMD3<Float>(10, 10, 10)
 
         // Inside
-        XCTAssertTrue(SharpRoomBoundsUtils.isPointInside(point: SIMD3<Float>(5, 5, 5), minBound: minBound, maxBound: maxBound))
+        XCTAssertTrue(SplatRoomBoundsUtils.isPointInside(point: SIMD3<Float>(5, 5, 5), minBound: minBound, maxBound: maxBound))
 
         // On boundary
-        XCTAssertTrue(SharpRoomBoundsUtils.isPointInside(point: SIMD3<Float>(0, 0, 0), minBound: minBound, maxBound: maxBound))
-        XCTAssertTrue(SharpRoomBoundsUtils.isPointInside(point: SIMD3<Float>(10, 10, 10), minBound: minBound, maxBound: maxBound))
+        XCTAssertTrue(SplatRoomBoundsUtils.isPointInside(point: SIMD3<Float>(0, 0, 0), minBound: minBound, maxBound: maxBound))
+        XCTAssertTrue(SplatRoomBoundsUtils.isPointInside(point: SIMD3<Float>(10, 10, 10), minBound: minBound, maxBound: maxBound))
 
         // Outside
-        XCTAssertFalse(SharpRoomBoundsUtils.isPointInside(point: SIMD3<Float>(-1, 5, 5), minBound: minBound, maxBound: maxBound))
-        XCTAssertFalse(SharpRoomBoundsUtils.isPointInside(point: SIMD3<Float>(11, 5, 5), minBound: minBound, maxBound: maxBound))
+        XCTAssertFalse(SplatRoomBoundsUtils.isPointInside(point: SIMD3<Float>(-1, 5, 5), minBound: minBound, maxBound: maxBound))
+        XCTAssertFalse(SplatRoomBoundsUtils.isPointInside(point: SIMD3<Float>(11, 5, 5), minBound: minBound, maxBound: maxBound))
     }
 
     func testCalculateBoundingBox() {
@@ -71,7 +51,7 @@ final class SharpRoomTests: XCTestCase {
             SIMD3<Float>(5, 0, 1)
         ]
 
-        let result = SharpRoomBoundsUtils.calculateBoundingBox(points: points)
+        let result = SplatRoomBoundsUtils.calculateBoundingBox(points: points)
         XCTAssertNotNil(result)
 
         XCTAssertEqual(result!.min.x, -1, accuracy: 0.001)
@@ -83,7 +63,7 @@ final class SharpRoomTests: XCTestCase {
     }
 
     func testCalculateBoundingBoxEmpty() {
-        let result = SharpRoomBoundsUtils.calculateBoundingBox(points: [])
+        let result = SplatRoomBoundsUtils.calculateBoundingBox(points: [])
         XCTAssertNil(result)
     }
 
@@ -91,7 +71,7 @@ final class SharpRoomTests: XCTestCase {
         let minBound = SIMD3<Float>(0, 0, 0)
         let maxBound = SIMD3<Float>(10, 10, 10)
 
-        let result = SharpRoomBoundsUtils.expandBounds(min: minBound, max: maxBound, margin: 2.0)
+        let result = SplatRoomBoundsUtils.expandBounds(min: minBound, max: maxBound, margin: 2.0)
 
         XCTAssertEqual(result.min.x, -2, accuracy: 0.001)
         XCTAssertEqual(result.min.y, -2, accuracy: 0.001)
@@ -104,7 +84,7 @@ final class SharpRoomTests: XCTestCase {
     // MARK: - Camera Utils Tests
 
     func testCalculateCameraPosition() {
-        let result = SharpRoomCameraUtils.calculateCameraPosition(
+        let result = SplatRoomCameraUtils.calculateCameraPosition(
             frontWallZ: -1,
             backWallZ: -5,
             centerX: 0,
@@ -125,7 +105,7 @@ final class SharpRoomTests: XCTestCase {
     }
 
     func testCalculateCameraPositionAtCenter() {
-        let result = SharpRoomCameraUtils.calculateCameraPosition(
+        let result = SplatRoomCameraUtils.calculateCameraPosition(
             frontWallZ: 0,
             backWallZ: -10,
             centerX: 5,
@@ -139,7 +119,7 @@ final class SharpRoomTests: XCTestCase {
     }
 
     func testCalculateOptimalDistance() {
-        let distance = SharpRoomCameraUtils.calculateOptimalDistance(
+        let distance = SplatRoomCameraUtils.calculateOptimalDistance(
             roomWidth: 4.0,
             roomHeight: 3.0,
             fovDegrees: 60.0
@@ -153,7 +133,7 @@ final class SharpRoomTests: XCTestCase {
         let eye = SIMD3<Float>(0, 0, 5)
         let target = SIMD3<Float>(0, 0, 0)
 
-        let direction = SharpRoomCameraUtils.calculateLookDirection(from: eye, to: target)
+        let direction = SplatRoomCameraUtils.calculateLookDirection(from: eye, to: target)
 
         XCTAssertEqual(direction.x, 0, accuracy: 0.001)
         XCTAssertEqual(direction.y, 0, accuracy: 0.001)
@@ -162,7 +142,7 @@ final class SharpRoomTests: XCTestCase {
 
     func testCalculateLookDirectionSamePoint() {
         let point = SIMD3<Float>(5, 5, 5)
-        let direction = SharpRoomCameraUtils.calculateLookDirection(from: point, to: point)
+        let direction = SplatRoomCameraUtils.calculateLookDirection(from: point, to: point)
 
         // Should return default direction
         XCTAssertEqual(direction.z, -1, accuracy: 0.001)
@@ -176,7 +156,7 @@ final class SharpRoomTests: XCTestCase {
         let p2 = SIMD3<Float>(1, 0, 0)
         let p3 = SIMD3<Float>(0, 1, 0)
 
-        let normal = SharpRoomPlaneUtils.calculatePlaneNormal(p1: p1, p2: p2, p3: p3)
+        let normal = SplatRoomPlaneUtils.calculatePlaneNormal(p1: p1, p2: p2, p3: p3)
         XCTAssertNotNil(normal)
         XCTAssertEqual(abs(normal!.z), 1.0, accuracy: 0.001)
     }
@@ -187,7 +167,7 @@ final class SharpRoomTests: XCTestCase {
         let p2 = SIMD3<Float>(1, 0, 0)
         let p3 = SIMD3<Float>(2, 0, 0)
 
-        let normal = SharpRoomPlaneUtils.calculatePlaneNormal(p1: p1, p2: p2, p3: p3)
+        let normal = SplatRoomPlaneUtils.calculatePlaneNormal(p1: p1, p2: p2, p3: p3)
         XCTAssertNil(normal)
     }
 
@@ -197,39 +177,39 @@ final class SharpRoomTests: XCTestCase {
 
         // Point above plane
         let abovePoint = SIMD3<Float>(0, 5, 0)
-        XCTAssertEqual(SharpRoomPlaneUtils.distanceToPlane(point: abovePoint, planePoint: planePoint, planeNormal: planeNormal), 5.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomPlaneUtils.distanceToPlane(point: abovePoint, planePoint: planePoint, planeNormal: planeNormal), 5.0, accuracy: 0.001)
 
         // Point below plane
         let belowPoint = SIMD3<Float>(0, -3, 0)
-        XCTAssertEqual(SharpRoomPlaneUtils.distanceToPlane(point: belowPoint, planePoint: planePoint, planeNormal: planeNormal), -3.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomPlaneUtils.distanceToPlane(point: belowPoint, planePoint: planePoint, planeNormal: planeNormal), -3.0, accuracy: 0.001)
 
         // Point on plane
         let onPlane = SIMD3<Float>(10, 0, -5)
-        XCTAssertEqual(SharpRoomPlaneUtils.distanceToPlane(point: onPlane, planePoint: planePoint, planeNormal: planeNormal), 0.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomPlaneUtils.distanceToPlane(point: onPlane, planePoint: planePoint, planeNormal: planeNormal), 0.0, accuracy: 0.001)
     }
 
     func testIsPlaneVertical() {
         // Vertical wall (normal in XZ plane)
         let verticalNormal = SIMD3<Float>(1, 0, 0)
-        XCTAssertTrue(SharpRoomPlaneUtils.isPlaneVertical(normal: verticalNormal))
+        XCTAssertTrue(SplatRoomPlaneUtils.isPlaneVertical(normal: verticalNormal))
 
         // Horizontal floor (normal along Y)
         let horizontalNormal = SIMD3<Float>(0, 1, 0)
-        XCTAssertFalse(SharpRoomPlaneUtils.isPlaneVertical(normal: horizontalNormal))
+        XCTAssertFalse(SplatRoomPlaneUtils.isPlaneVertical(normal: horizontalNormal))
 
         // Slightly tilted but still vertical
         let tiltedVertical = simd_normalize(SIMD3<Float>(1, 0.1, 0))
-        XCTAssertTrue(SharpRoomPlaneUtils.isPlaneVertical(normal: tiltedVertical))
+        XCTAssertTrue(SplatRoomPlaneUtils.isPlaneVertical(normal: tiltedVertical))
     }
 
     func testIsPlaneHorizontal() {
         // Horizontal floor
         let horizontalNormal = SIMD3<Float>(0, 1, 0)
-        XCTAssertTrue(SharpRoomPlaneUtils.isPlaneHorizontal(normal: horizontalNormal))
+        XCTAssertTrue(SplatRoomPlaneUtils.isPlaneHorizontal(normal: horizontalNormal))
 
         // Vertical wall
         let verticalNormal = SIMD3<Float>(1, 0, 0)
-        XCTAssertFalse(SharpRoomPlaneUtils.isPlaneHorizontal(normal: verticalNormal))
+        XCTAssertFalse(SplatRoomPlaneUtils.isPlaneHorizontal(normal: verticalNormal))
     }
 
     func testCountInliers() {
@@ -243,7 +223,7 @@ final class SharpRoomTests: XCTestCase {
             SIMD3<Float>(-1, -0.02, 2)  // Close - inlier
         ]
 
-        let count = SharpRoomPlaneUtils.countInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.1)
+        let count = SplatRoomPlaneUtils.countInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.1)
         XCTAssertEqual(count, 3)
     }
 
@@ -257,7 +237,7 @@ final class SharpRoomTests: XCTestCase {
             SIMD3<Float>(2, 0.01, 2)
         ]
 
-        let inliers = SharpRoomPlaneUtils.getInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.1)
+        let inliers = SplatRoomPlaneUtils.getInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.1)
         XCTAssertEqual(inliers.count, 2)
     }
 
@@ -265,52 +245,52 @@ final class SharpRoomTests: XCTestCase {
 
     func testApplyHeightCap() {
         // Below cap - unchanged
-        XCTAssertEqual(SharpRoomMeasurementUtils.applyHeightCap(measuredHeight: 3.0), 3.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.applyHeightCap(measuredHeight: 3.0), 3.0, accuracy: 0.001)
 
         // Above cap - scaled down
-        XCTAssertEqual(SharpRoomMeasurementUtils.applyHeightCap(measuredHeight: 6.0, maxRealisticHeight: 4.0, scaleFactor: 0.7), 4.2, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.applyHeightCap(measuredHeight: 6.0, maxRealisticHeight: 4.0, scaleFactor: 0.7), 4.2, accuracy: 0.001)
     }
 
     func testCalculateConfidence() {
         // Below minimum
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateConfidence(pointCount: 50, minExpected: 100, maxExpected: 1000), 0.0)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateConfidence(pointCount: 50, minExpected: 100, maxExpected: 1000), 0.0)
 
         // At minimum
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateConfidence(pointCount: 100, minExpected: 100, maxExpected: 1000), 0.0)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateConfidence(pointCount: 100, minExpected: 100, maxExpected: 1000), 0.0)
 
         // At maximum
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateConfidence(pointCount: 1000, minExpected: 100, maxExpected: 1000), 1.0)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateConfidence(pointCount: 1000, minExpected: 100, maxExpected: 1000), 1.0)
 
         // Above maximum
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateConfidence(pointCount: 2000, minExpected: 100, maxExpected: 1000), 1.0)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateConfidence(pointCount: 2000, minExpected: 100, maxExpected: 1000), 1.0)
 
         // Mid-range
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateConfidence(pointCount: 550, minExpected: 100, maxExpected: 1000), 0.5, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateConfidence(pointCount: 550, minExpected: 100, maxExpected: 1000), 0.5, accuracy: 0.001)
     }
 
     func testFormatDimensions() {
-        XCTAssertEqual(SharpRoomMeasurementUtils.formatDimensions(width: 4.5, height: 3.2), "4.5 × 3.2")
-        XCTAssertEqual(SharpRoomMeasurementUtils.formatDimensions(width: 10.0, height: 8.0), "10.0 × 8.0")
+        XCTAssertEqual(SplatRoomMeasurementUtils.formatDimensions(width: 4.5, height: 3.2), "4.5 × 3.2")
+        XCTAssertEqual(SplatRoomMeasurementUtils.formatDimensions(width: 10.0, height: 8.0), "10.0 × 8.0")
     }
 
     func testMetersToFeet() {
-        XCTAssertEqual(SharpRoomMeasurementUtils.metersToFeet(1.0), 3.28084, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomMeasurementUtils.metersToFeet(3.0), 9.84252, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.metersToFeet(1.0), 3.28084, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.metersToFeet(3.0), 9.84252, accuracy: 0.001)
     }
 
     func testFeetToMeters() {
-        XCTAssertEqual(SharpRoomMeasurementUtils.feetToMeters(3.28084), 1.0, accuracy: 0.001)
-        XCTAssertEqual(SharpRoomMeasurementUtils.feetToMeters(10.0), 3.048, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.feetToMeters(3.28084), 1.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.feetToMeters(10.0), 3.048, accuracy: 0.001)
     }
 
     func testCalculateFloorArea() {
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateFloorArea(width: 4, depth: 5), 20.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateFloorArea(width: 4, depth: 5), 20.0, accuracy: 0.001)
     }
 
     func testCalculateWallArea() {
         // Room 4x3x5 (width x height x depth)
         // Wall area = 2*(4*3) + 2*(5*3) = 24 + 30 = 54
-        XCTAssertEqual(SharpRoomMeasurementUtils.calculateWallArea(width: 4, height: 3, depth: 5), 54.0, accuracy: 0.001)
+        XCTAssertEqual(SplatRoomMeasurementUtils.calculateWallArea(width: 4, height: 3, depth: 5), 54.0, accuracy: 0.001)
     }
 
     // MARK: - Vector Utils Tests
@@ -319,7 +299,7 @@ final class SharpRoomTests: XCTestCase {
         let v1 = SIMD3<Float>(1, 0, 0)
         let v2 = SIMD3<Float>(2, 0, 0)
 
-        let angle = SharpRoomVectorUtils.angleBetween(v1, v2)
+        let angle = SplatRoomVectorUtils.angleBetween(v1, v2)
         XCTAssertEqual(angle, 0, accuracy: 0.001)
     }
 
@@ -327,7 +307,7 @@ final class SharpRoomTests: XCTestCase {
         let v1 = SIMD3<Float>(1, 0, 0)
         let v2 = SIMD3<Float>(0, 1, 0)
 
-        let angle = SharpRoomVectorUtils.angleBetween(v1, v2)
+        let angle = SplatRoomVectorUtils.angleBetween(v1, v2)
         XCTAssertEqual(angle, .pi / 2, accuracy: 0.001)
     }
 
@@ -335,7 +315,7 @@ final class SharpRoomTests: XCTestCase {
         let v1 = SIMD3<Float>(1, 0, 0)
         let v2 = SIMD3<Float>(-1, 0, 0)
 
-        let angle = SharpRoomVectorUtils.angleBetween(v1, v2)
+        let angle = SplatRoomVectorUtils.angleBetween(v1, v2)
         XCTAssertEqual(angle, .pi, accuracy: 0.001)
     }
 
@@ -343,7 +323,7 @@ final class SharpRoomTests: XCTestCase {
         let vector = SIMD3<Float>(1, 1, 0)
         let planeNormal = SIMD3<Float>(0, 1, 0)  // XZ plane
 
-        let projected = SharpRoomVectorUtils.projectOntoPlane(vector, planeNormal: planeNormal)
+        let projected = SplatRoomVectorUtils.projectOntoPlane(vector, planeNormal: planeNormal)
 
         XCTAssertEqual(projected.x, 1, accuracy: 0.001)
         XCTAssertEqual(projected.y, 0, accuracy: 0.001)
@@ -354,7 +334,7 @@ final class SharpRoomTests: XCTestCase {
         let p1 = SIMD3<Float>(0, 0, 0)
         let p2 = SIMD3<Float>(10, 20, 30)
 
-        let mid = SharpRoomVectorUtils.midpoint(p1, p2)
+        let mid = SplatRoomVectorUtils.midpoint(p1, p2)
 
         XCTAssertEqual(mid.x, 5, accuracy: 0.001)
         XCTAssertEqual(mid.y, 10, accuracy: 0.001)
@@ -365,7 +345,7 @@ final class SharpRoomTests: XCTestCase {
         let p1 = SIMD3<Float>(0, 0, 0)
         let p2 = SIMD3<Float>(3, 4, 0)
 
-        let dist = SharpRoomVectorUtils.distance(p1, p2)
+        let dist = SplatRoomVectorUtils.distance(p1, p2)
         XCTAssertEqual(dist, 5.0, accuracy: 0.001)
     }
 
@@ -417,7 +397,7 @@ final class SharpRoomTests: XCTestCase {
         }
 
         measure {
-            _ = SharpRoomBoundsUtils.calculateBoundingBox(points: points)
+            _ = SplatRoomBoundsUtils.calculateBoundingBox(points: points)
         }
     }
 
@@ -435,7 +415,7 @@ final class SharpRoomTests: XCTestCase {
         let planeNormal = SIMD3<Float>(0, 1, 0)
 
         measure {
-            _ = SharpRoomPlaneUtils.countInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.2)
+            _ = SplatRoomPlaneUtils.countInliers(points: points, planePoint: planePoint, planeNormal: planeNormal, threshold: 0.2)
         }
     }
 }

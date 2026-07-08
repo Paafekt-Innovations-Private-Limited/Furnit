@@ -4,7 +4,7 @@ import SceneKit
 import simd
 import UIKit
 
-struct SwiftSharpMathRoomResult: Sendable {
+struct PlanarRoomResult: Sendable {
     let plyURL: URL
     let objURL: URL
     let pointCount: Int
@@ -33,7 +33,7 @@ struct SwiftSharpMathRoomResult: Sendable {
     }
 }
 
-enum SwiftSharpMathRoomReconstructor {
+enum PlanarRoomReconstructor {
     struct Configuration: Sendable {
         var longestSideMeters: Float = 3.0
         var pixelStep: Int = 2
@@ -48,12 +48,12 @@ enum SwiftSharpMathRoomReconstructor {
     static func reconstruct(
         image: UIImage,
         configuration: Configuration = .default
-    ) throws -> SwiftSharpMathRoomResult {
+    ) throws -> PlanarRoomResult {
         let raster = try RasterImage(image: image.fixedOrientation())
         let width = raster.width
         let height = raster.height
         guard width > 0, height > 0 else {
-            throw SwiftSharpMathRoomError.invalidImage
+            throw PlanarRoomError.invalidImage
         }
 
         let longestSide = max(width, height)
@@ -90,9 +90,9 @@ enum SwiftSharpMathRoomReconstructor {
             vDSP_Length(sampledRows.count)
         )
 
-        var occupied = Set<SwiftSharpVoxelKey>()
+        var occupied = Set<PlanarRoomVoxelKey>()
         occupied.reserveCapacity(sampledColumns.count * sampledRows.count)
-        var points: [SwiftSharpPoint] = []
+        var points: [PlanarRoomPoint] = []
         points.reserveCapacity(min(sampledColumns.count * sampledRows.count, 300_000))
 
         let voxelSize = max(configuration.voxelSizeMeters, 0.0001)
@@ -102,7 +102,7 @@ enum SwiftSharpMathRoomReconstructor {
             for (columnIndex, columnFloat) in sampledColumns.enumerated() {
                 let xPixel = Int(columnFloat)
                 let xWorld = xCoordinates[columnIndex]
-                let key = SwiftSharpVoxelKey(
+                let key = PlanarRoomVoxelKey(
                     x: Int(floor(xWorld / voxelSize)),
                     y: Int(floor(yWorld / voxelSize)),
                     z: 0
@@ -111,7 +111,7 @@ enum SwiftSharpMathRoomReconstructor {
                     continue
                 }
                 points.append(
-                    SwiftSharpPoint(
+                    PlanarRoomPoint(
                         position: SIMD3<Float>(xWorld, yWorld, 0),
                         color: raster.average2x2Color(x: xPixel, y: yPixel)
                     )
@@ -120,20 +120,20 @@ enum SwiftSharpMathRoomReconstructor {
         }
 
         guard !points.isEmpty else {
-            throw SwiftSharpMathRoomError.noPoints
+            throw PlanarRoomError.noPoints
         }
 
         let outputDirectory = try resolvedOutputDirectory(configuration.outputDirectory)
         let stamp = outputStamp()
-        let plyURL = outputDirectory.appendingPathComponent("SwiftSharpMathRoom_\(stamp).ply")
-        let objURL = outputDirectory.appendingPathComponent("SwiftSharpMathRoom_\(stamp).obj")
+        let plyURL = outputDirectory.appendingPathComponent("PlanarRoom_\(stamp).ply")
+        let objURL = outputDirectory.appendingPathComponent("PlanarRoom_\(stamp).obj")
 
         try writeGaussianPLY(points: points, quadSizeMeters: configuration.quadSizeMeters, to: plyURL)
         try writeOBJ(points: points, quadSizeMeters: configuration.quadSizeMeters, to: objURL)
 
         let roomWidth = Float(width) * metersPerPixel
         let roomHeight = Float(height) * metersPerPixel
-        return SwiftSharpMathRoomResult(
+        return PlanarRoomResult(
             plyURL: plyURL,
             objURL: objURL,
             pointCount: points.count,
@@ -157,7 +157,7 @@ enum SwiftSharpMathRoomReconstructor {
     private static func resolvedOutputDirectory(_ override: URL?) throws -> URL {
         let directory = override ?? FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("SwiftSharpMathRooms", isDirectory: true)
+            .appendingPathComponent("PlanarRooms", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -169,7 +169,7 @@ enum SwiftSharpMathRoomReconstructor {
     }
 
     private static func writeGaussianPLY(
-        points: [SwiftSharpPoint],
+        points: [PlanarRoomPoint],
         quadSizeMeters: Float,
         to url: URL
     ) throws {
@@ -220,7 +220,7 @@ enum SwiftSharpMathRoomReconstructor {
     }
 
     private static func writeOBJ(
-        points: [SwiftSharpPoint],
+        points: [PlanarRoomPoint],
         quadSizeMeters: Float,
         to url: URL
     ) throws {
@@ -231,7 +231,7 @@ enum SwiftSharpMathRoomReconstructor {
         }
 
         var writer = BufferedOBJWriter(fileHandle: handle)
-        writer.write("# Furnit Swift SHARP Math flat room mesh\n")
+        writer.write("# Furnit Planar Room flat room mesh\n")
         writer.write("# Vertex colors are written as OBJ extension: v x y z r g b\n")
 
         let size = max(quadSizeMeters, 0.0001)
@@ -282,18 +282,18 @@ enum SwiftSharpMathRoomReconstructor {
     }
 }
 
-private struct SwiftSharpPoint {
+private struct PlanarRoomPoint {
     let position: SIMD3<Float>
-    let color: SwiftSharpRGB
+    let color: PlanarRoomRGB
 }
 
-private struct SwiftSharpVoxelKey: Hashable {
+private struct PlanarRoomVoxelKey: Hashable {
     let x: Int
     let y: Int
     let z: Int
 }
 
-private struct SwiftSharpRGB {
+private struct PlanarRoomRGB {
     let r: UInt8
     let g: UInt8
     let b: UInt8
@@ -310,12 +310,12 @@ private struct RasterImage {
 
     init(image: UIImage) throws {
         guard let cgImage = image.cgImage else {
-            throw SwiftSharpMathRoomError.invalidImage
+            throw PlanarRoomError.invalidImage
         }
         width = cgImage.width
         height = cgImage.height
         guard width > 0, height > 0 else {
-            throw SwiftSharpMathRoomError.invalidImage
+            throw PlanarRoomError.invalidImage
         }
 
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
@@ -328,13 +328,13 @@ private struct RasterImage {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
         ) else {
-            throw SwiftSharpMathRoomError.imageRasterizationFailed
+            throw PlanarRoomError.imageRasterizationFailed
         }
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         pixels = rgba
     }
 
-    func average2x2Color(x: Int, y: Int) -> SwiftSharpRGB {
+    func average2x2Color(x: Int, y: Int) -> PlanarRoomRGB {
         let x1 = min(x + 1, width - 1)
         let y1 = min(y + 1, height - 1)
         let i00 = (y * width + x) * 4
@@ -344,7 +344,7 @@ private struct RasterImage {
         let r = (Int(pixels[i00]) + Int(pixels[i10]) + Int(pixels[i01]) + Int(pixels[i11]) + 2) / 4
         let g = (Int(pixels[i00 + 1]) + Int(pixels[i10 + 1]) + Int(pixels[i01 + 1]) + Int(pixels[i11 + 1]) + 2) / 4
         let b = (Int(pixels[i00 + 2]) + Int(pixels[i10 + 2]) + Int(pixels[i01 + 2]) + Int(pixels[i11 + 2]) + 2) / 4
-        return SwiftSharpRGB(r: UInt8(r), g: UInt8(g), b: UInt8(b))
+        return PlanarRoomRGB(r: UInt8(r), g: UInt8(g), b: UInt8(b))
     }
 }
 
@@ -373,7 +373,7 @@ private struct BufferedOBJWriter {
     }
 }
 
-enum SwiftSharpMathRoomError: LocalizedError, Equatable {
+enum PlanarRoomError: LocalizedError, Equatable {
     case invalidImage
     case imageRasterizationFailed
     case noPoints

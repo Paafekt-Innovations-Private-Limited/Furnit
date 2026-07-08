@@ -23,7 +23,7 @@ struct LazyView<Content: View>: View {
 private func destinationView(for model: USDZModel) -> some View {
     if let modelURL = model.temporaryURL {
         if model.fileType == .ply {
-            SharpRoomView(
+            SplatRoomView(
                 plyURL: modelURL,
                 allowSave: false,
                 photoOrientation: model.photoOrientation,
@@ -80,12 +80,6 @@ struct ContentView: View {
                         logDebug("❌ [ContentView] User is NOT authenticated")
                     }
             }
-        }
-        .overlay(alignment: .bottom) {
-            SharpGenerationBottomBar()
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .zIndex(1000)
         }
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
     }
@@ -282,12 +276,6 @@ struct HomeTab: View {
             // Refresh models when sheet closes
             .onChange(of: showingPhotoRoomCreator) { _, isShowing in
                 if !isShowing {
-                    // Photo room sheet fully closed — safe to drop heavy singletons (not during in-sheet navigation).
-                    Task { @MainActor in
-                        if !SHARPService.shared.isBackgroundGenerationActive {
-                            SHARPService.shared.releaseResources()
-                        }
-                    }
                     refreshSavedRoomsList(forceUIReload: true)
                 }
             }
@@ -295,9 +283,6 @@ struct HomeTab: View {
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissPhotoRoomSheet"))) { _ in
                 showingPhotoRoomCreator = false
                 limitManager.updateRoomCount()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SharpBackgroundRoomSaved"))) { _ in
-                refreshSavedRoomsList(forceUIReload: true)
             }
             // Settings Sheet
             .sheet(isPresented: $showingSettings) {
@@ -466,12 +451,12 @@ struct HomeTab: View {
                     let _ = fileInfo
                 }
 
-                // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
+                // Handle PLY files - navigate to SplatRoomView (Gaussian splat viewer)
                 // Use LazyView to ensure PLY files are only parsed when actually opened
                 if model.fileType == .ply {
                     NavigationLink {
                         LazyView {
-                            SharpRoomView(
+                            SplatRoomView(
                                 plyURL: modelURL,
                                 allowSave: false,
                                 photoOrientation: model.photoOrientation,
@@ -825,7 +810,7 @@ struct HomeViewModelRow: View {
         }
     }
 
-    /// Under the room name: SHARP PLY vs manual mesh/GLB vs bundle USDZ.
+    /// Under the room name: Splat PLY vs manual mesh/GLB vs bundle USDZ.
     private var roomCreationKindSubtitle: String {
         switch model.fileType {
         case .ply:

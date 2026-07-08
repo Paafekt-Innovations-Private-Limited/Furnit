@@ -49,7 +49,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var useBilinearUpscaling: Bool = false
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
 
-    // MARK: Room Dimensions (from SHARP output, in meters)
+    // MARK: Room Dimensions (from Splat output, in meters)
     var roomWidthMeters: Float = 4.0   // Default fallback
     var roomHeightMeters: Float = 3.0  // Default fallback
     /// Front-to-back span (m) for monocular depth fallback when AR depth is missing.
@@ -59,15 +59,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var roomRaycastSceneDimensions: RoomRaycastDimensions?
     /// Canonical room intelligence model when available. Used to prefer persisted calibration and camera hints over heuristic sizing.
     var roomModel: RoomModel?
-    /// Sharp Room: furniture depth can use the splat depth buffer instead of device-pitch floor heuristics.
-    weak var sharpRoomSplatMeasurementHost: GaussianSplatMeasurementHost?
+    /// Splat Room: furniture depth can use the splat depth buffer instead of device-pitch floor heuristics.
+    weak var splatRoomMeasurementHost: GaussianSplatMeasurementHost?
     var cameraFocalLengthPixels: Float = 0
 
     private var captureBackCamera: AVCaptureDevice?
     var onFurnitureSizeEstimated: ((FurnitureSizeEstimate) -> Void)?
     /// Mean straight sRGB (0…1) over opaque-enough pixels of the composited segmentation cutout; throttled (~4 Hz).
     var onSegmentationMaskMeanColorSRGB: ((SIMD3<Float>) -> Void)?
-    /// Sharp Room uses this to opt into AR sizing explicitly instead of defaulting to it.
+    /// Splat Room uses this to opt into AR sizing explicitly instead of defaulting to it.
     var arAssistedSizingEnabled: Bool = true
     /// Optional manual furniture height from the room viewers' calibrate sheet. When set, the overlay
     /// uses this value for AR-assisted scaling instead of the raw depth-derived height.
@@ -264,7 +264,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var segmentationCompletedOnceThisSession = false
     /// True only while the initial detection startup banner is allowed to update.
     private var startupProgressActive = false
-    /// When true (e.g. Sharp Room already completed segmentation this session), hide startup progress even for a new UIView.
+    /// When true (e.g. Splat Room already completed segmentation this session), hide startup progress even for a new UIView.
     var suppressStartupProgress = false
     /// Called once when the first valid segmentation mask is ready (parent can persist “no progress next time”).
     var onFirstSegmentationComplete: (() -> Void)?
@@ -962,7 +962,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         tapGesture.require(toFail: panGesture)
         selectedObjectChipButton.addTarget(self, action: #selector(handleClearSelectedObjectTapped), for: .touchUpInside)
 
-        // Listen for reset notification from SharpRoomView toolbar ("reset size" button).
+        // Listen for reset notification from SplatRoomView toolbar ("reset size" button).
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleResetScaleTapped),
@@ -2145,7 +2145,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Applies the same `videoRotationAngle` to ``AVCaptureVideoDataOutput`` and ``AVCaptureVideoPreviewLayer``
     /// so the live identify-mode feed matches the pixel buffers used for segmentation. Without syncing the
-    /// preview layer, landscape-locked Sharp rooms could show a skewed or misaligned camera feed vs overlays.
+    /// preview layer, landscape-locked Splat rooms could show a skewed or misaligned camera feed vs overlays.
     private func applyLockedOrientationVideoRotation() {
         guard !isUsingARCameraPath else { return }
         let angle: CGFloat = lockedOrientation == .landscape ? 0 : 90
@@ -2217,7 +2217,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         pendingStillImageScanRequest = nil
         processedStillImageScanRequestID = nil
         suppressARDepthCompanionAfterCaptureFailure = false
-        sharpRoomSplatMeasurementHost = nil
+        splatRoomMeasurementHost = nil
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -2236,7 +2236,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     /// Switch AR-assisted sizing mode without fully tearing down the Furniture Fit container.
-    /// Full `stop()` resets segmentation UI state and can leave Sharp Room feeling frozen when the
+    /// Full `stop()` resets segmentation UI state and can leave Splat Room feeling frozen when the
     /// user taps the AR sizing icon after brain mode is already active.
     func reconfigureAssistedSizingModeIfNeeded() {
         guard furnitureFitCameraStartupInitiated || captureSession.isRunning || isUsingARCameraPath || isARDepthCompanionSessionRunning else {
@@ -2299,10 +2299,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// Sharp Room already supplies splat-surface depth.
+    /// Splat Room already supplies splat-surface depth.
     /// Keep Furniture Fit on the classic path there unless the viewer explicitly opts into AR sizing.
     private var shouldForceClassicCameraPath: Bool {
-        sharpRoomSplatMeasurementHost != nil && !arAssistedSizingEnabled
+        splatRoomMeasurementHost != nil && !arAssistedSizingEnabled
     }
 
     private func startPreferredCameraPathIfNeeded() {
@@ -2459,7 +2459,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             if self.debugMode {
                 let reason = self.shouldForceClassicCameraPath
-                    ? "sharp_room_uses_splat_depth"
+                    ? "splat_room_uses_splat_depth"
                     : "ar_path_not_selected"
                 logDebug("📷 [FurnitureFit] AVCaptureSession (classic); floor-contact depth estimate active reason=\(reason)")
             }
@@ -2468,7 +2468,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 Self.didLogFurnitureFitSizingPolicy = true
                 if self.shouldForceClassicCameraPath {
                     logFurnitureFitSize(
-                        "policy=sharp_room_classic_camera: AVCapture video + SHARP/splat-aware sizing. No separate Furniture Fit ARSession when Sharp Room host is active."
+                        "policy=splat_room_classic_camera: AVCapture video + Splat/splat-aware sizing. No separate Furniture Fit ARSession when Splat Room host is active."
                     )
                 } else {
                     logFurnitureFitSize(
@@ -5048,7 +5048,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
     }
 
-    /// First successful mask: optional bbox×room-scale size in **meters** on the progress chip, and callback for parents (Sharp room UI).
+    /// First successful mask: optional bbox×room-scale size in **meters** on the progress chip, and callback for parents (Splat room UI).
     private func finishFirstDetectionIfNeeded(
         furnitureWidthMeters: Float?,
         furnitureHeightMeters: Float?,

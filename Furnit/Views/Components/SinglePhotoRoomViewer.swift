@@ -818,14 +818,14 @@ struct DraggableHandle: View {
     }
 }
 
-/// Pushes `SharpRoomView` with PLY in **one** state update (avoids `isPresented` building stale destinations).
+/// Pushes `SplatRoomView` with PLY in **one** state update (avoids `isPresented` building stale destinations).
 private struct SplatViewerDestination: Identifiable, Hashable {
     let id: UUID
     let plyURL: URL
-    /// Scene-unit AABB from SHARP at write time (for `[PLY_BOUNDS] SHARP_ROOM_COMPARE`).
-    let sharpPlyW: Float?
-    let sharpPlyH: Float?
-    let sharpPlyD: Float?
+    /// Scene-unit AABB from Splat at write time (for `[PLY_BOUNDS] SPLAT_ROOM_COMPARE`).
+    let splatPlyW: Float?
+    let splatPlyH: Float?
+    let splatPlyD: Float?
     let roomWidth: Float?
     let roomHeight: Float?
     let roomDepth: Float?
@@ -835,22 +835,22 @@ private struct SplatViewerDestination: Identifiable, Hashable {
 
     init(
         plyURL: URL,
-        sharpPlyAabb: (Float, Float, Float)? = nil,
+        splatPlyAabb: (Float, Float, Float)? = nil,
         roomMeters: (Float, Float, Float)? = nil,
         sourcePhotoPixels: (Int, Int)? = nil,
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpClassicPly
+        roomCoordinateFrame: RoomCoordinateFrame = .classicSplatPly
     ) {
         self.id = UUID()
         self.plyURL = plyURL
         self.roomCoordinateFrame = roomCoordinateFrame
-        if let a = sharpPlyAabb {
-            self.sharpPlyW = a.0
-            self.sharpPlyH = a.1
-            self.sharpPlyD = a.2
+        if let a = splatPlyAabb {
+            self.splatPlyW = a.0
+            self.splatPlyH = a.1
+            self.splatPlyD = a.2
         } else {
-            self.sharpPlyW = nil
-            self.sharpPlyH = nil
-            self.sharpPlyD = nil
+            self.splatPlyW = nil
+            self.splatPlyH = nil
+            self.splatPlyD = nil
         }
         if let roomMeters {
             self.roomWidth = roomMeters.0
@@ -875,7 +875,7 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let id = UUID()
     let model: USDZModel
     let summary: String
-    /// Depth Anything metric dims at generation — same pattern as ``SplatViewerDestination`` room metres for SHARP.
+    /// Depth Anything metric dims at generation — same pattern as ``SplatViewerDestination`` room metres for Splat.
     let roomWidthMeters: Float
     let roomHeightMeters: Float
     let roomDepthMeters: Float
@@ -883,7 +883,7 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let measurementDebugLine: String?
 }
 
-/// Pre-save Depth Anything preview — matches SHARP ML navigation chrome (nav-bar save, name prompt, discard alert).
+/// Pre-save Depth Anything preview — matches Splat ML navigation chrome (nav-bar save, name prompt, discard alert).
 private struct DepthAnythingPreviewRoomView: View {
     let destination: USDZViewerDestination
 
@@ -1103,7 +1103,6 @@ private struct DepthAnythingPreviewRoomView: View {
                     saveWasSuccessful = true
                     showSaveAlert = true
                     roomName = ""
-                    NotificationCenter.default.post(name: NSNotification.Name("SharpBackgroundRoomSaved"), object: nil)
                     logDebug("✅ [DepthAnythingRoom] Saved room to \(savedURL.lastPathComponent)")
                 }
             } catch {
@@ -2693,7 +2692,7 @@ struct SceneKitViewer: View {
                     logDebug("🪟 [SceneKitViewer] Gesture overlay appeared")
                 }
 
-            // Custom back button (top-left) - matches SharpRoomView style
+            // Custom back button (top-left) - matches SplatRoomView style
             VStack {
                 HStack {
                     Button(action: {

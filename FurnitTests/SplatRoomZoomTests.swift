@@ -1,13 +1,13 @@
-// SharpRoomZoomTests.swift
+// SplatRoomZoomTests.swift
 // Tests for pinch zoom handling: zoom in (scale > 1) = closer, zoom out (scale < 1) = further.
-// 1) Unit tests using the same math as the JS in SharpRoomView.
+// 1) Unit tests using the same math as the JS in SplatRoomView.
 // 2) Integration test that runs the real zoom formula in a WKWebView.
 
 import XCTest
 import WebKit
 @testable import Furnit
 
-// MARK: - Zoom math (mirrors JS in SharpRoomView: amplifiedScale, offset scale, distance clamp)
+// MARK: - Zoom math (mirrors JS in SplatRoomView: amplifiedScale, offset scale, distance clamp)
 
 private struct ZoomCameraMath {
 
@@ -82,7 +82,7 @@ private struct ZoomCameraMath {
 
 // MARK: - Unit tests (zoom math)
 
-final class SharpRoomZoomTests: XCTestCase {
+final class SplatRoomZoomTests: XCTestCase {
 
     func testZoomInDecreasesDistance() {
         let target = ZoomCameraMath.Vec3(x: 0, y: 0, z: 0)
@@ -196,9 +196,9 @@ final class SharpRoomZoomTests: XCTestCase {
 
 // MARK: - Integration test (run real zoom formula in WKWebView)
 
-extension SharpRoomZoomTests {
+extension SplatRoomZoomTests {
 
-    /// HTML that implements the exact same zoom formula as SharpRoomView (plain JS, no THREE).
+    /// HTML that implements the exact same zoom formula as SplatRoomView (plain JS, no THREE).
     private static let zoomTestHTML = """
     <!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
     <script>

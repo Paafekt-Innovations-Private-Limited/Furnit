@@ -43,7 +43,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         // Optimize for camera frame capture rather than world tracking
         arConfiguration.worldAlignment = .gravity
         
-        // Enable auto focus for sharp furniture images
+        // Enable auto focus for splat furniture images
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.personSegmentation) {
             // Use person segmentation if available for better object detection
             arConfiguration.frameSemantics = .personSegmentation

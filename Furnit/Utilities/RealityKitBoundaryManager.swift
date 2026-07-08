@@ -372,7 +372,7 @@ class RealityKitBoundaryManager {
     // ✅ Get optimal camera position for viewing the room (delegates to Android-matching back-center formula)
     // Used when room is opened from list or when room is created.
     func getOptimalCameraPosition(
-        roomCoordinateFrame: RoomCoordinateFrame = .sharpCanonicalPly,
+        roomCoordinateFrame: RoomCoordinateFrame = .canonicalSplatPly,
         photoOrientation: PhotoOrientation = .portrait
     ) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         if roomCoordinateFrame == .depthAnythingImageDepthMeters {

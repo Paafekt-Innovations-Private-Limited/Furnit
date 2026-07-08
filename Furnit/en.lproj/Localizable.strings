@@ -175,8 +175,6 @@
 "licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
-"licenses.sharpTitle" = "Sharp ML";
-"licenses.sharp" = "Copyright (c) SharpML contributors. Licensed under the MIT License.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "On-device Gaussian splat rendering. Copyright (c) Sean Cier. Licensed under the MIT License.";
 "licenses.firebaseTitle" = "Firebase";
@@ -359,28 +357,28 @@
 "generationProgress.preparing" = "Preparing...";
 "generationProgress.mayTakeFewMinutes" = "This may take a few minutes";
 
-// MARK: - SHARP (on-device)
-"sharp.downloadingEngine" = "Downloading 3D engine...";
-"sharp.downloadingEnginePercent" = "Downloading 3D engine... %d%%";
-"sharp.downloadComplete" = "Download complete";
-"sharp.downloadFailed" = "Download failed";
-"sharp.gettingReady" = "Getting ready...";
-"sharp.notEnoughSpace" = "Not enough space on device";
-"sharp.settingThingsUp" = "Setting things up...";
-"sharp.ready" = "Ready!";
-"sharp.couldNotGetReady" = "Couldn't get ready";
-"sharp.somethingWentWrong" = "Something went wrong";
-"sharp.preparingPhoto" = "Preparing your photo...";
-"sharp.creatingRoom" = "Creating your 3D room...";
-"sharp.almostDone" = "Almost done...";
-"sharp.done" = "Done!";
-"sharp.couldNotCreateRoom" = "Couldn't create room";
-"sharp.cancelled" = "Cancelled";
-"sharp.liveRoom" = "Live Room";
-"sharp.stillRoom" = "Still Room";
-"sharp.liveRoomCameraMode" = "Live Room Camera Mode";
-"sharp.stillRoomCameraMode" = "Still Room Camera Mode";
-"sharp.cameraModeToggleAccessibilityHint" = "Switches between Still Room and Live Room camera.";
+// MARK: - Splat (on-device)
+"roomGeneration.downloadingEngine" = "Downloading 3D engine...";
+"roomGeneration.downloadingEnginePercent" = "Downloading 3D engine... %d%%";
+"roomGeneration.downloadComplete" = "Download complete";
+"roomGeneration.downloadFailed" = "Download failed";
+"roomGeneration.gettingReady" = "Getting ready...";
+"roomGeneration.notEnoughSpace" = "Not enough space on device";
+"roomGeneration.settingThingsUp" = "Setting things up...";
+"roomGeneration.ready" = "Ready!";
+"roomGeneration.couldNotGetReady" = "Couldn't get ready";
+"roomGeneration.somethingWentWrong" = "Something went wrong";
+"roomGeneration.preparingPhoto" = "Preparing your photo...";
+"roomGeneration.creatingRoom" = "Creating your 3D room...";
+"roomGeneration.almostDone" = "Almost done...";
+"roomGeneration.done" = "Done!";
+"roomGeneration.couldNotCreateRoom" = "Couldn't create room";
+"roomGeneration.cancelled" = "Cancelled";
+"roomGeneration.liveRoom" = "Live Room";
+"roomGeneration.stillRoom" = "Still Room";
+"roomGeneration.liveRoomCameraMode" = "Live Room Camera Mode";
+"roomGeneration.stillRoomCameraMode" = "Still Room Camera Mode";
+"roomGeneration.cameraModeToggleAccessibilityHint" = "Switches between Still Room and Live Room camera.";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "3D Room View";
@@ -412,7 +410,7 @@
 "roomViewer.pinchGestureHintExplanation" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
 "roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
 "roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
-"sharp.runInBackground" = "Run in Background";
+"roomGeneration.runInBackground" = "Run in Background";
 "roomViewer.displayAllHelpers" = "Display all helpers";
 "roomViewer.segmentFurnitureAction" = "Segment";
 "roomViewer.stopSegmentationAction" = "Stop";

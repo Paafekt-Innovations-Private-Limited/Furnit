@@ -282,7 +282,7 @@ struct GLBRoomView: View {
     @State private var tapHintColorIndex: Int = 0
     private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
     @State private var tapHintColorTimer: Timer?
-    /// Pinch-zoom hint (top-left with D-pad) — same as ``SharpRoomView`` / ``MeshRoomView``.
+    /// Pinch-zoom hint (top-left with D-pad) — same as ``SplatRoomView`` / ``MeshRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
 
@@ -421,7 +421,7 @@ struct GLBRoomView: View {
                     // segmented cutout. INVARIANT: every screen hosting FurnitureFitUIView MUST pass this
                     // closure. Without it, a tap sets the view's segmentationMode internally but the @State
                     // stays .identifyOnly, so the next updateUIView clobbers it back and the cutout never
-                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SharpRoomView.
+                    // renders. If tap-to-segment breaks again, check this wiring first. Mirror SplatRoomView.
                     logDebug("BRAIN FLOW: FurnitureFit requested segmentationMode=\(mode)")
                     furnitureFitSegmentationMode = mode
                 },
@@ -2080,7 +2080,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // Orbit controls - single-finger rotate matches Sharp room feel (no inertia, ~0.005 rad/px).
+                // Orbit controls - single-finger rotate matches Splat room feel (no inertia, ~0.005 rad/px).
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = false;
                 controls.rotateSpeed = 0.7;
@@ -2090,7 +2090,7 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.minDistance = 0.5;
                 controls.maxDistance = 20;
 
-                // D-pad / Sharp parity: walk on XZ, vertical Y (same as embedded Sharp WebGL).
+                // D-pad / Splat parity: walk on XZ, vertical Y (same as embedded Splat WebGL).
                 window.moveCamera = function(dx, dy) {
                     const moveSpeed = 0.03;
                     let newX = camera.position.x + dx * moveSpeed;
@@ -2202,7 +2202,7 @@ struct GLBWebGLView: UIViewRepresentable {
 
                             const eyeHeight = roomHeight * 0.5;
                             const cameraZ = roomDepth * 0.2;
-                            // Target on the front wall so single-finger rotate orbits around it (matches Sharp room).
+                            // Target on the front wall so single-finger rotate orbits around it (matches Splat room).
                             const targetZ = -roomDepth * 0.5;
 
                             initialCameraPos.set(0, eyeHeight, cameraZ);

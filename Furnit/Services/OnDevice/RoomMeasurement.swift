@@ -43,7 +43,7 @@ enum PhotoOrientation: String, Codable, Hashable {
         }
     }
 
-    /// For **saved** SHARP thumbnails and other upright JPEGs: orientation is usually baked to `.up`, so
+    /// For **saved** Splat thumbnails and other upright JPEGs: orientation is usually baked to `.up`, so
     /// ``detect(from:)`` would wrongly return `.landscape` for portrait rooms (AR roll then stays landscape-native).
     ///
     /// Prefer **logical** width/height from ``UIImage/size`` (orientation is applied by UIKit) so landscape

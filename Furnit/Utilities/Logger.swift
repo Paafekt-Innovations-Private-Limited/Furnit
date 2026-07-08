@@ -125,7 +125,7 @@ func logFurnitureFitOverlay(_ message: @autoclosure () -> String) {
 /// but they are still gated by Settings → Debug mode to avoid noisy production logs.
 private enum AlwaysOnOSLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
-    static let sharp = Logger(subsystem: subsystem, category: "SHARP")
+    static let splat = Logger(subsystem: subsystem, category: "Splat")
     static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
     static let arRoom = Logger(subsystem: subsystem, category: "AR_ROOM")
     static let depthPro = Logger(subsystem: subsystem, category: "DEPTH_PRO")
@@ -140,15 +140,15 @@ func logWallMeasurement(_ message: @autoclosure () -> String) {
     AlwaysOnOSLog.wallMeas.notice("\(line, privacy: .public)")
 }
 
-/// SHARP Core ML / pipeline milestones. Filter: category `SHARP` or search `[SHARP]`.
+/// Splat Core ML / pipeline milestones. Filter: category `Splat` or search `[Splat]`.
 @inline(__always)
-func logSharpMilestone(_ message: @autoclosure () -> String) {
+func logSplatRoomMilestone(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
-    let line = "[SHARP] \(message())"
-    AlwaysOnOSLog.sharp.notice("\(line, privacy: .public)")
+    let line = "[Splat] \(message())"
+    AlwaysOnOSLog.splat.notice("\(line, privacy: .public)")
 }
 
-/// Sharp Room: SHARP-derived room W×H×D diagnostics (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
+/// Splat Room: Splat-derived room W×H×D diagnostics (post-extract, pre-save). Filter: `AR_ROOM` or `[AR_ROOM_MEASURE]`.
 @inline(__always)
 func logARRoomMeasure(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }

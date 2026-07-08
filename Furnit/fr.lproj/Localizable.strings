@@ -149,8 +149,6 @@
 "licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
 "licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
-"licenses.sharpTitle" = "Reconstruction 3D de pièce (SHARP)";
-"licenses.sharp" = "Copyright (c) contributeurs SharpML. Sous licence MIT.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "Rendu Gaussian splat sur l’appareil. Copyright (c) Sean Cier. Sous licence MIT.";
 "licenses.firebaseTitle" = "Firebase";
@@ -380,7 +378,7 @@
 "roomViewer.styleTag.nordic" = "nordique";
 "roomViewer.styleTag.classic" = "classique";
 "roomViewer.fullVideoFurnitureTapHint" = "Appuyez sur tous les objets que vous souhaitez vérifier avec la pièce";
-"sharp.runInBackground" = "Exécuter en arrière-plan";
+"roomGeneration.runInBackground" = "Exécuter en arrière-plan";
 "roomViewer.displayAllHelpers" = "Afficher toutes les aides";
 
 // MARK: - Crash Report
@@ -474,27 +472,27 @@
 "settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "Prendre une photo";
 "camera.chooseOrientationShort" = "Portrait ou paysage";
-"sharp.downloadingEngine" = "Téléchargement du moteur 3D...";
-"sharp.downloadingEnginePercent" = "Téléchargement du moteur 3D... %d%%";
-"sharp.downloadComplete" = "Téléchargement terminé";
-"sharp.downloadFailed" = "Échec du téléchargement";
-"sharp.gettingReady" = "Préparation...";
-"sharp.notEnoughSpace" = "Espace insuffisant sur l'appareil";
-"sharp.settingThingsUp" = "Configuration...";
-"sharp.ready" = "Prêt !";
-"sharp.couldNotGetReady" = "Impossible de finaliser la préparation";
-"sharp.somethingWentWrong" = "Un problème est survenu";
-"sharp.preparingPhoto" = "Préparation de votre photo...";
-"sharp.creatingRoom" = "Création de votre pièce 3D...";
-"sharp.almostDone" = "Presque terminé...";
-"sharp.done" = "Terminé !";
-"sharp.couldNotCreateRoom" = "Impossible de créer la pièce";
-"sharp.cancelled" = "Annulé";
-"sharp.liveRoom" = "Pièce en direct";
-"sharp.stillRoom" = "Pièce fixe";
-"sharp.liveRoomCameraMode" = "Mode caméra pièce en direct";
-"sharp.stillRoomCameraMode" = "Mode caméra pièce fixe";
-"sharp.cameraModeToggleAccessibilityHint" = "Bascule entre la caméra pièce fixe et pièce en direct.";
+"roomGeneration.downloadingEngine" = "Téléchargement du moteur 3D...";
+"roomGeneration.downloadingEnginePercent" = "Téléchargement du moteur 3D... %d%%";
+"roomGeneration.downloadComplete" = "Téléchargement terminé";
+"roomGeneration.downloadFailed" = "Échec du téléchargement";
+"roomGeneration.gettingReady" = "Préparation...";
+"roomGeneration.notEnoughSpace" = "Espace insuffisant sur l'appareil";
+"roomGeneration.settingThingsUp" = "Configuration...";
+"roomGeneration.ready" = "Prêt !";
+"roomGeneration.couldNotGetReady" = "Impossible de finaliser la préparation";
+"roomGeneration.somethingWentWrong" = "Un problème est survenu";
+"roomGeneration.preparingPhoto" = "Préparation de votre photo...";
+"roomGeneration.creatingRoom" = "Création de votre pièce 3D...";
+"roomGeneration.almostDone" = "Presque terminé...";
+"roomGeneration.done" = "Terminé !";
+"roomGeneration.couldNotCreateRoom" = "Impossible de créer la pièce";
+"roomGeneration.cancelled" = "Annulé";
+"roomGeneration.liveRoom" = "Pièce en direct";
+"roomGeneration.stillRoom" = "Pièce fixe";
+"roomGeneration.liveRoomCameraMode" = "Mode caméra pièce en direct";
+"roomGeneration.stillRoomCameraMode" = "Mode caméra pièce fixe";
+"roomGeneration.cameraModeToggleAccessibilityHint" = "Bascule entre la caméra pièce fixe et pièce en direct.";
 "photoRoom.odrOneTimeDownload" = "Téléchargement unique (~1,2 Go)";
 "photoRoom.modelGeneratedTitle" = "Modèle 3D généré";
 "photoRoom.generationFailedTitle" = "Échec de la génération";
@@ -511,7 +509,7 @@
 // FAQ overrides
 "faq.whatIsBrainIconAnswer" = "L’icône cerveau lance le mode identification de SmartyPants. Elle utilise la caméra en direct pour trouver les meubles et objets, affiche des étiquettes et des cadres, puis vous laisse sélectionner une ou plusieurs étiquettes avant de toucher Segmenter.";
 "faq.accuracyAnswer" = "La pièce 3D est une estimation faite à partir d'une seule photo. Les dimensions peuvent servir de repère, mais elles ne sont pas de précision professionnelle. La mesure des meubles est plus fiable sur les téléphones avec prise en charge AR/profondeur.";
-"faq.adjustDimensionsAnswer" = "Pas directement pour les pièces SHARP générées par IA. Utilisez la règle dans le visualiseur pour voir la largeur, la hauteur et la profondeur estimées actuelles. Pour de meilleurs résultats, prenez une photo nette avec des coins visibles ; les pièces manuelles suivent les limites que vous avez définies.";
+"faq.adjustDimensionsAnswer" = "Pas directement pour les pièces Splat générées par IA. Utilisez la règle dans le visualiseur pour voir la largeur, la hauteur et la profondeur estimées actuelles. Pour de meilleurs résultats, prenez une photo nette avec des coins visibles ; les pièces manuelles suivent les limites que vous avez définies.";
 "faq.arAssistedSizingAnswer" = "Touchez d’abord l’icône cerveau, sélectionnez les éléments détectés, puis touchez Segmenter. Utilisez le contrôle de taille lorsque vous voulez une échelle relative à la pièce. Sur les téléphones avec AR/profondeur, l’app utilise la profondeur caméra en direct pour une taille de meuble plus réaliste ; sans profondeur, les mesures sont approximatives.";
 "faq.measurementPillAnswer" = "La pastille de taille du meuble n'apparaît que lorsque le mode de taille est activé et que l'app dispose d'une estimation de hauteur exploitable en direct. Le bouton règle affiche la largeur, la hauteur et la profondeur actuelles de la pièce dans une petite carte. Sur les téléphones non AR, ces valeurs sont moins fiables, surtout pour les meubles.";
 "faq.resetOverlayScaleAnswer" = "Il n'y a plus de menu supplémentaire. Si la surcouche semble incorrecte, désactivez puis réactivez l'icône cerveau, ou pincez le meuble manuellement pour affiner sa taille.";

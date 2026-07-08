@@ -39,7 +39,7 @@
 - Debug mode preserves user gestures while freezing only assisted scale.
 
 ## Onboarding Hint System
-- **Location**: `SharpRoomView.swift`, `SettingsView.swift`
+- **Location**: `SplatRoomView.swift`, `SettingsView.swift`
 - Priority-ordered, one-at-a-time transient hints with `@AppStorage` persistence flags.
 - Four hints: brain icon (browsing), pinch resize (furnitureFit), AR sizing (furnitureFit), pick another (furnitureFit/fullVideo).
 - Mode-scoped eligibility: browsing → B only, furnitureFit → A′/E/G, fullVideo → G only.
@@ -47,7 +47,7 @@
 - "Show tips again" option in Settings lets users restore onboarding hints.
 
 ## Toolbar Room Dimensions
-- **Location**: `SharpRoomView.swift`
+- **Location**: `SplatRoomView.swift`
 - Replaced ruler icon in the navigation bar with compact W×H×D measurement text when `activeRoomMetersDimensions` is available.
 - Removed the floating `roomDimensionsChipOverlay` (now integrated into toolbar).
 
@@ -88,7 +88,7 @@
 ## Room Viewer Enhancements
 
 ### Auto-Orbit Feature
-- **Location**: `SettingsView.swift`, `SharpRoomView.swift`
+- **Location**: `SettingsView.swift`, `SplatRoomView.swift`
 - Added auto-orbit toggle in Settings
 - Default is **OFF** (was previously ON)
 - When enabled, camera oscillates ±30° around the room center when idle
@@ -99,7 +99,7 @@
 ```
 
 ### Grey Screen Fix (Warm-up Rendering)
-- **Location**: `SharpRoomView.swift` (WebGL JavaScript)
+- **Location**: `SplatRoomView.swift` (WebGL JavaScript)
 - Added 5-second warm-up period for continuous rendering
 - Fixes issue where room appeared grey when auto-orbit was disabled
 - SparkJS Gaussian splat needs time to fully load before static rendering works
@@ -113,7 +113,7 @@ if (inWarmup) { shouldRender = true; }
 ```
 
 ### Room Dimension Persistence
-- **Location**: `USDZModel.swift`, `USDZModelManager.swift`, `SharpRoomView.swift`, `ContentView.swift`
+- **Location**: `USDZModel.swift`, `USDZModelManager.swift`, `SplatRoomView.swift`, `ContentView.swift`
 
 #### USDZModel.swift
 Added dimension fields:
@@ -137,7 +137,7 @@ func savePLY(from sourceURL: URL, name: String,
              completion: @escaping (Bool, String?) -> Void)
 ```
 
-#### SharpRoomView.swift
+#### SplatRoomView.swift
 - Accepts `savedRoomWidth` and `savedRoomHeight` parameters
 - Reports dimensions from WebGL via JavaScript message handler
 - Multiple dimension reports (500ms, 1500ms, 3000ms) to ensure delivery
@@ -157,13 +157,13 @@ init(plyURL: URL,
 - HomeViewModelRow displays actual room dimensions
 
 ### Custom Calibration Number Pad
-- **Location**: `SharpRoomView.swift`
+- **Location**: `SplatRoomView.swift`
 - Replaced system keyboard with custom number pad overlay
 - Number pad rotates with the calibration overlay for landscape orientation
 - Supports decimal input for room height calibration
 
 ### Orientation Labels
-- **Location**: `SharpRoomView.swift`
+- **Location**: `SplatRoomView.swift`
 - Shows orientation label for both portrait and landscape rooms
 - Portrait: "held vertically - Portrait"
 - Landscape: "held horizontally - Landscape"
@@ -180,9 +180,9 @@ init(plyURL: URL,
 | `USDZModel.swift` | Added `roomWidth`, `roomHeight`, `roomDepth` fields |
 | `USDZModelManager.swift` | Save/load dimensions in metadata |
 | `SettingsView.swift` | Auto-orbit toggle (default OFF) |
-| `SharpRoomView.swift` | Warm-up, auto-orbit, calibration overlay, number pad, dimension handling |
+| `SplatRoomView.swift` | Warm-up, auto-orbit, calibration overlay, number pad, dimension handling |
 | `ContentView.swift` | Pass dimensions when opening rooms |
-| `SharpRoomViewTests.swift` | Unit tests for all new features |
+| `SplatRoomViewTests.swift` | Unit tests for all new features |
 
 ## Metadata Format
 
@@ -196,7 +196,7 @@ roomHeight=3.2
 
 ## JavaScript Message Handlers
 
-SharpRoomView handles these messages from WebGL:
+SplatRoomView handles these messages from WebGL:
 
 ```swift
 case "dimensionsMeasured":
@@ -206,7 +206,7 @@ case "dimensionsMeasured":
 
 ## Unit Tests
 
-`SharpRoomViewTests.swift` includes 32 tests covering:
+`SplatRoomViewTests.swift` includes 32 tests covering:
 - Calibration overlay display
 - Number pad functionality
 - Auto-orbit toggle behavior

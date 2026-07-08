@@ -1,9 +1,9 @@
 import Foundation
 
-/// Persists SHARP generation camera metadata next to the exported classic PLY so later
+/// Persists Splat generation camera metadata next to the exported classic PLY so later
 /// metric-depth alignment can reproject splats with the same camera model used at generation time.
-enum SharpCameraSidecar {
-    private static let stemSuffix = "_sharp_camera.json"
+enum RoomGenerationCameraSidecar {
+    private static let stemSuffix = "_generation_camera.json"
 
     struct Info {
         let sourceImageWidthPx: Int
@@ -75,42 +75,42 @@ enum SharpCameraSidecar {
             let sourceWidth = Int(sourceImageSize.width.rounded())
             let sourceHeight = Int(sourceImageSize.height.rounded())
             guard sourceWidth > 0, sourceHeight > 0 else {
-                logWallMeasurement("[RED][SHARP_CAMERA] skip invalid source size room=\(roomURL.lastPathComponent)")
+                logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] skip invalid source size room=\(roomURL.lastPathComponent)")
                 return
             }
-            logWallMeasurement("[RED][SHARP_CAMERA] skip missing focal room=\(roomURL.lastPathComponent)")
+            logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] skip missing focal room=\(roomURL.lastPathComponent)")
             return
         }
 
         let payload: [String: Double] = [
-            "sharpSourceImageWidthPx": Double(info.sourceImageWidthPx),
-            "sharpSourceImageHeightPx": Double(info.sourceImageHeightPx),
-            "sharpInputSquarePx": Double(info.inputSquarePx),
-            "sharpSourceFocalPx": Double(info.sourceFocalPx),
-            "sharpSourceCxPx": Double(info.sourceCxPx),
-            "sharpSourceCyPx": Double(info.sourceCyPx),
-            "sharpInternalFxPx": Double(info.internalFxPx),
-            "sharpInternalFyPx": Double(info.internalFyPx),
-            "sharpInternalCxPx": Double(info.internalCxPx),
-            "sharpInternalCyPx": Double(info.internalCyPx),
+            "roomGenerationSourceImageWidthPx": Double(info.sourceImageWidthPx),
+            "roomGenerationSourceImageHeightPx": Double(info.sourceImageHeightPx),
+            "roomGenerationInputSquarePx": Double(info.inputSquarePx),
+            "roomGenerationSourceFocalPx": Double(info.sourceFocalPx),
+            "roomGenerationSourceCxPx": Double(info.sourceCxPx),
+            "roomGenerationSourceCyPx": Double(info.sourceCyPx),
+            "roomGenerationInternalFxPx": Double(info.internalFxPx),
+            "roomGenerationInternalFyPx": Double(info.internalFyPx),
+            "roomGenerationInternalCxPx": Double(info.internalCxPx),
+            "roomGenerationInternalCyPx": Double(info.internalCyPx),
         ]
 
         let url = sidecarURL(forRoomURL: roomURL)
         let jsonObject: [String: Any] = payload.mapValues { $0 as NSNumber }
         guard JSONSerialization.isValidJSONObject(jsonObject),
               let data = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys]) else {
-            logWallMeasurement("sharp_camera_sidecar fail serialize path=\(url.path)")
+            logWallMeasurement("generation_camera_sidecar fail serialize path=\(url.path)")
             return
         }
         do {
             try data.write(to: url, options: [.atomic])
             logWallMeasurement(
-                "[GREEN][SHARP_CAMERA] ok path=\(url.path) source=\(info.sourceImageWidthPx)x\(info.sourceImageHeightPx) " +
+                "[GREEN][ROOM_GENERATION_CAMERA] ok path=\(url.path) source=\(info.sourceImageWidthPx)x\(info.sourceImageHeightPx) " +
                     "FOCAL_PX=\(String(format: "%.2f", info.sourceFocalPx)) " +
                     "INTERNAL_FX_FY=(\(String(format: "%.2f", info.internalFxPx)),\(String(format: "%.2f", info.internalFyPx)))"
             )
         } catch {
-            logWallMeasurement("[RED][SHARP_CAMERA] fail write \(error.localizedDescription) path=\(url.path)")
+            logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] fail write \(error.localizedDescription) path=\(url.path)")
         }
     }
 
@@ -118,26 +118,26 @@ enum SharpCameraSidecar {
         let url = sidecarURL(forRoomURL: roomURL)
         guard let data = try? Data(contentsOf: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            logWallMeasurement("[RED][SHARP_CAMERA] missing path=\(url.path)")
+            logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] missing path=\(url.path)")
             return nil
         }
 
-        guard let sourceWidth = numeric(obj["sharpSourceImageWidthPx"]).map({ Int($0.rounded()) }), sourceWidth > 0,
-              let sourceHeight = numeric(obj["sharpSourceImageHeightPx"]).map({ Int($0.rounded()) }), sourceHeight > 0,
-              let inputSquare = numeric(obj["sharpInputSquarePx"]).map({ Int($0.rounded()) }), inputSquare > 0,
-              let sourceFocalPx = numeric(obj["sharpSourceFocalPx"]).map(Float.init), sourceFocalPx > 0.01,
-              let sourceCxPx = numeric(obj["sharpSourceCxPx"]).map(Float.init),
-              let sourceCyPx = numeric(obj["sharpSourceCyPx"]).map(Float.init),
-              let internalFxPx = numeric(obj["sharpInternalFxPx"]).map(Float.init),
-              let internalFyPx = numeric(obj["sharpInternalFyPx"]).map(Float.init),
-              let internalCxPx = numeric(obj["sharpInternalCxPx"]).map(Float.init),
-              let internalCyPx = numeric(obj["sharpInternalCyPx"]).map(Float.init) else {
-            logWallMeasurement("[RED][SHARP_CAMERA] invalid path=\(url.path)")
+        guard let sourceWidth = numeric(obj["roomGenerationSourceImageWidthPx"]).map({ Int($0.rounded()) }), sourceWidth > 0,
+              let sourceHeight = numeric(obj["roomGenerationSourceImageHeightPx"]).map({ Int($0.rounded()) }), sourceHeight > 0,
+              let inputSquare = numeric(obj["roomGenerationInputSquarePx"]).map({ Int($0.rounded()) }), inputSquare > 0,
+              let sourceFocalPx = numeric(obj["roomGenerationSourceFocalPx"]).map(Float.init), sourceFocalPx > 0.01,
+              let sourceCxPx = numeric(obj["roomGenerationSourceCxPx"]).map(Float.init),
+              let sourceCyPx = numeric(obj["roomGenerationSourceCyPx"]).map(Float.init),
+              let internalFxPx = numeric(obj["roomGenerationInternalFxPx"]).map(Float.init),
+              let internalFyPx = numeric(obj["roomGenerationInternalFyPx"]).map(Float.init),
+              let internalCxPx = numeric(obj["roomGenerationInternalCxPx"]).map(Float.init),
+              let internalCyPx = numeric(obj["roomGenerationInternalCyPx"]).map(Float.init) else {
+            logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] invalid path=\(url.path)")
             return nil
         }
 
         logWallMeasurement(
-            "[GREEN][SHARP_CAMERA] load path=\(url.path) source=\(sourceWidth)x\(sourceHeight) " +
+            "[GREEN][ROOM_GENERATION_CAMERA] load path=\(url.path) source=\(sourceWidth)x\(sourceHeight) " +
                 "FOCAL_PX=\(String(format: "%.2f", sourceFocalPx))"
         )
 
@@ -165,9 +165,9 @@ enum SharpCameraSidecar {
                 try fileManager.removeItem(at: destinationURL)
             }
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
-            logWallMeasurement("[GREEN][SHARP_CAMERA] copied src=\(sourceURL.lastPathComponent) dst=\(destinationURL.lastPathComponent)")
+            logWallMeasurement("[GREEN][ROOM_GENERATION_CAMERA] copied src=\(sourceURL.lastPathComponent) dst=\(destinationURL.lastPathComponent)")
         } catch {
-            logWallMeasurement("[RED][SHARP_CAMERA] copy failed \(error.localizedDescription) dst=\(destinationURL.path)")
+            logWallMeasurement("[RED][ROOM_GENERATION_CAMERA] copy failed \(error.localizedDescription) dst=\(destinationURL.path)")
         }
     }
 
@@ -185,7 +185,7 @@ enum SharpCameraSidecar {
             focal35MM = focal35
         } else if let focalMM = exif["focalLengthMm"].map(Float.init), focalMM > 0.01 {
             if focalMM < 10.0 {
-                // Match Python SHARP's fallback when only a small raw focal value is available.
+                // Match Python Splat's fallback when only a small raw focal value is available.
                 focal35MM = focalMM * 8.4
             } else {
                 focal35MM = focalMM

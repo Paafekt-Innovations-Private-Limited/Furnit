@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 /// Room-creation camera using **ARKit** so each frame includes ``ARCamera`` intrinsics (and scene depth on LiDAR).
-/// Feeds ``CameraExifSidecar`` via supplemental doubles (`focalLengthPx`, image dimensions) for SHARP / wall measurement.
+/// Feeds ``CameraExifSidecar`` via supplemental doubles (`focalLengthPx`, image dimensions) for Splat / wall measurement.
 final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegate {
     var onCaptured: ((UIImage, URL?, [String: Double]) -> Void)?
     var onCancelled: (() -> Void)?
@@ -171,7 +171,7 @@ final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegat
         }
     }
 
-    /// Values merged into ``CameraExifSidecar``; `focalLengthPx` is consumed by ``SharpCameraSidecar``.
+    /// Values merged into ``CameraExifSidecar``; `focalLengthPx` is consumed by ``RoomGenerationCameraSidecar``.
     private static func supplementalMetrics(from frame: ARFrame) -> [String: Double] {
         let cam = frame.camera
         let intrinsics = cam.intrinsics

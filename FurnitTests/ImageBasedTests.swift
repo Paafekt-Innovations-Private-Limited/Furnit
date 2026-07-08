@@ -235,7 +235,7 @@ final class ImageBasedTests: XCTestCase {
         }
 
         // Calculate bounding box
-        let bounds = SharpRoomBoundsUtils.calculateBoundingBox(points: points)
+        let bounds = SplatRoomBoundsUtils.calculateBoundingBox(points: points)
         XCTAssertNotNil(bounds)
 
         if let b = bounds {
