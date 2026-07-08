@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -29,7 +30,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -77,16 +80,19 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
+    private lateinit var brainCameraPreview: PreviewView
     private lateinit var brainProgressOverlay: FrameLayout
     private lateinit var brainProgressLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
+    private var boundPreview: Preview? = null
     private var furnitureFitManager: FurnitureFitManager? = null
     private val isBrainInferenceRunning = AtomicBoolean(false)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
     private var brainButton: TextView? = null
     private var brainSegmentButton: TextView? = null
+    private var brainFullVideoButton: ImageButton? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
@@ -197,6 +203,21 @@ class GLBRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
 
+        brainCameraPreview = PreviewView(this).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            visibility = View.GONE
+            setBackgroundColor(Color.BLACK)
+            elevation = 10f
+        }
+        rootLayout.addView(
+            brainCameraPreview,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
         // No gesture overlay - let WebView's OrbitControls handle all gestures
         // (rotation, zoom, pan) directly like iOS
 
@@ -258,6 +279,16 @@ class GLBRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
+        )
+
+        brainFullVideoButton = createBrainFullVideoButton()
+        rootLayout.addView(
+            brainFullVideoButton,
+            FrameLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                gravity = Gravity.END or Gravity.TOP
+                topMargin = dpToPx(116)
+                marginEnd = dpToPx(16)
+            },
         )
 
         setContentView(rootLayout)
@@ -530,6 +561,83 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun createBrainFullVideoButton(): ImageButton {
+        return ImageButton(this).apply {
+            setImageResource(R.drawable.ic_text_viewfinder)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x9E000000.toInt())
+                setStroke(dpToPx(1), Color.parseColor("#2EFFFFFF"))
+            }
+            contentDescription = getString(R.string.settings_full_video_with_identifications)
+            visibility = View.GONE
+            setOnClickListener { toggleInlineBrainFullVideoMode() }
+        }
+    }
+
+    private fun updateBrainFullVideoButtonAppearance() {
+        val button = brainFullVideoButton ?: return
+        val active = inlineBrainFullVideoEnabled
+        val iconColor = if (active) Color.parseColor("#00FFFF") else Color.WHITE
+        button.imageTintList = ColorStateList.valueOf(iconColor)
+        (button.background as? GradientDrawable)?.setStroke(
+            dpToPx(1),
+            if (active) Color.parseColor("#E600FFFF") else Color.parseColor("#2EFFFFFF"),
+        )
+    }
+
+    private fun toggleInlineBrainFullVideoMode() {
+        if (brainDetectionOverlay.visibility != View.VISIBLE) return
+        inlineBrainFullVideoEnabled = !inlineBrainFullVideoEnabled
+        inlineBrainSelectedPins = emptyList()
+        inlineBrainMode = if (inlineBrainFullVideoEnabled) {
+            InlineBrainMode.IDENTIFY
+        } else {
+            InlineBrainMode.DEFAULT_SEGMENT
+        }
+        brainDetectionOverlayView.setMaskAndDetections(
+            mask = null,
+            dets = emptyList(),
+            frameAlignedOverlay = inlineBrainFullVideoEnabled,
+        )
+        brainDetectionOverlayView.setDetectionBoxVisibility(inlineBrainFullVideoEnabled)
+        brainDetectionOverlayView.setIdentifySelectionState(
+            inlineBrainFullVideoEnabled,
+            inlineBrainSelectedPins,
+        )
+        brainProgressOverlay.visibility = if (inlineBrainFullVideoEnabled) View.GONE else View.VISIBLE
+        updateInlineBrainSegmentButton()
+        updateBrainFullVideoButtonAppearance()
+        rebindInlineBrainCameraIfActive()
+        LogUtil.d(
+            TAG,
+            "Inline brain full video toggled: enabled=$inlineBrainFullVideoEnabled mode=$inlineBrainMode",
+        )
+    }
+
+    private fun shouldShowInlineBrainCameraPreview(): Boolean {
+        return inlineBrainFullVideoEnabled &&
+            inlineBrainMode == InlineBrainMode.IDENTIFY &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+    }
+
+    private fun updateInlineBrainCameraPreviewVisibility() {
+        if (!::brainCameraPreview.isInitialized) return
+        brainCameraPreview.visibility = if (shouldShowInlineBrainCameraPreview()) View.VISIBLE else View.GONE
+    }
+
+    private fun rebindInlineBrainCameraIfActive() {
+        if (brainDetectionOverlay.visibility != View.VISIBLE) return
+        val provider = cameraProvider
+        if (provider != null) {
+            applyInlineBrainCameraBinding(provider, brainSessionGeneration.get())
+        } else {
+            bindInlineBrainCamera(brainSessionGeneration.get())
+        }
+    }
+
     private fun createInlineBrainSegmentButton(): TextView {
         return TextView(this).apply {
             text = getString(R.string.segment_furniture_action)
@@ -562,16 +670,14 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun startInlineBrainSegmentation() {
         LogUtil.d(TAG, "Inline brain: start")
         val generation = brainSessionGeneration.incrementAndGet()
-        inlineBrainFullVideoEnabled = FurnitureFitManager.isFullVideoWithIdentificationsEnabled(this)
-        inlineBrainMode = if (inlineBrainFullVideoEnabled) {
-            InlineBrainMode.IDENTIFY
-        } else {
-            InlineBrainMode.DEFAULT_SEGMENT
-        }
+        inlineBrainFullVideoEnabled = false
+        inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainSelectedPins = emptyList()
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
         brainDetectionOverlay.visibility = View.VISIBLE
+        brainFullVideoButton?.visibility = View.VISIBLE
+        updateBrainFullVideoButtonAppearance()
         brainDetectionOverlayView.setMaskAndDetections(
             mask = null,
             dets = emptyList(),
@@ -594,7 +700,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 return@launch
             }
             furnitureFitManager = manager
-            bindInlineBrainCamera(manager, generation)
+            bindInlineBrainCamera(generation)
         }
     }
 
@@ -632,6 +738,8 @@ class GLBRoomActivity : AppCompatActivity() {
             brainProgressOverlay.visibility = View.VISIBLE
         }
         updateInlineBrainSegmentButton()
+        updateInlineBrainCameraPreviewVisibility()
+        rebindInlineBrainCameraIfActive()
     }
 
     private fun updateInlineBrainSegmentButton() {
@@ -667,70 +775,94 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    private fun bindInlineBrainCamera(manager: FurnitureFitManager, generation: Int) {
+    private fun bindInlineBrainCamera(generation: Int) {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
-            val provider = providerFuture.get()
-            cameraProvider = provider
-            provider.unbindAll()
-
-            val analysisSize =
-                if (photoOrientation.equals("landscape", ignoreCase = true)) {
-                    android.util.Size(1280, 720)
-                } else {
-                    android.util.Size(720, 1280)
-                }
-            val analysis = ImageAnalysis.Builder()
-                .setTargetResolution(analysisSize)
-                .setTargetRotation(displayRotationForCameraX())
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-
-            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                try {
-                    if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
-                    if (isBrainInferenceRunning.get()) return@setAnalyzer
-                    val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
-                    val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
-                    if (bitmap !== rawBitmap) rawBitmap.recycle()
-                    isBrainInferenceRunning.set(true)
-                    val modeSnapshot = inlineBrainMode
-                    val fullVideoSnapshot = inlineBrainFullVideoEnabled
-                    val selectedPinsSnapshot = inlineBrainSelectedPins
-                    val callback: (SegmentationResult?) -> Unit = { result ->
-                        bitmap.recycle()
-                        runOnUiThread {
-                            isBrainInferenceRunning.set(false)
-                            if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
-                            applyInlineBrainResult(result)
-                        }
-                    }
-                    when {
-                        fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
-                            manager.detectWithDetectionsAsync(bitmap, callback)
-                        fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
-                            manager.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
-                        else ->
-                            manager.segmentWithDetectionsAsync(bitmap, callback)
-                    }
-                } finally {
-                    imageProxy.close()
-                }
-            }
-
-            try {
-                brainAcceptingUpdates = true
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
-                LogUtil.d(TAG, "Inline brain: CameraX analysis bound")
-            } catch (e: Exception) {
-                brainAcceptingUpdates = false
-                brainProgressOverlay.visibility = View.GONE
-                setBrainButtonActive(false)
-                LogUtil.e(TAG, "Inline brain camera bind failed", e)
-                Toast.makeText(this, getString(R.string.smartypants_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
-                CrashReporter.report(this, e, "GLB room inline brain camera bind")
-            }
+            applyInlineBrainCameraBinding(providerFuture.get(), generation)
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun applyInlineBrainCameraBinding(provider: ProcessCameraProvider, generation: Int) {
+        cameraProvider = provider
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        provider.unbindAll()
+        updateInlineBrainCameraPreviewVisibility()
+
+        val analysisSize =
+            if (photoOrientation.equals("landscape", ignoreCase = true)) {
+                android.util.Size(1280, 720)
+            } else {
+                android.util.Size(720, 1280)
+            }
+        val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(analysisSize)
+            .setTargetRotation(displayRotationForCameraX())
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+
+        analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+            try {
+                if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@setAnalyzer
+                if (isBrainInferenceRunning.get()) return@setAnalyzer
+                val rawBitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
+                val (bitmap, _) = rawBitmap.rotateToMatchLockedRoomPhoto(photoOrientation)
+                if (bitmap !== rawBitmap) rawBitmap.recycle()
+                isBrainInferenceRunning.set(true)
+                val modeSnapshot = inlineBrainMode
+                val fullVideoSnapshot = inlineBrainFullVideoEnabled
+                val selectedPinsSnapshot = inlineBrainSelectedPins
+                val callback: (SegmentationResult?) -> Unit = { result ->
+                    bitmap.recycle()
+                    runOnUiThread {
+                        isBrainInferenceRunning.set(false)
+                        if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
+                        applyInlineBrainResult(result)
+                    }
+                }
+                when {
+                    fullVideoSnapshot && modeSnapshot == InlineBrainMode.IDENTIFY ->
+                        furnitureFitManager?.detectWithDetectionsAsync(bitmap, callback)
+                    fullVideoSnapshot && modeSnapshot == InlineBrainMode.SEGMENT_SELECTED ->
+                        furnitureFitManager?.segmentSelectedInstancesAsync(bitmap, selectedPinsSnapshot, callback)
+                    else ->
+                        furnitureFitManager?.segmentWithDetectionsAsync(bitmap, callback)
+                }
+            } finally {
+                imageProxy.close()
+            }
+        }
+
+        try {
+            // Live preview is identify-only. During selected segmentation the camera keeps
+            // analyzing but preview stays off so transparent mask pixels reveal the 3D room.
+            if (shouldShowInlineBrainCameraPreview()) {
+                val preview = Preview.Builder()
+                    .setTargetResolution(analysisSize)
+                    .setTargetRotation(displayRotationForCameraX())
+                    .build()
+                    .also { it.setSurfaceProvider(brainCameraPreview.surfaceProvider) }
+                boundPreview = preview
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            } else {
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+            }
+            brainAcceptingUpdates = true
+            updateInlineBrainCameraPreviewVisibility()
+            LogUtil.d(
+                TAG,
+                "Inline brain: CameraX bound preview=${shouldShowInlineBrainCameraPreview()} mode=$inlineBrainMode generation=$generation",
+            )
+        } catch (e: Exception) {
+            brainAcceptingUpdates = false
+            brainProgressOverlay.visibility = View.GONE
+            setBrainButtonActive(false)
+            updateInlineBrainCameraPreviewVisibility()
+            LogUtil.e(TAG, "Inline brain camera bind failed", e)
+            Toast.makeText(this, getString(R.string.smartypants_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
+            CrashReporter.report(this, e, "GLB room inline brain camera bind")
+        }
     }
 
     private fun applyInlineBrainResult(result: SegmentationResult?) {
@@ -753,6 +885,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     brainDetectionOverlayView.setIdentifySelectionState(true, inlineBrainSelectedPins)
                 }
                 InlineBrainMode.SEGMENT_SELECTED -> {
+                    updateInlineBrainCameraPreviewVisibility()
                     brainDetectionOverlayView.setMaskAndDetections(
                         mask = mask,
                         dets = emptyList(),
@@ -799,6 +932,12 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
         brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
         brainSegmentButton?.visibility = View.GONE
+        brainFullVideoButton?.visibility = View.GONE
+        boundPreview?.setSurfaceProvider(null)
+        boundPreview = null
+        if (::brainCameraPreview.isInitialized) {
+            brainCameraPreview.visibility = View.GONE
+        }
         setBrainButtonActive(false)
         try {
             cameraProvider?.unbindAll()
