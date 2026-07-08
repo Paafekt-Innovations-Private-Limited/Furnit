@@ -315,11 +315,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                     self.applyCurrentOverlayScaleTransform()
                 }
             } else {
-                // segmentPrimary / segmentSelected: hide detection boxes immediately for a
-                // mask-only presentation while segmenting.
+                // Segment modes hide tap-selection boxes immediately. Full-video selected
+                // segmentation still processes live frames but uses mask alpha over the room.
                 DispatchQueue.main.async {
                     self.detectionBBoxOverlayView.items = []
                     self.candidateBboxesInView = []
+                    self.clusterBboxesInView = []
                     self.latestDisplayedClusters = []
                 }
             }
@@ -329,16 +330,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var isShowingLiveVideoIdentifications: Bool {
         showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .identifyOnly
     }
+    private var isFullVideoSelectedSegmentation: Bool {
+        showFullVideoWithIdentifications && showIdentifyLivePreview && segmentationMode == .segmentSelected
+    }
+    private var isUsingLiveFrameAlignedOverlay: Bool {
+        isShowingLiveVideoIdentifications || isFullVideoSelectedSegmentation
+    }
     private var shouldAllowBoundingBoxTapSelection: Bool {
         isShowingLiveVideoIdentifications
     }
     private var shouldShowLiveCameraPreview: Bool {
-        // RTMDET-TAP-SEGMENT-OK (verified 2026-06-10): feed hides on segment.
-        // Only show the full-frame live camera feed while IDENTIFYING. Once an item is segmented
-        // (.segmentSelected), hide the feed so the segmented cutout composites over the 3D room
-        // rendered behind this overlay — that's how the user checks the furniture in the room.
-        // The camera session keeps running, so the cutout still updates; only the opaque
-        // passthrough is hidden. (The ONNX path already behaved this way via isShowingLiveVideoIdentifications.)
+        // Identify mode shows the camera feed for bbox selection. Once selected segmentation starts,
+        // inference stays live but the camera layer hides so mask alpha reveals the 3D room behind it.
         isShowingLiveVideoIdentifications
             || (currentModelIsRTMDet && showIdentifyLivePreview && segmentationMode == .identifyOnly)
     }
@@ -363,6 +366,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var primaryBboxInView: CGRect = .zero
     /// All current candidate bboxes in pre-transform overlay coordinates. Used for drawing and tap-selection.
     private var candidateBboxesInView: [CGRect] = []
+    /// Cluster union bboxes aligned with ``latestDisplayedClusters``. Full-video taps target these boxes.
+    private var clusterBboxesInView: [CGRect] = []
     /// Latest displayed candidates aligned with ``candidateBboxesInView``. Main-thread only for tap-selection.
     private var latestDisplayedCandidates: [FurnitureFitDetection] = []
     private var latestDisplayedSelectedCandidateIndex: Int?
@@ -662,7 +667,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             preferImmediateNextInference = false
         }
         frameLock.unlock()
-        if isRTMDetModel && segmentationMode != .identifyOnly {
+        if isRTMDetModel && segmentationMode != .identifyOnly && !isFullVideoSelectedSegmentation {
             pendingFrameLock.lock()
             pendingLatestSegmentationFrame = nil
             pendingFrameLock.unlock()
@@ -674,10 +679,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var shouldKeepLatestDroppedCameraFrame: Bool {
         // Keep one freshest dropped frame for continuous live modes so inference jumps to the
         // latest camera pose instead of visually trailing behind during pans.
-        segmentationMode != .segmentSelected &&
+        let allowsSelectedLiveSegmentation = segmentationMode != .segmentSelected || isFullVideoSelectedSegmentation
+        let allowsRTMDetLiveQueue = !currentModelIsRTMDet ||
+            segmentationMode == .identifyOnly ||
+            isFullVideoSelectedSegmentation
+        return allowsSelectedLiveSegmentation &&
             !stillImageScanModeEnabled &&
             !oneImageRunAwaitingSave &&
-            (!currentModelIsRTMDet || segmentationMode == .identifyOnly)
+            allowsRTMDetLiveQueue
     }
 
     private func processPendingLatestSegmentationFrameIfNeeded() {
@@ -1066,7 +1075,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = previewContainerView.bounds
-        if isShowingLiveVideoIdentifications {
+        if isUsingLiveFrameAlignedOverlay {
             applyLockedOrientationVideoRotation()
         }
         cachedARViewportSize = previewContainerView.bounds.size
@@ -1160,7 +1169,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             defaultStaticOverlayScale: defaultStaticOverlayScale,
             minCombinedOverlayScale: minCombinedOverlayScale,
             maxCombinedOverlayScale: maxCombinedOverlayScale,
-            isShowingLiveVideoIdentifications: isShowingLiveVideoIdentifications,
+            isShowingLiveVideoIdentifications: isUsingLiveFrameAlignedOverlay,
             overlayPresentationMode: overlayPresentationMode,
             bounds: bounds,
             primaryBboxInView: primaryBboxInView,
@@ -1181,7 +1190,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private func updateVideoIdentificationPresentation() {
         DispatchQueue.main.async {
             self.previewLayer.isHidden = !self.shouldShowLiveCameraPreview
-            logDebug("📺 [FurnitureFit] previewLayer hidden=\(self.previewLayer.isHidden) rtmDet=\(self.currentModelIsRTMDet) identify=\(self.segmentationMode == .identifyOnly) fullVideo=\(self.showFullVideoWithIdentifications)")
+            logDebug("📺 [FurnitureFit] previewLayer hidden=\(self.previewLayer.isHidden) rtmDet=\(self.currentModelIsRTMDet) identify=\(self.segmentationMode == .identifyOnly) fullVideo=\(self.showFullVideoWithIdentifications) fullVideoSegment=\(self.isFullVideoSelectedSegmentation)")
             if self.shouldShowLiveCameraPreview {
                 self.maskImageView.image = nil
             }
@@ -1500,6 +1509,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBboxInView = .zero
         if clearDetectedCandidates {
             candidateBboxesInView = []
+            clusterBboxesInView = []
             latestDisplayedCandidates = []
             latestDisplayedClusters = []
             detectionBBoxOverlayView.items = []
@@ -1528,13 +1538,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         selectedPinsSnapshot().map { displayClassName($0.classIdx) }
     }
 
-    /// Maps each stored pin to the best-matching current-frame detection (same class, IoU ≥ threshold). Skips pins with no good match.
-    private func matchedCandidatesForPins(
+    /// Maps each stored pin to the best-matching current-frame detection index (same class, IoU ≥ threshold). Skips pins with no good match.
+    private func matchedCandidateIndicesForPins(
         candidates: [FurnitureFitDetection],
         pins: [FurnitureFitDetection]
-    ) -> [FurnitureFitDetection] {
+    ) -> [Int] {
         guard !pins.isEmpty, !candidates.isEmpty else { return [] }
-        var result: [FurnitureFitDetection] = []
+        var result: [Int] = []
         var usedCandidateIndices = Set<Int>()
         for pin in pins {
             var bestIdx: Int?
@@ -1549,9 +1559,16 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
             guard let idx = bestIdx, bestIoU >= pinMatchIoUThreshold, !usedCandidateIndices.contains(idx) else { continue }
             usedCandidateIndices.insert(idx)
-            result.append(candidates[idx])
+            result.append(idx)
         }
         return result
+    }
+
+    private func matchedCandidatesForPins(
+        candidates: [FurnitureFitDetection],
+        pins: [FurnitureFitDetection]
+    ) -> [FurnitureFitDetection] {
+        matchedCandidateIndicesForPins(candidates: candidates, pins: pins).map { candidates[$0] }
     }
 
     private func selectedClassChipTitle(from labels: [String]) -> String? {
@@ -1625,6 +1642,37 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         publishSelectedClassState()
     }
 
+    /// Full-video selection is cluster based: one stored seed represents the whole affinity cluster.
+    /// The Segment action later asks RTMDet to expand that seed with the same affinity graph used by
+    /// the default primary flow, so a tap never creates per-box cutouts inside one furniture cluster.
+    private func toggleSelectedCluster(
+        representative: FurnitureFitDetection,
+        members: [FurnitureFitDetection]
+    ) {
+        let clusterMembers = members.isEmpty ? [representative] : members
+        selectedClassStateLock.lock()
+        let selectedIndices = selectedDetectionPins.indices.filter { pinIndex in
+            clusterMembers.contains { member in
+                selectedDetectionPins[pinIndex].classIdx == member.classIdx &&
+                    FurnitureFitIoU.calculate(selectedDetectionPins[pinIndex], member) >= 0.5
+            }
+        }
+
+        if selectedIndices.isEmpty {
+            selectedDetectionPins.append(representative)
+        } else {
+            for index in selectedIndices.sorted(by: >) {
+                let removed = selectedDetectionPins.remove(at: index)
+                selectedPinMissingFrameCounts[selectionPinKey(for: removed)] = nil
+            }
+        }
+
+        let selectedPinKeys = Set(selectedDetectionPins.map(selectionPinKey(for:)))
+        selectedPinMissingFrameCounts = selectedPinMissingFrameCounts.filter { selectedPinKeys.contains($0.key) }
+        selectedClassStateLock.unlock()
+        publishSelectedClassState()
+    }
+
     private func selectionPinKey(for detection: FurnitureFitDetection) -> String {
         let qx = Int((detection.x * 1000).rounded())
         let qy = Int((detection.y * 1000).rounded())
@@ -1643,9 +1691,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         }
 
         var usedCandidateIndices = Set<Int>()
-        var didChange = false
+        var didRemoveSelection = false
+        var updatedPins: [FurnitureFitDetection] = []
+        updatedPins.reserveCapacity(selectedDetectionPins.count)
+        var updatedMissingCounts = selectedPinMissingFrameCounts
 
-        selectedDetectionPins.removeAll { pin in
+        for pin in selectedDetectionPins {
             let pinKey = selectionPinKey(for: pin)
             var bestIdx: Int?
             var bestIoU: Float = 0
@@ -1660,26 +1711,30 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
             if let idx = bestIdx, bestIoU >= pinMatchIoUThreshold {
                 usedCandidateIndices.insert(idx)
-                selectedPinMissingFrameCounts[pinKey] = nil
-                return false
+                let matchedCandidate = candidates[idx]
+                updatedMissingCounts[pinKey] = nil
+                updatedMissingCounts[selectionPinKey(for: matchedCandidate)] = nil
+                updatedPins.append(matchedCandidate)
+                continue
             }
 
-            let nextMissCount = (selectedPinMissingFrameCounts[pinKey] ?? 0) + 1
+            let nextMissCount = (updatedMissingCounts[pinKey] ?? 0) + 1
             if nextMissCount > maskGraceFrameLimit {
-                selectedPinMissingFrameCounts[pinKey] = nil
-                didChange = true
-                return true
+                updatedMissingCounts[pinKey] = nil
+                didRemoveSelection = true
+                continue
             }
 
-            selectedPinMissingFrameCounts[pinKey] = nextMissCount
-            return false
+            updatedMissingCounts[pinKey] = nextMissCount
+            updatedPins.append(pin)
         }
 
+        selectedDetectionPins = updatedPins
         let remainingPinKeys = Set(selectedDetectionPins.map(selectionPinKey(for:)))
-        selectedPinMissingFrameCounts = selectedPinMissingFrameCounts.filter { remainingPinKeys.contains($0.key) }
+        selectedPinMissingFrameCounts = updatedMissingCounts.filter { remainingPinKeys.contains($0.key) }
         selectedClassStateLock.unlock()
 
-        guard didChange else { return }
+        guard didRemoveSelection else { return }
         publishSelectedClassState()
         DispatchQueue.main.async {
             self.updateDetectionOverlaySelectionHighlights()
@@ -1765,6 +1820,71 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         )
     }
 
+    private func clusterMembersForCandidateIndex(
+        _ candidateIndex: Int,
+        candidateCount: Int,
+        decoderOffsets: [Int],
+        graph: RTMDetMaskAffinityGraph?
+    ) -> [Int] {
+        guard candidateIndex >= 0, candidateIndex < candidateCount else { return [] }
+        guard let graph, graph.nodeCount > 0, !decoderOffsets.isEmpty else { return [candidateIndex] }
+        let decoderIdx = candidateIndex < decoderOffsets.count ? decoderOffsets[candidateIndex] : candidateIndex
+        let groupDecoderIndices = graph.transitiveGroup(seedIndices: [decoderIdx])
+        let rankedIndices = groupDecoderIndices.compactMap { decoderIndex -> Int? in
+            guard let rankedIndex = decoderOffsets.firstIndex(of: decoderIndex), rankedIndex < candidateCount else { return nil }
+            return rankedIndex
+        }
+        return rankedIndices.isEmpty ? [candidateIndex] : rankedIndices.sorted()
+    }
+
+    private func representativeIndex(
+        for memberIndices: [Int],
+        candidates: [FurnitureFitDetection]
+    ) -> Int? {
+        memberIndices
+            .filter { $0 >= 0 && $0 < candidates.count }
+            .max { leftIndex, rightIndex in
+                let left = candidates[leftIndex]
+                let right = candidates[rightIndex]
+                if abs(left.confidence - right.confidence) > 1e-6 {
+                    return left.confidence < right.confidence
+                }
+                let leftArea = left.w * left.h
+                let rightArea = right.w * right.h
+                if abs(leftArea - rightArea) > 1e-6 {
+                    return leftArea < rightArea
+                }
+                return leftIndex > rightIndex
+            }
+    }
+
+    private func selectedSeedIndicesForPins(
+        candidates: [FurnitureFitDetection],
+        pins: [FurnitureFitDetection],
+        decoderOffsets: [Int],
+        graph: RTMDetMaskAffinityGraph?
+    ) -> [Int] {
+        let matchedIndices = matchedCandidateIndicesForPins(candidates: candidates, pins: pins)
+        guard !matchedIndices.isEmpty else { return [] }
+        var seedIndices: [Int] = []
+        var coveredClusterMembers = Set<Int>()
+        for matchedIndex in matchedIndices {
+            let members = clusterMembersForCandidateIndex(
+                matchedIndex,
+                candidateCount: candidates.count,
+                decoderOffsets: decoderOffsets,
+                graph: graph
+            )
+            if !coveredClusterMembers.isDisjoint(with: members) {
+                coveredClusterMembers.formUnion(members)
+                continue
+            }
+            seedIndices.append(matchedIndex)
+            coveredClusterMembers.formUnion(members)
+        }
+        return seedIndices
+    }
+
     /// Build clusters from the affinity graph, translating decoder-space graph indices to
     /// ranked-candidate-space indices via the decoder offset mapping.
     private func buildClustersFromAffinityGraph(
@@ -1776,19 +1896,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         var clusters: [[Int]] = []
         for rankedIdx in 0..<candidateCount {
             guard !visited.contains(rankedIdx) else { continue }
-            let decoderIdx = rankedIdx < decoderOffsets.count ? decoderOffsets[rankedIdx] : rankedIdx
-            let groupDecoderIndices = graph.transitiveGroup(seedIndices: [decoderIdx])
-            var clusterRankedIndices: [Int] = []
-            for gdi in groupDecoderIndices {
-                if let ri = decoderOffsets.firstIndex(of: gdi), ri < candidateCount {
-                    clusterRankedIndices.append(ri)
-                }
-            }
-            if clusterRankedIndices.isEmpty {
-                clusterRankedIndices = [rankedIdx]
-            }
+            let clusterRankedIndices = clusterMembersForCandidateIndex(
+                rankedIdx,
+                candidateCount: candidateCount,
+                decoderOffsets: decoderOffsets,
+                graph: graph
+            )
             for ri in clusterRankedIndices { visited.insert(ri) }
-            clusters.append(clusterRankedIndices.sorted())
+            clusters.append(clusterRankedIndices)
         }
         return clusters
     }
@@ -1807,6 +1922,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         let isSegmenting = segmentationMode != .identifyOnly
         if debugMode && isSegmenting {
             candidateBboxesInView = []
+            clusterBboxesInView = []
             detectionBBoxOverlayView.items = []
             latestDisplayedClusters = []
             return
@@ -1815,6 +1931,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let keepRTMDetIdentifyBoxes = currentModelIsRTMDet && segmentationMode == .identifyOnly
             if isSegmenting || (!showFullVideoWithIdentifications && !keepRTMDetIdentifyBoxes) {
                 candidateBboxesInView = []
+                clusterBboxesInView = []
                 detectionBBoxOverlayView.items = []
                 latestDisplayedClusters = []
                 return
@@ -1847,20 +1964,20 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             clusters = candidates.indices.map { [$0] }
         }
         latestDisplayedClusters = clusters
-
-        let pins = selectedPinsSnapshot()
-        detectionBBoxOverlayView.items = clusters.map { memberIndices in
-            let clusterRect = memberIndices.reduce(CGRect.null) { union, idx in
+        clusterBboxesInView = clusters.map { memberIndices in
+            memberIndices.reduce(CGRect.null) { union, idx in
                 idx < rects.count ? union.union(rects[idx]) : union
             }
+        }
+
+        let pins = selectedPinsSnapshot()
+        detectionBBoxOverlayView.items = clusters.enumerated().map { clusterOffset, memberIndices in
+            let clusterRect = clusterOffset < clusterBboxesInView.count ? clusterBboxesInView[clusterOffset] : .null
             let anySelected = memberIndices.contains { idx in
                 idx < candidates.count &&
                 pins.contains { FurnitureFitIoU.calculate(candidates[idx], $0) >= pinMatchIoUThreshold }
             }
-            let topIdx = memberIndices.min(by: { a, b in
-                (a < candidates.count ? candidates[a].confidence : 0) >
-                (b < candidates.count ? candidates[b].confidence : 0)
-            }) ?? memberIndices[0]
+            let topIdx = representativeIndex(for: memberIndices, candidates: candidates) ?? memberIndices[0]
             let topDetection = topIdx < candidates.count ? candidates[topIdx] : candidates[0]
             let label: String
             if memberIndices.count > 1 {
@@ -1888,6 +2005,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         primaryBboxInView = .zero
         if clearCandidates {
             candidateBboxesInView = []
+            clusterBboxesInView = []
             latestDisplayedCandidates = []
             latestDisplayedClusters = []
             latestDisplayedSelectedCandidateIndex = nil
@@ -1920,6 +2038,33 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func candidateIndexForTap(_ pointInMaskView: CGPoint) -> Int? {
+        if isShowingLiveVideoIdentifications,
+           !latestDisplayedClusters.isEmpty,
+           clusterBboxesInView.count == latestDisplayedClusters.count {
+            let paddedClusterMatches = clusterBboxesInView.enumerated().filter { _, rect in
+                rect.insetBy(dx: -22, dy: -22).contains(pointInMaskView)
+            }
+            if let clusterMatch = paddedClusterMatches.max(by: { leftEntry, rightEntry in
+                let leftArea = leftEntry.element.width * leftEntry.element.height
+                let rightArea = rightEntry.element.width * rightEntry.element.height
+                if abs(leftArea - rightArea) > 1 {
+                    return leftArea > rightArea
+                }
+                let leftRep = representativeIndex(for: latestDisplayedClusters[leftEntry.offset], candidates: latestDisplayedCandidates)
+                let rightRep = representativeIndex(for: latestDisplayedClusters[rightEntry.offset], candidates: latestDisplayedCandidates)
+                let leftConfidence = leftRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
+                let rightConfidence = rightRep.map { latestDisplayedCandidates[$0].confidence } ?? 0
+                return leftConfidence < rightConfidence
+            }),
+               clusterMatch.offset < latestDisplayedClusters.count,
+               let representative = representativeIndex(
+                    for: latestDisplayedClusters[clusterMatch.offset],
+                    candidates: latestDisplayedCandidates
+               ) {
+                return representative
+            }
+        }
+
         let selectionContext = FurnitureFitTapSelectionContext(
             pointInMaskView: pointInMaskView,
             maskViewBounds: maskImageView.bounds,
@@ -2738,7 +2883,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     /// Clears the entire RGBA output, including Core Graphics row padding, so pixels outside the
-    /// segmentation mask stay fully transparent and the live preview shows through underneath.
+    /// segmentation mask stay fully transparent and the underlying camera or room view shows through.
     private func fillCompositeBufferTransparent(
         outBase: UnsafeMutablePointer<UInt8>,
         height: Int,
@@ -3814,15 +3959,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     private func tryRenderRTMDetSegmentFromCachedIdentify(frameStart: Date, arDepthSnapshot: FurnitureFitARDepthSnapshot?) -> Bool {
-        guard segmentationMode == .segmentSelected else { return false }
+        guard segmentationMode == .segmentSelected, !isFullVideoSelectedSegmentation else { return false }
         let pins = selectedPinsSnapshot()
         guard !pins.isEmpty, let cached = latestRTMDetLiveMaskCacheSnapshot() else { return false }
 
         let candidates = cached.candidates
-        let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
-        let matchedIndices = matchedCandidates.compactMap { matched in
-            candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 })
-        }
+        let matchedIndices = selectedSeedIndicesForPins(
+            candidates: candidates,
+            pins: pins,
+            decoderOffsets: cached.originalDecoderIndices,
+            graph: cached.affinityGraph
+        )
+        let matchedCandidates = matchedIndices.map { candidates[$0] }
         guard let primaryIdx = matchedIndices.first else { return false }
 
         let primary = candidates[primaryIdx]
@@ -4023,6 +4171,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             guard !candidates.isEmpty else {
+                if segmentationMode == .segmentSelected {
+                    pruneSelectedPinsMissingFromCurrentCandidates([])
+                }
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.clearLiveDetectionOverlay(clearCandidates: true)
@@ -4097,8 +4248,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             let pins = selectedPinsSnapshot()
             if segmentationMode == .segmentSelected && pins.isEmpty {
                 DispatchQueue.main.async { [weak self] in
-                    self?.maskImageView.image = nil
-                    self?.updateDetectionOverlay(
+                    guard let self else { return }
+                    self.clearIndependentOverlayItems()
+                    self.maskImageView.image = nil
+                    self.updateDetectionOverlay(
                         candidates: candidates,
                         selectedIndex: nil,
                         imageWidth: bufW,
@@ -4106,7 +4259,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                         scaleX: 1,
                         scaleY: 1
                     )
-                    self?.setProgress(0.70, text: "Tap a detected item")
+                    self.setProgress(0.70, text: "Tap a detected item")
                 }
                 logRTMDetLiveFrameFooter(
                     frameStart: frameStart,
@@ -4117,17 +4270,22 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 return
             }
             if segmentationMode == .segmentSelected && !pins.isEmpty {
-                let matchedCandidates = matchedCandidatesForPins(candidates: candidates, pins: pins)
-                let matchedIndices = matchedCandidates.compactMap { matched in
-                    candidates.firstIndex(where: { FurnitureFitIoU.calculate($0, matched) >= 0.99 })
-                }
+                let matchedIndices = selectedSeedIndicesForPins(
+                    candidates: candidates,
+                    pins: pins,
+                    decoderOffsets: rankedDecoderOffsets,
+                    graph: result.maskAffinityGraph
+                )
+                let matchedCandidates = matchedIndices.map { candidates[$0] }
                 guard let selectedIndex = matchedIndices.first else {
                     if debugMode {
                         logDebug("🧠 [RTMDet segment] no selected candidate matched current frame pins=\(pins.count) candidates=\(candidates.count)")
                     }
                     DispatchQueue.main.async { [weak self] in
-                        self?.maskImageView.image = nil
-                        self?.updateDetectionOverlay(
+                        guard let self else { return }
+                        self.clearIndependentOverlayItems()
+                        self.maskImageView.image = nil
+                        self.updateDetectionOverlay(
                             candidates: candidates,
                             selectedIndex: nil,
                             imageWidth: bufW,
@@ -4135,7 +4293,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                             scaleX: 1,
                             scaleY: 1
                         )
-                        self?.setProgress(0.70, text: "Selected item not visible")
+                        self.setProgress(0.70, text: "Selected item not visible")
                     }
                     logRTMDetLiveFrameFooter(
                         frameStart: frameStart,
@@ -4182,7 +4340,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
 
             if selectedMaskCompositeIndices.count > 1,
-               let buildCache = result.maskBuildCache {
+               let buildCache = result.maskBuildCache,
+               !isFullVideoSelectedSegmentation {
                 let maskDetections = selectedMaskCompositeIndices.compactMap { idx in
                     idx < candidates.count ? candidates[idx] : nil
                 }
@@ -4232,7 +4391,14 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 return
             }
 
-            let maskDetections: [FurnitureFitDetection] = [primary]
+            let maskDetections: [FurnitureFitDetection]
+            if isFullVideoSelectedSegmentation, !selectedMaskCompositeIndices.isEmpty {
+                maskDetections = selectedMaskCompositeIndices.compactMap { idx in
+                    idx < candidates.count ? candidates[idx] : nil
+                }
+            } else {
+                maskDetections = [primary]
+            }
             let cachedMaskResult = result.maskBuildCache.flatMap {
                 RTMDetImageInference.buildCachedMaskWithGroupInfo(
                     from: $0,
@@ -5148,7 +5314,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - Independent multi-select overlays
 
     private var usesIndependentOverlayItems: Bool {
-        segmentationMode == .segmentSelected && overlayItems.count > 1
+        segmentationMode == .segmentSelected && !isFullVideoSelectedSegmentation && overlayItems.count > 1
     }
 
     private var hasVisibleSegmentationOverlay: Bool {
@@ -5420,7 +5586,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        guard !isShowingLiveVideoIdentifications else { return }
+        guard !isUsingLiveFrameAlignedOverlay else { return }
 
         if usesIndependentOverlayItems {
             guard overlayItems.contains(where: { $0.imageView.image != nil }) else {
@@ -5542,7 +5708,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard !isShowingLiveVideoIdentifications else { return }
+        guard !isUsingLiveFrameAlignedOverlay else { return }
 
         if usesIndependentOverlayItems {
             let translation = gesture.translation(in: self)
@@ -5625,10 +5791,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return
         }
         let clusterMembers = latestDisplayedClusters.first(where: { $0.contains(tappedIndex) }) ?? [tappedIndex]
-        for memberIdx in clusterMembers where memberIdx < latestDisplayedCandidates.count {
-            toggleSelectedDetection(latestDisplayedCandidates[memberIdx])
+        let representativeIdx = representativeIndex(for: clusterMembers, candidates: latestDisplayedCandidates) ?? tappedIndex
+        let clusterDetections = clusterMembers.compactMap { idx in
+            idx < latestDisplayedCandidates.count ? latestDisplayedCandidates[idx] : nil
         }
-        latestDisplayedSelectedCandidateIndex = tappedIndex
+        toggleSelectedCluster(
+            representative: latestDisplayedCandidates[representativeIdx],
+            members: clusterDetections
+        )
+        latestDisplayedSelectedCandidateIndex = representativeIdx
         let pins = selectedPinsSnapshot()
         detectionBBoxOverlayView.items = detectionBBoxOverlayView.items.enumerated().map { clusterIdx, item in
             let memberIndices = clusterIdx < latestDisplayedClusters.count ? latestDisplayedClusters[clusterIdx] : []
@@ -5679,7 +5850,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             return candidateIndexForTap(touchPoint) != nil
         }
 
-        if isShowingLiveVideoIdentifications &&
+        if isUsingLiveFrameAlignedOverlay &&
             (gestureRecognizer is UIPinchGestureRecognizer || gestureRecognizer is UIPanGestureRecognizer) {
             return false
         }
@@ -5990,22 +6161,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             }
         }
         let pointInMask = convert(point, to: maskImageView)
-        let tapHitPadding: CGFloat = shouldAllowBoundingBoxTapSelection ? 22 : 10
-        let candidateContains = candidateBboxesInView.contains {
-            $0.insetBy(dx: -tapHitPadding, dy: -tapHitPadding).contains(pointInMask)
-        }
+        let candidateContains = candidateIndexForTap(pointInMask) != nil
 
         if shouldAllowBoundingBoxTapSelection && candidateContains && maskImageView.image == nil {
-            logDebug("👆 [hitTest] INSIDE candidate bbox - handling tap without mask boxes=\(candidateBboxesInView.count)")
+            logDebug("👆 [hitTest] INSIDE identify bbox - handling tap without mask boxes=\(candidateBboxesInView.count) clusters=\(clusterBboxesInView.count)")
             return maskImageView
         }
 
         if shouldAllowBoundingBoxTapSelection {
             if candidateContains {
-                logDebug("👆 [hitTest] INSIDE identify candidate bbox - handling")
+                logDebug("👆 [hitTest] INSIDE identify bbox - handling")
                 return maskImageView
             }
-            logDebug("👆 [hitTest] OUTSIDE identify candidate bbox boxes=\(candidateBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
+            logDebug("👆 [hitTest] OUTSIDE identify bbox boxes=\(candidateBboxesInView.count) clusters=\(clusterBboxesInView.count) point=(\(Int(pointInMask.x)),\(Int(pointInMask.y)))")
             return nil
         }
 

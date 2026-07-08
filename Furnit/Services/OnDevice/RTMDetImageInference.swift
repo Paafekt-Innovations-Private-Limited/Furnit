@@ -532,7 +532,7 @@ enum RTMDetImageInference {
         let shouldPrepareMaskFeatures = maxMaskCount > 0 || buildInstanceMasks || cacheMaskBuildInputs
         let maskFeatureMatrix = shouldPrepareMaskFeatures ? rawMaskFeatureMatrix(from: maskFeat) : nil
         let rawMaskPlanes: [[Float]?]
-        if maxMaskCount > 0 || buildInstanceMasks {
+        if shouldPrepareMaskFeatures {
             if let maskFeatureMatrix {
                 rawMaskPlanes = selected.map { buildRawMaskPlane(candidate: $0, maskFeatureMatrix: maskFeatureMatrix) }
             } else {
@@ -558,14 +558,16 @@ enum RTMDetImageInference {
             maskBuildCache = nil
         }
 
-        let combinedMask = buildCombinedRawMaskImage(
-            rawMaskPlanes: rawMaskPlanes,
-            boxes: mappedBoxes,
-            maxMaskCount: maxMaskCount,
-            sourceBuffer: sourceBuffer,
-            mapping: mapping,
-            debugLabel: debug ? "combined" : nil
-        )
+        let combinedMask = maxMaskCount > 0
+            ? buildCombinedRawMaskImage(
+                rawMaskPlanes: rawMaskPlanes,
+                boxes: mappedBoxes,
+                maxMaskCount: maxMaskCount,
+                sourceBuffer: sourceBuffer,
+                mapping: mapping,
+                debugLabel: debug ? "combined" : nil
+            )
+            : nil
         let tCombined = Date()
         let maskAffinityGraph = !rawMaskPlanes.isEmpty
             ? makeMaskAffinityGraph(rawMaskPlanes)
