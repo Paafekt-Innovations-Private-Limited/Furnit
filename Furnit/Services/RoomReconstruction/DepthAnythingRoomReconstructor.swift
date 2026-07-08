@@ -221,9 +221,11 @@ final class DepthAnythingRoomReconstructor {
             fallbackFx: focalPx,
             fallbackFy: focalPx
         )
+        let rawDepthFlat = Self.flattenDepthMap(depthMap)
         let calibratedDepthMap = Self.scaleDepthMap(depthMap, scale: metricCalibration.depthScale)
         let measurementCalibration = Self.resolveMeasurementCameraHeightScale(
             depthMap: depthMap,
+            rawDepthFlat: rawDepthFlat,
             workingImage: workingImage,
             geoCalib: geoCalibCalibration,
             arkitGravityDown: Self.arkitGravityDownVector(from: calibrationMetadata),
@@ -310,16 +312,13 @@ final class DepthAnythingRoomReconstructor {
             wallMargin: wallMargin
         )
         let depthSpreadMeasured = Self.measureDepthSpread(
-            depthMap: measurementDepthMap,
+            pointGrid: measurementCalibration.pointGrid,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            fx: measurementFocal.fx,
-            fy: measurementFocal.fy,
             wallMargin: wallMargin,
-            levelingRotation: measurementCalibration.levelingRotation,
+            scale: measurementCalibration.depthScale,
             cameraHeightPriorMeters: measurementCalibration.cameraHeightPriorMeters
         ) ?? wallMeasured
-        let rawDepthFlat = Self.flattenDepthMap(depthMap)
         let depthMask = RoomExtent.buildInvalidDepthMask(
             depth: rawDepthFlat,
             width: imageWidth,
@@ -336,15 +335,11 @@ final class DepthAnythingRoomReconstructor {
             cy: Float(imageHeight - 1) * 0.5
         )
         logDebug("[DepthMask] \(depthMask.debug)")
-        let roomExtentPoints = RoomExtent.unprojectLeveled(
-            depth: rawDepthFlat,
+        let roomExtentPoints = Self.roomExtentPoints(
+            pointGrid: measurementCalibration.pointGrid,
             width: imageWidth,
             height: imageHeight,
             valid: depthMask.valid,
-            focalPx: measurementFocal.fx,
-            cx: Float(imageWidth - 1) * 0.5,
-            cy: Float(imageHeight - 1) * 0.5,
-            gravity: measurementCalibration.levelingRotation,
             stride: 2
         )
         let roomExtentMeasured = RoomExtent.roomExtentFromWalls(
@@ -365,15 +360,10 @@ final class DepthAnythingRoomReconstructor {
             gravitySourceCode: measurementCalibration.gravitySourceCode
         )
         let roomHeightMeasured = RoomHeight.roomHeightSingleView(
-            depth: rawDepthFlat,
-            width: imageWidth,
-            height: imageHeight,
-            fx: measurementFocal.fx,
+            pointGrid: measurementCalibration.pointGrid,
             fy: measurementFocal.fy,
-            cx: Float(imageWidth - 1) * 0.5,
             cy: Float(imageHeight - 1) * 0.5,
             pitch: gravityPitchForHeight,
-            rotation: measurementCalibration.levelingRotation,
             cameraHeight: importedCameraHeightForSingleView
         )
         logDebug("[HeightSelfCheck] \(roomHeightMeasured.selfCheckDebug)")
@@ -383,14 +373,7 @@ final class DepthAnythingRoomReconstructor {
             "approx=\(roomHeightMeasured.approximate)"
         )
         let roomWidthMeasured = RoomHeight.roomWidthSingleView(
-            depth: rawDepthFlat,
-            width: imageWidth,
-            height: imageHeight,
-            fx: measurementFocal.fx,
-            fy: measurementFocal.fy,
-            cx: Float(imageWidth - 1) * 0.5,
-            cy: Float(imageHeight - 1) * 0.5,
-            rotation: measurementCalibration.levelingRotation,
+            pointGrid: measurementCalibration.pointGrid,
             vFloor: roomHeightMeasured.vFloor,
             vHorizon: roomHeightMeasured.vHorizon,
             vCeil: roomHeightMeasured.vCeil,
@@ -1231,8 +1214,38 @@ final class DepthAnythingRoomReconstructor {
         cameraHeightPriorMeters: Float,
         sampleStep: Int = 8
     ) -> (width: Float, height: Float, depth: Float)? {
-        guard imageWidth > 1, imageHeight > 1, fx > 1, fy > 1 else { return nil }
+        let flatDepth = flattenDepthMap(depthMap)
+        let pointGrid = LeveledDepthPointGrid(
+            depth: flatDepth,
+            width: imageWidth,
+            height: imageHeight,
+            fx: fx,
+            fy: fy,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5,
+            rotation: levelingRotation
+        )
+        return measureDepthSpread(
+            pointGrid: pointGrid,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            wallMargin: wallMargin,
+            scale: 1,
+            cameraHeightPriorMeters: cameraHeightPriorMeters,
+            sampleStep: sampleStep
+        )
+    }
 
+    private static func measureDepthSpread(
+        pointGrid: LeveledDepthPointGrid,
+        imageWidth: Int,
+        imageHeight: Int,
+        wallMargin: Float,
+        scale: Float,
+        cameraHeightPriorMeters: Float,
+        sampleStep: Int = 8
+    ) -> (width: Float, height: Float, depth: Float)? {
+        guard imageWidth > 1, imageHeight > 1 else { return nil }
         let margin = min(max(wallMargin, 0), 0.45)
         let leftX = Int(round(margin * Float(imageWidth)))
         let rightX = Int(round((1.0 - margin) * Float(imageWidth))) - 1
@@ -1240,8 +1253,6 @@ final class DepthAnythingRoomReconstructor {
         let bottomY = Int(round((1.0 - margin) * Float(imageHeight))) - 1
         guard leftX < rightX, topY < bottomY else { return nil }
 
-        let centerX = Float(imageWidth - 1) * 0.5
-        let centerY = Float(imageHeight - 1) * 0.5
         var leveledX: [Float] = []
         var leveledY: [Float] = []
         var leveledZ: [Float] = []
@@ -1257,17 +1268,7 @@ final class DepthAnythingRoomReconstructor {
         while y <= bottomY {
             var x = leftX
             while x <= rightX {
-                let depth = depthMap[y][x]
-                if depth.isFinite, depth > 0 {
-                    let point = levelingRotation * unprojectCameraPoint(
-                        column: Float(x),
-                        row: Float(y),
-                        depth: depth,
-                        fx: fx,
-                        fy: fy,
-                        centerX: centerX,
-                        centerY: centerY
-                    )
+                if let point = pointGrid.point(x: x, y: y, scale: scale) {
                     if point.z > 0 {
                         leveledX.append(point.x)
                         leveledY.append(point.y)
@@ -1336,6 +1337,32 @@ final class DepthAnythingRoomReconstructor {
         return (width, height, roomDepth)
     }
 
+    private static func roomExtentPoints(
+        pointGrid: LeveledDepthPointGrid,
+        width: Int,
+        height: Int,
+        valid: [Bool],
+        stride step: Int = 2
+    ) -> [Point3] {
+        guard width > 1, height > 1, valid.count == width * height else { return [] }
+        let sampleStep = max(1, step)
+        var points: [Point3] = []
+        points.reserveCapacity((width / sampleStep) * (height / sampleStep))
+
+        for y in Swift.stride(from: 0, to: height, by: sampleStep) {
+            for x in Swift.stride(from: 0, to: width, by: sampleStep) {
+                let index = y * width + x
+                guard valid[index], let point = pointGrid.point(x: x, y: y), point.z > 0 else {
+                    continue
+                }
+                // RoomExtent uses Y-up world coordinates; the shared grid keeps the
+                // existing measurement frame with positive Y down.
+                points.append(Point3(x: point.x, y: -point.y, z: point.z))
+            }
+        }
+        return points
+    }
+
     /// Robust slope/intercept: sort by x, pair the first half with the second half, take the
     /// median pair slope, then the median intercept (Theil–Sen flavored, outlier tolerant).
     private static func robustLineFit(x: [Float], y: [Float]) -> (slope: Float, intercept: Float)? {
@@ -1360,22 +1387,6 @@ final class DepthAnythingRoomReconstructor {
             residuals.append(y[index] - slope * x[index])
         }
         return (slope, median(residuals))
-    }
-
-    private static func unprojectCameraPoint(
-        column: Float,
-        row: Float,
-        depth: Float,
-        fx: Float,
-        fy: Float,
-        centerX: Float,
-        centerY: Float
-    ) -> SIMD3<Float> {
-        SIMD3(
-            (column - centerX) * depth / fx,
-            (row - centerY) * depth / fy,
-            depth
-        )
     }
 
     private struct ObjectBBoxMeasurement {
@@ -1412,6 +1423,9 @@ final class DepthAnythingRoomReconstructor {
         let sourceCode: Int
         /// Gravity leveling used for floor sampling; reused by the wall-anchored spread measurement.
         let levelingRotation: simd_float3x3
+        /// Raw Depth Anything samples unprojected and gravity-leveled once. Multiplying by
+        /// `depthScale` gives measurement-space meters because unprojection is linear in depth.
+        let pointGrid: LeveledDepthPointGrid
         /// 0 = identity (no leveling), 1 = GeoCalib CNN estimate, 2 = ARKit device gravity.
         let gravitySourceCode: Int
         /// 0 = fixed 1.7 m eye-level assumption, 1 = measured ARKit floor-plane height, 2 = fused imported-photo anchor.
@@ -1470,6 +1484,7 @@ final class DepthAnythingRoomReconstructor {
 
     private static func resolveMeasurementCameraHeightScale(
         depthMap: [[Float]],
+        rawDepthFlat: [Float],
         workingImage: UIImage,
         geoCalib: GeoCalibCalibrationResult?,
         arkitGravityDown: SIMD3<Float>?,
@@ -1517,13 +1532,20 @@ final class DepthAnythingRoomReconstructor {
             levelingRotation = matrix_identity_float3x3
             gravitySourceCode = 0
         }
-        let rawCameraHeight = cameraHeightFromFloorSamples(
-            depthMap: depthMap,
-            levelingRotation: levelingRotation,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
+        let pointGrid = LeveledDepthPointGrid(
+            depth: rawDepthFlat,
+            width: imageWidth,
+            height: imageHeight,
             fx: fx,
             fy: fy,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5,
+            rotation: levelingRotation
+        )
+        let rawCameraHeight = cameraHeightFromFloorSamples(
+            pointGrid: pointGrid,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
             wallMargin: wallMargin,
             furnitureExcludeBBox: furnitureExcludeBBox
         )
@@ -1547,6 +1569,16 @@ final class DepthAnythingRoomReconstructor {
                 levelingRotation: levelingRotation,
                 image: workingImage,
                 focalPx: Double(fx)
+            )
+            let scaleEstimatorPointGrid = LeveledDepthPointGrid(
+                depth: rawDepthFlat,
+                width: imageWidth,
+                height: imageHeight,
+                fx: fx,
+                fy: fy,
+                cx: Float(imageWidth - 1) * 0.5,
+                cy: Float(imageHeight - 1) * 0.5,
+                rotation: vpGravity.levelingRotation
             )
             let objectBoxes: [ScaleObjectBox] = objectRect.map { rect in
                 [
@@ -1574,16 +1606,13 @@ final class DepthAnythingRoomReconstructor {
             } ?? []
             let impliedRoomHeightForScale: (Double) -> Double? = { candidateScale in
                 guard candidateScale.isFinite, candidateScale > 0 else { return nil }
-                let scaledDepthMap = scaleDepthMap(depthMap, scale: Float(candidateScale))
                 let impliedCameraHeightPrior = rawCameraHeight.map { $0 * Float(candidateScale) } ?? cameraHeightPrior
                 if let spread = measureDepthSpread(
-                    depthMap: scaledDepthMap,
+                    pointGrid: scaleEstimatorPointGrid,
                     imageWidth: imageWidth,
                     imageHeight: imageHeight,
-                    fx: fx,
-                    fy: fy,
                     wallMargin: wallMargin,
-                    levelingRotation: vpGravity.levelingRotation,
+                    scale: Float(candidateScale),
                     cameraHeightPriorMeters: impliedCameraHeightPrior
                 ) {
                     return Double(spread.height)
@@ -1622,6 +1651,7 @@ final class DepthAnythingRoomReconstructor {
             sourceLabel: sourceLabel,
             sourceCode: sourceCode,
             levelingRotation: levelingRotation,
+            pointGrid: pointGrid,
             gravitySourceCode: gravitySourceCode,
             cameraHeightPriorSourceCode: priorSourceCode,
             scaleEstimatorConfidence: scaleEstimatorConfidence,
@@ -1678,8 +1708,34 @@ final class DepthAnythingRoomReconstructor {
         wallMargin: Float,
         furnitureExcludeBBox: (leftX: Int, rightX: Int, topY: Int, bottomY: Int)?
     ) -> Float? {
-        guard imageWidth > 1, imageHeight > 1, fx > 1, fy > 1 else { return nil }
+        let flatDepth = flattenDepthMap(depthMap)
+        let pointGrid = LeveledDepthPointGrid(
+            depth: flatDepth,
+            width: imageWidth,
+            height: imageHeight,
+            fx: fx,
+            fy: fy,
+            cx: Float(imageWidth - 1) * 0.5,
+            cy: Float(imageHeight - 1) * 0.5,
+            rotation: levelingRotation
+        )
+        return cameraHeightFromFloorSamples(
+            pointGrid: pointGrid,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            wallMargin: wallMargin,
+            furnitureExcludeBBox: furnitureExcludeBBox
+        )
+    }
 
+    private static func cameraHeightFromFloorSamples(
+        pointGrid: LeveledDepthPointGrid,
+        imageWidth: Int,
+        imageHeight: Int,
+        wallMargin: Float,
+        furnitureExcludeBBox: (leftX: Int, rightX: Int, topY: Int, bottomY: Int)?
+    ) -> Float? {
+        guard imageWidth > 1, imageHeight > 1 else { return nil }
         let margin = min(max(wallMargin, 0), 0.45)
         let leftX = Int(round(margin * Float(imageWidth)))
         let rightX = Int(round((1.0 - margin) * Float(imageWidth))) - 1
@@ -1687,8 +1743,6 @@ final class DepthAnythingRoomReconstructor {
         let bottomY = imageHeight - 1
         guard leftX < rightX, floorStartY < bottomY else { return nil }
 
-        let centerX = Float(imageWidth - 1) * 0.5
-        let centerY = Float(imageHeight - 1) * 0.5
         let step = max(4, (bottomY - floorStartY) / 32)
         let bandWidth = max(Float(rightX - leftX), 1)
         let bandHeight = max(Float(bottomY - floorStartY), 1)
@@ -1725,21 +1779,10 @@ final class DepthAnythingRoomReconstructor {
                     column += step
                     continue
                 }
-                let depth = depthMap[row][column]
-                guard depth.isFinite, depth > 0 else {
+                guard let leveledPoint = pointGrid.point(x: column, y: row) else {
                     column += step
                     continue
                 }
-                let cameraPoint = unprojectCameraPoint(
-                    column: Float(column),
-                    row: Float(row),
-                    depth: depth,
-                    fx: fx,
-                    fy: fy,
-                    centerX: centerX,
-                    centerY: centerY
-                )
-                let leveledPoint = levelingRotation * cameraPoint
                 // Python: ys = leveled[floor_mask, 1]; keep ys > 0 (below camera), median.
                 if leveledPoint.y > 0.05 {
                     cameraHeights.append(leveledPoint.y)

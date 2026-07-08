@@ -1,5 +1,63 @@
 import simd
 
+struct LeveledDepthPointGrid {
+    let width: Int
+    let height: Int
+    let viewDirectionHorizontal: SIMD2<Float>?
+    private let points: [SIMD3<Float>]
+    private let valid: [Bool]
+
+    init(
+        depth: [Float],
+        width: Int,
+        height: Int,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        rotation: simd_float3x3
+    ) {
+        self.width = width
+        self.height = height
+        let pixelCount = max(0, width * height)
+        var points = [SIMD3<Float>](repeating: .zero, count: pixelCount)
+        var valid = [Bool](repeating: false, count: pixelCount)
+
+        if width > 1, height > 1, depth.count == pixelCount, fx > 1, fy > 1 {
+            for y in 0..<height {
+                let cameraYUnit = (Float(y) - cy) / fy
+                for x in 0..<width {
+                    let index = y * width + x
+                    let d = depth[index]
+                    guard d.isFinite, d > 0 else { continue }
+                    let cameraPoint = SIMD3<Float>(
+                        (Float(x) - cx) * d / fx,
+                        cameraYUnit * d,
+                        d
+                    )
+                    points[index] = rotation * cameraPoint
+                    valid[index] = true
+                }
+            }
+        }
+
+        let view = rotation * SIMD3<Float>(0, 0, 1)
+        let horizontal = SIMD2<Float>(view.x, view.z)
+        let horizontalLength = simd_length(horizontal)
+        self.viewDirectionHorizontal = horizontalLength > 1e-4 ? horizontal / horizontalLength : nil
+        self.points = points
+        self.valid = valid
+    }
+
+    func point(x: Int, y: Int, scale: Float = 1) -> SIMD3<Float>? {
+        guard x >= 0, x < width, y >= 0, y < height else { return nil }
+        let index = y * width + x
+        guard index < valid.count, valid[index] else { return nil }
+        let point = points[index]
+        return abs(scale - 1) > 1e-6 ? point * scale : point
+    }
+}
+
 struct RoomHeightResult {
     let height: Float
     let confidence: Float
@@ -32,6 +90,32 @@ enum RoomHeight {
         rotation: simd_float3x3,
         cameraHeight: Float = 1.60
     ) -> RoomHeightResult {
+        let pointGrid = LeveledDepthPointGrid(
+            depth: depth,
+            width: width,
+            height: height,
+            fx: fx,
+            fy: fy,
+            cx: cx,
+            cy: cy,
+            rotation: rotation
+        )
+        return roomHeightSingleView(
+            pointGrid: pointGrid,
+            fy: fy,
+            cy: cy,
+            pitch: pitch,
+            cameraHeight: cameraHeight
+        )
+    }
+
+    static func roomHeightSingleView(
+        pointGrid: LeveledDepthPointGrid,
+        fy: Float,
+        cy: Float,
+        pitch: Float,
+        cameraHeight: Float = 1.60
+    ) -> RoomHeightResult {
         let variants: [(pitchSign: Float, normalSign: Float)] = [
             (1, 1),
             (-1, 1),
@@ -42,15 +126,10 @@ enum RoomHeight {
         var best: RoomHeightResult?
         for variant in variants {
             let result = estimateOnce(
-                depth: depth,
-                width: width,
-                height: height,
-                fx: fx,
+                pointGrid: pointGrid,
                 fy: fy,
-                cx: cx,
                 cy: cy,
                 pitch: pitch * variant.pitchSign,
-                rotation: rotation,
                 cameraHeight: cameraHeight,
                 normalSign: variant.normalSign,
                 variantLabel: "pitchSign=\(Int(variant.pitchSign)) normalSign=\(Int(variant.normalSign))"
@@ -76,19 +155,16 @@ enum RoomHeight {
     }
 
     private static func estimateOnce(
-        depth: [Float],
-        width: Int,
-        height: Int,
-        fx: Float,
+        pointGrid: LeveledDepthPointGrid,
         fy: Float,
-        cx: Float,
         cy: Float,
         pitch: Float,
-        rotation: simd_float3x3,
         cameraHeight: Float,
         normalSign: Float,
         variantLabel: String
     ) -> RoomHeightResult {
+        let width = pointGrid.width
+        let height = pointGrid.height
         let clampedCameraHeight = min(1.75, max(1.55, cameraHeight))
         let horizonRow = cy + fy * tan(pitch)
 
@@ -99,10 +175,10 @@ enum RoomHeight {
         let xStep = max(1, (xEnd - xStart) / 180)
         var x = xStart
         while x <= xEnd {
-            if let row = floorWallRow(depth, width, height, col: x, fx, fy, cx, cy, rotation, normalSign) {
+            if let row = floorWallRow(pointGrid, col: x, normalSign) {
                 floorRows.append(row)
             }
-            if let row = ceilingWallRow(depth, width, height, col: x, fx, fy, cx, cy, rotation, normalSign) {
+            if let row = ceilingWallRow(pointGrid, col: x, normalSign) {
                 ceilingRows.append(row)
             }
             x += xStep
@@ -221,33 +297,25 @@ enum RoomHeight {
     }
 
     private static func worldNormal(
-        _ depth: [Float],
-        _ width: Int,
-        _ height: Int,
+        _ pointGrid: LeveledDepthPointGrid,
         _ x: Int,
         _ y: Int,
-        _ fx: Float,
-        _ fy: Float,
-        _ cx: Float,
-        _ cy: Float,
-        _ rotation: simd_float3x3,
         _ normalSign: Float
     ) -> SIMD3<Float>? {
+        let width = pointGrid.width
+        let height = pointGrid.height
         guard x > 0, x < width - 1, y > 0, y < height - 1 else { return nil }
-        let centerDepth = depth[y * width + x]
-        if !centerDepth.isFinite || centerDepth <= 0 { return nil }
-        let leftDepth = depth[y * width + x - 1]
-        let rightDepth = depth[y * width + x + 1]
-        let upDepth = depth[(y - 1) * width + x]
-        let downDepth = depth[(y + 1) * width + x]
-        if leftDepth <= 0 || rightDepth <= 0 || upDepth <= 0 || downDepth <= 0 { return nil }
+        guard let left = pointGrid.point(x: x - 1, y: y),
+              let right = pointGrid.point(x: x + 1, y: y),
+              let up = pointGrid.point(x: x, y: y - 1),
+              let down = pointGrid.point(x: x, y: y + 1) else {
+            return nil
+        }
 
-        let left = cameraPoint(x - 1, y, leftDepth, fx, fy, cx, cy)
-        let right = cameraPoint(x + 1, y, rightDepth, fx, fy, cx, cy)
-        let up = cameraPoint(x, y - 1, upDepth, fx, fy, cx, cy)
-        let down = cameraPoint(x, y + 1, downDepth, fx, fy, cx, cy)
-        let cameraNormal = simd_normalize(simd_cross(right - left, down - up)) * normalSign
-        let leveled = rotation * cameraNormal
+        let cross = simd_cross(right - left, down - up)
+        let length = simd_length(cross)
+        guard length > 1e-6 else { return nil }
+        let leveled = (cross / length) * normalSign
         // Existing leveling frame has positive Y down; flip to Y-up for classification.
         return simd_normalize(SIMD3<Float>(leveled.x, -leveled.y, leveled.z))
     }
@@ -265,20 +333,13 @@ enum RoomHeight {
     }
 
     private static func floorWallRow(
-        _ depth: [Float],
-        _ width: Int,
-        _ height: Int,
+        _ pointGrid: LeveledDepthPointGrid,
         col x: Int,
-        _ fx: Float,
-        _ fy: Float,
-        _ cx: Float,
-        _ cy: Float,
-        _ rotation: simd_float3x3,
         _ normalSign: Float
     ) -> Float? {
         var lastFloor = -1
-        for y in stride(from: height - 2, through: 1, by: -1) {
-            guard let normal = worldNormal(depth, width, height, x, y, fx, fy, cx, cy, rotation, normalSign) else { continue }
+        for y in stride(from: pointGrid.height - 2, through: 1, by: -1) {
+            guard let normal = worldNormal(pointGrid, x, y, normalSign) else { continue }
             let surface = classify(normal)
             if surface == .floor {
                 lastFloor = y
@@ -290,20 +351,13 @@ enum RoomHeight {
     }
 
     private static func ceilingWallRow(
-        _ depth: [Float],
-        _ width: Int,
-        _ height: Int,
+        _ pointGrid: LeveledDepthPointGrid,
         col x: Int,
-        _ fx: Float,
-        _ fy: Float,
-        _ cx: Float,
-        _ cy: Float,
-        _ rotation: simd_float3x3,
         _ normalSign: Float
     ) -> Float? {
         var lastCeiling = -1
-        for y in stride(from: 1, to: height - 1, by: 1) {
-            guard let normal = worldNormal(depth, width, height, x, y, fx, fy, cx, cy, rotation, normalSign) else { continue }
+        for y in stride(from: 1, to: pointGrid.height - 1, by: 1) {
+            guard let normal = worldNormal(pointGrid, x, y, normalSign) else { continue }
             let surface = classify(normal)
             if surface == .ceiling {
                 lastCeiling = y
@@ -329,6 +383,34 @@ enum RoomHeight {
         normalSign: Float,
         cameraHeight: Float = 1.60
     ) -> RoomWidthResult {
+        let pointGrid = LeveledDepthPointGrid(
+            depth: depth,
+            width: width,
+            height: height,
+            fx: fx,
+            fy: fy,
+            cx: cx,
+            cy: cy,
+            rotation: rotation
+        )
+        return roomWidthSingleView(
+            pointGrid: pointGrid,
+            vFloor: vFloor,
+            vHorizon: vHorizon,
+            vCeil: vCeil,
+            normalSign: normalSign,
+            cameraHeight: cameraHeight
+        )
+    }
+
+    static func roomWidthSingleView(
+        pointGrid: LeveledDepthPointGrid,
+        vFloor: Float?,
+        vHorizon: Float?,
+        vCeil: Float?,
+        normalSign: Float,
+        cameraHeight: Float = 1.60
+    ) -> RoomWidthResult {
         guard let vFloor,
               let vHorizon,
               let vCeil,
@@ -338,14 +420,7 @@ enum RoomHeight {
         }
 
         let backWall = backWallPixelWidth(
-            depth: depth,
-            width: width,
-            height: height,
-            fx: fx,
-            fy: fy,
-            cx: cx,
-            cy: cy,
-            rotation: rotation,
+            pointGrid: pointGrid,
             vFloor: vFloor,
             vCeil: vCeil,
             normalSign: normalSign
@@ -384,23 +459,12 @@ enum RoomHeight {
     }
 
     private static func backWallPixelWidth(
-        depth: [Float],
-        width: Int,
-        height: Int,
-        fx: Float,
-        fy: Float,
-        cx: Float,
-        cy: Float,
-        rotation: simd_float3x3,
+        pointGrid: LeveledDepthPointGrid,
         vFloor: Float,
         vCeil: Float,
         normalSign: Float
     ) -> (span: Float, count: Int, xLeft: Int, xRight: Int) {
-        let view = rotation * SIMD3<Float>(0, 0, 1)
-        let viewHorizontal = SIMD2<Float>(view.x, view.z)
-        let viewLength = simd_length(viewHorizontal)
-        guard viewLength > 1e-4 else { return (0, 0, 0, 0) }
-        let viewDirection = viewHorizontal / viewLength
+        guard let viewDirection = pointGrid.viewDirectionHorizontal else { return (0, 0, 0, 0) }
 
         func isBackWall(_ normal: SIMD3<Float>) -> Bool {
             let horizontal = SIMD2<Float>(normal.x, normal.z)
@@ -411,15 +475,15 @@ enum RoomHeight {
 
         let yTop = Int(vCeil + (vFloor - vCeil) * 0.35)
         let yBottom = Int(vCeil + (vFloor - vCeil) * 0.65)
-        let minY = max(1, min(height - 2, yTop))
-        let maxY = max(1, min(height - 2, yBottom))
+        let minY = max(1, min(pointGrid.height - 2, yTop))
+        let maxY = max(1, min(pointGrid.height - 2, yBottom))
         guard minY <= maxY else { return (0, 0, 0, 0) }
 
         var xs: [Int] = []
-        xs.reserveCapacity((maxY - minY + 1) * width / 2)
+        xs.reserveCapacity((maxY - minY + 1) * pointGrid.width / 2)
         for y in minY...maxY {
-            for x in 1..<(width - 1) {
-                guard let normal = worldNormal(depth, width, height, x, y, fx, fy, cx, cy, rotation, normalSign) else { continue }
+            for x in 1..<(pointGrid.width - 1) {
+                guard let normal = worldNormal(pointGrid, x, y, normalSign) else { continue }
                 if isBackWall(normal) {
                     xs.append(x)
                 }

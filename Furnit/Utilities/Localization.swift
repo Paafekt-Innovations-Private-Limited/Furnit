@@ -301,6 +301,11 @@ enum L10n {
         static let createSubtitle = "photoRoom.createSubtitle".localized
         static let quickPhoto = "photoRoom.quickPhoto".localized
         static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
+        static let howToCreate = "photoRoom.howToCreate".localized
+        static let tapOption = "photoRoom.tapOption".localized
+        static let aiPowered = "photoRoom.aiPowered".localized
+        static let manualSetup = "photoRoom.manualSetup".localized
+        static let manualSetupDesc = "photoRoom.manualSetupDesc".localized
         static let buildingRoom = "photoRoom.buildingRoom".localized
         /// Manual single-photo room pipeline (`SinglePhotoRoomReconstructor`) status line on progress overlay.
         static let reconstructorReady = "photoRoom.reconstructorReady".localized

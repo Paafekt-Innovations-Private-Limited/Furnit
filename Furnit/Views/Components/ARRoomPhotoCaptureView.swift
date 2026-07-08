@@ -10,6 +10,11 @@ final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegat
 
     private let arView = ARSCNView(frame: .zero)
     private var hasStartedSession = false
+    private let captureProcessingQueue = DispatchQueue(
+        label: "com.furnit.roomCapture.encode",
+        qos: .userInitiated
+    )
+    private static let captureCIContext = CIContext(options: [.useSoftwareRenderer: false])
 
     private let captureButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
@@ -102,39 +107,54 @@ final class ARRoomPhotoCaptureViewController: UIViewController, ARSessionDelegat
             return
         }
 
-        guard let image = Self.imageFromARFrame(frame) else {
-            logDebug("❌ [AR] Failed to build UIImage from frame")
-            return
-        }
-
+        captureButton.isEnabled = false
+        cancelButton.isEnabled = false
+        let capturedImage = frame.capturedImage
+        let orientation = Self.uiImageOrientationForInterface()
         let supplemental = Self.supplementalMetrics(from: frame)
-        var fileURL: URL?
-        if let data = image.jpegData(compressionQuality: 0.92) {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("ar_room_capture_\(UUID().uuidString).jpg")
-            do {
-                try data.write(to: url, options: [.atomic])
-                fileURL = url
-                logDebug("📷 [AR] Wrote temp JPEG \(url.lastPathComponent) bytes=\(data.count)")
-            } catch {
-                logDebug("❌ [AR] Temp JPEG write failed: \(error.localizedDescription)")
+        let hadSceneDepth = frame.sceneDepth != nil
+
+        captureProcessingQueue.async { [weak self] in
+            guard let image = Self.imageFromPixelBuffer(capturedImage, orientation: orientation) else {
+                logDebug("❌ [AR] Failed to build UIImage from frame")
+                DispatchQueue.main.async {
+                    self?.captureButton.isEnabled = true
+                    self?.cancelButton.isEnabled = true
+                }
+                return
+            }
+
+            let fileURL = Self.writeTempJPEG(image, quality: 0.88)
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.arView.session.pause()
+                CameraOwnershipDiagnostics.log(owner: "ARRoomPhotoCaptureViewController", event: "captured", details: "depth=\(hadSceneDepth)")
+                self.onCaptured?(image, fileURL, supplemental)
             }
         }
-
-        arView.session.pause()
-        CameraOwnershipDiagnostics.log(owner: "ARRoomPhotoCaptureViewController", event: "captured", details: "depth=\(frame.sceneDepth != nil)")
-        onCaptured?(image, fileURL, supplemental)
     }
 
     // MARK: - Image + metrics
 
-    private static func imageFromARFrame(_ frame: ARFrame) -> UIImage? {
-        let pb = frame.capturedImage
-        let ciImage = CIImage(cvPixelBuffer: pb)
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        let orientation = uiImageOrientationForInterface()
+    private static func imageFromPixelBuffer(_ pixelBuffer: CVPixelBuffer, orientation: UIImage.Orientation) -> UIImage? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = captureCIContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
         let ui = UIImage(cgImage: cgImage, scale: 1.0, orientation: orientation)
         return ui.fixedOrientation()
+    }
+
+    private static func writeTempJPEG(_ image: UIImage, quality: CGFloat) -> URL? {
+        guard let data = image.jpegData(compressionQuality: quality) else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ar_room_capture_\(UUID().uuidString).jpg")
+        do {
+            try data.write(to: url, options: [.atomic])
+            logDebug("📷 [AR] Wrote temp JPEG \(url.lastPathComponent) bytes=\(data.count)")
+            return url
+        } catch {
+            logDebug("❌ [AR] Temp JPEG write failed: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private static func uiImageOrientationForInterface() -> UIImage.Orientation {

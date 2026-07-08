@@ -1,6 +1,8 @@
 import ARKit
+import CoreImage
 import CoreVideo
 import Foundation
+import ImageIO
 import simd
 import UIKit
 
@@ -35,6 +37,10 @@ struct PixelResolution: Codable, Sendable {
 
 /// Owns the on-disk folder layout for a posed-frame room sweep.
 final class PosedFrameSweepStore {
+    private enum ManifestPolicy {
+        static let recoveryWriteInterval = 20
+    }
+
     let sessionID: String
     let rootURL: URL
     private let framesURL: URL
@@ -110,7 +116,9 @@ final class PosedFrameSweepStore {
             timestamp: frame.timestamp
         )
         records.append(record)
-        try writeManifest()
+        if records.count.isMultiple(of: ManifestPolicy.recoveryWriteInterval) {
+            try writeManifest()
+        }
         return record
     }
 
@@ -131,16 +139,18 @@ final class PosedFrameSweepStore {
 
     private func writeJPEG(from pixelBuffer: CVPixelBuffer, to url: URL) throws {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-            throw PosedFrameSweepError.imageConversionFailed
-        }
         // Keep the JPEG in ARFrame/camera image space. UI rotation would make the
         // saved RGB no longer match `camera.imageResolution` and `intrinsicsRGB`.
-        let image = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
-        guard let jpeg = image.jpegData(compressionQuality: 0.9) else {
-            throw PosedFrameSweepError.imageEncodingFailed
-        }
-        try jpeg.write(to: url, options: [.atomic])
+        try ciContext.writeJPEGRepresentation(
+            of: ciImage,
+            to: url,
+            colorSpace: CGColorSpaceCreateDeviceRGB(),
+            options: [
+                CIImageRepresentationOption(
+                    rawValue: kCGImageDestinationLossyCompressionQuality as String
+                ): 0.82
+            ]
+        )
     }
 
     private func writeFloat32DepthMap(_ depthMap: CVPixelBuffer, to url: URL) throws {

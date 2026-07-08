@@ -1191,6 +1191,7 @@ struct SinglePhotoRoomView: View {
     @State private var captureMediaMetadata: [AnyHashable: Any]?
     @State private var photoLibraryAssetLocalId: String?
     @State private var supplementalCameraDoubles: [String: Double]?
+    @State private var hasRequestedDepthAnythingPrewarm = false
 
     struct IdentifiedImage: Identifiable {
         let id = UUID()
@@ -1211,9 +1212,9 @@ struct SinglePhotoRoomView: View {
                         .onAppear { logDebug("🖼️ [View] Displaying selected image for Depth Anything generation") }
 
                     VStack(spacing: 4) {
-                        Text("Depth Anything Room")
+                        Text(L10n.PhotoRoom.howToCreate)
                             .font(.headline)
-                        Text("Metric depth mesh to USDZ")
+                        Text(L10n.PhotoRoom.tapOption)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -1232,10 +1233,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Create Depth Anything Room")
+                                Text(L10n.PhotoRoom.title)
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Measurements come from Depth Anything inference")
+                                Text(L10n.PhotoRoom.aiPowered)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -1265,10 +1266,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(NSLocalizedString("photoRoom.manualSetup", comment: ""))
+                                Text(L10n.PhotoRoom.manualSetup)
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text(NSLocalizedString("photoRoom.manualSetupDesc", comment: ""))
+                                Text(L10n.PhotoRoom.manualSetupDesc)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -1502,6 +1503,7 @@ struct SinglePhotoRoomView: View {
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
+            prewarmDepthAnythingModelIfNeeded()
             logDebug("🤖 [View] Depth Anything generation ready")
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
@@ -1591,6 +1593,19 @@ struct SinglePhotoRoomView: View {
 
     private func handlePhotoRoomBackTap() {
         dismiss()
+    }
+
+    private func prewarmDepthAnythingModelIfNeeded() {
+        guard !hasRequestedDepthAnythingPrewarm else { return }
+        hasRequestedDepthAnythingPrewarm = true
+        Task.detached(priority: .utility) {
+            do {
+                _ = try DepthAnythingRoomReconstructor()
+                logDebug("[DepthAnythingRoom][Prewarm] shared model ready")
+            } catch {
+                logDebug("[DepthAnythingRoom][Prewarm] skipped: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func startDepthAnythingGeneration(image: UIImage) {
