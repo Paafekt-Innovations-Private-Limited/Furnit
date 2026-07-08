@@ -41,10 +41,6 @@ rsync_archive_if_exists() {
   fi
 }
 
-rsync_archive_if_exists sharp_vulkan_only
-rsync_archive_if_exists sharp_portable_latent0
-rsync_archive_if_exists sharp_vulkan_only_latent0
-rsync_archive_if_exists sharp_litert_models
 rsync_archive_if_exists executorch_models
 rsync_archive_if_exists executorch_fp16_models
 rsync_archive_if_exists executorch_models_vulkan

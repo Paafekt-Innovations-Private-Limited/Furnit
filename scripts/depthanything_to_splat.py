@@ -4,8 +4,8 @@
 This is a legal-clean Tier 1 visual prototype:
 RGB image -> Depth Anything ONNX metric depth -> deterministic Gaussians -> PLY.
 
-It intentionally does not use SHARP weights or any learned Gaussian head. The PLY
-layout follows SHARP/INRIA degree-0 spherical-harmonic conventions.
+It intentionally uses Depth Anything output directly rather than a learned Gaussian head. The PLY
+layout follows INRIA-style degree-0 spherical-harmonic conventions.
 """
 
 from __future__ import annotations

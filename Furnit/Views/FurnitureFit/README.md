@@ -348,7 +348,7 @@ let clusters = buildClustersFromAffinityGraph(graph, rankedCandidates: candidate
 
 ### 11. Debug Bounding Box Drawing
 
-**Problem:** After switching from YOLOe to RTMDet, debug bounding box visualization was lost.
+**Problem:** After the RTMDet migration, debug bounding box visualization was lost.
 
 **Solution:** Single `drawDebugDetectionBboxes` helper called from both live and cached segmentation paths. 4-color scheme:
 - **Red** — primary detection

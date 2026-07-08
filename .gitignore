@@ -183,7 +183,6 @@ android/app/src/main/cpp/ncnn-android-vulkan/
 # Kotlin
 *.kotlin_module
 
-# SHARP/ONNX model extracted weights
 android/predictor.*
 android/onnx__*
 android/_predictor_*
@@ -195,8 +194,6 @@ android/*.bin
 android/*.param
 android/*.pt
 android/*.ort
-android/sharp_split/
-android/sharp_split4/
 android/app/src/main/cpp/ncnn-android.zip
 android/app/src/main/assets/*.bin
 android/app/src/main/assets/*.param
@@ -233,8 +230,6 @@ ml_experiments/
 android/.gradle-home/
 
 # NCNN model files (stored on Google Drive)
-android/sharp_ncnn_models/
-android/sharp_ncnn_models_backup/
 
 # Temporary fix/conversion scripts (export scripts are kept for reproducibility)
 android/fix_*.py
@@ -251,8 +246,6 @@ android/app/src/main/cpp/ncnn-*-android-vulkan.zip
 android/app/src/main/cpp/ncnn-*-android-vulkan/
 android/app/src/main/cpp/ncnn-android-vulkan-old/
 
-# Ignore NCNN Sharp model backup files (not needed in version control)
-android/sharp_ncnn_models_backup/
 *.bin
 !Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage/Data/com.apple.CoreML/weights/weight.bin
 !Furnit/Models/GeoCalib/
@@ -267,19 +260,13 @@ Furnit/Models/GeoCalib/weights/*.tar
 android/executorch_models/
 android/executorch_fp16_models/
 android/executorch_models_vulkan/
-android/sharp_litert_models/
-android/sharp_onnx_models/
 # Vulkan / portable export trees (full .pte + manifests; backup off-machine)
-android/sharp_vulkan_only/
-android/sharp_portable_latent0/
-android/sharp_vulkan_only_latent0/
 *.pte
 *.pte.manifest.json
 *.pt
 *.ptl
 *.onnx
 # YOLO-E ONNX in assets (~100MB+); copy locally for Android builds — do not commit
-android/app/src/main/assets/yoloe-26l-seg-pf_seg_o2m.onnx
 *.tflite
 android/__pycache__/
 **/__pycache__/

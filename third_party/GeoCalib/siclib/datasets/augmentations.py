@@ -266,7 +266,6 @@ class DeepCalibAugmentations(BaseAugmentation):
             A.Downscale(scale_min=0.5, scale_max=0.95, interpolation=cv2.INTER_LINEAR, p=0.5),
             A.ImageCompression(quality_lower=20, quality_upper=85, p=1, always_apply=True),
             A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2, p=0.4),
-            A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
             A.ToGray(always_apply=False, p=0.2),
             A.GaussianBlur(blur_limit=(3, 5), sigma_limit=0, p=0.25),
             A.MotionBlur(blur_limit=5, allow_shifted=True, p=0.25),
@@ -302,12 +301,10 @@ class GeoCalibAugmentations(BaseAugmentation):
                             beta_limit=(0.5, 8.0),
                             noise_limit=(0.9, 1.1),
                         ),
-                        A.Sharpen(p=0.5, alpha=(0.2, 0.5), lightness=(0.5, 1.0)),
                     ]
                 ),
                 second=A.Compose(
                     [
-                        A.Sharpen(p=0.5, alpha=(0.2, 0.5), lightness=(0.5, 1.0)),
                         A.AdvancedBlur(
                             p=1,
                             blur_limit=(3, 7),

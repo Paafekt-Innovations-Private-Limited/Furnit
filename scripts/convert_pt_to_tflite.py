@@ -3,7 +3,7 @@
 Convert a PyTorch .pt (TorchScript or traced model) to TFLite via ONNX -> SavedModel -> TFLite.
 
 Usage:
-  python3 scripts/convert_pt_to_tflite.py --input android/yoloe-11l-seg-pf.pt --output android/app/src/main/assets/yoloe_11l_from_pt.tflite --dummy-shape 1,3,1536,1536
+  python3 scripts/convert_pt_to_tflite.py --input path/to/model.pt --output android/app/src/main/assets/model_from_pt.tflite --dummy-shape 1,3,1536,1536
 
 Notes:
 - This script assumes the .pt is a TorchScript/traced model that can be loaded with `torch.jit.load`.

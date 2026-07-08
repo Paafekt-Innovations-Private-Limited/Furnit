@@ -53,7 +53,7 @@ def main():
     story.append(Spacer(1, 0.15 * inch))
 
     story.append(Paragraph("TOP SKILLS", heading_style))
-    story.append(Paragraph(text("Software Development, Python, Swift, Kotlin, Java, Spring Boot, ML/AI, SHARP, YOLOe, RAG with LLM, Training LLM (e.g. ABAP), REST, Git, Android/iOS, Camera vision"), body))
+    story.append(Paragraph(text("Software Development, Python, Swift, Kotlin, Java, Spring Boot, ML/AI, RAG with LLM, Training LLM (e.g. ABAP), REST, Git, Android/iOS, Camera vision"), body))
     story.append(Spacer(1, 0.15 * inch))
 
     story.append(Paragraph("TOOLS USED", heading_style))
@@ -65,7 +65,7 @@ def main():
         text("Over 20 years in IT with hands-on expertise in Java, Kotlin, Swift, Python, ML, and full-stack development. "
              "Until last year it was predominantly Java-based application development; work took a drastic turn as AI became central—Swift, Android, "
              "and camera vision were taken up in parallel to test and deploy AI capabilities on mobile and edge. "
-             "Strong focus on AI/ML: SHARP, YOLOe, RAG with LLM, and training LLMs for programming languages (e.g. ABAP). "
+             "Strong focus on AI/ML: RAG with LLM, and training LLMs for programming languages (e.g. ABAP). "
              "Built web and mobile applications with Spring, Android, iOS, and cloud deployment (Amazon, GKE). "
              "Innovation-driven with experience in project management, technical design, and Agile delivery."),
         body,
@@ -99,7 +99,7 @@ def main():
     story.append(Paragraph(text("Innovation & R&D — AI/ML & Mobile"), body))
     story.append(Paragraph(
         text("Pivot from Java to AI-driven development; Swift, Kotlin, Android, camera vision in parallel to test AI on mobile and edge. "
-             "Python, ML, ONNX, SHARP, YOLOe; RAG with LLM; training LLM for programming (e.g. ABAP); on-device ML, Unreal Engine."),
+             "Python, ML, ONNX; RAG with LLM; training LLM for programming (e.g. ABAP); on-device ML, Unreal Engine."),
         body,
     ))
     story.append(Spacer(1, 0.15 * inch))

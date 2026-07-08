@@ -9,9 +9,6 @@
 #   android/app/src/main/cpp/executorch_lib*/
 #   android/app/src/main/jniLibs/
 #   android/logcat_crash.txt
-#   android/sharp_vulkan_only/ (ExecuTorch Vulkan .pte)
-#   android/sharp_portable_latent0/, sharp_vulkan_only_latent0/
-#   android/executorch_models*/, sharp_litert_models/, models_cpu/
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,14 +52,9 @@ else
   echo "  Skip (missing): android/logcat_crash.txt"
 fi
 
-# ExecuTorch / SHARP model trees (gitignored; large)
-copy_if_exists "android/sharp_vulkan_only" "android"
-copy_if_exists "android/sharp_portable_latent0" "android"
-copy_if_exists "android/sharp_vulkan_only_latent0" "android"
 copy_if_exists "android/executorch_models" "android"
 copy_if_exists "android/executorch_fp16_models" "android"
 copy_if_exists "android/executorch_models_vulkan" "android"
-copy_if_exists "android/sharp_litert_models" "android"
 copy_if_exists "android/models_cpu" "android"
 
 echo "Done. Backup is in $FULL_DEST"

@@ -7,7 +7,7 @@ Quick steps
 1. Build the Docker image and run conversion (from repository root):
 
 ```bash
-./scripts/build_and_run_convert.sh android/yoloe-11l-seg-pf.onnx android/app/src/main/assets/yoloe_11l_from_onnx.tflite
+./scripts/build_and_run_convert.sh path/to/model.onnx android/app/src/main/assets/model_from_onnx.tflite
 ```
 
 2. The script builds a docker image using `scripts/Dockerfile.convert` and runs the conversion inside the container. Output TFLite will be placed at the path you provide (relative to repo root).

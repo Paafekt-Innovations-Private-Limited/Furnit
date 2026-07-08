@@ -570,9 +570,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         78: "hair drier",
         79: "toothbrush",
     ]
-    /// RTMDet is a fixed COCO-80 detector; do not reuse the older YOLOE furniture-only whitelist.
+    /// RTMDet is a fixed COCO-80 detector; do not reuse the older furniture-only whitelist.
     /// Let the raw decoder consider all RTMDet classes, then rank/group the detections it returns.
-    /// RTMDet raw scores are lower than the old YOLOE scores in live camera frames. Logs show valid
+    /// RTMDet raw scores are lower than the previous live detector scores in live camera frames. Logs show valid
     /// chairs around 0.40-0.49, so 0.55 intermittently drops the object after it was detected.
     private static let rtmDetLiveConfidenceThreshold: Float = 0.30
     /// COCO under-scores common furniture in live frames; use a low gate and let the primary selector
@@ -4040,7 +4040,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             consecutiveEmptyMaskFrames = 0
             pruneSelectedPinsMissingFromCurrentCandidates(candidates)
 
-            // Match the old YOLOE auto-primary flow for both identify and segment-primary: choose
+            // Match the current auto-primary flow for both identify and segment-primary: choose
             // from a wider post-NMS pool using area shortlist + confidence score + hysteresis.
             var primaryIdx = segmentationMode != .segmentSelected
                 ? (FurnitureFitPrimarySelection.selectStableAutoPrimaryIndex(

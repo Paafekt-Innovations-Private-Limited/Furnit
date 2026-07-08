@@ -7,16 +7,8 @@ plugins {
 // Keep Android Studio Run APKs installable. These files are conversion/debug variants
 // or non-Android artifacts kept in assets for reference.
 def unusedRuntimeModelAssetExcludes = [
-        "yoloe-26l-seg-pf_seg_o2m-fixed.onnx",
-        "yoloe-26l-seg-pf_seg_o2m-nodil-source.onnx",
-        "yoloe-26l-seg-pf_seg_o2m-nodil-unsqattr.onnx",
-        "yoloe-26l-seg-pf_seg_o2m-nodil-unsqfix.onnx",
-        "yoloe-26l-seg-pf_seg_o2m.mlpackage",
-        "yoloe-26l-seg-pf_seg_o2m.mlpackage/**",
         "yolo11l-seg.param",
         "yolo11l-seg.bin",
-        "yoloe-pf.param",
-        "yoloe-pf.bin",
 ]
 
 android {
