@@ -81,7 +81,7 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                Self.repositionOptimalCamera(
+                context.coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
@@ -102,7 +102,7 @@ struct RealityKitView: UIViewRepresentable {
            boundaryManager.bounds != nil {
             let viewportSize = uiView.bounds.size
             if context.coordinator.shouldReframeForViewportChange(viewportSize) {
-                Self.repositionOptimalCamera(
+                context.coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
@@ -134,7 +134,7 @@ struct RealityKitView: UIViewRepresentable {
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
-                Self.repositionOptimalCamera(
+                context.coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
                     cameraAnchor: cameraAnchor,
                     cameraEntity: context.coordinator.cameraEntity,
                     boundaryManager: boundaryManager,
@@ -209,13 +209,14 @@ struct RealityKitView: UIViewRepresentable {
         cameraEntity.camera.fieldOfViewInDegrees = 60.0
     }
 
+    @discardableResult
     private static func repositionOptimalCamera(
         cameraAnchor: AnchorEntity,
         cameraEntity: PerspectiveCamera?,
         boundaryManager: RealityKitBoundaryManager,
         model: USDZModel
-    ) {
-        guard boundaryManager.bounds != nil else { return }
+    ) -> SIMD3<Float>? {
+        guard boundaryManager.bounds != nil else { return nil }
         configureDepthAnythingCameraFieldOfView(
             cameraEntity,
             roomCoordinateFrame: model.roomCoordinateFrame,
@@ -231,6 +232,7 @@ struct RealityKitView: UIViewRepresentable {
             position: cameraPosition,
             lookAt: lookAtPosition
         )
+        return lookAtPosition
     }
 
     private static func normalizedDirection(from position: SIMD3<Float>, to target: SIMD3<Float>) -> SIMD3<Float> {
@@ -278,7 +280,71 @@ struct RealityKitView: UIViewRepresentable {
         // ✅ Track current model to detect room changes
         var currentModelID: UUID?
         var boundaryManager: RealityKitBoundaryManager?
+        var cameraLookAtTarget: SIMD3<Float>?
         var lastViewportSize: CGSize = .zero
+        private var cameraMoveNotificationTokens: [NSObjectProtocol] = []
+        // GLB D-pad parity: moveCamera(±8, 0) at 0.03 m/step; moveCameraUp(±0.2).
+        private let dPadHorizontalStep: Float = 0.24
+        private let dPadVerticalStep: Float = 0.2
+
+        deinit {
+            removeCameraMoveObservers()
+        }
+
+        func installCameraMoveObservers() {
+            removeCameraMoveObservers()
+            let nc = NotificationCenter.default
+            let namesAndDeltas: [(NSNotification.Name, SIMD3<Float>)] = [
+                (NSNotification.Name("WebGLCameraMoveLeft"), SIMD3<Float>(-dPadHorizontalStep, 0, 0)),
+                (NSNotification.Name("WebGLCameraMoveRight"), SIMD3<Float>(dPadHorizontalStep, 0, 0)),
+                (NSNotification.Name("WebGLCameraMoveUp"), SIMD3<Float>(0, dPadVerticalStep, 0)),
+                (NSNotification.Name("WebGLCameraMoveDown"), SIMD3<Float>(0, -dPadVerticalStep, 0)),
+            ]
+            for (name, delta) in namesAndDeltas {
+                let token = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    self?.nudgeCamera(by: delta)
+                }
+                cameraMoveNotificationTokens.append(token)
+            }
+        }
+
+        func removeCameraMoveObservers() {
+            let nc = NotificationCenter.default
+            for token in cameraMoveNotificationTokens {
+                nc.removeObserver(token)
+            }
+            cameraMoveNotificationTokens.removeAll()
+        }
+
+        /// Nudge the custom camera like Splat/GLB D-pad: world X walk, world Y lift, orbit target moves with camera.
+        private func nudgeCamera(by worldDelta: SIMD3<Float>) {
+            guard let cameraAnchor else { return }
+
+            let position = cameraAnchor.transform.translation
+            let forward = cameraAnchor.transform.rotation.act(SIMD3<Float>(0, 0, -1))
+            let lookDistance: Float
+            if let storedLookAt = cameraLookAtTarget {
+                lookDistance = max(simd_length(storedLookAt - position), 0.5)
+            } else {
+                lookDistance = 3.0
+            }
+            let lookAt = position + forward * lookDistance
+
+            var newPosition = position + worldDelta
+            if let boundaryManager {
+                newPosition = boundaryManager.constrainCameraPosition(newPosition)
+            }
+            let appliedDelta = newPosition - position
+            let newLookAt = lookAt + appliedDelta
+
+            _ = RealityKitView.applyCameraPose(
+                cameraAnchor,
+                position: newPosition,
+                lookAt: newLookAt
+            )
+            cameraLookAtTarget = newLookAt
+            gestureHandlers?.syncRotationState()
+        }
 
         func shouldReframeForViewportChange(_ size: CGSize) -> Bool {
             guard size.width > 1, size.height > 1 else { return false }
@@ -330,6 +396,7 @@ struct RealityKitView: UIViewRepresentable {
 
                 // Pass camera references to gesture handlers for direct camera control
                 gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
+                installCameraMoveObservers()
 
                 logDebug("📷 Custom camera CREATED (position will be set after model loads and bounds calculated)")
             }
@@ -605,7 +672,7 @@ struct RealityKitView: UIViewRepresentable {
                     logDebug("   Room bounds min: \(bounds.min)")
                     logDebug("   Room bounds max: \(bounds.max)")
 
-                    Self.repositionOptimalCamera(
+                    coordinator.cameraLookAtTarget = Self.repositionOptimalCamera(
                         cameraAnchor: cameraAnchor,
                         cameraEntity: coordinator.cameraEntity,
                         boundaryManager: boundaryManager,
@@ -613,7 +680,7 @@ struct RealityKitView: UIViewRepresentable {
                     )
                     coordinator.lastViewportSize = arView.bounds.size
 
-                    let lookAt = SIMD3<Float>(
+                    let lookAt = coordinator.cameraLookAtTarget ?? SIMD3<Float>(
                         (bounds.min.x + bounds.max.x) * 0.5,
                         (bounds.min.y + bounds.max.y) * 0.5,
                         (bounds.min.z + bounds.max.z) * 0.5
@@ -652,6 +719,7 @@ struct RealityKitView: UIViewRepresentable {
                         position: defaultPosition,
                         lookAt: defaultLookAt
                     )
+                    coordinator.cameraLookAtTarget = defaultLookAt
 
                     logDebug("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")
 
