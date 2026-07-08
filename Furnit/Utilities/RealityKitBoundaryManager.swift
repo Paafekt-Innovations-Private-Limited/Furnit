@@ -284,24 +284,36 @@ class RealityKitBoundaryManager {
         photoOrientation: PhotoOrientation
     ) -> Float {
         let halfFovRadians = Float.pi / 6.0
-        let viewportAspect = max(depthAnythingViewportAspect(photoOrientation: photoOrientation), 1.0)
+        let viewportAspect = max(depthAnythingViewportAspect(photoOrientation: photoOrientation), 0.01)
 
+        // FOV primary axis follows locked photo orientation (same as configureDepthAnythingCameraFieldOfView).
+        let fitWidth: Float
+        let fitHeight: Float
         if photoOrientation == .landscape {
-            // Match RealityKit horizontal FOV in landscape: fit the full photo plane in view.
-            let fitWidth = width / (2 * tan(halfFovRadians))
+            fitWidth = width / (2 * tan(halfFovRadians))
             let verticalHalfFov = atan(tan(halfFovRadians) / viewportAspect)
-            let fitHeight = height / (2 * tan(verticalHalfFov))
-            return max(max(fitWidth, fitHeight) * 0.86, 0.85)
+            fitHeight = height / (2 * tan(verticalHalfFov))
+        } else {
+            fitHeight = height / (2 * tan(halfFovRadians))
+            let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
+            fitWidth = width / (2 * tan(horizontalHalfFov))
         }
 
-        let fitHeight = height / (2 * tan(halfFovRadians))
-        let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
-        let fitWidth = width / (2 * tan(horizontalHalfFov))
-        return max(max(span / (2 * tan(halfFovRadians)), fitHeight, fitWidth, span * 0.5), 1.0)
+        // Landscape photo: cover (full screen). Portrait photo: contain (full photo visible).
+        let useCoverFraming = photoOrientation == .landscape
+        let fitDistance = useCoverFraming
+            ? min(fitWidth, fitHeight) * 0.98
+            : max(fitWidth, fitHeight) * 1.02
+        _ = span
+        return max(fitDistance, 0.85)
     }
 
     /// Photographer viewpoint for Depth Anything `--flat-mesh` USDZ: plane at z≈0, camera on −Z.
-    func getCameraForDepthAnythingImagePlane(photoOrientation: PhotoOrientation = .portrait) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+    func getCameraForDepthAnythingImagePlane(
+        photoOrientation: PhotoOrientation = .portrait,
+        inferencePlaneWidthMeters: Float? = nil,
+        inferencePlaneHeightMeters: Float? = nil
+    ) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         guard let bounds = roomBounds else {
@@ -309,8 +321,10 @@ class RealityKitBoundaryManager {
         }
 
         let center = getRoomCenter()
-        let width = max(bounds.max.x - bounds.min.x, 0.1)
-        let height = max(bounds.max.y - bounds.min.y, 0.1)
+        let boundsWidth = max(bounds.max.x - bounds.min.x, 0.1)
+        let boundsHeight = max(bounds.max.y - bounds.min.y, 0.1)
+        let width = inferencePlaneWidthMeters.flatMap { $0.isFinite && $0 > 0.05 ? $0 : nil } ?? boundsWidth
+        let height = inferencePlaneHeightMeters.flatMap { $0.isFinite && $0 > 0.05 ? $0 : nil } ?? boundsHeight
         let span = max(width, height)
         let planeZ = (bounds.min.z + bounds.max.z) * 0.5
         let standoff = depthAnythingImagePlaneStandoff(
@@ -373,10 +387,16 @@ class RealityKitBoundaryManager {
     // Used when room is opened from list or when room is created.
     func getOptimalCameraPosition(
         roomCoordinateFrame: RoomCoordinateFrame = .canonicalSplatPly,
-        photoOrientation: PhotoOrientation = .portrait
+        photoOrientation: PhotoOrientation = .portrait,
+        inferencePlaneWidthMeters: Float? = nil,
+        inferencePlaneHeightMeters: Float? = nil
     ) -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         if roomCoordinateFrame == .depthAnythingImageDepthMeters {
-            return getCameraForDepthAnythingImagePlane(photoOrientation: photoOrientation)
+            return getCameraForDepthAnythingImagePlane(
+                photoOrientation: photoOrientation,
+                inferencePlaneWidthMeters: inferencePlaneWidthMeters,
+                inferencePlaneHeightMeters: inferencePlaneHeightMeters
+            )
         }
         if roomCoordinateFrame.usesFrontFacingRealityKitCamera {
             return getCameraAtFrontCenter()

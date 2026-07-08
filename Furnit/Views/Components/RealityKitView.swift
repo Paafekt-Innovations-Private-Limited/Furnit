@@ -96,7 +96,6 @@ struct RealityKitView: UIViewRepresentable {
         }
 
         if model.roomCoordinateFrame == .depthAnythingImageDepthMeters,
-           model.photoOrientation == .landscape,
            let cameraAnchor = context.coordinator.cameraAnchor,
            let boundaryManager = context.coordinator.boundaryManager,
            boundaryManager.bounds != nil {
@@ -194,6 +193,7 @@ struct RealityKitView: UIViewRepresentable {
 
     private static func configureDepthAnythingCameraFieldOfView(
         _ cameraEntity: PerspectiveCamera?,
+        boundaryManager: RealityKitBoundaryManager?,
         roomCoordinateFrame: RoomCoordinateFrame,
         photoOrientation: PhotoOrientation
     ) {
@@ -201,6 +201,7 @@ struct RealityKitView: UIViewRepresentable {
               roomCoordinateFrame == .depthAnythingImageDepthMeters else {
             return
         }
+        _ = boundaryManager
         if photoOrientation == .landscape {
             cameraEntity.camera.fieldOfViewOrientation = .horizontal
         } else {
@@ -219,12 +220,19 @@ struct RealityKitView: UIViewRepresentable {
         guard boundaryManager.bounds != nil else { return nil }
         configureDepthAnythingCameraFieldOfView(
             cameraEntity,
+            boundaryManager: boundaryManager,
             roomCoordinateFrame: model.roomCoordinateFrame,
             photoOrientation: model.photoOrientation
         )
         let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition(
             roomCoordinateFrame: model.roomCoordinateFrame,
-            photoOrientation: model.photoOrientation
+            photoOrientation: model.photoOrientation,
+            inferencePlaneWidthMeters: model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                ? model.roomWidth
+                : nil,
+            inferencePlaneHeightMeters: model.roomCoordinateFrame == .depthAnythingImageDepthMeters
+                ? model.roomHeight
+                : nil
         )
         cameraAnchor.transform.translation = cameraPosition
         _ = applyCameraPose(
@@ -846,7 +854,7 @@ struct RealityKitView: UIViewRepresentable {
         logDebug("💡 Added dedicated lighting for placed 3D objects")
     }
     
-    /// Depth Anything flat planes use cover framing; neutral backdrop hides any residual letterbox void.
+    /// Depth Anything flat planes: cover in landscape viewport (full screen), contain in portrait.
     private static func configureViewerBackground(_ arView: ARView, roomCoordinateFrame: RoomCoordinateFrame) {
         if roomCoordinateFrame == .depthAnythingImageDepthMeters {
             arView.environment.background = .color(.init(white: 0.12, alpha: 1.0))
