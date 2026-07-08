@@ -5,13 +5,17 @@ iOS (Swift) app documentation and architecture diagrams.
 ## Diagrams (`Furnit/diagrams/`)
 Real SVG flow diagrams (open in any browser / Xcode preview):
 
+- [`room-generation-flow.svg`](../diagrams/room-generation-flow.svg) — default
+  Photo to 3D Room flow: photo capture or library image → camera metadata sidecar →
+  GeoCalib + Depth Anything + RTMDet object anchor → measurement grid → textured USDZ →
+  `DepthAnythingPreviewRoomView` / `ModelViewerView`.
 - [`rtmdet-swift-flow.svg`](../diagrams/rtmdet-swift-flow.svg) — RTMDet instance-segmentation
   ("brain") live/still loop: camera or Settings image scan → Core ML image input → raw-head decode
   → confidence-first NMS → mask affinity → pixel-union cutout → overlay gestures/display.
 
-Room generation (default): **GeoCalib + Depth Anything → USDZ** — see `CONTEXT.md` and
-`DepthAnythingRoomReconstructor.swift` (no separate diagram yet; legacy `splat-swift-flow.svg`
-describes the retired Gaussian-splat path).
+Room generation (default): **GeoCalib + Depth Anything + RTMDet object anchor → USDZ**. The active
+Swift path is `SinglePhotoRoomViewer.swift` → `CameraExifSidecar.swift` →
+`DepthAnythingRoomReconstructor.swift` → `USDZModel` / `ModelViewerView`.
 
 ## Docs here
 - [`mask-head-accel.md`](mask-head-accel.md) — the RTMDet mask-head matmul: problem statement,

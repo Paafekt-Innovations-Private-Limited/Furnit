@@ -15,7 +15,9 @@ The app uses Apple's **On-Demand Resources (ODR)** to deliver large CoreML model
 | Depth Anything V2 Metric Indoor Small | `Furnit/Models/DepthAnything/` | Single-photo metric depth → USDZ room mesh |
 | GeoCalib Pinhole CNN | `Furnit/Models/GeoCalib/` | Camera focal length + gravity for Depth Anything sizing |
 
-Default **iOS room creation** = **GeoCalib + Depth Anything** (see `CONTEXT.md`, `DepthAnythingRoomReconstructor.swift`). Legacy SHARP ODR tags are no longer used for the shipping room path.
+Default **iOS room creation** = **GeoCalib + Depth Anything + RTMDet object anchor → USDZ** (see
+`CONTEXT.md`, `DepthAnythingRoomReconstructor.swift`, and `Furnit/diagrams/room-generation-flow.svg`).
+No separate room-generation ODR tag is used by the active Swift path.
 
 ## How It Works
 
@@ -58,7 +60,8 @@ Key methods:
 - `ensureModelLoaded()` - Call from room view `.onAppear`; triggers ODR download + CoreML load
 - `releaseResources()` - Frees disk space and unloads model
 
-Shared by `ModelViewerView`, legacy room viewers, and Settings image scan.
+Shared by `ModelViewerView`, saved-room viewers, Settings image scan, and the one-shot object-anchor
+step in room generation.
 
 ### 3. Depth Anything + GeoCalib (bundled)
 

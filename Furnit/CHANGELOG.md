@@ -1,5 +1,14 @@
 # Furnit iOS - Recent Changes
 
+## Room Generation Documentation Cleanup
+
+### Current Photo to 3D Room Path
+- **Location**: `SinglePhotoRoomViewer.swift`, `DepthAnythingRoomReconstructor.swift`, `CameraExifSidecar.swift`, `USDZModel.swift`
+- Default single-photo room creation is documented as: photo capture/library image → camera metadata sidecar → parallel GeoCalib, Depth Anything, and RTMDet object-anchor work → measurement grid → textured USDZ export → `DepthAnythingPreviewRoomView` / `ModelViewerView`.
+- Progress UI uses existing generic localized copy: "Generating 3D Model" and "Creating your 3D room..." so backend names are not user-facing.
+- Added `Furnit/diagrams/room-generation-flow.svg` and updated the iOS docs index to point at it.
+- The old model-backed splat generation service/model path is no longer part of the Swift active path. Saved PLY/splat viewing remains for existing room assets and LiDAR/sweep outputs.
+
 ## Thermal & Cadence Management
 
 ### Live Cadence Throttle
@@ -79,7 +88,7 @@
 ### Segmented Overlay Gestures
 - **Location**: `FurnitureFitView.swift`
 - Pinch on a segmented cutout updates `userPinchScale` and is applied through `FurnitureFitOverlayScaling`.
-- In USDZ / GLB / legacy splat room viewers, the FurnitureFit overlay must capture two-finger touches when a cutout is visible so the room viewer does not steal pinch zoom.
+- In USDZ / GLB / saved PLY room viewers, the FurnitureFit overlay must capture two-finger touches when a cutout is visible so the room viewer does not steal pinch zoom.
 
 ### Repeated Swift RTMDet Test Fixture
 - **Location**: `RTMDetVideoIntegrationTests.swift`, `FurnitTests/rtmdet_repeated_chair_frame.jpg`

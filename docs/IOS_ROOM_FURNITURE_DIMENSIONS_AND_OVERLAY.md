@@ -2,7 +2,9 @@
 
 This document explains **how room dimensions, furniture dimensions, fitment ratios, and mask overlay scale relate** in the **Depth Anything USDZ** room + Furniture Fit flow. It is written so **non-specialists** can follow the ideas, with a **technical section** for engineers matching console logs to code.
 
-Legacy Gaussian-splat / depth-raycast room viewers may still show different bound logs; the **default** iOS room path stores dimensions from **GeoCalib + Depth Anything** inference (see `DepthAnythingRoomReconstructor.swift`).
+Saved PLY / depth-raycast room viewers may still show different bound logs; the **default** iOS room
+path stores dimensions from **GeoCalib + Depth Anything + RTMDet object-anchor** inference (see
+`DepthAnythingRoomReconstructor.swift`).
 
 ---
 
@@ -19,13 +21,16 @@ For rooms created from a single photo (default path):
 
 Saved `.usdz.meta` sidecars store the same inference dimensions.
 
-### Two different “room” sizes in legacy splat viewers (if opened)
+### Two different “room” sizes in saved PLY viewers (if opened)
 
-After a legacy Gaussian-splat PLY runs in MetalSplatter, logs may show **two** width × height × depth values in **scene units (su)**:
+After a saved PLY room runs in MetalSplatter, logs may show **two** width × height × depth values in
+**scene units (su)**:
 
 1. **Metal splat AABB** — A large box around **all** splat points (the whole Gaussian cloud). It includes slack, outliers, and empty volume. Think *“outer shipping crate for the entire 3D cloud.”*
 
-2. **Metal depth raycast room** — A **tighter** box from **depth-buffer raycasting** (legacy splat viewer): how wide/tall/deep the **occupied** volume looks from the render. Used for Furniture Fit overlay ratios when viewing splat rooms.
+2. **Metal depth raycast room** — A **tighter** box from **depth-buffer raycasting**: how wide/tall/deep
+   the **occupied** volume looks from the render. Used for Furniture Fit overlay ratios when viewing
+   saved PLY rooms.
 
 So: **splat AABB = coarse outer bounds; depth raycast = refined room extents.** Both can appear as `[PLY_BOUNDS]` lines; the **raycast** pair is the one used for **fit / overlay ratio** when available.
 
@@ -76,7 +81,7 @@ The composited mask uses a **uniform** scale on the image view. Roughly:
 | Segmented-overlay gestures | `FurnitureFitView.swift` — `handlePinch(_:)`, `handlePan(_:)`, `hitTest(_:with:)`, `gestureRecognizer(_:shouldReceive:)` |
 | Depth raycast room + PLY bounds logs | `Furnit/Views/Components/GaussianSplatView.swift` — `measureRoomFromDepthBuffer`, `logPlyBoundsDiagnostic` |
 | USDZ / Depth Anything preview dims | `SinglePhotoRoomViewer.swift` — `DepthAnythingPreviewRoomView`, saved `.usdz.meta` |
-| Legacy Sharp room UI (raycast-first title) | `Furnit/Views/SharpRoomView.swift` — `navigationRoomMetersLine`, `raycastRoomDimensions` |
+| Saved PLY room UI (raycast-first title) | `Furnit/Views/SplatRoomView.swift` — `navigationRoomMetersLine`, `raycastRoomDimensions` |
 
 ### Room dimensions
 
@@ -106,7 +111,8 @@ So if the **average ratio is below 0.3**, **`autoScaleFromRoom`** sits at **0.3*
 
 ### Gesture ownership in the main room flow
 
-The segmented furniture cutout is a transparent `UIImageView` (`maskImageView`) over USDZ / GLB / legacy splat room content. The room layer underneath also has its own pinch zoom. Therefore:
+The segmented furniture cutout is a transparent `UIImageView` (`maskImageView`) over USDZ / GLB /
+saved PLY room content. The room layer underneath also has its own pinch zoom. Therefore:
 
 - **Two-finger pinch while a cutout is visible** should be claimed by `FurnitureFitContainerView` so it updates `userPinchScale`.
 - **Single-finger pan** stays stricter and is accepted only on visible mask pixels.

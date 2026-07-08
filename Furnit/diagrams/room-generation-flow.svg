@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1160" viewBox="0 0 900 1160" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
+    </marker>
+    <style>
+      .title{font-size:24px;font-weight:700;fill:#1c1c1e}
+      .sub{font-size:13px;fill:#6b7280}
+      .box{rx:12;ry:12;stroke-width:1.5}
+      .bt{font-size:15px;font-weight:600}
+      .bs{font-size:11.5px}
+      .cam{fill:#eef2f7;stroke:#94a3b8}
+      .ane{fill:#dff3e6;stroke:#1ea64a}
+      .cpu{fill:#e9f0fb;stroke:#3b82f6}
+      .data{fill:#f4f4f5;stroke:#a1a1aa}
+      .io{fill:#f3eafe;stroke:#8b5cf6}
+      .disp{fill:#fdeede;stroke:#f59e0b}
+      .edge{stroke:#5b6470;stroke-width:1.6;fill:none}
+      .legtxt{font-size:12px;fill:#374151}
+    </style>
+  </defs>
+
+  <text x="32" y="40" class="title">Photo to 3D Room — iOS (Swift)</text>
+  <text x="32" y="62" class="sub">Default single-photo room generation. SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → ModelViewerView.</text>
+
+  <rect x="570" y="78" width="14" height="14" rx="3" class="ane"/><text x="590" y="90" class="legtxt">Core ML</text>
+  <rect x="652" y="78" width="14" height="14" rx="3" class="cpu"/><text x="672" y="90" class="legtxt">CPU math</text>
+  <rect x="740" y="78" width="14" height="14" rx="3" class="io"/><text x="760" y="90" class="legtxt">file/export</text>
+
+  <g>
+    <rect x="270" y="112" width="360" height="56" class="box cam"/>
+    <text x="450" y="135" text-anchor="middle" class="bt">Photo input</text>
+    <text x="450" y="154" text-anchor="middle" class="bs">camera capture or photo-library image</text>
+  </g>
+  <path class="edge" d="M450,168 L450,206" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="206" width="360" height="72" class="box cpu"/>
+    <text x="450" y="228" text-anchor="middle" class="bt">Normalize image + collect metadata</text>
+    <text x="450" y="247" text-anchor="middle" class="bs">fixed orientation · downsample working frame</text>
+    <text x="450" y="265" text-anchor="middle" class="bs">CameraExifSidecar + EXIF / ARKit capture values</text>
+  </g>
+  <path class="edge" d="M450,278 L450,318" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="48" y="318" width="246" height="86" class="box ane"/>
+    <text x="171" y="342" text-anchor="middle" class="bt">GeoCalib</text>
+    <text x="171" y="361" text-anchor="middle" class="bs">focal estimate + gravity</text>
+    <text x="171" y="379" text-anchor="middle" class="bs">LM solver validates/clamps</text>
+  </g>
+  <g>
+    <rect x="327" y="318" width="246" height="86" class="box ane"/>
+    <text x="450" y="342" text-anchor="middle" class="bt">Depth Anything</text>
+    <text x="450" y="361" text-anchor="middle" class="bs">metric indoor depth grid</text>
+    <text x="450" y="379" text-anchor="middle" class="bs">same working image grid</text>
+  </g>
+  <g>
+    <rect x="606" y="318" width="246" height="86" class="box ane"/>
+    <text x="729" y="342" text-anchor="middle" class="bt">RTMDet anchor</text>
+    <text x="729" y="361" text-anchor="middle" class="bs">object bbox for scale/mask</text>
+    <text x="729" y="379" text-anchor="middle" class="bs">runs once, no live overlay</text>
+  </g>
+  <path class="edge" d="M171,404 C171,440 450,430 450,468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M450,404 L450,468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M729,404 C729,440 450,430 450,468" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="468" width="360" height="86" class="box data"/>
+    <text x="450" y="492" text-anchor="middle" class="bt">Join measurement grid</text>
+    <text x="450" y="511" text-anchor="middle" class="bs">merge camera metadata + calibration values</text>
+    <text x="450" y="529" text-anchor="middle" class="bs">resolve focal, depth scale, camera-height prior</text>
+  </g>
+  <path class="edge" d="M450,554 L450,594" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="594" width="360" height="86" class="box cpu"/>
+    <text x="450" y="618" text-anchor="middle" class="bt">Measure room dimensions</text>
+    <text x="450" y="637" text-anchor="middle" class="bs">unproject depth once into point grid</text>
+    <text x="450" y="655" text-anchor="middle" class="bs">RoomExtent + RoomHeight + width/depth checks</text>
+  </g>
+  <path class="edge" d="M450,680 L450,720" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="720" width="360" height="72" class="box cpu"/>
+    <text x="450" y="744" text-anchor="middle" class="bt">Build textured mesh</text>
+    <text x="450" y="763" text-anchor="middle" class="bs">depth grid → vertices/triangles</text>
+    <text x="450" y="781" text-anchor="middle" class="bs">photo becomes the room texture</text>
+  </g>
+  <path class="edge" d="M450,792 L450,832" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="832" width="360" height="72" class="box io"/>
+    <text x="450" y="856" text-anchor="middle" class="bt">Export and persist USDZ</text>
+    <text x="450" y="875" text-anchor="middle" class="bs">USDZ + camera sidecar + derived metadata</text>
+    <text x="450" y="893" text-anchor="middle" class="bs">coordinate frame: depthAnythingImageDepthMeters</text>
+  </g>
+  <path class="edge" d="M450,904 L450,944" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="270" y="944" width="360" height="72" class="box disp"/>
+    <text x="450" y="968" text-anchor="middle" class="bt">Open room viewer</text>
+    <text x="450" y="987" text-anchor="middle" class="bs">DepthAnythingPreviewRoomView → ModelViewerView</text>
+    <text x="450" y="1005" text-anchor="middle" class="bs">toolbar shows W × H × D from generated metadata</text>
+  </g>
+
+  <g>
+    <rect x="78" y="1040" width="744" height="58" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="96" y="1063" class="bt">User-facing progress copy</text>
+    <text x="96" y="1083" class="bs">Uses existing generic localized strings: "Generating 3D Model" / "Creating your 3D room...". Backend names stay out of the UI.</text>
+  </g>
+
+  <text x="32" y="1130" class="sub">See also: rtmdet-swift-flow.svg for the live FurnitureFit segmentation loop.</text>
+</svg>

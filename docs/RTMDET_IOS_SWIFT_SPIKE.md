@@ -13,7 +13,8 @@ This repo contains the active Swift/Core ML path for `RTMDet-Ins-m` in the iOS a
 - Settings still-image diagnostic:
   - `Furnit/Views/SettingsFurnitureFitImageScanView.swift`
 
-The live room segmentation flow now uses RTMDet raw heads for the Furniture Fit "brain" path. YOLOE docs/scripts remain for comparison and older experiments.
+The live room segmentation flow now uses RTMDet raw heads for the Furniture Fit "brain" path. Older
+segmentation docs/scripts may remain for comparison, but the Swift active path is RTMDet.
 
 ## What is still external
 
@@ -76,7 +77,9 @@ The Settings image scan intentionally mirrors the RTMDet live path:
 
 ## Main-flow overlay gestures
 
-The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible, `FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster (`userPinchScale`) rather than zooming the USDZ / GLB / legacy splat room underneath.
+The room viewer beneath Furniture Fit also owns pinch zoom. When a segmented cutout is visible,
+`FurnitureFitContainerView` must keep two-finger touches so pinch scales the segmented cluster
+(`userPinchScale`) rather than zooming the USDZ / GLB / saved PLY room underneath.
 
 Relevant code:
 

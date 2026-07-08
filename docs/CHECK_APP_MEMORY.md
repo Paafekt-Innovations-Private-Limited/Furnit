@@ -13,12 +13,14 @@ The app already logs **resident memory (RSS)** in MB when **Debug mode** is on.
 **Where it’s logged:**
 - **FurnitureFitView**: `logMemory(_ tag:)` prints `🧠 [tag] Memory: X.X MB` at:
   - FRAME START, AFTER INFERENCE, AFTER STAGE 5b/5c, AFTER BUILD MASK, FRAME END
-- **SHARPService**: `SHARP: Device RAM: X MB` when loading the model (total device RAM, not process).
+- **DepthAnythingRoomReconstructor / RTMDet**: room-generation and segmentation logs include timing
+  checkpoints; add RSS logging around a specific stage when investigating a memory variation.
 
 **How to compare variations:**
 1. Reproduce the same flow (e.g. open room → tap FurnitureFit → wait one frame).
 2. In Xcode console (or device console), note the **last** `🧠 [FRAME END] Memory: X.X MB` for that flow.
-3. Repeat for another variation (e.g. different screen, before/after loading SHARP) and compare numbers.
+3. Repeat for another variation (e.g. different screen, before/after opening a generated USDZ room)
+   and compare numbers.
 
 **Limitation:** Only runs in code paths that call `logMemory` (mainly FurnitureFit pipeline). For other screens you’d need to add similar logging or use Instruments.
 
@@ -29,11 +31,11 @@ The app already logs **resident memory (RSS)** in MB when **Debug mode** is on.
 **Use:** While running from Xcode, open **Debug Navigator** (⌘7) → **Memory**.
 
 - Shows **live process memory** (footprint) in MB.
-- Good for: “home” vs “FurnitureFit open” vs “SHARP room loaded” on the same run.
+- Good for: “home” vs “FurnitureFit open” vs “generated USDZ room loaded” on the same run.
 
 **How to compare variations:**
 1. Run app, wait for idle → note Memory value (e.g. “baseline”).
-2. Navigate to a heavy flow (e.g. open a room, enable FurnitureFit, or run SHARP) → note Memory again.
+2. Navigate to a heavy flow (e.g. open a room, enable FurnitureFit, or generate a USDZ room) → note Memory again.
 3. Go back / dismiss → see if memory drops (no leak) or stays high.
 4. Repeat with a different build (e.g. Release) or different device to compare variations.
 
@@ -73,7 +75,7 @@ If you need memory insight on **TestFlight** (or release) builds:
 
 | Goal | Method | Notes |
 |------|--------|--------|
-| Compare “home” vs “FurnitureFit” vs “SHARP” | Xcode Memory gauge | Easiest; same run, different screens. |
+| Compare “home” vs “FurnitureFit” vs “generated room” | Xcode Memory gauge | Easiest; same run, different screens. |
 | Compare Debug vs Release | Xcode Memory gauge or Instruments | Run each build, same flow, note memory. |
 | Compare devices / OS versions | Same flow on each; note gauge or logs | Baseline and after heavy flow. |
 | See RSS in code paths (FurnitureFit) | Debug mode + console `🧠 [tag]` | Use existing `logMemory` points. |
@@ -83,7 +85,7 @@ If you need memory insight on **TestFlight** (or release) builds:
 
 ## 6. Adding memory logs to other flows
 
-To log resident memory in another view (e.g. SharpRoomView, ModelViewerView):
+To log resident memory in another view (e.g. `ModelViewerView`, `SplatRoomView`, or the photo-room flow):
 
 ```swift
 private func logMemory(_ tag: String) {
@@ -101,4 +103,5 @@ private func logMemory(_ tag: String) {
 }
 ```
 
-Call it on appear and after heavy work (e.g. after SHARP load, after first FurnitureFit frame) so you can compare “app variations” from logs.
+Call it on appear and after heavy work (e.g. after room generation, after opening a room, after the
+first FurnitureFit frame) so you can compare “app variations” from logs.
