@@ -1400,10 +1400,15 @@ struct SinglePhotoRoomView: View {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.35)
-                    Text(singlePhotoGenerationStatus)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
+                    VStack(spacing: 8) {
+                        Text(L10n.GenerationProgress.generating3DModel)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        Text(singlePhotoGenerationStatus)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
                 }
                 .padding(28)
                 .background(Color(.systemBackground).opacity(0.95))
@@ -1618,7 +1623,7 @@ struct SinglePhotoRoomView: View {
         fixedImageItem = nil
         usdzViewerDestination = nil
         generationErrorMessage = nil
-        singlePhotoGenerationStatus = "Running Depth Anything..."
+        singlePhotoGenerationStatus = L10n.RoomGeneration.creatingRoom
 
         Task {
             do {
