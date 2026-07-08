@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "உரிமங்கள் மற்றும் அடிப்படைகள்";
-"licenses.phase1Notice" = "கட்டம் 1 வெளியீடு: இந்த ஆப் தற்போது வணிகரீதியற்ற பயன்பாட்டிற்கு மட்டுமே வழங்கப்படுகிறது. எதிர்கால வணிக வெளியீடு வெவ்வேறு விதிமுறைகளுக்கு உட்பட்டிருக்கலாம்.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
-"licenses.openSourceIntro" = "இந்த ஆப் பின்வரும் திறந்த மூல மென்பொருளைப் பயன்படுத்துகிறது.";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "சாதனத்திலேயே Gaussian splat rendering. பதிப்புரிமை (c) Sean Cier. MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "பதிப்புரிமை (c) Google LLC. Apache License 2.0 உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "மரச்சாமான் கண்டறிதல் மற்றும் பிரித்தல் OpenMMLab MMDetection இன் RTMDet-Ins மாதிரியைப் பயன்படுத்துகின்றன. பதிப்புரிமை (c) OpenMMLab. Apache License 2.0 உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "நிலையான";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "அறை உருவாக்கத்திற்கான இரண்டு விருப்பங்கள் என்ன?";
 "faq.twoMethodsAnswer" = "புகைப்படம் தேர்ந்தெடுக்கும்போது நீங்கள் தேர்வு செய்யலாம்: 1) AI இயக்கப்பட்ட 3D அறை - செயற்கை நுண்ணறிவைப் பயன்படுத்தி யதார்த்த 3D அறையை தானாக உருவாக்குகிறது, அல்லது 2) கைமுறை அமைப்பு - அதிக கட்டுப்பாட்டிற்காக அறை எல்லைகளை நீங்களே வரையலாம்.";
 "faq.whatIsAIRoom" = "AI இயக்கப்பட்ட 3D அறை என்றால் என்ன?";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "கைமுறை அமைப்பு என்றால் என்ன?";
 "faq.whatIsManualRoomAnswer" = "கைமுறை அமைப்பில், புகைப்படத்தில் உங்கள் அறை சுவர்களின் கோடுகளை வரையவும். 3D அறை சரியாக எப்படி இருக்கும் என்பதில் அதிக கட்டுப்பாடு தரும். அறை வடிவத்தை நீங்களே சரிசெய்ய விரும்பும்போது சிறந்தது.";
 "faq.whichMethodBetter" = "நான் எந்த முறையை தேர்வு செய்ய வேண்டும்?";
@@ -227,9 +229,9 @@
 "faq.sampleRoom" = "என்னுடையதற்கு பதிலாக மாதிரி அறையைப் பயன்படுத்த முடியுமா?";
 "faq.sampleRoomAnswer" = "ஆம்! பயன்பாடு பரிசோதிக்க மாதிரி அறைகளை வழங்குகிறது. முதலில் உங்கள் சொந்த அறையை உருவாக்காமல் தளபாட வைப்பை முயற்சிக்க ஆராய் பிரிவிலிருந்து அவற்றை அணுகவும்.";
 "faq.accuracy" = "3D மாதிரி எவ்வளவு துல்லியமானது?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "அறை பரிமாணங்களை சரிசெய்ய முடியுமா?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "தளபாடம் & அளவீடுகள்";
 "faq.arAssistedSizing" = "AR உதவியுடன் தளபாட அளவீடு என்றால் என்ன?";
 "faq.arAssistedSizingAnswer" = "முதலில் brain icon-ஐ தட்டி detected items-ஐ தேர்வு செய்யுங்கள், பிறகு Segment தட்டுங்கள். Room-relative scale வேண்டும் என்றால் sizing control பயன்படுத்துங்கள். AR/depth support உள்ள போன்களில் app live camera depth மூலம் இன்னும் realistic furniture size தரும்; depth இல்லையெனில் furniture measurements approximate ஆகும்.";
@@ -542,11 +544,11 @@
 
 "settings.credits" = "நன்றிகள்";
 "credits.title" = "நன்றிகள்";
-"credits.intro" = "இந்த தயாரிப்பு மூன்றாம் தரப்பு AI மற்றும் மெஷின் லெர்னிங் கருவிகள் மற்றும் தளங்களின் உதவியுடன் உருவாக்கப்பட்டது. மேம்பாட்டு காலத்தில் ஆய்வு, முன்மாதிரி உருவாக்கம், பொறியியல் உதவி, காட்சி பரிசோதனைகள் மற்றும் மாடல் பணிப்பாசறைகளில் அவற்றின் பங்களிப்பை நாங்கள் அங்கீகரிக்கிறோம்.";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "இந்த அங்கீகாரங்கள் வெளிப்படைத்தன்மைக்காக மட்டுமே வழங்கப்படுகின்றன. மூன்றாம் தரப்பு நிறுவனங்கள், தயாரிப்புகள் அல்லது மாடல்களை குறிப்பிடுவது ஆதரவு, ஒப்புதல் அல்லது அதிகாரப்பூர்வ இணைப்பை குறிக்காது.";
 "credits.visitWebsite" = "இணையதளத்தைப் பார்வையிடவும்";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT உட்பட OpenAI கருவிகள் தயாரிப்பு யோசனை, செயலாக்க உதவி, வரைவு தயாரித்தல் மற்றும் தொழில்நுட்ப ஆய்வுக்காக பயன்படுத்தப்பட்டன.";
 "credits.anthropicTitle" = "Anthropic";

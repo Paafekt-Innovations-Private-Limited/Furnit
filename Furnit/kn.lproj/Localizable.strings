@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು";
-"licenses.phase1Notice" = "ಘಟ್ಟ 1 ಬಿಡುಗಡೆ: ಈ ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಸ್ತುತ ಲಾಭರಹಿತ ಬಳಕೆಗೆ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ಭವಿಷ್ಯದ ವಾಣಿಜ್ಯ ಬಿಡುಗಡೆ ವಿಭಿನ್ನ ನಿಯಮಗಳಿಗೆ ಒಳಪಡಬಹುದು.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
-"licenses.openSourceIntro" = "ಈ ಅಪ್ಲಿಕೇಶನ್ ಈ ಕೆಳಗಿನ ಓಪನ್ ಸೋರ್ಸ್ ಸಾಫ್ಟ್‌ವೇರ್ ಬಳಸುತ್ತದೆ.";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "ಸಾಧನದಲ್ಲಿಯೇ Gaussian splat ರೆಂಡರಿಂಗ್. ಕೃತಿಸ್ವಾಮ್ಯ (c) Sean Cier. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache License 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "ಫರ್ನಿಚರ್ ಪತ್ತೆ ಮತ್ತು ಸೆಗ್ಮೆಂಟೇಶನ್ OpenMMLab MMDetection ನ RTMDet-Ins ಮಾದರಿಯನ್ನು ಬಳಸುತ್ತದೆ. ಕೃತಿಸ್ವಾಮ್ಯ (c) OpenMMLab. Apache License 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "ಸ್ಟ್ಯಾಂಡರ್ಡ್";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
 "faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
 "faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಎಂದರೇನು?";
 "faq.whatIsManualRoomAnswer" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್‌ನೊಂದಿಗೆ, ಫೋಟೋದಲ್ಲಿ ನಿಮ್ಮ ಕೊಠಡಿಯ ಗೋಡೆಗಳ ರೂಪರೇಖೆಯನ್ನು ನೀವು ಬರೆಯಿರಿ. 3D ಕೊಠಡಿ ನಿಖರವಾಗಿ ಹೇಗೆ ಕಾಣುತ್ತದೆ ಎಂಬುದರ ಮೇಲೆ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣ ನೀಡುತ್ತದೆ. ಕೊಠಡಿ ಆಕಾರವನ್ನು ನೀವೇ ಸೂಕ್ಷ್ಮವಾಗಿ ಹೊಂದಿಸಲು ಬಯಸಿದಾಗ ಉತ್ತಮ.";
 "faq.whichMethodBetter" = "ನಾನು ಯಾವ ವಿಧಾನವನ್ನು ಆಯ್ಕೆಮಾಡಬೇಕು?";
@@ -227,9 +229,9 @@
 "faq.sampleRoom" = "ನನ್ನದರ ಬದಲು ಮಾದರಿ ಕೊಠಡಿ ಬಳಸಬಹುದೇ?";
 "faq.sampleRoomAnswer" = "ಹೌದು! ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಯೋಗಿಸಲು ಮಾದರಿ ಕೊಠಡಿಗಳನ್ನು ಒದಗಿಸುತ್ತದೆ. ಮೊದಲು ನಿಮ್ಮ ಸ್ವಂತ ಕೊಠಡಿ ರಚಿಸದೆ ಪೀಠೋಪಕರಣ ಇರಿಸುವಿಕೆ ಪ್ರಯತ್ನಿಸಲು ಎಕ್ಸ್‌ಪ್ಲೋರ್ ವಿಭಾಗದಿಂದ ಅವುಗಳನ್ನು ಪ್ರವೇಶಿಸಿ.";
 "faq.accuracy" = "3D ಮಾದರಿ ಎಷ್ಟು ನಿಖರ?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "ಪೀಠೋಪಕರಣ ಮತ್ತು ಅಳತೆಗಳು";
 "faq.arAssistedSizing" = "ಫರ್ನಿಚರ್ ಓವರ್ಲೇ ಗಾತ್ರವನ್ನು ಹೇಗೆ ಅಂದಾಜು ಮಾಡಲಾಗುತ್ತದೆ?";
 "faq.arAssistedSizingAnswer" = "ಮೊದಲು brain icon ಟ್ಯಾಪ್ ಮಾಡಿ, detected items ಆಯ್ಕೆ ಮಾಡಿ, ನಂತರ Segment ಟ್ಯಾಪ್ ಮಾಡಿ. Room-relative scale ಬೇಕಾದರೆ sizing control ಬಳಸಿ. AR/depth support ಇರುವ ಫೋನ್‌ಗಳಲ್ಲಿ app live camera depth ಬಳಸಿ ಹೆಚ್ಚು realistic furniture size ಕೊಡುತ್ತದೆ; depth ಇಲ್ಲದಿದ್ದರೆ furniture measurements approximate ಆಗಿರುತ್ತವೆ.";
@@ -542,11 +544,11 @@
 
 "settings.credits" = "ಕೃತಜ್ಞತೆಗಳು";
 "credits.title" = "ಕೃತಜ್ಞತೆಗಳು";
-"credits.intro" = "ಈ ಉತ್ಪನ್ನವನ್ನು ತೃತೀಯ ಪಕ್ಷದ AI ಮತ್ತು ಮೆಷಿನ್ ಲರ್ನಿಂಗ್ ಸಾಧನಗಳು ಹಾಗೂ ವೇದಿಕೆಗಳ ಸಹಾಯದಿಂದ ಅಭಿವೃದ್ಧಿಪಡಿಸಲಾಗಿದೆ. ಅಭಿವೃದ್ಧಿ ಅವಧಿಯಲ್ಲಿ ಸಂಶೋಧನೆ, ಪ್ರೋಟೋಟೈಪಿಂಗ್, ಇಂಜಿನಿಯರಿಂಗ್ ಸಹಾಯ, ದೃಶ್ಯ ಪ್ರಯೋಗಗಳು ಮತ್ತು ಮಾದರಿ ವರ್ಕ್‌ಫ್ಲೋಗಳಲ್ಲಿ ಅವುಗಳ ಪಾತ್ರವನ್ನು ನಾವು ಗೌರವಿಸುತ್ತೇವೆ.";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "ಈ ಕೃತಜ್ಞತೆಗಳನ್ನು ಪಾರದರ್ಶಕತೆಗಾಗಿ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ತೃತೀಯ ಪಕ್ಷದ ಕಂಪನಿಗಳು, ಉತ್ಪನ್ನಗಳು ಅಥವಾ ಮಾದರಿಗಳ ಉಲ್ಲೇಖವು ಪ್ರಾಯೋಜಕತ್ವ, ಅನುಮೋದನೆ ಅಥವಾ ಅಧಿಕೃತ ಸಂಬಂಧವನ್ನು ಸೂಚಿಸುವುದಿಲ್ಲ.";
 "credits.visitWebsite" = "ಜಾಲತಾಣಕ್ಕೆ ಭೇಟಿ ನೀಡಿ";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "ChatGPT ಸೇರಿದಂತೆ OpenAI ಸಾಧನಗಳನ್ನು ಉತ್ಪನ್ನ ಕಲ್ಪನೆ, ಅನುಷ್ಠಾನ ಸಹಾಯ, ಕರಡು ರೂಪಿಕೆ ಮತ್ತು ತಾಂತ್ರಿಕ ಅನ್ವೇಷಣೆಗೆ ಬಳಸಲಾಗಿದೆ.";
 "credits.anthropicTitle" = "Anthropic";

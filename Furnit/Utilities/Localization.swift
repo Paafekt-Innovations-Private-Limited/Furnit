@@ -226,6 +226,8 @@ enum L10n {
         static let firebase = "licenses.firebase".localized
         static let rtmdetTitle = "licenses.rtmdetTitle".localized
         static let rtmdet = "licenses.rtmdet".localized
+        static let threeTitle = "licenses.threeTitle".localized
+        static let three = "licenses.three".localized
     }
 
     enum Credits {

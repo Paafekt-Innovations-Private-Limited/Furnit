@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "授權與歸屬";
-"licenses.phase1Notice" = "第一階段發布：本應用目前僅供非商業使用。未來商業版本可能適用不同條款。";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "開源授權";
-"licenses.openSourceIntro" = "本應用使用以下開源軟體。";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "檢視完整授權";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "裝置端 Gaussian splat 渲染。版權所有 (c) Sean Cier。依 MIT 授權條款授權。";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "版權所有 (c) Google LLC。依 Apache License 2.0 授權。";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "家具偵測與分割使用 OpenMMLab MMDetection 的 RTMDet-Ins 模型。版權所有 (c) OpenMMLab。依 Apache License 2.0 授權。";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "標準";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "兩種房間建立方式是什麼？";
 "faq.twoMethodsAnswer" = "選擇照片後，您可以選擇：1) AI 驅動的 3D 房間 - 使用人工智慧自動建立逼真的 3D 房間，或 2) 手動設定 - 您自己繪製房間邊界以獲得更多控制。";
 "faq.whatIsAIRoom" = "什麼是 AI 驅動的 3D 房間？";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "什麼是手動設定？";
 "faq.whatIsManualRoomAnswer" = "手動設定時，您在照片上繪製房間牆壁的輪廓。這樣您可以更精確地控制 3D 房間的外觀。當您想自己微調房間形狀時非常有用。";
 "faq.whichMethodBetter" = "我該選哪種方式？";
@@ -241,9 +243,9 @@
 "faq.sampleRoom" = "我可以使用範例房間嗎？";
 "faq.sampleRoomAnswer" = "可以！應用程式提供範例房間供你體驗。從探索部分存取它們，無需先建立自己的房間即可嘗試傢俱佈置。";
 "faq.accuracy" = "3D模型有多準確？";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "傢俱與測量";
 "faq.arAssistedSizing" = "什麼是 AR 輔助傢俱尺寸？";
 "faq.arAssistedSizingAnswer" = "先點擊大腦圖示，選擇偵測到的物體，然後點擊分割。需要依房間比例縮放時再使用尺寸控制。在支援 AR/depth 的手機上，app 會使用即時相機深度給出更真實的家具大小；沒有深度時，家具測量只是近似值。";
@@ -543,11 +545,11 @@
 
 "settings.credits" = "鳴謝";
 "credits.title" = "鳴謝";
-"credits.intro" = "本產品在開發過程中使用了第三方 AI 與機器學習工具及平台。我們感謝它們在研究、原型設計、工程支援、視覺實驗以及模型工作流程中的協助。";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "這些鳴謝僅用於透明說明。提及第三方公司、產品或模型，並不表示存在贊助、背書或正式關聯。";
 "credits.visitWebsite" = "造訪網站";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI 工具（包括 ChatGPT）被用於支援產品構想、實作協助、內容草擬以及開發期間的技術探索。";
 "credits.anthropicTitle" = "Anthropic";

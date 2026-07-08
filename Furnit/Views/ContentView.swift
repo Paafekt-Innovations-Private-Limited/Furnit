@@ -1002,7 +1002,7 @@ struct PrivacySettingsView: View {
     var body: some View {
         Form {
             Section("Privacy") {
-                Text("Paafekt uses your verified phone number for sign-in and stores basic account details on-device. Room photos are processed on-device with GeoCalib and Depth Anything for room generation in this build and are not retained by Paafekt.")
+                Text("Paafekt uses Firebase phone authentication for sign-in and stores saved rooms on your device. In this build, room photos and furniture scans are processed on-device for room generation, measurement, and segmentation. Paafekt does not retain your room photos through the app.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -1091,7 +1091,7 @@ struct AboutView: View {
     }
 }
 
-/// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything + GeoCalib (Apache-2.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0).
+/// Licenses & Attributions (Settings → Open Source Licenses). Depth Anything + GeoCalib (Apache-2.0), MetalSplatter (MIT), Firebase (Apache-2.0), RTMDet/MMDetection (Apache-2.0), Three.js (MIT).
 struct LicensesView: View {
     private enum LicenseURL {
         static let mit = URL(string: "https://opensource.org/licenses/MIT")!
@@ -1100,6 +1100,11 @@ struct LicensesView: View {
 
     var body: some View {
         Form {
+            Section {
+                Text(L10n.Licenses.phase1Notice)
+                    .foregroundColor(.secondary)
+            }
+
             Section {
                 Text(L10n.Licenses.openSourceIntro)
                     .font(.subheadline)
@@ -1173,6 +1178,20 @@ struct LicensesView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.threeTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.three)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
                         .font(.caption)
                 }
                 .padding(.vertical, 4)

@@ -226,7 +226,7 @@ class LoginActivity : AppCompatActivity() {
 
         // Terms text
         val termsText = TextView(this).apply {
-            text = "By continuing, you agree to our Terms of Service and Privacy Policy"
+            text = getString(R.string.login_terms_agree)
             textSize = 12f
             setTextColor(Color.parseColor("#999999"))
             gravity = Gravity.CENTER

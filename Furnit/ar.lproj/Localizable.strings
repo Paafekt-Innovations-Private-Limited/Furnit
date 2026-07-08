@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "التراخيص والإسناد";
-"licenses.phase1Notice" = "إصدار المرحلة 1: يُقدّم هذا التطبيق حالياً للاستخدام غير التجاري فقط. قد يخضع الإصدار التجاري المستقبلي لشروط مختلفة.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "تراخيص المصدر المفتوح";
-"licenses.openSourceIntro" = "يستخدم هذا التطبيق البرمجيات مفتوحة المصدر التالية.";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "عرض الترخيص الكامل";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "عرض Gaussian splat على الجهاز. حقوق النشر (c) Sean Cier. مرخّص بموجب ترخيص MIT.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "حقوق النشر (c) Google LLC. مرخّص بموجب ترخيص Apache License 2.0.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "يستخدم اكتشاف الأثاث وتقسيمه نموذج RTMDet-Ins من OpenMMLab MMDetection. حقوق النشر (c) OpenMMLab. مرخّص بموجب ترخيص Apache License 2.0.";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "قياسي";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "ما خيارا إنشاء الغرفة المتاحان؟";
 "faq.twoMethodsAnswer" = "عند اختيار صورة يمكنك الاختيار بين: 1) غرفة 3D بالذكاء الاصطناعي – تنشئ تلقائياً غرفة 3D واقعية، أو 2) الإعداد اليدوي – ترسم حدود الغرفة بنفسك لمزيد من التحكم.";
 "faq.whatIsAIRoom" = "ما هي الغرفة ثلاثية الأبعاد بالذكاء الاصطناعي؟";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "ما هو الإعداد اليدوي؟";
 "faq.whatIsManualRoomAnswer" = "في الإعداد اليدوي ترسم حدود جدران غرفتك على الصورة. يعطيك تحكماً أدق في مظهر الغرفة 3D. مثالي عندما تريد ضبط شكل الغرفة بنفسك.";
 "faq.whichMethodBetter" = "أي طريقة يجب أن أختار؟";
@@ -245,9 +247,9 @@
 "faq.sampleRoom" = "هل يمكنني استخدام غرفة نموذجية بدلاً من غرفتي؟";
 "faq.sampleRoomAnswer" = "نعم! يوفر التطبيق غرف نموذجية للتجربة. يمكنك الوصول إليها من قسم الاستكشاف لتجربة وضع الأثاث دون إنشاء غرفتك الخاصة أولاً.";
 "faq.accuracy" = "ما مدى دقة النموذج ثلاثي الأبعاد؟";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "هل يمكنني ضبط أبعاد الغرفة؟";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "الأثاث والقياسات";
 "faq.arAssistedSizing" = "ما هو تحديد حجم الأثاث بمساعدة الواقع المعزز؟";
 "faq.arAssistedSizingAnswer" = "اضغط أولاً أيقونة الدماغ واختر العناصر المكتشفة، ثم اضغط Segment. استخدم أداة الحجم عندما تريد قياساً نسبة إلى الغرفة. على الهواتف التي تدعم AR أو العمق يستخدم التطبيق عمق الكاميرا الحي لحجم أثاث أكثر واقعية؛ وبدون العمق تكون قياسات الأثاث تقريبية.";
@@ -542,11 +544,11 @@
 
 "settings.credits" = "الشكر والتقدير";
 "credits.title" = "الشكر والتقدير";
-"credits.intro" = "تم تطوير هذا المنتج بمساعدة أدوات ومنصات خارجية للذكاء الاصطناعي وتعلّم الآلة. ونقدّر دورها في البحث، وإعداد النماذج الأولية، والمساندة الهندسية، والتجارب البصرية، وسير عمل النماذج خلال عملية التطوير.";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "تُعرض هذه الإشارات لأغراض الشفافية فقط. ولا تعني الإشارة إلى شركات أو منتجات أو نماذج خارجية وجود رعاية أو تأييد أو ارتباط رسمي.";
 "credits.visitWebsite" = "زيارة الموقع";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "استُخدمت أدوات OpenAI، بما في ذلك ChatGPT، لدعم تصور المنتج، والمساعدة في التنفيذ، والصياغة، والاستكشاف التقني أثناء التطوير.";
 "credits.anthropicTitle" = "Anthropic";

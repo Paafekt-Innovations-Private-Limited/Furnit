@@ -12,7 +12,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * In-app credits / acknowledgements screen for third-party AI and ML tools.
+ * In-app credits / acknowledgements screen for development tools and platform references.
  * Keeps acknowledgements separate from open-source licenses for clearer legal structure.
  */
 class CreditsActivity : AppCompatActivity() {

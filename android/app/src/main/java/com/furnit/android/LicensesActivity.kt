@@ -13,7 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Includes attributions for bundled rendering, Firebase, and RTMDet/MMDetection.
+ * Includes attributions for room generation, rendering, auth, and detection dependencies.
  */
 class LicensesActivity : AppCompatActivity() {
 
@@ -48,10 +48,13 @@ class LicensesActivity : AppCompatActivity() {
         }
         layout.addView(titleView)
 
+        addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
-        addSection(layout, getString(R.string.licenses_metal_splatter_title), getString(R.string.licenses_metal_splatter), licenseUrl = urlMit)
+        addSection(layout, getString(R.string.licenses_depth_anything_title), getString(R.string.licenses_depth_anything), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_geo_calib_title), getString(R.string.licenses_geo_calib), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
+        addSection(layout, getString(R.string.licenses_three_title), getString(R.string.licenses_three), licenseUrl = urlMit)
 
         scrollView.addView(layout)
         setContentView(scrollView)

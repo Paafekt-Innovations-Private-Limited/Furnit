@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "Lizenzen & Zuschreibungen";
-"licenses.phase1Notice" = "Phase-1-Release: Diese App wird derzeit nur für die nichtkommerzielle Nutzung angeboten. Eine künftige kommerzielle Version kann anderen Bedingungen unterliegen.";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "Open-Source-Lizenzen";
-"licenses.openSourceIntro" = "Diese App verwendet die folgende Open-Source-Software.";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "Vollständige Lizenz anzeigen";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "Gaussian-Splat-Rendering direkt auf dem Gerät. Copyright (c) Sean Cier. Lizenziert unter der MIT-Lizenz.";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "Möbelerkennung und -segmentierung verwenden das RTMDet-Ins-Modell von OpenMMLab MMDetection. Copyright (c) OpenMMLab. Lizenziert unter der Apache-Lizenz 2.0.";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "Was sind die beiden Optionen zur Raumerstellung?";
 "faq.twoMethodsAnswer" = "Nach der Fotowahl können Sie wählen: 1) KI-gestützter 3D-Raum – erstellt automatisch einen realistischen 3D-Raum, oder 2) Manuelle Einrichtung – Sie zeichnen die Raumgrenzen selbst für mehr Kontrolle.";
 "faq.whatIsAIRoom" = "Was ist der KI-gestützte 3D-Raum?";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "Was ist die manuelle Einrichtung?";
 "faq.whatIsManualRoomAnswer" = "Bei der manuellen Einrichtung zeichnen Sie den Umriss der Wände auf dem Foto. So haben Sie mehr Kontrolle über die Form des 3D-Raums.";
 "faq.whichMethodBetter" = "Welche Methode soll ich wählen?";
@@ -240,9 +242,9 @@
 "faq.sampleRoom" = "Kann ich einen Beispielraum anstelle meines eigenen verwenden?";
 "faq.sampleRoomAnswer" = "Ja! Die App bietet Beispielräume zum Experimentieren. Greifen Sie über den Entdecken-Bereich darauf zu, um die Möbelplatzierung auszuprobieren, ohne zuerst Ihren eigenen Raum zu erstellen.";
 "faq.accuracy" = "Wie genau ist das 3D-Modell?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Kann ich die Raummaße anpassen?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "Möbel & Maße";
 "faq.arAssistedSizing" = "Was ist AR-gestützte Möbelgröße?";
 "faq.arAssistedSizingAnswer" = "Tippen Sie zuerst auf das Gehirn-Symbol, wählen Sie erkannte Elemente aus und tippen Sie dann auf Segment. Nutzen Sie die Größensteuerung, wenn die Größe relativ zum Raum angepasst werden soll. Auf Telefonen mit AR-/Tiefenunterstützung nutzt die App Live-Kameratiefe für realistischere Möbelgrößen; ohne Tiefe sind Möbelmaße nur ungefähr.";
@@ -556,11 +558,11 @@
 
 "settings.credits" = "Danksagungen";
 "credits.title" = "Danksagungen";
-"credits.intro" = "Dieses Produkt wurde mithilfe von KI- und Machine-Learning-Tools und -Plattformen Dritter entwickelt. Wir erkennen ihren Beitrag zu Recherche, Prototyping, technischer Unterstützung, visuellen Experimenten und Modell-Workflows während der Entwicklung an.";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "Diese Danksagungen dienen ausschließlich der Transparenz. Verweise auf Drittunternehmen, Produkte oder Modelle bedeuten keine Förderung, Empfehlung oder Zugehörigkeit.";
 "credits.visitWebsite" = "Website besuchen";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI-Tools, einschließlich ChatGPT, wurden zur Unterstützung von Produktideen, Implementierungshilfe, Formulierungen und technischer Exploration während der Entwicklung eingesetzt.";
 "credits.anthropicTitle" = "Anthropic";

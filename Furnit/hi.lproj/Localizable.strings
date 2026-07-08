@@ -141,20 +141,22 @@
 
 // Licenses & Attributions (About)
 "licenses.title" = "लाइसेंस और अट्रिब्यूशन";
-"licenses.phase1Notice" = "चरण 1 रिलीज़: यह ऐप वर्तमान में केवल गैर-वाणिज्यिक उपयोग के लिए पेश किया जाता है। भविष्य की वाणिज्यिक रिलीज़ अलग शर्तों के अधीन हो सकती है।";
+"licenses.phase1Notice" = "Current release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
 "licenses.openSourceSection" = "ओपन सोर्स लाइसेंस";
-"licenses.openSourceIntro" = "यह ऐप निम्नलिखित ओपन सोर्स सॉफ्टवेयर का उपयोग करता है।";
+"licenses.openSourceIntro" = "This app uses the following open source software and model assets.";
 "licenses.viewFullLicense" = "पूर्ण लाइसेंस देखें";
 "licenses.depthAnythingTitle" = "Depth Anything V2";
-"licenses.depthAnything" = "Metric indoor depth estimation for room reconstruction. Copyright (c) Depth Anything contributors. Licensed under the Apache License 2.0.";
+"licenses.depthAnything" = "Metric indoor depth estimation for single-photo room reconstruction. Licensed under the Apache License 2.0.";
 "licenses.geoCalibTitle" = "GeoCalib";
-"licenses.geoCalib" = "Single-image camera calibration (focal length and gravity). Copyright (c) Meta / EPFL / UBC contributors. Licensed under the Apache License 2.0.";
+"licenses.geoCalib" = "Single-image camera calibration for focal length and gravity hints. Copyright 2024 ETH Zurich. Licensed under the Apache License 2.0.";
 "licenses.metalSplatterTitle" = "MetalSplatter";
 "licenses.metalSplatter" = "डिवाइस पर Gaussian splat रेंडरिंग। कॉपीराइट (c) Sean Cier। MIT लाइसेंस के तहत लाइसेंस प्राप्त।";
 "licenses.firebaseTitle" = "Firebase";
 "licenses.firebase" = "कॉपीराइट (c) Google LLC। Apache License 2.0 के तहत लाइसेंस प्राप्त।";
 "licenses.rtmdetTitle" = "RTMDet (MMDetection)";
-"licenses.rtmdet" = "फर्नीचर पहचान और सेगमेंटेशन OpenMMLab MMDetection के RTMDet-Ins मॉडल का उपयोग करते हैं। कॉपीराइट (c) OpenMMLab। Apache License 2.0 के तहत लाइसेंस प्राप्त।";
+"licenses.rtmdet" = "Furniture detection and segmentation use the RTMDet-Ins model from OpenMMLab MMDetection. Copyright (c) OpenMMLab. Licensed under the Apache License 2.0.";
+"licenses.three" = "Bundled WebGL rendering support for 3D room viewers. Copyright (c) 2010-2026 three.js authors. Licensed under the MIT License.";
+"licenses.threeTitle" = "Three.js";
 
 // MARK: - Quality Options
 "quality.standard" = "मानक";
@@ -196,7 +198,7 @@
 "faq.twoMethods" = "कमरा बनाने के दो विकल्प क्या हैं?";
 "faq.twoMethodsAnswer" = "फोटो चुनने पर आप चुन सकते हैं: 1) AI-संचालित 3D रूम – AI से अपने आप यथार्थवादी 3D कमरा बनाता है, या 2) मैनुअल सेटअप – आप खुद कमरे की सीमाएं खींचते हैं और ज़्यादा नियंत्रण रखते हैं।";
 "faq.whatIsAIRoom" = "AI-संचालित 3D रूम क्या है?";
-"faq.whatIsAIRoomAnswer" = "On iPhone, this uses GeoCalib (camera calibration) and Depth Anything (metric depth) to build a textured 3D room mesh from your photo. Pick a photo and the app handles the rest — no drawing required.";
+"faq.whatIsAIRoomAnswer" = "AI Room uses GeoCalib for camera calibration and Depth Anything for metric depth to build a textured 3D room from your photo. Pick a photo and the app handles the rest; no drawing required.";
 "faq.whatIsManualRoom" = "मैनुअल सेटअप क्या है?";
 "faq.whatIsManualRoomAnswer" = "मैनुअल सेटअप में आप फोटो पर कमरे की दीवारों का आउटलाइन खींचते हैं। इससे 3D कमरे का लुक आप खुद तय कर सकते हैं। कमरे का आकार खुद ठीक करने के लिए बढ़िया है।";
 "faq.whichMethodBetter" = "मुझे कौन सा तरीका चुनना चाहिए?";
@@ -227,9 +229,9 @@
 "faq.sampleRoom" = "क्या मैं अपने बजाय सैंपल रूम उपयोग कर सकता हूं?";
 "faq.sampleRoomAnswer" = "हां! ऐप प्रयोग करने के लिए सैंपल रूम प्रदान करता है। पहले अपना कमरा बनाए बिना फर्नीचर प्लेसमेंट आज़माने के लिए एक्सप्लोर सेक्शन से उन्हें एक्सेस करें।";
 "faq.accuracy" = "3D मॉडल कितना सटीक है?";
-"faq.accuracyAnswer" = "The 3D room is estimated from one photo using GeoCalib focal length and Depth Anything metric depth. Dimensions are useful as guidance but are not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
+"faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "क्या मैं कमरे के आयाम समायोजित कर सकता हूं?";
-"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from GeoCalib + Depth Anything. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
+"faq.adjustDimensionsAnswer" = "You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.";
 "faq.furnitureMeasurements" = "फर्नीचर और माप";
 "faq.arAssistedSizing" = "AR-सहायता वाला फर्नीचर साइज़िंग क्या है?";
 "faq.arAssistedSizingAnswer" = "पहले ब्रेन आइकन टैप करें, detected items चुनें, फिर Segment टैप करें। कमरे के अनुपात में scale चाहिए तो sizing control इस्तेमाल करें। AR/depth support वाले फोन पर ऐप live camera depth से अधिक realistic furniture size देती है; depth न होने पर furniture measurements approximate होते हैं।";
@@ -542,11 +544,11 @@
 
 "settings.credits" = "श्रेय";
 "credits.title" = "श्रेय";
-"credits.intro" = "इस उत्पाद को तृतीय-पक्ष AI और मशीन लर्निंग टूल्स और प्लेटफ़ॉर्म की सहायता से विकसित किया गया है। विकास के दौरान अनुसंधान, प्रोटोटाइपिंग, इंजीनियरिंग सहायता, विज़ुअल प्रयोग और मॉडल वर्कफ़्लो में उनकी भूमिका के लिए हम आभार व्यक्त करते हैं।";
+"credits.intro" = "This product was developed with assistance from third-party AI and machine learning tools and platforms. We acknowledge their role in research, prototyping, engineering assistance, visual experimentation, and development workflow support.";
 "credits.disclaimer" = "ये उल्लेख केवल पारदर्शिता के लिए दिए गए हैं। तृतीय-पक्ष कंपनियों, उत्पादों या मॉडलों का संदर्भ किसी प्रायोजन, समर्थन या औपचारिक संबद्धता का संकेत नहीं देता।";
 "credits.visitWebsite" = "वेबसाइट देखें";
 "credits.appleTitle" = "Apple";
-"credits.appleBody" = "Apple frameworks, platforms, and technical references informed parts of our on-device 3D and machine learning development workflow, including Core ML deployment of GeoCalib and Depth Anything on iPhone.";
+"credits.appleBody" = "Apple platforms, frameworks, and technical references informed the Swift implementation of camera capture, Core ML, AR/depth handling, and on-device 3D rendering. Android uses its own platform stack for the same product flow.";
 "credits.openAITitle" = "OpenAI";
 "credits.openAIBody" = "OpenAI के टूल्स, जिनमें ChatGPT शामिल है, का उपयोग उत्पाद विचार, इम्प्लीमेंटेशन सहायता, ड्राफ्टिंग और तकनीकी अन्वेषण के लिए किया गया।";
 "credits.anthropicTitle" = "Anthropic";
