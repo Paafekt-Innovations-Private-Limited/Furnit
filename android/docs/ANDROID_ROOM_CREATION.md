@@ -5,10 +5,19 @@
 1. `SinglePhotoRoomActivity` lets the user take a room photo or choose one from the library.
 2. The user chooses AI generation or manual setup.
 3. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
-4. The service calls `SinglePhotoRoomReconstructor` with default room boundaries and writes `room.glb`.
-5. Metadata is written beside the GLB, including room dimensions, photo orientation, and preview state.
-6. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
-7. Saved rooms open through `GLBRoomActivity`.
+4. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true`.
+5. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity).
+6. Metadata is written beside the GLB, including room dimensions, photo orientation, and preview state.
+7. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
+8. Saved rooms open through `GLBRoomActivity`.
+
+Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
+
+## Why Flat Photo GLB For AI
+
+The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The flat mesh keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview.
+
+`GLBRoomActivity` detects thin flat meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid.
 
 ## Active Outputs
 
@@ -53,3 +62,5 @@ Use:
 ./gradlew :app:assembleDebug
 rg -n "old-room-backend-token" app/src/main/java app/src/main/res app/build.gradle
 ```
+
+After creating an AI room, confirm the preview shows a flat photo wall (not visibly stretched plane crops) and that `GLBRoomActivity` recenters the camera in front of the mesh.

@@ -6,11 +6,23 @@ Android app for Furnit room creation, GLB room viewing, and on-device furniture 
 
 - Entry point: `SinglePhotoRoomActivity`.
 - User input: take a photo or select one from the photo library.
-- AI path: `PhotoRoomGenerationService` runs the generic photo-to-room flow and writes a textured `room.glb` preview.
-- Manual path: the user adjusts room boundaries and exports a GLB room.
+- AI path: `PhotoRoomGenerationService` runs the generic photo-to-room flow and writes a Swift-parity **flat full-photo** `room.glb` preview (no stretched cuboid plane crops).
+- Manual path: the user adjusts room boundaries and exports a textured five-plane GLB room.
 - Viewer path: generated rooms open in `GLBRoomActivity`; saved rooms are listed by `ModelManager`.
 
 The old native Gaussian-splat stack has been removed from the Android app. There are no separate room-generation build variants and no native room-generation model runtime in the active path.
+
+## GLB Room Viewer And Furniture Fit
+
+`GLBRoomActivity` hosts the WebView/Three.js room and an inline **brain** segmentation overlay:
+
+| Mode | Camera preview | Overlay | Purpose |
+|---|---|---|---|
+| **Default brain** | Hidden (analysis only) | Auto-segment highest-confidence primary; transparent cutout over 3D room | Quick single-furniture check |
+| **Full video — Identify** | Live `PreviewView` | Cluster detection boxes; tap to pin furniture | Select one or more items against the live feed |
+| **Full video — Segment** | Hidden again | Transparent ARGB cutout(s) over 3D room | Check multi-item fitment in the saved room |
+
+Toggle full-video mode with the in-room **viewfinder** button (`ic_text_viewfinder`, top-right while brain is active). This matches Swift's `text.viewfinder` toolbar control. A legacy Settings switch still exists but is **not** required for `GLBRoomActivity`.
 
 ## Packaged Assets
 

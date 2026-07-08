@@ -24,5 +24,7 @@ AR features require a real device with ARCore support.
 ## Useful Logs
 
 ```bash
-adb logcat -s SinglePhotoRoom:D PhotoRoomGeneration:D RoomGenerationAssets:D GLBRoomActivity:D FurnitureFitManager:D -v time
+adb logcat -s SinglePhotoRoom:D PhotoRoomGeneration:D RoomGenerationAssets:D GLBRoomActivity:D FurnitureFitManager:D FurnitureFitOverlay:I -v time
 ```
+
+For full-video segmentation debugging, filter `GLBRoomActivity` and `FurnitureFitOverlay` together.

@@ -13,3 +13,5 @@ ArMeasureActivity.RESULT_EXTRA_ANCHOR_COUNT
 ```
 
 This activity is generic and is not tied to a specific room-generation backend. Furniture Fit also uses ARCore through `FurnitureFitArCameraController` for live overlay sizing where supported.
+
+For the in-room GLB viewer segmentation flow (non-AR, transparent cutout over WebView), see `README_ANDROID.md` and [`rtmdet-android-flow.svg`](../diagrams/rtmdet-android-flow.svg).

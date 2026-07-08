@@ -19,7 +19,9 @@ Terminal build:
 
 - `SinglePhotoRoomActivity` owns the take-photo/select-photo screen.
 - `PhotoRoomGenerationService` owns the AI room-generation job lifecycle.
-- `SinglePhotoRoomReconstructor` writes the current textured GLB room output.
+- `SinglePhotoRoomReconstructor` writes the textured GLB room output.
+- `GlbGenerator.generateFlatPhotoGlb` builds the **AI default**: one full-photo textured plane (Swift parity, avoids dragged/stretched cuboid crops).
+- `GlbGenerator.generateGlb` builds the **manual default**: floor, ceiling, and wall planes with cropped photo textures.
 - `RoomGenerationAssets` records the packaged Swift-parity asset contract.
 - Generated preview folders are promoted into `files/rooms/` only when the user saves the room.
 
@@ -32,6 +34,26 @@ Android currently packages the Depth Anything metric depth ONNX asset and the ex
 - Manager: `app/src/main/java/com/furnit/android/services/FurnitureFitManager.kt`.
 - Output: `SegmentationResult.mask` is an ARGB bitmap. Non-furniture pixels have alpha `0`; furniture pixels are opaque camera RGB.
 - Display: `FurnitureFitOverlayView` draws the cutout over the current GLB room screen.
+
+### GLBRoomActivity inline brain
+
+The primary in-room furniture flow lives in `GLBRoomActivity` (same activity as the WebView room viewer):
+
+1. Tap the **brain** button (bottom-left) to start CameraX analysis on the back camera.
+2. **Default mode** auto-segments the highest-confidence primary detection and composites a transparent cutout over the 3D room.
+3. Tap the **viewfinder** button (top-right, visible while brain is active) to enter **full-video** mode:
+   - **Identify**: live camera preview + cluster bounding boxes; tap boxes to pin furniture.
+   - **Segment**: camera preview hides; pinned items are segmented with alpha-transparent backgrounds so the **3D room shows through** for fitment checks.
+4. Tap **Stop** on the green Segment pill to return to Identify, or tap brain again to exit.
+
+Implementation notes:
+
+- `PreviewView` is bound only in full-video **Identify** mode.
+- During **Segment**, CameraX keeps `ImageAnalysis` running but unbinds preview so mask alpha reveals the WebView room (matches Swift `shouldShowLiveCameraPreview`).
+- Multi-select uses cluster union masks via `segmentSelectedInstancesAsync` and affinity-group pins.
+- Flat photo rooms use front-facing camera framing in the WebView when depth is under 5 cm.
+
+`FurnitureFitActivity` / `FurnitureFitFragment` remain the dedicated AR room-background path launched from the **AR** pill in the top bar.
 
 ## 3D Viewer
 

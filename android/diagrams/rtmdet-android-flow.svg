@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="1020" viewBox="0 0 860 1020" font-family="Roboto, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="1180" viewBox="0 0 920 1180" font-family="Roboto, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L8,3 L0,6 Z" fill="#5b6470"/>
@@ -8,6 +8,7 @@
       .sub{font-size:13px;fill:#6b7280}
       .bt{font-size:15px;font-weight:600}
       .bs{font-size:11.5px}
+      .ui{fill:#fce7f3;stroke:#db2777}
       .cam{fill:#eef2f7;stroke:#94a3b8}
       .acc{fill:#e7f7ec;stroke:#16a34a}
       .cpu{fill:#e9f0fb;stroke:#3b82f6}
@@ -19,70 +20,72 @@
     </style>
   </defs>
 
-  <text x="32" y="40" class="title">RTMDet instance segmentation — Android (Kotlin / ONNX Runtime)</text>
-  <text x="32" y="60" class="sub">Live "brain" loop. Same-activity overlay in GLBRoomActivity. ★ = ONNX Runtime EP, ☆ = scalar Kotlin.</text>
+  <text x="32" y="40" class="title">RTMDet segmentation — GLBRoomActivity (Android / ONNX Runtime)</text>
+  <text x="32" y="60" class="sub">Inline brain overlay on WebView room. Full-video viewfinder toggle matches Swift. ★ = ONNX Runtime, ☆ = Kotlin CPU.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ONNX RT (CPU/XNNPACK)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Kotlin CPU</text>
+  <rect x="32" y="74" width="14" height="14" rx="3" class="ui"/><text x="52" y="86" class="legtxt">UI / mode control</text>
 
-  <g><rect x="250" y="100" width="360" height="52" rx="12" class="cam"/>
-    <text x="430" y="122" text-anchor="middle" class="bt">Hidden CameraX ImageAnalysis</text>
-    <text x="430" y="140" text-anchor="middle" class="bs">analysis-only frames · no camera preview background</text></g>
-  <path class="edge" d="M430,152 L430,186" marker-end="url(#arrow)"/>
+  <g><rect x="48" y="100" width="824" height="88" rx="12" class="ui"/>
+    <text x="460" y="126" text-anchor="middle" class="bt">GLBRoomActivity controls</text>
+    <text x="460" y="148" text-anchor="middle" class="bs">WebView 3D room · brain button starts session · viewfinder toggles full-video · Segment pill confirms selection</text>
+    <text x="460" y="168" text-anchor="middle" class="bs">DEFAULT_SEGMENT = auto primary cutout · IDENTIFY = live preview + tap cluster boxes · SEGMENT_SELECTED = alpha cutout over room</text></g>
+  <path class="edge" d="M460,188 L460,222" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="186" width="360" height="52" rx="12" class="cam"/>
-    <text x="430" y="208" text-anchor="middle" class="bt">Frame gate</text>
-    <text x="430" y="226" text-anchor="middle" class="bs">drop while isBrainInferenceRunning · analyze only the latest</text></g>
-  <path class="edge" d="M430,238 L430,272" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="222" width="420" height="68" rx="12" class="cam"/>
+    <text x="460" y="246" text-anchor="middle" class="bt">CameraX capture</text>
+    <text x="460" y="264" text-anchor="middle" class="bs">ImageAnalysis always · PreviewView only in full-video IDENTIFY</text>
+    <text x="460" y="280" text-anchor="middle" class="bs">Preview hidden during SEGMENT_SELECTED so mask alpha reveals 3D room</text></g>
+  <path class="edge" d="M460,290 L460,324" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="272" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="294" text-anchor="middle" class="bt">Preprocess</text>
-    <text x="430" y="312" text-anchor="middle" class="bs">resize → 640² (letterbox/stretch) · normalize → NCHW</text></g>
-  <path class="edge" d="M430,324 L430,358" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="324" width="420" height="52" rx="12" class="cam"/>
+    <text x="460" y="346" text-anchor="middle" class="bt">Frame gate</text>
+    <text x="460" y="364" text-anchor="middle" class="bs">drop while isBrainInferenceRunning · analyze only the latest frame</text></g>
+  <path class="edge" d="M460,376 L460,410" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="358" width="360" height="52" rx="12" class="acc"/>
-    <text x="430" y="380" text-anchor="middle" class="bt">★ OrtSession.run — RTMDet-Ins backbone</text>
-    <text x="430" y="398" text-anchor="middle" class="bs">rtmdet-ins-m-raw.onnx · loaded once, reused (singleton)</text></g>
-  <path class="edge" d="M430,410 L430,444" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="410" width="420" height="52" rx="12" class="cpu"/>
+    <text x="460" y="432" text-anchor="middle" class="bt">Preprocess</text>
+    <text x="460" y="450" text-anchor="middle" class="bs">rotateToMatchLockedRoomPhoto · resize 640² · normalize NCHW</text></g>
+  <path class="edge" d="M460,462 L460,496" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="444" width="360" height="52" rx="12" class="data"/>
-    <text x="430" y="466" text-anchor="middle" class="bt">Raw heads + proto</text>
-    <text x="430" y="484" text-anchor="middle" class="bs">cls / bbox / mask-coeffs per location · + mask prototypes</text></g>
-  <path class="edge" d="M430,496 L430,530" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="496" width="420" height="52" rx="12" class="acc"/>
+    <text x="460" y="518" text-anchor="middle" class="bt">★ OrtSession.run — RTMDet-Ins</text>
+    <text x="460" y="536" text-anchor="middle" class="bs">rtmdet-ins-m-raw.onnx · singleton FurnitureFitManager session</text></g>
+  <path class="edge" d="M460,548 L460,582" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="530" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="552" text-anchor="middle" class="bt">Parse detections</text>
-    <text x="430" y="570" text-anchor="middle" class="bs">decode boxes/classes · confidence threshold</text></g>
-  <path class="edge" d="M430,582 L430,616" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="582" width="420" height="52" rx="12" class="data"/>
+    <text x="460" y="604" text-anchor="middle" class="bt">Raw heads + proto</text>
+    <text x="460" y="622" text-anchor="middle" class="bs">cls / bbox / mask-coeffs · mask prototypes</text></g>
+  <path class="edge" d="M460,634 L460,668" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="616" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="638" text-anchor="middle" class="bt">NMS + primary selection</text>
-    <text x="430" y="656" text-anchor="middle" class="bs">class-aware NMS · confidence/area primary · furniture class filter</text></g>
-  <path class="edge" d="M430,668 L430,702" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="668" width="420" height="52" rx="12" class="cpu"/>
+    <text x="460" y="690" text-anchor="middle" class="bt">Parse · NMS · affinity clusters</text>
+    <text x="460" y="708" text-anchor="middle" class="bs">furniture class filter · cluster union bboxes for full-video taps</text></g>
+  <path class="edge" d="M460,720 L460,754" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="702" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="724" text-anchor="middle" class="bt">☆ Mask build · coeffs · prototypes</text>
-    <text x="430" y="742" text-anchor="middle" class="bs">dynamic conv (sigmoid(Σ coeff·proto)) per pixel · scalar Kotlin</text></g>
-  <text x="624" y="732" class="star">← un-accelerated</text>
-  <path class="edge" d="M430,754 L430,788" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="754" width="420" height="52" rx="12" class="cpu"/>
+    <text x="460" y="776" text-anchor="middle" class="bt">☆ Mask build · coeffs · prototypes</text>
+    <text x="460" y="794" text-anchor="middle" class="bs">composeProtoMaskCutoutArgb · alpha 0 outside furniture pixels</text></g>
+  <text x="684" y="784" class="star">← un-accelerated</text>
+  <path class="edge" d="M460,806 L460,840" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="788" width="360" height="52" rx="12" class="cpu"/>
-    <text x="430" y="810" text-anchor="middle" class="bt">Transparent ARGB cutout</text>
-    <text x="430" y="828" text-anchor="middle" class="bs">camera RGB only where mask is furniture · alpha 0 elsewhere</text></g>
-  <path class="edge" d="M430,840 L430,874" marker-end="url(#arrow)"/>
+  <g><rect x="250" y="840" width="420" height="52" rx="12" class="cpu"/>
+    <text x="460" y="862" text-anchor="middle" class="bt">Transparent ARGB cutout</text>
+    <text x="460" y="880" text-anchor="middle" class="bs">camera RGB only where mask &gt; 0.5 · fully transparent elsewhere</text></g>
+  <path class="edge" d="M460,892 L460,926" marker-end="url(#arrow)"/>
 
-  <g><rect x="250" y="874" width="360" height="52" rx="12" class="disp"/>
-    <text x="430" y="896" text-anchor="middle" class="bt">Display over existing room</text>
-    <text x="430" y="914" text-anchor="middle" class="bs">FurnitureFitOverlayView over GLB WebView or PLY SparkJS screen</text></g>
+  <g><rect x="250" y="926" width="420" height="52" rx="12" class="disp"/>
+    <text x="460" y="948" text-anchor="middle" class="bt">FurnitureFitOverlayView over WebView room</text>
+    <text x="460" y="966" text-anchor="middle" class="bs">frameAlignedOverlay in full-video · live loop while brain session active</text></g>
 
-  <path class="edge" d="M250,900 C120,900 120,212 250,212" marker-end="url(#arrow)"/>
-  <text x="96" y="560" transform="rotate(-90 96,560)" class="sub">live loop (one inference at a time)</text>
+  <path class="edge" d="M250,952 C120,952 120,346 250,346" marker-end="url(#arrow)"/>
+  <text x="96" y="650" transform="rotate(-90 96,650)" class="sub">live loop (one inference at a time)</text>
 
-  <g><rect x="648" y="530" width="186" height="124" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
-    <text x="660" y="552" class="bt" font-size="13">Modes</text>
-    <text x="660" y="576" class="bs">GLB brain — primary cutout</text>
-    <text x="660" y="592" class="bs">in GLBRoomActivity</text>
-    <text x="660" y="614" class="bs">SEGMENT_SELECTED — union</text>
-    <text x="660" y="630" class="bs">of tapped pins</text>
-    <text x="660" y="648" class="bs">IDENTIFY_ONLY — tap to pick</text></g>
+  <g><rect x="48" y="1010" width="824" height="132" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
+    <text x="64" y="1036" class="bt" font-size="13">Inference dispatch by mode</text>
+    <text x="64" y="1060" class="bs">DEFAULT_SEGMENT → segmentWithDetectionsAsync (primary auto-cutout)</text>
+    <text x="64" y="1078" class="bs">IDENTIFY → detectWithDetectionsAsync (boxes only, live preview visible)</text>
+    <text x="64" y="1096" class="bs">SEGMENT_SELECTED → segmentSelectedInstancesAsync (pinned cluster union, preview off, room visible through alpha)</text>
+    <text x="64" y="1120" class="bs">Tap handler: toggleInlineBrainSelectedCluster · IoU pin match · Segment pill toggles identify ↔ segment</text></g>
 </svg>
