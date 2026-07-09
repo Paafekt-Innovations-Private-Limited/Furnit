@@ -127,7 +127,7 @@ struct CountryPickerView: View {
 
                             if country.id == selectedCountry.id {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
+                                    .foregroundStyle(Theme.Palette.accent)
                             }
                         }
                     }
@@ -164,36 +164,31 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background gradient - tap to dismiss keyboard
-                LinearGradient(
-                    colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.6)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                .onTapGesture {
-                    nameFieldFocused = false
-                    phoneFieldFocused = false
-                }
+                Theme.Palette.background
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        nameFieldFocused = false
+                        phoneFieldFocused = false
+                    }
 
                 VStack(spacing: 30) {
                     Spacer()
 
                     // App Logo/Icon
                     VStack(spacing: 16) {
-                        Image(systemName: "cube.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.white)
-                            .shadow(radius: 10)
+                        Image("PaafektMark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 72, height: 72)
+                            .shadow(color: Theme.Palette.accent.opacity(0.35), radius: 12)
 
                         Text(L10n.App.name)
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .font(Theme.Typo.display())
+                            .foregroundStyle(Theme.Palette.textPrimary)
 
                         Text(L10n.App.tagline)
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.9))
+                            .font(Theme.Typo.body())
+                            .foregroundStyle(Theme.Palette.textSecondary)
                     }
 
                     // Login Form
@@ -201,8 +196,8 @@ struct LoginView: View {
                         // Name Field
                         VStack(alignment: .leading, spacing: 8) {
                             Label(L10n.Login.yourName, systemImage: "person.fill")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.9))
+                                .font(Theme.Typo.caption())
+                                .foregroundStyle(Theme.Palette.textSecondary)
 
                             TextField(L10n.Login.enterName, text: $name)
                                 .textFieldStyle(CustomTextFieldStyle())
@@ -217,8 +212,8 @@ struct LoginView: View {
                         // Phone Field with Country Code
                         VStack(alignment: .leading, spacing: 8) {
                             Label(L10n.Login.phoneNumber, systemImage: "phone.fill")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.9))
+                                .font(Theme.Typo.caption())
+                                .foregroundStyle(Theme.Palette.textSecondary)
 
                             HStack(spacing: 8) {
                                 // Country Code Button
@@ -234,11 +229,11 @@ struct LoginView: View {
                                         Image(systemName: "chevron.down")
                                             .font(.caption2)
                                     }
-                                    .foregroundColor(.black)
+                                    .foregroundStyle(Theme.Palette.textPrimary)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 14)
-                                    .background(Color.white.opacity(0.95))
-                                    .cornerRadius(10)
+                                    .background(Theme.Palette.surfaceHi)
+                                    .cornerRadius(Theme.Radius.control)
                                 }
                                 .disabled(isLoading)
 
@@ -247,9 +242,9 @@ struct LoginView: View {
                                     .keyboardType(.phonePad)
                                     .focused($phoneFieldFocused)
                                     .padding()
-                                    .background(Color.white.opacity(0.95))
-                                    .cornerRadius(10)
-                                    .foregroundColor(.black)
+                                    .background(Theme.Palette.surfaceHi)
+                                    .cornerRadius(Theme.Radius.control)
+                                    .foregroundStyle(Theme.Palette.textPrimary)
                                     .onChange(of: phoneNumber) { _, newValue in
                                         phoneNumber = formatPhoneInput(newValue)
                                     }
@@ -262,40 +257,26 @@ struct LoginView: View {
                             HStack {
                                 if isLoading {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: Theme.Palette.accentText))
                                         .scaleEffect(0.8)
                                 } else {
                                     Image(systemName: "paperplane.fill")
                                 }
                                 Text(isLoading ? L10n.Login.sending : L10n.Login.sendOTP)
-                                    .fontWeight(.semibold)
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(isValidInput && !isLoading ? Color.blue : Color.gray)
-                            )
                         }
+                        .buttonStyle(PrimaryButtonStyle())
                         .disabled(!isValidInput || isLoading)
-                        .scaleEffect(isValidInput ? 1.0 : 0.95)
+                        .opacity(isValidInput ? 1.0 : 0.7)
                         .animation(.easeInOut(duration: 0.2), value: isValidInput)
 
                         // Hint
                         Text(L10n.Login.otpHint)
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(Theme.Typo.caption())
+                            .foregroundStyle(Theme.Palette.textSecondary)
                     }
-                    .padding(24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.white.opacity(0.15))
-                            .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                            )
-                    )
+                    .padding(Theme.Space.xl)
+                    .paafektCardSurface()
                     .padding(.horizontal)
 
                     Spacer()
@@ -363,9 +344,9 @@ struct CustomTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .padding()
-            .background(Color.white.opacity(0.95))
-            .cornerRadius(10)
-            .foregroundColor(.black)
+            .background(Theme.Palette.surfaceHi)
+            .cornerRadius(Theme.Radius.control)
+            .foregroundStyle(Theme.Palette.textPrimary)
             .autocapitalization(.none)
             .disableAutocorrection(true)
     }

@@ -18,13 +18,8 @@ struct OTPVerificationView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.6)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            Theme.Palette.background
+                .ignoresSafeArea()
 
             VStack(spacing: 30) {
                 Spacer()
@@ -34,21 +29,20 @@ struct OTPVerificationView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "lock.shield.fill")
                         .font(.system(size: 50))
-                        .foregroundColor(.white)
-                        .shadow(radius: 10)
+                        .foregroundStyle(Theme.Palette.accent)
+                        .shadow(color: Theme.Palette.accent.opacity(0.25), radius: 10)
 
                     Text(L10n.OTP.title)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .font(Theme.Typo.display())
+                        .foregroundStyle(Theme.Palette.textPrimary)
 
                     Text(L10n.OTP.subtitle)
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.9))
+                        .font(Theme.Typo.body())
+                        .foregroundStyle(Theme.Palette.textSecondary)
 
                     Text(phoneNumber)
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(Theme.Typo.headline())
+                        .foregroundStyle(Theme.Palette.textPrimary)
                 }
 
                 // OTP Input Fields
@@ -76,23 +70,17 @@ struct OTPVerificationView: View {
                         HStack {
                             if isVerifying {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Theme.Palette.accentText))
                                     .scaleEffect(0.8)
                             } else {
                                 Image(systemName: "checkmark.shield.fill")
                             }
                             Text(isVerifying ? L10n.OTP.verifying : L10n.OTP.verify)
-                                .fontWeight(.semibold)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(isOTPComplete && !isVerifying ? Color.green : Color.gray)
-                        )
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(!isOTPComplete || isVerifying)
+                    .opacity(isOTPComplete ? 1.0 : 0.7)
 
                     // Resend OTP
                     HStack {
@@ -101,32 +89,25 @@ struct OTPVerificationView: View {
                                 HStack {
                                     if isResending {
                                         ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .progressViewStyle(CircularProgressViewStyle(tint: Theme.Palette.accent))
                                             .scaleEffect(0.6)
                                     } else {
                                         Image(systemName: "arrow.clockwise")
                                     }
                                     Text(isResending ? L10n.Login.sending : L10n.OTP.resend)
                                 }
-                                .foregroundColor(.white)
+                                .foregroundStyle(Theme.Palette.accent)
                             }
                             .disabled(isResending)
                         } else {
                             Text(L10n.OTP.resendIn(resendTimer))
-                                .foregroundColor(.white.opacity(0.7))
-                                .font(.caption)
+                                .foregroundStyle(Theme.Palette.textSecondary)
+                                .font(Theme.Typo.caption())
                         }
                     }
                 }
-                .padding(24)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(0.15))
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                        )
-                )
+                .padding(Theme.Space.xl)
+                .paafektCardSurface()
                 .padding(.horizontal)
 
                 Spacer()
@@ -140,11 +121,11 @@ struct OTPVerificationView: View {
                     Image(systemName: "chevron.left")
                     Text(L10n.Common.back)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(20)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.vertical, Theme.Space.sm)
+                .background(Theme.Palette.surfaceHi)
+                .cornerRadius(Theme.Radius.sheet)
             }
             .padding(.top, 60)
             .padding(.leading, 16)
