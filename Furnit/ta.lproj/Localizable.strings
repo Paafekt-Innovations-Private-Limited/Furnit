@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Tamil)
 "common.or" = "அல்லது";
 "common.retry" = "மீண்டும் முயல்க";
-"settings.furnitureSegmentationSection" = "தளபாட பிரிப்பு";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "அறை மற்றும் தளபாட அளவீட்டைக் காட்டு";
-"settings.showRoomFurnitureCalibrateDescription" = "அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.";
-"settings.furnitureFitARCompanion" = "AR உதவி தளபாட அளவு";
-"settings.furnitureFitARCompanionDescription" = "Furniture Fit இல் கேமராவுடன் ARKit காட்சி ஆழத்தை இயக்குகிறது (LiDAR). வீடியோ பிடிப்புடன் மோதல் இருக்கலாம். மாற்றிய பின் அறையை மீண்டும் திறக்கவும்.";
-"settings.furnitureFitARCompanionUnavailable" = "இந்த சாதனத்தில் காட்சி ஆழம் இல்லை.";
 "settings.fullVideoWithIdentifications" = "அடையாளங்களுடன் முழு வீடியோ";
 "settings.fullVideoWithIdentificationsDescription" = "பிரிக்கப்பட்ட தளபாட மேலடுக்கை தானாக மையப்படுத்துவதற்குப் பதிலாக, கண்டறிதல் பெட்டிகள் மற்றும் லேபிள்களுடன் நேரடி கேமரா ஊட்டத்தைக் காட்டு.";
-"settings.primaryDetectionConfidence" = "முதன்மை கண்டறிதல் நம்பிக்கை";
-"settings.primaryDetectionConfidenceFooter" = "காணப்பட்ட பெட்டிகளில் முக்கியமான மரச்சாமான் பெட்டியைத் தேர்ந்தெடுக்க குறைந்தபட்ச மாதிரி நம்பிக்கை (5–99%). குறைந்த மதிப்புகள் அதிக பெட்டிகளை தகுதியாக வைத்திருக்கும்; அதிக மதிப்புகள் மேலும் கடுமையானவை. கண்டறிவி இன்னும் தனது தனி வரம்பைப் பயன்படுத்தி பலவீனமான பெட்டிகளை முதலில் பகுப்பாய்வு செய்கிறது.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "அதிக நம்பிக்கையால் முதன்மை";
-"settings.primarySelectionByHighestConfidenceDescription" = "ஆன்: ஸ்லைடருக்கு மேலுள்ள பெட்டிகளில் அதிக மதிப்பெண் கொண்டதைத் தேர்ந்தெடுக்கிறது. ஆஃப்: அவற்றில் பெரிய பெட்டியைத் தேர்ந்தெடுக்கிறது.";
-"settings.primarySelectionByHighestConfidenceFooter" = "இரண்டு முறைகளும் முதன்மை கண்டறிதல் நம்பிக்கை ஸ்லைடரில் அல்லது அதற்கு மேல் உள்ள கண்டறிதல்களை மட்டுமே கருதுகின்றன.";
 
 
-"settings.roomMeasurementSection" = "அறை அளவீடுகள்";
-"settings.wallAssumedDepthM" = "சுவருக்கான கருதப்பட்ட தூரம் (மீ)";
-"settings.wallAssumedCeilingM" = "கருதப்பட்ட சுவர்/மேற்கூரை உயரம் (மீ)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "புகைப்படம் எடு";
 "camera.chooseOrientationShort" = "செங்குத்து அல்லது கிடைமட்டம்";
 "roomGeneration.downloadingEngine" = "3D இயந்திரம் பதிவிறக்கப்படுகிறது...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "ஆன்: ஸ்லைடருக்கு மேலே உள்ளவற்றில் அதிக மதிப்பெண் கொண்ட பெட்டியைத் தேர்ந்தெடுக்கவும்.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "ஆஃப்: ஸ்லைடருக்கு மேலே உள்ளவற்றில் பெரிய பெட்டியைத் தேர்ந்தெடுக்கவும்.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Parser/NMS நடத்தை மாறாமல் உள்ளது.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ஒற்றை படம் ஸ்கேன்";

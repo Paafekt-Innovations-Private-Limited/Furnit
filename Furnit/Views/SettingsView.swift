@@ -18,13 +18,6 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
-    /// Match Android `FurnitureFitManager.KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI` — default off.
-    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
-
-    /// Minimum confidence for choosing the **primary** furniture detection (largest box among those above this threshold).
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidence: Double = 0.57
-    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
-
     var body: some View {
         NavigationView {
             Form {
@@ -119,69 +112,6 @@ struct SettingsView: View {
                     .tint(.orange)
                 } header: {
                     Text(L10n.Settings.roomViewerSection)
-                }
-
-                // Furniture segmentation (FurnitureFit)
-                Section {
-                    if QualitySettings.supportsLiDARSceneDepth {
-                        Toggle(isOn: $showRoomFurnitureCalibrate) {
-                            HStack {
-                                Image(systemName: "slider.horizontal.3")
-                                    .foregroundColor(.purple)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(L10n.Settings.showRoomFurnitureCalibrate)
-                                        .font(.headline)
-                                    Text(L10n.Settings.showRoomFurnitureCalibrateDescription)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .tint(.purple)
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "scope")
-                                .foregroundColor(.mint)
-                                .frame(width: 24)
-                            Text(L10n.Settings.primaryDetectionConfidence)
-                                .font(.headline)
-                            Spacer()
-                            Text(L10n.Settings.primaryDetectionConfidencePercent(Int(primaryDetectionMinConfidence * 100)))
-                                .font(.subheadline.monospacedDigit())
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(value: $primaryDetectionMinConfidence, in: 0.05...0.99, step: 0.01)
-                            .tint(.mint)
-                    }
-                    .padding(.vertical, 4)
-
-                    Toggle(isOn: $primarySelectionByHighestConfidence) {
-                        HStack {
-                            Image(systemName: "chart.bar.fill")
-                                .foregroundColor(.teal)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L10n.Settings.primarySelectionByHighestConfidence)
-                                    .font(.headline)
-                                Text(primarySelectionByHighestConfidence 
-                                    ? L10n.Settings.primarySelectionByHighestConfidenceOn 
-                                    : L10n.Settings.primarySelectionByHighestConfidenceOff)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .tint(.teal)
-                } header: {
-                    Text(L10n.Settings.furnitureSegmentationSection)
-                } footer: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(L10n.Settings.primaryDetectionConfidenceFooter)
-                        Text(L10n.Settings.primarySelectionByHighestConfidenceFooter)
-                        Text(L10n.Settings.primarySelectionBehaviorNote)
-                    }
-                    .font(.footnote)
                 }
 
                 Section {

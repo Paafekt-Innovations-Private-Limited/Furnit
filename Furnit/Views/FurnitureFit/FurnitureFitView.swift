@@ -37,9 +37,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var confidenceThreshold: Float = 0.10
     /// Minimum detector confidence (0…1) for **primary** furniture selection among qualifying boxes. Parsed candidates still use ``confidenceThreshold``.
     var primaryDetectionMinConfidence: Float = 0.57
-    /// When `true`, primary is the **highest confidence** among boxes ≥ ``primaryDetectionMinConfidence`` (ties → larger area).
-    /// When `false`, primary comes from the **3 largest** qualifying boxes by area, then picks the **highest confidence** within that shortlist.
-    var primarySelectionByHighestConfidence: Bool = false
     /// Lower parse threshold used only for low-confidence secondary contributors.
     private let furnitureFitInsidePrimaryContributorConfidenceThreshold: Float = 0.10
     /// 3×3 binary closing on the composite band was filling thin gaps / “holes” in chair handles.
@@ -622,7 +619,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             minimumConfidence: currentModelIsRTMDet
                 ? Self.rtmDetLiveConfidenceThreshold
                 : primaryDetectionMinConfidence,
-            preferHighestConfidence: primarySelectionByHighestConfidence,
+            preferHighestConfidence: false,
             areaShortlistCount: autoPrimaryAreaShortlistCount,
             persistenceIoUThreshold: autoPrimaryPersistenceIoUThreshold,
             switchRequiredFrames: autoPrimarySwitchRequiredFrames,

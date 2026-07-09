@@ -454,27 +454,10 @@
 // MARK: - i18n sync (简体中文)
 "common.or" = "或";
 "common.retry" = "重试";
-"settings.furnitureSegmentationSection" = "家具分割";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "显示房间与家具校准";
-"settings.showRoomFurnitureCalibrateDescription" = "在房间菜单中显示「校准墙体」，并在 SmartyPants（大脑）开启时显示「点按校准」提示条。";
-"settings.furnitureFitARCompanion" = "AR 辅助家具尺寸";
-"settings.furnitureFitARCompanionDescription" = "在 Furniture Fit 中与摄像头并行运行 ARKit 场景深度（LiDAR）。可能与视频采集冲突。更改后请重新进入房间。";
-"settings.furnitureFitARCompanionUnavailable" = "此设备不支持场景深度。";
 "settings.fullVideoWithIdentifications" = "全屏视频与识别";
 "settings.fullVideoWithIdentificationsDescription" = "显示实时相机画面及检测框和标签，而不是自动居中分割后的家具叠加层。";
-"settings.primaryDetectionConfidence" = "主要检测置信度";
-"settings.primaryDetectionConfidenceFooter" = "用于在候选框中选择主要家具框的最低模型置信度（5–99%）。较低的值会让更多框符合条件；较高的值则更严格。检测器仍会使用单独阈值先解析较弱的框。";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "按最高置信度选主框";
-"settings.primarySelectionByHighestConfidenceDescription" = "开：从滑块以上的框中选择得分最高的框。关：从滑块以上的框中选择最大的框。";
-"settings.primarySelectionByHighestConfidenceFooter" = "两种模式都只考虑达到或高于“主要检测置信度”滑块的检测结果。";
 
 
-"settings.roomMeasurementSection" = "房间测量";
-"settings.wallAssumedDepthM" = "假定到墙距离（米）";
-"settings.wallAssumedCeilingM" = "假定墙/顶高度（米）";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "拍照";
 "camera.chooseOrientationShort" = "竖屏或横屏";
 "roomGeneration.downloadingEngine" = "正在下载3D引擎...";
@@ -527,13 +510,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "开启：在滑块上方的框中选择得分最高的框。";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "关闭：在滑块上方的框中选择最大的框。";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Parser/NMS 行为保持不变。";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "单张图片扫描";

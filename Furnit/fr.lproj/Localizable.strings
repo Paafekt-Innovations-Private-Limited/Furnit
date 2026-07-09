@@ -456,27 +456,10 @@
 // MARK: - i18n sync (French)
 "common.or" = "ou";
 "common.retry" = "Réessayer";
-"settings.furnitureSegmentationSection" = "Segmentation des meubles";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "Afficher calibrage pièce et meubles";
-"settings.showRoomFurnitureCalibrateDescription" = "Affiche « Calibrer le mur » dans le menu de la pièce et la pastille « Toucher pour calibrer » lorsque SmartyPants (cerveau) est actif.";
-"settings.furnitureFitARCompanion" = "Dimensionnement meubles assisté par RA";
-"settings.furnitureFitARCompanionDescription" = "Lance la profondeur de scène ARKit en parallèle de la caméra dans Furniture Fit (LiDAR). Peut entrer en conflit avec la capture vidéo. Rouvrez la pièce après modification.";
-"settings.furnitureFitARCompanionUnavailable" = "La profondeur de scène n’est pas disponible sur cet appareil.";
 "settings.fullVideoWithIdentifications" = "Vidéo complète avec identifications";
 "settings.fullVideoWithIdentificationsDescription" = "Afficher le flux caméra en direct avec les cadres et libellés de détection au lieu de centrer automatiquement le calque de mobilier segmenté.";
-"settings.primaryDetectionConfidence" = "Confiance de détection principale";
-"settings.primaryDetectionConfidenceFooter" = "Confiance minimale du modèle (5-99 %) pour choisir la boîte principale du meuble parmi les candidates. Des valeurs plus basses laissent plus de boîtes éligibles ; des valeurs plus hautes sont plus strictes. Le détecteur continue d'analyser d'abord les boîtes plus faibles avec son seuil séparé.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Principal selon la confiance la plus élevée";
-"settings.primarySelectionByHighestConfidenceDescription" = "Activé : choisissez la boîte au score le plus élevé parmi celles au-dessus du curseur. Désactivé : choisissez la plus grande boîte parmi elles.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Les deux modes ne prennent en compte que les détections au niveau ou au-dessus du curseur de confiance de détection principale.";
 
 
-"settings.roomMeasurementSection" = "Mesures de la pièce";
-"settings.wallAssumedDepthM" = "Distance supposée au mur (m)";
-"settings.wallAssumedCeilingM" = "Hauteur de plafond supposée (m)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "Prendre une photo";
 "camera.chooseOrientationShort" = "Portrait ou paysage";
 "roomGeneration.downloadingEngine" = "Téléchargement du moteur 3D...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "Activé : choisir la boîte avec le score le plus élevé parmi celles au-dessus du curseur.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "Désactivé : choisir la plus grande boîte parmi celles au-dessus du curseur.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Le comportement du Parser/NMS reste inchangé.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "Analyse d'une image";

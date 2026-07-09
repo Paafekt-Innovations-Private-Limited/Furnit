@@ -145,25 +145,8 @@
 "settings.autoOrbitDescription" = "Slowly rotate camera when idle";
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
-"settings.furnitureSegmentationSection" = "Furniture segmentation";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "Show room and furniture calibrate";
-"settings.showRoomFurnitureCalibrateDescription" = "Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.";
-"settings.furnitureFitARCompanion" = "AR-assisted furniture sizing";
-"settings.furnitureFitARCompanionDescription" = "LiDAR iPhones only: runs ARKit scene depth parallel to the camera for true pinhole range. Without LiDAR we do not start this session (parallel AR + capture causes Fig -17281 errors). Reopen the room after changing this.";
-"settings.furnitureFitARCompanionUnavailable" = "Scene depth is not available on this device.";
 "settings.fullVideoWithIdentifications" = "Full video with identifications";
 "settings.fullVideoWithIdentificationsDescription" = "Show the live camera feed with detection boxes and labels instead of auto-centering the segmented furniture overlay.";
-"settings.primaryDetectionConfidence" = "Primary detection confidence";
-"settings.primaryDetectionConfidenceFooter" = "Minimum model confidence (5–99%) to choose the main furniture box among candidates. Lower values keep more boxes eligible; higher values are stricter. The detector still parses weaker boxes first using its separate threshold.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "Primary by highest confidence";
-"settings.primarySelectionByHighestConfidenceDescription" = "On: choose the box with the highest score among those above the slider. Off: choose the largest box among those above the slider.";
-"settings.primarySelectionByHighestConfidenceFooter" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
-"settings.roomMeasurementSection" = "Room measurement";
-"settings.wallAssumedDepthM" = "Assumed distance to wall (m)";
-"settings.wallAssumedCeilingM" = "Assumed wall height ceiling (m)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
@@ -531,13 +514,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "On: choose the box with the highest score among those above the slider.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "Off: choose the largest box among those above the slider.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Both modes only consider detections at or above the Primary detection confidence slider. Parser/NMS behavior is unchanged.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "Single Image Scan";

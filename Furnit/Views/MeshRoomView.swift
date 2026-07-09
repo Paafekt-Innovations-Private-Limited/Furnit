@@ -45,7 +45,6 @@ struct MeshRoomView: View {
     @State private var brainArAssistedSizingEnabled = false
     @ObservedObject private var rtmdetService = RTMDetModelService.shared
     @ObservedObject private var appState = AppStateManager.shared
-    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
     @State private var detectedFurnitureHeightAR: Float?
     @State private var detectedFurnitureWidth: Float?
     @State private var furnitureProportionalHeightMeters: Float?
@@ -262,7 +261,7 @@ struct MeshRoomView: View {
 
     @ViewBuilder
     private var meshRoomCalibrationGateOverlay: some View {
-        if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+        if showFurnitureDimensionsInput, supportsMetricFurnitureMeasurementUI {
             calibrationOverlayView
                 .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
                 .onDisappear { calibrationBaselineDetectedHeight = nil }
@@ -1521,13 +1520,7 @@ struct MeshRoomView: View {
 
                     VStack(spacing: 10) {
                         if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                            if showRoomFurnitureCalibrate {
-                                Button(action: { showFurnitureDimensionsInput = true }) {
-                                    furnitureMeasurementPillContent(showTapHint: true)
-                                }
-                            } else {
-                                furnitureMeasurementPillContent(showTapHint: false)
-                            }
+                            furnitureMeasurementPillContent(showTapHint: false)
                         }
                         snapshotButtonWithHintAbove
                     }
@@ -1580,13 +1573,7 @@ struct MeshRoomView: View {
 
                 VStack(spacing: 10) {
                     if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                        if showRoomFurnitureCalibrate {
-                            Button(action: { showFurnitureDimensionsInput = true }) {
-                                furnitureMeasurementPillContent(showTapHint: true)
-                            }
-                        } else {
-                            furnitureMeasurementPillContent(showTapHint: false)
-                        }
+                        furnitureMeasurementPillContent(showTapHint: false)
                     }
                     snapshotButtonWithHintAbove
                 }

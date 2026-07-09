@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Bengali)
 "common.or" = "অথবা";
 "common.retry" = "আবার চেষ্টা করুন";
-"settings.furnitureSegmentationSection" = "ফার্নিচার সেগমেন্টেশন";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "রুম ও ফার্নিচার ক্যালিব্রেশন UI দেখান";
-"settings.showRoomFurnitureCalibrateDescription" = "রুম মেনুতে «দেয়াল ক্যালিব্রেট» এবং SmartyPants (মস্তিষ্ক) চালু থাকলে «ক্যালিব্রেট করতে ট্যাপ» পিল দেখায়।";
-"settings.furnitureFitARCompanion" = "AR-সহায়িত ফার্নিচার মাপ";
-"settings.furnitureFitARCompanionDescription" = "Furniture Fit-এ ক্যামেরার পাশাপাশি ARKit দৃশ্যের গভীরতা চালায় (LiDAR)। ভিডিও ক্যাপচারের সঙ্গে দ্বন্দ্ব হতে পারে। পরিবর্তনের পর রুম আবার খুলুন।";
-"settings.furnitureFitARCompanionUnavailable" = "এই ডিভাইসে দৃশ্যের গভীরতা নেই।";
 "settings.fullVideoWithIdentifications" = "সনাক্তকরণসহ পূর্ণ ভিডিও";
 "settings.fullVideoWithIdentificationsDescription" = "স্বয়ংক্রিয়ভাবে বিভাজিত ফার্নিচার ওভারলে কেন্দ্রীভূত করার পরিবর্তে সরাসরি ক্যামেরা ফিডে সনাক্তকরণ বক্স ও লেবেল দেখান।";
-"settings.primaryDetectionConfidence" = "প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস";
-"settings.primaryDetectionConfidenceFooter" = "প্রার্থীদের মধ্যে মূল ফার্নিচার বক্স বেছে নিতে ন্যূনতম মডেল আত্মবিশ্বাস (5–99%)। মান কম হলে আরও বেশি বক্স যোগ্য থাকে; মান বেশি হলে নির্বাচন কঠোর হয়। ডিটেক্টর এখনও তার আলাদা থ্রেশহোল্ড ব্যবহার করে দুর্বল বক্সগুলো আগে পার্স করে।";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "সর্বোচ্চ আত্মবিশ্বাস অনুযায়ী প্রধানটি";
-"settings.primarySelectionByHighestConfidenceDescription" = "চালু: স্লাইডারের উপরের বক্সগুলোর মধ্যে সর্বোচ্চ স্কোরের বক্সটি নিন। বন্ধ: সেগুলোর মধ্যে সবচেয়ে বড় বক্সটি নিন।";
-"settings.primarySelectionByHighestConfidenceFooter" = "উভয় মোডই শুধুমাত্র প্রাথমিক সনাক্তকরণ আত্মবিশ্বাস স্লাইডারে বা তার উপরের সনাক্তকরণগুলো বিবেচনা করে।";
 
 
-"settings.roomMeasurementSection" = "রুম মাপ";
-"settings.wallAssumedDepthM" = "দেয়ালের ধারণ দূরত্ব (মি)";
-"settings.wallAssumedCeilingM" = "ধারণ দেয়াল/ছাদ উচ্চতা (মি)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "ছবি তুলুন";
 "camera.chooseOrientationShort" = "পোর্ট্রেট বা ল্যান্ডস্কেপ";
 "roomGeneration.downloadingEngine" = "3D ইঞ্জিন ডাউনলোড হচ্ছে...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "চালু: স্লাইডারের উপরে থাকা বক্সগুলির মধ্যে সর্বোচ্চ স্কোর সহ বক্সটি বেছে নিন।";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "বন্ধ: স্লাইডারের উপরে থাকা বক্সগুলির মধ্যে সবচেয়ে বড় বক্সটি বেছে নিন।";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Parser/NMS আচরণ অপরিবর্তিত।";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "একক ছবি স্ক্যান";

@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Malayalam)
 "common.or" = "അല്ലെങ്കിൽ";
 "common.retry" = "വീണ്ടും ശ്രമിക്കുക";
-"settings.furnitureSegmentationSection" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "മുറിയും ഫർണിച്ചർ കാലിബ്രേഷനും കാണിക്കുക";
-"settings.showRoomFurnitureCalibrateDescription" = "മുറി മെനുവിൽ «മതിൽ കാലിബ്രേറ്റ് ചെയ്യുക», SmartyPants (മസ്തിഷ്കം) ഓണായാൽ «കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക» പിൽ കാണിക്കുന്നു.";
-"settings.furnitureFitARCompanion" = "AR-സഹായിത ഫർണിച്ചർ വലുപ്പം";
-"settings.furnitureFitARCompanionDescription" = "Furniture Fit-ൽ ക്യാമറയോടൊപ്പം ARKit ദൃശ്യ ആഴം പ്രവർത്തിപ്പിക്കുന്നു (LiDAR). വീഡിയോ ക്യാപ്ചറുമായി കലഹം ഉണ്ടാകാം. മാറ്റിയ ശേഷം മുറി വീണ്ടും തുറക്കുക.";
-"settings.furnitureFitARCompanionUnavailable" = "ഈ ഉപകരണത്തിൽ ദൃശ്യ ആഴം ലഭ്യമല്ല.";
 "settings.fullVideoWithIdentifications" = "തിരിച്ചറിയലുകളോടെ പൂർണ്ണ വീഡിയോ";
 "settings.fullVideoWithIdentificationsDescription" = "വിഭജിച്ച ഫർണിച്ചർ ഓവർലേ സ്വയം കേന്ദ്രീകരിക്കുന്നതിന് പകരം കണ്ടെത്തൽ ബോക്സുകളും ലേബലുകളും കൊണ്ടുള്ള തത്സമയ ക്യാമറ ഫീഡ് കാണിക്കുക.";
-"settings.primaryDetectionConfidence" = "പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസം";
-"settings.primaryDetectionConfidenceFooter" = "സ്ഥാനാർഥി ബോക്സുകളിൽ നിന്ന് പ്രധാന ഫർണിച്ചർ ബോക്സ് തിരഞ്ഞെടുക്കാൻ വേണ്ട കുറഞ്ഞ മോഡൽ വിശ്വാസം (5–99%). കുറഞ്ഞ മൂല്യങ്ങൾ കൂടുതൽ ബോക്സുകൾ അർഹമാക്കും; ഉയർന്ന മൂല്യങ്ങൾ കൂടുതൽ കർശനമാണ്. ഡിറ്റക്ടർ തന്റെ വേർതിരിച്ച ത്രെഷോൾഡ് ഉപയോഗിച്ച് ദുർബലമായ ബോക്സുകൾ ഇപ്പോഴും ആദ്യം പാഴ്സ് ചെയ്യും.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "ഏറ്റവും ഉയർന്ന വിശ്വാസപ്രകാരമുള്ള പ്രധാനത്";
-"settings.primarySelectionByHighestConfidenceDescription" = "ഓൺ: സ്ലൈഡറിന് മുകളിലുള്ള ബോക്സുകളിൽ ഏറ്റവും ഉയർന്ന സ്കോർ ഉള്ളത് തിരഞ്ഞെടുക്കുക. ഓഫ്: അവയിൽ ഏറ്റവും വലിയ ബോക്സ് തിരഞ്ഞെടുക്കുക.";
-"settings.primarySelectionByHighestConfidenceFooter" = "രണ്ട് മോഡുകളും പ്രാഥമിക കണ്ടെത്തൽ വിശ്വാസ സ്ലൈഡറിലോ അതിന് മുകളിലോ ഉള്ള കണ്ടെത്തലുകൾ മാത്രം പരിഗണിക്കുന്നു.";
 
 
-"settings.roomMeasurementSection" = "മുറി അളവുകൾ";
-"settings.wallAssumedDepthM" = "മതിലിലേക്ക് കരുതിയ ദൂരം (മീ)";
-"settings.wallAssumedCeilingM" = "കരുതിയ മതിൽ/സീലിംഗ് ഉയരം (മീ)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "ഫോട്ടോ എടുക്കുക";
 "camera.chooseOrientationShort" = "പോർട്രെയ്റ്റ് അല്ലെങ്കിൽ ലാൻഡ്സ്കേപ്പ്";
 "roomGeneration.downloadingEngine" = "3D എഞ്ചിൻ ഡൗൺലോഡ് ചെയ്യുന്നു...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "ഓൺ: സ്ലൈഡറിന് മുകളിലുള്ളവയിൽ ഏറ്റവും ഉയർന്ന സ്കോർ ഉള്ള ബോക്‌സ് തിരഞ്ഞെടുക്കുക.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "ഓഫ്: സ്ലൈഡറിന് മുകളിലുള്ളവയിൽ വലിയ ബോക്‌സ് തിരഞ്ഞെടുക്കുക.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Parser/NMS പെരുമാറ്റം മാറ്റമില്ലാതെ തുടരുന്നു.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ഒറ്റ ചിത്ര സ്കാൻ";

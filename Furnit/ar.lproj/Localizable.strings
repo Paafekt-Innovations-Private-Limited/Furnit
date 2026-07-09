@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Arabic)
 "common.or" = "أو";
 "common.retry" = "إعادة المحاولة";
-"settings.furnitureSegmentationSection" = "تجزئة الأثاث";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "إظهار معايرة الغرفة والأثاث";
-"settings.showRoomFurnitureCalibrateDescription" = "يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).";
-"settings.furnitureFitARCompanion" = "قياس الأثاث بمساعدة AR";
-"settings.furnitureFitARCompanionDescription" = "يشغّل عمق المشهد من ARKit بجانب الكاميرا في Furniture Fit (LiDAR). قد يتعارض مع التقاط الفيديو. أعد فتح الغرفة بعد التغيير.";
-"settings.furnitureFitARCompanionUnavailable" = "عمق المشهد غير متاح على هذا الجهاز.";
 "settings.fullVideoWithIdentifications" = "فيديو كامل مع التعريفات";
 "settings.fullVideoWithIdentificationsDescription" = "عرض بث الكاميرا المباشر مع مربعات الكشف والتسميات بدلاً من توسيط طبقة الأثاث المجزأة تلقائياً.";
-"settings.primaryDetectionConfidence" = "ثقة الاكتشاف الأساسية";
-"settings.primaryDetectionConfidenceFooter" = "الحد الأدنى لثقة النموذج (5-99%) لاختيار مربع الأثاث الرئيسي من بين المرشحين. القيم الأقل تُبقي المزيد من المربعات مؤهلة، والقيم الأعلى تكون أكثر صرامة. ما يزال الكاشف يمر على المربعات الأضعف أولاً باستخدام حدّه المنفصل.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "اختيار الأساسي حسب أعلى ثقة";
-"settings.primarySelectionByHighestConfidenceDescription" = "تشغيل: اختر المربع الأعلى درجة من بين المربعات فوق المنزلق. إيقاف: اختر أكبر مربع من بينها.";
-"settings.primarySelectionByHighestConfidenceFooter" = "يأخذ الوضعان فقط الاكتشافات التي عند منزلق ثقة الاكتشاف الأساسية أو أعلى منه في الاعتبار.";
 
 
-"settings.roomMeasurementSection" = "قياس الغرفة";
-"settings.wallAssumedDepthM" = "المسافة المفترضة إلى الجدار (م)";
-"settings.wallAssumedCeilingM" = "الارتفاع المفترض للجدار/السقف (م)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "التقاط صورة";
 "camera.chooseOrientationShort" = "عمودي أو أفقي";
 "roomGeneration.downloadingEngine" = "جاري تنزيل محرك ثلاثي الأبعاد...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "تشغيل: اختر المربع ذو أعلى نقاط من بين تلك الموجودة فوق المنزلق.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "إيقاف: اختر أكبر مربع من بين تلك الموجودة فوق المنزلق.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "سلوك Parser/NMS لم يتغير.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "مسح صورة واحدة";

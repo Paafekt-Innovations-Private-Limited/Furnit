@@ -147,26 +147,8 @@ enum L10n {
         static let autoOrbitDescription = "settings.autoOrbitDescription".localized
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
-        static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
         static let fullVideoWithIdentifications = "settings.fullVideoWithIdentifications".localized
         static let fullVideoWithIdentificationsDescription = "settings.fullVideoWithIdentificationsDescription".localized
-        static let primaryDetectionConfidence = "settings.primaryDetectionConfidence".localized
-        static let primaryDetectionConfidenceFooter = "settings.primaryDetectionConfidenceFooter".localized
-        static func primaryDetectionConfidencePercent(_ value: Int) -> String {
-            String(format: "settings.primaryDetectionConfidencePercent".localized, locale: .current, value)
-        }
-        static let primarySelectionByHighestConfidence = "settings.primarySelectionByHighestConfidence".localized
-        static let primarySelectionByHighestConfidenceDescription = "settings.primarySelectionByHighestConfidenceDescription".localized
-        static let primarySelectionByHighestConfidenceOn = "settings.primarySelectionByHighestConfidenceOn".localized
-        static let primarySelectionByHighestConfidenceOff = "settings.primarySelectionByHighestConfidenceOff".localized
-        static let primarySelectionByHighestConfidenceFooter = "settings.primarySelectionByHighestConfidenceFooter".localized
-        static let primarySelectionBehaviorNote = "settings.primarySelectionBehaviorNote".localized
-        static let showRoomFurnitureCalibrate = "settings.showRoomFurnitureCalibrate".localized
-        static let showRoomFurnitureCalibrateDescription = "settings.showRoomFurnitureCalibrateDescription".localized
-        static let roomMeasurementSection = "settings.roomMeasurementSection".localized
-        static let wallAssumedDepthM = "settings.wallAssumedDepthM".localized
-        static let wallAssumedCeilingM = "settings.wallAssumedCeilingM".localized
-        static let roomMeasurementFooter = "settings.roomMeasurementFooter".localized
         static let singleImageScanSection = "settings.singleImageScanSection".localized
         
         static let imageScan = "settings.imageScan".localized

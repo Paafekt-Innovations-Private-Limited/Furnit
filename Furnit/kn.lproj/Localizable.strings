@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Kannada)
 "common.or" = "ಅಥವಾ";
 "common.retry" = "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ";
-"settings.furnitureSegmentationSection" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "ಕೊಠಡಿ ಮತ್ತು ಪೀಠೋಪಕರಣ ಕ್ಯಾಲಿಬ್ರೇಷನ್ UI ತೋರಿಸಿ";
-"settings.showRoomFurnitureCalibrateDescription" = "ಕೊಠಡಿ ಮೆನುವಿನಲ್ಲಿ ಗೋಡೆ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮತ್ತು SmartyPants (ಮೆದುಳು) ಆನ್ ಇದ್ದಾಗ ‘ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ತಟ್ಟಿ’ ಪಿಲ್ ತೋರಿಸುತ್ತದೆ.";
-"settings.furnitureFitARCompanion" = "AR-ಸಹಾಯಿತ ಪೀಠೋಪಕರಣ ಗಾತ್ರ";
-"settings.furnitureFitARCompanionDescription" = "Furniture Fit ನಲ್ಲಿ ಕ್ಯಾಮರಾವೊಂದಿಗೆ ARKit ದೃಶ್ಯಾಂತರ ಚಲಾಯಿಸುತ್ತದೆ (LiDAR). ವೀಡಿಯೊ ಕ್ಯಾಪ್ಚರ್‌ನೊಂದಿಗೆ ಸಂಘರ್ಷವಾಗಬಹುದು. ಬದಲಾಯಿಸಿದ ನಂತರ ಕೊಠಡಿಯನ್ನು ಮತ್ತೆ ತೆರೆಯಿರಿ.";
-"settings.furnitureFitARCompanionUnavailable" = "ಈ ಸಾಧನದಲ್ಲಿ ದೃಶ್ಯಾಂತರ ಲಭ್ಯವಿಲ್ಲ.";
 "settings.fullVideoWithIdentifications" = "ಗುರುತಿಸುವಿಕೆಗಳೊಂದಿಗೆ ಪೂರ್ಣ ವೀಡಿಯೊ";
 "settings.fullVideoWithIdentificationsDescription" = "ವಿಭಜಿತ ಫರ್ಣಿಚರ್ ಓವರ್‌ಲೇಯನ್ನು ಸ್ವಯಂ ಕೇಂದ್ರೀಕರಿಸುವ ಬದಲು ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಲೇಬಲ್‌ಗಳೊಂದಿಗೆ ಲೈವ್ ಕ್ಯಾಮರಾ ಫೀಡ್ ತೋರಿಸಿ.";
-"settings.primaryDetectionConfidence" = "ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ";
-"settings.primaryDetectionConfidenceFooter" = "ಅಭ್ಯರ್ಥಿ ಬಾಕ್ಸ್‌ಗಳಲ್ಲಿ ಮುಖ್ಯ ಪೀಠೋಪಕರಣ ಬಾಕ್ಸ್ ಆಯ್ಕೆ ಮಾಡಲು ಕನಿಷ್ಠ ಮಾದರಿ ವಿಶ್ವಾಸ (5–99%). ಮೌಲ್ಯ ಕಡಿಮೆ ಇದ್ದರೆ ಹೆಚ್ಚು ಬಾಕ್ಸ್‌ಗಳು ಅರ್ಹವಾಗುತ್ತವೆ; ಹೆಚ್ಚು ಇದ್ದರೆ ಆಯ್ಕೆ ಇನ್ನಷ್ಟು ಕಠಿಣವಾಗುತ್ತದೆ. ಡಿಟೆಕ್ಟರ್ ತನ್ನ ಪ್ರತ್ಯೇಕ ಥ್ರೆಶ್‌ಹೋಲ್ಡ್ ಬಳಸಿ ದುರ್ಬಲ ಬಾಕ್ಸ್‌ಗಳನ್ನು ಇನ್ನೂ ಮೊದಲು ಪಾರ್ಸ್ ಮಾಡುತ್ತದೆ.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "ಅತ್ಯಧಿಕ ವಿಶ್ವಾಸದ ಆಧಾರದ ಮೇಲೆ ಪ್ರಾಥಮಿಕ";
-"settings.primarySelectionByHighestConfidenceDescription" = "ಆನ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ಅತಿ ಹೆಚ್ಚು ಸ್ಕೋರ್ ಇರುವ ಬಾಕ್ಸ್ ಆಯ್ಕೆಮಾಡಿ. ಆಫ್: ಅವುಗಳಲ್ಲಿ ಅತಿ ದೊಡ್ಡ ಬಾಕ್ಸ್ ಆಯ್ಕೆಮಾಡಿ.";
-"settings.primarySelectionByHighestConfidenceFooter" = "ಎರಡೂ ಮೋಡ್‌ಗಳು ಪ್ರಾಥಮಿಕ ಪತ್ತೆ ವಿಶ್ವಾಸ ಸ್ಲೈಡರ್‌ನಲ್ಲಿರುವ ಅಥವಾ ಅದಕ್ಕಿಂತ ಮೇಲಿನ ಪತ್ತೆಗಳನ್ನು ಮಾತ್ರ ಪರಿಗಣಿಸುತ್ತವೆ.";
 
 
-"settings.roomMeasurementSection" = "ಕೊಠಡಿ ಅಳತೆ";
-"settings.wallAssumedDepthM" = "ಗೋಡೆಗೆ ಅಂದಾಜು ದೂರ (ಮೀ)";
-"settings.wallAssumedCeilingM" = "ಅಂದಾಜು ಗೋಡೆ ಎತ್ತರ/ಸೀಲಿಂಗ್ (ಮೀ)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "ಫೋಟೋ ತೆಗೆಯಿರಿ";
 "camera.chooseOrientationShort" = "ಲಂಬ ಅಥವಾ ಅಡ್ಡ ಹಿಡಿಯಿರಿ";
 "roomGeneration.downloadingEngine" = "3D ಎಂಜಿನ್ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "ಆನ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ಅತ್ಯಧಿಕ ಅಂಕಗಳನ್ನು ಹೊಂದಿರುವ ಪೆಟ್ಟಿಗೆಯನ್ನು ಆರಿಸಿ.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "ಆಫ್: ಸ್ಲೈಡರ್‌ಗಿಂತ ಮೇಲಿರುವವುಗಳಲ್ಲಿ ದೊಡ್ಡ ಪೆಟ್ಟಿಗೆಯನ್ನು ಆರಿಸಿ.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "ಪಾರ್ಸರ್/NMS ನಡವಳಿಕೆ ಬದಲಾಗುವುದಿಲ್ಲ.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ಏಕ ಚಿತ್ರ ಸ್ಕ್ಯಾನ್";

@@ -1382,9 +1382,6 @@ struct ModelViewerView: View {
 struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
-    /// Synced with Settings → Furniture segmentation → primary detection confidence.
-    @AppStorage("furnitureFit.primaryDetectionMinConfidence") private var primaryDetectionMinConfidenceStorage: Double = 0.57
-    @AppStorage("furnitureFit.primarySelectionByHighestConfidence") private var primarySelectionByHighestConfidence: Bool = false
     @AppStorage("furnitureFit.showFullVideoWithIdentifications") private var showFullVideoWithIdentifications: Bool = false
 
     var roomImage: UIImage?
@@ -1438,8 +1435,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.cameraFocalLengthPixels = cameraFocalLengthPixels
         view.splatRoomMeasurementHost = splatRoomMeasurementHost
         view.confidenceThreshold = scoreThreshold
-        view.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
-        view.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
         view.showFullVideoWithIdentifications = showFullVideoWithIdentificationsOverride ?? showFullVideoWithIdentifications
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         view.suppressStartupProgress = suppressStartupProgress
@@ -1469,8 +1464,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
             uiView.splatRoomMeasurementHost = splatRoomMeasurementHost
             uiView.cameraFocalLengthPixels = cameraFocalLengthPixels
             uiView.confidenceThreshold = scoreThreshold
-            uiView.primaryDetectionMinConfidence = Self.clampPrimaryDetectionConfidence(primaryDetectionMinConfidenceStorage)
-            uiView.primarySelectionByHighestConfidence = primarySelectionByHighestConfidence
             uiView.showFullVideoWithIdentifications = showFullVideoWithIdentificationsOverride ?? showFullVideoWithIdentifications
             uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
             uiView.suppressStartupProgress = suppressStartupProgress
@@ -1503,10 +1496,6 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.setModel(nil)
         uiView.splatRoomMeasurementHost = nil
         uiView.stop()
-    }
-
-    private static func clampPrimaryDetectionConfidence(_ raw: Double) -> Float {
-        Float(min(max(raw, 0.05), 0.99))
     }
 }
 

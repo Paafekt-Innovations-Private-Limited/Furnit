@@ -16,7 +16,6 @@ private struct SplatRoomModalPauseToken: Equatable {
     var showCalibrationRejectAlert: Bool
     var showWallCalibration: Bool
     var showFurnitureDimensionsInput: Bool
-    var showRoomFurnitureCalibrate: Bool
     var supportsMetricFurnitureMeasurementUI: Bool
     var isCapturingSnapshot: Bool
 }
@@ -196,9 +195,6 @@ struct SplatRoomView: View {
     @State private var showWallCalibration = false
     @State private var inputWallWidth: String = ""
     @State private var inputWallHeight: String = ""
-
-    /// When true, shows ⋮ Calibrate wall and the Tap to calibrate pill during brain (FurnitureFit). Default off (matches Android).
-    @AppStorage("show_room_furniture_calibrate") private var showRoomFurnitureCalibrate = false
 
     /// Furniture height/wall tape UI uses scene depth; omit on non-LiDAR devices (e.g. iPhone 12) where sizing is unreliable.
     private var supportsMetricFurnitureMeasurementUI: Bool {
@@ -756,13 +752,6 @@ struct SplatRoomView: View {
         logFurnitureFitSize("phase=splat_room_ar_opt_in enabled=\(enabled) active=\(showingFurnitureFit)")
     }
 
-    private func splatRoomHandleShowRoomFurnitureCalibrateChange(enabled: Bool) {
-        if !enabled {
-            showFurnitureDimensionsInput = false
-            showWallCalibration = false
-        }
-    }
-
     private func splatRoomHandleIsLoadingForDefaultARCamera(loading: Bool) {
         guard !loading, !didEnableDefaultARCamera else { return }
         didEnableDefaultARCamera = true
@@ -823,15 +812,8 @@ struct SplatRoomView: View {
             }
     }
 
-    private var splatRoomLifecycleStageCalibratePref: some View {
-        splatRoomLifecycleStageBrainAr
-            .onChange(of: showRoomFurnitureCalibrate) { _, enabled in
-                splatRoomHandleShowRoomFurnitureCalibrateChange(enabled: enabled)
-            }
-    }
-
     private var splatRoomLifecycleStageLoadingLog: some View {
-        splatRoomLifecycleStageCalibratePref
+        splatRoomLifecycleStageBrainAr
             .onChange(of: isLoading) { _, loading in
                 splatRoomHandleIsLoadingForDefaultARCamera(loading: loading)
             }
@@ -2089,13 +2071,7 @@ struct SplatRoomView: View {
                     Spacer().allowsHitTesting(false)
                     VStack(alignment: .trailing, spacing: 10) {
                         if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                            if showRoomFurnitureCalibrate {
-                                Button(action: { showFurnitureDimensionsInput = true }) {
-                                    furnitureMeasurementPillContent(showTapHint: true)
-                                }
-                            } else {
-                                furnitureMeasurementPillContent(showTapHint: false)
-                            }
+                            furnitureMeasurementPillContent(showTapHint: false)
                         }
                         snapshotButtonWithHintAbove
                     }
@@ -2131,13 +2107,7 @@ struct SplatRoomView: View {
                         Spacer(minLength: 4)
                         VStack(spacing: 8) {
                             if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                                if showRoomFurnitureCalibrate {
-                                    Button(action: { showFurnitureDimensionsInput = true }) {
-                                        furnitureMeasurementPillContent(showTapHint: true)
-                                    }
-                                } else {
-                                    furnitureMeasurementPillContent(showTapHint: false)
-                                }
+                                furnitureMeasurementPillContent(showTapHint: false)
                             }
                             snapshotButtonWithHintAbove
                         }
@@ -2169,12 +2139,12 @@ struct SplatRoomView: View {
             if showingFurnitureFit { furnitureFitOverlayView }
             if isMeasuringRoomDimensions { measureRoomProgressOverlay }
             if isSavingRoom { saveRoomProgressOverlay }
-            if showFurnitureDimensionsInput, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+            if showFurnitureDimensionsInput, supportsMetricFurnitureMeasurementUI {
                 calibrationOverlayView
                     .onAppear { calibrationBaselineDetectedHeight = detectedFurnitureHeightAR }
                     .onDisappear { calibrationBaselineDetectedHeight = nil }
             }
-            if showWallCalibration, showRoomFurnitureCalibrate, supportsMetricFurnitureMeasurementUI {
+            if showWallCalibration, supportsMetricFurnitureMeasurementUI {
                 wallCalibrationOverlay
             }
             bottomBarsOverlayView
@@ -2441,7 +2411,6 @@ struct SplatRoomView: View {
             showCalibrationRejectAlert: showCalibrationRejectAlert,
             showWallCalibration: showWallCalibration,
             showFurnitureDimensionsInput: showFurnitureDimensionsInput,
-            showRoomFurnitureCalibrate: showRoomFurnitureCalibrate,
             supportsMetricFurnitureMeasurementUI: supportsMetricFurnitureMeasurementUI,
             isCapturingSnapshot: isCapturingSnapshot
         )
@@ -2450,7 +2419,7 @@ struct SplatRoomView: View {
     /// Pauses ARKit while modal UI is up so `TextField` / alerts are not competing with per-frame `ARSession` main-queue work.
     private func syncModalHeavyWorkPauseForSplatRoomUI() {
         let furnitureCalibSheet =
-            showFurnitureDimensionsInput && showRoomFurnitureCalibrate && supportsMetricFurnitureMeasurementUI
+            showFurnitureDimensionsInput && supportsMetricFurnitureMeasurementUI
         let pause =
             showRoomNameInput ||
             isSavingRoom ||

@@ -453,27 +453,10 @@
 // MARK: - i18n sync (Telugu)
 "common.or" = "లేదా";
 "common.retry" = "మళ్లీ ప్రయత్నించండి";
-"settings.furnitureSegmentationSection" = "ఫర్నిచర్ సెగ్మెంటేషన్";
-"settings.furnitureFitOnnxRuntimeDescription" = "Off: Core ML with letterbox and the standard mask path. On (default): same Core ML model with stretch preprocessing, Android-style bbox-limited mask fusion, and the same blacklist.json / primary selection. Requires the Core ML model to be loaded.";
-"settings.showRoomFurnitureCalibrate" = "గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు";
-"settings.showRoomFurnitureCalibrateDescription" = "గది మెనూలో «గోడ క్యాలిబ్రేట్ చేయి», SmartyPants (మెదడు) ఆన్‌లో ఉన్నప్పుడు «క్యాలిబ్రేట్ చేయడానికి ట్యాప్» పిల్ చూపిస్తుంది.";
-"settings.furnitureFitARCompanion" = "AR-సహాయిత ఫర్నిచర్ కొలత";
-"settings.furnitureFitARCompanionDescription" = "Furniture Fit లో కెమెరాతో పాటు ARKit దృశ్య లోతును నడుపుతుంది (LiDAR). వీడియో క్యాప్చర్‌తో ఘర్షణ కావచ్చు. మార్చిన తర్వాత గదిని మళ్లీ తెరవండి.";
-"settings.furnitureFitARCompanionUnavailable" = "ఈ పరికరంలో దృశ్య లోతు అందుబాటులో లేదు.";
 "settings.fullVideoWithIdentifications" = "గుర్తింపులతో పూర్తి వీడియో";
 "settings.fullVideoWithIdentificationsDescription" = "విభజించిన ఫర్నిచర్ ఓవర్‌లేను స్వయంచాలకంగా కేంద్రీకరించడానికి బదులుగా గుర్తింపు పెట్టెలు మరియు లేబుల్‌లతో ప్రత్యక్ష కెమెరా ఫీడ్‌ను చూపించు.";
-"settings.primaryDetectionConfidence" = "ప్రధాన గుర్తింపు నమ్మకం";
-"settings.primaryDetectionConfidenceFooter" = "అభ్యర్థి బాక్సుల్లో ప్రధాన ఫర్నిచర్ బాక్స్‌ను ఎంచుకునేందుకు కనిష్ఠ మోడల్ నమ్మకం (5–99%). తక్కువ విలువలు ఎక్కువ బాక్సులను అర్హంగా ఉంచుతాయి; ఎక్కువ విలువలు మరింత కఠినంగా ఉంటాయి. డిటెక్టర్ తన విడి థ్రెషోల్డ్‌ను ఉపయోగించి బలహీనమైన బాక్సులను ఇంకా ముందుగా పార్స్ చేస్తుంది.";
-"settings.primaryDetectionConfidencePercent" = "%d%%";
-"settings.primarySelectionByHighestConfidence" = "అత్యధిక నమ్మకంతో ప్రధానది";
-"settings.primarySelectionByHighestConfidenceDescription" = "ఆన్: స్లయిడర్ పైనున్న బాక్సుల్లో అత్యధిక స్కోర్ ఉన్నదాన్ని ఎంచుకుంటుంది. ఆఫ్: వాటిలో పెద్ద బాక్స్‌ను ఎంచుకుంటుంది.";
-"settings.primarySelectionByHighestConfidenceFooter" = "రెండు మోడ్‌లు ప్రధాన గుర్తింపు నమ్మకం స్లయిడర్ వద్ద లేదా అంతకంటే పై స్థాయిలో ఉన్న గుర్తింపులను మాత్రమే పరిగణిస్తాయి.";
 
 
-"settings.roomMeasurementSection" = "గది కొలతలు";
-"settings.wallAssumedDepthM" = "గోడకు అంచనా దూరం (మీ)";
-"settings.wallAssumedCeilingM" = "అంచనా గోడ/సీలింగ్ ఎత్తు (మీ)";
-"settings.roomMeasurementFooter" = "AI rooms use GeoCalib (camera focal length) and Depth Anything (metric depth). Width × height × depth shown in the viewer are estimates from that pipeline — useful as guidance, not survey-grade. For better results, use a clear, well-lit photo with visible floor and walls.";
 "camera.takePhoto" = "ఫోటో తీయండి";
 "camera.chooseOrientationShort" = "పోర్ట్రెయిట్ లేదా ల్యాండ్‌స్కేప్";
 "roomGeneration.downloadingEngine" = "3D ఇంజిన్ డౌన్‌లోడ్ అవుతోంది...";
@@ -526,13 +509,10 @@
 
 // MARK: - Auto-generated additions (Settings - Furniture Segmentation & Single Image Scan)
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOn" = "ఆన్: స్లయిడర్ పైన ఉన్న వాటిలో అత్యధిక స్కోర్ ఉన్న బాక్స్‌ను ఎంచుకోండి.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionByHighestConfidenceOff" = "ఆఫ్: స్లయిడర్ పైన ఉన్న వాటిలో పెద్ద బాక్స్‌ను ఎంచుకోండి.";
 
 /* Settings - Furniture Segmentation */
-"settings.primarySelectionBehaviorNote" = "Parser/NMS ప్రవర్తన మారదు.";
 
 /* Settings - Single Image Scan */
 "settings.singleImageScanSection" = "ఒకే చిత్ర స్కాన్";
