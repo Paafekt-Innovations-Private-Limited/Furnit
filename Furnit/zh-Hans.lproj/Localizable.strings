@@ -9,7 +9,7 @@
 "app.name" = "Paafekt";
 "app.tagline" = "3D房间探索器";
 "app.version" = "版本";
-"app.developer" = "Furnit团队";
+"app.developer" = "Paafekt团队";
 
 // MARK: - Common Actions
 "common.done" = "完成";

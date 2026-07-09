@@ -3,7 +3,7 @@
     <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D कमरा एक्सप्लोरर</string>
     <string name="app_version">संस्करण</string>
-    <string name="app_developer">Furnit टीम</string>
+    <string name="app_developer">Paafekt टीम</string>
     <string name="common_done">हो गया</string>
     <string name="common_cancel">रद्द करें</string>
     <string name="common_ok">ठीक है</string>
@@ -376,7 +376,7 @@
     <!-- Settings (developer) -->
 
     <!-- Auth / Login -->
-    <string name="login_welcome">Furnit में आपका स्वागत है</string>
+    <string name="login_welcome">Paafekt में आपका स्वागत है</string>
     <string name="login_sign_in_phone">अपने फोन नंबर से साइन इन करें</string>
     <string name="login_send_code">सत्यापन कोड भेजें</string>
     <string name="login_terms_agree">जारी रखकर, आप हमारी सेवा की शर्तें और गोपनीयता नीति से सहमत हैं</string>
@@ -472,7 +472,7 @@
     <string name="deleted_room">Deleted %s</string>
     <string name="failed_delete">Failed to delete: %s</string>
     <string name="total">Total</string>
-    <string name="app_version_display">Furnit v1.0.0</string>
+    <string name="app_version_display">Paafekt v1.0.0</string>
     <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>

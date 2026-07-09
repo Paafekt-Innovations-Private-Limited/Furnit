@@ -405,7 +405,7 @@
     <string name="total">Total</string>
 
     <!-- App version display -->
-    <string name="app_version_display">Furnit v1.0.0</string>
+    <string name="app_version_display">Paafekt v1.0.0</string>
 
     <!-- Additional strings from iOS translations -->
     <string name="room_viewer_exporting_usdz">Exporting to USDZ format…</string>
@@ -539,7 +539,7 @@
     <!-- Settings (developer) -->
 
     <!-- Auth / Login -->
-    <string name="login_welcome">Welcome to Furnit</string>
+    <string name="login_welcome">Welcome to Paafekt</string>
     <string name="login_sign_in_phone">Sign in with your phone number</string>
     <string name="login_send_code">Send Verification Code</string>
     <string name="login_terms_agree">By continuing, you agree to our Terms of Service and Privacy Policy</string>

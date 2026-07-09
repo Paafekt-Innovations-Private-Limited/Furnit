@@ -9,6 +9,8 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.View
@@ -61,20 +63,12 @@ class LoginActivity : AppCompatActivity() {
     private fun setupUI() {
         val rootLayout = FrameLayout(this)
 
-        // Gradient background (blue to purple like iOS)
-        val gradientDrawable = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                Color.parseColor("#667eea"),
-                Color.parseColor("#764ba2")
-            )
-        )
-        rootLayout.background = gradientDrawable
+        rootLayout.setBackgroundColor(PaafektColors.background)
 
         // Content card
         val cardLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            background = PaafektDrawables.secondaryButton()
             setPadding(48, 48, 48, 48)
             elevation = 8f
         }
@@ -99,10 +93,10 @@ class LoginActivity : AppCompatActivity() {
 
         // Title
         val title = TextView(this).apply {
-            text = "Welcome to Furnit"
+            text = getString(R.string.login_welcome)
             textSize = 24f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#333333"))
+            setTextColor(PaafektColors.textPrimary)
             gravity = Gravity.CENTER
         }
         cardLayout.addView(title)
@@ -111,7 +105,7 @@ class LoginActivity : AppCompatActivity() {
         val subtitle = TextView(this).apply {
             text = "Sign in with your phone number"
             textSize = 14f
-            setTextColor(Color.parseColor("#666666"))
+            setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
             setPadding(0, 8, 0, 32)
         }
@@ -121,7 +115,7 @@ class LoginActivity : AppCompatActivity() {
         val nameLabel = TextView(this).apply {
             text = "Your Name"
             textSize = 14f
-            setTextColor(Color.parseColor("#333333"))
+            setTextColor(PaafektColors.textPrimary)
             setPadding(0, 0, 0, 8)
         }
         cardLayout.addView(nameLabel)
@@ -129,11 +123,11 @@ class LoginActivity : AppCompatActivity() {
         nameInput = EditText(this).apply {
             hint = "Enter your name"
             inputType = InputType.TYPE_TEXT_VARIATION_PERSON_NAME or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setBackgroundColor(PaafektColors.surfaceHi)
             setPadding(24, 24, 24, 24)
             textSize = 16f
-            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
-            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
+            setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
+            setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
         }
         cardLayout.addView(nameInput, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -144,7 +138,7 @@ class LoginActivity : AppCompatActivity() {
         val phoneLabel = TextView(this).apply {
             text = "Phone Number"
             textSize = 14f
-            setTextColor(Color.parseColor("#333333"))
+            setTextColor(PaafektColors.textPrimary)
             setPadding(0, 0, 0, 8)
         }
         cardLayout.addView(phoneLabel)
@@ -158,8 +152,8 @@ class LoginActivity : AppCompatActivity() {
         countryButton = Button(this).apply {
             text = selectedCountry.shortDisplay
             textSize = 14f
-            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
-            setBackgroundColor(Color.parseColor("#E8E8E8"))
+            setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
+            setBackgroundColor(PaafektColors.surfaceHi)
             setPadding(16, 16, 16, 16)
             setOnClickListener { showCountryPicker() }
         }
@@ -171,11 +165,11 @@ class LoginActivity : AppCompatActivity() {
         phoneInput = EditText(this).apply {
             hint = "Phone number"
             inputType = InputType.TYPE_CLASS_PHONE
-            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setBackgroundColor(PaafektColors.surfaceHi)
             setPadding(24, 24, 24, 24)
             textSize = 16f
-            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
-            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
+            setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
+            setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
             filters = arrayOf(InputFilter.LengthFilter(15))
             imeOptions = EditorInfo.IME_ACTION_DONE
         }
@@ -191,7 +185,7 @@ class LoginActivity : AppCompatActivity() {
         // Error text
         errorText = TextView(this).apply {
             textSize = 14f
-            setTextColor(Color.parseColor("#F44336"))
+            setTextColor(PaafektColors.danger)
             gravity = Gravity.CENTER
             visibility = View.GONE
             setPadding(0, 0, 0, 16)
@@ -203,8 +197,8 @@ class LoginActivity : AppCompatActivity() {
             text = "Send Verification Code"
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#667eea"))
+            setTextColor(PaafektColors.accentText)
+            background = PaafektDrawables.primaryButton()
             setPadding(24, 24, 24, 24)
             isEnabled = false
             setOnClickListener { sendOtp() }

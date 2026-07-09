@@ -3,7 +3,7 @@
     <string name="app_name">Paafekt</string>
     <string name="app_tagline">مستكشف الغرف ثلاثي الأبعاد</string>
     <string name="app_version">الإصدار</string>
-    <string name="app_developer">فريق Furnit</string>
+    <string name="app_developer">فريق Paafekt</string>
     <string name="common_done">تم</string>
     <string name="common_cancel">إلغاء</string>
     <string name="common_ok">حسناً</string>
@@ -376,7 +376,7 @@
     <!-- Settings (developer) -->
 
     <!-- Auth / Login -->
-    <string name="login_welcome">مرحباً بك في Furnit</string>
+    <string name="login_welcome">مرحباً بك في Paafekt</string>
     <string name="login_sign_in_phone">سجّل الدخول برقم هاتفك</string>
     <string name="login_send_code">إرسال رمز التحقق</string>
     <string name="login_terms_agree">بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية</string>
@@ -472,7 +472,7 @@
     <string name="deleted_room">Deleted %s</string>
     <string name="failed_delete">Failed to delete: %s</string>
     <string name="total">Total</string>
-    <string name="app_version_display">Furnit v1.0.0</string>
+    <string name="app_version_display">Paafekt v1.0.0</string>
     <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>

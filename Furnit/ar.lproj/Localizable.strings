@@ -9,7 +9,7 @@
 "app.name" = "Paafekt";
 "app.tagline" = "مستكشف الغرف ثلاثي الأبعاد";
 "app.version" = "الإصدار";
-"app.developer" = "فريق Furnit";
+"app.developer" = "فريق Paafekt";
 
 // MARK: - Common Actions
 "common.done" = "تم";

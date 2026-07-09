@@ -9,7 +9,7 @@
 "app.name" = "Paafekt";
 "app.tagline" = "Explorateur de pièces 3D";
 "app.version" = "Version";
-"app.developer" = "Équipe Furnit";
+"app.developer" = "Équipe Paafekt";
 
 // MARK: - Common Actions
 "common.done" = "Terminé";

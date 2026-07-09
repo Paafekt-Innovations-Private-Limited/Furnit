@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
@@ -41,14 +43,14 @@ class ContentActivity : AppCompatActivity() {
     private lateinit var roomGenerationProgressBar: FrameLayout
     private lateinit var roomGenerationProgressLabel: TextView
 
-    // Colors matching iOS dark theme
-    private val backgroundColor = Color.parseColor("#1C1C1E")
-    private val cardBackgroundColor = Color.parseColor("#2C2C2E")
-    private val primaryTextColor = Color.WHITE
-    private val secondaryTextColor = Color.parseColor("#8E8E93")
-    private val accentGreen = Color.parseColor("#34C759")
-    private val accentPurple = Color.parseColor("#AF52DE")
-    private val dividerColor = Color.parseColor("#3A3A3C")
+    // Paafekt design tokens
+    private val backgroundColor = PaafektColors.background
+    private val cardBackgroundColor = PaafektColors.surface
+    private val primaryTextColor = PaafektColors.textPrimary
+    private val secondaryTextColor = PaafektColors.textSecondary
+    private val accentGreen = PaafektColors.accent
+    private val accentPurple = PaafektColors.accent
+    private val dividerColor = PaafektColors.surfaceHi
 
     companion object {
         private const val MAX_SAVED_ROOMS = 20
