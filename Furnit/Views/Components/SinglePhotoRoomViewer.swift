@@ -1423,7 +1423,8 @@ private struct DepthAnythingPreviewRoomView: View {
             }
             // List-page viewers preload RTMDet on appear; preview used to wait until brain tap (multi-second lag).
             rtmdetService.ensureModelLoaded()
-            logDebug("[DepthAnythingRoom][Preview] RTMDet prewarm requested on appear")
+            DepthAnythingRoomReconstructor.prewarmSharedModelIfNeeded()
+            logDebug("[DepthAnythingRoom][Preview] RTMDet + Depth Anything prewarm requested on appear")
         }
         .onDisappear {
             dismissPreviewFullVideoFurnitureTapHint()
@@ -2143,57 +2144,56 @@ private struct DepthAnythingPreviewRoomView: View {
         showRoomNameInput = false
         withAnimation(.easeIn(duration: 0.2)) {
             isSavingRoom = true
-            saveProgress = 0
+            saveProgress = 0.02
             saveProgressStatusText = L10n.RoomViewer.measuringRoom
         }
 
         Task {
-            do {
-                let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
-                guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
-                    throw DepthAnythingPreviewSaveError.sourceImageUnavailable
-                }
+            // Commit overlay before heavy first-save CoreML work (matches SplatRoomView save).
+            try? await Task.sleep(nanoseconds: 220_000_000)
 
-                let reconstructor = try DepthAnythingRoomReconstructor()
-                let measuredResult = try await reconstructor.reconstructWithResult(
-                    image: measurementImage,
-                    cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata,
-                    progressHandler: { fraction in
-                        Task { @MainActor in
-                            // Reconstruction occupies ~5%–90%; copy/metadata finish at 100%.
-                            saveProgress = 0.05 + Double(fraction) * 0.85
-                            if fraction < 0.58 {
-                                saveProgressStatusText = L10n.RoomViewer.measuringRoom
-                            } else if fraction < 0.85 {
-                                saveProgressStatusText = L10n.GenerationProgress.generating3DModel
-                            } else {
-                                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+            do {
+                let savedURL = try await Task.detached(priority: .userInitiated) {
+                    let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
+                    guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
+                        throw DepthAnythingPreviewSaveError.sourceImageUnavailable
+                    }
+
+                    let reconstructor = try DepthAnythingRoomReconstructor()
+                    let measuredResult = try await reconstructor.reconstructWithResult(
+                        image: measurementImage,
+                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata,
+                        progressHandler: { fraction in
+                            Task { @MainActor in
+                                saveProgress = 0.05 + Double(fraction) * 0.85
+                                if fraction < 0.58 {
+                                    saveProgressStatusText = L10n.RoomViewer.measuringRoom
+                                } else if fraction < 0.85 {
+                                    saveProgressStatusText = L10n.GenerationProgress.generating3DModel
+                                } else {
+                                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+                                }
                             }
                         }
+                    )
+
+                    var measuredCameraMetadata = cameraMetadata
+                    for (key, value) in measuredResult.calibrationMetadata {
+                        measuredCameraMetadata[key] = value
                     }
-                )
-
-                await MainActor.run {
-                    saveProgress = 0.92
-                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-                }
-
-                var measuredCameraMetadata = cameraMetadata
-                for (key, value) in measuredResult.calibrationMetadata {
-                    measuredCameraMetadata[key] = value
-                }
-                if !measuredCameraMetadata.isEmpty {
-                    CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
-                }
-                let metadata = depthAnythingSavedRoomMetadata(
-                    photoOrientationRawValue: photoOrientationRawValue,
-                    roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
-                    displayName: trimmedRoomName,
-                    roomWidth: measuredResult.roomWidthMeters,
-                    roomHeight: measuredResult.roomHeightMeters,
-                    roomDepth: measuredResult.roomDepthMeters
-                )
-                let savedURL = try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
+                    if !measuredCameraMetadata.isEmpty {
+                        CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
+                    }
+                    let metadata = depthAnythingSavedRoomMetadata(
+                        photoOrientationRawValue: photoOrientationRawValue,
+                        roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
+                        displayName: trimmedRoomName,
+                        roomWidth: measuredResult.roomWidthMeters,
+                        roomHeight: measuredResult.roomHeightMeters,
+                        roomDepth: measuredResult.roomDepthMeters
+                    )
+                    return try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
+                }.value
 
                 await MainActor.run {
                     saveProgress = 1.0
@@ -2311,7 +2311,6 @@ struct SinglePhotoRoomView: View {
     @State private var captureMediaMetadata: [AnyHashable: Any]?
     @State private var photoLibraryAssetLocalId: String?
     @State private var supplementalCameraDoubles: [String: Double]?
-    @State private var hasRequestedDepthAnythingPrewarm = false
     @State private var hasRequestedRTMDetPrewarm = false
 
     struct IdentifiedImage: Identifiable {
@@ -2723,16 +2722,7 @@ struct SinglePhotoRoomView: View {
     }
 
     private func prewarmDepthAnythingModelIfNeeded() {
-        guard !hasRequestedDepthAnythingPrewarm else { return }
-        hasRequestedDepthAnythingPrewarm = true
-        Task.detached(priority: .utility) {
-            do {
-                _ = try DepthAnythingRoomReconstructor()
-                logDebug("[DepthAnythingRoom][Prewarm] shared model ready")
-            } catch {
-                logDebug("[DepthAnythingRoom][Prewarm] skipped: \(error.localizedDescription)")
-            }
-        }
+        DepthAnythingRoomReconstructor.prewarmSharedModelIfNeeded()
     }
 
     private func prewarmRTMDetModelIfNeeded() {

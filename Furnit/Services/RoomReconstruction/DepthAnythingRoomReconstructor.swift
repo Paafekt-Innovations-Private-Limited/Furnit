@@ -124,6 +124,26 @@ final class DepthAnythingRoomReconstructor {
 
     private static let depthModelLock = NSLock()
     private static var cachedDepthModel: (model: VNCoreMLModel, name: String)?
+    private static var didRequestSharedModelPrewarm = false
+
+    /// First save compiles/loads the shared Vision model; prewarm off the main thread while the user previews.
+    static func prewarmSharedModelIfNeeded() {
+        depthModelLock.lock()
+        let shouldPrewarm = !didRequestSharedModelPrewarm
+        if shouldPrewarm {
+            didRequestSharedModelPrewarm = true
+        }
+        depthModelLock.unlock()
+        guard shouldPrewarm else { return }
+        Task.detached(priority: .utility) {
+            do {
+                _ = try DepthAnythingRoomReconstructor()
+                logDebug("[DepthAnythingRoom][Prewarm] shared model ready")
+            } catch {
+                logDebug("[DepthAnythingRoom][Prewarm] skipped: \(error.localizedDescription)")
+            }
+        }
+    }
 
     /// A reconstructor is created per room; loading/compiling Depth Anything each time
     /// is wasted seconds, so share one Vision model per process.
