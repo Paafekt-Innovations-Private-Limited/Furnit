@@ -6,6 +6,7 @@ import CoreML
 import Photos
 import PhotosUI
 import UniformTypeIdentifiers
+import simd
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -872,6 +873,51 @@ private struct SplatViewerDestination: Identifiable, Hashable {
     }
 }
 
+private enum DepthAnythingPreviewPlacementIntelligenceRoomStub {
+    static func axisAlignedBoxMeters(width: Float, height: Float, depth: Float) -> RoomModel {
+        let w = max(width, 0.2)
+        let h = max(height, 0.2)
+        let d = max(depth, 0.2)
+        let wHalf = w * 0.5
+        let dHalf = d * 0.5
+        let aabb = AABB3(
+            min: SIMD3<Float>(-wHalf, 0, -dHalf),
+            max: SIMD3<Float>(wHalf, h, dHalf)
+        )
+        let floor = DetectedPlane(type: .floor, normal: SIMD3<Float>(0, 1, 0), pointOnPlane: .zero)
+        let ceiling = DetectedPlane(type: .ceiling, normal: SIMD3<Float>(0, -1, 0), pointOnPlane: SIMD3<Float>(0, h, 0))
+        let walls: [DetectedPlane] = [
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(1, 0, 0), pointOnPlane: SIMD3<Float>(-wHalf, 0, 0)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(-1, 0, 0), pointOnPlane: SIMD3<Float>(wHalf, 0, 0)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(0, 0, 1), pointOnPlane: SIMD3<Float>(0, 0, -dHalf)),
+            DetectedPlane(type: .wall, normal: SIMD3<Float>(0, 0, -1), pointOnPlane: SIMD3<Float>(0, 0, dHalf))
+        ]
+        let uvMin = SIMD2<Float>(-wHalf, -dHalf)
+        let uvMax = SIMD2<Float>(wHalf, dHalf)
+        let freeFloor = FreeFloorRegion(
+            polygon: [
+                uvMin,
+                SIMD2<Float>(wHalf, -dHalf),
+                uvMax,
+                SIMD2<Float>(-wHalf, dHalf)
+            ],
+            areaSqM: w * d,
+            uvBounds: FloorUVBounds(min: uvMin, max: uvMax)
+        )
+        return RoomModel(
+            aabb: aabb,
+            floor: floor,
+            ceiling: ceiling,
+            walls: walls,
+            corners: [],
+            freeFloorRegions: [freeFloor],
+            surfacePalette: .empty,
+            cameraInfo: nil,
+            sceneToMeters: 1.0
+        )
+    }
+}
+
 private struct USDZViewerDestination: Identifiable, Hashable {
     let id = UUID()
     let measurementImageURL: URL
@@ -1206,6 +1252,13 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
     @State private var tapHintColorIndex = 0
     @State private var tapHintColorTimer: Timer?
+    @State private var detectedFurnitureWidth: Float?
+    @State private var furnitureFitEstimatedHeightM: Float?
+    @State private var detectedFurnitureHeightAR: Float?
+    @State private var latestFitCheckResult: FitCheckResult?
+    @State private var latestAestheticScore: AestheticScore?
+    @State private var segmentedFurnitureMeanSRGB: SIMD3<Float>?
+    @State private var isPlacementIntelligenceExpanded = false
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
     @State private var showRoomNameInput = false
@@ -1224,6 +1277,15 @@ private struct DepthAnythingPreviewRoomView: View {
             return nil
         }
         return (width, height, depth)
+    }
+
+    private var authoritativeRoomModelForMetrics: RoomModel? {
+        guard let dims = depthAnythingRoomDimensions else { return nil }
+        return DepthAnythingPreviewPlacementIntelligenceRoomStub.axisAlignedBoxMeters(
+            width: dims.width,
+            height: dims.height,
+            depth: dims.depth
+        )
     }
 
     private var canSegmentSelectedFurniture: Bool {
@@ -1257,8 +1319,16 @@ private struct DepthAnythingPreviewRoomView: View {
                     roomWidthMeters: destination.roomWidthMeters,
                     roomHeightMeters: destination.roomHeightMeters,
                     roomDepthMeters: destination.roomDepthMeters,
+                    onFurnitureSizeEstimated: { estimate in
+                        detectedFurnitureWidth = estimate.widthMeters
+                        furnitureFitEstimatedHeightM = estimate.heightMeters
+                        detectedFurnitureHeightAR = estimate.arHeightMeters
+                    },
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
                     onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                    onSegmentationMaskMeanColorSRGB: { meanSRGB in
+                        segmentedFurnitureMeanSRGB = meanSRGB
+                    },
                     // Match ModelViewer brain default: classic AVCapture preview. With AR sizing on,
                     // LiDAR devices take the AR-as-camera path (AVCapture stopped, hidden ARSCNView) → black full-video feed.
                     arAssistedSizingEnabled: false,
@@ -1355,6 +1425,10 @@ private struct DepthAnythingPreviewRoomView: View {
         .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
             restorePreviewFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
         }
+        .onChange(of: segmentedFurnitureMeanSRGB) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: detectedFurnitureWidth) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: detectedFurnitureHeightAR) { _, _ in updateRoomPlacementIntelligence() }
+        .onChange(of: furnitureFitEstimatedHeightM) { _, _ in updateRoomPlacementIntelligence() }
         .onAppear {
             if let dimensions = depthAnythingRoomDimensions {
                 logDebug(
@@ -1465,17 +1539,23 @@ private struct DepthAnythingPreviewRoomView: View {
     }
 
     private var previewBottomControlsBar: some View {
-        HStack(alignment: .bottom) {
-            HStack(alignment: .bottom, spacing: 10) {
-                previewBrainButton
-                previewSegmentModeToggleChrome
+        ZStack(alignment: .bottom) {
+            HStack(alignment: .bottom) {
+                HStack(alignment: .bottom, spacing: 10) {
+                    previewBrainButton
+                    previewSegmentModeToggleChrome
+                }
+
+                Spacer()
+
+                previewSnapshotButton
             }
+            .padding(.horizontal, 16)
 
-            Spacer()
-
-            previewSnapshotButton
+            previewRoomIntelligencePlacementCardResetOnExit
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 0)
         }
-        .padding(.horizontal, 16)
         .padding(.bottom, 20)
         .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
         .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
@@ -1644,6 +1724,7 @@ private struct DepthAnythingPreviewRoomView: View {
     private func handlePreviewShowingFurnitureFitChanged(isOn: Bool) {
         if isOn {
             rtmdetService.ensureModelLoaded()
+            updateRoomPlacementIntelligence()
             presentPreviewFullVideoSelectionHelperIfNeeded()
         } else {
             dismissPreviewFullVideoFurnitureTapHint()
@@ -1653,6 +1734,217 @@ private struct DepthAnythingPreviewRoomView: View {
             furnitureFitShowIdentifyLivePreview = true
             selectedFurnitureFitLabels = []
             capturedImage = nil
+            detectedFurnitureWidth = nil
+            furnitureFitEstimatedHeightM = nil
+            detectedFurnitureHeightAR = nil
+            latestFitCheckResult = nil
+            latestAestheticScore = nil
+            segmentedFurnitureMeanSRGB = nil
+            isPlacementIntelligenceExpanded = false
+        }
+    }
+
+    private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {
+        guard let fit else { return .cyan }
+        return fit.fitsInRoom ? .green : .red
+    }
+
+    @ViewBuilder
+    private func placementIntelligenceExpandedContent(
+        dimensions: RoomFurnitureDimensions?,
+        fit: FitCheckResult?,
+        aesthetic: AestheticScore
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.RoomViewer.placementIntelligenceTitle)
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                Spacer(minLength: 4)
+                if let fit {
+                    Text(
+                        fit.fitsInRoom
+                            ? L10n.RoomViewer.placementFitCount(max(fit.fitLocations.count, 1))
+                            : L10n.RoomViewer.placementNoFit
+                    )
+                    .font(.caption2.bold())
+                    .foregroundColor(fit.fitsInRoom ? .green : .red)
+                } else {
+                    Text(L10n.RoomViewer.placementBadgeStyleOnly)
+                        .font(.caption2.bold())
+                        .foregroundColor(.cyan.opacity(0.95))
+                }
+            }
+            if dimensions == nil {
+                Text(L10n.RoomViewer.placementMetricUnavailableNote)
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+            if let dimensions {
+                Text(
+                    L10n.RoomViewer.placementDetectedSizeMeters(
+                        width: Double(dimensions.widthM),
+                        height: Double(dimensions.heightM),
+                        depth: Double(dimensions.depthM)
+                    )
+                )
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.92))
+            }
+            if let fit {
+                Text(fit.fitsInRoom ? L10n.RoomViewer.placementFitsRoom : L10n.RoomViewer.placementExceedsRoom)
+                    .font(.caption2)
+                    .foregroundColor(fit.fitsInRoom ? .green : .red)
+            }
+            Text(
+                L10n.RoomViewer.placementHarmonySummary(
+                    harmonyScore: aesthetic.harmonyScore,
+                    harmonyTypeName: aesthetic.harmonyType.localizedDisplayName,
+                    contrastScore: aesthetic.contrastScore,
+                    styleFit: aesthetic.styleCompatibilityScore
+                )
+            )
+            .font(.caption2)
+            .foregroundColor(.white.opacity(0.88))
+            ForEach(Array(aesthetic.recommendations.prefix(4).enumerated()), id: \.offset) { _, line in
+                Text("• \(line)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.86))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(Color.black.opacity(0.88))
+        .cornerRadius(14)
+        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 4)
+    }
+
+    private func derivedDetectedFurnitureDimensionsForRoomIntelligence() -> RoomFurnitureDimensions? {
+        guard let width = detectedFurnitureWidth, width.isFinite, width > 0.05 else { return nil }
+        let height = furnitureFitEstimatedHeightM ?? detectedFurnitureHeightAR
+        guard let height, height.isFinite, height > 0.05 else { return nil }
+        let estimatedDepth = max(0.25, min(width * 0.72, 1.4))
+        return RoomFurnitureDimensions(widthM: width, heightM: height, depthM: estimatedDepth)
+    }
+
+    private func inferredRoomStyleTags(from palette: SurfacePalette) -> [String] {
+        var tags = Set<String>()
+        let layers = [palette.floor, palette.walls, palette.ceiling]
+        for layer in layers {
+            guard let layer else { continue }
+            switch layer.hint {
+            case .wood: tags.formUnion(["rustic", "traditional"])
+            case .tile: tags.insert("modern")
+            case .concrete: tags.formUnion(["industrial", "modern"])
+            case .carpet: tags.formUnion(["traditional", "eclectic"])
+            case .plaster: tags.formUnion(["modern", "scandinavian"])
+            case .brick: tags.formUnion(["traditional", "industrial"])
+            case .marble: tags.formUnion(["modern", "luxury"])
+            case .unknown: break
+            }
+        }
+        if tags.isEmpty { return ["modern", "minimalist"] }
+        return Array(tags).sorted().prefix(6).map { $0 }
+    }
+
+    private func heuristicFurnitureProfileForAesthetic(
+        roomModel: RoomModel,
+        segmentedMeanSRGB: SIMD3<Float>?
+    ) -> FurnitureProfile {
+        let palette = roomModel.surfacePalette
+        let primary: SIMD3<Float>
+        if let cutoutMean = segmentedMeanSRGB {
+            primary = cutoutMean
+        } else if let wall = palette.walls?.dominantColors.first {
+            primary = SIMD3(
+                min(wall.x * 0.82 + 0.06, 1),
+                min(wall.y * 0.78 + 0.05, 1),
+                min(wall.z * 0.74 + 0.04, 1)
+            )
+        } else if let floor = palette.floor?.dominantColors.first {
+            primary = SIMD3(repeating: 0.38) * 0.55 + floor * 0.45
+        } else if let ceiling = palette.ceiling?.dominantColors.first {
+            primary = ceiling * SIMD3(0.55, 0.52, 0.48)
+        } else {
+            primary = SIMD3(0.44, 0.40, 0.36)
+        }
+        return FurnitureProfile(
+            primaryColor: primary,
+            accentColor: nil,
+            styleTags: ["modern", "minimalist", "contemporary"]
+        )
+    }
+
+    private func updateRoomPlacementIntelligence() {
+        guard showingFurnitureFit, let roomModel = authoritativeRoomModelForMetrics else {
+            latestFitCheckResult = nil
+            latestAestheticScore = nil
+            return
+        }
+        if let furniture = derivedDetectedFurnitureDimensionsForRoomIntelligence() {
+            let fitEngine = FitCheckEngine(roomModel: roomModel)
+            latestFitCheckResult = fitEngine.checkFit(furniture: furniture)
+        } else {
+            latestFitCheckResult = nil
+        }
+        let palette = roomModel.surfacePalette
+        let roomStyleTags = inferredRoomStyleTags(from: palette)
+        let furnitureProfile = heuristicFurnitureProfileForAesthetic(
+            roomModel: roomModel,
+            segmentedMeanSRGB: segmentedFurnitureMeanSRGB
+        )
+        let aestheticAdvisor = AestheticAdvisor(palette: palette, roomStyleTags: roomStyleTags)
+        latestAestheticScore = aestheticAdvisor.evaluate(furniture: furnitureProfile)
+    }
+
+    @ViewBuilder
+    private var previewRoomIntelligencePlacementCardResetOnExit: some View {
+        if showingFurnitureFit, authoritativeRoomModelForMetrics != nil {
+            let dimensions = derivedDetectedFurnitureDimensionsForRoomIntelligence()
+            let fit = latestFitCheckResult
+            VStack(spacing: 10) {
+                if isPlacementIntelligenceExpanded, let aesthetic = latestAestheticScore {
+                    placementIntelligenceExpandedContent(dimensions: dimensions, fit: fit, aesthetic: aesthetic)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isPlacementIntelligenceExpanded.toggle()
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(white: 0.22), Color(white: 0.12)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 46, height: 46)
+                            .overlay(
+                                Circle()
+                                    .stroke(placementIntelligenceRingColor(fit: fit), lineWidth: 2.5)
+                            )
+                        Image(systemName: "square.split.2x2.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.RoomViewer.placementIntelligenceTitle)
+                .accessibilityAddTraits(.isButton)
+            }
+            .onChange(of: showingFurnitureFit) { _, isShowing in
+                if !isShowing { isPlacementIntelligenceExpanded = false }
+            }
+            .onChange(of: latestFitCheckResult?.fitsInRoom) { _, _ in
+                if latestFitCheckResult == nil, latestAestheticScore == nil {
+                    isPlacementIntelligenceExpanded = false
+                }
+            }
         }
     }
 
