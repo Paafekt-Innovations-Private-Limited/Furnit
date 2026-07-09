@@ -998,6 +998,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     @Binding var cameraOffset: CGSize
     @Binding var cameraZoom: CGFloat
     @Binding var shouldResetCamera: Bool
+    var allowsSceneInteraction: Bool = true
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -1033,6 +1034,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
             }
         }
         applyCameraPose(context.coordinator.cameraNode, viewportSize: view.bounds.size)
+        context.coordinator.setSceneInteractionEnabled(allowsSceneInteraction, on: view)
     }
 
     private func makeScene(context: Context) -> SCNScene {
@@ -1109,11 +1111,19 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         private var cameraZoom: Binding<CGFloat>?
         private var panStartOffset: CGSize = .zero
         private var pinchStartZoom: CGFloat = 1
+        private var panRecognizer: UIPanGestureRecognizer?
+        private var pinchRecognizer: UIPinchGestureRecognizer?
         private var didInstallGestureRecognizers = false
 
         func configure(cameraOffset: Binding<CGSize>, cameraZoom: Binding<CGFloat>) {
             self.cameraOffset = cameraOffset
             self.cameraZoom = cameraZoom
+        }
+
+        func setSceneInteractionEnabled(_ enabled: Bool, on view: SCNView) {
+            view.isUserInteractionEnabled = enabled
+            panRecognizer?.isEnabled = enabled
+            pinchRecognizer?.isEnabled = enabled
         }
 
         func installGestureRecognizersIfNeeded(on view: SCNView) {
@@ -1125,10 +1135,12 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
             panRecognizer.maximumNumberOfTouches = 1
             panRecognizer.delegate = self
             view.addGestureRecognizer(panRecognizer)
+            self.panRecognizer = panRecognizer
 
             let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
             pinchRecognizer.delegate = self
             view.addGestureRecognizer(pinchRecognizer)
+            self.pinchRecognizer = pinchRecognizer
         }
 
         @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
@@ -1188,6 +1200,12 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var furnitureFitInitialSegmentationDone = false
     @State private var capturedImage: UIImage?
     @State private var isCapturingSnapshot = false
+    @State private var showFullVideoWithIdentifications = false
+    @State private var fullVideoFurnitureTapHintVisible = false
+    @State private var fullVideoSelectionHelperVisible = false
+    @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
+    @State private var tapHintColorIndex = 0
+    @State private var tapHintColorTimer: Timer?
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
     @State private var showRoomNameInput = false
@@ -1208,7 +1226,13 @@ private struct DepthAnythingPreviewRoomView: View {
         return (width, height, depth)
     }
 
-    var body: some View {
+    private var canSegmentSelectedFurniture: Bool {
+        showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
+    }
+
+    private let previewTapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
+
+    private var previewSceneAndFurnitureUnderlay: some View {
         ZStack {
             DepthAnythingPreviewSceneView(
                 imageURL: destination.measurementImageURL,
@@ -1217,9 +1241,10 @@ private struct DepthAnythingPreviewRoomView: View {
                 photoOrientation: destination.photoOrientation,
                 cameraOffset: $previewCameraOffset,
                 cameraZoom: $previewCameraZoom,
-                shouldResetCamera: $shouldResetCamera
+                shouldResetCamera: $shouldResetCamera,
+                allowsSceneInteraction: !showingFurnitureFit
             )
-            .ignoresSafeArea()
+            .allowsHitTesting(!showingFurnitureFit)
 
             if showingFurnitureFit {
                 FurnitureFitUIView(
@@ -1234,22 +1259,35 @@ private struct DepthAnythingPreviewRoomView: View {
                     roomDepthMeters: destination.roomDepthMeters,
                     suppressStartupProgress: furnitureFitInitialSegmentationDone,
                     onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                    // Match ModelViewer brain default: classic AVCapture preview. With AR sizing on,
+                    // LiDAR devices take the AR-as-camera path (AVCapture stopped, hidden ARSCNView) → black full-video feed.
+                    arAssistedSizingEnabled: false,
                     segmentationMode: furnitureFitSegmentationMode,
                     onSelectedClassLabelsChanged: { labels in
                         selectedFurnitureFitLabels = labels
                     },
                     onSegmentationModeChangeRequested: { mode in
+                        logDebug("BRAIN FLOW: [DepthAnythingPreview] FurnitureFit requested segmentationMode=\(mode)")
                         furnitureFitSegmentationMode = mode
                     },
-                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview,
+                    showFullVideoWithIdentificationsOverride: showFullVideoWithIdentifications
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .zIndex(9000)
             }
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            previewSceneAndFurnitureUnderlay
+                .ignoresSafeArea()
 
             previewCameraButtonsOverlay
-            previewBottomControlsOverlay
+            previewFullVideoToolbarHelperOverlay
+            previewFullVideoFurnitureTapBubbleOverlay
 
             if let debugLine = destination.measurementDebugLine,
                AppStateManager.shared.qualitySettings.debugMode {
@@ -1269,6 +1307,12 @@ private struct DepthAnythingPreviewRoomView: View {
             if isSavingRoom {
                 saveRoomProgressOverlay
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            previewFullVideoModeFloatingButton
+        }
+        .overlay(alignment: .bottom) {
+            previewBottomControlsBar
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -1305,6 +1349,12 @@ private struct DepthAnythingPreviewRoomView: View {
             Text(L10n.RoomPreview.unsavedMessage)
         }
         .disableBackSwipeIf(true)
+        .onChange(of: showingFurnitureFit) { _, isOn in
+            handlePreviewShowingFurnitureFitChanged(isOn: isOn)
+        }
+        .onChange(of: selectedFurnitureFitLabels) { oldLabels, newLabels in
+            restorePreviewFullVideoIdentifyAfterSegmentPinsLost(oldLabels: oldLabels, newLabels: newLabels)
+        }
         .onAppear {
             if let dimensions = depthAnythingRoomDimensions {
                 logDebug(
@@ -1320,8 +1370,13 @@ private struct DepthAnythingPreviewRoomView: View {
             } else {
                 OrientationLockManager.shared.lockToPortrait()
             }
+            // List-page viewers preload RTMDet on appear; preview used to wait until brain tap (multi-second lag).
+            rtmdetService.ensureModelLoaded()
+            logDebug("[DepthAnythingRoom][Preview] RTMDet prewarm requested on appear")
         }
         .onDisappear {
+            dismissPreviewFullVideoFurnitureTapHint()
+            cancelPreviewFullVideoSelectionHelper()
             OrientationLockManager.shared.unlock()
         }
     }
@@ -1364,18 +1419,13 @@ private struct DepthAnythingPreviewRoomView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
-                previewCameraDPadCluster
-                    .padding(.leading, 12)
-                    .padding(.top, destination.photoOrientation == .landscape ? 12 : 56)
-                if destination.photoOrientation == .landscape {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            previewCameraDPadCluster
+                .padding(.leading, 12)
+                .padding(.top, destination.photoOrientation == .landscape ? 12 : 56)
         }
         .opacity(isSavingRoom ? 0 : 1)
-        .zIndex(102)
+        .allowsHitTesting(!isSavingRoom)
+        .zIndex(100_000)
     }
 
     private var previewCameraDPadCluster: some View {
@@ -1414,57 +1464,276 @@ private struct DepthAnythingPreviewRoomView: View {
         previewCameraOffset.height += dy
     }
 
-    private var previewBottomControlsOverlay: some View {
-        VStack {
+    private var previewBottomControlsBar: some View {
+        HStack(alignment: .bottom) {
+            HStack(alignment: .bottom, spacing: 10) {
+                previewBrainButton
+                previewSegmentModeToggleChrome
+            }
+
             Spacer()
-            HStack(alignment: .bottom) {
-                Button(action: togglePreviewFurnitureFit) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(
-                            Circle()
-                                .fill(showingFurnitureFit ? Color.green : Color.blue)
-                                .shadow(radius: 5)
+
+            previewSnapshotButton
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 20)
+        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
+        .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
+    }
+
+    private var previewBrainButton: some View {
+        Button(action: togglePreviewFurnitureFit) {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(
+                    Circle()
+                        .fill(showingFurnitureFit ? Color.green : Color.blue)
+                        .shadow(radius: 5)
+                )
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .frame(width: 76, height: 76)
+        .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
+    }
+
+    private var previewSnapshotButton: some View {
+        Button(action: savePreviewSnapshot) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Color.blue).shadow(radius: 5))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .frame(width: 76, height: 76)
+        .disabled(isCapturingSnapshot)
+        .accessibilityLabel(L10n.RoomViewer.snapshotGestureHintExplanation)
+    }
+
+    private var previewFullVideoModeFloatingButton: some View {
+        Group {
+            if showingFurnitureFit {
+                Button(action: togglePreviewFullVideoIdentifications) {
+                    Image(systemName: "text.viewfinder")
+                        .font(.system(size: 16, weight: .semibold))
+                        .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
+                        .foregroundStyle(Color.cyan)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.black.opacity(0.68)))
+                        .overlay(
+                            Circle().stroke(
+                                showFullVideoWithIdentifications ? Color.cyan.opacity(0.9) : Color.white.opacity(0.18),
+                                lineWidth: 1
+                            )
                         )
                 }
                 .buttonStyle(.plain)
-                .padding(.leading, 16)
-                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
-
-                Spacer()
-
-                Button(action: savePreviewSnapshot) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Circle().fill(Color.blue).shadow(radius: 5))
-                }
-                .buttonStyle(.plain)
-                .disabled(isCapturingSnapshot)
-                .padding(.trailing, 20)
-                .accessibilityLabel(L10n.RoomViewer.snapshotGestureHintExplanation)
+                .contentShape(Circle())
+                .frame(width: 44, height: 44)
+                .padding(.top, 88)
+                .padding(.trailing, 8)
+                .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
+                .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
+                .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
             }
-            .padding(.bottom, 20)
         }
         .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
-        .zIndex(99996)
+        .allowsHitTesting(showingFurnitureFit && !isSavingRoom && !isCapturingSnapshot)
+    }
+
+    private var previewSegmentModeToggleChrome: some View {
+        Group {
+            if showingFurnitureFit && showFullVideoWithIdentifications {
+                Button(action: {
+                    if furnitureFitSegmentationMode == .segmentSelected {
+                        furnitureFitSegmentationMode = .identifyOnly
+                        furnitureFitShowIdentifyLivePreview = true
+                    } else {
+                        guard canSegmentSelectedFurniture else { return }
+                        furnitureFitSegmentationMode = .segmentSelected
+                    }
+                }) {
+                    Text(
+                        furnitureFitSegmentationMode == .segmentSelected
+                            ? L10n.RoomViewer.stopSegmentationAction
+                            : L10n.RoomViewer.segmentFurnitureAction
+                    )
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .background(
+                        Capsule().fill(
+                            canSegmentSelectedFurniture
+                                ? (furnitureFitSegmentationMode == .segmentSelected ? Color.green : Color.orange)
+                                : Color.black.opacity(0.45)
+                        )
+                    )
+                    .shadow(radius: 4)
+                }
+                .disabled(furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture)
+                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
+            }
+        }
+    }
+
+    private var previewFullVideoToolbarHelperOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            if showingFurnitureFit &&
+                !showFullVideoWithIdentifications &&
+                furnitureFitSegmentationMode == .segmentPrimary &&
+                fullVideoSelectionHelperVisible {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.cyan)
+                        .padding(.trailing, 4)
+                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
+                        .font(.caption2)
+                        .foregroundColor(.cyan)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 220, alignment: .leading)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.black.opacity(0.78))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
+                        )
+                }
+                .padding(.top, 6)
+                .padding(.trailing, 54)
+                .offset(y: 108)
+            }
+        }
+        .allowsHitTesting(false)
+        .zIndex(106)
+    }
+
+    private var previewFullVideoFurnitureTapBubbleOverlay: some View {
+        Group {
+            if fullVideoFurnitureTapHintVisible {
+                VStack {
+                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(previewTapHintColors[tapHintColorIndex % previewTapHintColors.count])
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 260)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+                        .padding(.top, 12)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .zIndex(105)
+            }
+        }
+    }
+
+    private func handlePreviewShowingFurnitureFitChanged(isOn: Bool) {
+        if isOn {
+            rtmdetService.ensureModelLoaded()
+            presentPreviewFullVideoSelectionHelperIfNeeded()
+        } else {
+            dismissPreviewFullVideoFurnitureTapHint()
+            cancelPreviewFullVideoSelectionHelper()
+            showFullVideoWithIdentifications = false
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            capturedImage = nil
+        }
+    }
+
+    private func dismissPreviewFullVideoFurnitureTapHint() {
+        fullVideoFurnitureTapHintVisible = false
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = nil
+    }
+
+    private func presentPreviewFullVideoFurnitureTapHintIfNeeded() {
+        guard showFullVideoWithIdentifications else { return }
+        tapHintColorIndex = 0
+        fullVideoFurnitureTapHintVisible = true
+        tapHintColorTimer?.invalidate()
+        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            DispatchQueue.main.async { tapHintColorIndex += 1 }
+        }
+    }
+
+    private func cancelPreviewFullVideoSelectionHelper() {
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperHideTask = nil
+        fullVideoSelectionHelperVisible = false
+    }
+
+    private func presentPreviewFullVideoSelectionHelperIfNeeded() {
+        guard showingFurnitureFit,
+              !showFullVideoWithIdentifications,
+              furnitureFitSegmentationMode == .segmentPrimary else {
+            cancelPreviewFullVideoSelectionHelper()
+            return
+        }
+        fullVideoSelectionHelperHideTask?.cancel()
+        fullVideoSelectionHelperVisible = true
+        fullVideoSelectionHelperHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            fullVideoSelectionHelperVisible = false
+        }
+    }
+
+    private func restorePreviewFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
+        guard showingFurnitureFit else { return }
+        guard furnitureFitSegmentationMode == .segmentSelected else { return }
+        guard newLabels.isEmpty, !oldLabels.isEmpty else { return }
+        dismissPreviewFullVideoFurnitureTapHint()
+        showFullVideoWithIdentifications = true
+        furnitureFitSegmentationMode = .identifyOnly
+        furnitureFitShowIdentifyLivePreview = true
+        presentPreviewFullVideoFurnitureTapHintIfNeeded()
     }
 
     private func togglePreviewFurnitureFit() {
         if showingFurnitureFit {
+            dismissPreviewFullVideoFurnitureTapHint()
+            cancelPreviewFullVideoSelectionHelper()
+            showFullVideoWithIdentifications = false
             showingFurnitureFit = false
         } else {
             rtmdetService.ensureModelLoaded()
+            showFullVideoWithIdentifications = false
             furnitureFitSegmentationMode = .segmentPrimary
             furnitureFitShowIdentifyLivePreview = true
             selectedFurnitureFitLabels = []
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                furnitureFitInitialSegmentationDone = false
-                showingFurnitureFit = true
-            }
+            furnitureFitInitialSegmentationDone = false
+            showingFurnitureFit = true
+        }
+    }
+
+    private func togglePreviewFullVideoIdentifications() {
+        showFullVideoWithIdentifications.toggle()
+        dismissPreviewFullVideoFurnitureTapHint()
+        if showFullVideoWithIdentifications {
+            cancelPreviewFullVideoSelectionHelper()
+            furnitureFitSegmentationMode = .identifyOnly
+            furnitureFitShowIdentifyLivePreview = true
+            presentPreviewFullVideoFurnitureTapHintIfNeeded()
+        } else {
+            furnitureFitSegmentationMode = .segmentPrimary
+            furnitureFitShowIdentifyLivePreview = true
+            presentPreviewFullVideoSelectionHelperIfNeeded()
         }
     }
 
@@ -1751,6 +2020,7 @@ struct SinglePhotoRoomView: View {
     @State private var photoLibraryAssetLocalId: String?
     @State private var supplementalCameraDoubles: [String: Double]?
     @State private var hasRequestedDepthAnythingPrewarm = false
+    @State private var hasRequestedRTMDetPrewarm = false
 
     struct IdentifiedImage: Identifiable {
         let id = UUID()
@@ -2068,6 +2338,7 @@ struct SinglePhotoRoomView: View {
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
             prewarmDepthAnythingModelIfNeeded()
+            prewarmRTMDetModelIfNeeded()
             logDebug("🤖 [View] Depth Anything generation ready")
             // Auto-detect orientation and pre-select it (user can override)
             let detectedOrientation = PhotoOrientation.detect(from: image)
@@ -2172,6 +2443,13 @@ struct SinglePhotoRoomView: View {
         }
     }
 
+    private func prewarmRTMDetModelIfNeeded() {
+        guard !hasRequestedRTMDetPrewarm else { return }
+        hasRequestedRTMDetPrewarm = true
+        RTMDetModelService.shared.ensureModelLoaded()
+        logDebug("[RTMDet][Prewarm] requested from photo room flow")
+    }
+
     private func startDepthAnythingGeneration(image: UIImage) {
         let generationImage = image.fixedOrientation()
         let orientation = selectedOrientation
@@ -2184,6 +2462,7 @@ struct SinglePhotoRoomView: View {
         usdzViewerDestination = nil
         generationErrorMessage = nil
         singlePhotoGenerationStatus = L10n.RoomGeneration.creatingRoom
+        prewarmRTMDetModelIfNeeded()
 
         Task {
             do {

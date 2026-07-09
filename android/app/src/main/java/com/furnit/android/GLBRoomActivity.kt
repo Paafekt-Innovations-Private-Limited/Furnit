@@ -315,11 +315,11 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun ensureNavigationChromeOnTop() {
         topBar.elevation = 40f
         cameraDpadOverlay.elevation = 39f
-        bottomControls.elevation = 38f
-        brainFullVideoButton?.elevation = 37f
-        brainFullVideoButton?.let { rootLayout.bringChildToFront(it) }
+        brainFullVideoButton?.elevation = 38f
+        bottomControls.elevation = 37f
         rootLayout.bringChildToFront(bottomControls)
         rootLayout.bringChildToFront(cameraDpadOverlay)
+        brainFullVideoButton?.takeIf { it.visibility == View.VISIBLE }?.let { rootLayout.bringChildToFront(it) }
         rootLayout.bringChildToFront(topBar)
     }
 
@@ -689,6 +689,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainProgressOverlay.visibility = if (inlineBrainFullVideoEnabled) View.GONE else View.VISIBLE
         updateInlineBrainSegmentButton()
         updateBrainFullVideoButtonAppearance()
+        ensureNavigationChromeOnTop()
         rebindInlineBrainCameraIfActive()
         LogUtil.d(
             TAG,
@@ -757,6 +758,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlay.visibility = View.VISIBLE
         brainFullVideoButton?.visibility = View.VISIBLE
         updateBrainFullVideoButtonAppearance()
+        ensureNavigationChromeOnTop()
         brainDetectionOverlayView.setMaskAndDetections(
             mask = null,
             dets = emptyList(),

@@ -202,6 +202,15 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         view.layer.masksToBounds = true
         return view
     }()
+    /// Hosts ``previewLayer`` as a subview so the camera feed renders above the container layer
+    /// but below mask/bbox overlays (layer sublayers sit behind UIKit subviews).
+    private let cameraPreviewHostView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .black
+        view.isUserInteractionEnabled = false
+        return view
+    }()
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
@@ -891,8 +900,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         previewLayer.isHidden = !shouldShowLiveCameraPreview
         logDebug("📺 [FurnitureFit] previewLayer initial hidden=\(previewLayer.isHidden) rtmDet=\(currentModelIsRTMDet) showLivePreview=\(showIdentifyLivePreview)")
         addSubview(previewContainerView)
-        previewContainerView.layer.addSublayer(previewLayer)
-        
+        previewContainerView.addSubview(cameraPreviewHostView)
+        cameraPreviewHostView.layer.addSublayer(previewLayer)
+        cameraPreviewHostView.isHidden = !shouldShowLiveCameraPreview
+
         maskImageView.isUserInteractionEnabled = true
         detectionBBoxOverlayView.clipsToBounds = true
         detectionBBoxOverlayView.layer.masksToBounds = true
@@ -908,6 +919,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
             previewContainerView.bottomAnchor.constraint(equalTo: bottomAnchor),
             previewContainerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             previewContainerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            cameraPreviewHostView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
+            cameraPreviewHostView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
+            cameraPreviewHostView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            cameraPreviewHostView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
             arSCNView.topAnchor.constraint(equalTo: previewContainerView.topAnchor),
             arSCNView.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor),
             arSCNView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
@@ -1074,7 +1089,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        previewLayer.frame = previewContainerView.bounds
+        previewLayer.frame = cameraPreviewHostView.bounds
         if isUsingLiveFrameAlignedOverlay {
             applyLockedOrientationVideoRotation()
         }
@@ -1189,10 +1204,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     private func updateVideoIdentificationPresentation() {
         DispatchQueue.main.async {
-            self.previewLayer.isHidden = !self.shouldShowLiveCameraPreview
-            logDebug("📺 [FurnitureFit] previewLayer hidden=\(self.previewLayer.isHidden) rtmDet=\(self.currentModelIsRTMDet) identify=\(self.segmentationMode == .identifyOnly) fullVideo=\(self.showFullVideoWithIdentifications) fullVideoSegment=\(self.isFullVideoSelectedSegmentation)")
-            if self.shouldShowLiveCameraPreview {
+            let showLive = self.shouldShowLiveCameraPreview
+            if self.isUsingARCameraPath {
+                // AR-as-camera: frames come from ARSession, not AVCaptureVideoPreviewLayer.
+                self.arSCNView.isHidden = !showLive
+                self.arSCNView.alpha = showLive ? 1 : 0
+                self.previewLayer.isHidden = true
+                self.cameraPreviewHostView.isHidden = true
+            } else {
+                self.arSCNView.isHidden = true
+                self.arSCNView.alpha = 0
+                self.previewLayer.isHidden = !showLive
+                self.cameraPreviewHostView.isHidden = !showLive
+                if showLive, !self.captureSession.isRunning {
+                    self.startClassicCameraPathIfNeeded()
+                }
+            }
+            logDebug("📺 [FurnitureFit] previewLayer hidden=\(self.previewLayer.isHidden) arCamera=\(self.isUsingARCameraPath) arSCNHidden=\(self.arSCNView.isHidden) captureRunning=\(self.captureSession.isRunning) rtmDet=\(self.currentModelIsRTMDet) identify=\(self.segmentationMode == .identifyOnly) fullVideo=\(self.showFullVideoWithIdentifications) fullVideoSegment=\(self.isFullVideoSelectedSegmentation)")
+            if showLive {
                 self.maskImageView.image = nil
+                self.previewLayer.frame = self.cameraPreviewHostView.bounds
             }
             self.applyLockedOrientationVideoRotation()
             self.applyCurrentOverlayScaleTransform()
@@ -2488,6 +2519,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                             "policy=ar_camera lidar=\(hasLiDAR) → segmentation from ARFrame.capturedImage; depth via \(hasLiDAR ? "sceneDepth" : "plane raycast"). Filters: FurnitureFitAR | FurnitureFitOverlay | FurnitureFitSize"
                         )
                     }
+                    self.updateVideoIdentificationPresentation()
                 }
             }
         }
@@ -2599,6 +2631,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
                 if !self.captureSession.isRunning {
                     CameraOwnershipDiagnostics.log(owner: "FurnitureFitContainerView.AVCapture", event: "capture_startRequested", details: "after_ar_pause_settle")
                     self.captureSession.startRunning()
+                }
+                DispatchQueue.main.async {
+                    self.updateVideoIdentificationPresentation()
                 }
             }
 
