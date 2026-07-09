@@ -67,9 +67,25 @@ class ModelDetailActivityTest {
     }
 
     @Test
+    fun testIndustrialLoftRoomLoadsWithoutCrashing() {
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("MODEL_ID", "industrial_loft")
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            val latch = CountDownLatch(1)
+            scenario.onActivity { activity ->
+                activity.window.decorView.postDelayed({ latch.countDown() }, 4000)
+            }
+            assertTrue("Industrial loft room should stay alive for 4s", latch.await(10, TimeUnit.SECONDS))
+            Log.d(TAG, "Industrial loft room loaded without immediate crash")
+        }
+    }
+
+    @Test
     fun testActivityLaunchesWithModelId() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -83,7 +99,7 @@ class ModelDetailActivityTest {
     @Test
     fun testSceneViewExists() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -101,7 +117,7 @@ class ModelDetailActivityTest {
     @Test
     fun testTopBarOverlayExists() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -127,7 +143,7 @@ class ModelDetailActivityTest {
     @Test
     fun testSaveButtonVisibleInPreviewMode() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
             putExtra("IS_PREVIEW", true)
             putExtra("GLB_PATH", "/data/test/room.glb")
         }
@@ -144,7 +160,7 @@ class ModelDetailActivityTest {
     @Test
     fun testShareButtonVisibleInViewMode() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -164,7 +180,7 @@ class ModelDetailActivityTest {
     @Test
     fun testStatusBarColor() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -180,7 +196,7 @@ class ModelDetailActivityTest {
     @Test
     fun testNavigationBarColor() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -196,7 +212,7 @@ class ModelDetailActivityTest {
     @Test
     fun testBackButtonFinishesActivity() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -223,7 +239,7 @@ class ModelDetailActivityTest {
     @Test
     fun testSceneViewFullScreen() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -280,7 +296,7 @@ class ModelDetailActivityTest {
     @Test
     fun testRootLayoutFullScreen() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -321,7 +337,7 @@ class ModelDetailActivityTest {
     @Test
     fun testTopBarOverlayOnTopOfSceneView() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
@@ -353,7 +369,7 @@ class ModelDetailActivityTest {
     @Test
     fun testCameraPositioningForRoomView() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
+            putExtra("MODEL_ID", "scandinavian_minimal")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->

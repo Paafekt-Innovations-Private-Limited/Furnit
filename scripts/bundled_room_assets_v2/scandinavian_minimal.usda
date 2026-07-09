@@ -1,0 +1,333 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Room" {
+    def Scope "Looks" {
+    def Material "wall" {
+        token outputs:surface.connect = </Room/Looks/wall/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </Room/Looks/wall/DiffuseTexture.outputs:rgb>
+            float inputs:metallic = 0
+            float inputs:roughness = 0.72
+            token outputs:surface
+        }
+        def Shader "PrimvarReader_st" {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            token inputs:varname = "st"
+            float2 outputs:result
+        }
+        def Shader "DiffuseTexture" {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @textures/scandi_plaster.png@
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float2 inputs:st.connect = </Room/Looks/wall/PrimvarReader_st.outputs:result>
+            color3f outputs:rgb
+        }
+    }
+    def Material "floor" {
+        token outputs:surface.connect = </Room/Looks/floor/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </Room/Looks/floor/DiffuseTexture.outputs:rgb>
+            float inputs:metallic = 0
+            float inputs:roughness = 0.62
+            token outputs:surface
+        }
+        def Shader "PrimvarReader_st" {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            token inputs:varname = "st"
+            float2 outputs:result
+        }
+        def Shader "DiffuseTexture" {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @textures/scandi_light_oak.png@
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float2 inputs:st.connect = </Room/Looks/floor/PrimvarReader_st.outputs:result>
+            color3f outputs:rgb
+        }
+    }
+    def Material "ceiling" {
+        token outputs:surface.connect = </Room/Looks/ceiling/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </Room/Looks/ceiling/DiffuseTexture.outputs:rgb>
+            float inputs:metallic = 0
+            float inputs:roughness = 0.76
+            token outputs:surface
+        }
+        def Shader "PrimvarReader_st" {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            token inputs:varname = "st"
+            float2 outputs:result
+        }
+        def Shader "DiffuseTexture" {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @textures/scandi_plaster.png@
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float2 inputs:st.connect = </Room/Looks/ceiling/PrimvarReader_st.outputs:result>
+            color3f outputs:rgb
+        }
+    }
+    def Material "trim" {
+        token outputs:surface.connect = </Room/Looks/trim/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.96, 0.95, 0.92)
+            float inputs:metallic = 0
+            float inputs:roughness = 0.58
+            token outputs:surface
+        }
+    }
+    def Material "white_frame" {
+        token outputs:surface.connect = </Room/Looks/white_frame/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.96, 0.95, 0.92)
+            float inputs:metallic = 0
+            float inputs:roughness = 0.45
+            token outputs:surface
+        }
+    }
+    def Material "soft_glass" {
+        token outputs:surface.connect = </Room/Looks/soft_glass/PreviewSurface.outputs:surface>
+        def Shader "PreviewSurface" {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.82, 0.9, 0.96)
+            float inputs:metallic = 0
+            float inputs:roughness = 0.18
+            float inputs:opacity = 0.55
+            token outputs:surface
+        }
+    }
+    }
+    def Mesh "floor_inward" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, -2), (2.5, 0, -2), (2.5, 0, 2), (-2.5, 0, 2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+        texCoord2f[] primvars:st = [(0, 0), (5, 0), (5, 4), (0, 4)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/floor>
+    }
+    def Mesh "ceiling_inward" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 2.55, -2), (2.5, 2.55, -2), (2.5, 2.55, 2), (-2.5, 2.55, 2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (3.33333, 0), (3.33333, 2.66667), (0, 2.66667)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/ceiling>
+    }
+    def Mesh "back_wall_solid_inward" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, 2), (2.5, 0, 2), (2.5, 2.55, 2), (-2.5, 2.55, 2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+        texCoord2f[] primvars:st = [(0, 0), (5, 0), (5, 2.55), (0, 2.55)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "left_wall_inward" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, -2), (-2.5, 0, 2), (-2.5, 2.55, 2), (-2.5, 2.55, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+        texCoord2f[] primvars:st = [(0, 0), (4, 0), (4, 2.55), (0, 2.55)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "right_wall_inward" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(2.5, 0, -2), (2.5, 0, 2), (2.5, 2.55, 2), (2.5, 2.55, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (4, 0), (4, 2.55), (0, 2.55)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "baseboard_back" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, 1.955), (-2.5, 0, 2), (-2.5, 0.1, 1.955), (-2.5, 0.1, 2), (2.5, 0, 1.955), (2.5, 0, 2), (2.5, 0.1, 1.955), (2.5, 0.1, 2)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/trim>
+    }
+    def Mesh "baseboard_left" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, -2), (-2.5, 0, 2), (-2.5, 0.1, -2), (-2.5, 0.1, 2), (-2.455, 0, -2), (-2.455, 0, 2), (-2.455, 0.1, -2), (-2.455, 0.1, 2)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/trim>
+    }
+    def Mesh "baseboard_right" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(2.455, 0, -2), (2.455, 0, 2), (2.455, 0.1, -2), (2.455, 0.1, 2), (2.5, 0, -2), (2.5, 0, 2), (2.5, 0.1, -2), (2.5, 0.1, 2)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/trim>
+    }
+    def Mesh "baseboard_front" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, -2), (-2.5, 0, -1.955), (-2.5, 0.1, -2), (-2.5, 0.1, -1.955), (2.5, 0, -2), (2.5, 0, -1.955), (2.5, 0.1, -2), (2.5, 0.1, -1.955)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/trim>
+    }
+    def Mesh "front_wall_left_strip" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.5, 0, -2), (-2.15, 0, -2), (-2.15, 2.55, -2), (-2.5, 2.55, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (0.35, 0), (0.35, 2.55), (0, 2.55)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "front_wall_right_strip" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(2.15, 0, -2), (2.5, 0, -2), (2.5, 2.55, -2), (2.15, 2.55, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (0.35, 0), (0.35, 2.55), (0, 2.55)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "front_wall_top_strip" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.15, 2.45, -2), (2.15, 2.45, -2), (2.15, 2.55, -2), (-2.15, 2.55, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (4.3, 0), (4.3, 0.1), (0, 0.1)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "front_wall_bottom_strip" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.15, 0, -2), (2.15, 0, -2), (2.15, 0.2, -2), (-2.15, 0.2, -2)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (4.3, 0), (4.3, 0.2), (0, 0.2)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/wall>
+    }
+    def Mesh "front_window_glass" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.15, 0.2, -1.988), (2.15, 0.2, -1.988), (2.15, 2.45, -1.988), (-2.15, 2.45, -1.988)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (4.3, 0), (4.3, 2.25), (0, 2.25)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </Room/Looks/soft_glass>
+    }
+    def Mesh "front_window_outer_top" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.1775, 2.4225, -2), (-2.1775, 2.4225, -1.935), (-2.1775, 2.4775, -2), (-2.1775, 2.4775, -1.935), (2.1775, 2.4225, -2), (2.1775, 2.4225, -1.935), (2.1775, 2.4775, -2), (2.1775, 2.4775, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_outer_bottom" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.1775, 0.1725, -2), (-2.1775, 0.1725, -1.935), (-2.1775, 0.2275, -2), (-2.1775, 0.2275, -1.935), (2.1775, 0.1725, -2), (2.1775, 0.1725, -1.935), (2.1775, 0.2275, -2), (2.1775, 0.2275, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_outer_left" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.1775, 0.1725, -2), (-2.1775, 0.1725, -1.935), (-2.1775, 2.4775, -2), (-2.1775, 2.4775, -1.935), (-2.1225, 0.1725, -2), (-2.1225, 0.1725, -1.935), (-2.1225, 2.4775, -2), (-2.1225, 2.4775, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_outer_right" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(2.1225, 0.1725, -2), (2.1225, 0.1725, -1.935), (2.1225, 2.4775, -2), (2.1225, 2.4775, -1.935), (2.1775, 0.1725, -2), (2.1775, 0.1725, -1.935), (2.1775, 2.4775, -2), (2.1775, 2.4775, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_mullion_v_1" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-1.1025, 0.2, -2), (-1.1025, 0.2, -1.935), (-1.1025, 2.45, -2), (-1.1025, 2.45, -1.935), (-1.0475, 0.2, -2), (-1.0475, 0.2, -1.935), (-1.0475, 2.45, -2), (-1.0475, 2.45, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_mullion_v_2" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-0.0275, 0.2, -2), (-0.0275, 0.2, -1.935), (-0.0275, 2.45, -2), (-0.0275, 2.45, -1.935), (0.0275, 0.2, -2), (0.0275, 0.2, -1.935), (0.0275, 2.45, -2), (0.0275, 2.45, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_mullion_v_3" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(1.0475, 0.2, -2), (1.0475, 0.2, -1.935), (1.0475, 2.45, -2), (1.0475, 2.45, -1.935), (1.1025, 0.2, -2), (1.1025, 0.2, -1.935), (1.1025, 2.45, -2), (1.1025, 2.45, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_mullion_h_0" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.15, 1.2975, -2), (-2.15, 1.2975, -1.935), (-2.15, 1.3525, -2), (-2.15, 1.3525, -1.935), (2.15, 1.2975, -2), (2.15, 1.2975, -1.935), (2.15, 1.3525, -2), (2.15, 1.3525, -1.935)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "front_window_sill" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-2.275, 0.1, -1.99), (-2.275, 0.1, -1.77), (-2.275, 0.18, -1.99), (-2.275, 0.18, -1.77), (2.275, 0.1, -1.99), (2.275, 0.1, -1.77), (2.275, 0.18, -1.99), (2.275, 0.18, -1.77)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/white_frame>
+    }
+    def Mesh "minimal_center_wall_return" {
+        uniform token subdivisionScheme = "none"
+        bool doubleSided = false
+        point3f[] points = [(-0.08, 0, -0.09), (-0.08, 0, -0.01), (-0.08, 2.5, -0.09), (-0.08, 2.5, -0.01), (0.08, 0, -0.09), (0.08, 0, -0.01), (0.08, 2.5, -0.09), (0.08, 2.5, -0.01)]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [1, 3, 0, 4, 1, 0, 0, 3, 2, 2, 4, 0, 1, 7, 3, 5, 1, 4, 5, 7, 1, 3, 7, 2, 6, 4, 2, 2, 7, 6, 6, 5, 4, 7, 5, 6]
+        rel material:binding = </Room/Looks/wall>
+    }
+}

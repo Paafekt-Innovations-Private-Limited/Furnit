@@ -249,7 +249,7 @@
 "faq.howToPlace" = "How do I place furniture in my room?";
 "faq.howToPlaceAnswer" = "After you tap Segment, the selected furniture appears as an overlay in the room. Drag to position it, pinch to resize, and rotate to adjust its orientation.";
 "faq.sampleRoom" = "Can I use a sample room instead of my own?";
-"faq.sampleRoomAnswer" = "Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.";
+"faq.sampleRoomAnswer" = "Yes! The app provides sample rooms (Scandinavian Minimal, Industrial Loft) for you to experiment with. Access them from the home screen to try out features without creating your own room first.";
 "faq.accuracy" = "How accurate is the 3D model?";
 "faq.accuracyAnswer" = "The 3D room is estimated from one photo using camera calibration and metric depth. Dimensions are useful as guidance, not tape-measure accurate. Furniture sizing is most reliable on phones with AR/depth support.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";

@@ -1,0 +1,17 @@
+industrial_loft handoff note
+
+Width x Height x Depth: 8.00 m x 3.05 m x 6.00 m
+Front (window) wall: -Z
+Back wall: +Z solid wall, fully modeled and textured
+Depth axis: Z
+Width axis: X
+Up axis: Y
+Floor: Y = 0
+Ceiling: Y = 3.05
+Room footprint centered on origin in X/Z; floor plane at Y=0.
+Wall/floor/ceiling normals: face inward into the room.
+Back wall uses inward normal (-Z), so a camera outside +Z looking toward -Z can see into the room when backface culling is enabled.
+Materials: glTF PBR metallic-roughness. Walls/wood/floor/fabric-like/dielectric surfaces metallicFactor = 0. Roughness generally 0.5-0.8.
+Metallic objects: Black steel window frames use metallicFactor=0.75. Walls/floor/ceiling/brick remain metallicFactor=0.
+No cameras or lights included.
+Android GLB uses embedded PNG textures; no WebP, KTX2, or BasisU.

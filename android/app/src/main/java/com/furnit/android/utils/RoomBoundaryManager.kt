@@ -76,6 +76,35 @@ class RoomBoundaryManager {
     private var roomBounds: RoomBounds? = null
 
     /**
+     * Initialize bounds for a model whose bounding box was centered at the world origin.
+     * X/Z are symmetric; Y spans [-height/2, +height/2] (not floor-at-zero).
+     */
+    fun initializeFromCenteredExtents(
+        width: Float = DEFAULT_WIDTH,
+        height: Float = DEFAULT_HEIGHT,
+        depth: Float = DEFAULT_DEPTH,
+    ) {
+        val halfWidth = width / 2f
+        val halfHeight = height / 2f
+        val halfDepth = depth / 2f
+
+        roomBounds = RoomBounds(
+            minX = -halfWidth,
+            maxX = halfWidth,
+            minY = -halfHeight,
+            maxY = halfHeight,
+            minZ = -halfDepth,
+            maxZ = halfDepth,
+        )
+
+        LogUtil.d(TAG, "Initialized centered room bounds:")
+        LogUtil.d(TAG, "  Size: ${width}x${height}x${depth}")
+        LogUtil.d(TAG, "  X: ${-halfWidth} to ${halfWidth}")
+        LogUtil.d(TAG, "  Y: ${-halfHeight} to ${halfHeight}")
+        LogUtil.d(TAG, "  Z: ${-halfDepth} to ${halfDepth}")
+    }
+
+    /**
      * Initialize with room dimensions (used for GlbGenerator rooms)
      * Room is centered at origin: X from -width/2 to +width/2
      *                             Y from 0 to height
@@ -200,39 +229,117 @@ class RoomBoundaryManager {
     }
 
     /**
-     * Inset from back wall: depth-adaptive so one formula works for shallow and deep rooms.
-     * Shallow rooms: smaller fraction (camera stays near back). Deep rooms: larger fraction (camera further in, less grey).
+     * Which horizontal axis carries the room's view depth (longest X/Z span; Y is always up).
+     * Cozy and other baked rooms may export depth along X instead of Z.
      */
-    private fun backCenterInsetFraction(depth: Float): Float {
-        val t = (depth / 6f).coerceIn(0f, 1f)  // 0 at depth 0, 1 at depth >= 6m
-        return 0.18f + 0.32f * t  // 18% for tiny rooms, up to 50% for deep rooms
+    private enum class ViewDepthAxis { X, Z }
+
+    private data class ViewDepthFrame(
+        val axis: ViewDepthAxis,
+        val span: Float,
+        val front: Float,
+        val back: Float,
+        val lateralCenter: Float,
+        val centerY: Float,
+    )
+
+    private fun resolveViewDepth(bounds: RoomBounds): ViewDepthFrame {
+        // Cozy-like exports can have real room depth along X while Z is a thin slab (~0.8 m).
+        // Keep Z as default (vintage parity); only remap when Z span is implausibly small.
+        val depthTooThin = bounds.depth < minOf(bounds.width * 0.5f, 1.5f)
+        val useXAsDepth = bounds.width > bounds.depth && depthTooThin
+        return if (useXAsDepth) {
+            ViewDepthFrame(
+                axis = ViewDepthAxis.X,
+                span = bounds.width,
+                front = bounds.minX,
+                back = bounds.maxX,
+                lateralCenter = bounds.centerZ,
+                centerY = bounds.centerY,
+            )
+        } else {
+            ViewDepthFrame(
+                axis = ViewDepthAxis.Z,
+                span = bounds.depth,
+                front = bounds.minZ,
+                back = bounds.maxZ,
+                lateralCenter = bounds.centerX,
+                centerY = bounds.centerY,
+            )
+        }
+    }
+
+    private fun cameraPositionForDepthFrame(
+        frame: ViewDepthFrame,
+        depthCoordinate: Float,
+        eyeYOffset: Float,
+    ): Position {
+        return when (frame.axis) {
+            ViewDepthAxis.X -> Position(depthCoordinate, frame.centerY + eyeYOffset, frame.lateralCenter)
+            ViewDepthAxis.Z -> Position(frame.lateralCenter, frame.centerY + eyeYOffset, depthCoordinate)
+        }
+    }
+
+    private fun lookAtForDepthFrame(frame: ViewDepthFrame): Position {
+        return when (frame.axis) {
+            ViewDepthAxis.X -> Position(frame.front, frame.centerY, frame.lateralCenter)
+            ViewDepthAxis.Z -> Position(frame.lateralCenter, frame.centerY, frame.front)
+        }
     }
 
     /**
-     * Get camera position at the center of the imaginary back wall, pushed into the room.
-     * Inset is depth-adaptive so framing works for both small and large rooms.
+     * Depth-adaptive inset from back wall (matches iOS RealityKitBoundaryManager.backCenterInsetFraction).
+     * Shallow rooms: smaller fraction (camera stays near back). Deep rooms: slightly further in.
+     */
+    private fun backCenterInsetFraction(depth: Float): Float {
+        val t = (depth / 6f).coerceIn(0f, 1f)
+        return 0.035f + 0.065f * t
+    }
+
+    /**
+     * Bounds-driven camera: pick longest horizontal axis as view depth, then place the camera
+     * outside the back face looking at the front (SceneKit vintage / bundled sample rooms).
+     */
+    fun getCameraOutsideBackView(standoffFraction: Float = 0.3f): CameraSetup {
+        val bounds = roomBounds ?: run {
+            initializeFromCenteredExtents()
+            roomBounds!!
+        }
+        val frame = resolveViewDepth(bounds)
+        val standoff = frame.span * standoffFraction
+        val position = cameraPositionForDepthFrame(frame, frame.back + standoff, eyeYOffset = 0f)
+        val lookAt = lookAtForDepthFrame(frame)
+
+        LogUtil.d(
+            TAG,
+            "[OutsideBack] axis=${frame.axis} span=${frame.span} standoff=$standoff " +
+                "bbox=${bounds.width}x${bounds.height}x${bounds.depth} -> pos=(${position.x}, ${position.y}, ${position.z}) " +
+                "lookAt=(${lookAt.x}, ${lookAt.y}, ${lookAt.z})",
+        )
+        return CameraSetup(position = position, lookAt = lookAt)
+    }
+
+    /**
+     * Bounds-driven interior camera: same depth-axis selection as [getCameraOutsideBackView],
+     * inset from the back wall toward the front (user-generated / file-system rooms).
      */
     fun getCameraAtBackCenter(): CameraSetup {
         val bounds = roomBounds ?: run {
-            initializeFromDimensions()
+            initializeFromCenteredExtents()
             roomBounds!!
         }
+        val frame = resolveViewDepth(bounds)
+        val fraction = backCenterInsetFraction(frame.span)
+        val insetFromBack = (frame.span * fraction).coerceAtLeast(CAMERA_PADDING)
+        val position = cameraPositionForDepthFrame(frame, frame.back - insetFromBack, eyeYOffset = 0.4f)
+        val lookAt = lookAtForDepthFrame(frame)
 
-        val fraction = backCenterInsetFraction(bounds.depth)
-        val insetFromBack = (bounds.depth * fraction).coerceAtLeast(CAMERA_PADDING)
-        val camX = bounds.centerX
-        val camY = bounds.centerY + 0.4f
-        val camZ = bounds.backWallZ - insetFromBack
-
-        val targetX = bounds.centerX
-        val targetY = bounds.centerY
-        val targetZ = bounds.frontWallZ
-
-        LogUtil.d(TAG, "[BackCenter] depth=${bounds.depth}m fraction=$fraction inset=${insetFromBack}m -> pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
-        return CameraSetup(
-            position = Position(camX, camY, camZ),
-            lookAt = Position(targetX, targetY, targetZ)
+        LogUtil.d(
+            TAG,
+            "[BackCenter] axis=${frame.axis} span=${frame.span}m fraction=$fraction inset=${insetFromBack}m " +
+                "-> pos=(${position.x}, ${position.y}, ${position.z}) lookAt=(${lookAt.x}, ${lookAt.y}, ${lookAt.z})",
         )
+        return CameraSetup(position = position, lookAt = lookAt)
     }
 
     /**

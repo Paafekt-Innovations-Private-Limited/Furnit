@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import android.view.MotionEvent
 import com.furnit.android.models.ModelManager
 import com.furnit.android.utils.RoomBoundaryManager
+import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.ModelNode
@@ -87,6 +88,7 @@ class ModelDetailActivity : AppCompatActivity() {
         boundaryManager = RoomBoundaryManager()
 
         sceneView = findViewById(R.id.sceneView)
+        sceneView.post { RoomSceneLighting.applyIndoorPbrLighting(sceneView) }
         loadingIndicator = findViewById(R.id.loadingIndicator)
         modelTitle = findViewById(R.id.modelTitle)
         saveButton = findViewById(R.id.saveButton)
@@ -484,7 +486,7 @@ class ModelDetailActivity : AppCompatActivity() {
         assetPath: String,
         roomWidth: Float?,
         roomHeight: Float?,
-        roomDepth: Float?
+        roomDepth: Float?,
     ) {
         lifecycleScope.launch {
             try {
@@ -535,9 +537,14 @@ class ModelDetailActivity : AppCompatActivity() {
                 val w = bboxExtents.x
                 val h = bboxExtents.y
                 val d = bboxExtents.z
-                boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                LogUtil.d(TAG, "[ModelDetail] getCameraCenteredView CALLED (bbox ${w}x${h}x${d})")
-                val cameraSetup = boundaryManager.getCameraCenteredView()
+                boundaryManager.initializeFromCenteredExtents(width = w, height = h, depth = d)
+                val cameraSetup = if (isFileSystemPath) {
+                    LogUtil.d(TAG, "[ModelDetail] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                    boundaryManager.getCameraAtBackCenter()
+                } else {
+                    LogUtil.d(TAG, "[ModelDetail] getCameraOutsideBackView CALLED (bundled bbox ${w}x${h}x${d})")
+                    boundaryManager.getCameraOutsideBackView()
+                }
                 LogUtil.d(TAG, "[ModelDetail] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
 
                 // Position camera IMMEDIATELY after adding model

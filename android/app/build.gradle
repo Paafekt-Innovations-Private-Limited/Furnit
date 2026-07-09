@@ -9,6 +9,9 @@ plugins {
 def unusedRuntimeModelAssetExcludes = [
         "yolo11l-seg.param",
         "yolo11l-seg.bin",
+        "*.bak",
+        "*.bak2",
+        "*.ktx2.glb.bak",
 ]
 
 android {

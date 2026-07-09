@@ -39,6 +39,7 @@ import com.furnit.android.ar.rotateToMatchLockedRoomPhoto
 import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
+import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -155,6 +156,7 @@ class FurnitureFitFragment : Fragment() {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             visibility = View.GONE
         }
+        roomSceneView.post { RoomSceneLighting.applyIndoorPbrLighting(roomSceneView) }
         loadRoom3D()
 
         overlay = FurnitureFitOverlayView(requireContext()).apply {
@@ -1078,7 +1080,7 @@ class FurnitureFitFragment : Fragment() {
                 val ctx = context
                 val modelInstance = when {
                     // Bundled rooms in assets
-                    roomId == "vintage" || roomId == "cozy_room" -> {
+                    ModelManager.isBundledRoomId(roomId) -> {
                         val assetPath = "${ModelManager.BUNDLED_ROOM_ASSETS_DIR}/$roomId.glb"
                         LogUtil.d("FurnitureFit", "Using assets: $assetPath")
                         roomSceneView.modelLoader.createModelInstance(assetFileLocation = assetPath)
@@ -1137,11 +1139,15 @@ class FurnitureFitFragment : Fragment() {
                     val w = bboxExtents.x
                     val h = bboxExtents.y
                     val d = bboxExtents.z
-                    boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    // Match iOS FurnitureFit room framing: start near the back wall looking toward the
-                    // front wall instead of sitting at room center, which can end up inside geometry.
-                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
-                    val cameraSetup = boundaryManager.getCameraAtBackCenter()
+                    boundaryManager.initializeFromCenteredExtents(width = w, height = h, depth = d)
+                    val isBundledSampleRoom = ModelManager.isBundledRoomId(roomId)
+                    val cameraSetup = if (isBundledSampleRoom) {
+                        LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraOutsideBackView CALLED (bundled bbox ${w}x${h}x${d})")
+                        boundaryManager.getCameraOutsideBackView()
+                    } else {
+                        LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                        boundaryManager.getCameraAtBackCenter()
+                    }
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position
                         lookAt(cameraSetup.lookAt)

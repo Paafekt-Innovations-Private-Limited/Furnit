@@ -140,8 +140,8 @@ struct FileInfoSnackbar: View {
 
             FileInfoSnackbar(
                 model: USDZModel(
-                    name: "cozy_living_room",
-                    fileName: "cozy_living_room",
+                    name: "scandinavian_minimal",
+                    fileName: "scandinavian_minimal",
                     isSavedRoom: true,
                     fileType: .usdz,
                     fileSize: 15_728_640 // 15 MB

@@ -14,6 +14,11 @@ class ModelManager(private val context: Context) {
         /** Built-in demo GLBs under `assets/bundled_rooms/`. */
         const val BUNDLED_ROOM_ASSETS_DIR = "bundled_rooms"
 
+        val BUNDLED_ROOM_IDS = setOf("scandinavian_minimal", "industrial_loft")
+
+        fun isBundledRoomId(roomId: String?): Boolean =
+            roomId != null && roomId in BUNDLED_ROOM_IDS
+
         private fun normalizeRoomName(roomName: String): String {
             return roomName.trim()
                 .replace("\\s+".toRegex(), " ")
@@ -41,10 +46,22 @@ class ModelManager(private val context: Context) {
 
         // Add bundled models at the bottom
         models.add(
-            Model("vintage", "Vintage Living Room", "$BUNDLED_ROOM_ASSETS_DIR/vintage.glb", createdAt = 0L),
+            Model(
+                id = "scandinavian_minimal",
+                name = "Scandinavian Minimal",
+                assetPath = "$BUNDLED_ROOM_ASSETS_DIR/scandinavian_minimal.glb",
+                createdAt = 0L,
+                photoOrientation = "landscape",
+            ),
         )
         models.add(
-            Model("cozy_room", "Cozy Living Room", "$BUNDLED_ROOM_ASSETS_DIR/cozy_room.glb", createdAt = 0L),
+            Model(
+                id = "industrial_loft",
+                name = "Industrial Loft",
+                assetPath = "$BUNDLED_ROOM_ASSETS_DIR/industrial_loft.glb",
+                createdAt = 0L,
+                photoOrientation = "landscape",
+            ),
         )
     }
 

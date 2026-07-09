@@ -965,8 +965,8 @@ class USDZModelManager: ObservableObject {
         
         // Bundle models with their fixed orientations
         let bundleModelConfigs: [(name: String, orientation: PhotoOrientation)] = [
-            ("vintage_living_room", .landscape),
-            ("cozy_living_room_baked", .portrait)
+            ("scandinavian_minimal", .landscape),
+            ("industrial_loft", .landscape)
         ]
 
         if debugMode {

@@ -102,6 +102,79 @@ class RoomBoundaryManagerTest {
     }
 
     @Test
+    fun testCameraOutsideBackViewForBundledRooms() {
+        manager.initializeFromCenteredExtents(8.0f, 5.6f, 9.0f)
+
+        val cameraSetup = manager.getCameraOutsideBackView()
+        val bounds = manager.getBounds()!!
+
+        assertEquals("Camera X centered", bounds.centerX, cameraSetup.position.x, 0.01f)
+        assertEquals("Camera Y at room center height", bounds.centerY, cameraSetup.position.y, 0.01f)
+        assertEquals("Look at front wall Z", bounds.frontWallZ, cameraSetup.lookAt.z, 0.01f)
+
+        val expectedCamZ = bounds.backWallZ + bounds.depth * 0.3f
+        assertEquals("Camera outside back wall (SceneKit vintage parity)", expectedCamZ, cameraSetup.position.z, 0.01f)
+        assertTrue("Camera should be outside the room", cameraSetup.position.z > bounds.backWallZ)
+    }
+
+    @Test
+    fun testCameraOutsideBackViewUsesLongestHorizontalAxis() {
+        // Cozy-like export: 3m x 2m x 0.8m — depth is along X, not Z.
+        manager.initializeFromCenteredExtents(3.0f, 2.0f, 0.8f)
+
+        val cameraSetup = manager.getCameraOutsideBackView()
+        val bounds = manager.getBounds()!!
+
+        assertEquals("Look at front wall X", bounds.minX, cameraSetup.lookAt.x, 0.01f)
+        assertEquals("Camera centered on Z", bounds.centerZ, cameraSetup.position.z, 0.01f)
+        val expectedCamX = bounds.maxX + bounds.width * 0.3f
+        assertEquals("Camera outside back wall on X axis", expectedCamX, cameraSetup.position.x, 0.01f)
+        assertTrue("Camera should be outside the room on X", cameraSetup.position.x > bounds.maxX)
+    }
+
+    @Test
+    fun testCameraOutsideBackViewKeepsZDepthForVintageSizedRooms() {
+        manager.initializeFromCenteredExtents(12.2f, 4.0f, 10.6f)
+
+        val cameraSetup = manager.getCameraOutsideBackView()
+        val bounds = manager.getBounds()!!
+
+        assertEquals("Look at front wall Z", bounds.frontWallZ, cameraSetup.lookAt.z, 0.01f)
+        assertEquals("Camera centered on X", bounds.centerX, cameraSetup.position.x, 0.01f)
+        val expectedCamZ = bounds.backWallZ + bounds.depth * 0.3f
+        assertEquals("Camera outside back wall on Z axis", expectedCamZ, cameraSetup.position.z, 0.01f)
+    }
+
+    @Test
+    fun testCameraAtBackCenterMatchesSwiftInset() {
+        manager.initializeFromCenteredExtents(8.0f, 5.6f, 9.0f)
+
+        val cameraSetup = manager.getCameraAtBackCenter()
+        val bounds = manager.getBounds()!!
+
+        assertEquals("Camera X centered", bounds.centerX, cameraSetup.position.x, 0.01f)
+        assertEquals("Camera Y slightly above center", bounds.centerY + 0.4f, cameraSetup.position.y, 0.01f)
+        assertEquals("Look at front wall Z", bounds.frontWallZ, cameraSetup.lookAt.z, 0.01f)
+
+        // depth=9 -> t=1 -> fraction=0.1 -> inset=0.9 -> camZ = 4.5 - 0.9 = 3.6
+        val expectedCamZ = bounds.backWallZ - (bounds.depth * 0.1f).coerceAtLeast(RoomBoundaryManager.CAMERA_PADDING)
+        assertEquals("Camera near back wall (Swift parity)", expectedCamZ, cameraSetup.position.z, 0.01f)
+    }
+
+    @Test
+    fun testCameraAtBackCenterUsesLongestHorizontalAxis() {
+        manager.initializeFromCenteredExtents(3.0f, 2.0f, 0.8f)
+
+        val cameraSetup = manager.getCameraAtBackCenter()
+        val bounds = manager.getBounds()!!
+
+        assertEquals("Look at front wall X", bounds.minX, cameraSetup.lookAt.x, 0.01f)
+        val inset = (bounds.width * 0.035f).coerceAtLeast(RoomBoundaryManager.CAMERA_PADDING)
+        val expectedCamX = bounds.maxX - inset
+        assertEquals("Camera inset from back wall on X axis", expectedCamX, cameraSetup.position.x, 0.01f)
+    }
+
+    @Test
     fun testCameraCenteredView() {
         manager.initializeFromDimensions(8.0f, 9.0f, 5.6f)
 
