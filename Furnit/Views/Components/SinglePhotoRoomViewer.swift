@@ -1005,6 +1005,22 @@ private func makeDepthAnythingPreviewDestination(
     )
 }
 
+private func downsampleUIImageForDisplay(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+    let maxSide = max(image.size.width * image.scale, image.size.height * image.scale)
+    guard maxSide > maxDimension, maxSide > 0 else { return image }
+    let scale = maxDimension / maxSide
+    let targetSize = CGSize(
+        width: max(1, floor(image.size.width * scale)),
+        height: max(1, floor(image.size.height * scale))
+    )
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+    return renderer.image { _ in
+        image.draw(in: CGRect(origin: .zero, size: targetSize))
+    }
+}
+
 private func downsampleDepthAnythingPreviewImage(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
     let maxSide = max(image.size.width, image.size.height)
     guard maxSide > maxDimension, maxSide > 0 else { return image }
@@ -2293,6 +2309,8 @@ private func uniqueDepthAnythingSavedRoomURL(in directory: URL, sourceURL: URL) 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @State private var selectedImage: UIImage?
+    @State private var selectedImagePreview: UIImage?
+    @State private var selectedImagePreviewToken = UUID()
     @State private var showImagePicker = false
     @State private var showCameraCapture = false  // Show camera capture view
     @State private var captureOrientation: CaptureOrientation = .standard  // Camera mode selection
@@ -2321,15 +2339,22 @@ struct SinglePhotoRoomView: View {
     var body: some View {
         ZStack {
             VStack {
-                if let image = selectedImage {
-                    // Show image preview and the only supported room generator.
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxHeight: 250)
-                        .cornerRadius(12)
-                        .padding()
-                        .onAppear { logDebug("🖼️ [View] Displaying selected image for Depth Anything generation") }
+                if selectedImage != nil {
+                    // Downsampled preview avoids decoding a 12MP+ UIImage on the main thread.
+                    Group {
+                        if let preview = selectedImagePreview {
+                            Image(uiImage: preview)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                        } else {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 180)
+                        }
+                    }
+                    .frame(maxHeight: 250)
+                    .cornerRadius(12)
+                    .padding()
+                    .onAppear { logDebug("🖼️ [View] Displaying selected image for Depth Anything generation") }
 
                     VStack(spacing: 4) {
                         Text(L10n.PhotoRoom.howToCreate)
@@ -2342,6 +2367,7 @@ struct SinglePhotoRoomView: View {
                     .padding(.bottom, 8)
 
                     Button(action: {
+                        guard let image = selectedImage else { return }
                         logDebug("🤖 [View] Depth Anything method selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         startDepthAnythingGeneration(image: image)
@@ -2375,6 +2401,7 @@ struct SinglePhotoRoomView: View {
                     .padding(.horizontal)
 
                     Button(action: {
+                        guard let image = selectedImage else { return }
                         logDebug("🏠 [View] Manual setup selected")
                         logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         fixedImageItem = IdentifiedImage(image: image)
@@ -2621,6 +2648,7 @@ struct SinglePhotoRoomView: View {
         }
         .onChange(of: selectedImage) { _, newValue in
             if newValue == nil {
+                selectedImagePreview = nil
                 sourceImageURL = nil
                 captureMediaMetadata = nil
                 photoLibraryAssetLocalId = nil
@@ -2628,13 +2656,26 @@ struct SinglePhotoRoomView: View {
             }
             guard let image = newValue else { return }
             logDebug("✅ [View] Image selected")
-            prewarmDepthAnythingModelIfNeeded()
-            prewarmRTMDetModelIfNeeded()
-            logDebug("🤖 [View] Depth Anything generation ready")
-            // Auto-detect orientation and pre-select it (user can override)
-            let detectedOrientation = PhotoOrientation.detect(from: image)
-            selectedOrientation = detectedOrientation
-            logDebug("📐 [View] Auto-detected orientation: \(detectedOrientation.rawValue)")
+            let previewToken = UUID()
+            selectedImagePreviewToken = previewToken
+            selectedImagePreview = nil
+
+            Task { @MainActor in
+                // Let SwiftUI paint the AI / Manual buttons before any follow-up work.
+                await Task.yield()
+                selectedOrientation = PhotoOrientation.detect(from: image)
+                logDebug("📐 [View] Auto-detected orientation: \(selectedOrientation.rawValue)")
+                prewarmDepthAnythingModelIfNeeded()
+                logDebug("🤖 [View] Depth Anything prewarm requested (RTMDet deferred until Create)")
+            }
+
+            Task.detached(priority: .userInitiated) {
+                let preview = downsampleUIImageForDisplay(image, maxDimension: 960)
+                await MainActor.run {
+                    guard selectedImagePreviewToken == previewToken else { return }
+                    selectedImagePreview = preview
+                }
+            }
         }
         .fullScreenCover(item: $fixedImageItem) { item in
             RoomBoundaryDetectionView(

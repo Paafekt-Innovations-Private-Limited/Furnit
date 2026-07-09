@@ -100,7 +100,10 @@ final class RTMDetModelService: ObservableObject {
                         } else {
                             loadURL = url
                         }
-                        model = try MLModel(contentsOf: loadURL, configuration: config)
+                        let loadedModel = try await Task.detached(priority: .userInitiated) {
+                            try MLModel(contentsOf: loadURL, configuration: config)
+                        }.value
+                        model = loadedModel
                         let location = subdirectory ?? "<bundle-root>"
                         statusMessage = "RTMDet-Ins-m ready (\(computeUnits.debugName), \(location))"
                         logDebug("RTMDet-Ins-m loaded with computeUnits=\(computeUnits.debugName) location=\(location)")
