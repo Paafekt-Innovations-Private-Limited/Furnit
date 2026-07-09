@@ -47,12 +47,10 @@ Current behavior:
 ### Room Generation — GeoCalib + Depth Anything + RTMDet Anchor (default)
 
 The active iOS single-photo room-generation backend is **Depth Anything V2 Metric Indoor + GeoCalib
-+ RTMDet object-anchor measurement**, selected by `RoomGenerationImplementation.defaultImplementation`
-(`.depthAnythingMetricUSDZ` only).
++ RTMDet object-anchor measurement**.
 
 Important files:
 
-- `Furnit/Models/RoomGenerationImplementation.swift` — room-generation enum and default backend.
 - `Furnit/Services/RoomReconstruction/GeoCalibCalibrationService.swift` — on-device GeoCalib CNN + Swift LM optimizer; letterboxed full-frame input; square-pixel focal (`fx = fy`) in the working image grid.
 - `Furnit/Services/RoomReconstruction/DepthAnythingRoomReconstructor.swift` — Depth Anything Core ML inference, depth resize to the working grid, point-grid room sizing, object-anchor metric depth scale, textured mesh build, USDZ export.
 - `Furnit/Models/DepthAnything/DepthAnythingV2MetricIndoorSmall.mlpackage` — bundled Apache-licensed metric indoor depth model.

@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreML
 import Vision
 import CoreImage
 import SceneKit
@@ -91,87 +90,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         }
     }
     
-    // MARK: - Main Processing Pipeline
-    func processPhoto(_ image: UIImage) async {
-        logDebug("🚀 [Reconstructor] ========== STARTING PHOTO PROCESSING ==========")
-        logDebug("📸 [Reconstructor] Image size: \(image.size)")
-        logDebug("📸 [Reconstructor] Image scale: \(image.scale)")
-        
-        await MainActor.run {
-            isProcessing = true
-            progress = 0.0
-            statusMessage = L10n.PhotoRoom.reconstructorAnalyzingPhoto
-        }
-        
-        // ✅ Fix image orientation FIRST
-        let orientedImage = image.fixedOrientation()
-        logDebug("✅ [Reconstructor] Image orientation fixed")
-
-        // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
-        let fixedImage = downscaleIfNeeded(orientedImage)
-
-        // Step 1: Generate depth map
-        await updateProgress(0.2, L10n.PhotoRoom.reconstructorExtractingDepth)
-        logDebug("🔍 [Reconstructor] Step 1: Starting depth estimation")
-        
-        guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else{
-            await setError(L10n.PhotoRoom.reconstructorDepthFailed)
-            return
-        }
-        logDebug("✅ [Reconstructor] Step 1: Depth map created - extent: \(depthMap.extent)")
-        
-        // Step 2: Detect room structure
-        await updateProgress(0.4, L10n.PhotoRoom.reconstructorFindingWalls)
-        logDebug("🔍 [Reconstructor] Step 2: Starting room structure analysis")
-        let roomStructure = await roomAnalyzer.analyzeRoom(image: fixedImage, depthMap: depthMap)
-        logDebug("✅ [Reconstructor] Step 2: Room structure analyzed")
-        logDebug("   - Wall lines found: \(roomStructure.wallLines.count)")
-        logDebug("   - Floor region: \(roomStructure.floorRegion?.debugDescription ?? "nil")")
-        logDebug("   - Ceiling region: \(roomStructure.ceilingRegion?.debugDescription ?? "nil")")
-        
-        // Step 3: Estimate dimensions
-        await updateProgress(0.6, L10n.PhotoRoom.reconstructorCalculatingDimensions)
-        logDebug("🔍 [Reconstructor] Step 3: Starting dimension estimation")
-        let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
-        logDebug("✅ [Reconstructor] Step 3: Dimensions estimated")
-        logDebug("   - Width: \(dimensions.width)m")
-        logDebug("   - Depth: \(dimensions.depth)m")
-        logDebug("   - Height: \(dimensions.height)m")
-        logDebug("   - Confidence: \(Int(dimensions.confidence * 100))%")
-        
-        await MainActor.run {
-            self.estimatedDimensions = dimensions
-        }
-        
-        // Step 4: Build 3D room
-        await updateProgress(0.8, L10n.PhotoRoom.reconstructorBuilding3D)
-        logDebug("🔍 [Reconstructor] Step 4: Starting 3D room construction")
-        let roomScene = await build3DRoom(
-            dimensions: dimensions,
-            structure: roomStructure,
-            originalImage: fixedImage,
-            depthMap: depthMap
-        )
-        
-        if let scene = roomScene {
-            logDebug("✅ [Reconstructor] Step 4: 3D room built successfully")
-            logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
-        } else {
-            logDebug("❌ [Reconstructor] Step 4: Failed to build 3D room")
-        }
-        
-        await MainActor.run {
-            self.generatedRoomScene = roomScene // ✅ CHANGED
-            self.isProcessing = false
-            self.progress = 1.0
-            self.statusMessage = L10n.PhotoRoom.reconstructorRoomReady
-        }
-        
-        logDebug("🎉 [Reconstructor] ========== PHOTO PROCESSING COMPLETE ==========")
-    }
-
-    
-    // ✅ NEW: Process with Adjusted Boundaries
+    // MARK: - Process with Adjusted Boundaries
     func processPhotoWithBoundaries(_ image: UIImage, boundaries: RoomStructure) async {
         logDebug("🚀 [Reconstructor] ========== PROCESSING WITH ADJUSTED BOUNDARIES ==========")
         logDebug("   Floor: \(boundaries.floorY), Ceiling: \(boundaries.ceilingY)")

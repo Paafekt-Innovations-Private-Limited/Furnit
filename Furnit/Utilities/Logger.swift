@@ -128,7 +128,6 @@ private enum AlwaysOnOSLog {
     static let splat = Logger(subsystem: subsystem, category: "Splat")
     static let wallMeas = Logger(subsystem: subsystem, category: "WALL_MEAS")
     static let arRoom = Logger(subsystem: subsystem, category: "AR_ROOM")
-    static let depthPro = Logger(subsystem: subsystem, category: "DEPTH_PRO")
     static let memory = Logger(subsystem: subsystem, category: "MEMORY")
 }
 
@@ -154,14 +153,6 @@ func logARRoomMeasure(_ message: @autoclosure () -> String) {
     guard isDebugModeEnabled() else { return }
     let line = "[AR_ROOM_MEASURE] \(message())"
     AlwaysOnOSLog.arRoom.notice("\(line, privacy: .public)")
-}
-
-/// Depth Pro metric-depth pipeline. Filter: `DEPTH_PRO` or `[DEPTH_PRO]`.
-@inline(__always)
-func logDepthPro(_ message: @autoclosure () -> String) {
-    guard isDebugModeEnabled() else { return }
-    let line = "[DEPTH_PRO] \(message().uppercased())"
-    AlwaysOnOSLog.depthPro.notice("\(line, privacy: .public)")
 }
 
 private struct AppMemorySnapshot {
