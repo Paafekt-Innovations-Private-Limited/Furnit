@@ -1,5 +1,96 @@
 import RealityKit
+import SceneKit
 import simd
+import UIKit
+
+/// Shared cover camera math for Depth Anything flat-photo rooms (RealityKit list viewer + SceneKit preview).
+enum DepthAnythingFlatPhotoCameraFraming {
+    static func viewportAspect(
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize? = nil
+    ) -> Float {
+        if let viewportSize,
+           viewportSize.width > 1,
+           viewportSize.height > 1 {
+            return Float(viewportSize.width / viewportSize.height)
+        }
+        return photoOrientation == .landscape ? Float(19.5 / 9.0) : Float(9.0 / 19.5)
+    }
+
+    static func imagePlaneStandoff(
+        planeWidthMeters: Float,
+        planeHeightMeters: Float,
+        photoOrientation: PhotoOrientation,
+        viewportAspect: Float,
+        zoom: CGFloat = 1
+    ) -> Float {
+        let width = max(planeWidthMeters, 0.05)
+        let height = max(planeHeightMeters, 0.05)
+        let halfFovRadians = Float.pi / 6.0
+        let aspect = max(viewportAspect, 0.01)
+
+        let fitWidth: Float
+        let fitHeight: Float
+        if photoOrientation == .landscape {
+            fitWidth = width / (2 * tan(halfFovRadians))
+            let verticalHalfFov = atan(tan(halfFovRadians) / aspect)
+            fitHeight = height / (2 * tan(verticalHalfFov))
+        } else {
+            fitHeight = height / (2 * tan(halfFovRadians))
+            let horizontalHalfFov = atan(tan(halfFovRadians) * aspect)
+            fitWidth = width / (2 * tan(horizontalHalfFov))
+        }
+
+        // Cover framing for both photo orientations — fills the viewport (portrait contain left vertical letterboxing).
+        let fitDistance = min(fitWidth, fitHeight) * 0.98
+        let clampedZoom = Float(min(max(zoom, 0.55), 4.0))
+        // Cover can legitimately place the camera well under 0.85 m (e.g. landscape photo on a portrait phone).
+        // A high floor forced letterboxing by keeping the camera too far from the plane.
+        return max(fitDistance, 0.2) / clampedZoom
+    }
+
+    static func verticalFieldOfViewDegrees(
+        photoOrientation: PhotoOrientation,
+        viewportAspect: Float
+    ) -> CGFloat {
+        let halfFovRadians = CGFloat.pi / 6.0
+        if photoOrientation == .landscape {
+            let verticalHalfFov = atan(tan(halfFovRadians) / CGFloat(max(viewportAspect, 0.01)))
+            return verticalHalfFov * 2 * 180 / .pi
+        }
+        return 60
+    }
+
+    /// SceneKit `SCNPlane` front face is +Z; preview camera sits on +Z. Standoff matches list viewer (`getCameraForDepthAnythingImagePlane`).
+    static func sceneKitPreviewCameraPose(
+        planeWidthMeters: Float,
+        planeHeightMeters: Float,
+        photoOrientation: PhotoOrientation,
+        viewportSize: CGSize,
+        cameraOffset: CGSize,
+        cameraZoom: CGFloat,
+        planeZ: Float = 0
+    ) -> (position: SCNVector3, lookAt: SCNVector3, verticalFieldOfViewDegrees: CGFloat) {
+        let viewportAspect = viewportAspect(photoOrientation: photoOrientation, viewportSize: viewportSize)
+        let standoff = imagePlaneStandoff(
+            planeWidthMeters: planeWidthMeters,
+            planeHeightMeters: planeHeightMeters,
+            photoOrientation: photoOrientation,
+            viewportAspect: viewportAspect,
+            zoom: cameraZoom
+        )
+        let verticalFOV = verticalFieldOfViewDegrees(
+            photoOrientation: photoOrientation,
+            viewportAspect: viewportAspect
+        )
+        let panUnit = CGFloat(max(planeWidthMeters, planeHeightMeters, 0.05)) * 0.09
+        let centerX = Float(cameraOffset.width * panUnit)
+        let centerY = Float(cameraOffset.height * panUnit)
+        let lookAt = SCNVector3(centerX, centerY, planeZ)
+        let position = SCNVector3(centerX, centerY, planeZ + standoff)
+        return (position, lookAt, verticalFOV)
+    }
+}
 
 // RealityKit-based boundary manager to replace SceneKit boundary manager
 class RealityKitBoundaryManager {
@@ -269,12 +360,10 @@ class RealityKitBoundaryManager {
     }
 
     private func depthAnythingViewportAspect(photoOrientation: PhotoOrientation) -> Float {
-        if let arView,
-           arView.bounds.width > 1,
-           arView.bounds.height > 1 {
-            return Float(arView.bounds.width / arView.bounds.height)
-        }
-        return photoOrientation == .landscape ? (19.5 / 9.0) : (9.0 / 19.5)
+        DepthAnythingFlatPhotoCameraFraming.viewportAspect(
+            photoOrientation: photoOrientation,
+            viewportSize: arView?.bounds.size
+        )
     }
 
     private func depthAnythingImagePlaneStandoff(
@@ -283,29 +372,13 @@ class RealityKitBoundaryManager {
         span: Float,
         photoOrientation: PhotoOrientation
     ) -> Float {
-        let halfFovRadians = Float.pi / 6.0
-        let viewportAspect = max(depthAnythingViewportAspect(photoOrientation: photoOrientation), 0.01)
-
-        // FOV primary axis follows locked photo orientation (same as configureDepthAnythingCameraFieldOfView).
-        let fitWidth: Float
-        let fitHeight: Float
-        if photoOrientation == .landscape {
-            fitWidth = width / (2 * tan(halfFovRadians))
-            let verticalHalfFov = atan(tan(halfFovRadians) / viewportAspect)
-            fitHeight = height / (2 * tan(verticalHalfFov))
-        } else {
-            fitHeight = height / (2 * tan(halfFovRadians))
-            let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
-            fitWidth = width / (2 * tan(horizontalHalfFov))
-        }
-
-        // Landscape photo: cover (full screen). Portrait photo: contain (full photo visible).
-        let useCoverFraming = photoOrientation == .landscape
-        let fitDistance = useCoverFraming
-            ? min(fitWidth, fitHeight) * 0.98
-            : max(fitWidth, fitHeight) * 1.02
         _ = span
-        return max(fitDistance, 0.85)
+        return DepthAnythingFlatPhotoCameraFraming.imagePlaneStandoff(
+            planeWidthMeters: width,
+            planeHeightMeters: height,
+            photoOrientation: photoOrientation,
+            viewportAspect: depthAnythingViewportAspect(photoOrientation: photoOrientation)
+        )
     }
 
     /// Photographer viewpoint for Depth Anything `--flat-mesh` USDZ: plane at z≈0, camera on −Z.

@@ -1114,41 +1114,17 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 
     private func applyCameraPose(_ cameraNode: SCNNode?, viewportSize: CGSize) {
         guard let cameraNode else { return }
-        let planeWidth = CGFloat(max(roomWidthMeters, 0.05))
-        let planeHeight = CGFloat(max(roomHeightMeters, 0.05))
-        let viewportWidth = max(viewportSize.width, 1)
-        let viewportHeight = max(viewportSize.height, 1)
-        let viewportAspect = max(viewportWidth / viewportHeight, 0.01)
-        let halfFovRadians = CGFloat.pi / 6.0
-
-        let fitWidth: CGFloat
-        let fitHeight: CGFloat
-        if photoOrientation == .landscape {
-            fitWidth = planeWidth / (2 * tan(halfFovRadians))
-            let verticalHalfFov = atan(tan(halfFovRadians) / viewportAspect)
-            fitHeight = planeHeight / (2 * tan(verticalHalfFov))
-            cameraNode.camera?.fieldOfView = CGFloat(verticalHalfFov * 2 * 180 / .pi)
-        } else {
-            fitHeight = planeHeight / (2 * tan(halfFovRadians))
-            let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
-            fitWidth = planeWidth / (2 * tan(horizontalHalfFov))
-            cameraNode.camera?.fieldOfView = 60
-        }
-
-        // Landscape photo: cover (full screen). Portrait photo: contain (full photo visible).
-        let useCoverFraming = photoOrientation == .landscape
-        let fitDistance = useCoverFraming
-            ? min(fitWidth, fitHeight) * 0.98
-            : max(fitWidth, fitHeight) * 1.02
-        let clampedZoom = min(max(cameraZoom, 0.55), 4.0)
-        let standoff = Float(max(fitDistance, 0.85) / clampedZoom)
-        let panUnit = max(planeWidth, planeHeight) * 0.09
-        let centerX = Float(cameraOffset.width * panUnit)
-        let centerY = Float(cameraOffset.height * panUnit)
-        let lookAt = SCNVector3(centerX, centerY, 0)
-
-        cameraNode.position = SCNVector3(centerX, centerY, standoff)
-        cameraNode.look(at: lookAt)
+        let pose = DepthAnythingFlatPhotoCameraFraming.sceneKitPreviewCameraPose(
+            planeWidthMeters: max(roomWidthMeters, 0.05),
+            planeHeightMeters: max(roomHeightMeters, 0.05),
+            photoOrientation: photoOrientation,
+            viewportSize: viewportSize,
+            cameraOffset: cameraOffset,
+            cameraZoom: cameraZoom
+        )
+        cameraNode.camera?.fieldOfView = pose.verticalFieldOfViewDegrees
+        cameraNode.position = pose.position
+        cameraNode.look(at: pose.lookAt)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
