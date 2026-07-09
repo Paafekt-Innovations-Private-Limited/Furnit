@@ -48,6 +48,9 @@ struct DepthAnythingRoomResult: Sendable {
     }
 }
 
+/// Normalized reconstruction progress in 0...1 (preprocess → inference → mesh → USDZ export).
+typealias DepthAnythingReconstructionProgressHandler = @Sendable (Double) -> Void
+
 final class DepthAnythingRoomReconstructor {
     let model: VNCoreMLModel
 
@@ -146,8 +149,13 @@ final class DepthAnythingRoomReconstructor {
 
     func reconstructWithResult(
         image: UIImage,
-        cameraMetadata: [String: Double]? = nil
+        cameraMetadata: [String: Double]? = nil,
+        progressHandler: DepthAnythingReconstructionProgressHandler? = nil
     ) async throws -> DepthAnythingRoomResult {
+        func reportProgress(_ fraction: Double) {
+            progressHandler?(min(max(fraction, 0), 1))
+        }
+
         let pipelineStart = CFAbsoluteTimeGetCurrent()
         let sourcePixelWidth = max(1, Int(ceil(Double(image.size.width * image.scale))))
         let sourcePixelHeight = max(1, Int(ceil(Double(image.size.height * image.scale))))
@@ -158,9 +166,11 @@ final class DepthAnythingRoomReconstructor {
         let workingPixelWidth = workingImage.cgImage?.width ?? fixedPixelWidth
         let workingPixelHeight = workingImage.cgImage?.height ?? fixedPixelHeight
         let preprocessEnd = CFAbsoluteTimeGetCurrent()
+        reportProgress(0.05)
         // 1–3: one measurement grid — GeoCalib and Depth Anything both use the full working frame.
         // The three model inferences (GeoCalib, Depth Anything, RTMDet) only need the image,
         // so they run concurrently; all cross-model math happens after the joins below.
+        reportProgress(0.10)
         async let geoCalibTask = Self.timedStage("geocalib") {
             await GeoCalibCalibrationService.shared.estimateCalibration(image: workingImage)
         }
@@ -174,8 +184,10 @@ final class DepthAnythingRoomReconstructor {
         let depthMap = try await Self.timedStage("depth_anything") {
             try await self.inferDepth(image: workingImage)
         }
+        reportProgress(0.50)
         let geoCalibCalibration = await geoCalibTask
         let objectRect = await objectRectTask
+        reportProgress(0.58)
         let inferenceEnd = CFAbsoluteTimeGetCurrent()
         logDebug(String(
             format: "[DepthAnythingRoom][Timing] preprocess %.0f ms · inference_join %.0f ms (parallel geocalib+depth+rtmdet)",
@@ -468,6 +480,7 @@ final class DepthAnythingRoomReconstructor {
             "result_dims_source=single_view_width_height_room_extent_depth"
         )
         let measurementEnd = CFAbsoluteTimeGetCurrent()
+        reportProgress(0.72)
         let meshDepthMap = Self.usesFlatMesh ? Self.flattenDepthForMesh(calibratedDepthMap) : calibratedDepthMap
         let mesh = try buildMesh(
             image: workingImage,
@@ -476,7 +489,9 @@ final class DepthAnythingRoomReconstructor {
             roomHeightMeters: meshRoomHeightMeters
         )
         let meshEnd = CFAbsoluteTimeGetCurrent()
+        reportProgress(0.85)
         let url = try exportUSDZ(mesh: mesh, textureImage: workingImage)
+        reportProgress(0.95)
         let exportEnd = CFAbsoluteTimeGetCurrent()
         logDebug(String(
             format: "[DepthAnythingRoom][Timing] measurement_math %.0f ms · mesh_build %.0f ms · usdz_export %.0f ms · total %.0f ms",

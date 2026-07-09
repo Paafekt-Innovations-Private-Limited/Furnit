@@ -1237,6 +1237,7 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var isPlacementIntelligenceExpanded = false
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
+    @State private var saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var showSaveAlert = false
@@ -2094,10 +2095,12 @@ private struct DepthAnythingPreviewRoomView: View {
                         .foregroundColor(.green)
                 }
 
-                Text(L10n.RoomViewer.savingRoomEllipsis)
+                Text(saveProgressStatusText)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
 
                 ProgressView(value: saveProgress)
                     .progressViewStyle(LinearProgressViewStyle(tint: .green))
@@ -2141,38 +2144,57 @@ private struct DepthAnythingPreviewRoomView: View {
         withAnimation(.easeIn(duration: 0.2)) {
             isSavingRoom = true
             saveProgress = 0
+            saveProgressStatusText = L10n.RoomViewer.measuringRoom
         }
 
         Task {
-            await MainActor.run { saveProgress = 0.15 }
             do {
-                let savedURL = try await Task.detached(priority: .userInitiated) {
-                    let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
-                    guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
-                        throw DepthAnythingPreviewSaveError.sourceImageUnavailable
+                let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
+                guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
+                    throw DepthAnythingPreviewSaveError.sourceImageUnavailable
+                }
+
+                let reconstructor = try DepthAnythingRoomReconstructor()
+                let measuredResult = try await reconstructor.reconstructWithResult(
+                    image: measurementImage,
+                    cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata,
+                    progressHandler: { fraction in
+                        Task { @MainActor in
+                            // Reconstruction occupies ~5%–90%; copy/metadata finish at 100%.
+                            saveProgress = 0.05 + Double(fraction) * 0.85
+                            if fraction < 0.58 {
+                                saveProgressStatusText = L10n.RoomViewer.measuringRoom
+                            } else if fraction < 0.85 {
+                                saveProgressStatusText = L10n.GenerationProgress.generating3DModel
+                            } else {
+                                saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+                            }
+                        }
                     }
-                    let reconstructor = try DepthAnythingRoomReconstructor()
-                    let measuredResult = try await reconstructor.reconstructWithResult(
-                        image: measurementImage,
-                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata
-                    )
-                    var measuredCameraMetadata = cameraMetadata
-                    for (key, value) in measuredResult.calibrationMetadata {
-                        measuredCameraMetadata[key] = value
-                    }
-                    if !measuredCameraMetadata.isEmpty {
-                        CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
-                    }
-                    let metadata = depthAnythingSavedRoomMetadata(
-                        photoOrientationRawValue: photoOrientationRawValue,
-                        roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
-                        displayName: trimmedRoomName,
-                        roomWidth: measuredResult.roomWidthMeters,
-                        roomHeight: measuredResult.roomHeightMeters,
-                        roomDepth: measuredResult.roomDepthMeters
-                    )
-                    return try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
-                }.value
+                )
+
+                await MainActor.run {
+                    saveProgress = 0.92
+                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
+                }
+
+                var measuredCameraMetadata = cameraMetadata
+                for (key, value) in measuredResult.calibrationMetadata {
+                    measuredCameraMetadata[key] = value
+                }
+                if !measuredCameraMetadata.isEmpty {
+                    CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
+                }
+                let metadata = depthAnythingSavedRoomMetadata(
+                    photoOrientationRawValue: photoOrientationRawValue,
+                    roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
+                    displayName: trimmedRoomName,
+                    roomWidth: measuredResult.roomWidthMeters,
+                    roomHeight: measuredResult.roomHeightMeters,
+                    roomDepth: measuredResult.roomDepthMeters
+                )
+                let savedURL = try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
+
                 await MainActor.run {
                     saveProgress = 1.0
                     withAnimation(.easeOut(duration: 0.3)) {
@@ -2187,6 +2209,8 @@ private struct DepthAnythingPreviewRoomView: View {
             } catch {
                 await MainActor.run {
                     isSavingRoom = false
+                    saveProgress = 0
+                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
                     saveAlertMessage = error.localizedDescription
                     saveWasSuccessful = false
                     showSaveAlert = true
