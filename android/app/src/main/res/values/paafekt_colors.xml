@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Paafekt design tokens — see docs/PAAFEKT_DESIGN_SYSTEM.md -->
+    <color name="paafekt_background">#0E0F12</color>
+    <color name="paafekt_surface">#1A1C20</color>
+    <color name="paafekt_surface_hi">#24272D</color>
+    <color name="paafekt_hairline">#14FFFFFF</color>
+    <color name="paafekt_text_primary">#F4F3EF</color>
+    <color name="paafekt_text_secondary">#9BA0A8</color>
+    <color name="paafekt_accent">#C9A24B</color>
+    <color name="paafekt_accent_pressed">#A9853A</color>
+    <color name="paafekt_accent_text">#0E0F12</color>
+    <color name="paafekt_success">#3E9E6E</color>
+    <color name="paafekt_danger">#C85A54</color>
+    <color name="paafekt_viewer_capsule">#8C000000</color>
+</resources>
