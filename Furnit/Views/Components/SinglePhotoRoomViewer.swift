@@ -972,10 +972,28 @@ private func downsampleDepthAnythingPreviewImage(_ image: UIImage, maxDimension:
     }
 }
 
+private final class DepthAnythingPreviewSCNView: SCNView {
+    var onViewportSizeChanged: ((CGSize) -> Void)?
+    private var lastViewportSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = bounds.size
+        guard size.width > 1, size.height > 1 else { return }
+        guard abs(size.width - lastViewportSize.width) > 0.5 ||
+                abs(size.height - lastViewportSize.height) > 0.5 else {
+            return
+        }
+        lastViewportSize = size
+        onViewportSizeChanged?(size)
+    }
+}
+
 private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     let imageURL: URL
     let roomWidthMeters: Float
     let roomHeightMeters: Float
+    let cameraOffset: CGSize
     @Binding var shouldResetCamera: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -983,21 +1001,32 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> SCNView {
-        let view = SCNView(frame: .zero)
+        let view = DepthAnythingPreviewSCNView(frame: .zero)
         view.backgroundColor = UIColor(white: 0.12, alpha: 1.0)
-        view.allowsCameraControl = true
+        view.allowsCameraControl = false
         view.autoenablesDefaultLighting = false
         view.scene = makeScene(context: context)
+        view.pointOfView = context.coordinator.cameraNode
+        view.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
+            applyCameraPose(cameraNode, viewportSize: size)
+        }
+        applyCameraPose(context.coordinator.cameraNode, viewportSize: view.bounds.size)
         return view
     }
 
     func updateUIView(_ view: SCNView, context: Context) {
+        view.pointOfView = context.coordinator.cameraNode
+        if let previewView = view as? DepthAnythingPreviewSCNView {
+            previewView.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
+                applyCameraPose(cameraNode, viewportSize: size)
+            }
+        }
         if shouldResetCamera {
-            resetCamera(context.coordinator.cameraNode)
             DispatchQueue.main.async {
                 shouldResetCamera = false
             }
         }
+        applyCameraPose(context.coordinator.cameraNode, viewportSize: view.bounds.size)
     }
 
     private func makeScene(context: Context) -> SCNScene {
@@ -1022,17 +1051,31 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         cameraNode.camera?.fieldOfView = 60
+        cameraNode.camera?.zNear = 0.001
+        cameraNode.camera?.zFar = Double(max(roomWidthMeters, roomHeightMeters, 1.0) * 12)
         scene.rootNode.addChildNode(cameraNode)
         context.coordinator.cameraNode = cameraNode
-        resetCamera(cameraNode)
         return scene
     }
 
-    private func resetCamera(_ cameraNode: SCNNode?) {
+    private func applyCameraPose(_ cameraNode: SCNNode?, viewportSize: CGSize) {
         guard let cameraNode else { return }
-        let span = max(roomWidthMeters, roomHeightMeters, 0.1)
-        cameraNode.position = SCNVector3(0, 0, span * 1.55)
-        cameraNode.look(at: SCNVector3(0, 0, 0))
+        let planeWidth = CGFloat(max(roomWidthMeters, 0.05))
+        let planeHeight = CGFloat(max(roomHeightMeters, 0.05))
+        let viewportWidth = max(viewportSize.width, 1)
+        let viewportHeight = max(viewportSize.height, 1)
+        let aspect = max(viewportWidth / viewportHeight, 0.1)
+        let verticalFOV = CGFloat((cameraNode.camera?.fieldOfView ?? 60) * .pi / 180)
+        let fitHeightDistance = (planeHeight * 0.5) / tan(verticalFOV * 0.5)
+        let fitWidthDistance = (planeWidth * 0.5) / (tan(verticalFOV * 0.5) * aspect)
+        let standoff = Float(max(fitHeightDistance, fitWidthDistance) * 1.08)
+        let panUnit = max(planeWidth, planeHeight) * 0.09
+        let centerX = Float(cameraOffset.width * panUnit)
+        let centerY = Float(cameraOffset.height * panUnit)
+        let lookAt = SCNVector3(centerX, centerY, 0)
+
+        cameraNode.position = SCNVector3(centerX, centerY, standoff)
+        cameraNode.look(at: lookAt)
     }
 
     final class Coordinator {
@@ -1047,6 +1090,7 @@ private struct DepthAnythingPreviewRoomView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var modelManager = USDZModelManager()
     @State private var shouldResetCamera = false
+    @State private var previewCameraOffset: CGSize = .zero
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
     @State private var showRoomNameInput = false
@@ -1073,9 +1117,12 @@ private struct DepthAnythingPreviewRoomView: View {
                 imageURL: destination.measurementImageURL,
                 roomWidthMeters: destination.roomWidthMeters,
                 roomHeightMeters: destination.roomHeightMeters,
+                cameraOffset: previewCameraOffset,
                 shouldResetCamera: $shouldResetCamera
             )
             .ignoresSafeArea()
+
+            previewCameraButtonsOverlay
 
             if let debugLine = destination.measurementDebugLine,
                AppStateManager.shared.qualitySettings.debugMode {
@@ -1163,6 +1210,7 @@ private struct DepthAnythingPreviewRoomView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: 14) {
                 Button {
+                    previewCameraOffset = .zero
                     shouldResetCamera = true
                 } label: {
                     Image(systemName: "viewfinder")
@@ -1181,6 +1229,61 @@ private struct DepthAnythingPreviewRoomView: View {
                 .accessibilityLabel(L10n.RoomViewer.saveRoom)
             }
         }
+    }
+
+    private var previewCameraButtonsOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 10) {
+                previewCameraDPadCluster
+                    .padding(.leading, 12)
+                    .padding(.top, 56)
+                if destination.photoOrientation == .landscape {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .opacity(isSavingRoom ? 0 : 1)
+        .zIndex(102)
+    }
+
+    private var previewCameraDPadCluster: some View {
+        HStack(spacing: 8) {
+            previewCameraMoveButton(systemName: "arrow.left") {
+                nudgePreviewCamera(dx: -1, dy: 0)
+            }
+            VStack(spacing: 8) {
+                previewCameraMoveButton(systemName: "arrow.up") {
+                    nudgePreviewCamera(dx: 0, dy: 1)
+                }
+                previewCameraMoveButton(systemName: "arrow.down") {
+                    nudgePreviewCamera(dx: 0, dy: -1)
+                }
+            }
+            previewCameraMoveButton(systemName: "arrow.right") {
+                nudgePreviewCamera(dx: 1, dy: 0)
+            }
+        }
+    }
+
+    private func previewCameraMoveButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color.black.opacity(0.5)))
+        }
+        .buttonStyle(.plain)
+        .disabled(isSavingRoom)
+    }
+
+    private func nudgePreviewCamera(dx: CGFloat, dy: CGFloat) {
+        previewCameraOffset.width += dx
+        previewCameraOffset.height += dy
     }
 
     private var saveRoomProgressOverlay: some View {
