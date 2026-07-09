@@ -37,39 +37,39 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "arrow.left.and.right")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                                 .frame(width: 24)
                             Text(L10n.Settings.width(roomWidth))
                                 .font(.headline)
                         }
                         Slider(value: $roomWidth, in: 2...8, step: 0.1)
-                            .tint(.blue)
+                            .tint(Theme.Palette.accent)
                     }
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "arrow.up.and.down")
-                                .foregroundColor(.green)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                                 .frame(width: 24)
                             Text(L10n.Settings.depth(roomDepth))
                                 .font(.headline)
                         }
                         Slider(value: $roomDepth, in: 2...8, step: 0.1)
-                            .tint(.green)
+                            .tint(Theme.Palette.accent)
                     }
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "arrow.up.to.line")
-                                .foregroundColor(.orange)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                                 .frame(width: 24)
                             Text(L10n.Settings.height(roomHeight))
                                 .font(.headline)
                         }
                         Slider(value: $roomHeight, in: 2.2...4, step: 0.1)
-                            .tint(.orange)
+                            .tint(Theme.Palette.accent)
                     }
                     .padding(.vertical, 4)
                 } header: {
@@ -84,7 +84,7 @@ struct SettingsView: View {
                     Toggle(isOn: $oscillationEnabled) {
                         HStack {
                             Image(systemName: "arrow.left.arrow.right")
-                                .foregroundColor(.cyan)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.Settings.autoOrbit)
                                     .font(.headline)
@@ -94,12 +94,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .tint(.cyan)
+                    .tint(Theme.Palette.accent)
 
                     Toggle(isOn: $infiniteZoomEnabled) {
                         HStack {
                             Image(systemName: "plus.magnifyingglass")
-                                .foregroundColor(.orange)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.Settings.infiniteZoom)
                                     .font(.headline)
@@ -109,16 +109,17 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .tint(.orange)
+                    .tint(Theme.Palette.accent)
                 } header: {
                     Text(L10n.Settings.roomViewerSection)
+                        .foregroundStyle(Theme.Palette.accent)
                 }
 
                 Section {
                     NavigationLink(destination: SettingsFurnitureFitImageScanView()) {
                         HStack {
                             Image(systemName: "photo.on.rectangle.angled")
-                                .foregroundColor(.pink)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.Settings.imageScan)
                                     .font(.headline)
@@ -138,7 +139,7 @@ struct SettingsView: View {
                     Toggle(isOn: $appState.qualitySettings.debugMode) {
                         HStack {
                             Image(systemName: "ladybug.fill")
-                                .foregroundColor(.purple)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.Settings.debugMode)
                                     .font(.headline)
@@ -148,7 +149,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .tint(.purple)
+                    .tint(Theme.Palette.accent)
                 } header: {
                     Text(L10n.Settings.developer)
                 } footer: {
@@ -162,7 +163,7 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://paafekt.com/privacy")!) {
                         HStack {
                             Image(systemName: "hand.raised.fill")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.privacyPolicy)
                             Spacer()
                             Image(systemName: "arrow.up.right.square")
@@ -174,7 +175,7 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://paafekt.com/terms")!) {
                         HStack {
                             Image(systemName: "doc.text.fill")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.termsOfService)
                             Spacer()
                             Image(systemName: "arrow.up.right.square")
@@ -186,7 +187,7 @@ struct SettingsView: View {
                     NavigationLink(destination: CreditsView()) {
                         HStack {
                             Image(systemName: "sparkles")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.credits)
                         }
                     }
@@ -194,7 +195,7 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://paafekt.com/support")!) {
                         HStack {
                             Image(systemName: "questionmark.circle.fill")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.support)
                             Spacer()
                             Image(systemName: "arrow.up.right.square")
@@ -206,7 +207,7 @@ struct SettingsView: View {
                     NavigationLink(destination: LicensesView()) {
                         HStack {
                             Image(systemName: "doc.plaintext.fill")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.licenses)
                         }
                     }
@@ -240,7 +241,7 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             Image(systemName: "arrow.counterclockwise")
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                             Text(L10n.Settings.showTipsAgain)
                         }
                     }
@@ -250,9 +251,9 @@ struct SettingsView: View {
                     }) {
                         HStack {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .foregroundColor(.red)
+                                .foregroundStyle(Theme.Palette.danger)
                             Text(L10n.Profile.logout)
-                                .foregroundColor(.red)
+                                .foregroundStyle(Theme.Palette.danger)
                         }
                     }
 
@@ -261,9 +262,9 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             Image(systemName: "trash.fill")
-                                .foregroundColor(.red)
+                                .foregroundStyle(Theme.Palette.danger)
                             Text(L10n.Profile.deleteAccount)
-                                .foregroundColor(.red)
+                                .foregroundStyle(Theme.Palette.danger)
                             if isDeletingAccount {
                                 Spacer()
                                 ProgressView()
@@ -275,6 +276,8 @@ struct SettingsView: View {
                     Text(L10n.Settings.account)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .paafektScreenBackground()
             .navigationTitle(L10n.Settings.title)
             .alert(L10n.Profile.logoutConfirmTitle, isPresented: $showLogoutConfirmation) {
                 Button(L10n.Common.cancel, role: .cancel) { }
