@@ -606,65 +606,44 @@ struct ModelViewerView: View {
     }
 
     private var topToolbarContent: some View {
-        HStack(spacing: 12) {
-            Button(action: onRoomDimensionsRulerTapped) {
-                Image(systemName: "ruler.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.RoomViewer.checkMeasurement)
-
-            Button(action: onPinchHintIconTapped) {
-                Image(systemName: "hand.pinch.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(pinchHintAccessibilityLabel)
-
-            Button(action: displayAllGestureHelpers) {
-                Image(systemName: "hand.tap.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.RoomViewer.displayAllHelpers)
-
-            Button(action: {
-                cameraResetBinding.wrappedValue = true
-            }) {
-                Image(systemName: "viewfinder")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.RoomViewer.recenterView)
-
-            if showingFurnitureFit && canOfferBrainArAssist {
-                Button(action: toggleBrainArAssistedSizingOrShowHint) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            Circle().fill(
-                                brainArAssistedSizingEnabled
-                                    ? Color.green.opacity(0.9)
-                                    : Color.white.opacity(0.18)
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable
+        PaafektViewerToolbarCapsule {
+            HStack(spacing: 12) {
+                PaafektViewerToolbarIconButton(
+                    systemName: "ruler.fill",
+                    accessibilityLabel: L10n.RoomViewer.checkMeasurement,
+                    action: onRoomDimensionsRulerTapped
                 )
+
+                PaafektViewerToolbarIconButton(
+                    systemName: "hand.pinch.fill",
+                    accessibilityLabel: pinchHintAccessibilityLabel,
+                    action: onPinchHintIconTapped
+                )
+
+                PaafektViewerToolbarIconButton(
+                    systemName: "hand.tap.fill",
+                    fontSize: 16,
+                    accessibilityLabel: L10n.RoomViewer.displayAllHelpers,
+                    action: displayAllGestureHelpers
+                )
+
+                PaafektViewerToolbarIconButton(
+                    systemName: "viewfinder",
+                    accessibilityLabel: L10n.RoomViewer.recenterView,
+                    action: { cameraResetBinding.wrappedValue = true }
+                )
+
+                if showingFurnitureFit && canOfferBrainArAssist {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "arrow.up.left.and.arrow.down.right",
+                        isActive: brainArAssistedSizingEnabled,
+                        fontSize: 15,
+                        accessibilityLabel: brainArAssistedSizingEnabled ? L10n.RoomViewer.arSizingDisable : L10n.RoomViewer.arSizingEnable,
+                        action: toggleBrainArAssistedSizingOrShowHint
+                    )
+                }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.72))
-        .clipShape(Capsule())
     }
 
     private var fullVideoIdentificationsFloatingButton: some View {

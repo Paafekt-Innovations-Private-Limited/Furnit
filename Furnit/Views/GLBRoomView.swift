@@ -855,7 +855,7 @@ struct GLBRoomView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.black.opacity(0.72)))
+                        .background(Capsule().fill(Theme.Palette.viewerCapsuleFill))
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)

@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -454,22 +455,9 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun toolbarCapsuleDrawable(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dpToPx(18).toFloat()
-            setColor(Color.parseColor("#8A000000"))
-            setStroke(dpToPx(1), Color.parseColor("#24FFFFFF"))
-        }
-    }
+    private fun toolbarCapsuleDrawable(): GradientDrawable = PaafektDrawables.toolbarCapsule()
 
-    private fun toolbarCircleDrawable(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.parseColor("#73000000"))
-            setStroke(dpToPx(1), Color.parseColor("#24FFFFFF"))
-        }
-    }
+    private fun toolbarCircleDrawable(): GradientDrawable = PaafektDrawables.toolbarCircle()
 
     private fun createToolbarIconButton(iconResId: Int, onClick: () -> Unit): ImageButton {
         return ImageButton(this).apply {
