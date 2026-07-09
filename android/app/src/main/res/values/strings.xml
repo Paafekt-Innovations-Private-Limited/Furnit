@@ -240,13 +240,15 @@
     <!-- FAQ - AI Features -->
     <string name="faq_ai_features">AI Features</string>
     <string name="faq_what_is_brain_icon">What does the brain icon do?</string>
-    <string name="faq_what_is_brain_icon_answer">The brain icon starts SmartyPants identify mode. It uses the live camera to find furniture and objects, shows labels and boxes, and lets you select one or more labels before tapping Segment.</string>
+    <string name="faq_what_is_brain_icon_answer">The brain icon starts SmartyPants in the room viewer. By default it auto-segments the highest-confidence furniture piece as a transparent cutout over your 3D room. For tap-to-select, tap the viewfinder button first.</string>
+    <string name="faq_what_is_viewfinder_button">What does the viewfinder button do in the room viewer?</string>
+    <string name="faq_what_is_viewfinder_button_answer">While SmartyPants is active, the viewfinder button (top-right) toggles full-video mode. You get a live camera feed with detection boxes, tap one or more items to select them, then tap Segment. The camera hides and transparent furniture cutouts composite over your 3D room so you can check fitment. Tap Stop to return to live identifications.</string>
     <string name="faq_how_to_screenshot">How do I take a screenshot?</string>
     <string name="faq_how_to_screenshot_answer">When SmartyPants is active (brain icon is green), a share icon appears on the bottom-right. Tap it to save a screenshot of the view with AI detections to your Photos library.</string>
     <string name="faq_what_is_segmentation">What is furniture segmentation?</string>
-    <string name="faq_what_is_segmentation_answer">Furniture segmentation now works from the live room viewer. Select detected labels first, then Segment creates a cut-out overlay only for those selected furniture items so you can judge fit in the 3D room.</string>
-    <string name="faq_how_to_segment">How do I segment furniture from a photo?</string>
-    <string name="faq_how_to_segment_answer">In the room viewer, tap the brain icon, point the camera at the furniture, tap one or more detected labels to select them, then tap Segment. Tap Stop to return to live identifications.</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation runs from the live room viewer. The brain icon auto-segments one primary item by default. In full-video mode, select detected items first; Segment then creates transparent cutouts only for those pieces so you can judge fit against your 3D room.</string>
+    <string name="faq_how_to_segment">How do I segment furniture in the room viewer?</string>
+    <string name="faq_how_to_segment_answer">Tap the brain icon in the room viewer. For a quick check, it auto-segments the main item over your 3D room. To pick specific pieces: tap the viewfinder button, point the camera at the furniture, tap one or more detection boxes, then tap Segment. Tap Stop to return to live identifications.</string>
     <string name="faq_not_detected">Why isn\'t my furniture being detected?</string>
     <string name="faq_not_detected_answer">Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn\'t partially hidden or too far from the camera.</string>
 
@@ -272,7 +274,7 @@
     <!-- FAQ - Furniture & measurements (SmartyPants + AR metric sizing) -->
     <string name="faq_furniture_measurements">Furniture &amp; measurements</string>
     <string name="faq_ar_assisted_sizing">How is furniture overlay size estimated?</string>
-    <string name="faq_ar_assisted_sizing_answer">First tap the brain icon, select detected items, then tap Segment. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.</string>
+    <string name="faq_ar_assisted_sizing_answer">Tap the brain icon to segment furniture first. Use the sizing control when you want room-relative scale. On phones with AR/depth support, the app uses live camera depth for a more realistic furniture size; without depth, furniture measurements are approximate.</string>
     <string name="faq_measurement_pill">What is the small measurement readout?</string>
     <string name="faq_measurement_pill_answer">The furniture size pill appears only when sizing mode is on and the app has a usable live height estimate. The ruler button shows the current room width, height, and depth in a small card. On non-AR phones, these readings are less reliable, especially for furniture.</string>
     <string name="faq_reset_overlay_scale">The furniture mask looks wrongly zoomed—what can I do?</string>
@@ -408,9 +410,9 @@
     <!-- Additional strings from iOS translations -->
     <string name="room_viewer_exporting_usdz">Exporting to USDZ format…</string>
     <string name="faq_multiple_pieces">Can I add multiple furniture pieces?</string>
-    <string name="faq_multiple_pieces_answer">Yes! You can add multiple furniture pieces to your room. Simply segment each piece and add them one by one.</string>
+    <string name="faq_multiple_pieces_answer">Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default brain flow.</string>
     <string name="faq_room_fitment">How do I check if furniture fits?</string>
-    <string name="faq_room_fitment_answer">After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.</string>
+    <string name="faq_room_fitment_answer">After segmentation, resize and reposition furniture cutouts in your 3D room. In full-video mode, Segment composites selected pieces over the room so you can compare several items against the space at once.</string>
     <string name="faq_placement_intelligence">Placement intelligence &amp; aesthetic</string>
     <string name="faq_what_is_placement_intelligence">What is Placement Intelligence?</string>
     <string name="faq_what_is_placement_intelligence_answer">While SmartyPants is on in supported 3D room viewers, a Placement Intelligence card shows whether the detected furniture fits within the room dimensions. Tap the header to expand full details, or leave it collapsed to save space.</string>

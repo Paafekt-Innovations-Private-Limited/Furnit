@@ -64,6 +64,7 @@ class HelpActivity : AppCompatActivity() {
                 icon = "brain",
                 items = listOf(
                     FAQItem(R.string.faq_what_is_brain_icon, R.string.faq_what_is_brain_icon_answer),
+                    FAQItem(R.string.faq_what_is_viewfinder_button, R.string.faq_what_is_viewfinder_button_answer),
                     FAQItem(R.string.faq_how_to_screenshot, R.string.faq_how_to_screenshot_answer),
                     FAQItem(R.string.faq_what_is_segmentation, R.string.faq_what_is_segmentation_answer),
                     FAQItem(R.string.faq_how_to_segment, R.string.faq_how_to_segment_answer),

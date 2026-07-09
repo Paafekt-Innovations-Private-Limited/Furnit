@@ -159,13 +159,13 @@
     <string name="faq_how_many_rooms_answer">Puedes crear hasta 20 habitaciones. Elimina habitaciones antiguas para liberar espacio. En la parte superior verás el número de habitaciones y el almacenamiento usado.</string>
     <string name="faq_furniture_segmentation">Segmentación de muebles</string>
     <string name="faq_what_is_segmentation">¿Qué es la segmentación de muebles?</string>
-    <string name="faq_what_is_segmentation_answer">La segmentación de muebles ahora funciona desde el visor de habitación en vivo. Primero selecciona las etiquetas detectadas; luego Segmentar crea una superposición recortada solo para esos muebles seleccionados para que evalúes cómo quedan en la habitación 3D.</string>
-    <string name="faq_how_to_segment">¿Cómo segmento muebles de una foto?</string>
-    <string name="faq_how_to_segment_answer">En el visor de la habitación, toca el icono del cerebro, apunta la cámara al mueble, toca una o más etiquetas detectadas para seleccionarlas y luego toca Segmentar. Toca Detener para volver a las identificaciones en vivo.</string>
+    <string name="faq_what_is_segmentation_answer">La segmentación de muebles funciona desde el visor en vivo. El icono del cerebro segmenta automáticamente un objeto principal por defecto. En modo vídeo completo, selecciona primero los elementos detectados; Segmentar crea recortes transparentes solo para esas piezas.</string>
+    <string name="faq_how_to_segment">¿Cómo segmento muebles en el visor de la habitación?</string>
+    <string name="faq_how_to_segment_answer">Toca el icono del cerebro en el visor. Para una comprobación rápida, segmenta automáticamente el objeto principal sobre tu habitación 3D. Para elegir piezas concretas: toca viewfinder, apunta la cámara, toca uno o más cuadros y luego Segmentar. Detener vuelve a identificaciones en vivo.</string>
     <string name="faq_not_detected">¿Por qué no se detectan mis muebles?</string>
     <string name="faq_not_detected_answer">La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.</string>
     <string name="faq_multiple_pieces">¿Puedo segmentar múltiples muebles?</string>
-    <string name="faq_multiple_pieces_answer">¡Sí! La IA puede detectar múltiples muebles en una sola foto. Cada elemento detectado se mostrará por separado para que puedas elegir cuáles usar.</string>
+    <string name="faq_multiple_pieces_answer">¡Sí! En modo vídeo completo puedes tocar varios cuadros y luego Segmentar una vez para recortar todas las piezas seleccionadas juntas sobre tu habitación 3D. También puedes segmentar de una en una con el flujo predeterminado del cerebro.</string>
     <string name="faq_room_fitment">¿Cómo compruebo si el mueble encaja?</string>
     <string name="faq_how_to_view">¿Cómo veo mi habitación 3D?</string>
     <string name="faq_how_to_view_answer">Toca cualquier habitación en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por la habitación usando gestos táctiles.</string>
@@ -179,7 +179,7 @@
     <string name="faq_adjust_dimensions_answer">You cannot edit AI room dimensions manually. Tap the ruler in the room viewer to see estimated width, height, and depth from the room-generation pipeline. For better results, capture a clear photo with visible corners; manual rooms follow the boundaries you draw.</string>
     <string name="faq_furniture_measurements">Muebles y medidas</string>
     <string name="faq_ar_assisted_sizing">¿Qué es el tamaño de muebles asistido por AR?</string>
-    <string name="faq_ar_assisted_sizing_answer">Primero toca el icono del cerebro, selecciona los elementos detectados y luego toca Segmentar. Usa el control de tamaño cuando quieras escala relativa a la habitación. En teléfonos con AR/profundidad, la app usa profundidad en vivo de la cámara para un tamaño de mueble más realista; sin profundidad, las medidas son aproximadas.</string>
+    <string name="faq_ar_assisted_sizing_answer">Toca primero el icono del cerebro para segmentar muebles. Usa el control de tamaño para escala relativa a la habitación. En teléfonos con AR/profundidad, la app usa profundidad de cámara en vivo; sin profundidad, las medidas son aproximadas.</string>
     <string name="faq_measurement_pill">¿Qué es la pequeña lectura de medidas?</string>
     <string name="faq_measurement_pill_answer">La pastilla de tamaño del mueble solo aparece cuando el modo de tamaño está activado y la app tiene una estimación de altura en vivo válida. El botón de regla muestra el ancho, alto y fondo actuales de la habitación en una tarjeta pequeña. En teléfonos sin AR, estas lecturas son menos fiables, especialmente para los muebles.</string>
     <string name="faq_reset_overlay_scale">La máscara parece mal ampliada — ¿qué hago?</string>
@@ -239,7 +239,9 @@
     <string name="accessibility_create_room">Crear habitación desde foto</string>
     <string name="faq_ai_features">Funciones de IA</string>
     <string name="faq_what_is_brain_icon">¿Qué hace el icono del cerebro?</string>
-    <string name="faq_what_is_brain_icon_answer">El icono del cerebro inicia el modo de identificación de SmartyPants. Usa la cámara en vivo para encontrar muebles y objetos, muestra etiquetas y recuadros, y te permite seleccionar una o más etiquetas antes de tocar Segmentar.</string>
+    <string name="faq_what_is_brain_icon_answer">El icono del cerebro inicia SmartyPants en el visor de la habitación. Por defecto segmenta automáticamente el mueble de mayor confianza como recorte transparente sobre tu habitación 3D. Para elegir tocando, toca primero el botón viewfinder.</string>
+    <string name="faq_what_is_viewfinder_button_answer">Con SmartyPants activo, el botón viewfinder (arriba a la derecha) activa el modo vídeo completo. Ves la cámara en vivo con cuadros de detección, toca uno o más elementos y luego Segmentar. La cámara se oculta y recortes transparentes se componen sobre tu habitación 3D. Toca Detener para volver a identificaciones en vivo.</string>
+    <string name="faq_what_is_viewfinder_button">¿Qué hace el botón viewfinder en el visor de la habitación?</string>
     <string name="faq_how_to_screenshot">¿Cómo tomo una captura de pantalla?</string>
     <string name="faq_how_to_screenshot_answer">Cuando SmartyPants está activo (icono del cerebro verde), aparece un icono de compartir en la parte inferior derecha. Tócalo para guardar una captura de pantalla con las detecciones de IA en tu biblioteca de fotos.</string>
     <string name="faq_how_to_save_room">¿Cómo guardo una habitación?</string>
@@ -470,7 +472,7 @@
     <string name="failed_delete">Failed to delete: %s</string>
     <string name="total">Total</string>
     <string name="app_version_display">Furnit v1.0.0</string>
-    <string name="faq_room_fitment_answer">Tras añadir un mueble, redimensiónalo y muévelo en la habitación 3D para ver cómo encaja con el espacio y otros muebles.</string>
+    <string name="faq_room_fitment_answer">Tras segmentar, redimensiona y reposiciona recortes en tu habitación 3D. En modo vídeo completo, Segmentar compone las piezas seleccionadas sobre la habitación para comparar varios elementos con el espacio.</string>
     <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
