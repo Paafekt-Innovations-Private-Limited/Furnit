@@ -662,7 +662,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     dpToPx(62),
                 ).apply {
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    topMargin = dpToPx(40)
+                    topMargin = dpToPx(96)
                 },
             )
         }
@@ -867,7 +867,8 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         updateInlineBrainSegmentButton()
         updateInlineBrainCameraPreviewVisibility()
-        rebindInlineBrainCameraIfActive()
+        // Keep the existing CameraX Analysis pipeline alive. Rebinding here blocks the UI
+        // thread and delays the first selected-segmentation frame; hiding PreviewView is enough.
     }
 
     private fun updateInlineBrainSegmentButton() {
@@ -946,6 +947,14 @@ class GLBRoomActivity : AppCompatActivity() {
                     runOnUiThread {
                         isBrainInferenceRunning.set(false)
                         if (!brainAcceptingUpdates || brainSessionGeneration.get() != generation) return@runOnUiThread
+                        if (inlineBrainMode != modeSnapshot || inlineBrainFullVideoEnabled != fullVideoSnapshot) {
+                            LogUtil.d(
+                                TAG,
+                                "Inline brain: dropping stale result mode=$modeSnapshot current=$inlineBrainMode " +
+                                    "fullVideo=$fullVideoSnapshot currentFullVideo=$inlineBrainFullVideoEnabled",
+                            )
+                            return@runOnUiThread
+                        }
                         applyInlineBrainResult(result)
                     }
                 }
