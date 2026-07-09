@@ -993,7 +993,8 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     let imageURL: URL
     let roomWidthMeters: Float
     let roomHeightMeters: Float
-    let cameraOffset: CGSize
+    @Binding var cameraOffset: CGSize
+    @Binding var cameraZoom: CGFloat
     @Binding var shouldResetCamera: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -1005,6 +1006,8 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         view.backgroundColor = UIColor(white: 0.12, alpha: 1.0)
         view.allowsCameraControl = false
         view.autoenablesDefaultLighting = false
+        context.coordinator.configure(cameraOffset: $cameraOffset, cameraZoom: $cameraZoom)
+        context.coordinator.installGestureRecognizersIfNeeded(on: view)
         view.scene = makeScene(context: context)
         view.pointOfView = context.coordinator.cameraNode
         view.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
@@ -1016,6 +1019,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
 
     func updateUIView(_ view: SCNView, context: Context) {
         view.pointOfView = context.coordinator.cameraNode
+        context.coordinator.configure(cameraOffset: $cameraOffset, cameraZoom: $cameraZoom)
         if let previewView = view as? DepthAnythingPreviewSCNView {
             previewView.onViewportSizeChanged = { [weak cameraNode = context.coordinator.cameraNode] size in
                 applyCameraPose(cameraNode, viewportSize: size)
@@ -1068,7 +1072,8 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         let verticalFOV = CGFloat((cameraNode.camera?.fieldOfView ?? 60) * .pi / 180)
         let fitHeightDistance = (planeHeight * 0.5) / tan(verticalFOV * 0.5)
         let fitWidthDistance = (planeWidth * 0.5) / (tan(verticalFOV * 0.5) * aspect)
-        let standoff = Float(max(fitHeightDistance, fitWidthDistance) * 1.08)
+        let clampedZoom = min(max(cameraZoom, 0.55), 4.0)
+        let standoff = Float((max(fitHeightDistance, fitWidthDistance) * 1.08) / clampedZoom)
         let panUnit = max(planeWidth, planeHeight) * 0.09
         let centerX = Float(cameraOffset.width * panUnit)
         let centerY = Float(cameraOffset.height * panUnit)
@@ -1078,8 +1083,71 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         cameraNode.look(at: lookAt)
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var cameraNode: SCNNode?
+        private var cameraOffset: Binding<CGSize>?
+        private var cameraZoom: Binding<CGFloat>?
+        private var panStartOffset: CGSize = .zero
+        private var pinchStartZoom: CGFloat = 1
+        private var didInstallGestureRecognizers = false
+
+        func configure(cameraOffset: Binding<CGSize>, cameraZoom: Binding<CGFloat>) {
+            self.cameraOffset = cameraOffset
+            self.cameraZoom = cameraZoom
+        }
+
+        func installGestureRecognizersIfNeeded(on view: SCNView) {
+            guard !didInstallGestureRecognizers else { return }
+            didInstallGestureRecognizers = true
+
+            let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+            panRecognizer.minimumNumberOfTouches = 1
+            panRecognizer.maximumNumberOfTouches = 1
+            panRecognizer.delegate = self
+            view.addGestureRecognizer(panRecognizer)
+
+            let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+            pinchRecognizer.delegate = self
+            view.addGestureRecognizer(pinchRecognizer)
+        }
+
+        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            guard let cameraOffset else { return }
+            guard let view = recognizer.view else { return }
+            switch recognizer.state {
+            case .began:
+                panStartOffset = cameraOffset.wrappedValue
+            case .changed:
+                let translation = recognizer.translation(in: view)
+                let horizontalUnits = (translation.x / max(view.bounds.width, 1)) * 6
+                let verticalUnits = (translation.y / max(view.bounds.height, 1)) * 6
+                cameraOffset.wrappedValue = CGSize(
+                    width: panStartOffset.width - horizontalUnits,
+                    height: panStartOffset.height + verticalUnits
+                )
+            default:
+                break
+            }
+        }
+
+        @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+            guard let cameraZoom else { return }
+            switch recognizer.state {
+            case .began:
+                pinchStartZoom = cameraZoom.wrappedValue
+            case .changed:
+                cameraZoom.wrappedValue = min(max(pinchStartZoom * recognizer.scale, 0.55), 4.0)
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
     }
 }
 
@@ -1091,6 +1159,7 @@ private struct DepthAnythingPreviewRoomView: View {
     @StateObject private var modelManager = USDZModelManager()
     @State private var shouldResetCamera = false
     @State private var previewCameraOffset: CGSize = .zero
+    @State private var previewCameraZoom: CGFloat = 1
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
     @State private var showRoomNameInput = false
@@ -1117,7 +1186,8 @@ private struct DepthAnythingPreviewRoomView: View {
                 imageURL: destination.measurementImageURL,
                 roomWidthMeters: destination.roomWidthMeters,
                 roomHeightMeters: destination.roomHeightMeters,
-                cameraOffset: previewCameraOffset,
+                cameraOffset: $previewCameraOffset,
+                cameraZoom: $previewCameraZoom,
                 shouldResetCamera: $shouldResetCamera
             )
             .ignoresSafeArea()
@@ -1211,6 +1281,7 @@ private struct DepthAnythingPreviewRoomView: View {
             HStack(spacing: 14) {
                 Button {
                     previewCameraOffset = .zero
+                    previewCameraZoom = 1
                     shouldResetCamera = true
                 } label: {
                     Image(systemName: "viewfinder")
