@@ -52,9 +52,12 @@
     <string name="home_delete_hint">Delete old rooms to create new ones</string>
     <string name="home_swipe_hint">Swipe left to delete</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>
+    <string name="home_room_actions_title">Room options</string>
+    <string name="home_room_actions_subtitle">Rename or remove this saved room</string>
     <string name="home_rename_room">Rename</string>
     <string name="home_rename_room_title">Rename room</string>
     <string name="home_rename_room_hint">Room name</string>
+    <string name="home_delete_room_action_hint">Delete from this device</string>
     <string name="home_rename_room_empty">Enter a name</string>
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>

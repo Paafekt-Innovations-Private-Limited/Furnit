@@ -1,5 +1,6 @@
 package com.furnit.android
 
+import android.app.Dialog
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
@@ -15,6 +16,7 @@ import android.view.ViewGroup
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.View
+import android.view.Window
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ScrollView
@@ -607,20 +609,177 @@ class ContentActivity : AppCompatActivity() {
     }
 
     private fun showRoomActionsDialog(model: Model) {
-        val options = arrayOf(
-            getString(R.string.home_rename_room),
-            getString(R.string.common_delete),
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(22), dpToPx(20), dpToPx(22), dpToPx(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(28).toFloat()
+                setColor(Color.parseColor("#2C2C2E"))
+                setStroke(dpToPx(1), Color.parseColor("#4A4A4D"))
+            }
+        }
+
+        val eyebrow = TextView(this).apply {
+            text = getString(R.string.home_room_actions_title)
+            textSize = 12f
+            letterSpacing = 0.10f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(accentPurple)
+            gravity = Gravity.START
+        }
+        card.addView(eyebrow)
+
+        val title = TextView(this).apply {
+            text = model.name
+            textSize = 22f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(primaryTextColor)
+            maxLines = 2
+            setPadding(0, dpToPx(8), 0, dpToPx(2))
+        }
+        card.addView(title)
+
+        val subtitle = TextView(this).apply {
+            text = getString(R.string.home_room_actions_subtitle)
+            textSize = 14f
+            setTextColor(secondaryTextColor)
+            setPadding(0, 0, 0, dpToPx(18))
+        }
+        card.addView(subtitle)
+
+        card.addView(
+            createRoomActionRow(
+                iconText = "R",
+                iconColor = accentPurple,
+                titleText = getString(R.string.home_rename_room),
+                detailText = getString(R.string.home_rename_room_hint),
+            ) {
+                dialog.dismiss()
+                showRenameRoomDialog(model)
+            },
         )
-        AlertDialog.Builder(this)
-            .setTitle(model.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showRenameRoomDialog(model)
-                    1 -> showDeleteDialog(model)
+
+        card.addView(
+            createRoomActionRow(
+                iconText = "D",
+                iconColor = Color.parseColor("#FF453A"),
+                titleText = getString(R.string.common_delete),
+                detailText = getString(R.string.home_delete_room_action_hint),
+                destructive = true,
+            ) {
+                dialog.dismiss()
+                showDeleteDialog(model)
+            },
+        )
+
+        val cancel = TextView(this).apply {
+            text = getString(R.string.common_cancel)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            letterSpacing = 0.06f
+            setTextColor(Color.parseColor("#D7B6FF"))
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(18), dpToPx(10), dpToPx(18), dpToPx(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(18).toFloat()
+                setColor(Color.parseColor("#22AF52DE"))
+                setStroke(dpToPx(1), Color.parseColor("#55AF52DE"))
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        card.addView(
+            cancel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.END
+                topMargin = dpToPx(10)
+            },
+        )
+
+        dialog.setContentView(card)
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.window?.setDimAmount(0.72f)
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.86f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        dialog.show()
+    }
+
+    private fun createRoomActionRow(
+        iconText: String,
+        iconColor: Int,
+        titleText: String,
+        detailText: String,
+        destructive: Boolean = false,
+        onClick: () -> Unit,
+    ): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                bottomMargin = dpToPx(10)
+            }
+            setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(18).toFloat()
+                setColor(if (destructive) Color.parseColor("#1AFF453A") else Color.parseColor("#38383A"))
+                setStroke(dpToPx(1), if (destructive) Color.parseColor("#44FF453A") else Color.parseColor("#464649"))
+            }
+            setOnClickListener { onClick() }
+
+            val icon = TextView(this@ContentActivity).apply {
+                text = iconText
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(iconColor)
                 }
             }
-            .setNegativeButton(R.string.common_cancel, null)
-            .show()
+            addView(
+                icon,
+                LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                    marginEnd = dpToPx(14)
+                },
+            )
+
+            val textStack = LinearLayout(this@ContentActivity).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            textStack.addView(
+                TextView(this@ContentActivity).apply {
+                    text = titleText
+                    textSize = 16f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(if (destructive) Color.parseColor("#FFB4AE") else primaryTextColor)
+                },
+            )
+            textStack.addView(
+                TextView(this@ContentActivity).apply {
+                    text = detailText
+                    textSize = 13f
+                    setTextColor(secondaryTextColor)
+                    setPadding(0, dpToPx(2), 0, 0)
+                },
+            )
+            addView(
+                textStack,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+        }
     }
 
     private fun showRenameRoomDialog(model: Model) {
