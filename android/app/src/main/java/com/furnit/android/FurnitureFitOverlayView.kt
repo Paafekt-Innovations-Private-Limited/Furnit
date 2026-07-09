@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
@@ -67,48 +68,53 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
 
     private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
     private val drawMatrix = Matrix()
+    private val density = resources.displayMetrics.density
+    private val bboxCornerRadiusPx = 6f * density
 
     private val maskPaint = Paint().apply {
         isAntiAlias = true
         isFilterBitmap = true
     }
 
+    // Swift DetectionBBoxOverlayView parity: white/yellow stroke, rounded corners (not green sharp rects).
     private val boxPaint = Paint().apply {
-        color = Color.GREEN
+        color = Color.argb(224, 255, 255, 255)
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 1.2f * density
         isAntiAlias = true
     }
 
     private val selectedBoxPaint = Paint().apply {
-        color = Color.WHITE
+        color = Color.parseColor("#FFCC00")
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 2.5f * density
         isAntiAlias = true
     }
 
     private val selectedTextBgPaint = Paint().apply {
-        color = Color.argb(230, 255, 255, 255)
+        color = Color.argb(140, 0, 0, 0)
         style = Paint.Style.FILL
+        isAntiAlias = true
     }
 
     private val textBgPaint = Paint().apply {
-        color = Color.argb(200, 0, 0, 0)
+        color = Color.argb(97, 0, 0, 0)
         style = Paint.Style.FILL
+        isAntiAlias = true
     }
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 36f
+        textSize = 10f * density
         isAntiAlias = true
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
     }
 
     private val selectedTextPaint = Paint().apply {
-        color = Color.BLACK
-        textSize = 36f
+        color = Color.WHITE
+        textSize = 11f * density
         isAntiAlias = true
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
 
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -658,23 +664,35 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
                 val activeTextBgPaint = if (isSelected) selectedTextBgPaint else textBgPaint
                 val activeTextPaint = if (isSelected) selectedTextPaint else textPaint
 
-                // Draw bounding box
-                canvas.drawRect(rect, activeBoxPaint)
+                canvas.drawRoundRect(rect, bboxCornerRadiusPx, bboxCornerRadiusPx, activeBoxPaint)
 
-                // Prepare label text
-                val label = "${clusterLabel(group, representative)} ${String.format("%.0f%%", representative.confidence * 100)}"
-                val textWidth = activeTextPaint.measureText(label)
+                val scoreText = String.format(Locale.US, "%.2f", representative.confidence)
+                val label = clusterLabel(group, representative)
+                val text = if (label.isEmpty()) "" else "$label $scoreText"
+                if (text.isEmpty()) continue
+
+                val textWidth = activeTextPaint.measureText(text)
                 val textHeight = activeTextPaint.textSize
-
-                // Draw label background
+                val maxLabelWidth = min(max(rect.width(), 56f * density), 140f * density)
                 val bgLeft = rect.left
-                val bgTop = rect.top - textHeight - 8
-                val bgRight = rect.left + textWidth + 16
+                val bgTop = max(0f, rect.top - textHeight - 8f * density)
+                val bgRight = rect.left + min(maxLabelWidth, textWidth + 10f * density)
                 val bgBottom = rect.top
-                canvas.drawRect(bgLeft, bgTop, bgRight, bgBottom, activeTextBgPaint)
-
-                // Draw label text
-                canvas.drawText(label, rect.left + 8, rect.top - 8, activeTextPaint)
+                canvas.drawRoundRect(
+                    bgLeft,
+                    bgTop,
+                    bgRight,
+                    bgBottom,
+                    bboxCornerRadiusPx,
+                    bboxCornerRadiusPx,
+                    activeTextBgPaint,
+                )
+                canvas.drawText(
+                    text,
+                    rect.left + 5f * density,
+                    rect.top - 5f * density,
+                    activeTextPaint,
+                )
             }
         }
     }

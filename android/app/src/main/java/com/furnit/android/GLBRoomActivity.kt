@@ -78,6 +78,8 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var titleView: TextView
     private lateinit var rootLayout: FrameLayout
+    private lateinit var topBar: FrameLayout
+    private lateinit var cameraDpadOverlay: FrameLayout
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     private lateinit var brainCameraPreview: PreviewView
@@ -222,11 +224,21 @@ class GLBRoomActivity : AppCompatActivity() {
         // (rotation, zoom, pan) directly like iOS
 
         // Top bar
-        val topBar = createTopBar()
+        topBar = createTopBar()
         rootLayout.addView(topBar, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.TOP })
+
+        // Top-left camera D-pad (same handlers as iOS GLBRoomView / ModelViewerView).
+        cameraDpadOverlay = createCameraDPadOverlay()
+        rootLayout.addView(
+            cameraDpadOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
 
         // Bottom controls
         val bottomControls = createBottomControls()
@@ -292,13 +304,77 @@ class GLBRoomActivity : AppCompatActivity() {
         )
 
         setContentView(rootLayout)
+        ensureNavigationChromeOnTop()
 
         // Load the WebGL viewer
         loadWebGLViewer()
     }
 
+    /** Keep back / title / recenter / D-pad above the brain camera overlay (Swift nav bar parity). */
+    private fun ensureNavigationChromeOnTop() {
+        topBar.elevation = 40f
+        cameraDpadOverlay.elevation = 39f
+        brainFullVideoButton?.elevation = 38f
+        brainFullVideoButton?.let { rootLayout.bringChildToFront(it) }
+        rootLayout.bringChildToFront(cameraDpadOverlay)
+        rootLayout.bringChildToFront(topBar)
+    }
+
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun createDpadCircleButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#80000000"))
+            }
+            val size = dpToPx(44)
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /** Top-left arrow cluster — posts the same JS calls as iOS `WebGLCameraMove*`. */
+    private fun createCameraDPadOverlay(): FrameLayout {
+        val topInset = if (photoOrientation == "landscape") dpToPx(12) else dpToPx(110)
+        return FrameLayout(this).apply {
+            val cluster = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            cluster.addView(createDpadCircleButton("\u2190") { nudgeCameraLeft() })
+
+            val verticalPad = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = dpToPx(8)
+                setPadding(pad, 0, pad, 0)
+            }
+            verticalPad.addView(createDpadCircleButton("\u2191") { nudgeCameraUp() })
+            verticalPad.addView(createDpadCircleButton("\u2193") { nudgeCameraDown() })
+            cluster.addView(verticalPad)
+
+            cluster.addView(createDpadCircleButton("\u2192") { nudgeCameraRight() })
+
+            addView(
+                cluster,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.START or Gravity.TOP
+                    topMargin = topInset
+                    marginStart = dpToPx(12)
+                },
+            )
+        }
     }
 
     private fun createTopBar(): FrameLayout {
@@ -688,6 +764,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainProgressOverlay.visibility = View.VISIBLE
         setBrainButtonActive(true)
         updateInlineBrainSegmentButton()
+        ensureNavigationChromeOnTop()
 
         lifecycleScope.launch {
             val manager = furnitureFitManager ?: withContext(Dispatchers.IO) {
@@ -994,6 +1071,34 @@ class GLBRoomActivity : AppCompatActivity() {
         )
     }
 
+    private fun nudgeCameraLeft() {
+        webView.evaluateJavascript(
+            "if(typeof moveCamera==='function')moveCamera(-8,0);",
+            null,
+        )
+    }
+
+    private fun nudgeCameraRight() {
+        webView.evaluateJavascript(
+            "if(typeof moveCamera==='function')moveCamera(8,0);",
+            null,
+        )
+    }
+
+    private fun nudgeCameraUp() {
+        webView.evaluateJavascript(
+            "if(typeof moveCameraUp==='function')moveCameraUp(0.2);",
+            null,
+        )
+    }
+
+    private fun nudgeCameraDown() {
+        webView.evaluateJavascript(
+            "if(typeof moveCameraUp==='function')moveCameraUp(-0.2);",
+            null,
+        )
+    }
+
     private fun loadWebGLViewer() {
         val glbFile = File(glbPath!!)
         if (!glbFile.exists()) {
@@ -1055,6 +1160,8 @@ class GLBRoomActivity : AppCompatActivity() {
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const isPortrait = $isPortrait;
+        const inferenceRoomWidth = $roomWidth;
+        const inferenceRoomHeight = $roomHeight;
 
         console.log('[GLBViewer] Starting...');
 
@@ -1085,6 +1192,101 @@ class GLBRoomActivity : AppCompatActivity() {
 
         let initialCameraPosition = null;
         let initialControlsTarget = null;
+        let roomBoundsForClamping = null;
+        let isFlatPhotoMesh = false;
+        let flatPhotoWidth = 0;
+        let flatPhotoHeight = 0;
+
+        function depthAnythingImagePlaneStandoff(width, height) {
+            const halfFovRad = Math.PI / 6.0;
+            const viewportAspect = Math.max(window.innerWidth / window.innerHeight, 0.01);
+            let fitWidth;
+            let fitHeight;
+            if (!isPortrait) {
+                fitWidth = width / (2 * Math.tan(halfFovRad));
+                const verticalHalfFov = Math.atan(Math.tan(halfFovRad) / viewportAspect);
+                fitHeight = height / (2 * Math.tan(verticalHalfFov));
+            } else {
+                fitHeight = height / (2 * Math.tan(halfFovRad));
+                const horizontalHalfFov = Math.atan(Math.tan(halfFovRad) * viewportAspect);
+                fitWidth = width / (2 * Math.tan(horizontalHalfFov));
+            }
+            const useCoverFraming = !isPortrait;
+            const fitDistance = useCoverFraming
+                ? Math.min(fitWidth, fitHeight) * 0.98
+                : Math.max(fitWidth, fitHeight) * 1.02;
+            return Math.max(fitDistance, 0.85);
+        }
+
+        function updateFlatPhotoProjection() {
+            const viewportAspect = Math.max(window.innerWidth / window.innerHeight, 0.01);
+            if (!isPortrait) {
+                const verticalHalfFov = Math.atan(Math.tan(Math.PI / 6.0) / viewportAspect);
+                camera.fov = THREE.MathUtils.radToDeg(2 * verticalHalfFov);
+            } else {
+                camera.fov = 60;
+            }
+            camera.aspect = viewportAspect;
+            camera.updateProjectionMatrix();
+        }
+
+        function applyFlatPhotoCamera() {
+            if (!isFlatPhotoMesh || flatPhotoWidth <= 0 || flatPhotoHeight <= 0) return;
+            updateFlatPhotoProjection();
+            const standoff = depthAnythingImagePlaneStandoff(flatPhotoWidth, flatPhotoHeight);
+            const camY = flatPhotoHeight * 0.5;
+            camera.position.set(0, camY, standoff);
+            controls.target.set(0, camY, 0);
+            controls.update();
+            initialCameraPosition = camera.position.clone();
+            initialControlsTarget = controls.target.clone();
+            roomBoundsForClamping = {
+                minX: -flatPhotoWidth * 0.5 + 0.05,
+                maxX: flatPhotoWidth * 0.5 - 0.05,
+                minY: 0.05,
+                maxY: flatPhotoHeight - 0.05,
+                minZ: 0.5,
+                maxZ: Math.max(standoff * 1.5, 8.0)
+            };
+            console.log('[GLBViewer] Flat photo camera standoff=', standoff.toFixed(2),
+                'plane=', flatPhotoWidth.toFixed(2), 'x', flatPhotoHeight.toFixed(2));
+        }
+
+        // D-pad / Splat parity: walk on XZ, vertical Y (same as iOS GLBRoomView).
+        window.moveCamera = function(dx, dy) {
+            const moveSpeed = 0.03;
+            let newX = camera.position.x + dx * moveSpeed;
+            let newZ = camera.position.z + dy * moveSpeed;
+            if (roomBoundsForClamping) {
+                const marginSide = 0.05;
+                const marginBack = 0.02;
+                newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                       Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                       Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
+            }
+            const actualDx = newX - camera.position.x;
+            const actualDz = newZ - camera.position.z;
+            camera.position.x = newX;
+            camera.position.z = newZ;
+            controls.target.x += actualDx;
+            controls.target.z += actualDz;
+            controls.update();
+        };
+
+        window.moveCameraUp = function(dy) {
+            if (typeof dy !== 'number' || !isFinite(dy)) return;
+            camera.position.y += dy;
+            controls.target.y += dy;
+            if (roomBoundsForClamping) {
+                const m = 0.05;
+                camera.position.y = Math.max(roomBoundsForClamping.minY + m,
+                    Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                controls.target.y = Math.max(roomBoundsForClamping.minY + m,
+                    Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+            }
+            controls.update();
+        };
 
         // Camera orbit function (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
@@ -1105,6 +1307,11 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Recenter function
         window.recenterCamera = function() {
+            if (isFlatPhotoMesh) {
+                applyFlatPhotoCamera();
+                console.log('[GLBViewer] Flat photo camera recentered');
+                return;
+            }
             if (initialCameraPosition && initialControlsTarget) {
                 camera.position.copy(initialCameraPosition);
                 controls.target.copy(initialControlsTarget);
@@ -1155,30 +1362,45 @@ class GLBRoomActivity : AppCompatActivity() {
                 model.position.z = -center.z;
                 model.position.y = -box.min.y;
 
-                // Centered Android room view: camera in the middle of cuboid rooms, or in
-                // front of Swift-parity flat photo meshes.
                 const roomWidth = size.x;
                 const roomHeight = size.y;
                 const roomDepth = size.z;
-                const isFlatPhotoMesh = roomDepth < 0.05;
+                isFlatPhotoMesh = roomDepth < 0.05;
                 const halfDepth = roomDepth * 0.5;
-                const camX = 0;
-                const camY = roomHeight * 0.5;
-                const camZ = isFlatPhotoMesh ? Math.max(roomWidth, roomHeight) * 0.95 : 0;
-                const targetX = 0;
-                const targetY = camY;
-                const targetZ = isFlatPhotoMesh ? 0 : -halfDepth;
 
-                camera.position.set(camX, camY, camZ);
-                controls.target.set(targetX, targetY, targetZ);
-                controls.update();
+                if (isFlatPhotoMesh) {
+                    flatPhotoWidth = Math.max(roomWidth, inferenceRoomWidth);
+                    flatPhotoHeight = Math.max(roomHeight, inferenceRoomHeight);
+                    applyFlatPhotoCamera();
+                } else {
+                    const camX = 0;
+                    const camY = roomHeight * 0.5;
+                    const camZ = 0;
+                    const targetX = 0;
+                    const targetY = camY;
+                    const targetZ = -halfDepth;
 
-                // Save initial camera state for recenter
-                initialCameraPosition = camera.position.clone();
-                initialControlsTarget = controls.target.clone();
+                    camera.position.set(camX, camY, camZ);
+                    controls.target.set(targetX, targetY, targetZ);
+                    controls.update();
+
+                    initialCameraPosition = camera.position.clone();
+                    initialControlsTarget = controls.target.clone();
+
+                    const boxWorld = new THREE.Box3().setFromObject(model);
+                    roomBoundsForClamping = {
+                        minX: boxWorld.min.x + 0.05,
+                        maxX: boxWorld.max.x - 0.05,
+                        minY: boxWorld.min.y + 0.05,
+                        maxY: boxWorld.max.y - 0.05,
+                        minZ: boxWorld.min.z + 0.05,
+                        maxZ: boxWorld.max.z - 0.02
+                    };
+                }
 
                 console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
-                console.log('[GLBViewer] Camera (center/front-wall): (', camX.toFixed(2), ',', camY.toFixed(2), ',', camZ.toFixed(2), ') lookAt (0,', targetY.toFixed(2), ',', targetZ.toFixed(2), ')');
+                console.log('[GLBViewer] Camera:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2),
+                    'lookAt', controls.target.x.toFixed(2), controls.target.y.toFixed(2), controls.target.z.toFixed(2));
 
                 // Notify Android that we're loaded
                 if (window.Android) {
@@ -1207,10 +1429,14 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         animate();
 
-        // Handle resize
+        // Handle resize — reframe flat photo rooms (iOS shouldReframeForViewportChange parity).
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            if (isFlatPhotoMesh) {
+                applyFlatPhotoCamera();
+            } else {
+                camera.updateProjectionMatrix();
+            }
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
@@ -1414,6 +1640,7 @@ class GLBRoomActivity : AppCompatActivity() {
         furnitureFitManager = null
         cameraExecutor.shutdown()
         webView.destroy()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         super.onDestroy()
     }
 }
