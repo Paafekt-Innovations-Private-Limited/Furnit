@@ -65,7 +65,6 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         Thread {
             try {
                 callback.onProgress(0.1f, "Preparing image...")
-                Thread.sleep(200)
 
                 callback.onProgress(0.3f, "Extracting textures...")
                 val frontWallTexture: Bitmap
@@ -86,10 +85,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     leftWallTexture = extractLeftWallTexture(image, boundaries)
                     rightWallTexture = extractRightWallTexture(image, boundaries)
                 }
-                Thread.sleep(200)
 
                 callback.onProgress(0.5f, "Building 3D model...")
-                Thread.sleep(200)
 
                 // Create GLB file
                 callback.onProgress(0.7f, "Creating room file...")
@@ -102,10 +99,8 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                     rightWallTexture,
                     flatPhotoMesh
                 )
-                Thread.sleep(200)
 
                 callback.onProgress(0.9f, "Finalizing...")
-                Thread.sleep(200)
 
                 callback.onProgress(1.0f, "Room ready!")
                 callback.onComplete(glbFile)

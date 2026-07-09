@@ -106,6 +106,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private val furnitureFitManager by lazy { FurnitureFitManager(this) }
     private var furnitureFitInitialized = false
     private var singleImageScanRequestId = 0
+    private var imageLoadRequestId = 0
+    private val maxRoomPhotoDimensionPx = 2048
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -915,35 +917,67 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun loadImageFromUri(uri: Uri) {
-        try {
-            val bitmap = PhotoOrientation.loadBitmapApplyingExif(this, uri)
+        val requestId = ++imageLoadRequestId
+        cancelAndReleaseAI()
+        selectedBitmap = null
+        resetSingleImageOverlay()
+        selectedImageView.setImageDrawable(null)
+        singleImageScanStatusView.text = getString(R.string.ai_progress_getting_photo_ready)
+        singleImageScanStatusView.visibility = View.VISIBLE
+        showMethodPicker()
 
-            if (bitmap != null) {
-                selectedBitmap = bitmap
-                selectedImageView.setImageBitmap(bitmap)
-                resetSingleImageOverlay()
-                orientationUserOverridden = false
-                photoWideAngle = false
-
-                // Must match bitmap pixels used for room generation (see PhotoOrientation.fromBitmapDimensions KDoc).
-                detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
-                DebugLogger.d(
-                    "SinglePhotoRoom",
-                    "Orientation from bitmap ${bitmap.width}x${bitmap.height}: ${detectedOrientation.value}"
-                )
-                updateOrientationIndicator()
-
-                showMethodPicker()
-                DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, waiting for room creation choice")
-            } else {
-                DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
-                Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
-                CrashReporter.report(this, IllegalStateException("Bitmap decode returned null"), "Single photo room — decode image")
+        lifecycleScope.launch {
+            val bitmap = try {
+                withContext(Dispatchers.IO) {
+                    PhotoOrientation.loadBitmapApplyingExif(
+                        this@SinglePhotoRoomActivity,
+                        uri,
+                        maxRoomPhotoDimensionPx,
+                    )
+                }
+            } catch (e: Exception) {
+                DebugLogger.eDebugMode("SinglePhotoRoom", "Error loading image", e)
+                CrashReporter.report(this@SinglePhotoRoomActivity, e, "Single photo room — load image")
+                null
             }
-        } catch (e: Exception) {
-            DebugLogger.eDebugMode("SinglePhotoRoom", "Error loading image", e)
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            CrashReporter.report(this, e, "Single photo room — load image")
+
+            if (requestId != imageLoadRequestId || isDestroyed) {
+                bitmap?.recycle()
+                return@launch
+            }
+
+            if (bitmap == null) {
+                DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
+                Toast.makeText(this@SinglePhotoRoomActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
+                CrashReporter.report(
+                    this@SinglePhotoRoomActivity,
+                    IllegalStateException("Bitmap decode returned null"),
+                    "Single photo room — decode image",
+                )
+                showInitialView()
+                return@launch
+            }
+
+            selectedBitmap = bitmap
+            selectedImageView.setImageBitmap(bitmap)
+            singleImageScanStatusView.visibility = View.GONE
+            orientationUserOverridden = false
+            photoWideAngle = false
+
+            // Must match bitmap pixels used for room generation (see PhotoOrientation.fromBitmapDimensions KDoc).
+            detectedOrientation = PhotoOrientation.fromBitmapDimensions(bitmap)
+            DebugLogger.d(
+                "SinglePhotoRoom",
+                "Orientation from sampled bitmap ${bitmap.width}x${bitmap.height}: ${detectedOrientation.value}",
+            )
+            updateOrientationIndicator()
+            DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, starting background room generation")
+
+            methodPickerView.post {
+                if (requestId == imageLoadRequestId && selectedBitmap === bitmap && !isDestroyed) {
+                    startAIGenerationInBackground(bitmap)
+                }
+            }
         }
     }
 
@@ -1304,6 +1338,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
             putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
             putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
+            putExtra("ROOM_DEPTH", result.roomDepth)
             putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, result.previewOnly)
             putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, result.photoOrientation)
             putExtra("ROOM_FOLDER", result.roomFolder.absolutePath)
@@ -1334,6 +1369,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     /** Returns to Create 3D Room photo selection and cancels AI unless already finished. */
     private fun showInitialView() {
+        imageLoadRequestId++
         singleImageScanRequestId++
         resetSingleImageOverlay()
         cancelAndReleaseAI()

@@ -532,6 +532,7 @@ class ContentActivity : AppCompatActivity() {
                     intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
                     clickedModel.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
                     clickedModel.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                    clickedModel.roomDepth?.let { intent.putExtra("ROOM_DEPTH", it) }
                     intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation)
                     startActivity(intent)
                 } else {
@@ -551,6 +552,7 @@ class ContentActivity : AppCompatActivity() {
                             intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
                             clickedModel.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
                             clickedModel.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                            clickedModel.roomDepth?.let { intent.putExtra("ROOM_DEPTH", it) }
                             intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, clickedModel.photoOrientation)
                             startActivity(intent)
                         }

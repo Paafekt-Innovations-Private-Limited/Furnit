@@ -77,6 +77,17 @@ class FurnitureFitManager(private val context: Context) {
          */
         const val KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI = "show_room_furniture_calibrate"
         const val KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS = "show_full_video_with_identifications"
+        private const val RTMDET_INPUT_SIZE = 640
+        private const val RTMDET_MASK_SIDE = 80
+        private val RTMDET_DETECTION_OUTPUTS = linkedSetOf(
+            "cls_80", "bbox_80",
+            "cls_40", "bbox_40",
+            "cls_20", "bbox_20",
+        )
+
+        private val sharedBackendLock = Any()
+        @Volatile private var sharedBackend: OnnxBackend? = null
+        private val sharedInferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         /**
          * Metric overlay sizing uses ARCore depth/planes when the device supports ARCore; otherwise non-metric fallback.
@@ -93,14 +104,103 @@ class FurnitureFitManager(private val context: Context) {
             return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
                 .getBoolean(KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, false)
         }
+
+        private fun sharedOnnxBackend(context: Context, onnxAssetName: String): OnnxBackend? {
+            sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }
+            synchronized(sharedBackendLock) {
+                sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }
+
+                val initStartNanos = System.nanoTime()
+                return try {
+                    val appContext = context.applicationContext
+                    val file = copyAssetToFile(appContext, onnxAssetName)
+                    val env = OrtEnvironment.getEnvironment()
+                    val opts = SessionOptions().apply {
+                        setOptimizationLevel(SessionOptions.OptLevel.ALL_OPT)
+                        setExecutionMode(SessionOptions.ExecutionMode.SEQUENTIAL)
+                        setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
+                        setInterOpNumThreads(1)
+                    }
+                    val session = env.createSession(file.absolutePath, opts)
+                    val backend = OnnxBackend(
+                        env = env,
+                        session = session,
+                        options = opts,
+                        assetName = onnxAssetName,
+                        inputName = session.inputInfo.entries.firstOrNull()?.key ?: "input",
+                        inputWidth = session.inputInfo.entries.firstOrNull()
+                            ?.value
+                            ?.info
+                            ?.let { it as? ai.onnxruntime.TensorInfo }
+                            ?.shape
+                            ?.getOrNull(3)
+                            ?.toInt()
+                            ?.takeIf { it > 0 }
+                            ?: RTMDET_INPUT_SIZE,
+                        inputHeight = session.inputInfo.entries.firstOrNull()
+                            ?.value
+                            ?.info
+                            ?.let { it as? ai.onnxruntime.TensorInfo }
+                            ?.shape
+                            ?.getOrNull(2)
+                            ?.toInt()
+                            ?.takeIf { it > 0 }
+                            ?: RTMDET_INPUT_SIZE,
+                        isRtmdetRaw = onnxAssetName == RTMDET_ONNX_MODEL_ASSET ||
+                            (session.outputInfo.containsKey("cls_80") &&
+                                session.outputInfo.containsKey("bbox_80") &&
+                                session.outputInfo.containsKey("kernel_80") &&
+                                session.outputInfo.containsKey("mask_feat")),
+                    )
+                    sharedBackend = backend
+                    LogUtil.i(
+                        TAG,
+                        "Loaded shared ONNX model '$onnxAssetName' in ${(System.nanoTime() - initStartNanos) / 1_000_000L}ms",
+                    )
+                    for ((name, info) in session.inputInfo) {
+                        LogUtil.i(TAG, "ONNX input: $name -> ${info.info}")
+                    }
+                    for ((name, info) in session.outputInfo) {
+                        LogUtil.i(TAG, "ONNX output: $name -> ${info.info}")
+                    }
+                    backend
+                } catch (e: Exception) {
+                    LogUtil.e(TAG, "Failed to load shared ONNX model '$onnxAssetName': ${e.message}", e)
+                    null
+                }
+            }
+        }
+
+        @Throws(IOException::class)
+        private fun copyAssetToFile(context: Context, assetName: String): File {
+            val outFile = File(context.cacheDir, assetName)
+            if (outFile.exists() && outFile.length() > 0L) return outFile
+            context.assets.open(assetName).use { input ->
+                java.io.FileOutputStream(outFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return outFile
+        }
     }
-    private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     // ONNX Runtime objects. @Volatile: written on the loader/main thread, read + closed on the
     // single-thread inferenceExecutor.
+    @Volatile private var ortBackend: OnnxBackend? = null
     @Volatile private var ortEnv: OrtEnvironment? = null
     @Volatile private var ortSession: OrtSession? = null
     private var loadedOnnxAssetName: String? = null
+
+    private data class OnnxBackend(
+        val env: OrtEnvironment,
+        val session: OrtSession,
+        @Suppress("unused") val options: SessionOptions,
+        val assetName: String,
+        val inputName: String,
+        val inputWidth: Int,
+        val inputHeight: Int,
+        val isRtmdetRaw: Boolean,
+    )
 
     /**
      * Initializes the ONNX Runtime segmentation backend.
@@ -126,38 +226,20 @@ class FurnitureFitManager(private val context: Context) {
     fun initializeOnnx(onnxAssetName: String = DEFAULT_ONNX_MODEL_ASSET) {
         val initStartNanos = System.nanoTime()
         LogUtil.i(TAG, "initializeOnnx called with '$onnxAssetName'")
-        try {
-            LogUtil.d(TAG, "Copying asset to cache...")
-            val file = copyAssetToFile(onnxAssetName)
-            LogUtil.d(
-                TAG,
-                "Asset copied to: ${file.absolutePath}, size: ${file.length()}"
-            )
-
-            LogUtil.d(TAG, "Getting ORT environment...")
-            ortEnv = OrtEnvironment.getEnvironment()
-
-            LogUtil.d(TAG, "Creating ONNX session...")
-            val opts = SessionOptions()
-            ortSession = ortEnv!!.createSession(file.absolutePath, opts)
-
-            // Log input/output info
-            loadedOnnxAssetName = onnxAssetName
-            LogUtil.i(TAG, "ONNX model loaded successfully")
-            for ((name, info) in ortSession!!.inputInfo) {
-                LogUtil.i(TAG, "ONNX input: $name -> ${info.info}")
-            }
-            for ((name, info) in ortSession!!.outputInfo) {
-                LogUtil.i(TAG, "ONNX output: $name -> ${info.info}")
-            }
+        val backend = sharedOnnxBackend(context, onnxAssetName)
+        if (backend != null) {
+            ortBackend = backend
+            ortEnv = backend.env
+            ortSession = backend.session
+            loadedOnnxAssetName = backend.assetName
             LogUtil.i(
                 TAG,
-                "Loaded ONNX model '$onnxAssetName' into ONNX Runtime in ${elapsedMillis(initStartNanos)}ms"
+                "Using shared ONNX model '$onnxAssetName' in ${elapsedMillis(initStartNanos)}ms",
             )
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to load onnx: ${e.message}", e)
-            ortSession = null
+        } else {
+            ortBackend = null
             ortEnv = null
+            ortSession = null
             loadedOnnxAssetName = null
         }
     }
@@ -221,7 +303,7 @@ class FurnitureFitManager(private val context: Context) {
         }
 
         try {
-            inferenceExecutor.execute {
+            sharedInferenceExecutor.execute {
                 try {
                     if (ortSession != null) {
                         runOnnxInferenceWithDetections(frame, includeMask, selectedClassIds, pinnedDetections, callback)
@@ -771,24 +853,14 @@ class FurnitureFitManager(private val context: Context) {
         var tensor: OnnxTensor? = null
         return try {
             val totalStartNanos = System.nanoTime()
-            val session = ortSession ?: return null
-            val env = ortEnv ?: return null
-
-            val firstInput = session.inputInfo.entries.firstOrNull() ?: return null
-
-            val inputName = firstInput.key
-            val tensorInfo = firstInput.value.info
-
-            var inputH = 640
-            var inputW = 640
-            if (tensorInfo is ai.onnxruntime.TensorInfo) {
-                val sh = tensorInfo.shape
-                if (sh.size == 4) {
-                    if (sh[2] > 0) inputH = sh[2].toInt()
-                    if (sh[3] > 0) inputW = sh[3].toInt()
-                }
-            }
+            val backend = ortBackend
+            val session = backend?.session ?: ortSession ?: return null
+            val env = backend?.env ?: ortEnv ?: return null
+            val inputName = backend?.inputName ?: session.inputInfo.entries.firstOrNull()?.key ?: return null
+            val inputW = backend?.inputWidth ?: RTMDET_INPUT_SIZE
+            val inputH = backend?.inputHeight ?: RTMDET_INPUT_SIZE
             val usesLetterboxPreprocess = inputH >= 1280 || inputW >= 1280
+            val isRtmdetRaw = backend?.isRtmdetRaw ?: isRtmdetRawSession(session)
             LogUtil.i(
                 TAG,
                 "Furniture segmentation ONNX start: ${frame.width}x${frame.height} -> ${if (usesLetterboxPreprocess) "letterbox" else "stretch"} ${inputW}x${inputH}"
@@ -800,7 +872,6 @@ class FurnitureFitManager(private val context: Context) {
             preparedBitmap.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
             val inputFloats = FloatArray(3 * inputH * inputW)
             val hw = inputH * inputW
-            val isRtmdetRaw = isRtmdetRawSession(session)
             for (y in 0 until inputH) {
                 val rowOff = y * inputW
                 for (x in 0 until inputW) {
@@ -827,7 +898,16 @@ class FurnitureFitManager(private val context: Context) {
             tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
 
             val inferenceStartNanos = System.nanoTime()
-            session.run(mapOf(inputName to tensor)).use { results ->
+            val requestedOutputs =
+                if (isRtmdetRaw && !includeMask && selectedClassIds.isEmpty() && pinnedDetections.isNullOrEmpty()) {
+                    RTMDET_DETECTION_OUTPUTS
+                } else {
+                    null
+                }
+            val inputs = mapOf(inputName to tensor)
+            val runResults =
+                if (requestedOutputs == null) session.run(inputs) else session.run(inputs, requestedOutputs)
+            runResults.use { results ->
                 val inferenceMillis = elapsedMillis(inferenceStartNanos)
                 LogUtil.i(TAG, "Furniture segmentation inference: ${inferenceMillis}ms")
 
@@ -839,7 +919,6 @@ class FurnitureFitManager(private val context: Context) {
                         includeMask = includeMask,
                         selectedClassIds = selectedClassIds,
                         pinnedDetections = pinnedDetections,
-                        session = session,
                         results = results,
                         totalStartNanos = totalStartNanos,
                         preprocessMillis = preprocessMillis,
@@ -1215,14 +1294,17 @@ class FurnitureFitManager(private val context: Context) {
         includeMask: Boolean,
         selectedClassIds: Set<Int>,
         pinnedDetections: List<DetectionResult>?,
-        session: OrtSession,
         results: OrtSession.Result,
         totalStartNanos: Long,
         preprocessMillis: Long = 0,
         inferenceMillis: Long = 0,
     ): SegmentationResult? {
         val parseStartNanos = System.nanoTime()
-        val raw = extractRtmdetRawOutputs(session, results) ?: run {
+        val raw = extractRtmdetRawOutputs(
+            results = results,
+            requireKernels = includeMask,
+            requireMaskFeat = includeMask,
+        ) ?: run {
             LogUtil.e(TAG, "RTMDet raw outputs missing")
             return null
         }
@@ -1252,6 +1334,55 @@ class FurnitureFitManager(private val context: Context) {
             "RTMDet raw detections: raw=${detections.size} kept=${keepDets.size} parse+nms=${parseNmsMillis}ms",
         )
 
+        val pinList = pinnedDetections.orEmpty()
+        if (!includeMask && selectedClassIds.isEmpty() && pinList.isEmpty()) {
+            val primaryDet = pickPrimaryOnnxDetection(
+                detections = keepDets,
+                frameWidth = inputW.toFloat(),
+                frameHeight = inputH.toFloat(),
+                minimumConfidence = RTMDET_CONFIDENCE_THRESHOLD,
+            )
+            val orderedDisplayDetections = if (primaryDet != null) {
+                buildList {
+                    add(primaryDet)
+                    for (detection in keepDets) {
+                        if (detection.anchorIdx != primaryDet.anchorIdx) add(detection)
+                    }
+                }
+            } else {
+                keepDets
+            }
+            val detectionResults = orderedDisplayDetections
+                .take(DEFAULT_MAX_DETECTIONS)
+                .map { detection ->
+                    DetectionResult(
+                        x = detection.x,
+                        y = detection.y,
+                        w = detection.w,
+                        h = detection.h,
+                        confidence = detection.confidence,
+                        label = labelForClassId(detection.classId),
+                        classId = detection.classId,
+                    )
+                }
+            LogUtil.i(TAG, "RTMDet raw total (detections only, fast): ${elapsedMillis(totalStartNanos)}ms")
+            LogUtil.i(
+                TAG,
+                "stageMillis: preprocess=$preprocessMillis inference=$inferenceMillis " +
+                    "parse+nms=$parseNmsMillis maskPlanes=0 maskBuild=0 total=${elapsedMillis(totalStartNanos)} " +
+                    "(planes=0 includeMask=false fast=true)",
+            )
+            return SegmentationResult(
+                mask = null,
+                detections = detectionResults,
+                inputSize = inputW,
+                primaryDetection = detectionResults.firstOrNull(),
+                detectionClusters = emptyList(),
+                sourceWidth = frame.width,
+                sourceHeight = frame.height,
+            )
+        }
+
         val rawMaskPlaneStartNanos = System.nanoTime()
         val rawMaskPlanes = keepDets.map { buildRtmdetRawMaskPlane(it, raw.maskFeat) }
         val affinityGraph = makeMaskAffinityGraph(rawMaskPlanes)
@@ -1261,7 +1392,6 @@ class FurnitureFitManager(private val context: Context) {
             "RTMDet raw mask affinity: planes=${rawMaskPlanes.count { it != null }} clusters=${affinityGraph.clusterCount()} in ${rawMaskPlaneMillis}ms",
         )
 
-        val pinList = pinnedDetections.orEmpty()
         val selectedSeedIndices = if (pinList.isNotEmpty()) {
             selectedSeedIndicesForPins(keepDets, pinList, affinityGraph)
         } else {
@@ -1462,12 +1592,12 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     private fun extractRtmdetRawOutputs(
-        session: OrtSession,
         results: OrtSession.Result,
+        requireKernels: Boolean,
+        requireMaskFeat: Boolean,
     ): RtmdetRawOutputs? {
         fun value(name: String): Any? {
-            val index = session.outputInfo.entries.indexOfFirst { it.key == name }
-            return if (index >= 0) results.get(index)?.value else null
+            return results.get(name).orElse(null)?.value
         }
         val cls80 = extractFloatArray(value("cls_80"))
         val cls40 = extractFloatArray(value("cls_40"))
@@ -1479,7 +1609,13 @@ class FurnitureFitManager(private val context: Context) {
         val kernel40 = extractFloatArray(value("kernel_40"))
         val kernel20 = extractFloatArray(value("kernel_20"))
         val maskFeat = extractFloatArray(value("mask_feat"))
-        if (listOf(cls80, cls40, cls20, bbox80, bbox40, bbox20, kernel80, kernel40, kernel20, maskFeat).any { it.isEmpty() }) {
+        if (listOf(cls80, cls40, cls20, bbox80, bbox40, bbox20).any { it.isEmpty() }) {
+            return null
+        }
+        if (requireKernels && listOf(kernel80, kernel40, kernel20).any { it.isEmpty() }) {
+            return null
+        }
+        if (requireMaskFeat && maskFeat.isEmpty()) {
             return null
         }
         return RtmdetRawOutputs(
@@ -1537,9 +1673,14 @@ class FurnitureFitManager(private val context: Context) {
                     val height = y2 - y1
                     if (width <= 1f || height <= 1f) continue
 
-                    val kernel = FloatArray(169)
-                    for (i in 0 until 169) {
-                        kernel[i] = level.kernel[i * hw + pos]
+                    val kernel = if (level.kernel.isNotEmpty()) {
+                        FloatArray(169).also { coeffs ->
+                            for (i in 0 until 169) {
+                                coeffs[i] = level.kernel[i * hw + pos]
+                            }
+                        }
+                    } else {
+                        FloatArray(0)
                     }
                     detections.add(
                         Detection(
@@ -2497,23 +2638,12 @@ class FurnitureFitManager(private val context: Context) {
     }
 
     fun close() {
-        // Close the native ONNX session ON the inference thread. Closing it from the caller
-        // (main) thread while the executor is mid-session.run() frees the session's mutex under a
-        // running inference and aborts with SIGABRT ("pthread_mutex_lock called on a destroyed
-        // mutex"). The single-thread executor serializes this teardown after any queued/in-flight
-        // inference; shutdown() then rejects new frames (handled where execute() is called).
-        if (inferenceExecutor.isShutdown) return
-        try {
-            inferenceExecutor.execute {
-                ortSession?.close()
-                ortSession = null
-                ortEnv?.close()
-                ortEnv = null
-            }
-        } catch (e: java.util.concurrent.RejectedExecutionException) {
-            // Already shutting down; no in-flight inference left to protect.
-        }
-        inferenceExecutor.shutdown()
+        // RTMDet/ONNX Runtime is shared for the process. Screen-level managers are lightweight
+        // handles and must not close the singleton session or executor while another screen may use it.
+        ortBackend = null
+        ortSession = null
+        ortEnv = null
+        loadedOnnxAssetName = null
     }
 
     private fun flattenArrayToFloat(arr: Array<*>): FloatArray {
@@ -2531,17 +2661,6 @@ class FurnitureFitManager(private val context: Context) {
         }
         rec(arr)
         return list.toFloatArray()
-    }
-
-    @Throws(IOException::class)
-    private fun copyAssetToFile(assetName: String): File {
-        val outFile = File(context.cacheDir, assetName)
-        context.assets.open(assetName).use { input ->
-            java.io.FileOutputStream(outFile).use { output ->
-                input.copyTo(output)
-            }
-        }
-        return outFile
     }
 
     private fun loadClassNames(): Map<Int, String> {

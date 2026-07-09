@@ -530,6 +530,8 @@
     <string name="room_viewer_created_message">Your room textures have been extracted from the photo. Tap Save to keep this room.</string>
     <string name="room_viewer_dimensions">Dimensions: %s</string>
     <string name="approximate_room_height">App. height - %.2f m</string>
+    <string name="room_viewer_pinch_hint">Pinch to zoom. Drag to rotate the room.</string>
+    <string name="room_viewer_brain_gesture_hint_explanation">Tap the brain button to detect furniture.</string>
     <string name="room_viewer_saved_toast">Room saved!</string>
 
     <!-- Model Viewer -->

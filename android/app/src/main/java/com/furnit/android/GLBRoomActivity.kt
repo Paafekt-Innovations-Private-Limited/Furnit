@@ -108,6 +108,7 @@ class GLBRoomActivity : AppCompatActivity() {
     // Room dimensions
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
+    private var roomDepth: Float = 4.5f
 
     private enum class InlineBrainMode {
         DEFAULT_SEGMENT,
@@ -151,6 +152,7 @@ class GLBRoomActivity : AppCompatActivity() {
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
         roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, RoomDefaults.widthMeters(this))
         roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, RoomDefaults.heightMeters(this))
+        roomDepth = intent.getFloatExtra("ROOM_DEPTH", RoomDefaults.depthMeters(this))
         photoOrientation = intent.getStringExtra(EXTRA_PHOTO_ORIENTATION) ?: "portrait"
 
         // Lock orientation based on room's photo orientation (no auto-rotate)
@@ -382,123 +384,127 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun createTopBar(): FrameLayout {
         return FrameLayout(this).apply {
-            setPadding(dpToPx(16), dpToPx(48), dpToPx(16), dpToPx(12))
+            setPadding(dpToPx(16), dpToPx(48), dpToPx(16), 0)
 
-            val barContainer = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(25).toFloat()
-                    setColor(Color.parseColor("#1C1C1E"))
-                }
-                background = bg
-                setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
-            }
-
-            // Back button
-            val backBtn = TextView(this@GLBRoomActivity).apply {
-                text = "〈"
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                layoutParams = LinearLayout.LayoutParams(size, size)
-                setOnClickListener { handleBackNavigation() }
-            }
-            barContainer.addView(backBtn)
-
-            // Title with dimensions
-            titleView = TextView(this@GLBRoomActivity).apply {
-                text = if (roomHeight > 0) {
-                    getString(R.string.approximate_room_height, roomHeight)
-                } else {
-                    roomName
-                }
-                textSize = 17f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            barContainer.addView(titleView)
-
-            // Recenter button
-            val recenterBtn = TextView(this@GLBRoomActivity).apply {
-                text = "⌖"  // Viewfinder-like symbol
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                val size = dpToPx(40)
-                val params = LinearLayout.LayoutParams(size, size)
-                params.setMargins(dpToPx(8), 0, 0, 0)
-                layoutParams = params
-                setOnClickListener { recenterCamera() }
-            }
-            barContainer.addView(recenterBtn)
-
-            // Save button (only in preview mode)
-            if (isPreviewMode) {
-                val saveBtn = TextView(this@GLBRoomActivity).apply {
-                    text = "↓"  // Download/save arrow (matching iOS square.and.arrow.down)
-                    textSize = 20f
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    val bg = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#3A3A3C"))
-                    }
-                    background = bg
-                    val size = dpToPx(40)
-                    val params = LinearLayout.LayoutParams(size, size)
-                    params.setMargins(dpToPx(8), 0, 0, 0)
-                    layoutParams = params
-                    setOnClickListener { showSaveDialog() }
-                }
-                barContainer.addView(saveBtn)
-            }
-
-            addView(barContainer, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
-
-            val arBtn = TextView(this@GLBRoomActivity).apply {
-                text = getString(R.string.model_viewer_ar)
-                textSize = 13f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(16).toFloat()
-                    setColor(Color.parseColor("#3A3A3C"))
-                }
-                background = bg
-                setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
-                setOnClickListener { openFurnitureFit(enableArAssistedSizing = true) }
+            val backBtn = createToolbarTextButton("‹") { handleBackNavigation() }.apply {
+                textSize = 24f
+                contentDescription = getString(R.string.photo_room_back)
             }
             addView(
-                arBtn,
+                backBtn,
+                FrameLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                    gravity = Gravity.START or Gravity.TOP
+                },
+            )
+
+            val principalControls = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = toolbarCapsuleDrawable()
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            }
+
+            principalControls.addView(createToolbarIconButton(R.drawable.ic_ruler) { showRoomDimensionsDialog() })
+            principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_pinch) {
+                Toast.makeText(this@GLBRoomActivity, R.string.room_viewer_pinch_hint, Toast.LENGTH_SHORT).show()
+            })
+            principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_tap) {
+                Toast.makeText(this@GLBRoomActivity, R.string.room_viewer_brain_gesture_hint_explanation, Toast.LENGTH_SHORT).show()
+            })
+
+            addView(
+                principalControls,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                },
+            )
+
+            val trailingControls = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            trailingControls.addView(createToolbarIconButton(R.drawable.ic_viewfinder) { recenterCamera() })
+            if (isPreviewMode) {
+                trailingControls.addView(createToolbarIconButton(R.drawable.ic_download) { showSaveDialog() })
+            }
+            trailingControls.addView(createToolbarIconButton(R.drawable.ic_square_resize) {
+                openFurnitureFit(enableArAssistedSizing = true)
+            })
+            addView(
+                trailingControls,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.END or Gravity.TOP
-                    topMargin = dpToPx(68)
                 },
             )
+
+            titleView = TextView(this@GLBRoomActivity).apply {
+                visibility = View.GONE
+                text = roomName
+            }
         }
+    }
+
+    private fun toolbarCapsuleDrawable(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(18).toFloat()
+            setColor(Color.parseColor("#8A000000"))
+            setStroke(dpToPx(1), Color.parseColor("#24FFFFFF"))
+        }
+    }
+
+    private fun toolbarCircleDrawable(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.parseColor("#73000000"))
+            setStroke(dpToPx(1), Color.parseColor("#24FFFFFF"))
+        }
+    }
+
+    private fun createToolbarIconButton(iconResId: Int, onClick: () -> Unit): ImageButton {
+        return ImageButton(this).apply {
+            setImageResource(iconResId)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            background = toolbarCircleDrawable()
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(dpToPx(7), dpToPx(7), dpToPx(7), dpToPx(7))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun createToolbarTextButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, Typeface.BOLD)
+            background = toolbarCircleDrawable()
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun showRoomDimensionsDialog() {
+        val dimensions = String.format(
+            Locale.US,
+            "%.2f m × %.2f m × %.2f m",
+            roomWidth,
+            roomHeight,
+            roomDepth,
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.faq_measurement_pill)
+            .setMessage(getString(R.string.room_viewer_dimensions, dimensions))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun createBottomControls(): FrameLayout {

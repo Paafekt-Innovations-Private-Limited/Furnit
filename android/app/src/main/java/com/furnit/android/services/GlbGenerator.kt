@@ -40,6 +40,11 @@ class GlbGenerator {
         val height: Float = 5.6f
     )
 
+    private data class TextureData(
+        val bytes: ByteArray,
+        val mimeType: String,
+    )
+
     /**
      * Main entry point - generates a GLB file for the room
      */
@@ -140,9 +145,9 @@ class GlbGenerator {
             "Plane, texture, and name counts must match"
         }
 
-        val textureBytes = textures.map { bitmapToPngBytes(it) }
-        val binaryData = buildBinaryBuffer(planes, textureBytes)
-        val json = buildGltfJson(planes, textureBytes, textureNames)
+        val textureData = textures.map { bitmapToJpegTextureData(it) }
+        val binaryData = buildBinaryBuffer(planes, textureData.map { it.bytes })
+        val json = buildGltfJson(planes, textureData, textureNames)
         val glbData = assembleGlb(json, binaryData)
 
         FileOutputStream(outputFile).use { fos ->
@@ -278,12 +283,15 @@ class GlbGenerator {
     }
 
     /**
-     * Compresses bitmap to PNG bytes
+     * Natural room photos encode much faster and smaller as JPEG than PNG.
      */
-    private fun bitmapToPngBytes(bitmap: Bitmap): ByteArray {
+    private fun bitmapToJpegTextureData(bitmap: Bitmap): TextureData {
         val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 90, stream)
-        return stream.toByteArray()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+        return TextureData(
+            bytes = stream.toByteArray(),
+            mimeType = "image/jpeg",
+        )
     }
 
     /**
@@ -333,7 +341,7 @@ class GlbGenerator {
      */
     private fun buildGltfJson(
         planes: List<PlaneGeometry>,
-        textureBytes: List<ByteArray>,
+        textureData: List<TextureData>,
         textureNames: List<String>
     ): String {
         val sb = StringBuilder()
@@ -401,7 +409,7 @@ class GlbGenerator {
         sb.append("\"images\":[")
         for (i in planes.indices) {
             if (i > 0) sb.append(",")
-            sb.append("{\"bufferView\":${imageBufferViewStart + i},\"mimeType\":\"image/png\"}")
+            sb.append("{\"bufferView\":${imageBufferViewStart + i},\"mimeType\":\"${textureData[i].mimeType}\"}")
         }
         sb.append("],")
 
@@ -445,9 +453,9 @@ class GlbGenerator {
         }
 
         // Image buffer views (no target for images)
-        for (bytes in textureBytes) {
-            bufferViews.add("{\"buffer\":0,\"byteOffset\":$offset,\"byteLength\":${bytes.size}}")
-            offset += bytes.size
+        for (texture in textureData) {
+            bufferViews.add("{\"buffer\":0,\"byteOffset\":$offset,\"byteLength\":${texture.bytes.size}}")
+            offset += texture.bytes.size
         }
 
         // Accessors

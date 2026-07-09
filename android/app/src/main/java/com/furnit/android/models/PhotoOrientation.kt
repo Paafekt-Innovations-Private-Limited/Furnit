@@ -147,9 +147,17 @@ enum class PhotoOrientation(val value: String) {
          * [BitmapFactory.decodeStream] ignores EXIF; applying it here keeps generated rooms aligned
          * with the upright photo the user saw in the picker.
          */
-        fun loadBitmapApplyingExif(context: Context, uri: Uri): Bitmap? {
+        fun loadBitmapApplyingExif(context: Context, uri: Uri, maxDimensionPx: Int = Int.MAX_VALUE): Bitmap? {
+            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+            if (maxDimensionPx != Int.MAX_VALUE) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri).use { stream ->
+                    if (stream != null) BitmapFactory.decodeStream(stream, null, bounds)
+                }
+                options.inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
+            }
             val bitmap = context.contentResolver.openInputStream(uri).use { stream ->
-                if (stream == null) null else BitmapFactory.decodeStream(stream)
+                if (stream == null) null else BitmapFactory.decodeStream(stream, null, options)
             } ?: return null
             val rotation = try {
                 context.contentResolver.openInputStream(uri).use { stream ->
@@ -162,14 +170,33 @@ enum class PhotoOrientation(val value: String) {
         }
 
         /** Same as [loadBitmapApplyingExif] for a filesystem path. */
-        fun loadBitmapApplyingExifFromFile(imagePath: String): Bitmap? {
-            val bitmap = BitmapFactory.decodeFile(imagePath) ?: return null
+        fun loadBitmapApplyingExifFromFile(imagePath: String, maxDimensionPx: Int = Int.MAX_VALUE): Bitmap? {
+            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+            if (maxDimensionPx != Int.MAX_VALUE) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(imagePath, bounds)
+                options.inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
+            }
+            val bitmap = BitmapFactory.decodeFile(imagePath, options) ?: return null
             val rotation = try {
                 ExifInterface(imagePath).rotationDegrees
             } catch (_: Exception) {
                 0
             }
             return applyExifRotation(bitmap, rotation)
+        }
+
+        private fun calculateInSampleSize(rawWidth: Int, rawHeight: Int, maxDimensionPx: Int): Int {
+            if (rawWidth <= 0 || rawHeight <= 0 || maxDimensionPx <= 0) return 1
+            var sample = 1
+            var sampledWidth = rawWidth
+            var sampledHeight = rawHeight
+            while (sampledWidth > maxDimensionPx || sampledHeight > maxDimensionPx) {
+                sample *= 2
+                sampledWidth /= 2
+                sampledHeight /= 2
+            }
+            return sample.coerceAtLeast(1)
         }
 
         private fun applyExifRotation(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
