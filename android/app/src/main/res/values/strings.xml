@@ -353,6 +353,8 @@
     <string name="room_preview_leave_message">Your room has not been saved yet. If you go back now, you will lose this preview.</string>
     <string name="room_preview_leave_stay">Stay</string>
     <string name="room_preview_leave_confirm">Leave</string>
+    <string name="room_preview_prepare_source_image_failed">Could not prepare source image for room preview.</string>
+    <string name="room_preview_source_image_unavailable">Could not load source image for room measurement.</string>
 
     <!-- Crash Report -->
     <string name="crash_report_title">Something went wrong</string>

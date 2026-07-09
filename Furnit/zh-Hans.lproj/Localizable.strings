@@ -304,6 +304,8 @@
 "roomPreview.unsavedMessage" = "房间尚未保存。若现在返回，将丢失此预览。";
 "roomPreview.stay" = "留下";
 "roomPreview.leave" = "离开";
+"roomPreview.sourceImageUnavailable" = "无法加载用于测量房间的源图像。";
+"roomPreview.prepareSourceImageFailed" = "无法为房间预览准备源图像。";
 "roomViewer.share" = "分享";
 "roomViewer.calibrateWall" = "校准墙面";
 "roomViewer.recenterView" = "视图居中";

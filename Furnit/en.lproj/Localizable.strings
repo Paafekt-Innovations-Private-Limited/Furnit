@@ -406,6 +406,8 @@
 "roomPreview.unsavedMessage" = "Your room has not been saved yet. If you go back now, you will lose this preview.";
 "roomPreview.stay" = "Stay";
 "roomPreview.leave" = "Leave";
+"roomPreview.prepareSourceImageFailed" = "Could not prepare source image for room preview.";
+"roomPreview.sourceImageUnavailable" = "Could not load source image for room measurement.";
 "roomViewer.share" = "Share";
 "roomViewer.calibrateWall" = "Calibrate Wall";
 "roomViewer.recenterView" = "Recenter View";

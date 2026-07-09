@@ -959,7 +959,7 @@ private enum DepthAnythingPreviewPrepareError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidImage:
-            return "Could not prepare source image for room preview."
+            return L10n.RoomPreview.prepareSourceImageFailed
         }
     }
 }
@@ -2132,7 +2132,7 @@ private struct DepthAnythingPreviewRoomView: View {
         }
         let measurementImageURL = destination.measurementImageURL
         guard FileManager.default.fileExists(atPath: measurementImageURL.path) else {
-            saveAlertMessage = "Could not find source image for room measurement."
+            saveAlertMessage = L10n.RoomPreview.sourceImageUnavailable
             saveWasSuccessful = false
             showSaveAlert = true
             return
@@ -2227,7 +2227,7 @@ private enum DepthAnythingPreviewSaveError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .sourceImageUnavailable:
-            return "Could not load source image for room measurement."
+            return L10n.RoomPreview.sourceImageUnavailable
         }
     }
 }

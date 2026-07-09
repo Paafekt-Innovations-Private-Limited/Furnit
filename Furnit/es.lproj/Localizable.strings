@@ -306,6 +306,8 @@
 "roomPreview.unsavedMessage" = "La habitación aún no se ha guardado. Si vuelves ahora, perderás esta vista previa.";
 "roomPreview.stay" = "Quedarse";
 "roomPreview.leave" = "Salir";
+"roomPreview.sourceImageUnavailable" = "No se pudo cargar la imagen de origen para medir la habitación.";
+"roomPreview.prepareSourceImageFailed" = "No se pudo preparar la imagen de origen para la vista previa de la habitación.";
 "roomViewer.share" = "Compartir";
 "roomViewer.calibrateWall" = "Calibrar pared";
 "roomViewer.recenterView" = "Recentrar vista";

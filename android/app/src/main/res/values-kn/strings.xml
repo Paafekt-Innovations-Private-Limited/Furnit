@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">ನಿಮ್ಮ ಕೊಠಡಿ ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಈಗ ಹಿಂದೆ ಹೋದರೆ ಈ ಪೂರ್ವದರ್ಶನ ಕಳೆದುಕೊಳ್ಳಬಹುದು.</string>
     <string name="room_preview_leave_stay">ಇಲ್ಲೇ ಇರಿ</string>
     <string name="room_preview_leave_confirm">ಹಿಂದೆ ಹೋಗು</string>
+    <string name="room_preview_prepare_source_image_failed">ಕೊಠಡಿ ಪೂರ್ವದರ್ಶನಕ್ಕಾಗಿ ಮೂಲ ಚಿತ್ರವನ್ನು ಸಿದ್ಧಪಡಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.</string>
+    <string name="room_preview_source_image_unavailable">ಕೊಠಡಿ ಅಳತೆಗಾಗಿ ಮೂಲ ಚಿತ್ರವನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.</string>
     <string name="crash_report_title">ಏನೋ ತಪ್ಪಾಗಿದೆ</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">ವರದಿ ಸಲ್ಲಿಸು</string>

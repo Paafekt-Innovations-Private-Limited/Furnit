@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।</string>
     <string name="room_preview_leave_stay">रुकें</string>
     <string name="room_preview_leave_confirm">वापस जाएँ</string>
+    <string name="room_preview_prepare_source_image_failed">कमरा पूर्वावलोकन के लिए स्रोत छवि तैयार नहीं की जा सकी।</string>
+    <string name="room_preview_source_image_unavailable">कमरा मापने के लिए स्रोत छवि लोड नहीं हो सकी।</string>
     <string name="crash_report_title">कुछ गलत हो गया</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">रिपोर्ट सबमिट करें</string>

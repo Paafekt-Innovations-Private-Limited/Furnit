@@ -304,6 +304,8 @@
 "roomPreview.unsavedMessage" = "房間尚未儲存。若現在返回，將遺失此預覽。";
 "roomPreview.stay" = "留下";
 "roomPreview.leave" = "離開";
+"roomPreview.sourceImageUnavailable" = "無法載入用於測量房間的來源影像。";
+"roomPreview.prepareSourceImageFailed" = "無法為房間預覽準備來源影像。";
 "roomViewer.share" = "分享";
 "roomViewer.calibrateWall" = "校準牆面";
 "roomViewer.recenterView" = "檢視畫面置中";

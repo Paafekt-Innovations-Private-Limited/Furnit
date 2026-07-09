@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">房间尚未保存。若现在返回，将丢失此预览。</string>
     <string name="room_preview_leave_stay">留下</string>
     <string name="room_preview_leave_confirm">离开</string>
+    <string name="room_preview_prepare_source_image_failed">无法为房间预览准备源图像。</string>
+    <string name="room_preview_source_image_unavailable">无法加载用于测量房间的源图像。</string>
     <string name="crash_report_title">出现问题</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">提交报告</string>

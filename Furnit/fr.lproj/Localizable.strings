@@ -306,6 +306,8 @@
 "roomPreview.unsavedMessage" = "La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.";
 "roomPreview.stay" = "Rester";
 "roomPreview.leave" = "Quitter";
+"roomPreview.sourceImageUnavailable" = "Impossible de charger l'image source pour la mesure de la pièce.";
+"roomPreview.prepareSourceImageFailed" = "Impossible de préparer l'image source pour l'aperçu de la pièce.";
 "roomViewer.share" = "Partager";
 "roomViewer.calibrateWall" = "Calibrer le mur";
 "roomViewer.recenterView" = "Recentrer la vue";

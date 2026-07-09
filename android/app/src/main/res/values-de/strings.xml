@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">Der Raum wurde noch nicht gespeichert. Wenn Sie jetzt zurückgehen, verlieren Sie diese Vorschau.</string>
     <string name="room_preview_leave_stay">Bleiben</string>
     <string name="room_preview_leave_confirm">Verlassen</string>
+    <string name="room_preview_prepare_source_image_failed">Quellbild für Raumvorschau konnte nicht vorbereitet werden.</string>
+    <string name="room_preview_source_image_unavailable">Quellbild für Raummessung konnte nicht geladen werden.</string>
     <string name="crash_report_title">Etwas ist schiefgelaufen</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">Bericht senden</string>

@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.</string>
     <string name="room_preview_leave_stay">البقاء</string>
     <string name="room_preview_leave_confirm">مغادرة</string>
+    <string name="room_preview_prepare_source_image_failed">تعذّر تحضير الصورة المصدر لمعاينة الغرفة.</string>
+    <string name="room_preview_source_image_unavailable">تعذّر تحميل الصورة المصدر لقياس الغرفة.</string>
     <string name="crash_report_title">حدث خطأ ما</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">إرسال التقرير</string>

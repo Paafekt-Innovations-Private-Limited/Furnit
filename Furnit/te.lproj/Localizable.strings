@@ -303,6 +303,8 @@
 "roomPreview.unsavedMessage" = "మీ గది ఇంకా సేవ్ కాలేదు. ఇప్పుడు వెనక్కి వెళితే ఈ ప్రివ్యూ పోవచ్చు.";
 "roomPreview.stay" = "ఇక్కడే ఉండండి";
 "roomPreview.leave" = "వెనక్కి వెళ్లు";
+"roomPreview.sourceImageUnavailable" = "గది కొలత కోసం మూల చిత్రాన్ని లోడ్ చేయలేకపోయింది.";
+"roomPreview.prepareSourceImageFailed" = "గది ప్రివ్యూ కోసం మూల చిత్రాన్ని సిద్ధం చేయలేకపోయింది.";
 "roomViewer.share" = "షేర్";
 "roomViewer.calibrateWall" = "గోడ క్యాలిబ్రేట్";
 "roomViewer.recenterView" = "వ్యూ మధ్యకు";

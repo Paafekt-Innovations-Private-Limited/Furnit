@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">మీ గది ఇంకా సేవ్ కాలేదు. ఇప్పుడు వెనక్కి వెళితే ఈ ప్రివ్యూ పోవచ్చు.</string>
     <string name="room_preview_leave_stay">ఇక్కడే ఉండండి</string>
     <string name="room_preview_leave_confirm">వెనక్కి వెళ్లు</string>
+    <string name="room_preview_prepare_source_image_failed">గది ప్రివ్యూ కోసం మూల చిత్రాన్ని సిద్ధం చేయలేకపోయింది.</string>
+    <string name="room_preview_source_image_unavailable">గది కొలత కోసం మూల చిత్రాన్ని లోడ్ చేయలేకపోయింది.</string>
     <string name="crash_report_title">ఏదో తప్పు జరిగింది</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">రిపోర్ట్ సబ్మిట్ చేయి</string>

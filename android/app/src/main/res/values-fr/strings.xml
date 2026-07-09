@@ -450,6 +450,8 @@
     <string name="room_preview_leave_message">La pièce n’a pas encore été enregistrée. Si vous revenez maintenant, vous perdrez cet aperçu.</string>
     <string name="room_preview_leave_stay">Rester</string>
     <string name="room_preview_leave_confirm">Quitter</string>
+    <string name="room_preview_prepare_source_image_failed">Impossible de préparer l\'image source pour l\'aperçu de la pièce.</string>
+    <string name="room_preview_source_image_unavailable">Impossible de charger l\'image source pour la mesure de la pièce.</string>
     <string name="crash_report_title">Un problème est survenu</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">Soumettre le rapport</string>

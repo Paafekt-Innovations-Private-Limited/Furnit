@@ -303,6 +303,8 @@
 "roomPreview.unsavedMessage" = "നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.";
 "roomPreview.stay" = "നിൽക്കുക";
 "roomPreview.leave" = "പിൻവാങ്ങുക";
+"roomPreview.sourceImageUnavailable" = "മുറിയുടെ അളവിനായി ഉറവിട ചിത്രം ലോഡ് ചെയ്യാനായില്ല.";
+"roomPreview.prepareSourceImageFailed" = "മുറി പ്രിവ്യൂവിനായി ഉറവിട ചിത്രം തയ്യാറാക്കാനായില്ല.";
 "roomViewer.share" = "പങ്കിടുക";
 "roomViewer.calibrateWall" = "ചുവര്‍ കാലിബ്രേറ്റ് ചെയ്യുക";
 "roomViewer.recenterView" = "കാഴ്ച മധ്യത്തിലാക്കുക";

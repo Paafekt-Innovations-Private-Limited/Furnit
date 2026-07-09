@@ -323,6 +323,8 @@
 "roomPreview.unsavedMessage" = "আপনার রুম এখনও সংরক্ষিত হয়নি। এখন ফিরে গেলে এই প্রিভিউ হারিয়ে যেতে পারে।";
 "roomPreview.stay" = "থাকুন";
 "roomPreview.leave" = "চলে যান";
+"roomPreview.sourceImageUnavailable" = "রুম পরিমাপের জন্য সোর্স ছবি লোড করা যায়নি।";
+"roomPreview.prepareSourceImageFailed" = "রুম প্রিভিউ-এর জন্য সোর্স ছবি প্রস্তুত করা যায়নি।";
 "roomViewer.share" = "শেয়ার";
 "roomViewer.calibrateWall" = "দেয়াল ক্যালিব্রেট";
 "roomViewer.recenterView" = "ভিউ কেন্দ্রে আনুন";

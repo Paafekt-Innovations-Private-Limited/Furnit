@@ -323,6 +323,8 @@
 "roomPreview.unsavedMessage" = "لم يتم حفظ الغرفة بعد. إذا عدت الآن، ستفقد هذه المعاينة.";
 "roomPreview.stay" = "البقاء";
 "roomPreview.leave" = "مغادرة";
+"roomPreview.sourceImageUnavailable" = "تعذّر تحميل الصورة المصدر لقياس الغرفة.";
+"roomPreview.prepareSourceImageFailed" = "تعذّر تحضير الصورة المصدر لمعاينة الغرفة.";
 "roomViewer.share" = "مشاركة";
 "roomViewer.calibrateWall" = "معايرة الجدار";
 "roomViewer.recenterView" = "إعادة تمركز العرض";

@@ -303,6 +303,8 @@
 "roomPreview.unsavedMessage" = "உங்கள் அறை இன்னும் சேமிக்கப்படவில்லை. இப்போது பின்சென்றால் இந்த முன்னோட்டம் இழக்கப்படலாம்.";
 "roomPreview.stay" = "இருங்கள்";
 "roomPreview.leave" = "பின்செல்";
+"roomPreview.sourceImageUnavailable" = "அறை அளவீட்டிற்கான மூலப் படத்தை ஏற்ற முடியவில்லை.";
+"roomPreview.prepareSourceImageFailed" = "அறை முன்னோட்டத்திற்கான மூலப் படத்தை தயார் செய்ய முடியவில்லை.";
 "roomViewer.share" = "பகிர்";
 "roomViewer.calibrateWall" = "சுவரை கேலிப்ரேட் செய்";
 "roomViewer.recenterView" = "காட்சியை மையப்படுத்து";

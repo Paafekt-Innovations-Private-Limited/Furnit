@@ -333,6 +333,8 @@
 "roomPreview.unsavedMessage" = "Der Raum wurde noch nicht gespeichert. Wenn Sie jetzt zurückgehen, verlieren Sie diese Vorschau.";
 "roomPreview.stay" = "Bleiben";
 "roomPreview.leave" = "Verlassen";
+"roomPreview.sourceImageUnavailable" = "Quellbild für Raummessung konnte nicht geladen werden.";
+"roomPreview.prepareSourceImageFailed" = "Quellbild für Raumvorschau konnte nicht vorbereitet werden.";
 "roomViewer.share" = "Teilen";
 "roomViewer.calibrateWall" = "Wand kalibrieren";
 "roomViewer.recenterView" = "Ansicht zentrieren";

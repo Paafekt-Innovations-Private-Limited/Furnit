@@ -450,6 +450,8 @@
     <string name="room_preview_leave_message">El cuarto aún no se ha guardado. Si regresas ahora, perderás esta vista previa.</string>
     <string name="room_preview_leave_stay">Quedarse</string>
     <string name="room_preview_leave_confirm">Salir</string>
+    <string name="room_preview_prepare_source_image_failed">No se pudo preparar la imagen de origen para la vista previa del cuarto.</string>
+    <string name="room_preview_source_image_unavailable">No se pudo cargar la imagen de origen para medir el cuarto.</string>
     <string name="crash_report_title">Algo salió mal</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">Enviar reporte</string>

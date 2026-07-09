@@ -491,6 +491,8 @@ enum L10n {
         static let unsavedMessage = "roomPreview.unsavedMessage".localized
         static let stay = "roomPreview.stay".localized
         static let leave = "roomPreview.leave".localized
+        static let prepareSourceImageFailed = "roomPreview.prepareSourceImageFailed".localized
+        static let sourceImageUnavailable = "roomPreview.sourceImageUnavailable".localized
     }
 
     // MARK: Model Viewer

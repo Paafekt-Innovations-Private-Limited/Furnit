@@ -303,6 +303,8 @@
 "roomPreview.unsavedMessage" = "आपका कमरा अभी सहेजा नहीं गया है। अगर अब वापस जाते हैं, तो यह पूर्वावलोकन खो सकता है।";
 "roomPreview.stay" = "रुकें";
 "roomPreview.leave" = "वापस जाएँ";
+"roomPreview.sourceImageUnavailable" = "कमरा मापने के लिए स्रोत छवि लोड नहीं हो सकी।";
+"roomPreview.prepareSourceImageFailed" = "कमरा पूर्वावलोकन के लिए स्रोत छवि तैयार नहीं की जा सकी।";
 "roomViewer.share" = "शेयर करें";
 "roomViewer.calibrateWall" = "दीवार कैलिब्रेट करें";
 "roomViewer.recenterView" = "दृश्य केंद्र में लाएँ";

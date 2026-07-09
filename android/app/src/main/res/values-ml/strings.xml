@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">നിങ്ങളുടെ മുറി ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല. ഇപ്പോൾ പിൻവാങ്ങിയാൽ ഈ പ്രിവ്യൂ നഷ്ടപ്പെടാം.</string>
     <string name="room_preview_leave_stay">നിൽക്കുക</string>
     <string name="room_preview_leave_confirm">പിൻവാങ്ങുക</string>
+    <string name="room_preview_prepare_source_image_failed">മുറി പ്രിവ്യൂവിനായി ഉറവിട ചിത്രം തയ്യാറാക്കാനായില്ല.</string>
+    <string name="room_preview_source_image_unavailable">മുറിയുടെ അളവിനായി ഉറവിട ചിത്രം ലോഡ് ചെയ്യാനായില്ല.</string>
     <string name="crash_report_title">എന്തോ തെറ്റായി</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">റിപ്പോർട്ട് സമർപ്പിക്കുക</string>

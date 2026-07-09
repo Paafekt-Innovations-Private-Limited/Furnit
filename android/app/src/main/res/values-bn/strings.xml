@@ -451,6 +451,8 @@
     <string name="room_preview_leave_message">আপনার রুম এখনও সংরক্ষিত হয়নি। এখন ফিরে গেলে এই প্রিভিউ হারিয়ে যেতে পারে।</string>
     <string name="room_preview_leave_stay">থাকুন</string>
     <string name="room_preview_leave_confirm">চলে যান</string>
+    <string name="room_preview_prepare_source_image_failed">রুম প্রিভিউ-এর জন্য সোর্স ছবি প্রস্তুত করা যায়নি।</string>
+    <string name="room_preview_source_image_unavailable">রুম পরিমাপের জন্য সোর্স ছবি লোড করা যায়নি।</string>
     <string name="crash_report_title">কিছু ভুল হয়েছে</string>
     <string name="crash_report_message">The app encountered an error. You can send a report to help us fix it.</string>
     <string name="crash_report_submit">রিপোর্ট জমা দিন</string>
