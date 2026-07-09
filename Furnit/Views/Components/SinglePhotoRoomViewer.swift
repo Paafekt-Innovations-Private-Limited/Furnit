@@ -1344,38 +1344,40 @@ private struct DepthAnythingPreviewRoomView: View {
     }
 
     var body: some View {
-        ZStack {
-            previewSceneAndFurnitureUnderlay
-                .ignoresSafeArea()
+        GeometryReader { _ in
+            ZStack {
+                previewSceneAndFurnitureUnderlay
+                    .ignoresSafeArea()
 
-            previewCameraButtonsOverlay
-            previewFullVideoToolbarHelperOverlay
-            previewFullVideoFurnitureTapBubbleOverlay
+                previewCameraButtonsOverlay
+                previewFullVideoToolbarHelperOverlay
+                previewFullVideoFurnitureTapBubbleOverlay
 
-            if let debugLine = destination.measurementDebugLine,
-               AppStateManager.shared.qualitySettings.debugMode {
-                VStack {
-                    Spacer()
-                    Text(debugLine)
-                        .font(.caption2.monospaced())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.black.opacity(0.6), in: Capsule())
-                        .padding(.bottom, 96)
+                if let debugLine = destination.measurementDebugLine,
+                   AppStateManager.shared.qualitySettings.debugMode {
+                    VStack {
+                        Spacer()
+                        Text(debugLine)
+                            .font(.caption2.monospaced())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.6), in: Capsule())
+                            .padding(.bottom, 96)
+                    }
+                    .allowsHitTesting(false)
                 }
-                .allowsHitTesting(false)
-            }
 
-            if isSavingRoom {
-                saveRoomProgressOverlay
+                if isSavingRoom {
+                    saveRoomProgressOverlay
+                }
+
+                previewBrainAndPlacementChrome
+                previewSnapshotChrome
             }
         }
         .overlay(alignment: .topTrailing) {
             previewFullVideoModeFloatingButton
-        }
-        .overlay(alignment: .bottom) {
-            previewBottomControlsBar
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -1532,26 +1534,41 @@ private struct DepthAnythingPreviewRoomView: View {
         previewCameraOffset.height += dy
     }
 
-    private var previewBottomControlsBar: some View {
-        ZStack(alignment: .bottom) {
-            HStack(alignment: .bottom) {
-                HStack(alignment: .bottom, spacing: 10) {
-                    previewBrainButton
-                    previewSegmentModeToggleChrome
+    private var previewBrainAndPlacementChrome: some View {
+        VStack {
+            Spacer()
+            ZStack(alignment: .bottom) {
+                HStack(alignment: .bottom) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        previewBrainButton
+                        previewSegmentModeToggleChrome
+                    }
+                    .padding(.leading, 16)
+                    Spacer()
                 }
-
-                Spacer()
-
-                previewSnapshotButton
+                previewRoomIntelligencePlacementCardResetOnExit
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 0)
             }
-            .padding(.horizontal, 16)
-
-            previewRoomIntelligencePlacementCardResetOnExit
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 0)
+            .padding(.bottom, 20)
         }
-        .padding(.bottom, 20)
         .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
+        .zIndex(99_998)
+        .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
+    }
+
+    private var previewSnapshotChrome: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                previewSnapshotButton
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
+            }
+        }
+        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
+        .zIndex(99_996)
         .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
     }
 
