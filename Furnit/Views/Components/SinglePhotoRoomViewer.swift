@@ -1,5 +1,6 @@
 import SwiftUI
 import SceneKit
+import UIKit
 import Accelerate
 import CoreML
 import Photos
@@ -993,6 +994,7 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
     let imageURL: URL
     let roomWidthMeters: Float
     let roomHeightMeters: Float
+    let photoOrientation: PhotoOrientation
     @Binding var cameraOffset: CGSize
     @Binding var cameraZoom: CGFloat
     @Binding var shouldResetCamera: Bool
@@ -1068,12 +1070,30 @@ private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
         let planeHeight = CGFloat(max(roomHeightMeters, 0.05))
         let viewportWidth = max(viewportSize.width, 1)
         let viewportHeight = max(viewportSize.height, 1)
-        let aspect = max(viewportWidth / viewportHeight, 0.1)
-        let verticalFOV = CGFloat((cameraNode.camera?.fieldOfView ?? 60) * .pi / 180)
-        let fitHeightDistance = (planeHeight * 0.5) / tan(verticalFOV * 0.5)
-        let fitWidthDistance = (planeWidth * 0.5) / (tan(verticalFOV * 0.5) * aspect)
+        let viewportAspect = max(viewportWidth / viewportHeight, 0.01)
+        let halfFovRadians = CGFloat.pi / 6.0
+
+        let fitWidth: CGFloat
+        let fitHeight: CGFloat
+        if photoOrientation == .landscape {
+            fitWidth = planeWidth / (2 * tan(halfFovRadians))
+            let verticalHalfFov = atan(tan(halfFovRadians) / viewportAspect)
+            fitHeight = planeHeight / (2 * tan(verticalHalfFov))
+            cameraNode.camera?.fieldOfView = CGFloat(verticalHalfFov * 2 * 180 / .pi)
+        } else {
+            fitHeight = planeHeight / (2 * tan(halfFovRadians))
+            let horizontalHalfFov = atan(tan(halfFovRadians) * viewportAspect)
+            fitWidth = planeWidth / (2 * tan(horizontalHalfFov))
+            cameraNode.camera?.fieldOfView = 60
+        }
+
+        // Landscape photo: cover (full screen). Portrait photo: contain (full photo visible).
+        let useCoverFraming = photoOrientation == .landscape
+        let fitDistance = useCoverFraming
+            ? min(fitWidth, fitHeight) * 0.98
+            : max(fitWidth, fitHeight) * 1.02
         let clampedZoom = min(max(cameraZoom, 0.55), 4.0)
-        let standoff = Float((max(fitHeightDistance, fitWidthDistance) * 1.08) / clampedZoom)
+        let standoff = Float(max(fitDistance, 0.85) / clampedZoom)
         let panUnit = max(planeWidth, planeHeight) * 0.09
         let centerX = Float(cameraOffset.width * panUnit)
         let centerY = Float(cameraOffset.height * panUnit)
@@ -1156,10 +1176,18 @@ private struct DepthAnythingPreviewRoomView: View {
     let destination: USDZViewerDestination
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var rtmdetService = RTMDetModelService.shared
     @StateObject private var modelManager = USDZModelManager()
     @State private var shouldResetCamera = false
     @State private var previewCameraOffset: CGSize = .zero
     @State private var previewCameraZoom: CGFloat = 1
+    @State private var showingFurnitureFit = false
+    @State private var furnitureFitSegmentationMode: FurnitureFitSegmentationMode = .identifyOnly
+    @State private var furnitureFitShowIdentifyLivePreview = true
+    @State private var selectedFurnitureFitLabels: [String] = []
+    @State private var furnitureFitInitialSegmentationDone = false
+    @State private var capturedImage: UIImage?
+    @State private var isCapturingSnapshot = false
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0
     @State private var showRoomNameInput = false
@@ -1186,13 +1214,42 @@ private struct DepthAnythingPreviewRoomView: View {
                 imageURL: destination.measurementImageURL,
                 roomWidthMeters: destination.roomWidthMeters,
                 roomHeightMeters: destination.roomHeightMeters,
+                photoOrientation: destination.photoOrientation,
                 cameraOffset: $previewCameraOffset,
                 cameraZoom: $previewCameraZoom,
                 shouldResetCamera: $shouldResetCamera
             )
             .ignoresSafeArea()
 
+            if showingFurnitureFit {
+                FurnitureFitUIView(
+                    capturedImage: $capturedImage,
+                    roomImage: nil,
+                    mlModel: rtmdetService.model,
+                    processInterval: 0.07,
+                    active: true,
+                    lockedOrientation: destination.photoOrientation,
+                    roomWidthMeters: destination.roomWidthMeters,
+                    roomHeightMeters: destination.roomHeightMeters,
+                    roomDepthMeters: destination.roomDepthMeters,
+                    suppressStartupProgress: furnitureFitInitialSegmentationDone,
+                    onFirstSegmentationComplete: { furnitureFitInitialSegmentationDone = true },
+                    segmentationMode: furnitureFitSegmentationMode,
+                    onSelectedClassLabelsChanged: { labels in
+                        selectedFurnitureFitLabels = labels
+                    },
+                    onSegmentationModeChangeRequested: { mode in
+                        furnitureFitSegmentationMode = mode
+                    },
+                    showIdentifyLivePreview: furnitureFitShowIdentifyLivePreview
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .zIndex(9000)
+            }
+
             previewCameraButtonsOverlay
+            previewBottomControlsOverlay
 
             if let debugLine = destination.measurementDebugLine,
                AppStateManager.shared.qualitySettings.debugMode {
@@ -1310,7 +1367,7 @@ private struct DepthAnythingPreviewRoomView: View {
             VStack(alignment: .leading, spacing: 10) {
                 previewCameraDPadCluster
                     .padding(.leading, 12)
-                    .padding(.top, 56)
+                    .padding(.top, destination.photoOrientation == .landscape ? 12 : 56)
                 if destination.photoOrientation == .landscape {
                     Spacer(minLength: 0)
                 }
@@ -1355,6 +1412,133 @@ private struct DepthAnythingPreviewRoomView: View {
     private func nudgePreviewCamera(dx: CGFloat, dy: CGFloat) {
         previewCameraOffset.width += dx
         previewCameraOffset.height += dy
+    }
+
+    private var previewBottomControlsOverlay: some View {
+        VStack {
+            Spacer()
+            HStack(alignment: .bottom) {
+                Button(action: togglePreviewFurnitureFit) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 28))
+                        .foregroundColor(.white)
+                        .frame(width: 60, height: 60)
+                        .background(
+                            Circle()
+                                .fill(showingFurnitureFit ? Color.green : Color.blue)
+                                .shadow(radius: 5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 16)
+                .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
+
+                Spacer()
+
+                Button(action: savePreviewSnapshot) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.white)
+                        .frame(width: 60, height: 60)
+                        .background(Circle().fill(Color.blue).shadow(radius: 5))
+                }
+                .buttonStyle(.plain)
+                .disabled(isCapturingSnapshot)
+                .padding(.trailing, 20)
+                .accessibilityLabel(L10n.RoomViewer.snapshotGestureHintExplanation)
+            }
+            .padding(.bottom, 20)
+        }
+        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
+        .zIndex(99996)
+    }
+
+    private func togglePreviewFurnitureFit() {
+        if showingFurnitureFit {
+            showingFurnitureFit = false
+        } else {
+            rtmdetService.ensureModelLoaded()
+            furnitureFitSegmentationMode = .segmentPrimary
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                furnitureFitInitialSegmentationDone = false
+                showingFurnitureFit = true
+            }
+        }
+    }
+
+    private func savePreviewSnapshot() {
+        isCapturingSnapshot = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            guard let uiImage = capturePreviewAppWindowImage() else {
+                isCapturingSnapshot = false
+                logDebug("❌ [DepthAnythingPreview] Failed to capture snapshot")
+                return
+            }
+            savePreviewUIImageToPhotos(uiImage)
+            DispatchQueue.main.async {
+                isCapturingSnapshot = false
+            }
+        }
+    }
+
+    private func capturePreviewAppWindowImage() -> UIImage? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap(\.windows)
+        guard let window = windows.first(where: \.isKeyWindow) ?? windows.first else {
+            return nil
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.traitCollection.displayScale
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+        return renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    private func savePreviewUIImageToPhotos(_ image: UIImage) {
+        let saveBlock = {
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        logDebug("✅ [DepthAnythingPreview] Snapshot saved to Photos")
+                    } else {
+                        logDebug("❌ [DepthAnythingPreview] Snapshot save failed: \(error?.localizedDescription ?? "unknown")")
+                    }
+                }
+            })
+        }
+
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                DispatchQueue.main.async {
+                    switch status {
+                    case .authorized, .limited:
+                        saveBlock()
+                    default:
+                        logDebug("❌ [DepthAnythingPreview] Photos access not granted")
+                    }
+                }
+            }
+        } else {
+            switch PHPhotoLibrary.authorizationStatus() {
+            case .authorized, .limited:
+                saveBlock()
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization { status in
+                    DispatchQueue.main.async {
+                        if status == .authorized || status == .limited {
+                            saveBlock()
+                        }
+                    }
+                }
+            default:
+                logDebug("❌ [DepthAnythingPreview] Photos access denied")
+            }
+        }
     }
 
     private var saveRoomProgressOverlay: some View {

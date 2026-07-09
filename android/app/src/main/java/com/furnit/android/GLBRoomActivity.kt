@@ -80,6 +80,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var topBar: FrameLayout
     private lateinit var cameraDpadOverlay: FrameLayout
+    private lateinit var bottomControls: FrameLayout
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     private lateinit var brainCameraPreview: PreviewView
@@ -241,7 +242,7 @@ class GLBRoomActivity : AppCompatActivity() {
         )
 
         // Bottom controls
-        val bottomControls = createBottomControls()
+        bottomControls = createBottomControls()
         rootLayout.addView(bottomControls, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -310,12 +311,14 @@ class GLBRoomActivity : AppCompatActivity() {
         loadWebGLViewer()
     }
 
-    /** Keep back / title / recenter / D-pad above the brain camera overlay (Swift nav bar parity). */
+    /** Keep back / title / recenter / D-pad / bottom brain+camera above the WebView and brain overlay. */
     private fun ensureNavigationChromeOnTop() {
         topBar.elevation = 40f
         cameraDpadOverlay.elevation = 39f
-        brainFullVideoButton?.elevation = 38f
+        bottomControls.elevation = 38f
+        brainFullVideoButton?.elevation = 37f
         brainFullVideoButton?.let { rootLayout.bringChildToFront(it) }
+        rootLayout.bringChildToFront(bottomControls)
         rootLayout.bringChildToFront(cameraDpadOverlay)
         rootLayout.bringChildToFront(topBar)
     }
@@ -1021,6 +1024,7 @@ class GLBRoomActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         cameraProvider = null
+        ensureNavigationChromeOnTop()
     }
 
     private fun setBrainButtonActive(active: Boolean) {
@@ -1577,6 +1581,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
+                ensureNavigationChromeOnTop()
                 LogUtil.d(TAG, "WebGL viewer reported loaded")
             }
         }
