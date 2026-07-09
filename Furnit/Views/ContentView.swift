@@ -139,12 +139,9 @@ struct HomeTab: View {
                                 Image(systemName: "photo.badge.plus")
                                 Text(L10n.Home.createRoom)
                             }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.green)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .padding(.horizontal, Theme.Space.lg)
                     }
                     .onAppear {
                         logDebug("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
@@ -176,18 +173,18 @@ struct HomeTab: View {
                             }
                         }
                         .padding()
-                        .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
+                        .background(limitManager.remainingRooms() <= 3 ? Theme.Palette.accent.opacity(0.08) : Theme.Palette.surface)
 
                         // Delete hint
                         HStack {
-                            Text("💡 \(L10n.Home.swipeHint)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Text(L10n.Home.swipeHint)
+                                .font(Theme.Typo.caption())
+                                .foregroundStyle(Theme.Palette.textSecondary)
                             Spacer()
                         }
                         .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGroupedBackground))
+                        .padding(.vertical, Theme.Space.sm)
+                        .background(Theme.Palette.background)
                         
                         List {
                             ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
@@ -200,7 +197,7 @@ struct HomeTab: View {
                                             } label: {
                                                 Label(L10n.Home.renameRoom, systemImage: "pencil")
                                             }
-                                            .tint(.blue)
+                                            .tint(Theme.Palette.accent)
                                         }
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -214,6 +211,7 @@ struct HomeTab: View {
                             }
                         }
                         .listStyle(PlainListStyle())
+                        .scrollContentBackground(.hidden)
                         .onAppear {
                             if AppStateManager.shared.qualitySettings.debugMode {
                                 logDebug("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
@@ -226,6 +224,7 @@ struct HomeTab: View {
                 }
             }
             .id(savedRoomsListRefreshToken)
+            .paafektScreenBackground()
             .navigationTitle(L10n.Home.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -796,18 +795,8 @@ struct ProfileTab: View {
 struct HomeViewModelRow: View {
     let model: USDZModel
 
-    // Color based on file type
-    private var iconColor: Color {
-        switch model.fileType {
-        case .usdz:
-            return .green
-        case .ply:
-            return .purple
-        case .meshroom:
-            return .orange
-        case .glb:
-            return .blue
-        }
+    private var fileTypeTag: String {
+        model.fileType.rawValue.uppercased()
     }
 
     /// Under the room name: Splat PLY vs manual mesh/GLB vs bundle USDZ.
@@ -822,78 +811,43 @@ struct HomeViewModelRow: View {
         }
     }
 
-    // Orientation label text
-    private var orientationLabel: String {
-        let title: String
-        let subtitle: String
-        switch model.photoOrientation {
-        case .portrait, .square:
-            title = NSLocalizedString("orientation.portrait", comment: "")
-            subtitle = NSLocalizedString("orientation.heldVertically", comment: "")
-        case .landscape:
-            title = NSLocalizedString("orientation.landscape", comment: "")
-            subtitle = NSLocalizedString("orientation.heldHorizontally", comment: "")
-        }
-        return "\(title) - \(subtitle)"
-    }
-
     var body: some View {
-        HStack {
+        HStack(spacing: Theme.Space.md) {
             Image(systemName: model.fileType.iconName)
-                .foregroundColor(iconColor)
-                .font(.title2)
-                .frame(width: 40, height: 40)
-                .background(iconColor.opacity(0.1))
-                .cornerRadius(8)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .font(.title3)
+                .paafektIconTile()
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(model.displayName)
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                    .font(Theme.Typo.headline())
+                    .foregroundStyle(Theme.Palette.textPrimary)
 
                 Text(roomCreationKindSubtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(Theme.Typo.caption())
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .lineLimit(1)
 
-                if let dims = model.roomDimensionsListLine {
-                    Text(dims)
-                        .font(.caption.monospaced())
-                        .foregroundColor(.green.opacity(0.9))
-                }
+                HStack(spacing: Theme.Space.sm) {
+                    Text(fileTypeTag)
+                        .font(Theme.Typo.tag())
+                        .foregroundStyle(Theme.Palette.textSecondary)
 
-                HStack(spacing: 6) {
-                    Text(model.subtitleText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    // Show file size for all rooms
                     if model.hasFileSize {
-                        Text("•")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                         Text(model.fileSizeFormatted)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(Theme.Typo.caption())
+                            .foregroundStyle(Theme.Palette.textSecondary)
                     }
-
-                    // Show orientation
-                    Text("•")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(orientationLabel)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
 
             Spacer()
 
-            // Navigation chevron - both PLY and USDZ are now viewable
             Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
+                .foregroundStyle(Theme.Palette.textSecondary)
                 .font(.caption)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, Theme.Space.xs)
     }
 }
 
