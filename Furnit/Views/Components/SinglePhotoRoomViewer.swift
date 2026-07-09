@@ -873,7 +873,9 @@ private struct SplatViewerDestination: Identifiable, Hashable {
 
 private struct USDZViewerDestination: Identifiable, Hashable {
     let id = UUID()
-    let model: USDZModel
+    let measurementImageURL: URL
+    let photoOrientation: PhotoOrientation
+    let roomCoordinateFrame: RoomCoordinateFrame
     let summary: String
     /// Depth Anything metric dims at generation — same pattern as ``SplatViewerDestination`` room metres for Splat.
     let roomWidthMeters: Float
@@ -881,6 +883,161 @@ private struct USDZViewerDestination: Identifiable, Hashable {
     let roomDepthMeters: Float
     /// Debug-mode overlay: measurement calibration inputs (camera height, scale, focal source).
     let measurementDebugLine: String?
+}
+
+private struct DepthAnythingPreparedPreview: Sendable {
+    let measurementImageURL: URL
+    let imageWidth: Int
+    let imageHeight: Int
+    let roomWidthMeters: Float
+    let roomHeightMeters: Float
+    let roomDepthMeters: Float
+
+    var summary: String {
+        String(
+            format: "preview image=%dx%d dims=%.2fx%.2fx%.2fm source=%@",
+            imageWidth,
+            imageHeight,
+            roomWidthMeters,
+            roomHeightMeters,
+            roomDepthMeters,
+            measurementImageURL.lastPathComponent
+        )
+    }
+}
+
+private enum DepthAnythingPreviewPrepareError: LocalizedError {
+    case invalidImage
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidImage:
+            return "Could not prepare source image for room preview."
+        }
+    }
+}
+
+private func makeDepthAnythingPreviewDestination(
+    image: UIImage,
+    cameraMetadata: [String: Double],
+    photoOrientation _: PhotoOrientation
+) throws -> DepthAnythingPreparedPreview {
+    let fixed = image.fixedOrientation()
+    let previewImage = downsampleDepthAnythingPreviewImage(fixed, maxDimension: 1600)
+    guard let data = previewImage.jpegData(compressionQuality: 0.92),
+          let cgImage = previewImage.cgImage else {
+        throw DepthAnythingPreviewPrepareError.invalidImage
+    }
+
+    let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let directory = documentsURL.appendingPathComponent("DepthAnythingRooms", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("DepthAnythingPreview_\(UUID().uuidString).jpg")
+    try data.write(to: url, options: [.atomic])
+    if !cameraMetadata.isEmpty {
+        CameraExifSidecar.mergeDerivedValues(roomURL: url, additions: cameraMetadata)
+    }
+
+    let width = max(1, cgImage.width)
+    let height = max(1, cgImage.height)
+    let roomWidth: Float = 2.0
+    let roomHeight = max(1.8, roomWidth * Float(height) / Float(width))
+    let roomDepth: Float = 3.0
+    logDebug(
+        "[DepthAnythingRoom][PreviewFast] skipping depth_anything/geocalib/rtmdet/room_height/usdz_export during creation " +
+        "image=\(width)x\(height) W=\(String(format: "%.3f", roomWidth)) " +
+        "H=\(String(format: "%.3f", roomHeight)) D=\(String(format: "%.3f", roomDepth))"
+    )
+    return DepthAnythingPreparedPreview(
+        measurementImageURL: url,
+        imageWidth: width,
+        imageHeight: height,
+        roomWidthMeters: roomWidth,
+        roomHeightMeters: roomHeight,
+        roomDepthMeters: roomDepth
+    )
+}
+
+private func downsampleDepthAnythingPreviewImage(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+    let maxSide = max(image.size.width, image.size.height)
+    guard maxSide > maxDimension, maxSide > 0 else { return image }
+    let scale = maxDimension / maxSide
+    let targetSize = CGSize(
+        width: max(1, floor(image.size.width * scale)),
+        height: max(1, floor(image.size.height * scale))
+    )
+    let renderer = UIGraphicsImageRenderer(size: targetSize)
+    return renderer.image { _ in
+        image.draw(in: CGRect(origin: .zero, size: targetSize))
+    }
+}
+
+private struct DepthAnythingPreviewSceneView: UIViewRepresentable {
+    let imageURL: URL
+    let roomWidthMeters: Float
+    let roomHeightMeters: Float
+    @Binding var shouldResetCamera: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> SCNView {
+        let view = SCNView(frame: .zero)
+        view.backgroundColor = UIColor(white: 0.12, alpha: 1.0)
+        view.allowsCameraControl = true
+        view.autoenablesDefaultLighting = false
+        view.scene = makeScene(context: context)
+        return view
+    }
+
+    func updateUIView(_ view: SCNView, context: Context) {
+        if shouldResetCamera {
+            resetCamera(context.coordinator.cameraNode)
+            DispatchQueue.main.async {
+                shouldResetCamera = false
+            }
+        }
+    }
+
+    private func makeScene(context: Context) -> SCNScene {
+        let scene = SCNScene()
+        let image = UIImage(contentsOfFile: imageURL.path)
+        let width = CGFloat(max(roomWidthMeters, 0.05))
+        let height = CGFloat(max(roomHeightMeters, 0.05))
+        let plane = SCNPlane(width: width, height: height)
+        let material = SCNMaterial()
+        material.diffuse.contents = image
+        material.emission.contents = image
+        material.lightingModel = .constant
+        material.isDoubleSided = true
+        material.diffuse.wrapS = .clamp
+        material.diffuse.wrapT = .clamp
+        plane.materials = [material]
+
+        let planeNode = SCNNode(geometry: plane)
+        planeNode.name = "DepthAnythingPreviewImagePlane"
+        scene.rootNode.addChildNode(planeNode)
+
+        let cameraNode = SCNNode()
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera?.fieldOfView = 60
+        scene.rootNode.addChildNode(cameraNode)
+        context.coordinator.cameraNode = cameraNode
+        resetCamera(cameraNode)
+        return scene
+    }
+
+    private func resetCamera(_ cameraNode: SCNNode?) {
+        guard let cameraNode else { return }
+        let span = max(roomWidthMeters, roomHeightMeters, 0.1)
+        cameraNode.position = SCNVector3(0, 0, span * 1.55)
+        cameraNode.look(at: SCNVector3(0, 0, 0))
+    }
+
+    final class Coordinator {
+        var cameraNode: SCNNode?
+    }
 }
 
 /// Pre-save Depth Anything preview — matches Splat ML navigation chrome (nav-bar save, name prompt, discard alert).
@@ -912,11 +1069,13 @@ private struct DepthAnythingPreviewRoomView: View {
 
     var body: some View {
         ZStack {
-            ModelViewerView(
-                model: destination.model
+            DepthAnythingPreviewSceneView(
+                imageURL: destination.measurementImageURL,
+                roomWidthMeters: destination.roomWidthMeters,
+                roomHeightMeters: destination.roomHeightMeters,
+                shouldResetCamera: $shouldResetCamera
             )
-            .environment(\.modelViewerSuppressBuiltInTopChrome, true)
-            .environment(\.modelViewerExternalCameraReset, $shouldResetCamera)
+            .ignoresSafeArea()
 
             if let debugLine = destination.measurementDebugLine,
                AppStateManager.shared.qualitySettings.debugMode {
@@ -982,7 +1141,7 @@ private struct DepthAnythingPreviewRoomView: View {
             } else {
                 logDebug("[DepthAnythingRoom][Preview] nav dims unavailable")
             }
-            if destination.model.photoOrientation == .landscape {
+            if destination.photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
             } else {
                 OrientationLockManager.shared.lockToPortrait()
@@ -1073,12 +1232,15 @@ private struct DepthAnythingPreviewRoomView: View {
             showSaveAlert = true
             return
         }
-        guard let sourceURL = destination.model.cachedResolvedURL ?? destination.model.temporaryURL else {
-            saveAlertMessage = "Could not find generated room file."
+        let measurementImageURL = destination.measurementImageURL
+        guard FileManager.default.fileExists(atPath: measurementImageURL.path) else {
+            saveAlertMessage = "Could not find source image for room measurement."
             saveWasSuccessful = false
             showSaveAlert = true
             return
         }
+        let photoOrientationRawValue = destination.photoOrientation.rawValue
+        let roomCoordinateFrameRawValue = destination.roomCoordinateFrame.rawValue
 
         showRoomNameInput = false
         withAnimation(.easeIn(duration: 0.2)) {
@@ -1086,13 +1248,35 @@ private struct DepthAnythingPreviewRoomView: View {
             saveProgress = 0
         }
 
-        let metadata = depthAnythingSavedRoomMetadata(for: destination.model, displayName: trimmedRoomName)
-
         Task {
-            await MainActor.run { saveProgress = 0.35 }
+            await MainActor.run { saveProgress = 0.15 }
             do {
                 let savedURL = try await Task.detached(priority: .userInitiated) {
-                    try copyDepthAnythingRoomToSavedRooms(sourceURL: sourceURL, metadata: metadata)
+                    let cameraMetadata = CameraExifSidecar.load(roomURL: measurementImageURL)
+                    guard let measurementImage = UIImage(contentsOfFile: measurementImageURL.path)?.fixedOrientation() else {
+                        throw DepthAnythingPreviewSaveError.sourceImageUnavailable
+                    }
+                    let reconstructor = try DepthAnythingRoomReconstructor()
+                    let measuredResult = try await reconstructor.reconstructWithResult(
+                        image: measurementImage,
+                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata
+                    )
+                    var measuredCameraMetadata = cameraMetadata
+                    for (key, value) in measuredResult.calibrationMetadata {
+                        measuredCameraMetadata[key] = value
+                    }
+                    if !measuredCameraMetadata.isEmpty {
+                        CameraExifSidecar.mergeDerivedValues(roomURL: measuredResult.usdzURL, additions: measuredCameraMetadata)
+                    }
+                    let metadata = depthAnythingSavedRoomMetadata(
+                        photoOrientationRawValue: photoOrientationRawValue,
+                        roomCoordinateFrameRawValue: roomCoordinateFrameRawValue,
+                        displayName: trimmedRoomName,
+                        roomWidth: measuredResult.roomWidthMeters,
+                        roomHeight: measuredResult.roomHeightMeters,
+                        roomDepth: measuredResult.roomDepthMeters
+                    )
+                    return try copyDepthAnythingRoomToSavedRooms(sourceURL: measuredResult.usdzURL, metadata: metadata)
                 }.value
                 await MainActor.run {
                     saveProgress = 1.0
@@ -1118,20 +1302,38 @@ private struct DepthAnythingPreviewRoomView: View {
     }
 }
 
-private func depthAnythingSavedRoomMetadata(for model: USDZModel, displayName: String) -> [String: String] {
+private enum DepthAnythingPreviewSaveError: LocalizedError {
+    case sourceImageUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .sourceImageUnavailable:
+            return "Could not load source image for room measurement."
+        }
+    }
+}
+
+private func depthAnythingSavedRoomMetadata(
+    photoOrientationRawValue: String,
+    roomCoordinateFrameRawValue: String,
+    displayName: String,
+    roomWidth: Float?,
+    roomHeight: Float?,
+    roomDepth: Float?
+) -> [String: String] {
     var metadata: [String: String] = [
-        "photoOrientation": model.photoOrientation.rawValue,
-        "roomCoordinateFrame": model.roomCoordinateFrame.rawValue,
+        "photoOrientation": photoOrientationRawValue,
+        "roomCoordinateFrame": roomCoordinateFrameRawValue,
         "displayName": displayName
     ]
 
-    if let roomWidth = model.roomWidth, roomWidth.isFinite, roomWidth > 0 {
+    if let roomWidth, roomWidth.isFinite, roomWidth > 0 {
         metadata["roomWidth"] = String(format: "%.2f", roomWidth)
     }
-    if let roomHeight = model.roomHeight, roomHeight.isFinite, roomHeight > 0 {
+    if let roomHeight, roomHeight.isFinite, roomHeight > 0 {
         metadata["roomHeight"] = String(format: "%.2f", roomHeight)
     }
-    if let roomDepth = model.roomDepth, roomDepth.isFinite, roomDepth > 0 {
+    if let roomDepth, roomDepth.isFinite, roomDepth > 0 {
         metadata["roomDepth"] = String(format: "%.2f", roomDepth)
     }
 
@@ -1576,7 +1778,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(item: $usdzViewerDestination) { destination in
             DepthAnythingPreviewRoomView(destination: destination)
                 .onAppear {
-                    logDebug("🚀 [Navigation] DepthAnythingPreviewRoomView (Depth Anything USDZ)")
+                    logDebug("🚀 [Navigation] DepthAnythingPreviewRoomView (fast image-plane preview)")
                     logDebug("   \(destination.summary)")
                 }
                 .onDisappear {
@@ -1638,51 +1840,33 @@ struct SinglePhotoRoomView: View {
                 } else {
                     logDebug("[DepthAnythingRoom][CameraMetadata] keys=\(cameraMetadata.keys.sorted())")
                 }
-                let result = try await Task.detached(priority: .userInitiated) {
-                    let reconstructor = try DepthAnythingRoomReconstructor()
-                    return try await reconstructor.reconstructWithResult(
+                let preview = try await Task.detached(priority: .userInitiated) {
+                    try makeDepthAnythingPreviewDestination(
                         image: generationImage,
-                        cameraMetadata: cameraMetadata.isEmpty ? nil : cameraMetadata
+                        cameraMetadata: cameraMetadata,
+                        photoOrientation: orientation
                     )
                 }.value
-                var persistedCameraMetadata = cameraMetadata
-                for (key, value) in result.calibrationMetadata {
-                    persistedCameraMetadata[key] = value
-                }
-                if !persistedCameraMetadata.isEmpty {
-                    CameraExifSidecar.mergeDerivedValues(roomURL: result.usdzURL, additions: persistedCameraMetadata)
-                }
-                logDebug("✅ [DepthAnythingRoom] USDZ generated: \(result.summary)")
+                logDebug("✅ [DepthAnythingRoom] Fast preview ready: \(preview.summary)")
                 logDebug(
-                    "[DepthAnythingRoom][InferenceDims][UIResult] " +
-                    "image=\(result.imageWidth)x\(result.imageHeight) " +
-                    "W=\(String(format: "%.4f", result.roomWidthMeters)) " +
-                    "H=\(String(format: "%.4f", result.roomHeightMeters)) " +
-                    "D=\(String(format: "%.4f", result.roomDepthMeters)) " +
-                    "usdz=\(result.usdzURL.lastPathComponent)"
-                )
-                let model = USDZModel(
-                    name: result.usdzURL.deletingPathExtension().lastPathComponent,
-                    fileName: result.usdzURL.lastPathComponent,
-                    isSavedRoom: true,
-                    fileType: .usdz,
-                    fileSize: (try? result.usdzURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init),
-                    photoOrientation: orientation,
-                    roomWidth: result.roomWidthMeters,
-                    roomHeight: result.roomHeightMeters,
-                    roomDepth: result.roomDepthMeters,
-                    roomCoordinateFrame: .depthAnythingImageDepthMeters,
-                    cachedResolvedURL: result.usdzURL
+                    "[DepthAnythingRoom][PreviewFast][UIResult] " +
+                    "image=\(preview.imageWidth)x\(preview.imageHeight) " +
+                    "W=\(String(format: "%.4f", preview.roomWidthMeters)) " +
+                    "H=\(String(format: "%.4f", preview.roomHeightMeters)) " +
+                    "D=\(String(format: "%.4f", preview.roomDepthMeters)) " +
+                    "source=\(preview.measurementImageURL.lastPathComponent)"
                 )
                 await MainActor.run {
                     singlePhotoGenerationStatus = nil
                     usdzViewerDestination = USDZViewerDestination(
-                        model: model,
-                        summary: result.summary,
-                        roomWidthMeters: result.roomWidthMeters,
-                        roomHeightMeters: result.roomHeightMeters,
-                        roomDepthMeters: result.roomDepthMeters,
-                        measurementDebugLine: result.measurementDebugLine
+                        measurementImageURL: preview.measurementImageURL,
+                        photoOrientation: orientation,
+                        roomCoordinateFrame: .depthAnythingImageDepthMeters,
+                        summary: preview.summary,
+                        roomWidthMeters: preview.roomWidthMeters,
+                        roomHeightMeters: preview.roomHeightMeters,
+                        roomDepthMeters: preview.roomDepthMeters,
+                        measurementDebugLine: nil
                     )
                 }
             } catch {

@@ -1665,11 +1665,13 @@ class USDZModelManager: ObservableObject {
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
-                // Active saved-room dimensions now come from the live Splat preview path
-                // (ROOM_DIMS_V7). The older on-disk remeasurement path is kept here only as
-                // fallback/reference so saved list + ruler stay consistent with the room the
-                // user saw before tapping Save.
-                let measured = Self.measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
+                // Avoid hidden save-time remeasurement when the caller already supplied room
+                // dimensions. Fresh Splat saves measure before this copy step, after the user
+                // enters a name and taps Save.
+                let shouldMeasureMissingRoomDimensions = roomWidth == nil || roomHeight == nil || roomDepth == nil
+                let measured = shouldMeasureMissingRoomDimensions
+                    ? Self.measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
+                    : nil
                 let finalRoomWidth = roomWidth ?? measured?.width
                 let finalRoomHeight = roomHeight ?? measured?.height
                 let finalRoomDepth = roomDepth ?? measured?.depth

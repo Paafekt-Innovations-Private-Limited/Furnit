@@ -1079,6 +1079,10 @@ struct SplatRoomView: View {
     }
 
     private func warmRoomMeasurementInBackgroundIfNeeded() {
+        guard !allowSave else {
+            logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=fresh_room_save_deferred")
+            return
+        }
         guard measuredRoomDimensions == nil else {
             logDebug("[ROOM_DIMS][BACKGROUND] FILE=\(viewerPlyURL.lastPathComponent) SKIP reason=measured_already_available source=\(activeRoomMetersDimensionsSource)")
             return
@@ -2501,11 +2505,15 @@ struct SplatRoomView: View {
             if savedRoomStrictMeters == nil && generationRoomMeters == nil && measuredRoomDimensions == nil {
                 backgroundRoomMeasurementTask?.cancel()
                 backgroundRoomMeasurementTask = nil
+                await MainActor.run {
+                    saveProgressStatusText = L10n.RoomViewer.measuringRoom
+                }
                 let saveMeasured = await modelManager.measureRoomDimensionsAsync(
                     forPly: viewerPlyURL,
                     treatAsClassicPly: viewerUsesClassicPlyBehavior
                 )
                 await MainActor.run {
+                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
                     if let saveMeasured {
                         measuredRoomDimensions = saveMeasured
                         updateRoomPlacementIntelligence()
