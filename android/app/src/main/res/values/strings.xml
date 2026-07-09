@@ -481,6 +481,7 @@
     <string name="glb_room_screenshot_failed">Failed to capture screenshot</string>
     <string name="room_generation_ready">Your room is ready!</string>
     <string name="detector_loading_model">Loading detection model…</string>
+    <string name="detector_segmenting_selection">Segmenting selected furniture…</string>
     <string name="detector_model_ready">Ready</string>
     <string name="detector_model_unavailable">Detection model unavailable</string>
     <string name="single_image_scan_scanning">Scanning selected image…</string>

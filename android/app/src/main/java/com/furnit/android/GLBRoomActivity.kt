@@ -86,6 +86,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var brainCameraPreview: PreviewView
     private lateinit var brainProgressOverlay: FrameLayout
     private lateinit var brainProgressLabel: TextView
+    private lateinit var brainProgressBar: ProgressBar
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private var boundPreview: Preview? = null
@@ -321,6 +322,9 @@ class GLBRoomActivity : AppCompatActivity() {
         bottomControls.elevation = 37f
         rootLayout.bringChildToFront(bottomControls)
         rootLayout.bringChildToFront(cameraDpadOverlay)
+        if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
+            rootLayout.bringChildToFront(brainProgressOverlay)
+        }
         brainFullVideoButton?.takeIf { it.visibility == View.VISIBLE }?.let { rootLayout.bringChildToFront(it) }
         rootLayout.bringChildToFront(topBar)
     }
@@ -613,36 +617,68 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun createBrainProgressOverlay(): FrameLayout {
         return FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
             val content = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dpToPx(24), dpToPx(14), dpToPx(24), dpToPx(14))
-                background = GradientDrawable().apply {
-                    cornerRadius = dpToPx(16).toFloat()
-                    setColor(0xCC1C1C1E.toInt())
-                }
-                val progress = ProgressBar(this@GLBRoomActivity).apply {
-                    isIndeterminate = true
-                }
-                addView(progress)
+                setPadding(0, 0, 0, 0)
                 brainProgressLabel = TextView(this@GLBRoomActivity).apply {
                     text = getString(R.string.smartypants_detecting_furniture)
                     textSize = 14f
+                    setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
-                    setPadding(0, dpToPx(10), 0, 0)
+                    setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpToPx(10).toFloat()
+                        setColor(0x99000000.toInt())
+                    }
                 }
                 addView(brainProgressLabel)
+                brainProgressBar = ProgressBar(
+                    this@GLBRoomActivity,
+                    null,
+                    android.R.attr.progressBarStyleHorizontal,
+                ).apply {
+                    isIndeterminate = false
+                    max = 100
+                    progress = 55
+                    progressTintList = ColorStateList.valueOf(Color.parseColor("#34C759"))
+                    progressBackgroundTintList = ColorStateList.valueOf(0x4DFFFFFF)
+                }
+                addView(
+                    brainProgressBar,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dpToPx(3),
+                    ).apply { topMargin = dpToPx(8) },
+                )
             }
             addView(
                 content,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dpToPx(300),
+                    dpToPx(62),
                 ).apply {
-                    gravity = Gravity.CENTER
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    topMargin = dpToPx(40)
                 },
             )
+        }
+    }
+
+    private fun showBrainProgress(message: CharSequence, progressPercent: Int = 55) {
+        if (!::brainProgressOverlay.isInitialized) return
+        brainProgressLabel.text = message
+        brainProgressBar.progress = progressPercent.coerceIn(0, 100)
+        brainProgressOverlay.visibility = View.VISIBLE
+        ensureNavigationChromeOnTop()
+    }
+
+    private fun hideBrainProgress() {
+        if (::brainProgressOverlay.isInitialized) {
+            brainProgressOverlay.visibility = View.GONE
         }
     }
 
@@ -692,7 +728,11 @@ class GLBRoomActivity : AppCompatActivity() {
             inlineBrainFullVideoEnabled,
             inlineBrainSelectedPins,
         )
-        brainProgressOverlay.visibility = if (inlineBrainFullVideoEnabled) View.GONE else View.VISIBLE
+        if (inlineBrainFullVideoEnabled) {
+            hideBrainProgress()
+        } else {
+            showBrainProgress(getString(R.string.smartypants_detecting_furniture))
+        }
         updateInlineBrainSegmentButton()
         updateBrainFullVideoButtonAppearance()
         ensureNavigationChromeOnTop()
@@ -772,7 +812,7 @@ class GLBRoomActivity : AppCompatActivity() {
         )
         brainDetectionOverlayView.setDetectionBoxVisibility(inlineBrainFullVideoEnabled)
         brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
-        brainProgressOverlay.visibility = View.VISIBLE
+        showBrainProgress(getString(R.string.detector_loading_model), 20)
         setBrainButtonActive(true)
         updateInlineBrainSegmentButton()
         ensureNavigationChromeOnTop()
@@ -782,7 +822,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 FurnitureFitManager(this@GLBRoomActivity).takeIf { it.initializeAuto() }
             }
             if (manager == null) {
-                brainProgressOverlay.visibility = View.GONE
+                hideBrainProgress()
                 setBrainButtonActive(false)
                 Toast.makeText(this@GLBRoomActivity, getString(R.string.detector_model_unavailable), Toast.LENGTH_SHORT).show()
                 return@launch
@@ -823,7 +863,7 @@ class GLBRoomActivity : AppCompatActivity() {
             inlineBrainMode = InlineBrainMode.SEGMENT_SELECTED
             brainDetectionOverlayView.setDetectionBoxVisibility(false)
             brainDetectionOverlayView.setIdentifySelectionState(false, inlineBrainSelectedPins)
-            brainProgressOverlay.visibility = View.VISIBLE
+            showBrainProgress(getString(R.string.detector_segmenting_selection))
         }
         updateInlineBrainSegmentButton()
         updateInlineBrainCameraPreviewVisibility()
@@ -944,7 +984,7 @@ class GLBRoomActivity : AppCompatActivity() {
             )
         } catch (e: Exception) {
             brainAcceptingUpdates = false
-            brainProgressOverlay.visibility = View.GONE
+            hideBrainProgress()
             setBrainButtonActive(false)
             updateInlineBrainCameraPreviewVisibility()
             LogUtil.e(TAG, "Inline brain camera bind failed", e)
@@ -954,7 +994,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun applyInlineBrainResult(result: SegmentationResult?) {
-        brainProgressOverlay.visibility = View.GONE
+        hideBrainProgress()
         val mask = result?.mask
         val detections = result?.detections ?: emptyList()
         if (inlineBrainFullVideoEnabled) {
@@ -1014,7 +1054,7 @@ class GLBRoomActivity : AppCompatActivity() {
         inlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
         inlineBrainFullVideoEnabled = false
         inlineBrainSelectedPins = emptyList()
-        brainProgressOverlay.visibility = View.GONE
+        hideBrainProgress()
         brainDetectionOverlay.visibility = View.GONE
         brainDetectionOverlayView.setMaskAndDetections(null, emptyList())
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
