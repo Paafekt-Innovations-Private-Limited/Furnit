@@ -386,6 +386,14 @@ class USDZModelManager: ObservableObject {
         return false
     }
 
+    func savedPLYFileName(forRoomName roomName: String) -> String {
+        sanitizeFileName(roomName.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func savedPLYURL(forRoomName roomName: String) -> URL {
+        modelsDirectory.appendingPathComponent("\(savedPLYFileName(forRoomName: roomName)).ply")
+    }
+
     private func orphanArtifactStem(for fileURL: URL) -> String? {
         let fileName = fileURL.lastPathComponent
         if fileName.hasSuffix(".room_metadata.json") {
@@ -1174,6 +1182,50 @@ class USDZModelManager: ObservableObject {
         try out.write(to: metadataURL, options: [.atomic])
     }
 
+    func mergeMeasuredRoomDimensionsIntoSavedRoomMetadata(
+        fileName: String,
+        modelFileExtension: String,
+        measured: MeasuredPlyRoomDimensions
+    ) throws {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).\(modelFileExtension).meta")
+        var dict: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: metadataURL.path),
+           let data = try? Data(contentsOf: metadataURL),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            dict = existing
+        }
+
+        dict["roomWidth"] = String(format: "%.2f", measured.width)
+        dict["roomHeight"] = String(format: "%.2f", measured.height)
+        dict["roomDepth"] = String(format: "%.2f", measured.depth)
+        dict["roomSceneWidth"] = String(format: "%.4f", measured.sceneWidth)
+        dict["roomSceneHeight"] = String(format: "%.4f", measured.sceneHeight)
+        dict["roomSceneDepth"] = String(format: "%.4f", measured.sceneDepth)
+        dict["roomDimsApproach"] = measured.approach
+        dict["roomFloorDiagonal"] = String(format: "%.4f", measured.floorDiagonal)
+        dict["roomTrimmedXSpan"] = String(format: "%.4f", measured.trimmedXSpan)
+        dict["roomTrimmedYSpan"] = String(format: "%.4f", measured.trimmedYSpan)
+        dict["roomTrimmedZSpan"] = String(format: "%.4f", measured.trimmedZSpan)
+        dict["roomBackWallZMode"] = String(format: "%.4f", measured.zMode)
+        dict["roomBackWallZMean"] = String(format: "%.4f", measured.zMean)
+        dict["roomBackWallBand"] = String(format: "%.4f", measured.band)
+        dict["roomBackWallCount"] = "\(measured.count)"
+        dict["roomBackWallRawWidth"] = String(format: "%.4f", measured.rawWidth)
+        dict["roomBackWallRawHeight"] = String(format: "%.4f", measured.rawHeight)
+        dict["roomDimsShotType"] = measured.shotType
+        dict["roomDimsOrientation"] = measured.orientationLabel
+        dict["roomDimsUsedFocal"] = measured.usedFocal ? "true" : "false"
+        dict["roomDimsTiltDegrees"] = String(format: "%.4f", measured.tiltDegrees)
+        dict["roomDimsTiltReliable"] = measured.tiltReliable ? "true" : "false"
+        dict["roomDimsCuboidRatio"] = String(format: "%.4f", measured.cuboidRatio)
+        dict["roomDimsCuboidThreshold"] = String(format: "%.4f", measured.cuboidThreshold)
+        dict["roomDimsFillWidth"] = String(format: "%.4f", measured.fillWidth)
+        dict["roomDimsBlend"] = String(format: "%.4f", measured.blend)
+
+        let out = try JSONEncoder().encode(dict)
+        try out.write(to: metadataURL, options: [.atomic])
+    }
+
     /// Merges wall ratio calibration (legacy) keys into an existing `\(fileName).\(modelFileExtension).meta` file without removing other entries.
     func mergeWallCalibrationMetadata(
         fileName: String,
@@ -1574,6 +1626,7 @@ class USDZModelManager: ObservableObject {
         roomSceneWidth: Float? = nil,
         roomSceneHeight: Float? = nil,
         roomSceneDepth: Float? = nil,
+        measureMissingRoomDimensions: Bool = true,
         isClassicPly: Bool = true,
         roomCoordinateFrame: RoomCoordinateFrame = .classicSplatPly,
         completion: @escaping (Bool, String?) -> Void
@@ -1665,10 +1718,10 @@ class USDZModelManager: ObservableObject {
             ].filter { FileManager.default.fileExists(atPath: $0.url.path) }
 
             for variant in variantDestinations {
-                // Avoid hidden save-time remeasurement when the caller already supplied room
-                // dimensions. Fresh Splat saves measure before this copy step, after the user
-                // enters a name and taps Save.
-                let shouldMeasureMissingRoomDimensions = roomWidth == nil || roomHeight == nil || roomDepth == nil
+                // Fresh Splat save passes `measureMissingRoomDimensions: false`; any missing
+                // room dimensions are measured after save and merged into metadata later.
+                let shouldMeasureMissingRoomDimensions = measureMissingRoomDimensions &&
+                    (roomWidth == nil || roomHeight == nil || roomDepth == nil)
                 let measured = shouldMeasureMissingRoomDimensions
                     ? Self.measureRoomDimensions(forPly: variant.url, treatAsClassicPly: variant.isClassic)
                     : nil

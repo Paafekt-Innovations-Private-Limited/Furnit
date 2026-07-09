@@ -2502,37 +2502,11 @@ struct SplatRoomView: View {
 
             await MainActor.run { saveProgress = 0.35; saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis }
 
-            if savedRoomStrictMeters == nil && generationRoomMeters == nil && measuredRoomDimensions == nil {
-                backgroundRoomMeasurementTask?.cancel()
-                backgroundRoomMeasurementTask = nil
-                await MainActor.run {
-                    saveProgressStatusText = L10n.RoomViewer.measuringRoom
-                }
-                let saveMeasured = await modelManager.measureRoomDimensionsAsync(
-                    forPly: viewerPlyURL,
-                    treatAsClassicPly: viewerUsesClassicPlyBehavior
-                )
-                await MainActor.run {
-                    saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
-                    if let saveMeasured {
-                        measuredRoomDimensions = saveMeasured
-                        updateRoomPlacementIntelligence()
-                        logDebug(
-                            "[ROOM_DIMS][SAVE] FILE=\(viewerPlyURL.lastPathComponent) " +
-                            "APPROACH=\(saveMeasured.approach.uppercased()) SHOT=\(saveMeasured.shotType) " +
-                            "HAS_FOCAL=\(saveMeasured.usedFocal) TILT_DEG=\(String(format: "%.2f", saveMeasured.tiltDegrees)) " +
-                            "TILT_RELIABLE=\(saveMeasured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", saveMeasured.cuboidRatio)) " +
-                            "THRESHOLD=\(String(format: "%.4f", saveMeasured.cuboidThreshold)) " +
-                            "FILL_W=\(String(format: "%.4f", saveMeasured.fillWidth)) BLEND=\(String(format: "%.4f", saveMeasured.blend)) " +
-                            "W=\(String(format: "%.4f", saveMeasured.width)) " +
-                            "H=\(String(format: "%.4f", saveMeasured.height)) " +
-                            "D=\(String(format: "%.4f", saveMeasured.depth))"
-                        )
-                    } else {
-                        logDebug("[ROOM_DIMS][SAVE] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=ASYNC_V7_UNAVAILABLE")
-                    }
-                }
+            let shouldMeasureRoomDimensionsAfterSave = await MainActor.run {
+                savedRoomStrictMeters == nil && generationRoomMeters == nil && measuredRoomDimensions == nil
             }
+            let savedPlyFileName = modelManager.savedPLYFileName(forRoomName: savedName)
+            let savedPlyURL = modelManager.savedPLYURL(forRoomName: savedName)
 
             let (fallbackDimensions, sceneExtentForMeta) = await MainActor.run {
                 (activeRoomMetersDimensions, plySceneExtent)
@@ -2577,6 +2551,7 @@ struct SplatRoomView: View {
                     roomSceneWidth: sceneExtentForMeta?.width,
                     roomSceneHeight: sceneExtentForMeta?.height,
                     roomSceneDepth: sceneExtentForMeta?.depth,
+                    measureMissingRoomDimensions: false,
                     isClassicPly: viewerUsesClassicPlyBehavior,
                     roomCoordinateFrame: viewerRoomCoordinateFrame
                 ) { success, error in
@@ -2599,6 +2574,14 @@ struct SplatRoomView: View {
                                 "PLY save used display meters W×H×D=\(roomWString)×\(roomHString)×\(roomDString)"
                             )
                         }
+                        if success {
+                            startPostSaveRoomDimensionMeasurementIfNeeded(
+                                shouldMeasure: shouldMeasureRoomDimensionsAfterSave,
+                                savedFileName: savedPlyFileName,
+                                savedRoomURL: savedPlyURL,
+                                treatAsClassicPly: viewerUsesClassicPlyBehavior
+                            )
+                        }
                         saveProgress = 1.0
                         withAnimation(.easeOut(duration: 0.3)) {
                             isSavingRoom = false
@@ -2617,6 +2600,54 @@ struct SplatRoomView: View {
                         continuation.resume()
                     }
                 }
+            }
+        }
+    }
+
+    private func startPostSaveRoomDimensionMeasurementIfNeeded(
+        shouldMeasure: Bool,
+        savedFileName: String,
+        savedRoomURL: URL,
+        treatAsClassicPly: Bool
+    ) {
+        guard shouldMeasure else {
+            logDebug("[ROOM_DIMS][SAVE_ASYNC] FILE=\(savedRoomURL.lastPathComponent) SKIP reason=dimensions_already_available")
+            return
+        }
+
+        let manager = modelManager
+        Task(priority: .utility) {
+            logDebug("[ROOM_DIMS][SAVE_ASYNC] FILE=\(savedRoomURL.lastPathComponent) START")
+            let measured = await manager.measureRoomDimensionsAsync(
+                forPly: savedRoomURL,
+                treatAsClassicPly: treatAsClassicPly
+            )
+            if let measured {
+                do {
+                    try manager.mergeMeasuredRoomDimensionsIntoSavedRoomMetadata(
+                        fileName: savedFileName,
+                        modelFileExtension: "ply",
+                        measured: measured
+                    )
+                    logDebug(
+                        "[ROOM_DIMS][SAVE_ASYNC] FILE=\(savedRoomURL.lastPathComponent) " +
+                        "APPROACH=\(measured.approach.uppercased()) SHOT=\(measured.shotType) " +
+                        "HAS_FOCAL=\(measured.usedFocal) TILT_DEG=\(String(format: "%.2f", measured.tiltDegrees)) " +
+                        "TILT_RELIABLE=\(measured.tiltReliable) CUBOID_RATIO=\(String(format: "%.4f", measured.cuboidRatio)) " +
+                        "THRESHOLD=\(String(format: "%.4f", measured.cuboidThreshold)) " +
+                        "FILL_W=\(String(format: "%.4f", measured.fillWidth)) BLEND=\(String(format: "%.4f", measured.blend)) " +
+                        "W=\(String(format: "%.4f", measured.width)) " +
+                        "H=\(String(format: "%.4f", measured.height)) " +
+                        "D=\(String(format: "%.4f", measured.depth))"
+                    )
+                    await MainActor.run {
+                        manager.refreshModels()
+                    }
+                } catch {
+                    logDebug("[ROOM_DIMS][SAVE_ASYNC] FILE=\(savedRoomURL.lastPathComponent) MERGE_FAILED error=\(error.localizedDescription)")
+                }
+            } else {
+                logDebug("[ROOM_DIMS][SAVE_ASYNC] FILE=\(savedRoomURL.lastPathComponent) DONE unavailable")
             }
         }
     }
