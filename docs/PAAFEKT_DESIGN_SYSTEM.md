@@ -37,6 +37,7 @@ Display 34 Bold · Title 24 Semibold · Headline 17 Semibold · Body 15 Regular 
 - **Secondary button:** ghost/outline, hairline border, text primary.
 - **Card / list row:** surface + hairline; monoline icon in a `surfaceHi` tile; name primary; one metadata line secondary; file type as small uppercase mono tag (no color coding).
 - **Viewer toolbar:** ONE shared blurred-glass capsule, gold active state — reused across all four viewers.
+- **Helper hints:** glass chip (default), bottom scrim, or first-run coach mark — see §4.1.
 
 Token files live in repo:
 
@@ -44,6 +45,31 @@ Token files live in repo:
 - Android: `android/app/src/main/java/com/furnit/android/theme/PaafektTheme.kt` + `android/app/src/main/res/values/paafekt_colors.xml`
 
 Values above are the source of truth.
+
+### 4.1 Helper text / hints (viewer)
+
+Replace floating grey caption boxes with on-brand hint chrome. Reuses the same glass treatment as `PaafektViewerToolbarCapsule` — no new visual language.
+
+**Default — glass chip (`PaafektHintChip`):**
+
+- Blurred-glass capsule backing (`.ultraThinMaterial` + `viewerCapsuleFill` + hairline stroke)
+- Gold monoline SF Symbol gesture icon (left)
+- One short caption line (`Theme.Typo.caption`, `textPrimary`)
+- Anchored just above the viewer toolbar / measurement pill
+- Auto-dismiss after ~3s (existing viewer hint timers unchanged)
+
+**Variants:**
+
+| Variant | Component | When to use |
+| ------- | --------- | ----------- |
+| Glass chip | `PaafektHintChip` | Transient gesture helpers (pinch, brain, ruler, full-video tap) |
+| Bottom scrim | `PaafektBottomScrimHint` | Optional: float chip over a soft bottom gradient when extra legibility is needed |
+| First-run coach mark | `PaafektHintCoachMark` | On-demand hint replay (`?` toolbar): chip + gold **Got it** button |
+
+**Implementation:** `Furnit/Views/Components/PaafektViewerHint.swift`  
+**Reference mockups:** `docs/design-assets/paafekt/hints/hint_in_context.png`, `hint_component_spec.png`
+
+**Do not:** rainbow/cyan hint boxes, color-cycling tap hints, or raw `Color.black.opacity(0.78)` rounded rects.
 
 ## 5. Asset inventory
 
@@ -65,6 +91,13 @@ Values above are the source of truth.
 - PNGs: `icons/png/<name>.png`
 - SVGs (algorithmically traced): `icons/svg/<name>.svg` (partial set in repo; use PNGs as source of truth for SF Symbols / vector drawables)
 - QA contact sheet: `icons/png/qa_contact_sheet.png`
+
+**Hint mockups:**
+
+| File | Path |
+| ---- | ---- |
+| In-context chip | `hints/hint_in_context.png` |
+| Component spec (3 variants) | `hints/hint_component_spec.png` |
 
 **iOS runtime assets:**
 

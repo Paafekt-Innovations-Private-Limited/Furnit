@@ -54,9 +54,6 @@ struct ModelViewerView: View {
     @State private var showFullVideoWithIdentifications = false
     @State private var brainArAssistedSizingEnabled = false
     @State private var fullVideoFurnitureTapHintVisible = false
-    @State private var tapHintColorIndex: Int = 0
-    private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
-    @State private var tapHintColorTimer: Timer?
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
     @State private var brainHintExplanationVisible = false
@@ -224,18 +221,13 @@ struct ModelViewerView: View {
         Group {
             if fullVideoFurnitureTapHintVisible {
                 VStack {
-                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 260)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-                        .padding(.top, 12)
+                    PaafektHintChip(
+                        systemImage: "hand.tap.fill",
+                        text: L10n.RoomViewer.fullVideoFurnitureTapHint,
+                        maxWidth: 280,
+                        alignment: .center
+                    )
+                    .padding(.top, 12)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -544,18 +536,11 @@ struct ModelViewerView: View {
 
     private func dismissFullVideoFurnitureTapHint() {
         fullVideoFurnitureTapHintVisible = false
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = nil
     }
 
     private func presentFullVideoFurnitureTapHintIfNeeded() {
         guard showFullVideoWithIdentifications else { return }
-        tapHintColorIndex = 0
         fullVideoFurnitureTapHintVisible = true
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            DispatchQueue.main.async { tapHintColorIndex += 1 }
-        }
     }
 
     private func cancelFullVideoSelectionHelper() {
@@ -700,15 +685,13 @@ struct ModelViewerView: View {
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
                 if roomDimensionsHintVisible {
-                    Text(roomDimensionsHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
+                    PaafektHintChip(
+                        systemImage: "ruler.fill",
+                        text: roomDimensionsHintText,
+                        maxWidth: 240,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
                 }
             }
             .padding(.top, 12)
@@ -726,24 +709,12 @@ struct ModelViewerView: View {
                 !showFullVideoWithIdentifications &&
                 furnitureFitSegmentationMode == .segmentPrimary &&
                 fullVideoSelectionHelperVisible {
-                VStack(alignment: .trailing, spacing: 4) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.cyan)
-                        .padding(.trailing, 4)
-                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
-                        .font(.caption2)
-                        .foregroundColor(.cyan)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .leading)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(0.78))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
-                        )
-                }
+                PaafektHintChip(
+                    systemImage: "text.viewfinder",
+                    text: L10n.RoomViewer.fullVideoSelectionHelper,
+                    maxWidth: 220,
+                    alignment: .leading
+                )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
                 .offset(y: 108)
@@ -760,24 +731,21 @@ struct ModelViewerView: View {
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
                 if pinchHintExplanationVisible {
-                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    PaafektHintChip(
+                        systemImage: "hand.pinch.fill",
+                        text: L10n.RoomViewer.pinchGestureHintExplanation,
+                        alignment: .trailing
+                    )
+                    .transition(.opacity)
                 }
                 if arSizingHintExplanationVisible, showingFurnitureFit || arSizingHintRequiresBrain {
-                    Text(arSizingHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 200)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                    PaafektHintChip(
+                        systemImage: "arrow.up.left.and.arrow.down.right",
+                        text: arSizingHintText,
+                        maxWidth: 220,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
                 }
             }
             .padding(.top, 52)
@@ -790,15 +758,13 @@ struct ModelViewerView: View {
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
             if brainHintExplanationVisible {
-                Text(L10n.RoomViewer.brainGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
+                PaafektHintChip(
+                    systemImage: "brain.head.profile",
+                    text: L10n.RoomViewer.brainGestureHintExplanation,
+                    maxWidth: 220,
+                    alignment: .center
+                )
+                .transition(.opacity)
             }
         }
     }
@@ -806,15 +772,13 @@ struct ModelViewerView: View {
     private var snapshotGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
             if snapshotHintExplanationVisible {
-                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
+                PaafektHintChip(
+                    systemImage: "camera.fill",
+                    text: L10n.RoomViewer.snapshotGestureHintExplanation,
+                    maxWidth: 220,
+                    alignment: .center
+                )
+                .transition(.opacity)
             }
         }
     }

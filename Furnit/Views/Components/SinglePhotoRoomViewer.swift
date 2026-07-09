@@ -1242,8 +1242,6 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var fullVideoSelectionHelperVisible = false
     @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
-    @State private var tapHintColorIndex = 0
-    @State private var tapHintColorTimer: Timer?
     @State private var detectedFurnitureWidth: Float?
     @State private var furnitureFitEstimatedHeightM: Float?
     @State private var detectedFurnitureHeightAR: Float?
@@ -1284,8 +1282,6 @@ private struct DepthAnythingPreviewRoomView: View {
     private var canSegmentSelectedFurniture: Bool {
         showingFurnitureFit && !selectedFurnitureFitLabels.isEmpty
     }
-
-    private let previewTapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
 
     private var previewSceneAndFurnitureUnderlay: some View {
         ZStack {
@@ -1681,24 +1677,12 @@ private struct DepthAnythingPreviewRoomView: View {
                 !showFullVideoWithIdentifications &&
                 furnitureFitSegmentationMode == .segmentPrimary &&
                 fullVideoSelectionHelperVisible {
-                VStack(alignment: .trailing, spacing: 4) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.cyan)
-                        .padding(.trailing, 4)
-                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
-                        .font(.caption2)
-                        .foregroundColor(.cyan)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .leading)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(0.78))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
-                        )
-                }
+                PaafektHintChip(
+                    systemImage: "text.viewfinder",
+                    text: L10n.RoomViewer.fullVideoSelectionHelper,
+                    maxWidth: 220,
+                    alignment: .leading
+                )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
                 .offset(y: 108)
@@ -1712,18 +1696,13 @@ private struct DepthAnythingPreviewRoomView: View {
         Group {
             if fullVideoFurnitureTapHintVisible {
                 VStack {
-                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(previewTapHintColors[tapHintColorIndex % previewTapHintColors.count])
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 260)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
-                        .padding(.top, 12)
+                    PaafektHintChip(
+                        systemImage: "hand.tap.fill",
+                        text: L10n.RoomViewer.fullVideoFurnitureTapHint,
+                        maxWidth: 280,
+                        alignment: .center
+                    )
+                    .padding(.top, 12)
                     Spacer()
                 }
                 .allowsHitTesting(false)
@@ -1961,18 +1940,11 @@ private struct DepthAnythingPreviewRoomView: View {
 
     private func dismissPreviewFullVideoFurnitureTapHint() {
         fullVideoFurnitureTapHintVisible = false
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = nil
     }
 
     private func presentPreviewFullVideoFurnitureTapHintIfNeeded() {
         guard showFullVideoWithIdentifications else { return }
-        tapHintColorIndex = 0
         fullVideoFurnitureTapHintVisible = true
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            DispatchQueue.main.async { tapHintColorIndex += 1 }
-        }
     }
 
     private func cancelPreviewFullVideoSelectionHelper() {

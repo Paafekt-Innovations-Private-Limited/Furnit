@@ -83,9 +83,6 @@ struct MeshRoomView: View {
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var fullVideoSelectionHelperVisible = false
     @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
-    @State private var tapHintColorIndex: Int = 0
-    private let tapHintColors: [Color] = [.yellow, .cyan, .orange, .green, .pink]
-    @State private var tapHintColorTimer: Timer?
     /// Pinch-zoom hint (top-left with D-pad) — same as ``SplatRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
@@ -841,24 +838,12 @@ struct MeshRoomView: View {
                 !showFullVideoWithIdentifications &&
                 furnitureFitSegmentationMode == .segmentPrimary &&
                 fullVideoSelectionHelperVisible {
-                VStack(alignment: .trailing, spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.cyan)
-                        .padding(.trailing, 18)
-                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
-                        .font(.caption2)
-                        .foregroundColor(.cyan)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .leading)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(0.78))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
-                        )
-                }
+                PaafektHintChip(
+                    systemImage: "text.viewfinder",
+                    text: L10n.RoomViewer.fullVideoSelectionHelper,
+                    maxWidth: 220,
+                    alignment: .leading
+                )
                 .padding(.top, 6)
                 .padding(.trailing, canOfferBrainArAssist ? 62 : 20)
                 .offset(y: 50)
@@ -877,27 +862,22 @@ struct MeshRoomView: View {
                 .allowsHitTesting(false)
             VStack(alignment: .trailing, spacing: 6) {
                 if pinchHintExplanationVisible {
-                    Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
+                    PaafektHintChip(
+                        systemImage: "hand.pinch.fill",
+                        text: L10n.RoomViewer.pinchGestureHintExplanation,
+                        alignment: .trailing
+                    )
+                    .transition(.opacity)
                 }
                 if canOfferBrainArAssist, arSizingHintExplanationVisible,
                    showingFurnitureFit || arSizingHintRequiresBrain {
-                    Text(arSizingHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 200)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
+                    PaafektHintChip(
+                        systemImage: "arrow.up.left.and.arrow.down.right",
+                        text: arSizingHintText,
+                        maxWidth: 220,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
                 }
             }
             .padding(.top, 52)
@@ -918,15 +898,13 @@ struct MeshRoomView: View {
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
                 if roomDimensionsHintVisible {
-                    Text(meshRoomDimensionsHintText)
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
+                    PaafektHintChip(
+                        systemImage: "ruler.fill",
+                        text: meshRoomDimensionsHintText,
+                        maxWidth: 240,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
                 }
             }
             .padding(.top, 12)
@@ -942,18 +920,13 @@ struct MeshRoomView: View {
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
                 if fullVideoFurnitureTapHintVisible {
-                    Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(tapHintColors[tapHintColorIndex % tapHintColors.count])
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 260)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                        .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.6), value: tapHintColorIndex)
+                    PaafektHintChip(
+                        systemImage: "hand.tap.fill",
+                        text: L10n.RoomViewer.fullVideoFurnitureTapHint,
+                        maxWidth: 280,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
                 }
             }
             .padding(.top, roomDimensionsHintVisible ? 56 : 12)
@@ -964,8 +937,6 @@ struct MeshRoomView: View {
 
     private func dismissFullVideoFurnitureTapHint() {
         fullVideoFurnitureTapHintVisible = false
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = nil
     }
 
     private func cancelFullVideoSelectionHelper() {
@@ -992,12 +963,7 @@ struct MeshRoomView: View {
 
     private func presentFullVideoFurnitureTapHintIfNeeded() {
         guard showFullVideoWithIdentifications else { return }
-        tapHintColorIndex = 0
         fullVideoFurnitureTapHintVisible = true
-        tapHintColorTimer?.invalidate()
-        tapHintColorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            DispatchQueue.main.async { tapHintColorIndex += 1 }
-        }
     }
 
     private func cancelBrainHintTasks() {
@@ -1148,15 +1114,13 @@ struct MeshRoomView: View {
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
             if brainHintExplanationVisible {
-                Text(L10n.RoomViewer.brainGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
+                PaafektHintChip(
+                    systemImage: "brain.head.profile",
+                    text: L10n.RoomViewer.brainGestureHintExplanation,
+                    maxWidth: 220,
+                    alignment: .center
+                )
+                .transition(.opacity)
             }
         }
         .onAppear { restartBrainGestureHint() }
@@ -1166,15 +1130,13 @@ struct MeshRoomView: View {
     private var snapshotGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
             if snapshotHintExplanationVisible {
-                Text(L10n.RoomViewer.snapshotGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
+                PaafektHintChip(
+                    systemImage: "camera.fill",
+                    text: L10n.RoomViewer.snapshotGestureHintExplanation,
+                    maxWidth: 220,
+                    alignment: .center
+                )
+                .transition(.opacity)
             }
         }
         .onAppear { restartSnapshotGestureHint() }

@@ -9,12 +9,7 @@ struct PaafektViewerToolbarCapsule<Content: View>: View {
         content()
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .background(Capsule().fill(Theme.Palette.viewerCapsuleFill))
-            }
-            .overlay(Capsule().stroke(Theme.Palette.hairline, lineWidth: 1))
+            .paafektGlassCapsuleSurface()
     }
 }
 

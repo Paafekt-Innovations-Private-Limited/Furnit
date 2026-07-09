@@ -549,24 +549,12 @@ struct SplatRoomView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             if isHintVisible(.pickAnother) {
-                VStack(alignment: .trailing, spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.cyan)
-                        .padding(.trailing, 18)
-                    Text(L10n.RoomViewer.fullVideoSelectionHelper)
-                        .font(.caption2)
-                        .foregroundColor(.cyan)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .leading)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(0.78))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.75), lineWidth: 1))
-                        )
-                }
+                PaafektHintChip(
+                    systemImage: "text.viewfinder",
+                    text: L10n.RoomViewer.fullVideoSelectionHelper,
+                    maxWidth: 220,
+                    alignment: .leading
+                )
                 .padding(.top, 6)
                 .padding(.trailing, 20)
                 .offset(y: 50)
@@ -621,15 +609,13 @@ struct SplatRoomView: View {
                 if canOfferBrainArAssist, showingFurnitureFit {
                     arSizingButton
                     if isHintVisible(.arSizing) {
-                        Text(L10n.RoomViewer.arFurnitureSizingRequiresBrainHint)
-                            .font(.caption2)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 200)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                            .transition(.opacity)
+                        PaafektHintChip(
+                            systemImage: "arrow.up.left.and.arrow.down.right",
+                            text: L10n.RoomViewer.arFurnitureSizingRequiresBrainHint,
+                            maxWidth: 220,
+                            alignment: .center
+                        )
+                        .transition(.opacity)
                     }
                 }
                 if showingFurnitureFit {
@@ -651,17 +637,14 @@ struct SplatRoomView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
             if isHintVisible(.pinchResize) {
-                Text(L10n.RoomViewer.pinchGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 220, alignment: .trailing)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
-                    .transition(.opacity)
-                    .padding(.top, 4)
-                    .padding(.trailing, 16)
+                PaafektHintChip(
+                    systemImage: "hand.pinch.fill",
+                    text: L10n.RoomViewer.pinchGestureHintExplanation,
+                    alignment: .trailing
+                )
+                .transition(.opacity)
+                .padding(.top, 4)
+                .padding(.trailing, 16)
             }
         }
         .allowsHitTesting(false)
@@ -1201,14 +1184,14 @@ struct SplatRoomView: View {
         ZStack(alignment: .topLeading) {
             Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
             if activeRoomMetersDimensions != nil {
-                Text(roomDimensionsHintText)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.black.opacity(0.55)))
-                    .padding(.top, 6)
-                    .padding(.leading, 12)
+                PaafektHintChip(
+                    systemImage: "ruler.fill",
+                    text: roomDimensionsHintText,
+                    maxWidth: 240,
+                    alignment: .leading
+                )
+                .padding(.top, 6)
+                .padding(.leading, 12)
             }
         }
         .allowsHitTesting(false)
@@ -1221,17 +1204,13 @@ struct SplatRoomView: View {
         ZStack(alignment: .top) {
             Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
             if currentRoomViewerMode == .fullVideo {
-                Text(L10n.RoomViewer.fullVideoFurnitureTapHint)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white.opacity(0.9))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 260)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.black.opacity(0.55)))
-                    .padding(.top, activeRoomMetersDimensions != nil ? 36 : 12)
+                PaafektHintChip(
+                    systemImage: "hand.tap.fill",
+                    text: L10n.RoomViewer.fullVideoFurnitureTapHint,
+                    maxWidth: 280,
+                    alignment: .center
+                )
+                .padding(.top, activeRoomMetersDimensions != nil ? 36 : 12)
             }
         }
         .allowsHitTesting(false)
@@ -1243,15 +1222,23 @@ struct SplatRoomView: View {
     private var brainGestureHintColumn: some View {
         VStack(alignment: .center, spacing: 6) {
             if isHintVisible(.brainIdentify) {
-                Text(L10n.RoomViewer.brainGestureHintExplanation)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 200)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.78)))
+                if forceShowHints {
+                    PaafektHintCoachMark(
+                        systemImage: "brain.head.profile",
+                        text: L10n.RoomViewer.brainGestureHintExplanation,
+                        confirmTitle: L10n.Common.ok,
+                        onConfirm: { markOnboardingHintSeen(.brainIdentify) }
+                    )
                     .transition(.opacity)
+                } else {
+                    PaafektHintChip(
+                        systemImage: "brain.head.profile",
+                        text: L10n.RoomViewer.brainGestureHintExplanation,
+                        maxWidth: 220,
+                        alignment: .center
+                    )
+                    .transition(.opacity)
+                }
             }
         }
     }
