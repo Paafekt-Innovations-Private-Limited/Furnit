@@ -71,7 +71,7 @@ The Settings image scan intentionally mirrors the RTMDet live path:
 
 1. Home → **Photo → 3D** → create or open a saved AI room.
 2. Tap **brain** (bottom-left). Default `segmentPrimary` should auto-segment one primary item over the 3D room.
-3. Tap **text.viewfinder** (top-right). Live camera preview + cluster boxes should appear.
+3. Tap **text.viewfinder** while brain is active. Live camera preview + cluster boxes should appear.
 4. Tap two or more clusters, then tap **Segment**. Preview should hide; transparent cutouts should show over the 3D room.
 5. Tap **Stop** to return to live boxes, or brain again to exit.
 

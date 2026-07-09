@@ -21,7 +21,7 @@
   </defs>
 
   <text x="32" y="40" class="title">Photo → 3D Room — iOS (Swift)</text>
-  <text x="32" y="62" class="sub">Home toolbar Photo → 3D → SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → room viewer with inline brain.</text>
+  <text x="32" y="62" class="sub">Home toolbar Photo → 3D → SinglePhotoRoomView → DepthAnythingRoomReconstructor → USDZ → room viewer controls + inline brain.</text>
 
   <rect x="570" y="78" width="14" height="14" rx="3" class="ane"/><text x="590" y="90" class="legtxt">Core ML</text>
   <rect x="652" y="78" width="14" height="14" rx="3" class="cpu"/><text x="672" y="90" class="legtxt">CPU math</text>
@@ -100,7 +100,7 @@
     <rect x="270" y="944" width="360" height="72" class="box disp"/>
     <text x="450" y="968" text-anchor="middle" class="bt">Open room viewer</text>
     <text x="450" y="987" text-anchor="middle" class="bs">DepthAnythingPreviewRoomView → ModelViewerView / GLBRoomView / MeshRoomView</text>
-    <text x="450" y="1005" text-anchor="middle" class="bs">nav bar W × H × D · brain auto-segments primary · viewfinder toggles full-video multi-select</text>
+    <text x="450" y="1005" text-anchor="middle" class="bs">measurement/gesture controls · brain auto-segments primary · viewfinder toggles full-video multi-select</text>
   </g>
 
   <g>

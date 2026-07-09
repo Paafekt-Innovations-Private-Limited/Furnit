@@ -3,7 +3,7 @@
 Furnit is a cross-platform image-to-3D room generation and furniture-fitment project.
 
 - **iOS app:** `Furnit/` (Swift, SwiftUI/UIKit, Core ML, MetalSplatter).
-- **Android app:** `android/` (Kotlin, ExecuTorch, NCNN/ONNX support, Android room-generation model stack).
+- **Android app:** `android/` (Kotlin, ONNX Runtime RTMDet, CameraX, WebView/Three.js GLB room viewer).
 - **Shared docs:** `docs/`, `Furnit/docs/`, `android/docs/`.
 - **Model/export scripts:** `scripts/`, `android/pyfiles/`, `android/scripts/`.
 
@@ -34,7 +34,7 @@ Current behavior:
 - **Brain default** opens in `segmentPrimary`: auto-segments the highest-confidence detection with no tap. Tap-to-select lives behind the in-room **text.viewfinder** button (`showFullVideoWithIdentifications`).
 - **Multi-select placement** (Regime A): when multiple items are selected and segmented, each gets an independent overlay with stable `UUID` identity. Items are frozen at selection, not updated from live detections. Each can be independently panned/pinched.
 - **Onboarding hints**: priority-ordered, one-at-a-time transient hints with `@AppStorage` persistence. A "?" button shows all eligible hints on demand. Hints are mode-scoped (browsing, furnitureFit, fullVideo).
-- **Toolbar dimensions**: W×H×D room measurements displayed directly in the navigation bar when available (replaces the old ruler icon and floating chip).
+- **Room toolbar**: room viewers expose measurement and gesture helpers in the top controls; Android mirrors the Swift visual structure with floating back, center ruler/pinch/tap helpers, recenter/save, and AR controls.
 
 ### Thermal & Cadence Management
 
@@ -75,7 +75,7 @@ Pipeline order (one measurement grid):
 Current behavior:
 
 - Default export is **USDZ** with texture UVs; preview/save UX in `DepthAnythingPreviewRoomView`.
-- Room W×H×D in the nav bar and `.usdz.meta` come from the measurement grid, not mesh bounds or wall-rect frustum math.
+- Room W×H×D exposed by the room viewer controls and stored in `.usdz.meta` come from the measurement grid, not mesh bounds or wall-rect frustum math.
 - Saved rooms use `roomCoordinateFrame=depth_anything_image_depth_meters`.
 - The old model-backed splat generation service/model path is removed from the active iOS Swift code.
 
@@ -106,26 +106,34 @@ Current contract:
 
 ## Current Android Architecture
 
-Android room generation uses **flat full-photo GLB** (GeoCalib + Depth Anything parity path in progress).
+Android room generation uses an optimized **flat full-photo GLB** preview path (GeoCalib + Depth Anything parity path in progress).
 iOS uses **GeoCalib + Depth Anything + RTMDet object anchor → USDZ** instead.
+
+Current Android room-creation behavior:
+
+- `SinglePhotoRoomActivity` shows the AI/manual method picker immediately after photo selection.
+- Photo decode is EXIF-aware, sampled to a bounded max dimension off the UI thread, and handed to generation after the picker UI has rendered.
+- `SinglePhotoRoomReconstructor` no longer adds artificial wait time; preview generation is driven by real work only.
+- `GlbGenerator.generateFlatPhotoGlb` embeds the full-photo texture as JPEG to reduce GLB size and speed up preview/save.
+- Generated room width, height, and depth metadata are passed into `GLBRoomActivity` so the viewer ruler dialog and camera framing use the saved dimensions.
 
 Both platforms share the same inline brain / full-video segmentation UX:
 
 - Brain default: auto-segment highest-confidence primary over the 3D room.
-- **Viewfinder** button (Android `ic_text_viewfinder`, Swift `text.viewfinder`): live camera + cluster boxes → multi-select → Segment → transparent cutouts over 3D room.
+- **Viewfinder** button (Android `ic_text_viewfinder`, Swift `text.viewfinder`): live camera + detection/cluster boxes → multi-select → Segment → transparent cutouts over 3D room.
+- Android `GLBRoomActivity` uses Swift-parity floating top controls instead of a full-width top band: back, center ruler/pinch/tap helper capsule, recenter/save, and AR resize.
+- Android `FurnitureFitManager` shares a process-wide ONNX Runtime backend (`OrtEnvironment`, `OrtSession`, session options, and single-thread inference executor). The identify-only path requests only cls/bbox outputs and skips mask planes/affinity work; segmentation modes still request kernels plus `mask_feat`.
 
 Important files/docs:
 
 - `android/README.md` — Android overview, model staging, logs.
 - `android/docs/TEST_AND_SETTINGS.md` — run/settings checklist.
-- `android/docs/EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md` — Vulkan known-good flow.
 - `android/app/src/main/java/com/furnit/android/` — app source.
-- `android/app/src/main/cpp/` — native ExecuTorch integration.
 
-Default agent compile check is both ExecuTorch flavors:
+Default agent compile check:
 
 ```bash
-cd android && ./gradlew :app:compileEtCpuDebugKotlin :app:compileEtVulkanDebugKotlin --no-daemon
+cd android && ./gradlew :app:assembleDebug --no-daemon
 ```
 
 ## Build And Test Rules

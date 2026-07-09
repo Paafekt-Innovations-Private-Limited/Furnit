@@ -21,19 +21,19 @@
   </defs>
   <rect class="bg" x="0" y="0" width="920" height="620"/>
   <text x="32" y="42" class="title">Photo to 3D Room — Android</text>
-  <text x="32" y="64" class="sub">Single app variant · GLB output · AI uses flat full-photo mesh (Swift parity)</text>
+  <text x="32" y="64" class="sub">Single app variant · immediate picker · async sampled decode · GLB output · flat full-photo mesh</text>
 
   <rect class="input" x="70" y="108" width="220" height="74" rx="10"/>
   <text x="180" y="137" text-anchor="middle" class="txt">SinglePhotoRoomActivity</text>
-  <text x="180" y="158" text-anchor="middle" class="small">Take photo or select photo</text>
+  <text x="180" y="158" text-anchor="middle" class="small">Take/select · sampled EXIF decode</text>
 
   <rect class="box" x="350" y="108" width="220" height="74" rx="10"/>
   <text x="460" y="137" text-anchor="middle" class="txt">Choose Flow</text>
-  <text x="460" y="158" text-anchor="middle" class="small">AI generation or manual setup</text>
+  <text x="460" y="158" text-anchor="middle" class="small">Shown before heavy work starts</text>
 
   <rect class="service" x="630" y="108" width="220" height="74" rx="10"/>
   <text x="740" y="137" text-anchor="middle" class="txt">PhotoRoomGenerationService</text>
-  <text x="740" y="158" text-anchor="middle" class="small">Job lifecycle and metadata</text>
+  <text x="740" y="158" text-anchor="middle" class="small">AI starts after UI frame</text>
 
   <rect class="asset" x="72" y="274" width="222" height="92" rx="10"/>
   <text x="183" y="302" text-anchor="middle" class="txt">RoomGenerationAssets</text>
@@ -45,7 +45,7 @@
   <text x="460" y="312" text-anchor="middle" class="small">AI: flatPhotoMesh=true</text>
   <text x="460" y="332" text-anchor="middle" class="small">generateFlatPhotoGlb()</text>
   <text x="460" y="352" text-anchor="middle" class="small">Manual: 5-plane cuboid GLB</text>
-  <text x="460" y="368" text-anchor="middle" class="note">clamp-to-edge · unlit material</text>
+  <text x="460" y="368" text-anchor="middle" class="note">JPEG texture · no artificial wait</text>
 
   <rect class="out" x="630" y="274" width="220" height="92" rx="10"/>
   <text x="740" y="302" text-anchor="middle" class="txt">Preview Folder</text>
@@ -59,8 +59,8 @@
   <rect class="view" x="630" y="444" width="220" height="102" rx="10"/>
   <text x="740" y="472" text-anchor="middle" class="txt">GLBRoomActivity</text>
   <text x="740" y="494" text-anchor="middle" class="small">WebView Three.js room</text>
-  <text x="740" y="514" text-anchor="middle" class="small">Inline brain + full-video overlay</text>
-  <text x="740" y="534" text-anchor="middle" class="note">Flat mesh: front camera framing</text>
+  <text x="740" y="514" text-anchor="middle" class="small">Swift-style floating controls</text>
+  <text x="740" y="534" text-anchor="middle" class="note">Inline brain · front camera framing</text>
 
   <path class="arrow" d="M290 145 H350"/>
   <path class="arrow" d="M570 145 H630"/>

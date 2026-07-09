@@ -21,7 +21,7 @@
   </defs>
 
   <text x="32" y="40" class="title">RTMDet segmentation — GLBRoomActivity (Android / ONNX Runtime)</text>
-  <text x="32" y="60" class="sub">Inline brain overlay on WebView room. Full-video viewfinder toggle matches Swift. ★ = ONNX Runtime, ☆ = Kotlin CPU.</text>
+  <text x="32" y="60" class="sub">Inline brain overlay on WebView room. Swift-style floating controls · shared ONNX backend · fast identify. ★ = ONNX Runtime, ☆ = Kotlin CPU.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="acc"/><text x="580" y="86" class="legtxt">ONNX RT (CPU/XNNPACK)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Kotlin CPU</text>
@@ -29,8 +29,8 @@
 
   <g><rect x="48" y="100" width="824" height="88" rx="12" class="ui"/>
     <text x="460" y="126" text-anchor="middle" class="bt">GLBRoomActivity controls</text>
-    <text x="460" y="148" text-anchor="middle" class="bs">WebView 3D room · brain button starts session · viewfinder toggles full-video · Segment pill confirms selection</text>
-    <text x="460" y="168" text-anchor="middle" class="bs">DEFAULT_SEGMENT = auto primary cutout · IDENTIFY = live preview + tap cluster boxes · SEGMENT_SELECTED = alpha cutout over room</text></g>
+    <text x="460" y="148" text-anchor="middle" class="bs">floating back · ruler/pinch/tap helpers · recenter/save · AR resize · brain starts session · viewfinder toggles full-video</text>
+    <text x="460" y="168" text-anchor="middle" class="bs">DEFAULT_SEGMENT = auto primary cutout · IDENTIFY = live preview + tap detection boxes · SEGMENT_SELECTED = alpha cutout over room</text></g>
   <path class="edge" d="M460,188 L460,222" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="222" width="420" height="68" rx="12" class="cam"/>
@@ -51,17 +51,17 @@
 
   <g><rect x="250" y="496" width="420" height="52" rx="12" class="acc"/>
     <text x="460" y="518" text-anchor="middle" class="bt">★ OrtSession.run — RTMDet-Ins</text>
-    <text x="460" y="536" text-anchor="middle" class="bs">rtmdet-ins-m-raw.onnx · singleton FurnitureFitManager session</text></g>
+    <text x="460" y="536" text-anchor="middle" class="bs">rtmdet-ins-m-raw.onnx · shared OrtEnvironment / OrtSession / executor</text></g>
   <path class="edge" d="M460,548 L460,582" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="582" width="420" height="52" rx="12" class="data"/>
-    <text x="460" y="604" text-anchor="middle" class="bt">Raw heads + proto</text>
-    <text x="460" y="622" text-anchor="middle" class="bs">cls / bbox / mask-coeffs · mask prototypes</text></g>
+    <text x="460" y="604" text-anchor="middle" class="bt">Requested raw heads</text>
+    <text x="460" y="622" text-anchor="middle" class="bs">IDENTIFY: cls/bbox only · segmentation: cls/bbox/kernel + mask_feat</text></g>
   <path class="edge" d="M460,634 L460,668" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="668" width="420" height="52" rx="12" class="cpu"/>
-    <text x="460" y="690" text-anchor="middle" class="bt">Parse · NMS · affinity clusters</text>
-    <text x="460" y="708" text-anchor="middle" class="bs">furniture class filter · cluster union bboxes for full-video taps</text></g>
+    <text x="460" y="690" text-anchor="middle" class="bt">Parse · NMS · optional affinity</text>
+    <text x="460" y="708" text-anchor="middle" class="bs">identify skips mask planes/affinity · segmentation builds clusters and masks</text></g>
   <path class="edge" d="M460,720 L460,754" marker-end="url(#arrow)"/>
 
   <g><rect x="250" y="754" width="420" height="52" rx="12" class="cpu"/>
@@ -85,7 +85,7 @@
   <g><rect x="48" y="1010" width="824" height="132" rx="10" fill="#fbfbfd" stroke="#d1d5db"/>
     <text x="64" y="1036" class="bt" font-size="13">Inference dispatch by mode</text>
     <text x="64" y="1060" class="bs">DEFAULT_SEGMENT → segmentWithDetectionsAsync (primary auto-cutout)</text>
-    <text x="64" y="1078" class="bs">IDENTIFY → detectWithDetectionsAsync (boxes only, live preview visible)</text>
+    <text x="64" y="1078" class="bs">IDENTIFY → detectWithDetectionsAsync (cls/bbox outputs only, live preview visible)</text>
     <text x="64" y="1096" class="bs">SEGMENT_SELECTED → segmentSelectedInstancesAsync (pinned cluster union, preview off, room visible through alpha)</text>
     <text x="64" y="1120" class="bs">Tap handler: toggleInlineBrainSelectedCluster · IoU pin match · Segment pill toggles identify ↔ segment</text></g>
 </svg>

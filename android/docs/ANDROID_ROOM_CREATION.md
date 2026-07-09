@@ -3,13 +3,14 @@
 ## Flow
 
 1. `SinglePhotoRoomActivity` lets the user take a room photo or choose one from the library.
-2. The user chooses AI generation or manual setup.
-3. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
-4. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true`.
-5. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity).
-6. Metadata is written beside the GLB, including room dimensions, photo orientation, and preview state.
-7. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
-8. Saved rooms open through `GLBRoomActivity`.
+2. Selected photos are sampled and EXIF-normalized off the UI thread so full-resolution decode does not block the picker.
+3. The user chooses AI generation or manual setup. The method picker is shown immediately; AI generation is posted after the UI frame renders.
+4. AI generation starts `PhotoRoomGenerationService.startGenerationInBackground`.
+5. The service calls `SinglePhotoRoomReconstructor` with `flatPhotoMesh = true` and no artificial wait time.
+6. `GlbGenerator.generateFlatPhotoGlb` writes a single full-photo textured plane GLB (Swift parity) with an embedded JPEG texture.
+7. Metadata is written beside the GLB, including room dimensions, depth, photo orientation, and preview state.
+8. Preview rooms are saved permanently through `PhotoRoomGenerationService.promoteToLibrary`.
+9. Saved rooms open through `GLBRoomActivity`, which receives the saved dimensions for camera framing and ruler display.
 
 Manual setup still uses boundary-based texture crops and `GlbGenerator.generateGlb` (five-plane cuboid).
 
@@ -18,6 +19,9 @@ Manual setup still uses boundary-based texture crops and `GlbGenerator.generateG
 The old AI fallback stretched cropped floor/ceiling/wall textures onto cuboid planes, which produced visible **dragged pixels** on the front wall. The flat mesh keeps the entire photo as one texture with clamp-to-edge sampling and unlit materials, matching the Swift single-photo preview.
 
 `GLBRoomActivity` detects thin flat meshes (`roomDepth < 0.05`) and frames the camera in front of the photo plane instead of inside a cuboid.
+
+The room viewer top controls mirror Swift: floating back, center ruler/pinch/tap helpers, recenter/save,
+and AR resize. The Android viewer no longer uses a full-width top band.
 
 ## Active Outputs
 
@@ -63,4 +67,4 @@ Use:
 rg -n "old-room-backend-token" app/src/main/java app/src/main/res app/build.gradle
 ```
 
-After creating an AI room, confirm the preview shows a flat photo wall (not visibly stretched plane crops) and that `GLBRoomActivity` recenters the camera in front of the mesh.
+After creating an AI room, confirm the picker appears before generation work, the preview shows a flat photo wall (not visibly stretched plane crops), `GLBRoomActivity` recenters the camera in front of the mesh, and the top controls are floating rather than a full-width band.

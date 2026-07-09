@@ -21,7 +21,7 @@
   </defs>
 
   <text x="32" y="40" class="title">RTMDet segmentation — iOS room viewers (Swift / Core ML)</text>
-  <text x="32" y="60" class="sub">Inline brain on ModelViewerView / GLBRoomView / MeshRoomView / SplatRoomView. Full-video viewfinder matches Android GLBRoomActivity. ★ = ANE/GPU, ☆ = CPU.</text>
+  <text x="32" y="60" class="sub">Inline brain on room viewers. Android GLBRoomActivity mirrors the floating controls and viewfinder flow. ★ = ANE/GPU, ☆ = CPU.</text>
 
   <rect x="560" y="74" width="14" height="14" rx="3" class="ane"/><text x="580" y="86" class="legtxt">Core ML (ANE/GPU)</text>
   <rect x="730" y="74" width="14" height="14" rx="3" class="cpu"/><text x="750" y="86" class="legtxt">Swift CPU</text>
@@ -29,7 +29,7 @@
 
   <g><rect x="48" y="100" width="824" height="88" rx="12" class="ui"/>
     <text x="460" y="126" text-anchor="middle" class="bt">Room viewer controls</text>
-    <text x="460" y="148" text-anchor="middle" class="bs">brain button starts session · text.viewfinder toggles full-video · Segment pill confirms selection · Stop exits</text>
+    <text x="460" y="148" text-anchor="middle" class="bs">ruler/pinch/tap helpers · brain starts session · text.viewfinder toggles full-video · Segment confirms · Stop exits</text>
     <text x="460" y="168" text-anchor="middle" class="bs">segmentPrimary = auto primary cutout · identifyOnly = live preview + cluster boxes · segmentSelected = alpha cutout over room</text></g>
   <path class="edge" d="M460,188 L460,222" marker-end="url(#arrow)"/>
 

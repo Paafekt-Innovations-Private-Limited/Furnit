@@ -9,7 +9,7 @@
 
 ## App Store Connect
 - App Privacy answers must cover phone-number authentication, local account storage, on-device room/furniture processing, and any Firebase analytics/crash usage that is enabled in the release build.
-- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device **GeoCalib + Depth Anything → USDZ**.
+- Do not describe iOS room generation as a photo-upload/backend feature unless that backend path is explicitly enabled in the submitted build. Default iOS room creation is on-device **GeoCalib + Depth Anything + RTMDet object anchor → USDZ**.
 - Confirm the export compliance answer remains correct for the shipped build.
 - Ensure screenshots and app description do not claim unfinished or hidden functionality.
 

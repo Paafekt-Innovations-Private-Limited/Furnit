@@ -17,7 +17,7 @@ For rooms created from a single photo (default path):
 1. **GeoCalib** estimates camera focal length on the **full frame** (letterboxed, `fx = fy` in working pixels).
 2. **Depth Anything** produces a **metric depth map** on the same pixel grid.
 3. **Chair anchor** (RTMDet cls 56) may scale the depth map when EXIF agrees focal is correct.
-4. **Room W×H×D** shown in the preview nav bar comes from **depth-unprojected point spread** on that calibrated map — not from mesh bounds or “whole frame = one wall.”
+4. **Room W×H×D** shown by the room viewer controls comes from **depth-unprojected point spread** on that calibrated map — not from mesh bounds or “whole frame = one wall.”
 
 Saved `.usdz.meta` sidecars store the same inference dimensions.
 
@@ -75,7 +75,7 @@ In **full-video segment** mode, transparent cutouts composite directly over the 
 
 | Topic | Primary code |
 |--------|----------------|
-| Depth Anything inference dims | `DepthAnythingRoomReconstructor.swift`, `SinglePhotoRoomViewer.swift` — GeoCalib focal, depth spread, chair anchor, nav-bar W×H×D |
+| Depth Anything inference dims | `DepthAnythingRoomReconstructor.swift`, `SinglePhotoRoomViewer.swift` — GeoCalib focal, depth spread, chair anchor, viewer W×H×D |
 | Pinhole / pipelines / `phase=all` | `Furnit/Views/FurnitureFit/FurnitureFitView.swift` — `primaryBboxMonocularSizeMeters`, `processFrameOnnxStyleCommon` logging |
 | Map meters → raycast su | `FurnitureMonocularMeasurer.furnitureMetersMappedToRaycastSceneUnits` |
 | Overlay ratios | `Furnit/Models/RoomFitmentMeasurement.swift` — `OverlayScale.ratios`, `OverlayScale.compute`, `FitmentCheck` |

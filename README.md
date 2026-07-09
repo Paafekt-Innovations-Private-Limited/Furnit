@@ -23,8 +23,11 @@ for scale/measurement context, then exports a textured **USDZ** mesh. See
 
 ## Android
 
-Android room generation exports a **flat full-photo GLB** preview under `android/docs/`. iOS uses
-the GeoCalib + Depth Anything USDZ path above. Both platforms share inline brain / full-video segmentation UX.
+Android room generation exports an optimized **flat full-photo GLB** preview under `android/docs/`:
+the method picker appears immediately, photo decode is EXIF-aware and sampled off the UI thread,
+and GLB textures are embedded as JPEG for faster preview/save. iOS uses the GeoCalib + Depth
+Anything USDZ path above. Both platforms share inline brain / full-video segmentation UX and the
+room viewer top controls: floating back, center ruler/pinch/tap helpers, recenter/save, and AR.
 
 https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1
 https://github.com/apple/ml-matrix3d

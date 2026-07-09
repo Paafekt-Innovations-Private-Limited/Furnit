@@ -31,6 +31,7 @@ Room viewers (`ModelViewerView`, `GLBRoomView`, `MeshRoomView`, `SplatRoomView`)
 Key implementation details:
 
 - Brain opens with `segmentPrimary` by default (`toggleFurnitureFit` in room viewer files).
+- Top room-viewer controls expose measurement/gesture helpers; Android mirrors this as floating back, center ruler/pinch/tap helpers, recenter/save, AR, and viewfinder controls.
 - Full-video is toggled by `showFullVideoWithIdentifications` via the **text.viewfinder** button.
 - `shouldShowLiveCameraPreview` is true only in `identifyOnly` (including full-video identify).
 - During full-video `segmentSelected`, inference stays live but `previewLayer` hides so mask alpha reveals the room underneath (`isFullVideoSelectedSegmentation`).

@@ -226,7 +226,7 @@
 
 ---
 
-## Approach 12: GeoCalib + Depth Anything → USDZ (iOS production) ✓
+## Approach 12: GeoCalib + Depth Anything + RTMDet Anchor → USDZ (iOS production) ✓
 
 **Files:** `Furnit/Services/RoomReconstruction/GeoCalibCalibrationService.swift`, `DepthAnythingRoomReconstructor.swift`, `Furnit/Utilities/ImageLetterboxLayout.swift`
 
@@ -255,7 +255,7 @@
 | XY positioning | Proportional to pixel (no depth multiplication) | Avoids funnel distortion |
 | Z positioning | Depth relief only, negated for correct facing | Near objects in front, not behind |
 | Mesh connectivity | Grid triangulation with depth-jump skip | One solid surface without rubber-banding |
-| Export | trimesh → GLB + OBJ | Universal viewer compatibility |
+| Export | textured USDZ | Native iOS room preview/save path |
 
 ## Models Available
 

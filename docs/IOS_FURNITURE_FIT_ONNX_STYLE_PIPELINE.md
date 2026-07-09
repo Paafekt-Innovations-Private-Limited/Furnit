@@ -43,9 +43,10 @@ Modes map to `FurnitureFitSegmentationMode` in `FurnitureFitOverlaySupport.swift
 | **Full video — Identify** (`identifyOnly` + viewfinder) | Live `AVCaptureVideoPreviewLayer` | Cluster detection boxes; tap to pin furniture | Select one or more items against the live feed |
 | **Full video — Segment** (`segmentSelected` + viewfinder) | Hidden again | Transparent cutout(s) over 3D room | Check multi-item fitment in the saved room |
 
-Toggle full-video with the in-room **text.viewfinder** button (top-right while brain is active).
-This matches Android `GLBRoomActivity`'s viewfinder toggle. A legacy Settings switch still exists
-but room viewers drive the mode from the in-room button.
+Toggle full-video with the in-room **text.viewfinder** button while brain is active. The same top
+control model is mirrored by Android `GLBRoomActivity`: floating back, center ruler/pinch/tap
+helpers, recenter/save, AR, and the viewfinder toggle for full-video identify. A legacy Settings
+switch still exists but room viewers drive the mode from the in-room button.
 
 ## Current Behavior
 

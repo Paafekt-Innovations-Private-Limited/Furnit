@@ -1,5 +1,11 @@
 # Furnit iOS - Recent Changes
 
+## Docs & Diagrams — Android Room Creation / RTMDet Parity
+
+- Updated Android room-creation docs and diagrams for immediate AI/manual picker display, off-main sampled EXIF decode, no artificial generation wait, JPEG GLB textures, saved depth metadata, and Swift-style floating `GLBRoomActivity` controls.
+- Updated Android RTMDet docs and diagrams for the shared process-wide ONNX Runtime backend and the boxes-only identify fast path.
+- Updated Swift docs and diagrams to describe the shared room-viewer control model: measurement/gesture helpers, inline brain, and full-video viewfinder flow.
+
 ## Docs & Diagrams — Brain / Full-Video Parity
 
 - Updated `Furnit/diagrams/rtmdet-swift-flow.svg` for room-viewer inline brain, text.viewfinder full-video modes, and transparent cutout compositing over 3D room.
@@ -61,10 +67,10 @@
 - "?" button in toolbar shows all eligible hints on demand for 5 seconds.
 - "Show tips again" option in Settings lets users restore onboarding hints.
 
-## Toolbar Room Dimensions
-- **Location**: `SplatRoomView.swift`
-- Replaced ruler icon in the navigation bar with compact W×H×D measurement text when `activeRoomMetersDimensions` is available.
-- Removed the floating `roomDimensionsChipOverlay` (now integrated into toolbar).
+## Room Viewer Measurement Controls
+- **Location**: `SplatRoomView.swift`, `GLBRoomView.swift`, `MeshRoomView.swift`, `ModelViewerView.swift`
+- Room measurements are surfaced through the current room-viewer top controls and persisted metadata when available.
+- The older floating `roomDimensionsChipOverlay` is removed; measurement, pinch, tap, brain, viewfinder, recenter/save, and AR helpers live in the viewer controls.
 
 ## Debug Bounding Box Drawing
 - **Location**: `FurnitureFitView.swift`, `RTMDetImageInference.swift`
