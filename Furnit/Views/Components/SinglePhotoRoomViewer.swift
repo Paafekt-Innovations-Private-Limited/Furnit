@@ -2392,29 +2392,23 @@ struct SinglePhotoRoomView: View {
                         HStack(spacing: 16) {
                             Image(systemName: "camera.metering.matrix")
                                 .font(.system(size: 30))
-                                .foregroundColor(.blue)
+                                .foregroundStyle(Theme.Palette.accent)
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(L10n.PhotoRoom.title)
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
+                                    .font(Theme.Typo.headline())
+                                    .foregroundStyle(Theme.Palette.textPrimary)
                                 Text(L10n.PhotoRoom.aiPowered)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .font(Theme.Typo.caption())
+                                    .foregroundStyle(Theme.Palette.textSecondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(Theme.Palette.textSecondary)
                         }
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.blue, lineWidth: 2)
-                        )
                     }
+                    .buttonStyle(PaafektCreationCardStyle(variant: .primary))
                     .padding(.horizontal)
 
                     Button(action: {
@@ -2426,29 +2420,23 @@ struct SinglePhotoRoomView: View {
                         HStack(spacing: 16) {
                             Image(systemName: "square.resize")
                                 .font(.system(size: 30))
-                                .foregroundColor(.orange)
+                                .foregroundStyle(Theme.Palette.textPrimary)
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(L10n.PhotoRoom.manualSetup)
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
+                                    .font(Theme.Typo.headline())
+                                    .foregroundStyle(Theme.Palette.textPrimary)
                                 Text(L10n.PhotoRoom.manualSetupDesc)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .font(Theme.Typo.caption())
+                                    .foregroundStyle(Theme.Palette.textSecondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(Theme.Palette.textSecondary)
                         }
-                        .padding()
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.orange, lineWidth: 2)
-                        )
                     }
+                    .buttonStyle(PaafektCreationCardStyle(variant: .secondary))
                     .padding(.horizontal)
 
                     Button("Choose Different Photo") {
@@ -2481,25 +2469,20 @@ struct SinglePhotoRoomView: View {
                             VStack(spacing: 16) {
                                 Image(systemName: "camera.fill")
                                     .font(.system(size: 50))
-                                    .foregroundColor(.blue)
+                                    .foregroundStyle(Theme.Palette.accent)
 
                                 VStack(spacing: 4) {
                                     Text(L10n.Camera.takePhoto)
-                                        .font(.headline)
+                                        .font(Theme.Typo.headline())
                                     Text(L10n.Camera.chooseOrientationShort)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .font(Theme.Typo.caption())
+                                        .foregroundStyle(Theme.Palette.textSecondary)
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(24)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(16)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.blue, lineWidth: 2)
-                            )
+                            .padding(Theme.Space.xl)
                         }
+                        .buttonStyle(PaafektCreationCardStyle(variant: .primary))
                         .padding(.horizontal)
 
                         // Divider with "or"
@@ -2525,25 +2508,20 @@ struct SinglePhotoRoomView: View {
                             VStack(spacing: 16) {
                                 Image(systemName: "photo.on.rectangle")
                                     .font(.system(size: 50))
-                                    .foregroundColor(.green)
+                                    .foregroundStyle(Theme.Palette.textPrimary)
 
                                 VStack(spacing: 4) {
                                     Text(L10n.PhotoRoom.selectPhoto)
-                                        .font(.headline)
+                                        .font(Theme.Typo.headline())
                                     Text(L10n.PhotoRoom.fromLibrary)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .font(Theme.Typo.caption())
+                                        .foregroundStyle(Theme.Palette.textSecondary)
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(24)
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(16)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.green, lineWidth: 2)
-                            )
+                            .padding(Theme.Space.xl)
                         }
+                        .buttonStyle(PaafektCreationCardStyle(variant: .secondary))
                         .padding(.horizontal)
 
                         // Warning about screenshots
