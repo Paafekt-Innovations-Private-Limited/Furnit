@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">جاري التهيئة…</string>
     <string name="smartypants_drag_hint">اسحب الأثاث للتحريك • قرّب أو أبعِد لتغيير الحجم • اسحب خارجاً لتحريك الغرفة</string>
-    <string name="smartypants_tap_calibrate">انقر للمعايرة</string>
     <string name="smartypants_pick_another_hint">ليس هذا؟ انقر لاختيار آخر.</string>
     <string name="smartypants_scanning">جاري المسح…</string>
     <string name="smartypants_camera_error">خطأ في الكاميرا: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">تم الحفظ في لقطات الشاشة</string>
     <string name="smartypants_failed_save_screenshot">فشل حفظ لقطة الشاشة</string>
     <string name="smartypants_failed_save">فشل الحفظ: %s</string>
-    <string name="smartypants_enter_positive_number">أدخل رقماً موجباً</string>
-    <string name="smartypants_room_scaled">تم تحجيم الغرفة %sx</string>
     <string name="smartypants_detected">تم الكشف</string>
     <string name="smartypants_camera_ready">الكاميرا جاهزة - جاري كشف الأثاث…</string>
     <string name="smartypants_scanning_for_furniture">جاري البحث عن الأثاث…</string>
-    <string name="smartypants_calibrate_title">معايرة الغرفة</string>
-    <string name="smartypants_calibrate_message">أدخل ارتفاع الأثاث الفعلي (متر). تم الكشف: %sm</string>
-    <string name="smartypants_real_height_hint">الارتفاع الفعلي (م)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%1$d من %2$d غرفة متبقية</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">إعادة إرسال الرمز</string>
     <string name="otp_code_sent">تم إرسال الرمز!</string>
     <string name="login_continue">متابعة</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">الشكر والتقدير</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">تجزئة الأثاث</string>
-    <string name="settings_show_room_furniture_calibrate">إظهار معايرة الغرفة والأثاث</string>
-    <string name="settings_show_room_furniture_calibrate_description">يعرض «معايرة الجدار» في قائمة الغرفة وشارة «اضغط للمعايرة» عند تفعيل SmartyPants (الدماغ).</string>
     <string name="settings_image_scan">فحص الصورة</string>
     <string name="settings_image_scan_description">اختر صورة وشغّل اكتشاف الأثاث على الجهاز.</string>
     <string name="settings_image_scan_tap_to_choose">اضغط لاختيار صورة</string>

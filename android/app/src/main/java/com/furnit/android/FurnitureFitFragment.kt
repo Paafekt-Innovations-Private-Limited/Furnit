@@ -24,9 +24,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -43,7 +41,6 @@ import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -105,21 +102,13 @@ class FurnitureFitFragment : Fragment() {
     private var selectedPhotoOrientation: String = "portrait"
     private var selectedArAssistedSizingRequested: Boolean = false
 
-    // Tap to calibrate (from Swift): estimated furniture height from detections, user-entered real height, scale factor
-    private val defaultRoomHeightMeters = 3.0f
     private var detectedFurnitureWidthMeters: Float? = null
     private var detectedFurnitureHeightMeters: Float? = null
     private var lockedFurnitureWidthMeters: Float? = null
     private var lockedFurnitureHeightMeters: Float? = null
-    private var realFurnitureHeightMeters: Float? = null
-    private var calibratedRoomHeightMeters: Float? = null
-    private var calibrationScaleFactor: Float = 1.0f
-    private var roomModelNode: ModelNode? = null
     private var roomBoundaryManager: RoomBoundaryManager? = null
-    private var initialCameraSetup: RoomBoundaryManager.CameraSetup? = null
     private var calibrationPillContainer: View? = null
     private var calibrationPillLine1: TextView? = null
-    private var calibrationPillLine2: TextView? = null
     private var lastOverlayScaleLogMs: Long = 0L
 
     // For camera drag (when touching outside furniture)
@@ -258,7 +247,7 @@ class FurnitureFitFragment : Fragment() {
         }
         bottomControls.addView(hintLabel)
 
-        // Tap to calibrate pill (center-bottom): Furn X.XXm / Tap to calibrate; Room X.XXm when calibrated
+        // Passive measurement pill (center-bottom): Furn W×H once segmentation has a size estimate.
         val pillContent = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24.dp, 12.dp, 24.dp, 12.dp)
@@ -274,14 +263,7 @@ class FurnitureFitFragment : Fragment() {
             textSize = 14f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
         }
-        calibrationPillLine2 = TextView(requireContext()).apply {
-            text = getString(R.string.smartypants_tap_calibrate)
-            setTextColor(0xAAFFFFFF.toInt())
-            textSize = 12f
-            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
-        }
         pillContent.addView(calibrationPillLine1)
-        pillContent.addView(calibrationPillLine2)
         val calibrationPill = FrameLayout(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
@@ -291,7 +273,6 @@ class FurnitureFitFragment : Fragment() {
             // Shown on first [updateCalibrationPill] once segmentation has run (this flow is only opened after brain).
             visibility = View.GONE
             isClickable = false
-            // Tap / line2: [updateCalibrationPill] (respects calibrate UI pref).
         }
         calibrationPillContainer = calibrationPill
         bottomControls.addView(calibrationPill)
@@ -361,8 +342,7 @@ class FurnitureFitFragment : Fragment() {
         val controller = FurnitureFitArCameraController(act, cameraExecutor)
         arCameraController = controller
         controller.lockedPhotoOrientation = selectedPhotoOrientation
-        controller.roomHeightMetersForFallback =
-            (calibratedRoomHeightMeters ?: selectedRoomHeight).coerceAtLeast(0.1f)
+        controller.roomHeightMetersForFallback = selectedRoomHeight.coerceAtLeast(0.1f)
         controller.onAssistedMeasurementUpdated = {
             val arH = arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
             detectedFurnitureWidthMeters = null
@@ -582,7 +562,6 @@ class FurnitureFitFragment : Fragment() {
         val provisionalH = arCameraController?.getProvisionalHeightMeters()
         val committedH = arCameraController?.getLastEstimatedHeightMeters()
         val scaleSource = when {
-            realFurnitureHeightMeters != null -> "manual"
             provisionalH != null -> "provisional_ar"
             committedH != null -> "committed_ar"
             lockedFurnitureHeightMeters != null -> "locked_fallback"
@@ -633,22 +612,17 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun effectiveDisplayedFurnitureHeightMeters(): Float? =
-        realFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
-            ?: arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
+        arCameraController?.getProvisionalHeightMeters()?.takeIf { it.isFinite() && it > 0f }
             ?: arCameraController?.getLastEstimatedHeightMeters()?.takeIf { it.isFinite() && it > 0f }
             ?: lockedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
             ?: detectedFurnitureHeightMeters?.takeIf { it.isFinite() && it > 0f }
 
     private fun effectiveDisplayedFurnitureWidthMeters(): Float? {
-        val baseWidth = lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
+        return lockedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
             ?: detectedFurnitureWidthMeters?.takeIf { it.isFinite() && it > 0f }
-        if (baseWidth == null) return null
-        val scale = calibrationScaleFactor.takeIf { it.isFinite() && it > 0f } ?: 1f
-        return if (realFurnitureHeightMeters != null) baseWidth * scale else baseWidth
     }
 
-    private fun effectiveRoomHeightMetersForSizing(): Float =
-        calibratedRoomHeightMeters ?: selectedRoomHeight
+    private fun effectiveRoomHeightMetersForSizing(): Float = selectedRoomHeight
 
     /**
      * Re-reads prefs after returning from Settings so ARCore vs CameraX matches the AR-assisted toggle.
@@ -1034,92 +1008,20 @@ class FurnitureFitFragment : Fragment() {
 
     private fun updateCalibrationPill() {
         val hostActivity = activity ?: return
-        val ctx = context ?: return
         hostActivity.runOnUiThread {
             if (!isAdded) return@runOnUiThread
-            val calibrateUi = FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(ctx)
             val detectedWidth = effectiveDisplayedFurnitureWidthMeters()
             val detected = effectiveDisplayedFurnitureHeightMeters()
             calibrationPillContainer?.visibility = View.VISIBLE
-            val roomM = calibratedRoomHeightMeters
             calibrationPillLine1?.text = when {
-                roomM != null -> "Room: ${String.format(Locale.US, "%.2f", roomM)}m"
                 detectedWidth != null && detected != null ->
                     "Furn: ${String.format(Locale.US, "%.2f", detectedWidth)}×${String.format(Locale.US, "%.2f", detected)}m"
                 detected != null -> "Furn: H ${String.format(Locale.US, "%.2f", detected)}m"
                 else -> "Furn:"
             }
-            calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
-            val pill = calibrationPillContainer
-            if (calibrateUi && detected != null) {
-                calibrationPillLine2?.visibility = View.VISIBLE
-                calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
-                pill?.isClickable = true
-                pill?.setOnClickListener { showCalibrationDialog() }
-            } else {
-                calibrationPillLine2?.visibility = View.GONE
-                pill?.setOnClickListener(null)
-                pill?.isClickable = false
-            }
-        }
-    }
-
-    private fun showCalibrationDialog() {
-        val ctx = context ?: return
-        if (!FurnitureFitManager.isRoomFurnitureCalibrateUiEnabled(ctx)) return
-        val detected = effectiveDisplayedFurnitureHeightMeters() ?: return
-        val edit = EditText(ctx).apply {
-            setHint(getString(R.string.smartypants_real_height_hint))
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-            setText(String.format(Locale.US, "%.2f", detected))
-            setSelection(text?.length ?: 0)
-        }
-        AlertDialog.Builder(ctx)
-            .setTitle(getString(R.string.smartypants_calibrate_title))
-            .setMessage(getString(R.string.smartypants_calibrate_message, String.format(Locale.US, "%.2f", detected)))
-            .setView(edit)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val raw = edit.text?.toString()?.trim() ?: return@setPositiveButton
-                val real = raw.toFloatOrNull() ?: return@setPositiveButton
-                if (real <= 0f) {
-                    Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                val divisor = kotlin.math.abs(detected).coerceAtLeast(0.0001f)
-                calibrationScaleFactor = real / divisor
-                realFurnitureHeightMeters = real
-                calibratedRoomHeightMeters = defaultRoomHeightMeters * calibrationScaleFactor
-                arCameraController?.roomHeightMetersForFallback =
-                    calibratedRoomHeightMeters ?: selectedRoomHeight
-                applyScaleToRoom()
-                updateCalibrationPill()
-                Toast.makeText(ctx, getString(R.string.smartypants_room_scaled, String.format(Locale.US, "%.2f", calibrationScaleFactor)), Toast.LENGTH_SHORT).show()
-            }
-            .show()
-    }
-
-    /**
-     * Apply calibration scale to room and adjust camera position so the room stays framed
-     * (same idea as Swift: scaleRoom then autoFrameRoom — scale mesh then re-frame camera).
-     */
-    private fun applyScaleToRoom() {
-        val scale = calibrationScaleFactor
-        roomModelNode?.let { node ->
-            node.scale = Scale(scale, scale, scale)
-        }
-        val setup = initialCameraSetup
-        if (setup != null) {
-            roomSceneView.cameraNode.apply {
-                position = Position(setup.position.x * scale, setup.position.y * scale, setup.position.z * scale)
-                lookAt(Position(setup.lookAt.x * scale, setup.lookAt.y * scale, setup.lookAt.z * scale))
-            }
-        } else {
-            val baseDistance = 4f
-            roomSceneView.cameraNode.apply {
-                position = Position(0f, 1.6f, baseDistance * scale)
-                lookAt(Position(0f, 1.4f, -baseDistance * scale))
-            }
+            calibrationPillLine1?.setTextColor(0xFFFFFFFF.toInt())
+            calibrationPillContainer?.setOnClickListener(null)
+            calibrationPillContainer?.isClickable = false
         }
     }
 
@@ -1222,7 +1124,6 @@ class FurnitureFitFragment : Fragment() {
                         modelInstance = modelInstance,
                         scaleToUnits = null
                     )
-                    roomModelNode = modelNode
                     roomSceneView.addChildNode(modelNode)
 
                     // Center room at origin and position camera inside room facing front wall (match ModelDetailActivity / Swift)
@@ -1241,7 +1142,6 @@ class FurnitureFitFragment : Fragment() {
                     // front wall instead of sitting at room center, which can end up inside geometry.
                     LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
                     val cameraSetup = boundaryManager.getCameraAtBackCenter()
-                    initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position
                         lookAt(cameraSetup.lookAt)
@@ -1263,7 +1163,6 @@ class FurnitureFitFragment : Fragment() {
                         position = Position(0f, 1.6f, 4f)
                         lookAt(Position(0f, 1.4f, -4f))
                     }
-                    initialCameraSetup = null
                     LogUtil.d("FurnitureFit", "No 3D room; camera ready for segmentation")
                 }
             } catch (e: Exception) {

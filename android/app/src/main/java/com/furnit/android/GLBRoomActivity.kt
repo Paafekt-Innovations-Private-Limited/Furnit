@@ -692,7 +692,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 setColor(0x9E000000.toInt())
                 setStroke(dpToPx(1), Color.parseColor("#2EFFFFFF"))
             }
-            contentDescription = getString(R.string.settings_full_video_with_identifications)
+            contentDescription = getString(R.string.room_viewer_full_video_with_identifications)
             visibility = View.GONE
             setOnClickListener { toggleInlineBrainFullVideoMode() }
         }

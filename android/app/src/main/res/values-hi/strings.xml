@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">इनिशियलाइज़ हो रहा है…</string>
     <string name="smartypants_drag_hint">फर्नीचर खिसकाने के लिए खींचें • आकार बदलने के लिए पिंच करें • रूम पैन करने के लिए बाहर खींचें</string>
-    <string name="smartypants_tap_calibrate">कैलिब्रेट करने के लिए टैप करें</string>
     <string name="smartypants_pick_another_hint">यह नहीं? दूसरा चुनने के लिए टैप करें।</string>
     <string name="smartypants_scanning">स्कैन हो रहा है…</string>
     <string name="smartypants_camera_error">कैमरा त्रुटि: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">स्क्रीनशॉट में सहेजा गया</string>
     <string name="smartypants_failed_save_screenshot">स्क्रीनशॉट सहेजने में विफल</string>
     <string name="smartypants_failed_save">सहेजने में विफल: %s</string>
-    <string name="smartypants_enter_positive_number">धनात्मक संख्या दर्ज करें</string>
-    <string name="smartypants_room_scaled">रूम %sx स्केल किया गया</string>
     <string name="smartypants_detected">पता चला</string>
     <string name="smartypants_camera_ready">कैमरा तैयार - फर्नीचर का पता लगा रहा है…</string>
     <string name="smartypants_scanning_for_furniture">फर्नीचर ढूँढ रहा है…</string>
-    <string name="smartypants_calibrate_title">रूम कैलिब्रेट करें</string>
-    <string name="smartypants_calibrate_message">वास्तविक फर्नीचर ऊँचाई (मीटर) दर्ज करें। पता चला: %sm</string>
-    <string name="smartypants_real_height_hint">वास्तविक ऊँचाई (मी)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%2$d में से %1$d रूम शेष</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">कोड पुनः भेजें</string>
     <string name="otp_code_sent">कोड भेज दिया गया!</string>
     <string name="login_continue">जारी रखें</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">श्रेय</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">फर्नीचर सेगमेंटेशन</string>
-    <string name="settings_show_room_furniture_calibrate">कमरा और फर्नीचर कैलिब्रेशन दिखाएँ</string>
-    <string name="settings_show_room_furniture_calibrate_description">कमरा मेनू में «दीवार कैलिब्रेट करें» और SmartyPants (दिमाग) चालू होने पर «कैलिब्रेट करने के लिए टैप» पिल दिखाता है।</string>
     <string name="settings_image_scan">छवि स्कैन</string>
     <string name="settings_image_scan_description">एक फोटो चुनें और डिवाइस पर ही फर्नीचर डिटेक्शन चलाएं।</string>
     <string name="settings_image_scan_tap_to_choose">फोटो चुनने के लिए टैप करें</string>

@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">ప్రారంభిస్తోంది…</string>
     <string name="smartypants_drag_hint">ఫర్నిచర్ కదిలించడానికి లాగండి • సైజ్ మార్చడానికి pinch చేయండి • గదిని పాన్ చేయడానికి బయట లాగండి</string>
-    <string name="smartypants_tap_calibrate">క్యాలిబ్రేట్ చేయడానికి ట్యాప్ చేయండి</string>
     <string name="smartypants_pick_another_hint">ఇది కాదా? మరొకదాన్ని ఎంచుకోవడానికి ట్యాప్ చేయండి.</string>
     <string name="smartypants_scanning">స్కాన్ చేస్తోంది…</string>
     <string name="smartypants_camera_error">కెమెరా లోపం: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">స్క్రీన్‌షాట్‌లలో సేవ్ చేయబడింది</string>
     <string name="smartypants_failed_save_screenshot">స్క్రీన్‌షాట్ సేవ్ చేయడం విఫలమైంది</string>
     <string name="smartypants_failed_save">సేవ్ చేయడం విఫలమైంది: %s</string>
-    <string name="smartypants_enter_positive_number">ధనాత్మక సంఖ్య నమోదు చేయండి</string>
-    <string name="smartypants_room_scaled">గది %sx స్కేల్ చేయబడింది</string>
     <string name="smartypants_detected">గుర్తించబడింది</string>
     <string name="smartypants_camera_ready">కెమెరా సిద్ధం - ఫర్నిచర్ గుర్తిస్తోంది…</string>
     <string name="smartypants_scanning_for_furniture">ఫర్నిచర్ కోసం స్కాన్ చేస్తోంది…</string>
-    <string name="smartypants_calibrate_title">గదిని క్యాలిబ్రేట్ చేయండి</string>
-    <string name="smartypants_calibrate_message">నిజమైన ఫర్నిచర్ ఎత్తు (మీటర్లు) నమోదు చేయండి. గుర్తించబడింది: %sm</string>
-    <string name="smartypants_real_height_hint">నిజమైన ఎత్తు (మీ)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%2$dలో %1$d గదులు మిగిలివి</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">కోడ్ మళ్లీ పంపండి</string>
     <string name="otp_code_sent">కోడ్ పంపబడింది!</string>
     <string name="login_continue">కొనసాగించండి</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">కృతజ్ఞతలు</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">ఫర్నిచర్ సెగ్మెంటేషన్</string>
-    <string name="settings_show_room_furniture_calibrate">గది మరియు ఫర్నిచర్ క్యాలిబ్రేషన్ చూపించు</string>
-    <string name="settings_show_room_furniture_calibrate_description">గది మెనూలో «గోడ క్యాలిబ్రేట్ చేయి», SmartyPants (మెదడు) ఆన్‌లో ఉన్నప్పుడు «క్యాలిబ్రేట్ చేయడానికి ట్యాప్» పిల్ చూపిస్తుంది.</string>
     <string name="settings_image_scan">చిత్ర స్కాన్</string>
     <string name="settings_image_scan_description">ఒక ఫోటోను ఎంచుకుని, పరికరంపైనే ఫర్నిచర్ గుర్తింపును నడపండి.</string>
     <string name="settings_image_scan_tap_to_choose">ఫోటో ఎంచుకోవడానికి ట్యాప్ చేయండి</string>

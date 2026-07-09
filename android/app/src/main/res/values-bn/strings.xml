@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">শুরু হচ্ছে…</string>
     <string name="smartypants_drag_hint">ফার্নিচার সরাতে টেনে আনুন • পিঞ্চ করে সাইজ বদলান • রুম প্যান করতে বাইরে টেনে আনুন</string>
-    <string name="smartypants_tap_calibrate">ক্যালিব্রেট করতে ট্যাপ করুন</string>
     <string name="smartypants_pick_another_hint">এটা নয়? অন্যটি বেছে নিতে ট্যাপ করুন।</string>
     <string name="smartypants_scanning">স্ক্যান করা হচ্ছে…</string>
     <string name="smartypants_camera_error">ক্যামেরা ত্রুটি: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">স্ক্রিনশটে সংরক্ষিত</string>
     <string name="smartypants_failed_save_screenshot">স্ক্রিনশট সংরক্ষণ করতে ব্যর্থ</string>
     <string name="smartypants_failed_save">সংরক্ষণ করতে ব্যর্থ: %s</string>
-    <string name="smartypants_enter_positive_number">ধনাত্মক সংখ্যা লিখুন</string>
-    <string name="smartypants_room_scaled">রুম %sx স্কেল করা হয়েছে</string>
     <string name="smartypants_detected">সনাক্ত করা হয়েছে</string>
     <string name="smartypants_camera_ready">ক্যামেরা প্রস্তুত - ফার্নিচার সনাক্ত করা হচ্ছে…</string>
     <string name="smartypants_scanning_for_furniture">ফার্নিচার খুঁজছে…</string>
-    <string name="smartypants_calibrate_title">রুম ক্যালিব্রেট করুন</string>
-    <string name="smartypants_calibrate_message">প্রকৃত ফার্নিচার উচ্চতা (মিটার) লিখুন। সনাক্ত: %sm</string>
-    <string name="smartypants_real_height_hint">প্রকৃত উচ্চতা (মি)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%2$d-এর মধ্যে %1$d রুম বাকি</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">কোড পুনরায় পাঠান</string>
     <string name="otp_code_sent">কোড পাঠানো হয়েছে!</string>
     <string name="login_continue">চালিয়ে যান</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">কৃতজ্ঞতা</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">ফার্নিচার সেগমেন্টেশন</string>
-    <string name="settings_show_room_furniture_calibrate">রুম ও ফার্নিচার ক্যালিব্রেশন UI দেখান</string>
-    <string name="settings_show_room_furniture_calibrate_description">রুম মেনুতে «দেয়াল ক্যালিব্রেট» এবং SmartyPants (মস্তিষ্ক) চালু থাকলে «ক্যালিব্রেট করতে ট্যাপ» পিল দেখায়।</string>
     <string name="settings_image_scan">ছবি স্ক্যান</string>
     <string name="settings_image_scan_description">একটি ছবি বেছে নিয়ে ডিভাইসেই ফার্নিচার সনাক্তকরণ চালান।</string>
     <string name="settings_image_scan_tap_to_choose">ছবি বেছে নিতে ট্যাপ করুন</string>

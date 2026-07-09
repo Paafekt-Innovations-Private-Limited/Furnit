@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">துவக்கப்படுகிறது…</string>
     <string name="smartypants_drag_hint">தளபாடங்களை நகர்த்த இழுக்கவும் • அளவு மாற்ற pinch செய்யவும் • அறையை பான் செய்ய வெளியே இழுக்கவும்</string>
-    <string name="smartypants_tap_calibrate">அளவீடு செய்ய தட்டவும்</string>
     <string name="smartypants_pick_another_hint">இது இல்லையா? மற்றொன்றைத் தேர்வு செய்ய தட்டவும்.</string>
     <string name="smartypants_scanning">ஸ்கேன் செய்யப்படுகிறது…</string>
     <string name="smartypants_camera_error">கேமரா பிழை: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">திரைப்பிடிப்புகளில் சேமிக்கப்பட்டது</string>
     <string name="smartypants_failed_save_screenshot">திரைப்பிடிப்பு சேமிக்க முடியவில்லை</string>
     <string name="smartypants_failed_save">சேமிக்க முடியவில்லை: %s</string>
-    <string name="smartypants_enter_positive_number">நேர்மறை எண்ணை உள்ளிடவும்</string>
-    <string name="smartypants_room_scaled">அறை %sx அளவில் அமைக்கப்பட்டது</string>
     <string name="smartypants_detected">கண்டறியப்பட்டது</string>
     <string name="smartypants_camera_ready">கேமரா தயார் - தளபாடங்களை கண்டறிகிறது…</string>
     <string name="smartypants_scanning_for_furniture">தளபாடங்களை தேடுகிறது…</string>
-    <string name="smartypants_calibrate_title">அறையை அளவீடு செய்</string>
-    <string name="smartypants_calibrate_message">உண்மையான தளபாட உயரம் (மீட்டர்) உள்ளிடவும். கண்டறியப்பட்டது: %sm</string>
-    <string name="smartypants_real_height_hint">உண்மையான உயரம் (மீ)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%2$d-இல் %1$d அறைகள் மீதம்</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">குறியீட்டை மீண்டும் அனுப்பவும்</string>
     <string name="otp_code_sent">குறியீடு அனுப்பப்பட்டது!</string>
     <string name="login_continue">தொடரவும்</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">நன்றிகள்</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">தளபாட பிரிப்பு</string>
-    <string name="settings_show_room_furniture_calibrate">அறை மற்றும் தளபாட அளவீட்டைக் காட்டு</string>
-    <string name="settings_show_room_furniture_calibrate_description">அறை பட்டியலில் «சுவரை அளவிடு», SmartyPants (மூளை) செயலில் இருக்கும்போது «அளவிட தட்டவும்» மாத்திரையைக் காட்டுகிறது.</string>
     <string name="settings_image_scan">பட ஸ்கேன்</string>
     <string name="settings_image_scan_description">ஒரு புகைப்படத்தைத் தேர்ந்தெடுத்து, சாதனத்திலேயே மரச்சாமான் கண்டறிதலை இயக்குங்கள்.</string>
     <string name="settings_image_scan_tap_to_choose">புகைப்படம் தேர்வு செய்ய தட்டவும்</string>

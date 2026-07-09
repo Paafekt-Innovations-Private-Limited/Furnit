@@ -34,9 +34,9 @@ adb logcat -s GLBRoomActivity:D FurnitureFitManager:D FurnitureFitOverlay:I -v t
 
 ## Settings
 
-The old backend selection settings have been removed. Current developer settings focus on debug logging, furniture segmentation, room viewer behavior, and default manual/demo room dimensions.
+The old backend selection and FurnitureFit tuning switches have been removed. Current settings focus on debug logging, the single-image furniture scan, room viewer behavior, and default manual/demo room dimensions.
 
-**Full video with identifications** — legacy Settings switch under Furniture segmentation. `GLBRoomActivity` uses the in-room **viewfinder** toggle instead (Swift parity). The Settings preference is not read by the GLB room inline brain path.
+Full-video identification is controlled in `GLBRoomActivity` by the in-room **viewfinder** button, not by Settings.
 
 ## Asset Check
 

@@ -134,10 +134,7 @@
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
     <string name="settings_furniture_segmentation">Furniture segmentation</string>
-    <string name="settings_show_room_furniture_calibrate">Show room and furniture calibrate</string>
-    <string name="settings_show_room_furniture_calibrate_description">Shows Calibrate wall in the room menu and the Tap to calibrate pill when SmartyPants (brain) is active.</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="settings_image_scan">Image Scan</string>
     <string name="settings_image_scan_description">Scan a photo for furniture cutouts and detections.</string>
     <string name="settings_image_scan_tap_to_choose">Tap to choose an image</string>
@@ -429,7 +426,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>
     <string name="smartypants_drag_hint">Drag furniture to move • Pinch to resize • Drag outside to pan room</string>
-    <string name="smartypants_tap_calibrate">Tap to calibrate</string>
     <string name="smartypants_pick_another_hint">Not this one? Tap to pick another.</string>
     <string name="smartypants_scanning">Scanning…</string>
     <string name="smartypants_camera_error">Camera error: %s</string>
@@ -437,16 +433,11 @@
     <string name="smartypants_saved_screenshots">Saved to Screenshots</string>
     <string name="smartypants_failed_save_screenshot">Failed to save screenshot</string>
     <string name="smartypants_failed_save">Failed to save: %s</string>
-    <string name="smartypants_enter_positive_number">Enter a positive number</string>
-    <string name="smartypants_room_scaled">Room scaled by %sx</string>
     <string name="smartypants_detected">Detected</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="smartypants_camera_ready">Camera ready - detecting furniture…</string>
     <string name="smartypants_scanning_for_furniture">Scanning for furniture…</string>
-    <string name="smartypants_calibrate_title">Calibrate Room</string>
-    <string name="smartypants_calibrate_message">Enter real furniture height (meters). Detected: %sm</string>
-    <string name="smartypants_real_height_hint">Real height (m)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%1$d of %2$d rooms remaining</string>

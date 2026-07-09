@@ -28,7 +28,7 @@ ruler/pinch/tap helpers, recenter/save, and AR resize. It is not a full-width ba
 | **Full video — Identify** | Live `PreviewView` | Fast detection boxes; tap to pin furniture | Select one or more items against the live feed |
 | **Full video — Segment** | Hidden again | Transparent ARGB cutout(s) over 3D room | Check multi-item fitment in the saved room |
 
-Toggle full-video mode with the in-room **viewfinder** button (`ic_text_viewfinder`) while brain is active. This matches Swift's `text.viewfinder` toolbar control. A legacy Settings switch still exists but is **not** required for `GLBRoomActivity`.
+Toggle full-video mode with the in-room **viewfinder** button (`ic_text_viewfinder`) while brain is active. This matches Swift's `text.viewfinder` toolbar control; the old Settings switch has been removed.
 
 `FurnitureFitManager` uses a process-wide ONNX Runtime backend so room-viewer sessions reuse the
 same `OrtEnvironment`, `OrtSession`, session options, and single-thread inference executor. Identify

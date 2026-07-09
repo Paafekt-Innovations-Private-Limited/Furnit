@@ -71,12 +71,6 @@ class FurnitureFitManager(private val context: Context) {
          *  When false, ALL COCO classes are scored. Mirrors iOS `controlledList`. */
         private const val CONTROLLED_LIST = true
 
-        /**
-         * When true, shows ⋮ "Calibrate wall" and the brain-session "Tap to calibrate" pill (matches iOS `show_room_furniture_calibrate`).
-         * Default false — same as iOS @AppStorage default.
-         */
-        const val KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI = "show_room_furniture_calibrate"
-        const val KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS = "show_full_video_with_identifications"
         private const val RTMDET_INPUT_SIZE = 640
         private const val RTMDET_MASK_SIDE = 80
         private val RTMDET_DETECTION_OUTPUTS = linkedSetOf(
@@ -94,16 +88,6 @@ class FurnitureFitManager(private val context: Context) {
          */
         fun isArAssistedFurnitureSizingEnabled(context: android.content.Context): Boolean =
             ArSupportChecker.isArCoreSupported(context)
-
-        fun isRoomFurnitureCalibrateUiEnabled(context: Context): Boolean {
-            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                .getBoolean(KEY_SHOW_ROOM_FURNITURE_CALIBRATE_UI, false)
-        }
-
-        fun isFullVideoWithIdentificationsEnabled(context: Context): Boolean {
-            return context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                .getBoolean(KEY_SHOW_FULL_VIDEO_WITH_IDENTIFICATIONS, false)
-        }
 
         private fun sharedOnnxBackend(context: Context, onnxAssetName: String): OnnxBackend? {
             sharedBackend?.takeIf { it.assetName == onnxAssetName }?.let { return it }

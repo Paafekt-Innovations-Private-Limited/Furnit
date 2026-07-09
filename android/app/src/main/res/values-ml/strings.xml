@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">ആരംഭിക്കുന്നു…</string>
     <string name="smartypants_drag_hint">ഫർണിച്ചർ നീക്കാൻ വലിക്കുക • വലിപ്പം മാറ്റാൻ pinch ചെയ്യുക • മുറി പാൻ ചെയ്യാൻ പുറത്ത് വലിക്കുക</string>
-    <string name="smartypants_tap_calibrate">കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക</string>
     <string name="smartypants_pick_another_hint">ഇതല്ലേ? മറ്റൊന്ന് തിരഞ്ഞെടുക്കാൻ ടാപ്പ് ചെയ്യുക.</string>
     <string name="smartypants_scanning">സ്കാൻ ചെയ്യുന്നു…</string>
     <string name="smartypants_camera_error">ക്യാമറ പിശക്: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">സ്ക്രീൻഷോട്ടുകളിൽ സേവ് ചെയ്തു</string>
     <string name="smartypants_failed_save_screenshot">സ്ക്രീൻഷോട്ട് സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
     <string name="smartypants_failed_save">സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു: %s</string>
-    <string name="smartypants_enter_positive_number">പോസിറ്റീവ് നമ്പർ നൽകുക</string>
-    <string name="smartypants_room_scaled">മുറി %sx സ്കെയിൽ ചെയ്തു</string>
     <string name="smartypants_detected">കണ്ടെത്തി</string>
     <string name="smartypants_camera_ready">ക്യാമറ തയ്യാർ - ഫർണിച്ചർ കണ്ടെത്തുന്നു…</string>
     <string name="smartypants_scanning_for_furniture">ഫർണിച്ചർ തിരയുന്നു…</string>
-    <string name="smartypants_calibrate_title">മുറി കാലിബ്രേറ്റ് ചെയ്യുക</string>
-    <string name="smartypants_calibrate_message">യഥാർത്ഥ ഫർണിച്ചർ ഉയരം (മീറ്റർ) നൽകുക. കണ്ടെത്തി: %sm</string>
-    <string name="smartypants_real_height_hint">യഥാർത്ഥ ഉയരം (മീ)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%2$d-ൽ %1$d മുറികൾ ശേഷിക്കുന്നു</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">കോഡ് വീണ്ടും അയയ്ക്കുക</string>
     <string name="otp_code_sent">കോഡ് അയച്ചു!</string>
     <string name="login_continue">തുടരുക</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">കൃതജ്ഞതകൾ</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">ഫർണിച്ചർ സെഗ്മെന്റേഷൻ</string>
-    <string name="settings_show_room_furniture_calibrate">മുറിയും ഫർണിച്ചർ കാലിബ്രേഷനും കാണിക്കുക</string>
-    <string name="settings_show_room_furniture_calibrate_description">മുറി മെനുവിൽ «മതിൽ കാലിബ്രേറ്റ് ചെയ്യുക», SmartyPants (മസ്തിഷ്കം) ഓണായാൽ «കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക» പിൽ കാണിക്കുന്നു.</string>
     <string name="settings_image_scan">ചിത്ര സ്കാൻ</string>
     <string name="settings_image_scan_description">ഒരു ഫോട്ടോ തിരഞ്ഞെടുക്കുകയും ഉപകരണത്തിനകത്ത് തന്നെ ഫർണിച്ചർ കണ്ടെത്തൽ നടത്തുകയും ചെയ്യുക.</string>
     <string name="settings_image_scan_tap_to_choose">ഫോട്ടോ തിരഞ്ഞെടുക്കാൻ ടാപ്പ് ചെയ്യുക</string>

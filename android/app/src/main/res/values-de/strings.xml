@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initialisierung…</string>
     <string name="smartypants_drag_hint">Möbel ziehen zum Verschieben • Pinch zum Größenändern • Außen ziehen zum Schwenken</string>
-    <string name="smartypants_tap_calibrate">Tippen zum Kalibrieren</string>
     <string name="smartypants_pick_another_hint">Nicht dieses? Tippen Sie, um ein anderes auszuwählen.</string>
     <string name="smartypants_scanning">Scannen…</string>
     <string name="smartypants_camera_error">Kamerafehler: %s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">In Screenshots gespeichert</string>
     <string name="smartypants_failed_save_screenshot">Screenshot konnte nicht gespeichert werden</string>
     <string name="smartypants_failed_save">Speichern fehlgeschlagen: %s</string>
-    <string name="smartypants_enter_positive_number">Positive Zahl eingeben</string>
-    <string name="smartypants_room_scaled">Raum um %sx skaliert</string>
     <string name="smartypants_detected">Erkannt</string>
     <string name="smartypants_camera_ready">Kamera bereit – Möbel werden erkannt…</string>
     <string name="smartypants_scanning_for_furniture">Möbel suchen…</string>
-    <string name="smartypants_calibrate_title">Raum kalibrieren</string>
-    <string name="smartypants_calibrate_message">Echte Möbelhöhe (Meter) eingeben. Erkannt: %sm</string>
-    <string name="smartypants_real_height_hint">Echte Höhe (m)</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">%1$d von %2$d Räumen übrig</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">Code erneut senden</string>
     <string name="otp_code_sent">Code gesendet!</string>
     <string name="login_continue">Weiter</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">Danksagungen</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">Möbel-Segmentierung</string>
-    <string name="settings_show_room_furniture_calibrate">Raum- und Möbel-Kalibrierung anzeigen</string>
-    <string name="settings_show_room_furniture_calibrate_description">Zeigt „Wand kalibrieren“ im Raummenü und die „Tippen zum Kalibrieren“-Pille, wenn SmartyPants (Gehirn) aktiv ist.</string>
     <string name="settings_image_scan">Bildscan</string>
     <string name="settings_image_scan_description">Wähle ein Foto und führe die Möbelerkennung direkt auf dem Gerät aus.</string>
     <string name="settings_image_scan_tap_to_choose">Tippe, um ein Foto auszuwählen</string>

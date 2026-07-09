@@ -273,7 +273,6 @@
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">正在初始化…</string>
     <string name="smartypants_drag_hint">拖动家具移动 • 双指缩放改大小 • 向外拖动平移房间</string>
-    <string name="smartypants_tap_calibrate">点击校准</string>
     <string name="smartypants_pick_another_hint">不是这个？点按选择另一个。</string>
     <string name="smartypants_scanning">正在扫描…</string>
     <string name="smartypants_camera_error">相机错误：%s</string>
@@ -281,14 +280,9 @@
     <string name="smartypants_saved_screenshots">已保存到截图</string>
     <string name="smartypants_failed_save_screenshot">保存截图失败</string>
     <string name="smartypants_failed_save">保存失败：%s</string>
-    <string name="smartypants_enter_positive_number">请输入正数</string>
-    <string name="smartypants_room_scaled">房间已缩放 %sx</string>
     <string name="smartypants_detected">已检测</string>
     <string name="smartypants_camera_ready">相机就绪 - 正在检测家具…</string>
     <string name="smartypants_scanning_for_furniture">正在扫描家具…</string>
-    <string name="smartypants_calibrate_title">校准房间</string>
-    <string name="smartypants_calibrate_message">输入实际家具高度（米）。检测到：%sm</string>
-    <string name="smartypants_real_height_hint">实际高度（米）</string>
 
     <!-- Content / Home -->
     <string name="home_rooms_remaining_short">剩余 %1$d / %2$d 个房间</string>
@@ -391,8 +385,7 @@
     <string name="otp_resend_code">重新发送验证码</string>
     <string name="otp_code_sent">验证码已发送！</string>
     <string name="login_continue">继续</string>
-    <string name="settings_full_video_with_identifications">Full video with identifications</string>
-    <string name="settings_full_video_with_identifications_description">Shows the live camera feed behind furniture identifications before you start segmentation.</string>
+    <string name="room_viewer_full_video_with_identifications">Full video with identifications</string>
     <string name="segment_furniture_action">Segment</string>
     <string name="segment_stop_action">Stop</string>
     <string name="settings_credits">鸣谢</string>
@@ -421,8 +414,6 @@
     <string name="settings_language">Language</string>
     <string name="settings_select_language">Select Language</string>
     <string name="settings_furniture_segmentation">家具分割</string>
-    <string name="settings_show_room_furniture_calibrate">显示房间与家具校准</string>
-    <string name="settings_show_room_furniture_calibrate_description">在房间菜单中显示「校准墙体」，并在 SmartyPants（大脑）开启时显示「点按校准」提示条。</string>
     <string name="settings_image_scan">图片扫描</string>
     <string name="settings_image_scan_description">选择一张照片，在设备上运行家具检测。</string>
     <string name="settings_image_scan_tap_to_choose">点按以选择照片</string>
