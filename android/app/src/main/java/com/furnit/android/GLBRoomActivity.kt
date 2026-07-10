@@ -104,7 +104,6 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var bottomControls: FrameLayout
     private lateinit var immersiveRestingChrome: FrameLayout
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
-    private var bottomControlsInnerColumn: LinearLayout? = null
     private var immersiveBackButton: View? = null
     private var immersiveSummonButton: View? = null
     private val immersiveChrome = PaafektImmersiveChromeController()
