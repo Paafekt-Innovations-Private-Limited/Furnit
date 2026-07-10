@@ -101,7 +101,6 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var titleView: TextView
     private lateinit var rootLayout: FrameLayout
     private lateinit var topBar: FrameLayout
-    private lateinit var cameraDpadOverlay: FrameLayout
     private lateinit var bottomControls: FrameLayout
     private lateinit var immersiveRestingChrome: FrameLayout
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
@@ -291,8 +290,6 @@ class GLBRoomActivity : AppCompatActivity() {
         firstRunCoachController = PaafektFirstRunCoachMarkController(rootLayout)
 
         // Gesture navigation only — no on-screen d-pad (immersive-first).
-        cameraDpadOverlay = FrameLayout(this)
-        cameraDpadOverlay.visibility = View.GONE
 
         // Bottom controls (summoned chrome)
         bottomControls = createBottomControls()
@@ -538,59 +535,6 @@ class GLBRoomActivity : AppCompatActivity() {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
-    private fun createDpadCircleButton(label: String, onClick: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            textSize = 20f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#80000000"))
-            }
-            val size = dpToPx(44)
-            layoutParams = LinearLayout.LayoutParams(size, size)
-            setOnClickListener { onClick() }
-        }
-    }
-
-    /** Top-left arrow cluster — posts the same JS calls as iOS `WebGLCameraMove*`. */
-    private fun createCameraDPadOverlay(): FrameLayout {
-        val topInset = if (photoOrientation == "landscape") dpToPx(12) else dpToPx(110)
-        return FrameLayout(this).apply {
-            val cluster = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            cluster.addView(createDpadCircleButton("\u2190") { nudgeCameraLeft() })
-
-            val verticalPad = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                val pad = dpToPx(8)
-                setPadding(pad, 0, pad, 0)
-            }
-            verticalPad.addView(createDpadCircleButton("\u2191") { nudgeCameraUp() })
-            verticalPad.addView(createDpadCircleButton("\u2193") { nudgeCameraDown() })
-            cluster.addView(verticalPad)
-
-            cluster.addView(createDpadCircleButton("\u2192") { nudgeCameraRight() })
-
-            addView(
-                cluster,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.START or Gravity.TOP
-                    topMargin = topInset
-                    marginStart = dpToPx(12)
-                },
-            )
-        }
-    }
-
     private fun createTopBar(): FrameLayout {
         return PaafektViewerToolbar.createTopChromeRow(this).apply {
             val backBtn = PaafektViewerToolbar.createFloatingBackButton(this@GLBRoomActivity) {
@@ -719,52 +663,6 @@ class GLBRoomActivity : AppCompatActivity() {
             heightLabel,
             topMarginDp = 52,
         )
-    }
-
-    private fun toolbarCapsuleDrawable(): GradientDrawable = PaafektDrawables.toolbarCapsule()
-
-    private fun toolbarCircleDrawable(): GradientDrawable = PaafektDrawables.toolbarCircle()
-
-    private fun createBottomIconButton(
-        iconResId: Int,
-        isActive: Boolean = false,
-        onClick: () -> Unit,
-    ): ImageButton {
-        return ImageButton(this).apply {
-            setImageResource(iconResId)
-            imageTintList = ColorStateList.valueOf(
-                if (isActive) com.furnit.android.theme.PaafektColors.accent else Color.WHITE,
-            )
-            background = toolbarCircleDrawable()
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun createToolbarIconButton(iconResId: Int, onClick: () -> Unit): ImageButton {
-        return ImageButton(this).apply {
-            setImageResource(iconResId)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = toolbarCircleDrawable()
-            scaleType = ImageView.ScaleType.CENTER
-            setPadding(dpToPx(7), dpToPx(7), dpToPx(7), dpToPx(7))
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                setMargins(dpToPx(4), 0, dpToPx(4), 0)
-            }
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun createToolbarTextButton(label: String, onClick: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setTypeface(null, Typeface.BOLD)
-            background = toolbarCircleDrawable()
-            setOnClickListener { onClick() }
-        }
     }
 
     private fun updateSummonedToolbarState() {
@@ -1362,34 +1260,6 @@ class GLBRoomActivity : AppCompatActivity() {
         webView.evaluateJavascript(
             "if(typeof recenterCamera==='function')recenterCamera();",
             null
-        )
-    }
-
-    private fun nudgeCameraLeft() {
-        webView.evaluateJavascript(
-            "if(typeof moveCamera==='function')moveCamera(-8,0);",
-            null,
-        )
-    }
-
-    private fun nudgeCameraRight() {
-        webView.evaluateJavascript(
-            "if(typeof moveCamera==='function')moveCamera(8,0);",
-            null,
-        )
-    }
-
-    private fun nudgeCameraUp() {
-        webView.evaluateJavascript(
-            "if(typeof moveCameraUp==='function')moveCameraUp(0.2);",
-            null,
-        )
-    }
-
-    private fun nudgeCameraDown() {
-        webView.evaluateJavascript(
-            "if(typeof moveCameraUp==='function')moveCameraUp(-0.2);",
-            null,
         )
     }
 
