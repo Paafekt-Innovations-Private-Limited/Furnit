@@ -1727,8 +1727,9 @@ class GLBRoomActivity : AppCompatActivity() {
             const planeHeight = inferenceRoomHeight > 0.05 ? inferenceRoomHeight : flatPhotoHeight;
             const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
             const camY = planeHeight * 0.5;
-            // Photographer viewpoint: plane at z≈0, camera on −Z (iOS getCameraForDepthAnythingImagePlane).
-            camera.position.set(0, camY, -standoff);
+            // glTF plane normal is +Z; WebGL/Three.js must view from +Z (SceneKit preview parity).
+            // Camera on −Z shows the back face and the photo appears horizontally mirrored.
+            camera.position.set(0, camY, standoff);
             controls.target.set(0, camY, 0);
             camera.lookAt(controls.target);
             controls.update();
@@ -1739,12 +1740,12 @@ class GLBRoomActivity : AppCompatActivity() {
                 maxX: planeWidth * 0.5 - 0.05,
                 minY: 0.05,
                 maxY: planeHeight - 0.05,
-                minZ: -Math.max(standoff * 1.5, 8.0),
-                maxZ: -0.02
+                minZ: 0.02,
+                maxZ: Math.max(standoff * 1.5, 8.0)
             };
             console.log('[GLBViewer] Flat photo camera standoff=', standoff.toFixed(2),
                 'plane=', planeWidth.toFixed(2), 'x', planeHeight.toFixed(2),
-                'posZ=', (-standoff).toFixed(2));
+                'posZ=', standoff.toFixed(2));
         }
 
         function scheduleCameraFraming() {
