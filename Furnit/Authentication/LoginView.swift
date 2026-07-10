@@ -171,25 +171,27 @@ struct LoginView: View {
                         phoneFieldFocused = false
                     }
 
-                VStack(spacing: 30) {
-                    Spacer()
+                VStack(spacing: 0) {
+                    Spacer(minLength: Theme.Space.xxl)
 
-                    // App Logo/Icon
-                    VStack(spacing: 16) {
+                    // Premium Paafekt mark — centered above the sign-in card
+                    VStack(spacing: Theme.Space.md) {
                         Image("PaafektMark")
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 72, height: 72)
-                            .shadow(color: Theme.Palette.accent.opacity(0.35), radius: 12)
+                            .frame(width: 96, height: 96)
+                            .accessibilityLabel(L10n.App.name)
 
                         Text(L10n.App.name)
-                            .font(Theme.Typo.display())
+                            .font(Theme.Typo.title())
                             .foregroundStyle(Theme.Palette.textPrimary)
 
                         Text(L10n.App.tagline)
                             .font(Theme.Typo.body())
                             .foregroundStyle(Theme.Palette.textSecondary)
                     }
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, Theme.Space.xl)
 
                     // Login Form
                     VStack(spacing: 20) {
@@ -277,10 +279,9 @@ struct LoginView: View {
                     }
                     .padding(Theme.Space.xl)
                     .paafektCardSurface()
-                    .padding(.horizontal)
+                    .padding(.horizontal, Theme.Space.lg)
 
-                    Spacer()
-                    Spacer()
+                    Spacer(minLength: Theme.Space.xxl)
                 }
             }
             .navigationDestination(isPresented: $showOTPView) {

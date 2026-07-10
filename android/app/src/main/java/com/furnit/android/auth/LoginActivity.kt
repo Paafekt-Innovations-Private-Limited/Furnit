@@ -61,57 +61,59 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        val rootLayout = FrameLayout(this)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
 
-        rootLayout.setBackgroundColor(PaafektColors.background)
-
-        // Content card
-        val cardLayout = LinearLayout(this).apply {
+        val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = PaafektDrawables.secondaryButton()
-            setPadding(48, 48, 48, 48)
-            elevation = 8f
+            setBackgroundColor(PaafektColors.background)
+            setPadding(dp(24), dp(48), dp(24), dp(24))
         }
 
-        val cardParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            setMargins(32, 100, 32, 32)
-            gravity = Gravity.TOP
+        val logoView = ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = getString(R.string.app_name)
         }
-        cardLayout.layoutParams = cardParams
+        rootLayout.addView(
+            logoView,
+            LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(16)
+            }
+        )
 
-        // App icon/logo placeholder
-        val logoText = TextView(this).apply {
-            text = "\uD83C\uDFE0" // House emoji
-            textSize = 48f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 16)
-        }
-        cardLayout.addView(logoText)
-
-        // Title
-        val title = TextView(this).apply {
-            text = getString(R.string.login_welcome)
+        val appNameView = TextView(this).apply {
+            text = getString(R.string.app_name)
             textSize = 24f
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.textPrimary)
             gravity = Gravity.CENTER
         }
-        cardLayout.addView(title)
+        rootLayout.addView(appNameView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(4) })
 
-        // Subtitle
-        val subtitle = TextView(this).apply {
-            text = "Sign in with your phone number"
-            textSize = 14f
+        val taglineView = TextView(this).apply {
+            text = getString(R.string.app_tagline)
+            textSize = 15f
             setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 32)
         }
-        cardLayout.addView(subtitle)
+        rootLayout.addView(taglineView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(24) })
 
-        // Name input
+        // Sign-in card
+        val cardLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = PaafektDrawables.secondaryButton()
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            elevation = 8f
+        }
         val nameLabel = TextView(this).apply {
             text = "Your Name"
             textSize = 14f
@@ -222,13 +224,16 @@ class LoginActivity : AppCompatActivity() {
         val termsText = TextView(this).apply {
             text = getString(R.string.login_terms_agree)
             textSize = 12f
-            setTextColor(Color.parseColor("#999999"))
+            setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
             setPadding(0, 24, 0, 0)
         }
         cardLayout.addView(termsText)
 
-        rootLayout.addView(cardLayout)
+        rootLayout.addView(cardLayout, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
         setContentView(rootLayout)
 
         // Add text watchers for validation
