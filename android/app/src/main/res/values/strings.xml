@@ -4,53 +4,33 @@
     <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D Room Explorer</string>
     <string name="app_version">Version</string>
-    <string name="app_developer">Paafekt Team</string>
 
     <!-- Common Actions -->
     <string name="common_done">Done</string>
     <string name="common_cancel">Cancel</string>
-    <string name="common_ok">OK</string>
     <string name="common_back">Back</string>
     <string name="common_reset">Reset</string>
     <string name="common_delete">Delete</string>
-    <string name="common_error">Error</string>
     <string name="common_save">Save</string>
-    <string name="common_close">Close</string>
-    <string name="common_or">or</string>
 
     <!-- Login View -->
     <string name="login_your_name">Your Name</string>
     <string name="login_enter_name">Enter your name</string>
     <string name="login_phone_number">Phone Number</string>
     <string name="login_phone_placeholder">Phone number</string>
-    <string name="login_send_otp">Send OTP</string>
-    <string name="login_sending">Sending…</string>
-    <string name="login_otp_hint">OTP will be sent via SMS</string>
-    <string name="login_validation_error">Please enter valid name and phone number</string>
-    <string name="login_send_failed">Failed to send OTP. Please try again.</string>
 
     <!-- Country Picker -->
-    <string name="country_select_title">Select Country</string>
-    <string name="country_search_placeholder">Search country or code</string>
 
     <!-- OTP Verification -->
     <string name="otp_title">Verify OTP</string>
     <string name="otp_subtitle">Enter the code sent to</string>
     <string name="otp_verify">Verify</string>
-    <string name="otp_verifying">Verifying…</string>
     <string name="otp_resend">Resend OTP</string>
     <string name="otp_resend_in">Resend in %ds</string>
-    <string name="otp_invalid_error">Invalid OTP. Please try again.</string>
-    <string name="otp_resend_failed">Failed to resend OTP.</string>
 
     <!-- Home View -->
-    <string name="home_title">3D Room Models</string>
-    <string name="home_no_models">No 3D Models Found</string>
-    <string name="home_no_models_description">Create your first room from a photo!</string>
     <string name="home_create_room">Create Room from Photo</string>
     <string name="home_rooms_remaining">%1$d of %2$d rooms remaining</string>
-    <string name="home_delete_hint">Delete old rooms to create new ones</string>
-    <string name="home_swipe_hint">Swipe left to delete</string>
     <string name="home_long_press_hint">Long press to rename or delete</string>
     <string name="home_room_actions_title">Room options</string>
     <string name="home_room_actions_subtitle">Rename or remove this saved room</string>
@@ -62,7 +42,6 @@
     <string name="home_rename_room_failed">Couldn\'t rename room</string>
     <string name="home_room_name_duplicate">A room with this name already exists</string>
     <string name="home_room_renamed">Renamed to %s</string>
-    <string name="home_room_model">3D Room Model</string>
 
     <!-- Room Limit -->
     <string name="room_limit_title">Room Limit Reached</string>
@@ -73,43 +52,14 @@
     <string name="delete_room_message">This can\'t be undone.</string>
 
     <!-- Explore View -->
-    <string name="explore_title">Explore</string>
-    <string name="explore_search">Search rooms…</string>
-    <string name="explore_no_results">No Results</string>
-    <string name="explore_no_results_description">Try a different search term</string>
-    <string name="explore_all">All</string>
-    <string name="explore_living_room">Living Room</string>
-    <string name="explore_bedroom">Bedroom</string>
-    <string name="explore_kitchen">Kitchen</string>
-    <string name="explore_office">Office</string>
 
     <!-- Favorites View -->
-    <string name="favorites_title">Favorites</string>
-    <string name="favorites_empty">No Favorites</string>
-    <string name="favorites_empty_description">Tap the heart icon on rooms to add them here</string>
 
     <!-- Profile View -->
-    <string name="profile_title">Profile</string>
-    <string name="profile_edit_profile">Edit Profile</string>
-    <string name="profile_notifications">Notifications</string>
-    <string name="profile_privacy">Privacy</string>
-    <string name="profile_general">General</string>
     <string name="profile_about">About</string>
-    <string name="profile_help_support">Help &amp; Support</string>
-    <string name="profile_logout">Logout</string>
-    <string name="profile_logout_confirm_title">Logout</string>
-    <string name="profile_logout_confirm_message">Are you sure you want to logout?</string>
 
     <!-- Settings View -->
     <string name="settings_title">Settings</string>
-    <string name="settings_language">Language</string>
-    <string name="settings_select_language">Select Language</string>
-    <string name="settings_quality">3D Asset Quality</string>
-    <string name="settings_quality_footer">Quality affects rendering detail and performance. Higher quality may impact battery life.</string>
-    <string name="settings_app_info">App Information</string>
-    <string name="settings_current_quality">Current Quality</string>
-    <string name="settings_movement_speed">Movement Speed</string>
-    <string name="settings_movement_speed_footer">Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.</string>
     <string name="settings_room_dimensions">Manual Setup / Demo Room Dimensions</string>
     <string name="settings_room_dimensions_footer">Default dimensions for manual setup and demo rooms. These are starting values, not measured room dimensions.</string>
     <string name="settings_width_label">Width</string>
@@ -123,13 +73,10 @@
     <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.</string>
     <string name="settings_debug_mode">Debug Mode</string>
     <string name="settings_debug_mode_description">Show detection boxes and timing information</string>
-    <string name="settings_current_value">Current value:</string>
     <string name="settings_account">Account</string>
-    <string name="settings_logged_in_as">Logged in as</string>
     <string name="settings_legal">Legal</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
     <string name="settings_terms_of_service">Terms of Service</string>
-    <string name="settings_support">Support</string>
     <string name="settings_credits">Credits</string>
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
@@ -175,31 +122,13 @@
     <string name="credits_luma_title">Luma AI</string>
     <string name="credits_luma_body">Luma AI tools and product references informed parts of our visual AI and 3D workflow exploration during product development.</string>
     <string name="settings_room_viewer">Room Viewer</string>
-    <string name="settings_rendering_quality">Rendering Quality</string>
     <string name="settings_sign_out">Sign Out</string>
     <string name="settings_sign_out_confirm">Are you sure you want to sign out?</string>
     <string name="settings_not_signed_in">Not signed in</string>
 
     <!-- Quality Options -->
-    <string name="quality_low">Low</string>
-    <string name="quality_low_description">Faster performance</string>
-    <string name="quality_standard">Standard</string>
-    <string name="quality_standard_description">Basic quality for faster performance</string>
-    <string name="quality_medium">Medium</string>
-    <string name="quality_medium_description">Balanced</string>
-    <string name="quality_high">High</string>
-    <string name="quality_high_description">Enhanced quality with better details</string>
-    <string name="quality_best">Best</string>
-    <string name="quality_best_description">Premium quality with maximum detail</string>
-    <string name="quality_best_unavailable">For best quality, please visit our partner stores</string>
 
     <!-- Movement Speed Options -->
-    <string name="speed_slow">Slow</string>
-    <string name="speed_slow_description">Precise control for detailed exploration</string>
-    <string name="speed_normal">Normal</string>
-    <string name="speed_normal_description">Balanced speed for comfortable navigation</string>
-    <string name="speed_fast">Fast</string>
-    <string name="speed_fast_description">Quick movement for faster exploration</string>
 
     <!-- Help & Support -->
     <string name="help_title">Help &amp; Support</string>
@@ -208,10 +137,6 @@
     <string name="help_contact_support">Contact Support</string>
     <string name="help_email_support">Email Support</string>
     <string name="help_copy_email">Copy Email Address</string>
-    <string name="help_email_copied">Email Copied</string>
-    <string name="help_email_copied_message">support@paafekt.com has been copied to your clipboard.</string>
-    <string name="help_email_subject">Paafekt App Support</string>
-    <string name="help_email_body">Hi Paafekt Support Team,\n\nI need help with:\n\n</string>
     <string name="help_measurement_warning">Phones without AR depth support only get approximate measurements, especially for furniture.</string>
 
     <!-- FAQ - Room Creation -->
@@ -285,35 +210,19 @@
     <string name="faq_depth_aware_room_photo_answer">Yes. On supported devices, choosing Take a photo (instead of picking from the gallery) uses the in-app camera with depth where available, which can improve how your 3D room is built and scaled.</string>
 
     <!-- Room Boundary Detection -->
-    <string name="boundary_title">Room Boundaries</string>
-    <string name="boundary_instructions">Drag the circles to adjust boundaries</string>
-    <string name="boundary_floor">Floor</string>
-    <string name="boundary_ceiling">Ceiling</string>
-    <string name="boundary_walls">Walls</string>
-    <string name="boundary_vanish">Vanish</string>
     <string name="boundary_adjust">Adjust Boundaries</string>
     <string name="boundary_drag_handles">Drag handles to adjust boundaries</string>
 
     <!-- Model Viewer -->
-    <string name="viewer_furniture">Add Furniture</string>
-    <string name="viewer_capture">Capture</string>
 
     <!-- SmartyPants (Segmentation) -->
     <string name="smartypants_detecting_furniture">Detecting furniture…</string>
     <string name="smartypants_starting">Starting camera…</string>
-    <string name="smartypants_resizing">Resizing…</string>
     <string name="smartypants_preprocessing">Preprocessing…</string>
-    <string name="smartypants_running_model">Running model…</string>
-    <string name="smartypants_extracting">Extracting detections…</string>
-    <string name="smartypants_building_mask">Building mask…</string>
-    <string name="smartypants_compositing">Compositing…</string>
 
     <!-- Single Photo Room -->
     <string name="photo_room_title">Photo to 3D Room</string>
     <string name="photo_room_create_title">Create a 3D Room</string>
-    <string name="photo_room_create_subtitle">Select a photo to get started</string>
-    <string name="photo_room_quick_photo">Quick Photo</string>
-    <string name="photo_room_quick_photo_subtitle">Single photo capture</string>
     <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
     <string name="photo_room_tap_option">Tap an option below to continue</string>
     <string name="photo_room_ai_powered">AI-powered 3D construction</string>
@@ -323,8 +232,6 @@
     <string name="photo_room_select_photo">Select Photo</string>
     <string name="photo_room_from_library">From your photo library</string>
     <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
     <string name="photo_room_error">An error occurred while generating your 3D model.</string>
     <string name="photo_room_building_room">Building your room</string>
     <string name="photo_room_building_room_subtext">This usually takes a few seconds.</string>
@@ -334,32 +241,18 @@
     <string name="photo_room_choose_different">Choose Different Photo</string>
     <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
     <string name="photo_room_creating">Creating your 3D room…</string>
-    <string name="photo_room_preparing">Preparing…</string>
     <string name="photo_room_ai_generation">AI-powered room generation</string>
 
     <!-- 3D Room Viewer -->
     <string name="room_viewer_title">3D Room View</string>
-    <string name="room_viewer_controls">Use joystick to move • Pinch to zoom</string>
-    <string name="room_viewer_save_room">Save Room</string>
     <string name="room_viewer_name_your_room">Name your room</string>
     <string name="room_viewer_room_name_placeholder">e.g. Living Room</string>
     <string name="room_viewer_room_name">Room Name</string>
-    <string name="room_viewer_enter_name">Enter a name for your room</string>
-    <string name="room_viewer_saving_room">Saving Room</string>
-    <string name="room_viewer_preparing_model">Preparing room model…</string>
-    <string name="room_viewer_exporting">Exporting to USDZ format…</string>
-    <string name="room_viewer_saving_to_library">Saving to library…</string>
-    <string name="room_viewer_almost_done">Almost done…</string>
     <string name="room_viewer_save_success">\'%s\' saved to your rooms</string>
-    <string name="room_viewer_save_failed">Failed to save room: %s</string>
-    <string name="room_viewer_room_save_title">Room Save</string>
-    <string name="room_viewer_opening">Opening %s…</string>
     <string name="room_preview_leave_title">Leave without saving?</string>
     <string name="room_preview_leave_message">Your room has not been saved yet. If you go back now, you will lose this preview.</string>
     <string name="room_preview_leave_stay">Stay</string>
     <string name="room_preview_leave_confirm">Leave</string>
-    <string name="room_preview_prepare_source_image_failed">Could not prepare source image for room preview.</string>
-    <string name="room_preview_source_image_unavailable">Could not load source image for room measurement.</string>
 
     <!-- Crash Report -->
     <string name="crash_report_title">Something went wrong</string>
@@ -370,48 +263,25 @@
     <string name="crash_report_copy_details">Copy Details</string>
 
     <!-- Accessibility -->
-    <string name="accessibility_settings">Settings</string>
-    <string name="accessibility_help">Help</string>
-    <string name="accessibility_create_room">Create room from photo</string>
 
     <!-- Orientation Labels -->
     <string name="orientation_portrait">Portrait</string>
     <string name="orientation_landscape">Landscape</string>
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="orientation_tap_to_change">%1$s - %2$s (tap to change)</string>
 
     <!-- Camera Capture -->
-    <string name="camera_title">Camera</string>
-    <string name="camera_take_photo">Take Photo</string>
-    <string name="camera_choose_mode">Choose Camera Mode</string>
-    <string name="camera_choose_mode_hint">Select camera lens for your room</string>
-    <string name="camera_standard">Standard</string>
-    <string name="camera_wide_angle">Wide Angle</string>
-    <string name="camera_standard_desc">Standard 1x lens • Hold in any orientation</string>
-    <string name="camera_wide_angle_desc">Ultra-wide 0.5x lens • Captures more area</string>
-    <string name="camera_wide_angle_info">Uses ultra-wide 0.5x lens for wider field of view</string>
-    <string name="camera_select_wide_angle">Select Wide Photo</string>
-    <string name="camera_capture_wide_angle">Capture Wide Photo</string>
-    <string name="camera_wide_angle_hold_steady">Hold steady • Ultra-wide lens captures more</string>
     <string name="camera_permission_required">Camera permission is required to take photos</string>
-    <string name="camera_error">Error opening camera</string>
 
     <!-- General Messages -->
     <string name="no_email_app">No email app found</string>
     <string name="email_copied_clipboard">Email copied to clipboard</string>
-    <string name="failed_load_image">Failed to load image</string>
-    <string name="no_image_selected">No image selected</string>
-    <string name="failed_create_room">Failed to create room</string>
     <string name="deleted_room">Deleted %s</string>
-    <string name="failed_delete">Failed to delete: %s</string>
-    <string name="total">Total</string>
 
     <!-- App version display -->
     <string name="app_version_display">Paafekt v1.0.0</string>
 
     <!-- Additional strings from iOS translations -->
-    <string name="room_viewer_exporting_usdz">Exporting to USDZ format…</string>
     <string name="faq_multiple_pieces">Can I add multiple furniture pieces?</string>
     <string name="faq_multiple_pieces_answer">Yes! In full-video mode you can tap several detection boxes, then tap Segment once to cut out all selected pieces together over your 3D room. You can also segment items one at a time using the default brain flow.</string>
     <string name="faq_room_fitment">How do I check if furniture fits?</string>
@@ -426,12 +296,9 @@
     <string name="faq_when_does_aesthetic_score_low">When might aesthetic scores look low or show "clash"?</string>
     <string name="faq_when_does_aesthetic_score_low_answer">Bright, saturated objects often score worse when their hue does not line up with the app\'s harmonious color schemes against your room—for example acid green, magenta, purple, or safety-orange props against warm beige or tan rooms, or loud primaries in a room sampled as mostly one hue family. Very similar brightness to the floor or wall (brown-on-brown, gray-on-gray) can lower contrast even if you like the look. Rooms inferred as rustic or traditional can show lower style fit because the furniture profile uses default modern/minimal tags. Dull gray or muddy averages from busy backgrounds may land in a neutral band instead of clash. Treat scores as guides only and trust your eye for real decor.</string>
     <string name="crash_report_submit_report">Submit Report</string>
-    <string name="faq_furniture_segmentation">Furniture Segmentation</string>
 
     <!-- FurnitureFit / SmartyPants -->
     <string name="smartypants_initializing">Initializing…</string>
-    <string name="smartypants_drag_hint">Drag furniture to move • Pinch to resize • Drag outside to pan room</string>
-    <string name="smartypants_pick_another_hint">Not this one? Tap to pick another.</string>
     <string name="smartypants_scanning">Scanning…</string>
     <string name="smartypants_camera_error">Camera error: %s</string>
     <string name="smartypants_screenshot_failed">Screenshot failed: %s</string>
@@ -452,19 +319,11 @@
     <string name="home_create_room_helper">Tap here to create rooms</string>
     <string name="home_3d_room_model">3D Room Model</string>
     <string name="home_opening">Opening %s…</string>
-    <string name="home_deleted">Deleted %s</string>
     <string name="home_failed_delete">Failed to delete: %s</string>
 
     <!-- Single Photo Room -->
     <string name="photo_room_back">\u2039 Back</string>
     <string name="photo_room_or">or</string>
-    <string name="photo_room_do_not_screenshots">⚠️ Do not use screenshots - use actual photos</string>
-    <string name="photo_room_portrait_held">Portrait - held vertically</string>
-    <string name="photo_room_how_to_create_short">How would you like to create your room?</string>
-    <string name="photo_room_tap_option_short">Tap an option below</string>
-    <string name="photo_room_creating_short">Creating your 3D room…</string>
-    <string name="photo_room_progress_hint">This usually takes about 2 minutes. Hang tight — we\'re building something nice for you.</string>
-    <string name="photo_room_error_camera">Error opening camera: %s</string>
     <string name="photo_room_error_load">Error: %s</string>
     <string name="photo_room_back_confirm_title">Leave this screen?</string>
     <string name="photo_room_back_confirm_message">Tap %1$s to see progress and when your room is ready. Tap %2$s to set up room boundaries manually.\n\nDo you really want to go back?</string>
@@ -474,7 +333,6 @@
     <!-- GLB Room -->
     <string name="glb_room_no_file">No GLB file provided</string>
     <string name="glb_room_not_found">GLB file not found</string>
-    <string name="glb_room_saved">\'%s\' saved to your rooms</string>
     <string name="glb_room_error">Error: %s</string>
     <string name="glb_room_screenshot_saved">Screenshot saved: %s</string>
     <string name="glb_room_screenshot_failed">Failed to capture screenshot</string>
@@ -487,7 +345,6 @@
     <string name="single_image_scan_no_overlay">No overlay detected</string>
     <string name="ai_progress_getting_photo_ready">Getting your photo ready…</string>
     <string name="ai_progress_warming_up">Warming up…</string>
-    <string name="ai_progress_building_room_step">Building your room… step %1$s of 35</string>
     <string name="ai_progress_building_room">Building your room…</string>
     <string name="ai_progress_understanding_picture">Understanding the full picture…</string>
     <string name="ai_progress_adding_depth_shape">Adding depth and shape…</string>
@@ -501,8 +358,6 @@
 
     <!-- Room Boundary -->
     <string name="boundary_back">\u2039 Back</string>
-    <string name="boundary_done">Done</string>
-    <string name="boundary_reset">Reset</string>
     <string name="boundary_no_image">No image available</string>
     <string name="boundary_failed_create">Failed to create room</string>
     <string name="boundary_processing">Processing…</string>
@@ -519,7 +374,6 @@
     <string name="model_detail_failed_capture">Failed to capture screenshot</string>
     <string name="model_detail_failed_load">Failed to load: %s</string>
     <string name="model_detail_failed_save_screenshot_message">Failed to save screenshot: %s</string>
-    <string name="model_detail_drag_camera">Drag to move camera</string>
 
     <!-- Room Viewer -->
     <string name="room_viewer_no_folder">No room folder provided</string>
@@ -530,24 +384,19 @@
     <string name="room_viewer_created_message">Your room textures have been extracted from the photo. Tap Save to keep this room.</string>
     <string name="room_viewer_dimensions">Dimensions: %s</string>
     <string name="approximate_room_height">App. height - %.2f m</string>
-    <string name="room_viewer_pinch_hint">Drag to look around · pinch to zoom</string>
     <string name="room_viewer_navigation_teaching_hint">Drag to look · pinch to zoom · two fingers to move</string>
     <string name="room_viewer_first_run_title">Explore your room in 3D</string>
     <string name="room_viewer_first_run_body">Use Fit to add furniture and Capture to save a view.\nDrag to look around, pinch to zoom.</string>
     <string name="room_viewer_hero_actions_teaching_hint">Tap Fit to add furniture · Capture to save a view</string>
     <string name="room_viewer_first_run_got_it">Got it</string>
-    <string name="room_viewer_hero_fit_furniture">Fit Furniture</string>
     <string name="room_viewer_hero_capture">Capture</string>
     <string name="room_viewer_immersive_fit_short">Fit</string>
     <string name="room_viewer_immersive_capture_short">Capture</string>
     <string name="room_viewer_immersive_show_controls">Show controls</string>
     <string name="room_viewer_immersive_tap_to_hide">Tap to hide</string>
-    <string name="share">Share</string>
     <string name="room_viewer_recenter">Recenter view</string>
     <string name="room_viewer_display_all_helpers">Show gesture hints</string>
     <string name="room_viewer_ar_sizing_enable">Enable camera-assisted furniture sizing</string>
-    <string name="room_viewer_ar_sizing_disable">Disable camera-assisted furniture sizing</string>
-    <string name="room_viewer_brain_gesture_hint_explanation">Tap the brain button to detect furniture.</string>
     <string name="room_viewer_saved_toast">Room saved!</string>
 
     <!-- Model Viewer -->
@@ -558,19 +407,12 @@
     <!-- Settings (developer) -->
 
     <!-- Auth / Login -->
-    <string name="login_welcome">Welcome to Paafekt</string>
-    <string name="login_sign_in_phone">Sign in with your phone number</string>
     <string name="login_send_code">Send Verification Code</string>
     <string name="login_terms_agree">By continuing, you agree to our Terms of Service and Privacy Policy</string>
     <string name="otp_back">\u2039 Back</string>
-    <string name="otp_verify_phone">Verify Phone</string>
-    <string name="otp_enter_code">Enter the 6-digit code sent to\n%s</string>
-    <string name="otp_resend_in_seconds">Resend code in %ds</string>
-    <string name="otp_resend_code">Resend Code</string>
     <string name="otp_code_sent">Code sent!</string>
 
     <!-- Login (legacy) -->
-    <string name="login_continue">Continue</string>
 
     <!-- ARCore distance measure (beta) -->
     <string name="ar_measure_status_init">Move the device slowly to detect floors and walls.</string>
@@ -588,42 +430,14 @@
     <string name="ar_measure_tracking_lost">Wait until tracking is stable, then tap again.</string>
     <string name="ar_measure_no_plane_hit">No surface hit — aim at a floor or wall.</string>
     <string name="ar_measure_need_two_points">Place two points first (tap surface twice).</string>
-    <string name="ar_measure_apply_title">Apply ARCore measurement?</string>
-    <string name="ar_measure_apply_message">AR segment: %1$.3f m\nAI room bbox: %2$.3f × %3$.3f × %4$.3f m\nChoose which axis this segment matches for isotropic scale.</string>
-    <string name="ar_measure_calib_width">Match width (AI room %.2f m)</string>
-    <string name="ar_measure_calib_height">Match height (AI room %.2f m)</string>
-    <string name="ar_measure_calib_depth">Match depth (AI room %.2f m)</string>
-    <string name="ar_measure_calib_invalid_ref">That axis is invalid for scaling.</string>
-    <string name="ar_measure_calib_applied">Display scale updated (AR calibration).</string>
-    <string name="ar_measure_calib_no_folder">Calibration updated for this session only (room not saved to disk yet).</string>
 
     <!-- Single photo / AI room generation -->
     <string name="single_photo_run_in_background">Run in background</string>
     <string name="single_photo_progress_overlay_background_hint">You can leave this screen. When the room is ready, it will appear in your Home list.</string>
-    <string name="single_photo_ai_room_subtitle_idle">AI-Powered 3D construction</string>
-    <string name="single_photo_ai_room_async_footnote">Tap AI Room to see progress. Generation keeps running if you leave; your room will appear on the Home list when it is ready.</string>
     <string name="single_photo_ai_stop">Stop AI room generation</string>
     <string name="single_photo_phase_finalize">Finalize</string>
     <string name="single_photo_global_ai_ready">Ready — tap AI Room · %1$d%%</string>
     <string name="home_room_generation_stopped">AI room generation stopped</string>
 
     <!-- Placement intelligence -->
-    <string name="placement_title">Placement Intelligence</string>
-    <string name="placement_badge_style_only">Style</string>
-    <string name="placement_no_fit">No fit</string>
-    <string name="placement_fit_count">%1$d fit</string>
-    <string name="placement_detected_size">Detected %1$.2f × %2$.2f × %3$.2f m</string>
-    <string name="placement_metric_unavailable_note">Full room-fit sizing works best when metric furniture size is available. Color harmony below still applies.</string>
-    <string name="placement_harmony_summary">Harmony %1$.2f (%2$s) · contrast %3$.2f · style fit %4$.2f</string>
-    <string name="placement_fit_no_region">Fits room bounds. No clear free-floor region yet.</string>
-    <string name="placement_fit_regions">Fits room. %1$d candidate floor region(s).</string>
-    <string name="placement_exceeds_room">Current furniture footprint exceeds the detected room extents.</string>
-    <string name="placement_best_corner">Best corner score %1$.2f, rot %2$.0f°</string>
-    <string name="placement_depth_estimated">Depth is estimated until catalog or semantic data is available.</string>
-    <string name="placement_harmony_analogous">Analogous</string>
-    <string name="placement_harmony_complementary">Complementary</string>
-    <string name="placement_harmony_triadic">Triadic</string>
-    <string name="placement_harmony_split_complementary">Split complementary</string>
-    <string name="placement_harmony_neutral">Neutral</string>
-    <string name="placement_harmony_clash">Clash</string>
 </resources>
