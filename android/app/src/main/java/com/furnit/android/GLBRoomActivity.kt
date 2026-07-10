@@ -1564,6 +1564,7 @@ class GLBRoomActivity : AppCompatActivity() {
         };
 
         // D-pad removed from UI; moveCamera still used if needed — two-finger pan covers walk-through.
+        let initialCameraPosition = null;
         let initialControlsTarget = null;
         let roomBoundsForClamping = null;
         let isFlatPhotoMesh = false;
@@ -1706,6 +1707,7 @@ class GLBRoomActivity : AppCompatActivity() {
         const glbUrl = 'room.glb';
         console.log('[GLBViewer] Loading GLB from', glbUrl);
         loader.load(glbUrl, function(gltf) {
+            try {
                 console.log('[GLBViewer] GLB loaded successfully');
 
                 const model = gltf.scene;
@@ -1763,13 +1765,15 @@ class GLBRoomActivity : AppCompatActivity() {
                 console.log('[GLBViewer] Camera:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2),
                     'lookAt', controls.target.x.toFixed(2), controls.target.y.toFixed(2), controls.target.z.toFixed(2));
 
-                // Notify Android that we're loaded
                 if (window.Android) {
                     window.Android.onLoaded();
                 }
+            } catch (error) {
+                reportError('GLB viewer setup failed', error);
+            }
 
         }, undefined, function(error) {
-            reportError('Failed to parse 3D model', error);
+            reportError('GLB load failed', error);
         });
 
         // Animation loop
