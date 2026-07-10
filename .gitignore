@@ -316,3 +316,6 @@ scripts/cleanup_stuck_simulator_runtime.sh
 scripts/move_core_simulator_to_lacie.sh
 scripts/restore_coresimulator_internal.sh
 scripts/symlink_coresimulator_lacie_quick.sh
+
+# Local script tooling caches (e.g. KTX binaries for export_bundled_usdz_to_glb.py)
+scripts/.tools/
