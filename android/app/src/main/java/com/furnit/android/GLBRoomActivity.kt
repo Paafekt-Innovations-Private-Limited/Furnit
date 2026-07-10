@@ -58,6 +58,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,6 +78,11 @@ class GLBRoomActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "GLBRoomActivity"
+        private const val GLB_MAGIC = 0x46546C67 // "glTF"
+        private const val GLB_VERSION = 2
+        /** Bundled Three.js (iOS WebViewVendor parity) — no CDN/network required in WebView. */
+        private const val VIEWER_THREE_BASE =
+            "https://appassets.androidplatform.net/assets/vendor/three"
         const val EXTRA_GLB_PATH = "glb_path"
         const val EXTRA_ROOM_NAME = "room_name"
         const val EXTRA_ROOM_ID = "room_id"
@@ -204,7 +211,13 @@ class GLBRoomActivity : AppCompatActivity() {
 
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
-                    LogUtil.d(TAG, "WebGL: ${message?.message()}")
+                    val text = message?.message().orEmpty()
+                    val line = "WebGL [${message?.messageLevel()}] ${message?.sourceId()}:${message?.lineNumber()} $text"
+                    when (message?.messageLevel()) {
+                        ConsoleMessage.MessageLevel.ERROR -> LogUtil.e(TAG, line)
+                        ConsoleMessage.MessageLevel.WARNING -> LogUtil.w(TAG, line)
+                        else -> LogUtil.d(TAG, line)
+                    }
                     return true
                 }
             }
@@ -1357,7 +1370,19 @@ class GLBRoomActivity : AppCompatActivity() {
             return
         }
 
-        LogUtil.d(TAG, "Loading GLB file: ${glbFile.name} (${glbFile.length()} bytes)")
+        val glbBytes = glbFile.length()
+        validateGlbHeader(glbFile)?.let { validationError ->
+            val detail = "Invalid room GLB ($validationError) path=${glbFile.absolutePath} size=$glbBytes"
+            LogUtil.e(TAG, detail)
+            reportWebGlError(detail)
+            return
+        }
+
+        LogUtil.d(
+            TAG,
+            "Loading GLB file: path=${glbFile.absolutePath} name=${glbFile.name} size=$glbBytes " +
+                "viewer=WebViewAssetLoader extensions=KHR_materials_unlit (no Draco in Android export)",
+        )
 
         // Serve GLB from cache via WebViewAssetLoader instead of inlining base64 in HTML.
         // Portrait photos embed a full JPEG in the GLB; base64 in loadData() often truncates
@@ -1370,11 +1395,21 @@ class GLBRoomActivity : AppCompatActivity() {
         glbFile.inputStream().use { input ->
             File(viewerDir, "room.glb").outputStream().use { output ->
                 input.copyTo(output)
+                output.flush()
             }
         }
+        val cachedGlb = File(viewerDir, "room.glb")
+        if (cachedGlb.length() != glbBytes) {
+            val detail = "GLB cache copy size mismatch source=$glbBytes cached=${cachedGlb.length()} path=${glbFile.absolutePath}"
+            LogUtil.e(TAG, detail)
+            reportWebGlError(detail)
+            return
+        }
+
         File(viewerDir, "index.html").writeText(generateWebGLHTML())
 
         val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .addPathHandler("/glb/", WebViewAssetLoader.InternalStoragePathHandler(this, viewerDir))
             .build()
 
@@ -1388,7 +1423,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                LogUtil.d(TAG, "WebView page loaded")
+                LogUtil.d(TAG, "WebView page loaded: $url")
             }
 
             override fun onReceivedError(
@@ -1396,11 +1431,45 @@ class GLBRoomActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
                 error: WebResourceError?,
             ) {
-                LogUtil.e(TAG, "WebView error: ${error?.description}")
+                val failingUrl = request?.url?.toString().orEmpty()
+                LogUtil.e(TAG, "WebView resource error url=$failingUrl desc=${error?.description}")
             }
         }
 
         webView.loadUrl("https://appassets.androidplatform.net/glb/index.html")
+    }
+
+    /** Android room GLBs are plain glTF 2.0 + JPEG textures (GlbGenerator); no Draco/KTX2. */
+    private fun validateGlbHeader(glbFile: File): String? {
+        if (glbFile.length() < 12) {
+            return "file too small (${glbFile.length()} bytes)"
+        }
+        glbFile.inputStream().use { input ->
+            val header = ByteArray(12)
+            if (input.read(header) != 12) {
+                return "could not read GLB header"
+            }
+            val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+            val magic = buffer.int
+            val version = buffer.int
+            val length = buffer.int
+            if (magic != GLB_MAGIC) {
+                return "bad magic 0x${magic.toUInt().toString(16)}"
+            }
+            if (version != GLB_VERSION) {
+                return "unsupported version $version"
+            }
+            if (length.toLong() != glbFile.length()) {
+                return "header length $length != file size ${glbFile.length()}"
+            }
+        }
+        return null
+    }
+
+    private fun reportWebGlError(message: String) {
+        loadingOverlay.visibility = View.GONE
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        CrashReporter.report(this, RuntimeException(message), "GLB room — WebGL viewer")
     }
 
     private fun generateWebGLHTML(): String {
@@ -1434,8 +1503,8 @@ class GLBRoomActivity : AppCompatActivity() {
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            "three": "$VIEWER_THREE_BASE/build/three.module.js",
+            "three/addons/": "$VIEWER_THREE_BASE/examples/jsm/"
         }
     }
     </script>
@@ -1443,6 +1512,21 @@ class GLBRoomActivity : AppCompatActivity() {
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        function reportError(prefix, error) {
+            const detail = prefix + ': ' + (error?.message || error?.toString?.() || String(error));
+            console.error('[GLBViewer]', detail, error);
+            if (window.Android) {
+                window.Android.onError(detail);
+            }
+        }
+
+        window.addEventListener('error', (event) => {
+            reportError('Viewer script error', event.error || event.message);
+        });
+        window.addEventListener('unhandledrejection', (event) => {
+            reportError('Viewer promise rejection', event.reason);
+        });
 
         const isPortrait = $isPortrait;
         const inferenceRoomWidth = $roomWidth;
@@ -1619,7 +1703,9 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Load GLB from same-origin cache URL (avoids huge inline base64 in HTML).
         const loader = new GLTFLoader();
-        loader.load('room.glb', function(gltf) {
+        const glbUrl = 'room.glb';
+        console.log('[GLBViewer] Loading GLB from', glbUrl);
+        loader.load(glbUrl, function(gltf) {
                 console.log('[GLBViewer] GLB loaded successfully');
 
                 const model = gltf.scene;
@@ -1683,10 +1769,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 }
 
         }, undefined, function(error) {
-            console.error('[GLBViewer] GLB load/parse error:', error);
-            if (window.Android) {
-                window.Android.onError('Failed to parse 3D model');
-            }
+            reportError('Failed to parse 3D model', error);
         });
 
         // Animation loop
@@ -1840,8 +1923,8 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onError(message: String) {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                Toast.makeText(this@GLBRoomActivity, message, Toast.LENGTH_LONG).show()
                 LogUtil.e(TAG, "WebGL error: $message")
+                Toast.makeText(this@GLBRoomActivity, message, Toast.LENGTH_LONG).show()
                 CrashReporter.report(
                     this@GLBRoomActivity,
                     RuntimeException(message),
