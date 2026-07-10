@@ -484,7 +484,6 @@ struct GLBRoomView: View {
                 replayTeachingHints: $replayTeachingHints
             )
                 .zIndex(100_000)
-                .allowsHitTesting(true)
         }
     }
 

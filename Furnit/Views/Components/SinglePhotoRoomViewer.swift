@@ -1346,7 +1346,6 @@ private struct DepthAnythingPreviewRoomView: View {
                 previewImmersiveChromeOverlay
                 PaafektViewerOnboardingLayer(isReady: !isSavingRoom)
                     .zIndex(100_000)
-                    .allowsHitTesting(true)
             }
         }
         .navigationTitle("")

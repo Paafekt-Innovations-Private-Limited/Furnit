@@ -271,6 +271,7 @@ struct PaafektViewerOnboardingLayer: View {
                 .transition(.opacity)
             }
         }
+        .allowsHitTesting(isReady && !seenFirstRunCoach)
         .onChange(of: isReady) { _, ready in
             if ready, seenFirstRunCoach {
                 restartNavigationTeachingHint()

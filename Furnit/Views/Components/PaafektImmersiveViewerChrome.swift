@@ -250,46 +250,39 @@ struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: 
 
     var body: some View {
         ZStack {
-            VStack {
-                HStack {
-                    PaafektImmersiveFaintBackButton(action: onBack)
-                        .opacity(chrome.isResting ? 1 : 0.92)
-                    Spacer()
-                }
+            Color.clear
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topLeading) {
+            PaafektImmersiveFaintBackButton(action: onBack)
+                .opacity(chrome.isResting ? 1 : 0.92)
                 .padding(.horizontal, Theme.Space.lg)
                 .padding(.top, Theme.Space.sm)
-                Spacer()
-            }
-            .allowsHitTesting(true)
-
-            VStack {
-                Spacer()
+        }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: Theme.Space.sm) {
                 if chrome.isSummoned {
                     summonedExtras()
                         .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
                 }
                 if let measurementText, chrome.isResting {
                     PaafektImmersiveRestingMeasurementPill(text: measurementText)
-                        .padding(.bottom, Theme.Space.sm)
                         .transition(.opacity)
                 }
                 HStack {
-                    Spacer()
+                    Spacer(minLength: 0)
                     if chrome.isResting {
                         PaafektImmersiveGoldSummonButton { chrome.summon() }
                             .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
                     }
                 }
-                .padding(.horizontal, Theme.Space.lg)
-                .padding(.bottom, Theme.Space.lg)
-
                 if chrome.isSummoned {
                     summonedToolbar()
-                        .padding(.horizontal, Theme.Space.lg)
-                        .padding(.bottom, Theme.Space.lg)
                         .transition(PaafektImmersiveChromeMotion.transition(reduceMotion: reduceMotion))
                 }
             }
+            .padding(.horizontal, Theme.Space.lg)
+            .padding(.bottom, Theme.Space.lg)
             .animation(PaafektImmersiveChromeMotion.animation(reduceMotion: reduceMotion), value: chrome.phase)
         }
         .opacity(hideForCapture ? 0 : 1)

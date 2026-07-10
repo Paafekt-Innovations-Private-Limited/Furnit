@@ -312,7 +312,6 @@ struct MeshRoomView: View {
                 replayTeachingHints: $replayTeachingHints
             )
                 .zIndex(100_000)
-                .allowsHitTesting(true)
         }
     }
 
