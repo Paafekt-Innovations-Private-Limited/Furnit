@@ -20,6 +20,8 @@ import com.furnit.android.theme.PaafektSnackbar
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektImmersiveChromeController
+import com.furnit.android.theme.PaafektImmersiveSummonedToolbar
+import com.furnit.android.theme.ImmersiveSummonedToolbarHolder
 import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.theme.PaafektSpace
 import com.furnit.android.theme.PaafektViewerToolbar
@@ -123,7 +125,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private val isBrainInferenceRunning = AtomicBoolean(false)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
-    private var brainButton: LinearLayout? = null
+    private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
     private var trailingArSizingButton: ImageButton? = null
     private var inlineBrainArAssistedSizingEnabled = false
     private var brainSegmentButton: TextView? = null
@@ -279,6 +281,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Top bar
         topBar = createTopBar()
+        topBar.visibility = View.GONE
         rootLayout.addView(topBar, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -417,13 +420,7 @@ class GLBRoomActivity : AppCompatActivity() {
             topBar.setPadding(side, bars.top + PaafektSpace.sm(this), side, 0)
         }
         if (::bottomControls.isInitialized) {
-            bottomControls.setPadding(side, 0, side, bars.bottom + PaafektSpace.sm(this))
-        }
-        bottomControlsInnerColumn?.layoutParams?.let { lp ->
-            if (lp is FrameLayout.LayoutParams) {
-                lp.bottomMargin = bars.bottom + PaafektSpace.viewerBottomInset(this)
-                bottomControlsInnerColumn?.layoutParams = lp
-            }
+            bottomControls.setPadding(side, 0, side, bars.bottom + PaafektSpace.lg(this))
         }
         immersiveBackButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
@@ -509,10 +506,10 @@ class GLBRoomActivity : AppCompatActivity() {
         immersiveChrome.applyPhase(
             this,
             restingViews = listOf(immersiveRestingChrome),
-            summonedViews = listOf(topBar, bottomControls),
+            summonedViews = listOf(bottomControls),
             animate = animate,
         )
-        updateInlineBrainSegmentButton()
+        updateSummonedToolbarState()
         ensureNavigationChromeOnTop()
     }
 
@@ -697,21 +694,12 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun updateTrailingArSizingVisibility() {
-        val brainActive = ::brainDetectionOverlay.isInitialized &&
-            brainDetectionOverlay.visibility == View.VISIBLE
-        trailingArSizingButton?.visibility = if (brainActive) View.VISIBLE else View.GONE
+        updateSummonedToolbarState()
     }
 
     private fun toggleInlineBrainArAssistedSizing() {
         inlineBrainArAssistedSizingEnabled = !inlineBrainArAssistedSizingEnabled
-        trailingArSizingButton?.background = if (inlineBrainArAssistedSizingEnabled) {
-            android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0xE634C759.toInt())
-            }
-        } else {
-            PaafektDrawables.toolbarCircle()
-        }
+        updateSummonedToolbarState()
     }
 
     private fun showAllGestureHelpers() {
@@ -779,73 +767,65 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateSummonedToolbarState() {
+        val toolbar = summonedToolbar ?: return
+        val brainActive = ::brainDetectionOverlay.isInitialized &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+        toolbar.setFitActive(brainActive)
+        toolbar.setFullVideoVisible(brainActive)
+        toolbar.setFullVideoActive(inlineBrainFullVideoEnabled)
+        toolbar.setArSizingVisible(brainActive)
+        toolbar.setArSizingActive(inlineBrainArAssistedSizingEnabled)
+        updateInlineBrainSegmentButton()
+    }
+
     private fun createBottomControls(): FrameLayout {
-        return FrameLayout(this).apply {
-            setPadding(PaafektSpace.lg(this@GLBRoomActivity), 0, PaafektSpace.lg(this@GLBRoomActivity), PaafektSpace.xl(this@GLBRoomActivity))
-
-            val column = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.BOTTOM
-                    bottomMargin = PaafektSpace.viewerBottomInset(this@GLBRoomActivity)
+        val holder = PaafektImmersiveSummonedToolbar.createBottomChrome(
+            this@GLBRoomActivity,
+            onTapToHide = { immersiveChrome.immerse() },
+            onRecenter = {
+                immersiveChrome.noteChromeInteraction()
+                recenterCamera()
+            },
+            onRuler = {
+                immersiveChrome.noteChromeInteraction()
+                showRoomDimensionsHint()
+            },
+            onPinchHint = {
+                immersiveChrome.noteChromeInteraction()
+                if (hintController.isVisible) {
+                    hintController.hide()
+                } else {
+                    hintController.showBottomCentered(
+                        this@GLBRoomActivity,
+                        R.drawable.ic_gesture_pinch,
+                        R.string.room_viewer_navigation_teaching_hint,
+                    )
                 }
-            }
-            bottomControlsInnerColumn = column
-
-            val tapToHide = TextView(this@GLBRoomActivity).apply {
-                text = getString(R.string.room_viewer_immersive_tap_to_hide)
-                textSize = 11f
-                setTextColor(PaafektColors.textSecondary)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, PaafektSpace.sm(this@GLBRoomActivity))
-                setOnClickListener { immersiveChrome.immerse() }
-            }
-            column.addView(tapToHide)
-
-            val heroRow = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-            }
-
-            val fitBtn = PaafektHintViews.createHeroButton(
-                this@GLBRoomActivity,
-                R.drawable.ic_ai,
-                getString(R.string.room_viewer_hero_fit_furniture),
-                isActive = false,
-            ) {
+            },
+            onDisplayAllHelpers = {
+                immersiveChrome.noteChromeInteraction()
+                showAllGestureHelpers()
+            },
+            onFullVideo = {
+                immersiveChrome.noteChromeInteraction()
+                toggleInlineBrainFullVideoMode()
+            },
+            onArSizing = {
+                immersiveChrome.noteChromeInteraction()
+                toggleInlineBrainArAssistedSizing()
+            },
+            onFit = {
                 immersiveChrome.noteChromeInteraction()
                 toggleInlineBrainSegmentation()
-            }
-            fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = PaafektSpace.sm(this@GLBRoomActivity)
-            }
-            brainButton = fitBtn
-            heroRow.addView(fitBtn)
-
-            val captureBtn = PaafektHintViews.createHeroButton(
-                this@GLBRoomActivity,
-                R.drawable.ic_snapshot,
-                getString(R.string.room_viewer_hero_capture),
-            ) {
+            },
+            onCapture = {
                 immersiveChrome.noteChromeInteraction()
                 takeScreenshot()
-            }
-            captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = PaafektSpace.sm(this@GLBRoomActivity)
-            }
-            heroRow.addView(captureBtn)
-
-            column.addView(heroRow)
-            addView(column)
-        }
+            },
+        )
+        summonedToolbar = holder
+        return holder.root
     }
 
     private fun openFurnitureFit(enableArAssistedSizing: Boolean) {
@@ -952,14 +932,8 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun updateBrainFullVideoButtonAppearance() {
-        val button = brainFullVideoButton ?: return
-        val active = inlineBrainFullVideoEnabled
-        val iconColor = if (active) Color.parseColor("#00FFFF") else Color.WHITE
-        button.imageTintList = ColorStateList.valueOf(iconColor)
-        (button.background as? GradientDrawable)?.setStroke(
-            dpToPx(1),
-            if (active) Color.parseColor("#E600FFFF") else Color.parseColor("#2EFFFFFF"),
-        )
+        brainFullVideoButton?.visibility = View.GONE
+        updateSummonedToolbarState()
     }
 
     private fun toggleInlineBrainFullVideoMode() {
@@ -1345,7 +1319,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun setBrainButtonActive(active: Boolean) {
-        brainButton?.background = PaafektDrawables.heroButton(active)
+        summonedToolbar?.setFitActive(active)
     }
 
     private fun createLoadingOverlay(): FrameLayout {

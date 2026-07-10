@@ -35,6 +35,8 @@ import android.widget.ImageView
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektImmersiveChromeController
+import com.furnit.android.theme.PaafektImmersiveSummonedToolbar
+import com.furnit.android.theme.ImmersiveSummonedToolbarHolder
 import com.furnit.android.theme.PaafektSnackbar
 import com.furnit.android.models.ModelManager
 import com.furnit.android.theme.PaafektDrawables
@@ -84,8 +86,10 @@ class ModelDetailActivity : AppCompatActivity() {
     private var heroFitAction: () -> Unit = {}
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveRestingChrome: FrameLayout
-    private lateinit var summonedTopChrome: View
     private lateinit var summonedBottomChrome: View
+    private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
+    private var initialCameraPosition: io.github.sceneview.math.Position? = null
+    private var initialCameraLookAt: io.github.sceneview.math.Position? = null
     private lateinit var immersiveTapDetector: GestureDetector
     private var measurementPillView: TextView? = null
     private var isPreviewMode = false
@@ -238,15 +242,6 @@ class ModelDetailActivity : AppCompatActivity() {
 
     /** Immersive resting ↔ summoned chrome (matches iOS ModelViewer + GLB Android). */
     private fun installImmersiveViewerChrome() {
-        summonedTopChrome = buildSummonedTopChrome().apply { visibility = View.GONE }
-        viewerRootLayout.addView(
-            summonedTopChrome,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.TOP },
-        )
-
         summonedBottomChrome = findViewById(R.id.bottomControlsContainer)
         installHeroBottomControls()
         summonedBottomChrome.visibility = View.GONE
@@ -385,11 +380,37 @@ class ModelDetailActivity : AppCompatActivity() {
         immersiveChrome.applyPhase(
             this,
             restingViews = listOf(immersiveRestingChrome),
-            summonedViews = listOf(summonedTopChrome, summonedBottomChrome),
+            summonedViews = listOf(summonedBottomChrome),
             animate = animate,
         )
-        summonedTopChrome.elevation = 40f
         summonedBottomChrome.elevation = 40f
+    }
+
+    private fun recenterCamera() {
+        val position = initialCameraPosition ?: return
+        val lookAt = initialCameraLookAt ?: return
+        sceneView.cameraNode.apply {
+            this.position = position
+            lookAt(lookAt)
+        }
+    }
+
+    private fun showAllGestureHelpers() {
+        hintController.showBottomCentered(
+            this,
+            R.drawable.ic_gesture_tap,
+            R.string.room_viewer_hero_actions_teaching_hint,
+            bottomMarginDp = 188,
+        )
+    }
+
+    private fun showRoomDimensionsHint() {
+        hintController.showText(
+            this,
+            R.drawable.ic_ruler,
+            getString(R.string.approximate_room_height, RoomDefaults.heightMeters(this)),
+            topMarginDp = 52,
+        )
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -404,177 +425,61 @@ class ModelDetailActivity : AppCompatActivity() {
         }
     }
 
-    /** Summoned glass toolbar row (hidden until chevron / tap-to-summon). */
-    private fun buildSummonedTopChrome(): View {
-        val topChrome = PaafektViewerToolbar.createTopChromeRow(this)
-        topChrome.addView(
-            PaafektViewerToolbar.createFloatingBackButton(this) { handleViewerBack() }.apply {
-                contentDescription = getString(R.string.photo_room_back)
-            },
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.START or Gravity.TOP },
-        )
-
-        val capsule = PaafektViewerToolbar.createToolbarCapsule(this)
-        capsule.addView(
-            PaafektViewerToolbar.createCapsuleIconButton(
-                this,
-                R.drawable.ic_ruler,
-                contentDescription = getString(R.string.faq_measurement_pill),
-            ) {
-                immersiveChrome.noteChromeInteraction()
-                hintController.showText(
-                    this,
-                    R.drawable.ic_ruler,
-                    getString(R.string.approximate_room_height, RoomDefaults.heightMeters(this)),
-                    topMarginDp = 52,
-                )
-            },
-        )
-        capsule.addView(
-            PaafektViewerToolbar.createCapsuleIconButton(
-                this,
-                R.drawable.ic_gesture_pinch,
-                contentDescription = getString(R.string.room_viewer_navigation_teaching_hint),
-            ) {
-                immersiveChrome.noteChromeInteraction()
-                if (hintController.isVisible) hintController.hide()
-                else hintController.showBottomCentered(this, R.drawable.ic_gesture_pinch, R.string.room_viewer_navigation_teaching_hint)
-            },
-        )
-        capsule.addView(
-            PaafektViewerToolbar.createCapsuleIconButton(
-                this,
-                R.drawable.ic_gesture_tap,
-                contentDescription = getString(R.string.room_viewer_display_all_helpers),
-            ) {
-                immersiveChrome.noteChromeInteraction()
-                hintController.showBottomCentered(this, R.drawable.ic_gesture_pinch, R.string.room_viewer_navigation_teaching_hint)
-            },
-        )
-        capsule.addView(
-            PaafektViewerToolbar.createCapsuleIconButton(
-                this,
-                R.drawable.ic_viewfinder,
-                contentDescription = getString(R.string.room_viewer_recenter),
-            ) {
-                immersiveChrome.noteChromeInteraction()
-                /* SceneView default framing — no-op parity with iOS recenter binding */
-            },
-        )
-        topChrome.addView(
-            capsule,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
-        )
-
-        val tapToHide = TextView(this).apply {
-            text = getString(R.string.room_viewer_immersive_tap_to_hide)
-            textSize = 11f
-            setTextColor(PaafektColors.textSecondary)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, PaafektSpace.sm(this@ModelDetailActivity))
-            setOnClickListener { immersiveChrome.immerse() }
-        }
-        topChrome.addView(
-            tapToHide,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                topMargin = PaafektSpace.viewerTopInset(this@ModelDetailActivity) + dpToPx(52)
-            },
-        )
-
-        val trailing = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        trailing.addView(
-            PaafektViewerToolbar.createFloatingIconButton(
-                this,
-                R.drawable.ic_share,
-                contentDescription = getString(R.string.share),
-            ) { shareRoom() }.apply { visibility = if (isPreviewMode) View.GONE else View.VISIBLE },
-        )
-        trailing.addView(
-            PaafektViewerToolbar.createFloatingIconButton(
-                this,
-                R.drawable.ic_download,
-                contentDescription = getString(R.string.common_save),
-            ) {
-                immersiveChrome.noteChromeInteraction()
-                showSaveDialog()
-            }.apply { visibility = if (isPreviewMode) View.VISIBLE else View.GONE },
-        )
-        topChrome.addView(
-            trailing,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.END or Gravity.TOP },
-        )
-
-        return topChrome
-    }
-
     private fun installHeroBottomControls() {
         brainButton.visibility = View.GONE
         screenshotButton.visibility = View.GONE
 
         val bottomContainer = findViewById<FrameLayout>(R.id.bottomControlsContainer)
-        bottomContainer.setPadding(
-            PaafektSpace.lg(this),
-            0,
-            PaafektSpace.lg(this),
-            PaafektSpace.xl(this),
+        bottomContainer.removeAllViews()
+
+        val holder = PaafektImmersiveSummonedToolbar.createBottomChrome(
+            this,
+            onTapToHide = { immersiveChrome.immerse() },
+            onRecenter = {
+                immersiveChrome.noteChromeInteraction()
+                recenterCamera()
+            },
+            onRuler = {
+                immersiveChrome.noteChromeInteraction()
+                showRoomDimensionsHint()
+            },
+            onPinchHint = {
+                immersiveChrome.noteChromeInteraction()
+                if (hintController.isVisible) {
+                    hintController.hide()
+                } else {
+                    hintController.showBottomCentered(
+                        this,
+                        R.drawable.ic_gesture_pinch,
+                        R.string.room_viewer_navigation_teaching_hint,
+                    )
+                }
+            },
+            onDisplayAllHelpers = {
+                immersiveChrome.noteChromeInteraction()
+                showAllGestureHelpers()
+            },
+            onFullVideo = {},
+            onArSizing = {},
+            onFit = {
+                immersiveChrome.noteChromeInteraction()
+                heroFitAction()
+            },
+            onCapture = {
+                immersiveChrome.noteChromeInteraction()
+                Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
+                takeScreenshot()
+            },
+            includeFurnitureFitExtras = false,
         )
-        val heroRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
-        val fitBtn = PaafektHintViews.createHeroButton(
-            this,
-            R.drawable.ic_ai,
-            getString(R.string.room_viewer_hero_fit_furniture),
-        ) {
-            immersiveChrome.noteChromeInteraction()
-            heroFitAction()
-        }
-        fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = PaafektSpace.sm(this@ModelDetailActivity)
-        }
-        heroFitButton = fitBtn
-        heroRow.addView(fitBtn)
-
-        val captureBtn = PaafektHintViews.createHeroButton(
-            this,
-            R.drawable.ic_snapshot,
-            getString(R.string.room_viewer_hero_capture),
-        ) {
-            immersiveChrome.noteChromeInteraction()
-            Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
-            takeScreenshot()
-        }
-        captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginStart = PaafektSpace.sm(this@ModelDetailActivity)
-        }
-        heroRow.addView(captureBtn)
-
+        summonedToolbar = holder
+        heroFitButton = holder.fitButton
         bottomContainer.addView(
-            heroRow,
+            holder.root,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.BOTTOM
-            },
+            ).apply { gravity = Gravity.BOTTOM },
         )
     }
 
@@ -842,6 +747,8 @@ class ModelDetailActivity : AppCompatActivity() {
                     boundaryManager.getCameraOutsideBackView()
                 }
                 LogUtil.d(TAG, "[ModelDetail] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
+                initialCameraPosition = cameraSetup.position
+                initialCameraLookAt = cameraSetup.lookAt
 
                 // Position camera IMMEDIATELY after adding model
                 sceneView.cameraNode.apply {

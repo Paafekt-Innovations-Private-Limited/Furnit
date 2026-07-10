@@ -538,6 +538,8 @@
     <string name="room_viewer_first_run_got_it">Got it</string>
     <string name="room_viewer_hero_fit_furniture">Fit Furniture</string>
     <string name="room_viewer_hero_capture">Capture</string>
+    <string name="room_viewer_immersive_fit_short">Fit</string>
+    <string name="room_viewer_immersive_capture_short">Capture</string>
     <string name="room_viewer_immersive_show_controls">Show controls</string>
     <string name="room_viewer_immersive_tap_to_hide">Tap to hide</string>
     <string name="share">Share</string>

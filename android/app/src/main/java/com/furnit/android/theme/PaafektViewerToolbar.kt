@@ -190,3 +190,203 @@ object PaafektViewerToolbar {
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 }
+
+/**
+ * Bottom summoned toolbar — iOS `PaafektImmersiveSummonedToolbar` (glass capsule + nav icons + compact Fit/Capture).
+ */
+class ImmersiveSummonedToolbarHolder(
+    val root: FrameLayout,
+    val fitButton: LinearLayout,
+    private val fullVideoButton: ImageButton?,
+    private val arSizingButton: ImageButton?,
+) {
+    fun setFitActive(active: Boolean) {
+        PaafektHintViews.setCompactHeroActive(fitButton, active)
+    }
+
+    fun setFullVideoVisible(visible: Boolean) {
+        fullVideoButton?.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    fun setFullVideoActive(active: Boolean) {
+        fullVideoButton?.let { button ->
+            button.imageTintList = ColorStateList.valueOf(
+                if (active) PaafektColors.accent else PaafektColors.textPrimary,
+            )
+        }
+    }
+
+    fun setArSizingVisible(visible: Boolean) {
+        arSizingButton?.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    fun setArSizingActive(active: Boolean) {
+        arSizingButton?.let { button ->
+            button.imageTintList = ColorStateList.valueOf(
+                if (active) PaafektColors.accent else PaafektColors.textPrimary,
+            )
+        }
+    }
+}
+
+object PaafektImmersiveSummonedToolbar {
+
+    fun createBottomChrome(
+        context: Context,
+        onTapToHide: () -> Unit,
+        onRecenter: () -> Unit,
+        onRuler: () -> Unit,
+        onPinchHint: () -> Unit,
+        onDisplayAllHelpers: () -> Unit,
+        onFullVideo: () -> Unit,
+        onArSizing: () -> Unit,
+        onFit: () -> Unit,
+        onCapture: () -> Unit,
+        includeFurnitureFitExtras: Boolean = true,
+    ): ImmersiveSummonedToolbarHolder {
+        val outer = FrameLayout(context).apply {
+            setPadding(
+                PaafektSpace.lg(context),
+                0,
+                PaafektSpace.lg(context),
+                PaafektSpace.lg(context),
+            )
+        }
+
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
+        }
+
+        val tapToHide = TextView(context).apply {
+            text = context.getString(R.string.room_viewer_immersive_tap_to_hide)
+            textSize = 11f
+            setTextColor(PaafektColors.textSecondary)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, PaafektSpace.sm(context))
+            setOnClickListener { onTapToHide() }
+        }
+        column.addView(tapToHide)
+
+        val capsule = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = PaafektDrawables.toolbarCapsule()
+            setPadding(PaafektSpace.sm(context), dp(context, 4), PaafektSpace.sm(context), dp(context, 4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+
+        val navRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        navRow.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_viewfinder,
+                contentDescription = context.getString(R.string.room_viewer_recenter),
+                onClick = onRecenter,
+            ),
+        )
+        navRow.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_ruler,
+                contentDescription = context.getString(R.string.faq_measurement_pill),
+                onClick = onRuler,
+            ),
+        )
+        navRow.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_gesture_pinch,
+                contentDescription = context.getString(R.string.room_viewer_navigation_teaching_hint),
+                onClick = onPinchHint,
+            ),
+        )
+        navRow.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_grid_3x3,
+                contentDescription = context.getString(R.string.room_viewer_display_all_helpers),
+                onClick = onDisplayAllHelpers,
+            ),
+        )
+
+        var fullVideoButton: ImageButton? = null
+        var arSizingButton: ImageButton? = null
+        if (includeFurnitureFitExtras) {
+            fullVideoButton = PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_text_viewfinder,
+                contentDescription = context.getString(R.string.room_viewer_full_video_with_identifications),
+                onClick = onFullVideo,
+            ).apply { visibility = View.GONE }
+            navRow.addView(fullVideoButton)
+
+            arSizingButton = PaafektViewerToolbar.createCapsuleIconButton(
+                context,
+                R.drawable.ic_square_resize,
+                contentDescription = context.getString(R.string.room_viewer_ar_sizing_enable),
+                onClick = onArSizing,
+            ).apply { visibility = View.GONE }
+            navRow.addView(arSizingButton)
+        }
+
+        capsule.addView(
+            navRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+
+        capsule.addView(
+            View(context),
+            LinearLayout.LayoutParams(0, 0, 1f),
+        )
+
+        val heroRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val fitButton = PaafektHintViews.createCompactHeroAction(
+            context,
+            R.drawable.ic_ai,
+            context.getString(R.string.room_viewer_immersive_fit_short),
+            onClick = onFit,
+        ).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = PaafektSpace.sm(context) }
+        }
+        heroRow.addView(fitButton)
+
+        val captureButton = PaafektHintViews.createCompactHeroAction(
+            context,
+            R.drawable.ic_snapshot,
+            context.getString(R.string.room_viewer_immersive_capture_short),
+            onClick = onCapture,
+        )
+        heroRow.addView(captureButton)
+
+        capsule.addView(heroRow)
+        column.addView(capsule)
+        outer.addView(column)
+
+        return ImmersiveSummonedToolbarHolder(outer, fitButton, fullVideoButton, arSizingButton)
+    }
+
+    private fun dp(context: Context, value: Int): Int =
+        (value * context.resources.displayMetrics.density).toInt()
+}

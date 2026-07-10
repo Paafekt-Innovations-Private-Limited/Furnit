@@ -111,6 +111,55 @@ object PaafektHintViews {
         row.addView(title)
         return row
     }
+
+    /** Compact gold-outline hero for summoned toolbar — iOS `PaafektImmersiveCompactHeroAction`. */
+    fun createCompactHeroAction(
+        context: Context,
+        @DrawableRes iconRes: Int,
+        label: CharSequence,
+        isActive: Boolean = false,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = PaafektDrawables.compactHeroButton(isActive)
+            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+            tag = isActive
+
+            addView(
+                ImageView(context).apply {
+                    setImageResource(iconRes)
+                    imageTintList = ContextCompat.getColorStateList(context, R.color.paafekt_accent)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    layoutParams = LinearLayout.LayoutParams(dp(context, 18), dp(context, 18))
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+            )
+            addView(
+                TextView(context).apply {
+                    text = label
+                    textSize = 11f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.accent)
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    setPadding(0, dp(context, 4), 0, 0)
+                },
+            )
+        }
+    }
+
+    fun setCompactHeroActive(button: LinearLayout, active: Boolean) {
+        if (button.tag == active) return
+        button.tag = active
+        button.background = PaafektDrawables.compactHeroButton(active)
+    }
 }
 
 /**

@@ -56,6 +56,14 @@ object PaafektDrawables {
         setColor(if (isActive) PaafektColors.accentPressed else PaafektColors.accent)
     }
 
+    /** Summoned toolbar compact hero — gold stroke, optional active fill (iOS `PaafektImmersiveCompactHeroAction`). */
+    fun compactHeroButton(isActive: Boolean = false): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = PaafektDimens.radiusControlDp
+        setColor(if (isActive) Color.argb(46, 0xC9, 0xA2, 0x4B) else Color.TRANSPARENT)
+        setStroke((1.5f * 1f).toInt().coerceAtLeast(2), PaafektColors.accent)
+    }
+
     fun secondaryButton(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = PaafektDimens.radiusControlDp
