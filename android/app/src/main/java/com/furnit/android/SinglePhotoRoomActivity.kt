@@ -83,9 +83,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var selectedImageView: ImageView
     private lateinit var singleImageOverlayView: FurnitureFitOverlayView
     private lateinit var singleImageScanStatusView: TextView
-    private lateinit var orientationIndicator: LinearLayout
-    private lateinit var orientationIcon: ImageView
-    private lateinit var orientationText: TextView
     private var selectedBitmap: Bitmap? = null
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
@@ -450,25 +447,74 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                ViewGroup.LayoutParams.MATCH_PARENT,
             )
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(PaafektColors.background)
 
-            val previewContainer = FrameLayout(this@SinglePhotoRoomActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(
+            val scroll = ScrollView(this@SinglePhotoRoomActivity).apply {
+                overScrollMode = View.OVER_SCROLL_NEVER
+                isFillViewport = true
+            }
+
+            val content = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(24))
+            }
+
+            val header = FrameLayout(this@SinglePhotoRoomActivity).apply {
+                setPadding(0, dpToPx(8), 0, dpToPx(8))
+            }
+            val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.photo_room_back)
+                textSize = 16f
+                setTextColor(PaafektColors.accent)
+                setOnClickListener { showMethodPickerBackConfirmation() }
+            }
+            header.addView(
+                backBtn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.START or Gravity.CENTER_VERTICAL,
+                ),
+            )
+            val navTitle = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.photo_room_title)
+                textSize = 16f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(PaafektColors.textPrimary)
+                gravity = Gravity.CENTER
+            }
+            header.addView(
+                navTitle,
+                FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f,
-                )
-                setBackgroundColor(Color.BLACK)
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER,
+                ),
+            )
+            content.addView(
+                header,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            val previewFrame = FrameLayout(this@SinglePhotoRoomActivity).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(12).toFloat()
+                    setColor(PaafektColors.surface)
+                }
+                clipToOutline = true
             }
 
             selectedImageView = ImageView(this@SinglePhotoRoomActivity).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                setBackgroundColor(Color.BLACK)
                 adjustViewBounds = true
             }
-            previewContainer.addView(
+            previewFrame.addView(
                 selectedImageView,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -480,56 +526,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setBackgroundColor(Color.TRANSPARENT)
                 setDetectionBoxVisibility(true)
             }
-            previewContainer.addView(
+            previewFrame.addView(
                 singleImageOverlayView,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-
-            val topBar = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(16), dpToPx(18), dpToPx(16), dpToPx(12))
-                background = GradientDrawable(
-                    GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(Color.argb(180, 0, 0, 0), Color.TRANSPARENT),
-                )
-            }
-
-            val backBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_back)
-                textSize = 16f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
-                background = PaafektDrawables.toolbarCircle()
-                setOnClickListener { showMethodPickerBackConfirmation() }
-            }
-            topBar.addView(backBtn)
-
-            topBar.addView(
-                Space(this@SinglePhotoRoomActivity),
-                LinearLayout.LayoutParams(0, 0, 1f),
-            )
-
-            val changePhotoBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_choose_different)
-                textSize = 14f
-                setTextColor(Color.WHITE)
-                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
-                background = PaafektDrawables.toolbarCapsule()
-                setOnClickListener { openImagePicker() }
-            }
-            topBar.addView(changePhotoBtn)
-
-            previewContainer.addView(
-                topBar,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP,
                 ),
             )
 
@@ -541,160 +542,70 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 background = PaafektDrawables.hintChip()
                 visibility = View.GONE
             }
-            previewContainer.addView(
+            previewFrame.addView(
                 singleImageScanStatusView,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
                 ).apply {
-                    bottomMargin = dpToPx(18)
+                    bottomMargin = dpToPx(12)
                 },
             )
 
-            addView(previewContainer)
+            content.addView(
+                previewFrame,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dpToPx(250),
+                ).apply {
+                    topMargin = dpToPx(8)
+                },
+            )
 
-            val controlsContainer = ScrollView(this@SinglePhotoRoomActivity).apply {
-                setBackgroundColor(PaafektColors.background)
-                overScrollMode = View.OVER_SCROLL_NEVER
-            }
-
-            val controlsContent = LinearLayout(this@SinglePhotoRoomActivity).apply {
+            val headingBlock = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(24, 20, 24, 24)
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    setColor(PaafektColors.background)
-                    cornerRadii = floatArrayOf(
-                        dpToPx(24).toFloat(), dpToPx(24).toFloat(),
-                        dpToPx(24).toFloat(), dpToPx(24).toFloat(),
-                        0f, 0f, 0f, 0f,
-                    )
-                }
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, dpToPx(8), 0, dpToPx(8))
             }
-
-            // Orientation indicator (tap to override auto-detection)
-            orientationIndicator = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(16, 8, 16, 8)
-                setBackgroundColor(PaafektColors.surfaceHi)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    orientationUserOverridden = true
-                    detectedOrientation = if (detectedOrientation.isLandscape) PhotoOrientation.PORTRAIT else PhotoOrientation.LANDSCAPE
-                    updateOrientationIndicator()
-                    DebugLogger.d("SinglePhotoRoom", "User overrode orientation to: ${detectedOrientation.value}")
-                    if (aiGenerationRunning && selectedBitmap != null) {
-                        startAIGenerationInBackground(selectedBitmap!!)
-                    }
-                }
-
-                orientationIcon = ImageView(this@SinglePhotoRoomActivity).apply {
-                    setImageResource(R.drawable.ic_camera)
-                    imageTintList = ColorStateList.valueOf(PaafektColors.accent)
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(20), dpToPx(20)).apply {
-                        setMargins(0, 0, dpToPx(8), 0)
-                    }
-                }
-                addView(orientationIcon)
-
-                orientationText = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.photo_room_portrait_held)
-                    textSize = 13f
-                    setTextColor(PaafektColors.textSecondary)
-                }
-                addView(orientationText)
-            }
-            controlsContent.addView(
-                orientationIndicator,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { setMargins(0, 0, 0, 8) },
+            headingBlock.addView(
+                TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.photo_room_how_to_create)
+                    textSize = 17f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.textPrimary)
+                    gravity = Gravity.CENTER
+                },
             )
-
-            val wideAngleRow = LinearLayout(this@SinglePhotoRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(16, 8, 16, 8)
-                setBackgroundColor(PaafektColors.surfaceHi)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    photoWideAngle = !photoWideAngle
-                    if (photoWideAngle && !orientationUserOverridden) {
-                        detectedOrientation = PhotoOrientation.coercePortraitForUltraWide(detectedOrientation, true)
-                        updateOrientationIndicator()
-                    }
-                    updateWideAngleIndicator(this)
-                    DebugLogger.d("SinglePhotoRoom", "Wide angle (0.5x): $photoWideAngle")
-                    if (aiGenerationRunning && selectedBitmap != null) {
-                        startAIGenerationInBackground(selectedBitmap!!)
-                    }
-                }
-                val wideIcon = ImageView(this@SinglePhotoRoomActivity).apply {
-                    setImageResource(R.drawable.ic_camera)
-                    imageTintList = ColorStateList.valueOf(PaafektColors.textPrimary)
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(20), dpToPx(20)).apply {
-                        setMargins(0, 0, dpToPx(8), 0)
-                    }
-                }
-                addView(wideIcon)
-                val wideText = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.camera_wide_angle_desc)
-                    textSize = 13f
+            headingBlock.addView(
+                TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.photo_room_tap_option)
+                    textSize = 14f
                     setTextColor(PaafektColors.textSecondary)
-                }
-                addView(wideText)
-                val wideCheck = TextView(this@SinglePhotoRoomActivity).apply {
-                    setTag("wide_check")
-                    text = if (photoWideAngle) " \u2713" else " "
-                    textSize = 16f
-                    setTextColor(PaafektColors.accent)
-                    setPadding(dpToPx(8), 0, 0, 0)
-                }
-                addView(wideCheck)
-            }
-            controlsContent.addView(
-                wideAngleRow,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { setMargins(0, 0, 0, 16) },
+                    gravity = Gravity.CENTER
+                    setPadding(0, dpToPx(4), 0, 0)
+                },
             )
-
-            val title = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_how_to_create)
-                textSize = 18f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(PaafektColors.textPrimary)
-                gravity = Gravity.CENTER
-            }
-            controlsContent.addView(title)
-
-            val subtitle = TextView(this@SinglePhotoRoomActivity).apply {
-                text = getString(R.string.photo_room_tap_option)
-                textSize = 14f
-                setTextColor(PaafektColors.textSecondary)
-                gravity = Gravity.CENTER
-                setPadding(0, 8, 0, 24)
-            }
-            controlsContent.addView(subtitle)
+            content.addView(headingBlock)
 
             val aiOption = createOptionCard(
                 iconResId = R.drawable.ic_ai,
-                title = getString(R.string.photo_room_ai_room),
-                subtitle = getString(R.string.single_photo_ai_room_subtitle_idle),
+                title = getString(R.string.photo_room_title),
+                subtitle = getString(R.string.photo_room_ai_powered),
                 primary = true,
-                footnote = getString(R.string.single_photo_ai_room_async_footnote),
                 onSubtitleCreated = { view -> aiOptionSubtitleView = view },
-                onStopButtonCreated = { view -> aiStopButtonView = view },
             ) {
                 onAIRoomSelected()
             }
-            controlsContent.addView(aiOption)
+            content.addView(
+                aiOption,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    topMargin = dpToPx(8)
+                },
+            )
 
             val manualOption = createOptionCard(
                 iconResId = R.drawable.ic_square_resize,
@@ -704,20 +615,30 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ) {
                 onManualSetupSelected()
             }
-            controlsContent.addView(manualOption)
+            content.addView(manualOption)
 
-            controlsContainer.addView(
-                controlsContent,
+            val changePhotoLink = TextView(this@SinglePhotoRoomActivity).apply {
+                text = getString(R.string.photo_room_choose_different)
+                textSize = 14f
+                setTextColor(PaafektColors.textSecondary)
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(16), 0, 0)
+                setOnClickListener { openImagePicker() }
+            }
+            content.addView(changePhotoLink)
+
+            scroll.addView(
+                content,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ),
             )
             addView(
-                controlsContainer,
+                scroll,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
                 ),
             )
         }
@@ -729,20 +650,18 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         title: String,
         subtitle: String,
         primary: Boolean = false,
-        footnote: String? = null,
         onSubtitleCreated: ((TextView) -> Unit)? = null,
-        onStopButtonCreated: ((TextView) -> Unit)? = null,
-        onClick: () -> Unit
+        onClick: () -> Unit,
     ): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = if (primary) PaafektDrawables.creationCardPrimary() else PaafektDrawables.creationCardSecondary()
-            setPadding(24, 24, 24, 24)
+            setPadding(dpToPx(24), dpToPx(24), dpToPx(24), dpToPx(24))
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 16) }
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { setMargins(0, 0, 0, dpToPx(16)) }
 
             val iconView = if (iconResId != null) {
                 ImageView(this@SinglePhotoRoomActivity).apply {
@@ -755,13 +674,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             } else {
                 TextView(this@SinglePhotoRoomActivity).apply {
                     text = icon.orEmpty()
-                    textSize = 32f
+                    textSize = 30f
                 }
             }
-            addView(iconView, LinearLayout.LayoutParams(
-                dpToPx(36),
-                dpToPx(36)
-            ).apply { setMargins(0, 0, 24, 0) })
+            addView(
+                iconView,
+                LinearLayout.LayoutParams(dpToPx(50), dpToPx(50)).apply {
+                    setMargins(0, 0, dpToPx(16), 0)
+                },
+            )
 
             val textContainer = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -782,49 +703,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(subtitleView)
                 onSubtitleCreated?.invoke(subtitleView)
-                if (footnote != null) {
-                    addView(TextView(this@SinglePhotoRoomActivity).apply {
-                        text = footnote
-                        textSize = 11f
-                        setTextColor(PaafektColors.textSecondary)
-                        setPadding(0, dpToPx(6), 0, 0)
-                    })
-                }
             }
             addView(textContainer)
 
-            if (onStopButtonCreated != null) {
-                val stopBtn = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = getString(R.string.single_photo_ai_stop)
-                    textSize = 11f
-                    setTextColor(PaafektColors.accentText)
-                    gravity = Gravity.CENTER
-                    setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dpToPx(4).toFloat()
-                        setColor(PaafektColors.danger)
-                    }
-                    visibility = View.GONE
-                    contentDescription = getString(R.string.single_photo_ai_stop)
-                    setOnClickListener { onAIStopClicked() }
-                }
-                onStopButtonCreated(stopBtn)
-                addView(
-                    stopBtn,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply {
-                        gravity = Gravity.CENTER_VERTICAL
-                        setMargins(0, 0, dpToPx(8), 0)
-                    },
-                )
-            }
-
             val chevron = TextView(this@SinglePhotoRoomActivity).apply {
-                text = ">"
-                textSize = 18f
+                text = "\u203A"
+                textSize = 22f
                 setTextColor(PaafektColors.textSecondary)
             }
             addView(chevron)
@@ -964,15 +848,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun updateOrientationIndicator() {
-        orientationIcon.rotation = if (detectedOrientation.isLandscape) 90f else 0f
-
-        val orientationLabel = if (detectedOrientation.isLandscape) "Landscape" else "Portrait"
-        val heldLabel = if (detectedOrientation.isLandscape) "held horizontally" else "held vertically"
-        orientationText.text = getString(R.string.orientation_tap_to_change, orientationLabel, heldLabel)
-    }
-
-    private fun updateWideAngleIndicator(wideAngleRow: ViewGroup) {
-        (wideAngleRow.findViewWithTag("wide_check") as? TextView)?.text = if (photoWideAngle) " \u2713" else " "
+        DebugLogger.d(
+            "SinglePhotoRoom",
+            "Detected orientation: ${detectedOrientation.value} (userOverridden=$orientationUserOverridden)",
+        )
     }
 
     private fun showMethodPicker() {
@@ -1068,8 +947,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun updateAiStopButtonVisibility() {
-        val show = aiGenerationRunning || aiGenerationResult != null
-        aiStopButtonView?.visibility = if (show) View.VISIBLE else View.GONE
+        // Stop controls live on the full-screen progress overlay (iOS parity — not on method picker).
     }
 
     private fun onAIStopClicked() {
@@ -1089,7 +967,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiSessionId++
         PhotoRoomGenerationService.getInstance(this).cancelGeneration()
         RoomGenerationUiState.clear()
-        aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
+        aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
         updateAiStopButtonVisibility()
         updateGlobalAiProgressOverlay()
     }
@@ -1178,7 +1056,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         lastAIGenerationMessage = getString(R.string.ai_progress_getting_started)
                         if (!isDestroyed) {
                             hideProgressOverlay()
-                            aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
+                            aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
                             updateAiStopButtonVisibility()
                         }
                         updateGlobalAiProgressOverlay()
@@ -1226,7 +1104,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         lastAIGenerationRawMessage = ""
         aiSessionId++
         hideProgressOverlay()
-        aiOptionSubtitleView?.text = getString(R.string.single_photo_ai_room_subtitle_idle)
+        aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
         PhotoRoomGenerationService.getInstance(this).cancelGeneration()
         RoomGenerationUiState.clear()
         DebugLogger.d("SinglePhotoRoom", "AI cancelled (session=$aiSessionId)")
@@ -1235,7 +1113,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private var aiOptionSubtitleView: TextView? = null
-    private var aiStopButtonView: TextView? = null
 
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
@@ -1247,14 +1124,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         lastAIGenerationRawMessage = message
         val friendly = toFriendlyMessage(progress, message)
         lastAIGenerationMessage = friendly
-        val idle = getString(R.string.single_photo_ai_room_subtitle_idle)
-        // Idle bluff only when nothing is running. While generating (or after Run in background), show % like before.
-        if (!isDestroyed) {
+        if (!isDestroyed && methodPickerView.visibility != View.VISIBLE) {
+            val idle = getString(R.string.photo_room_ai_powered)
             aiOptionSubtitleView?.text = when {
                 progress >= 1f -> getString(R.string.ai_progress_ready_tap_to_view)
                 aiGenerationRunning || aiOptionShowPercent -> "$friendly (${(progress * 100).toInt()}%)"
                 else -> idle
             }
+        } else if (!isDestroyed) {
+            aiOptionSubtitleView?.text = getString(R.string.photo_room_ai_powered)
         }
         updateGlobalAiProgressOverlay()
     }
@@ -1720,10 +1598,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    /** Bottom strip while a job is active — drawn above the full-screen modal so it stays visible on every screen. */
+    /** Bottom strip while a job is active — hidden on method picker to match iOS. */
     private fun updateGlobalAiProgressOverlay() {
         if (::globalAiProgressBar.isInitialized && !isDestroyed) {
-            val active = aiGenerationRunning || aiGenerationResult != null
+            val onMethodPicker = ::methodPickerView.isInitialized && methodPickerView.visibility == View.VISIBLE
+            val active = (aiGenerationRunning || aiGenerationResult != null) && !onMethodPicker
             globalAiProgressBar.visibility = if (active) View.VISIBLE else View.GONE
             if (active) {
                 val pct = (lastAIGenerationProgress * 100).toInt().coerceIn(0, 100)
