@@ -243,6 +243,7 @@ object PaafektImmersiveSummonedToolbar {
         onFit: () -> Unit,
         onCapture: () -> Unit,
         includeFurnitureFitExtras: Boolean = true,
+        onPreviewSave: (() -> Unit)? = null,
     ): ImmersiveSummonedToolbarHolder {
         val outer = FrameLayout(context).apply {
             setPadding(
@@ -321,6 +322,16 @@ object PaafektImmersiveSummonedToolbar {
                 onClick = onDisplayAllHelpers,
             ),
         )
+        onPreviewSave?.let { saveAction ->
+            navRow.addView(
+                PaafektViewerToolbar.createCapsuleIconButton(
+                    context,
+                    R.drawable.ic_download,
+                    contentDescription = context.getString(R.string.common_save),
+                    onClick = saveAction,
+                ),
+            )
+        }
 
         var fullVideoButton: ImageButton? = null
         var arSizingButton: ImageButton? = null

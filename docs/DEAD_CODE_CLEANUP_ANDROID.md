@@ -63,14 +63,30 @@ Removed from `GLBRoomActivity.kt` (never called or superseded):
 
 - `bottomControlsInnerColumn` in `GLBRoomActivity` — orphaned after immersive bottom chrome refactor.
 
+### 5. `…` — Remove JoystickView and androidTest references
+
+| Removed | Reason |
+|---------|--------|
+| `views/JoystickView.kt` | No longer inflated in any Activity/Fragment |
+| `JoystickViewTest.kt` | Tests deleted view |
+| Joystick cases in `FurnitureFitControlsTest` | Same |
+
+### 6. `…` — Remove dead GLBRoom top chrome
+
+| Removed | Reason |
+|---------|--------|
+| `createTopBar()`, `topBar`, `titleView` | Always `GONE`; nav actions live in summoned bottom toolbar |
+| Floating `brainFullVideoButton` | Duplicated by summoned toolbar full-video icon |
+| `trailingArSizingButton` | Duplicated by summoned toolbar AR sizing icon |
+
+**Preserved:** Preview-mode save via optional `onPreviewSave` capsule button in `PaafektImmersiveSummonedToolbar`.
+
 ---
 
 ## Flagged — do not delete (human review)
 
 | Item | Reason |
 |------|--------|
-| `JoystickView.kt` + `JoystickViewTest.kt` / `FurnitureFitControlsTest` joystick cases | Public custom `View`; still referenced by **androidTest**. UI no longer inflates it — candidate for a follow-up that removes view **and** updates tests together. |
-| `GLBRoomActivity.createTopBar()` + hidden `topBar` | Still constructed (visibility `GONE`); contains `trailingArSizingButton` wiring partially duplicated by summoned toolbar. **Viewer/immersive path** — consolidate in a dedicated refactor, not blind delete. |
 | `paafekt_colors.xml` entries: `paafekt_surface_hi`, `paafekt_hairline`, `paafekt_success`, `paafekt_danger`, `paafekt_viewer_capsule` | Lint-unused in XML; mirrored in `PaafektColors.kt` as design tokens. Keep for theme parity / future XML layouts. |
 | **~400+ `strings.xml` entries** flagged `UnusedResources` | Many are used from Kotlin via `R.string.*`, localized FAQ copy, or planned flows Lint does not trace. **Do not bulk-delete.** |
 | Manifest-declared activities/services | All retained; not part of this pass. |
@@ -88,8 +104,6 @@ Removed from `GLBRoomActivity.kt` (never called or superseded):
 
 ## Recommended follow-ups (out of scope)
 
-1. On-device smoke: GLB room + Model detail — resting summon, full summoned toolbar, Fit, Capture, hide.
-2. Remove `JoystickView` + androidTest together after confirming product no longer needs programmatic joystick tests.
-3. Delete or inline `GLBRoomActivity.createTopBar()` once AR sizing / preview save are fully on summoned toolbar only.
-4. Add detekt to `android/` for ongoing unused-private detection.
-5. Fix pre-existing Lint `NewApi` errors so `lintDebug` can gate CI.
+1. On-device smoke: GLB room + Model detail — resting summon, full summoned toolbar, Fit, Capture, hide, preview save.
+2. Add detekt to `android/` for ongoing unused-private detection.
+3. Fix pre-existing Lint `NewApi` errors so `lintDebug` can gate CI.

@@ -98,9 +98,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
-    private lateinit var titleView: TextView
     private lateinit var rootLayout: FrameLayout
-    private lateinit var topBar: FrameLayout
     private lateinit var bottomControls: FrameLayout
     private lateinit var immersiveRestingChrome: FrameLayout
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
@@ -124,10 +122,8 @@ class GLBRoomActivity : AppCompatActivity() {
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
     private var summonedToolbar: ImmersiveSummonedToolbarHolder? = null
-    private var trailingArSizingButton: ImageButton? = null
     private var inlineBrainArAssistedSizingEnabled = false
     private var brainSegmentButton: TextView? = null
-    private var brainFullVideoButton: ImageButton? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
     @Volatile private var inlineBrainFullVideoEnabled = false
     @Volatile private var inlineBrainSelectedPins: List<DetectionResult> = emptyList()
@@ -277,18 +273,8 @@ class GLBRoomActivity : AppCompatActivity() {
         // No gesture overlay - let WebView's OrbitControls handle all gestures
         // (rotation, zoom, pan) directly like iOS
 
-        // Top bar
-        topBar = createTopBar()
-        topBar.visibility = View.GONE
-        rootLayout.addView(topBar, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.TOP })
-
         hintController = PaafektHintController(rootLayout)
         firstRunCoachController = PaafektFirstRunCoachMarkController(rootLayout)
-
-        // Gesture navigation only — no on-screen d-pad (immersive-first).
 
         // Bottom controls (summoned chrome)
         bottomControls = createBottomControls()
@@ -355,16 +341,6 @@ class GLBRoomActivity : AppCompatActivity() {
             ),
         )
 
-        brainFullVideoButton = createBrainFullVideoButton()
-        rootLayout.addView(
-            brainFullVideoButton,
-            FrameLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                gravity = Gravity.END or Gravity.TOP
-                topMargin = dpToPx(116)
-                marginEnd = dpToPx(16)
-            },
-        )
-
         setContentView(rootLayout)
         installImmersiveEdgeToEdge()
         ensureNavigationChromeOnTop()
@@ -412,9 +388,6 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun applyChromeWindowInsets(bars: androidx.core.graphics.Insets) {
         val side = PaafektSpace.lg(this)
-        if (::topBar.isInitialized) {
-            topBar.setPadding(side, bars.top + PaafektSpace.sm(this), side, 0)
-        }
         if (::bottomControls.isInitialized) {
             bottomControls.setPadding(side, 0, side, bars.bottom + PaafektSpace.lg(this))
         }
@@ -511,8 +484,6 @@ class GLBRoomActivity : AppCompatActivity() {
 
     /** Keep back / title / recenter / bottom brain+camera above the WebView and brain overlay. */
     private fun ensureNavigationChromeOnTop() {
-        topBar.elevation = 40f
-        brainFullVideoButton?.elevation = 38f
         bottomControls.elevation = 37f
         if (::immersiveRestingChrome.isInitialized) {
             immersiveRestingChrome.elevation = 36f
@@ -524,120 +495,12 @@ class GLBRoomActivity : AppCompatActivity() {
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
         }
-        brainFullVideoButton?.takeIf { it.visibility == View.VISIBLE }?.let { rootLayout.bringChildToFront(it) }
-        rootLayout.bringChildToFront(topBar)
         hintController.bringToFront()
         firstRunCoachController.bringToFront()
     }
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
-    }
-
-    private fun createTopBar(): FrameLayout {
-        return PaafektViewerToolbar.createTopChromeRow(this).apply {
-            val backBtn = PaafektViewerToolbar.createFloatingBackButton(this@GLBRoomActivity) {
-                handleBackNavigation()
-            }.apply {
-                contentDescription = getString(R.string.photo_room_back)
-            }
-            addView(
-                backBtn,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { gravity = Gravity.START or Gravity.TOP },
-            )
-
-            val principalControls = PaafektViewerToolbar.createToolbarCapsule(this@GLBRoomActivity)
-            principalControls.addView(
-                PaafektViewerToolbar.createCapsuleIconButton(
-                    this@GLBRoomActivity,
-                    R.drawable.ic_ruler,
-                    contentDescription = getString(R.string.faq_measurement_pill),
-                ) { showRoomDimensionsHint() },
-            )
-            principalControls.addView(
-                PaafektViewerToolbar.createCapsuleIconButton(
-                    this@GLBRoomActivity,
-                    R.drawable.ic_gesture_pinch,
-                    contentDescription = getString(R.string.room_viewer_navigation_teaching_hint),
-                ) {
-                    if (hintController.isVisible) {
-                        hintController.hide()
-                    } else {
-                        hintController.showBottomCentered(
-                            this@GLBRoomActivity,
-                            R.drawable.ic_gesture_pinch,
-                            R.string.room_viewer_navigation_teaching_hint,
-                        )
-                    }
-                },
-            )
-            principalControls.addView(
-                PaafektViewerToolbar.createCapsuleIconButton(
-                    this@GLBRoomActivity,
-                    R.drawable.ic_gesture_tap,
-                    contentDescription = getString(R.string.room_viewer_display_all_helpers),
-                ) { showAllGestureHelpers() },
-            )
-
-            addView(
-                principalControls,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
-            )
-
-            val trailingControls = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            trailingControls.addView(
-                PaafektViewerToolbar.createFloatingIconButton(
-                    this@GLBRoomActivity,
-                    R.drawable.ic_viewfinder,
-                    contentDescription = getString(R.string.room_viewer_recenter),
-                ) { recenterCamera() },
-            )
-            if (isPreviewMode) {
-                trailingControls.addView(
-                    PaafektViewerToolbar.createFloatingIconButton(
-                        this@GLBRoomActivity,
-                        R.drawable.ic_download,
-                        contentDescription = getString(R.string.common_save),
-                    ) { showSaveDialog() },
-                )
-            }
-            trailingArSizingButton = PaafektViewerToolbar.createFloatingIconButton(
-                this@GLBRoomActivity,
-                R.drawable.ic_square_resize,
-                contentDescription = getString(R.string.room_viewer_ar_sizing_enable),
-                isActive = inlineBrainArAssistedSizingEnabled,
-                activeFillColor = 0xE634C759.toInt(),
-            ) {
-                toggleInlineBrainArAssistedSizing()
-            }.also { trailingControls.addView(it) }
-            updateTrailingArSizingVisibility()
-
-            addView(
-                trailingControls,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { gravity = Gravity.END or Gravity.TOP },
-            )
-
-            titleView = TextView(this@GLBRoomActivity).apply {
-                visibility = View.GONE
-                text = roomName
-            }
-        }
-    }
-
-    private fun updateTrailingArSizingVisibility() {
-        updateSummonedToolbarState()
     }
 
     private fun toggleInlineBrainArAssistedSizing() {
@@ -719,6 +582,14 @@ class GLBRoomActivity : AppCompatActivity() {
             onCapture = {
                 immersiveChrome.noteChromeInteraction()
                 takeScreenshot()
+            },
+            onPreviewSave = if (isPreviewMode) {
+                {
+                    immersiveChrome.noteChromeInteraction()
+                    showSaveDialog()
+                }
+            } else {
+                null
             },
         )
         summonedToolbar = holder
@@ -812,27 +683,6 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun createBrainFullVideoButton(): ImageButton {
-        return ImageButton(this).apply {
-            setImageResource(R.drawable.ic_text_viewfinder)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0x9E000000.toInt())
-                setStroke(dpToPx(1), Color.parseColor("#2EFFFFFF"))
-            }
-            contentDescription = getString(R.string.room_viewer_full_video_with_identifications)
-            visibility = View.GONE
-            setOnClickListener { toggleInlineBrainFullVideoMode() }
-        }
-    }
-
-    private fun updateBrainFullVideoButtonAppearance() {
-        brainFullVideoButton?.visibility = View.GONE
-        updateSummonedToolbarState()
-    }
-
     private fun toggleInlineBrainFullVideoMode() {
         if (brainDetectionOverlay.visibility != View.VISIBLE) return
         inlineBrainFullVideoEnabled = !inlineBrainFullVideoEnabled
@@ -858,7 +708,7 @@ class GLBRoomActivity : AppCompatActivity() {
             showBrainProgress(getString(R.string.smartypants_detecting_furniture))
         }
         updateInlineBrainSegmentButton()
-        updateBrainFullVideoButtonAppearance()
+        updateSummonedToolbarState()
         ensureNavigationChromeOnTop()
         rebindInlineBrainCameraIfActive()
         LogUtil.d(
@@ -926,8 +776,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainAcceptingUpdates = false
         isBrainInferenceRunning.set(false)
         brainDetectionOverlay.visibility = View.VISIBLE
-        brainFullVideoButton?.visibility = View.VISIBLE
-        updateBrainFullVideoButtonAppearance()
+        updateSummonedToolbarState()
         ensureNavigationChromeOnTop()
         brainDetectionOverlayView.setMaskAndDetections(
             mask = null,
@@ -938,7 +787,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
         showBrainProgress(getString(R.string.detector_loading_model), 20)
         setBrainButtonActive(true)
-        updateTrailingArSizingVisibility()
+        updateSummonedToolbarState()
         updateInlineBrainSegmentButton()
         ensureNavigationChromeOnTop()
 
@@ -1198,7 +1047,6 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setDetectionBoxVisibility(false)
         brainDetectionOverlayView.setIdentifySelectionState(false, emptyList())
         brainSegmentButton?.visibility = View.GONE
-        brainFullVideoButton?.visibility = View.GONE
         boundPreview?.setSurfaceProvider(null)
         boundPreview = null
         if (::brainCameraPreview.isInitialized) {
@@ -1206,7 +1054,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         setBrainButtonActive(false)
         inlineBrainArAssistedSizingEnabled = false
-        updateTrailingArSizingVisibility()
+        updateSummonedToolbarState()
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) {
