@@ -86,6 +86,7 @@ struct MeshRoomView: View {
     /// Pinch-zoom hint (top-left with D-pad) — same as ``SplatRoomView``.
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
 
     private var canOfferBrainArAssist: Bool {
         QualitySettings.supportsLiDARSceneDepth &&
@@ -197,8 +198,7 @@ struct MeshRoomView: View {
 
     @ViewBuilder
     private var meshRoomCameraChromeWhenReady: some View {
-        if !isLoading {
-            cameraButtonsOverlay
+        if !isLoading, immersiveChrome.isSummoned {
             topTrailingPinchTapAndSizingHintsOverlay
             navigationTeachingHintBottomOverlay
         }
@@ -266,14 +266,6 @@ struct MeshRoomView: View {
         }
     }
 
-    @ViewBuilder
-    private var meshRoomOrientationControls: some View {
-        if photoOrientation == .landscape {
-            landscapeControls
-        } else {
-            portraitControls
-        }
-    }
 
     private var meshRoomMainZStack: some View {
         ZStack {
@@ -306,13 +298,15 @@ struct MeshRoomView: View {
             meshFurnitureFitCameraOverlay
 
             roomDimensionsHintOverlay
-            fullVideoFurnitureTapHintOverlay
-            brainGestureHintScreenOverlay
-            snapshotGestureHintScreenOverlay
-            fullVideoModeFloatingButtonOverlay
-            fullVideoToolbarHelperOverlay
+            if immersiveChrome.isSummoned {
+                fullVideoFurnitureTapHintOverlay
+                brainGestureHintScreenOverlay
+                snapshotGestureHintScreenOverlay
+                fullVideoModeFloatingButtonOverlay
+                fullVideoToolbarHelperOverlay
+            }
             meshRoomCalibrationGateOverlay
-            meshRoomOrientationControls
+            meshImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(isReady: !isLoading)
                 .zIndex(100_000)
                 .allowsHitTesting(true)
@@ -324,29 +318,8 @@ struct MeshRoomView: View {
             .background(Color.gray)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(savedRoomModel == nil)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if savedRoomModel == nil {
-                        Button {
-                            if saveWasSuccessful {
-                                dismiss()
-                            } else {
-                                showDiscardUnsavedAlert = true
-                            }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                        }
-                        .accessibilityLabel(L10n.Common.back)
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    navigationBarRoomMeasurementPrincipal
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    navigationBarTrailingControls
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
     }
 
     private func meshRoomPerformOnAppear() {
@@ -1135,31 +1108,150 @@ struct MeshRoomView: View {
         .zIndex(102)
     }
 
-    private var meshRoomBottomHeroChrome: some View {
-        ZStack(alignment: .bottom) {
+    private var meshRestingMeasurementPillText: String? {
+        let width = calibratedRoomWidth
+        let depth = calibratedRoomDepth
+        if width > 0.05, depth > 0.05, width.isFinite, depth.isFinite {
+            return String(format: "%.1f m × %.1f m", width, depth)
+        }
+        if calibratedRoomHeight > 0.05, calibratedRoomHeight.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(calibratedRoomHeight)
+        }
+        return nil
+    }
+
+    private var meshImmersiveChromeOverlay: some View {
+        PaafektImmersiveViewerChromeStack(
+            chrome: immersiveChrome,
+            onBack: {
+                if savedRoomModel == nil {
+                    if saveWasSuccessful {
+                        dismiss()
+                    } else {
+                        showDiscardUnsavedAlert = true
+                    }
+                } else {
+                    dismiss()
+                }
+            },
+            measurementText: meshRestingMeasurementPillText,
+            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: false
+        ) {
+            PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "viewfinder",
+                        accessibilityLabel: L10n.RoomViewer.recenterView
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        NotificationCenter.default.post(name: NSNotification.Name("RecenterMeshCamera"), object: nil)
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "ruler",
+                        accessibilityLabel: L10n.RoomViewer.checkMeasurement
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onMeshRoomDimensionsRulerTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "hand.pinch",
+                        accessibilityLabel: pinchHintAccessibilityLabel
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onPinchHintIconTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.stack.3d.up",
+                        accessibilityLabel: L10n.RoomViewer.displayAllHelpers
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        displayAllGestureHelpers()
+                    }
+                    if !selectedFurnitureFitLabels.isEmpty {
+                        Button {
+                            immersiveChrome.noteChromeInteraction()
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("FurnitureFitClearSelectedObjects"),
+                                object: nil
+                            )
+                        } label: {
+                            Text(selectedFurnitureChipTitle)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Theme.Palette.viewerCapsuleFill))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showingFurnitureFit {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "text.viewfinder",
+                            isActive: showFullVideoWithIdentifications,
+                            accessibilityLabel: L10n.Settings.fullVideoWithIdentifications
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            toggleFullVideoIdentifications()
+                        }
+                        if canOfferBrainArAssist {
+                            PaafektViewerToolbarIconButton(
+                                systemName: "arrow.up.left.and.arrow.down.right",
+                                isActive: brainArAssistedSizingEnabled,
+                                accessibilityLabel: brainArAssistedSizingEnabled
+                                    ? L10n.RoomViewer.arSizingDisable
+                                    : L10n.RoomViewer.arSizingEnable
+                            ) {
+                                immersiveChrome.noteChromeInteraction()
+                                toggleBrainArAssistedSizingOrShowHint()
+                            }
+                        }
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.and.arrow.down",
+                        accessibilityLabel: L10n.RoomViewer.saveRoom
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        roomName = ""
+                        showRoomNameInput = true
+                    }
+                    .disabled(isLoading || isSavingRoom)
+                }
+            } heroContent: {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconAI",
+                        title: L10n.RoomViewer.immersiveFitShort,
+                        isActive: showingFurnitureFit,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        toggleMeshFurnitureFit()
+                    }
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconSnapshot",
+                        title: L10n.RoomViewer.immersiveCaptureShort,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        takeScreenshot()
+                    }
+                }
+            }
+        } summonedExtras: {
             VStack(spacing: 10) {
                 if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                     furnitureMeasurementPillContent(showTapHint: false)
                 }
                 segmentButton
-                meshViewerHeroActionsBar
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                }
             }
-            if showingFurnitureFit {
-                roomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 56)
-            }
+            .padding(.horizontal, Theme.Space.lg)
         }
-        .padding(.horizontal, Theme.Space.lg)
-    }
-
-    private var meshViewerHeroActionsBar: some View {
-        PaafektViewerHeroActionsBar(
-            fitActive: showingFurnitureFit,
-            fitDisabled: isLoading,
-            captureDisabled: isLoading,
-            onFit: toggleMeshFurnitureFit,
-            onCapture: { takeScreenshot() }
-        )
+        .zIndex(99998)
     }
 
     private func toggleMeshFurnitureFit() {
@@ -1375,124 +1467,6 @@ struct MeshRoomView: View {
             .disabled(isLoading || (furnitureFitSegmentationMode != .segmentSelected && !canSegmentSelectedFurniture))
             .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
         }
-    }
-
-    /// D-pad cluster only (same notifications as ``SplatRoomView`` / GLB viewer).
-    private var cameraDPadCluster: some View {
-        HStack(spacing: 8) {
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            VStack(spacing: 8) {
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var cameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
-                cameraDPadCluster
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
-                if photoOrientation == .landscape {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .zIndex(102)
-    }
-
-    // MARK: - Portrait Controls
-    private var portraitControls: some View {
-        VStack {
-            Spacer()
-
-            // Orientation label
-            HStack(spacing: 6) {
-                Image(systemName: "iphone")
-                    .font(.caption)
-                Text(NSLocalizedString("orientation.heldVertically", comment: ""))
-                    .font(.caption2)
-                Text("-")
-                    .font(.caption2)
-                Text(NSLocalizedString("orientation.portrait", comment: ""))
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(8)
-            .padding(.bottom, 12)
-
-            // Bottom controls: hero actions + placement intelligence overlay.
-            meshRoomBottomHeroChrome
-                .padding(.bottom, 20)
-        }
-        .zIndex(99998)
-    }
-
-    // MARK: - Landscape Controls
-    private var landscapeControls: some View {
-        VStack {
-            Spacer()
-
-            HStack(spacing: 6) {
-                Image(systemName: "iphone.landscape")
-                    .font(.caption)
-                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                    .font(.caption2)
-                Text("-")
-                    .font(.caption2)
-                Text(NSLocalizedString("orientation.landscape", comment: ""))
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(8)
-            .padding(.bottom, 12)
-
-            meshRoomBottomHeroChrome
-                .padding(.bottom, 20)
-        }
-        .zIndex(99997)
     }
 
     // MARK: - Request GLB Export from JavaScript
