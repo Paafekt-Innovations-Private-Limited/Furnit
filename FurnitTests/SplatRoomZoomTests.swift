@@ -265,10 +265,8 @@ extension SplatRoomZoomTests {
             }
         }
 
-        var retainedDelegate: NavigationDelegate?
-        let delegate = NavigationDelegate()
-        retainedDelegate = delegate
-        delegate.onFinish = {
+        let navigationDelegate = NavigationDelegate()
+        navigationDelegate.onFinish = {
             webView.evaluateJavaScript("window.runZoomTest ? window.runZoomTest() : 'notReady';") { value, error in
                 if let error = error {
                     result = .failure(error)
@@ -280,11 +278,10 @@ extension SplatRoomZoomTests {
                 expectation.fulfill()
             }
         }
-        webView.navigationDelegate = delegate
+        webView.navigationDelegate = navigationDelegate
         webView.loadHTMLString(Self.zoomTestHTML, baseURL: nil)
 
         wait(for: [expectation], timeout: 5.0)
-        retainedDelegate = nil
         webView.navigationDelegate = nil
 
         guard case .success(let jsonString)? = result else {
