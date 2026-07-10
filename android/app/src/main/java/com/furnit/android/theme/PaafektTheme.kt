@@ -21,6 +21,8 @@ object PaafektColors {
     @ColorInt val success = Color.parseColor("#3E9E6E")
     @ColorInt val danger = Color.parseColor("#C85A54")
     @ColorInt val viewerCapsule = Color.parseColor("#8C000000")
+    /** Surface at ~60% alpha — hint chip fill (fallback when backdrop blur unavailable). */
+    @ColorInt val surfaceHint = Color.argb(153, 0x1A, 0x1C, 0x20)
 }
 
 object PaafektDimens {
@@ -51,6 +53,27 @@ object PaafektDrawables {
     fun secondaryButton(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = PaafektDimens.radiusControlDp
+        setColor(PaafektColors.surface)
+        setStroke(1, PaafektColors.hairline)
+    }
+
+    fun hintChip(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = 999f
+        setColor(PaafektColors.surfaceHint)
+        setStroke(1, PaafektColors.hairline)
+    }
+
+    fun creationCardPrimary(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = PaafektDimens.radiusSheetDp
+        setColor(PaafektColors.surface)
+        setStroke(1, PaafektColors.accent)
+    }
+
+    fun creationCardSecondary(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = PaafektDimens.radiusSheetDp
         setColor(PaafektColors.surface)
         setStroke(1, PaafektColors.hairline)
     }

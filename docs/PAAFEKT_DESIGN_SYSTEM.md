@@ -71,6 +71,8 @@ Replace floating grey caption boxes with on-brand hint chrome. Reuses the same g
 
 **Do not:** rainbow/cyan hint boxes, color-cycling tap hints, or raw `Color.black.opacity(0.78)` rounded rects.
 
+**Dual-platform rule:** Every design-system change ships on **iOS and Android together**, screen-for-screen. iOS: `PaafektViewerHint.swift` / `Theme.swift`. Android: `PaafektHintViews.kt` + `PaafektTheme.kt` (`PaafektHintController` for View-based viewers such as `GLBRoomActivity`).
+
 ## 5. Asset inventory
 
 ### Repo paths (`docs/design-assets/paafekt/`)

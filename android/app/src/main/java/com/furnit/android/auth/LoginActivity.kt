@@ -71,7 +71,7 @@ class LoginActivity : AppCompatActivity() {
         }
 
         val logoView = ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher)
+            setImageResource(R.drawable.paafekt_login_mark)
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = getString(R.string.app_name)
@@ -115,7 +115,7 @@ class LoginActivity : AppCompatActivity() {
             elevation = 8f
         }
         val nameLabel = TextView(this).apply {
-            text = "Your Name"
+            text = getString(R.string.login_your_name)
             textSize = 14f
             setTextColor(PaafektColors.textPrimary)
             setPadding(0, 0, 0, 8)
@@ -123,7 +123,7 @@ class LoginActivity : AppCompatActivity() {
         cardLayout.addView(nameLabel)
 
         nameInput = EditText(this).apply {
-            hint = "Enter your name"
+            hint = getString(R.string.login_enter_name)
             inputType = InputType.TYPE_TEXT_VARIATION_PERSON_NAME or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             setBackgroundColor(PaafektColors.surfaceHi)
             setPadding(24, 24, 24, 24)
@@ -138,7 +138,7 @@ class LoginActivity : AppCompatActivity() {
 
         // Phone number section
         val phoneLabel = TextView(this).apply {
-            text = "Phone Number"
+            text = getString(R.string.login_phone_number)
             textSize = 14f
             setTextColor(PaafektColors.textPrimary)
             setPadding(0, 0, 0, 8)
@@ -165,7 +165,7 @@ class LoginActivity : AppCompatActivity() {
         ).apply { setMargins(0, 0, 8, 0) })
 
         phoneInput = EditText(this).apply {
-            hint = "Phone number"
+            hint = getString(R.string.login_phone_placeholder)
             inputType = InputType.TYPE_CLASS_PHONE
             setBackgroundColor(PaafektColors.surfaceHi)
             setPadding(24, 24, 24, 24)
@@ -196,7 +196,7 @@ class LoginActivity : AppCompatActivity() {
 
         // Send OTP button
         sendOtpButton = Button(this).apply {
-            text = "Send Verification Code"
+            text = getString(R.string.login_send_code)
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(PaafektColors.accentText)

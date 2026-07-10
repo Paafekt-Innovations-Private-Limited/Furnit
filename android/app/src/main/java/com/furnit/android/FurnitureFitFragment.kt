@@ -40,6 +40,7 @@ import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomSceneLighting
+import com.furnit.android.theme.PaafektHintViews
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -236,18 +237,21 @@ class FurnitureFitFragment : Fragment() {
             layoutParams = lp
         }
 
-        // Hint label (center) - shows drag instruction
-        val hintLabel = TextView(requireContext()).apply {
-            text = getString(R.string.smartypants_drag_hint)
-            setTextColor(0xAAFFFFFF.toInt())
-            textSize = 12f
-            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
-            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+        // Hint chip (center) — drag instruction, matches iOS PaafektHintChip
+        val hintChip = PaafektHintViews.createChip(
+            requireContext(),
+            R.drawable.ic_gesture_tap,
+            getString(R.string.smartypants_drag_hint),
+        ).apply {
+            val lp = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            )
             lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
             lp.setMargins(0, 0, 0, 8)
             layoutParams = lp
         }
-        bottomControls.addView(hintLabel)
+        bottomControls.addView(hintChip)
 
         // Passive measurement pill (center-bottom): Furn W×H once segmentation has a size estimate.
         val pillContent = LinearLayout(requireContext()).apply {

@@ -1,7 +1,6 @@
 package com.furnit.android.auth
 
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -21,12 +20,16 @@ import android.content.res.ColorStateList
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.ContentActivity
+import com.furnit.android.R
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.LogUtil
 
 /**
@@ -84,14 +87,10 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun otpFieldBackground(hasFocus: Boolean): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(8f).toFloat()
-            setColor(Color.parseColor("#FFFFFF"))
-            val strokePx = if (hasFocus) dp(3f) else dp(2f)
-            val strokeColor = if (hasFocus) {
-                Color.parseColor("#5B4FC9")
-            } else {
-                Color.parseColor("#555555")
-            }
+            cornerRadius = dp(12f).toFloat()
+            setColor(PaafektColors.surfaceHi)
+            val strokePx = if (hasFocus) dp(2f) else dp(1f)
+            val strokeColor = if (hasFocus) PaafektColors.accent else PaafektColors.hairline
             setStroke(strokePx, strokeColor)
         }
     }
@@ -103,60 +102,70 @@ class OTPVerificationActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        val rootLayout = FrameLayout(this)
+        val rootLayout = FrameLayout(this).apply {
+            setBackgroundColor(PaafektColors.background)
+        }
 
-        val gradientDrawable = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                Color.parseColor("#667eea"),
-                Color.parseColor("#764ba2"),
-            ),
+        val scrollContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24f), dp(48f), dp(24f), dp(24f))
+        }
+
+        val headerIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_lock_shield)
+            imageTintList = ColorStateList.valueOf(PaafektColors.accent)
+            adjustViewBounds = true
+            contentDescription = getString(R.string.otp_title)
+        }
+        scrollContent.addView(
+            headerIcon,
+            LinearLayout.LayoutParams(dp(50f), dp(50f)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(16f)
+            },
         )
-        rootLayout.background = gradientDrawable
+
+        val title = TextView(this).apply {
+            text = getString(R.string.otp_title)
+            textSize = 24f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.textPrimary)
+            gravity = Gravity.CENTER
+        }
+        scrollContent.addView(title, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(8f) })
+
+        val subtitle = TextView(this).apply {
+            text = getString(R.string.otp_subtitle)
+            textSize = 15f
+            setTextColor(PaafektColors.textSecondary)
+            gravity = Gravity.CENTER
+        }
+        scrollContent.addView(subtitle, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(4f) })
+
+        val phoneDisplay = TextView(this).apply {
+            text = maskPhoneNumber(phoneNumber)
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(PaafektColors.textPrimary)
+            gravity = Gravity.CENTER
+        }
+        scrollContent.addView(phoneDisplay, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(24f) })
 
         val cardLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(48, 48, 48, 48)
+            background = PaafektDrawables.secondaryButton()
+            setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
             elevation = 8f
         }
-
-        val cardParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            setMargins(32, 100, 32, 32)
-            gravity = Gravity.TOP
-        }
-        cardLayout.layoutParams = cardParams
-
-        val backButton = TextView(this).apply {
-            text = "< Back"
-            textSize = 16f
-            setTextColor(Color.parseColor("#667eea"))
-            setPadding(0, 0, 0, 24)
-            setOnClickListener { finish() }
-        }
-        cardLayout.addView(backButton)
-
-        val title = TextView(this).apply {
-            text = "Verify Phone"
-            textSize = 24f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#333333"))
-            gravity = Gravity.CENTER
-        }
-        cardLayout.addView(title)
-
-        val maskedPhone = maskPhoneNumber(phoneNumber)
-        val subtitle = TextView(this).apply {
-            text = "Enter the 6-digit code sent to\n$maskedPhone"
-            textSize = 14f
-            setTextColor(Color.parseColor("#666666"))
-            gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 32)
-        }
-        cardLayout.addView(subtitle)
 
         val otpRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -171,7 +180,9 @@ class OTPVerificationActivity : AppCompatActivity() {
         otpDigitInputs.forEach { input ->
             otpRow.addView(
                 input,
-                LinearLayout.LayoutParams(dp(52f), dp(58f)).apply { setMargins(dp(5f), 0, dp(5f), 0) },
+                LinearLayout.LayoutParams(dp(48f), dp(56f)).apply {
+                    setMargins(dp(4f), 0, dp(4f), 0)
+                },
             )
         }
 
@@ -180,25 +191,25 @@ class OTPVerificationActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { setMargins(0, 0, 0, 24) },
+            ).apply { bottomMargin = dp(20f) },
         )
 
         errorText = TextView(this).apply {
             textSize = 14f
-            setTextColor(Color.parseColor("#F44336"))
+            setTextColor(PaafektColors.danger)
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, dp(16f))
         }
         cardLayout.addView(errorText)
 
         verifyButton = Button(this).apply {
-            text = "Verify"
+            text = getString(R.string.otp_verify)
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#667eea"))
-            setPadding(24, 24, 24, 24)
+            setTextColor(PaafektColors.accentText)
+            background = PaafektDrawables.primaryButton()
+            setPadding(dp(24f), dp(24f), dp(24f), dp(24f))
             isEnabled = false
             alpha = 0.5f
             setOnClickListener { verifyOtp() }
@@ -213,7 +224,7 @@ class OTPVerificationActivity : AppCompatActivity() {
 
         progressBar = ProgressBar(this).apply {
             visibility = View.GONE
-            setPadding(0, 16, 0, 0)
+            setPadding(0, dp(16f), 0, 0)
         }
         cardLayout.addView(
             progressBar,
@@ -224,29 +235,55 @@ class OTPVerificationActivity : AppCompatActivity() {
         )
 
         timerText = TextView(this).apply {
-            text = "Resend code in ${RESEND_COOLDOWN_SECONDS}s"
+            text = getString(R.string.otp_resend_in, RESEND_COOLDOWN_SECONDS)
             textSize = 14f
-            setTextColor(Color.parseColor("#999999"))
+            setTextColor(PaafektColors.textSecondary)
             gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 0)
+            setPadding(0, dp(24f), 0, 0)
         }
         cardLayout.addView(timerText)
 
         resendButton = TextView(this).apply {
-            text = "Resend Code"
+            text = getString(R.string.otp_resend)
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#667eea"))
+            setTextColor(PaafektColors.accent)
             gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 0)
+            setPadding(0, dp(8f), 0, 0)
             visibility = View.GONE
             setOnClickListener { resendOtp() }
         }
         cardLayout.addView(resendButton)
 
-        rootLayout.addView(cardLayout)
-        setContentView(rootLayout)
+        scrollContent.addView(cardLayout, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
 
+        rootLayout.addView(
+            scrollContent,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        val backButton = TextView(this).apply {
+            text = getString(R.string.otp_back)
+            textSize = 16f
+            setTextColor(PaafektColors.accent)
+            setPadding(dp(16f), dp(48f), dp(16f), dp(16f))
+            setOnClickListener { finish() }
+        }
+        rootLayout.addView(
+            backButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.START or Gravity.TOP },
+        )
+
+        setContentView(rootLayout)
         refreshOtpBoxStyles()
     }
 
@@ -276,9 +313,9 @@ class OTPVerificationActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(null, Typeface.BOLD)
             background = otpFieldBackground(false)
-            setTextColor(ColorStateList.valueOf(Color.parseColor("#111111")))
-            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#888888")))
-            highlightColor = Color.parseColor("#80667eea")
+            setTextColor(ColorStateList.valueOf(PaafektColors.textPrimary))
+            setHintTextColor(ColorStateList.valueOf(PaafektColors.textSecondary))
+            highlightColor = PaafektColors.accent
             filters = arrayOf(InputFilter.LengthFilter(1))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
@@ -291,7 +328,7 @@ class OTPVerificationActivity : AppCompatActivity() {
                 val cursor = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     setSize(dp(2f), dp(24f))
-                    setColor(Color.parseColor("#5B4FC9"))
+                    setColor(PaafektColors.accent)
                 }
                 textCursorDrawable = cursor
             }
@@ -388,7 +425,7 @@ class OTPVerificationActivity : AppCompatActivity() {
         resendTimer = object : CountDownTimer(RESEND_COOLDOWN_SECONDS * 1000L, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val seconds = (millisUntilFinished / 1000).toInt()
-                timerText.text = "Resend code in ${seconds}s"
+                timerText.text = getString(R.string.otp_resend_in, seconds)
             }
 
             override fun onFinish() {
@@ -413,7 +450,7 @@ class OTPVerificationActivity : AppCompatActivity() {
             onCodeSent = {
                 progressBar.visibility = View.GONE
                 resendButton.isEnabled = true
-                Toast.makeText(this, "Code sent!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.otp_code_sent, Toast.LENGTH_SHORT).show()
                 startResendTimer()
             },
             onError = { error ->

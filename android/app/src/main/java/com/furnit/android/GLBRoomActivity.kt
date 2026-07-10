@@ -15,6 +15,7 @@ import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -88,6 +89,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var brainProgressOverlay: FrameLayout
     private lateinit var brainProgressLabel: TextView
     private lateinit var brainProgressBar: ProgressBar
+    private lateinit var hintController: PaafektHintController
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private var boundPreview: Preview? = null
@@ -235,6 +237,8 @@ class GLBRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.TOP })
 
+        hintController = PaafektHintController(rootLayout)
+
         // Top-left camera D-pad (same handlers as iOS GLBRoomView / ModelViewerView).
         cameraDpadOverlay = createCameraDPadOverlay()
         rootLayout.addView(
@@ -311,6 +315,15 @@ class GLBRoomActivity : AppCompatActivity() {
         setContentView(rootLayout)
         ensureNavigationChromeOnTop()
 
+        rootLayout.post {
+            hintController.show(
+                this,
+                R.drawable.ic_gesture_pinch,
+                R.string.room_viewer_pinch_hint,
+                alignEnd = true,
+            )
+        }
+
         // Load the WebGL viewer
         loadWebGLViewer()
     }
@@ -328,6 +341,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         brainFullVideoButton?.takeIf { it.visibility == View.VISIBLE }?.let { rootLayout.bringChildToFront(it) }
         rootLayout.bringChildToFront(topBar)
+        hintController.bringToFront()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -411,10 +425,20 @@ class GLBRoomActivity : AppCompatActivity() {
 
             principalControls.addView(createToolbarIconButton(R.drawable.ic_ruler) { showRoomDimensionsDialog() })
             principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_pinch) {
-                Toast.makeText(this@GLBRoomActivity, R.string.room_viewer_pinch_hint, Toast.LENGTH_SHORT).show()
+                hintController.toggle(
+                    this@GLBRoomActivity,
+                    R.drawable.ic_gesture_pinch,
+                    R.string.room_viewer_pinch_hint,
+                    alignEnd = true,
+                )
             })
             principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_tap) {
-                Toast.makeText(this@GLBRoomActivity, R.string.room_viewer_brain_gesture_hint_explanation, Toast.LENGTH_SHORT).show()
+                hintController.toggle(
+                    this@GLBRoomActivity,
+                    R.drawable.ic_brain,
+                    R.string.room_viewer_brain_gesture_hint_explanation,
+                    alignEnd = true,
+                )
             })
 
             addView(
