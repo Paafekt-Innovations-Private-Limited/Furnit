@@ -264,17 +264,13 @@ struct GLBRoomView: View {
     @State private var calibrationBaselineDetectedHeight: Float?
     @State private var showDiscardUnsavedAlert = false
 
-    /// Brain / snapshot tap helpers — same as ``MeshRoomView`` (parity for GLB opened from Home).
-    @State private var brainHintExplanationVisible = false
-    @State private var brainHintHideTextTask: Task<Void, Never>?
-    @State private var snapshotHintExplanationVisible = false
-    @State private var snapshotHintHideTextTask: Task<Void, Never>?
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
+    @State private var replayTeachingHints = false
     @State private var arSizingHintExplanationVisible = false
     @State private var arSizingHintHideTextTask: Task<Void, Never>?
     @State private var arSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
-    @StateObject private var immersiveChrome = PaafektViewerChromeController()
     @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var fullVideoSelectionHelperVisible = false
@@ -472,14 +468,17 @@ struct GLBRoomView: View {
             roomDimensionsHintOverlay
             if immersiveChrome.isSummoned {
                 fullVideoFurnitureTapHintOverlay
-                brainGestureHintScreenOverlay
-                snapshotGestureHintScreenOverlay
                 fullVideoModeFloatingButtonOverlay
                 fullVideoToolbarHelperOverlay
             }
             glbRoomCalibrationGateOverlay
             glbImmersiveChromeOverlay
-            PaafektViewerOnboardingLayer(isReady: !isLoading)
+            PaafektViewerOnboardingLayer(
+                isReady: !isLoading,
+                isChromeSummoned: immersiveChrome.isSummoned,
+                heroHintBottomInset: showingFurnitureFit ? 220 : 172,
+                replayTeachingHints: $replayTeachingHints
+            )
                 .zIndex(100_000)
                 .allowsHitTesting(true)
         }
@@ -542,8 +541,6 @@ struct GLBRoomView: View {
 
     private func glbRoomPerformOnDisappear() {
         cancelPinchHintTasks()
-        cancelBrainHintTasks()
-        cancelSnapshotHintTasks()
         cancelARSizingHintTasks()
         cancelRoomDimensionsHintTasks()
         dismissFullVideoFurnitureTapHint()
@@ -555,13 +552,8 @@ struct GLBRoomView: View {
     private func glbRoomHandleIsLoadingChange(loading: Bool) {
         if loading {
             cancelPinchHintTasks()
-            cancelBrainHintTasks()
-            cancelSnapshotHintTasks()
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
-        } else {
-            restartBrainGestureHint()
-            restartSnapshotGestureHint()
         }
     }
 
@@ -1068,65 +1060,9 @@ struct GLBRoomView: View {
         fullVideoFurnitureTapHintVisible = true
     }
 
-    private func cancelBrainHintTasks() {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = nil
-    }
-
-    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            brainHintExplanationVisible = false
-        }
-    }
-
-    private func restartBrainGestureHint() {
-        cancelBrainHintTasks()
-        brainHintExplanationVisible = true
-        scheduleBrainHintTextAutoHide(seconds: 3)
-    }
-
-    private func onBrainHintIconTapped() {
-        cancelBrainHintTasks()
-        brainHintExplanationVisible.toggle()
-        if brainHintExplanationVisible {
-            scheduleBrainHintTextAutoHide(seconds: 3)
-        }
-    }
-
-    private func cancelSnapshotHintTasks() {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = nil
-    }
-
     private func cancelARSizingHintTasks() {
         arSizingHintHideTextTask?.cancel()
         arSizingHintHideTextTask = nil
-    }
-
-    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            snapshotHintExplanationVisible = false
-        }
-    }
-
-    private func restartSnapshotGestureHint() {
-        cancelSnapshotHintTasks()
-        snapshotHintExplanationVisible = true
-        scheduleSnapshotHintTextAutoHide(seconds: 3)
-    }
-
-    private func onSnapshotHintIconTapped() {
-        cancelSnapshotHintTasks()
-        snapshotHintExplanationVisible.toggle()
-        if snapshotHintExplanationVisible {
-            scheduleSnapshotHintTextAutoHide(seconds: 3)
-        }
     }
 
     private func scheduleARSizingHintTextAutoHide(seconds: UInt64 = 3) {
@@ -1199,46 +1135,10 @@ struct GLBRoomView: View {
         L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
 
-    private var brainHintAccessibilityLabel: String {
-        L10n.RoomViewer.brainGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
-    private var snapshotHintAccessibilityLabel: String {
-        L10n.RoomViewer.snapshotGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
-    }
-
     private var arSizingHintText: String {
         arSizingHintRequiresBrain
             ? L10n.RoomViewer.arFurnitureSizingRequiresBrainHint
             : L10n.RoomViewer.arFurnitureSizingHint
-    }
-
-    private var brainGestureHintScreenOverlay: some View {
-        paafektBottomToolbarHintOverlay(isVisible: brainHintExplanationVisible) {
-            PaafektHintChip(
-                assetImage: "PaafektIconAI",
-                text: L10n.RoomViewer.brainGestureHintExplanation,
-                maxWidth: 220
-            )
-            .transition(.opacity)
-        }
-        .onAppear { restartBrainGestureHint() }
-        .onDisappear { cancelBrainHintTasks() }
-        .zIndex(102)
-    }
-
-    private var snapshotGestureHintScreenOverlay: some View {
-        paafektBottomToolbarHintOverlay(isVisible: snapshotHintExplanationVisible) {
-            PaafektHintChip(
-                assetImage: "PaafektIconSnapshot",
-                text: L10n.RoomViewer.snapshotGestureHintExplanation,
-                maxWidth: 220
-            )
-            .transition(.opacity)
-        }
-        .onAppear { restartSnapshotGestureHint() }
-        .onDisappear { cancelSnapshotHintTasks() }
-        .zIndex(102)
     }
 
     private var glbRestingMeasurementPillText: String? {
@@ -1398,10 +1298,6 @@ struct GLBRoomView: View {
             presentFullVideoSelectionHelperIfNeeded()
         }
     }
-
-    private var brainButtonWithHintAbove: some View { EmptyView() }
-
-    private var snapshotButtonWithHintAbove: some View { EmptyView() }
 
     private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
         guard showingFurnitureFit else { return }
@@ -1653,9 +1549,8 @@ struct GLBRoomView: View {
     }
 
     private func displayAllGestureHelpers() {
+        replayTeachingHints = true
         restartPinchGestureHint()
-        restartBrainGestureHint()
-        restartSnapshotGestureHint()
         showARSizingHint(requiresBrain: !showingFurnitureFit)
         roomDimensionsHintVisible = true
         scheduleRoomDimensionsHintAutoHide(seconds: 3)

@@ -376,6 +376,7 @@ enum L10n {
         static let firstRunCoachMarkTitle = "roomViewer.firstRunCoachMarkTitle".localized
         static let firstRunCoachMarkBody = "roomViewer.firstRunCoachMarkBody".localized
         static let firstRunGotIt = "roomViewer.firstRunGotIt".localized
+        static let heroActionsTeachingHint = "roomViewer.heroActionsTeachingHint".localized
         static let heroFitFurniture = "roomViewer.heroFitFurniture".localized
         static let heroCapture = "roomViewer.heroCapture".localized
         static let immersiveShowControls = "roomViewer.immersiveShowControls".localized

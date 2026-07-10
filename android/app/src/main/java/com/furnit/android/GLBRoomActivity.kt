@@ -45,7 +45,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.lifecycle.lifecycleScope
@@ -100,6 +102,10 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var cameraDpadOverlay: FrameLayout
     private lateinit var bottomControls: FrameLayout
     private lateinit var immersiveRestingChrome: FrameLayout
+    private lateinit var windowInsetsController: WindowInsetsControllerCompat
+    private var bottomControlsInnerColumn: LinearLayout? = null
+    private var immersiveBackButton: View? = null
+    private var immersiveSummonButton: View? = null
     private val immersiveChrome = PaafektImmersiveChromeController()
     private lateinit var immersiveTapDetector: GestureDetector
     private lateinit var brainDetectionOverlay: FrameLayout
@@ -158,16 +164,7 @@ class GLBRoomActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-
-        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
-            controller.isAppearanceLightStatusBars = false
-            controller.isAppearanceLightNavigationBars = false
-        }
-
+        // Edge-to-edge is completed in installImmersiveEdgeToEdge() after views are built.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -197,11 +194,14 @@ class GLBRoomActivity : AppCompatActivity() {
             return
         }
 
-        rootLayout = FrameLayout(this)
-        rootLayout.setBackgroundColor(Color.parseColor("#808080"))
+        rootLayout = FrameLayout(this).apply {
+            fitsSystemWindows = false
+            setBackgroundColor(Color.parseColor("#808080"))
+        }
 
-        // WebView for 3D rendering
+        // WebView for 3D rendering — full-bleed behind system bars; insets apply to chrome only.
         webView = WebView(this).apply {
+            fitsSystemWindows = false
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
@@ -367,20 +367,87 @@ class GLBRoomActivity : AppCompatActivity() {
         )
 
         setContentView(rootLayout)
+        installImmersiveEdgeToEdge()
         ensureNavigationChromeOnTop()
 
         rootLayout.post {
             firstRunCoachController.showIfNeeded(this) {
                 hintController.showBottomCentered(
                     this,
-                    R.drawable.ic_gesture_pinch,
-                    R.string.room_viewer_navigation_teaching_hint,
+                    R.drawable.ic_gesture_tap,
+                    R.string.room_viewer_hero_actions_teaching_hint,
+                    bottomMarginDp = 188,
                 )
             }
         }
 
         // Load the WebGL viewer
         loadWebGLViewer()
+    }
+
+    /** WebView fills the window; system-bar insets pad chrome overlays only. */
+    private fun installImmersiveEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
+        windowInsetsController = WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        enterImmersiveMode()
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            applyChromeWindowInsets(insets.getInsets(WindowInsetsCompat.Type.systemBars()))
+            notifyWebViewViewportChanged()
+            WindowInsetsCompat.CONSUMED
+        }
+        ViewCompat.requestApplyInsets(rootLayout)
+    }
+
+    private fun enterImmersiveMode() {
+        if (!::windowInsetsController.isInitialized) return
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun applyChromeWindowInsets(bars: androidx.core.graphics.Insets) {
+        val side = PaafektSpace.lg(this)
+        if (::topBar.isInitialized) {
+            topBar.setPadding(side, bars.top + PaafektSpace.sm(this), side, 0)
+        }
+        if (::bottomControls.isInitialized) {
+            bottomControls.setPadding(side, 0, side, bars.bottom + PaafektSpace.sm(this))
+        }
+        bottomControlsInnerColumn?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.bottomMargin = bars.bottom + PaafektSpace.viewerBottomInset(this)
+                bottomControlsInnerColumn?.layoutParams = lp
+            }
+        }
+        immersiveBackButton?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.topMargin = bars.top + PaafektSpace.sm(this)
+                immersiveBackButton?.layoutParams = lp
+            }
+        }
+        immersiveSummonButton?.layoutParams?.let { lp ->
+            if (lp is FrameLayout.LayoutParams) {
+                lp.bottomMargin = bars.bottom + PaafektSpace.viewerBottomInset(this) + dpToPx(8)
+                immersiveSummonButton?.layoutParams = lp
+            }
+        }
+    }
+
+    private fun notifyWebViewViewportChanged() {
+        if (!::webView.isInitialized) return
+        webView.post {
+            if (webView.width <= 0 || webView.height <= 0) return@post
+            webView.evaluateJavascript(
+                "if(typeof resizeViewer==='function'){resizeViewer();}",
+                null,
+            )
+        }
     }
 
     private fun createImmersiveRestingChrome(): FrameLayout {
@@ -391,6 +458,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 alpha = 0.55f
                 contentDescription = getString(R.string.photo_room_back)
             }
+            immersiveBackButton = back
             addView(
                 back,
                 FrameLayout.LayoutParams(
@@ -398,7 +466,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.START or Gravity.TOP
-                    topMargin = PaafektSpace.viewerTopInset(this@GLBRoomActivity)
+                    topMargin = PaafektSpace.sm(this@GLBRoomActivity)
                     marginStart = PaafektSpace.lg(this@GLBRoomActivity)
                 },
             )
@@ -432,6 +500,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
                 setOnClickListener { immersiveChrome.summon() }
             }
+            immersiveSummonButton = summonGold
             addView(
                 summonGold,
                 FrameLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
@@ -660,9 +729,9 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun showAllGestureHelpers() {
         hintController.showBottomCentered(
             this,
-            R.drawable.ic_gesture_pinch,
-            R.string.room_viewer_navigation_teaching_hint,
-            bottomMarginDp = 120,
+            R.drawable.ic_gesture_tap,
+            R.string.room_viewer_hero_actions_teaching_hint,
+            bottomMarginDp = 188,
         )
     }
 
@@ -737,6 +806,7 @@ class GLBRoomActivity : AppCompatActivity() {
                     bottomMargin = PaafektSpace.viewerBottomInset(this@GLBRoomActivity)
                 }
             }
+            bottomControlsInnerColumn = column
 
             val tapToHide = TextView(this@GLBRoomActivity).apply {
                 text = getString(R.string.room_viewer_immersive_tap_to_hide)
@@ -1424,6 +1494,7 @@ class GLBRoomActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 LogUtil.d(TAG, "WebView page loaded: $url")
+                notifyWebViewViewportChanged()
             }
 
             override fun onReceivedError(
@@ -1483,8 +1554,10 @@ class GLBRoomActivity : AppCompatActivity() {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        * { margin: 0; padding: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
+            margin: 0;
+            padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
@@ -1539,13 +1612,13 @@ class GLBRoomActivity : AppCompatActivity() {
         scene.background = new THREE.Color(0x808080);
 
         // Camera
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
         camera.position.set(0, 2, 5);
 
-        // Renderer
+        // Renderer — sized in resizeViewer() once the WebView viewport is known.
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.domElement.style.width = '100%';
+        renderer.domElement.style.height = '100%';
         document.body.appendChild(renderer.domElement);
 
         // Orbit controls - matching iOS settings exactly
@@ -1571,29 +1644,38 @@ class GLBRoomActivity : AppCompatActivity() {
         let flatPhotoWidth = 0;
         let flatPhotoHeight = 0;
 
+        function viewportSize() {
+            const visualViewport = window.visualViewport;
+            return {
+                width: Math.max(visualViewport?.width ?? window.innerWidth, 1),
+                height: Math.max(visualViewport?.height ?? window.innerHeight, 1),
+                dpr: window.devicePixelRatio || 1,
+            };
+        }
+
         function depthAnythingImagePlaneStandoff(width, height) {
             const halfFovRad = Math.PI / 6.0;
-            const viewportAspect = Math.max(window.innerWidth / window.innerHeight, 0.01);
+            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
+            const planeWidth = Math.max(width, 0.05);
+            const planeHeight = Math.max(height, 0.05);
             let fitWidth;
             let fitHeight;
             if (!isPortrait) {
-                fitWidth = width / (2 * Math.tan(halfFovRad));
+                fitWidth = planeWidth / (2 * Math.tan(halfFovRad));
                 const verticalHalfFov = Math.atan(Math.tan(halfFovRad) / viewportAspect);
-                fitHeight = height / (2 * Math.tan(verticalHalfFov));
+                fitHeight = planeHeight / (2 * Math.tan(verticalHalfFov));
             } else {
-                fitHeight = height / (2 * Math.tan(halfFovRad));
+                fitHeight = planeHeight / (2 * Math.tan(halfFovRad));
                 const horizontalHalfFov = Math.atan(Math.tan(halfFovRad) * viewportAspect);
-                fitWidth = width / (2 * Math.tan(horizontalHalfFov));
+                fitWidth = planeWidth / (2 * Math.tan(horizontalHalfFov));
             }
-            const useCoverFraming = !isPortrait;
-            const fitDistance = useCoverFraming
-                ? Math.min(fitWidth, fitHeight) * 0.98
-                : Math.max(fitWidth, fitHeight) * 1.02;
-            return Math.max(fitDistance, 0.85);
+            // Cover framing for both orientations (Swift DepthAnythingFlatPhotoCameraFraming parity).
+            const fitDistance = Math.min(fitWidth, fitHeight) * 0.98;
+            return Math.max(fitDistance, 0.2);
         }
 
         function updateFlatPhotoProjection() {
-            const viewportAspect = Math.max(window.innerWidth / window.innerHeight, 0.01);
+            const viewportAspect = Math.max(viewportSize().width / viewportSize().height, 0.01);
             if (!isPortrait) {
                 const verticalHalfFov = Math.atan(Math.tan(Math.PI / 6.0) / viewportAspect);
                 camera.fov = THREE.MathUtils.radToDeg(2 * verticalHalfFov);
@@ -1604,26 +1686,76 @@ class GLBRoomActivity : AppCompatActivity() {
             camera.updateProjectionMatrix();
         }
 
+        function backCenterInsetFraction(depth) {
+            const t = Math.min(1, Math.max(0, depth / 6.0));
+            return 0.035 + 0.065 * t;
+        }
+
+        function applyBackCenterCamera(boxWorld) {
+            const depth = Math.max(boxWorld.max.z - boxWorld.min.z, 0.1);
+            const insetFromBack = Math.max(depth * backCenterInsetFraction(depth), 0.05);
+            const centerY = (boxWorld.min.y + boxWorld.max.y) * 0.5;
+            const cameraZ = boxWorld.max.z - insetFromBack;
+            const targetZ = boxWorld.min.z;
+
+            camera.position.set(0, centerY + 0.4, cameraZ);
+            controls.target.set(0, centerY, targetZ);
+            camera.lookAt(controls.target);
+            controls.update();
+
+            initialCameraPosition = camera.position.clone();
+            initialControlsTarget = controls.target.clone();
+
+            const roomWidth = boxWorld.max.x - boxWorld.min.x;
+            controls.maxDistance = Math.max(roomWidth, depth) * 2.0;
+            roomBoundsForClamping = {
+                minX: boxWorld.min.x + 0.05,
+                maxX: boxWorld.max.x - 0.05,
+                minY: boxWorld.min.y + 0.05,
+                maxY: boxWorld.max.y - 0.05,
+                minZ: boxWorld.min.z + 0.05,
+                maxZ: boxWorld.max.z - 0.02
+            };
+            console.log('[GLBViewer] Back-center camera inset=', insetFromBack.toFixed(2),
+                'posZ=', cameraZ.toFixed(2), 'targetZ=', targetZ.toFixed(2));
+        }
+
         function applyFlatPhotoCamera() {
             if (!isFlatPhotoMesh || flatPhotoWidth <= 0 || flatPhotoHeight <= 0) return;
             updateFlatPhotoProjection();
-            const standoff = depthAnythingImagePlaneStandoff(flatPhotoWidth, flatPhotoHeight);
-            const camY = flatPhotoHeight * 0.5;
-            camera.position.set(0, camY, standoff);
+            const planeWidth = inferenceRoomWidth > 0.05 ? inferenceRoomWidth : flatPhotoWidth;
+            const planeHeight = inferenceRoomHeight > 0.05 ? inferenceRoomHeight : flatPhotoHeight;
+            const standoff = depthAnythingImagePlaneStandoff(planeWidth, planeHeight);
+            const camY = planeHeight * 0.5;
+            // Photographer viewpoint: plane at z≈0, camera on −Z (iOS getCameraForDepthAnythingImagePlane).
+            camera.position.set(0, camY, -standoff);
             controls.target.set(0, camY, 0);
+            camera.lookAt(controls.target);
             controls.update();
             initialCameraPosition = camera.position.clone();
             initialControlsTarget = controls.target.clone();
             roomBoundsForClamping = {
-                minX: -flatPhotoWidth * 0.5 + 0.05,
-                maxX: flatPhotoWidth * 0.5 - 0.05,
+                minX: -planeWidth * 0.5 + 0.05,
+                maxX: planeWidth * 0.5 - 0.05,
                 minY: 0.05,
-                maxY: flatPhotoHeight - 0.05,
-                minZ: 0.5,
-                maxZ: Math.max(standoff * 1.5, 8.0)
+                maxY: planeHeight - 0.05,
+                minZ: -Math.max(standoff * 1.5, 8.0),
+                maxZ: -0.02
             };
             console.log('[GLBViewer] Flat photo camera standoff=', standoff.toFixed(2),
-                'plane=', flatPhotoWidth.toFixed(2), 'x', flatPhotoHeight.toFixed(2));
+                'plane=', planeWidth.toFixed(2), 'x', planeHeight.toFixed(2),
+                'posZ=', (-standoff).toFixed(2));
+        }
+
+        function scheduleCameraFraming() {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (isFlatPhotoMesh) {
+                        applyFlatPhotoCamera();
+                    }
+                    resizeViewer();
+                });
+            });
         }
 
         // D-pad / Splat parity: walk on XZ, vertical Y (same as iOS GLBRoomView).
@@ -1694,6 +1826,29 @@ class GLBRoomActivity : AppCompatActivity() {
             }
         };
 
+        function resizeViewer() {
+            const viewport = viewportSize();
+            camera.aspect = viewport.width / viewport.height;
+            if (isFlatPhotoMesh) {
+                updateFlatPhotoProjection();
+            } else {
+                camera.updateProjectionMatrix();
+            }
+            renderer.setPixelRatio(viewport.dpr);
+            renderer.setSize(viewport.width, viewport.height, false);
+            if (isFlatPhotoMesh && flatPhotoWidth > 0 && flatPhotoHeight > 0) {
+                applyFlatPhotoCamera();
+            }
+            console.log('[GLBViewer] resizeViewer', viewport.width, 'x', viewport.height, 'dpr', viewport.dpr);
+        }
+
+        window.resizeViewer = resizeViewer;
+        resizeViewer();
+        window.addEventListener('resize', resizeViewer);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', resizeViewer);
+        }
+
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
@@ -1729,36 +1884,13 @@ class GLBRoomActivity : AppCompatActivity() {
                 const roomHeight = size.y;
                 const roomDepth = size.z;
                 isFlatPhotoMesh = roomDepth < 0.05;
-                const halfDepth = roomDepth * 0.5;
 
                 if (isFlatPhotoMesh) {
-                    flatPhotoWidth = Math.max(roomWidth, inferenceRoomWidth);
-                    flatPhotoHeight = Math.max(roomHeight, inferenceRoomHeight);
-                    applyFlatPhotoCamera();
+                    flatPhotoWidth = roomWidth;
+                    flatPhotoHeight = roomHeight;
                 } else {
-                    const camX = 0;
-                    const camY = roomHeight * 0.5;
-                    const camZ = 0;
-                    const targetX = 0;
-                    const targetY = camY;
-                    const targetZ = -halfDepth;
-
-                    camera.position.set(camX, camY, camZ);
-                    controls.target.set(targetX, targetY, targetZ);
-                    controls.update();
-
-                    initialCameraPosition = camera.position.clone();
-                    initialControlsTarget = controls.target.clone();
-
                     const boxWorld = new THREE.Box3().setFromObject(model);
-                    roomBoundsForClamping = {
-                        minX: boxWorld.min.x + 0.05,
-                        maxX: boxWorld.max.x - 0.05,
-                        minY: boxWorld.min.y + 0.05,
-                        maxY: boxWorld.max.y - 0.05,
-                        minZ: boxWorld.min.z + 0.05,
-                        maxZ: boxWorld.max.z - 0.02
-                    };
+                    applyBackCenterCamera(boxWorld);
                 }
 
                 console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
@@ -1768,6 +1900,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 if (window.Android) {
                     window.Android.onLoaded();
                 }
+                scheduleCameraFraming();
             } catch (error) {
                 reportError('GLB viewer setup failed', error);
             }
@@ -1783,17 +1916,6 @@ class GLBRoomActivity : AppCompatActivity() {
             renderer.render(scene, camera);
         }
         animate();
-
-        // Handle resize — reframe flat photo rooms (iOS shouldReframeForViewportChange parity).
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            if (isFlatPhotoMesh) {
-                applyFlatPhotoCamera();
-            } else {
-                camera.updateProjectionMatrix();
-            }
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
 
         console.log('[GLBViewer] Viewer ready');
     </script>
@@ -1919,6 +2041,7 @@ class GLBRoomActivity : AppCompatActivity() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
                 ensureNavigationChromeOnTop()
+                notifyWebViewViewportChanged()
                 LogUtil.d(TAG, "WebGL viewer reported loaded")
             }
         }
@@ -1970,6 +2093,20 @@ class GLBRoomActivity : AppCompatActivity() {
             .setNegativeButton(R.string.room_preview_leave_stay, null)
             .setPositiveButton(R.string.room_preview_leave_confirm) { _, _ -> finish() }
             .show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterImmersiveMode()
+        notifyWebViewViewportChanged()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enterImmersiveMode()
+            notifyWebViewViewportChanged()
+        }
     }
 
     override fun onBackPressed() {

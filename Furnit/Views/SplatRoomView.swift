@@ -254,12 +254,11 @@ struct SplatRoomView: View {
         case pickAnother   // G — "Not this one? Tap to pick another."
         case arSizing      // E — "Tap the brain icon, then size-match…"
         case pinchResize   // A′ — "Pinch resizes the overlay."
-        case brainIdentify // B — "Tap 🧠 to identify furniture"
     }
-    @AppStorage("hint_seenBrainHint") private var seenBrainHint = false
     @AppStorage("hint_seenPinchResize") private var seenPinchResize = false
     @AppStorage("hint_seenArSizing") private var seenArSizing = false
     @AppStorage("hint_seenPickAnother") private var seenPickAnother = false
+    @State private var replayTeachingHints = false
     @State private var selectionJustBecamePrimary = false
     @State private var onboardingHintDismissTask: Task<Void, Never>?
     @State private var forceShowHints = false
@@ -279,10 +278,6 @@ struct SplatRoomView: View {
         if mode == .furnitureFit && (ignoreSeenFlags || !seenPinchResize) {
             return .pinchResize
         }
-        // Priority 4 – B
-        if !isLoading && mode == .browsing && (ignoreSeenFlags || !seenBrainHint) {
-            return .brainIdentify
-        }
         return nil
     }
 
@@ -295,8 +290,6 @@ struct SplatRoomView: View {
             return mode == .furnitureFit && canOfferBrainArAssist
         case .pinchResize:
             return mode == .furnitureFit
-        case .brainIdentify:
-            return !isLoading && mode == .browsing
         }
     }
 
@@ -341,7 +334,6 @@ struct SplatRoomView: View {
             selectionJustBecamePrimary = false
         case .arSizing:    seenArSizing = true
         case .pinchResize: seenPinchResize = true
-        case .brainIdentify: seenBrainHint = true
         }
         forceShowHints = false
         onboardingHintDismissTask?.cancel()
@@ -351,6 +343,7 @@ struct SplatRoomView: View {
 
     private func showHintsOnDemand() {
         forceShowHints = true
+        replayTeachingHints = true
         onboardingHintDismissTask?.cancel()
         scheduleOnboardingHintAutoDismiss()
     }
@@ -946,7 +939,6 @@ struct SplatRoomView: View {
         if showingFurnitureFit {
             showingFurnitureFit = false
         } else {
-            seenBrainHint = true
             showFullVideoWithIdentifications = false
             furnitureFitInitialSegmentationDone = false
             furnitureFitSegmentationMode = .segmentPrimary
@@ -1133,19 +1125,6 @@ struct SplatRoomView: View {
         .zIndex(105)
     }
 
-    private var brainGestureHintScreenOverlay: some View {
-        paafektBottomToolbarHintOverlay(isVisible: isHintVisible(.brainIdentify)) {
-            PaafektHintChip(
-                assetImage: "PaafektIconAI",
-                text: L10n.RoomViewer.brainGestureHintExplanation,
-                maxWidth: 220
-            )
-            .transition(.opacity)
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(102)
-    }
-
     private var splatRestingMeasurementPillText: String? {
         if let d = activeRoomMetersDimensions {
             if d.width > 0.05, d.depth > 0.05, d.width.isFinite, d.depth.isFinite {
@@ -1282,12 +1261,6 @@ struct SplatRoomView: View {
         }
         .zIndex(99998)
     }
-
-    @ViewBuilder
-    private var brainButtonWithHintAbove: some View { EmptyView() }
-
-    @ViewBuilder
-    private var snapshotButtonWithHintAbove: some View { EmptyView() }
 
     @ViewBuilder
     private var segmentButton: some View {
@@ -2065,7 +2038,6 @@ struct SplatRoomView: View {
         ZStack {
             if !isLoading, immersiveChrome.isSummoned {
                 topTrailingPinchHintOverlay
-                brainGestureHintScreenOverlay
                 topTrailingActionButtonsOverlay
                 fullVideoModePillOverlay
                 fullVideoToolbarHelperOverlay
@@ -2084,7 +2056,12 @@ struct SplatRoomView: View {
                 wallCalibrationOverlay
             }
             splatImmersiveChromeOverlay
-            PaafektViewerOnboardingLayer(isReady: !isLoading)
+            PaafektViewerOnboardingLayer(
+                isReady: !isLoading,
+                isChromeSummoned: immersiveChrome.isSummoned,
+                heroHintBottomInset: showingFurnitureFit ? 220 : 172,
+                replayTeachingHints: $replayTeachingHints
+            )
                 .zIndex(100_000)
                 .allowsHitTesting(true)
         }

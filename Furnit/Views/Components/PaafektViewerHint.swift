@@ -49,6 +49,23 @@ extension View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .allowsHitTesting(false)
     }
+
+    /// Centers a hint chip above the hero Fit/Capture row (screen-space).
+    func paafektHeroRowHintOverlay<Content: View>(
+        isVisible: Bool = true,
+        bottomInset: CGFloat = 172,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            if isVisible {
+                content()
+                    .padding(.bottom, bottomInset)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(false)
+    }
 }
 
 // MARK: - Glass hint chip (primary viewer helper pattern)
@@ -139,6 +156,7 @@ struct PaafektBottomScrimHint<Content: View>: View {
 
 enum PaafektViewerOnboarding {
     static let firstRunCoachSeenKey = "paafekt_viewer_first_run_coach_seen"
+    static let heroActionsHintSeenKey = "paafekt_viewer_hero_actions_hint_seen"
 }
 
 /// Centered card over a dimmed scrim — one-time first open acknowledgement.
@@ -191,12 +209,32 @@ struct PaafektViewerFirstRunCoachMark: View {
     }
 }
 
-/// First-run coach mark + transient navigation teaching chip (shared across room viewers).
+/// First-run coach mark + single hero-actions teaching chip (shared across room viewers).
 struct PaafektViewerOnboardingLayer: View {
-    @AppStorage(PaafektViewerOnboarding.firstRunCoachSeenKey) private var seenFirstRunCoach = false
-    @State private var navigationTeachingVisible = false
-    @State private var navigationTeachingDismissTask: Task<Void, Never>?
     let isReady: Bool
+    var isChromeSummoned: Bool = true
+    var heroHintBottomInset: CGFloat = 172
+
+    @Binding private var replayTeachingHints: Bool
+
+    @AppStorage(PaafektViewerOnboarding.firstRunCoachSeenKey) private var seenFirstRunCoach = false
+    @AppStorage(PaafektViewerOnboarding.heroActionsHintSeenKey) private var seenHeroActionsHint = false
+    @State private var navigationTeachingVisible = false
+    @State private var heroActionsHintVisible = false
+    @State private var navigationTeachingDismissTask: Task<Void, Never>?
+    @State private var heroActionsHintDismissTask: Task<Void, Never>?
+
+    init(
+        isReady: Bool,
+        isChromeSummoned: Bool = true,
+        heroHintBottomInset: CGFloat = 172,
+        replayTeachingHints: Binding<Bool> = .constant(false)
+    ) {
+        self.isReady = isReady
+        self.isChromeSummoned = isChromeSummoned
+        self.heroHintBottomInset = heroHintBottomInset
+        self._replayTeachingHints = replayTeachingHints
+    }
 
     var body: some View {
         ZStack {
@@ -206,6 +244,18 @@ struct PaafektViewerOnboardingLayer: View {
                     bodyText: L10n.RoomViewer.firstRunCoachMarkBody,
                     confirmTitle: L10n.RoomViewer.firstRunGotIt,
                     onConfirm: dismissFirstRunCoachMark
+                )
+                .transition(.opacity)
+            }
+
+            paafektHeroRowHintOverlay(
+                isVisible: isReady && isChromeSummoned && heroActionsHintVisible,
+                bottomInset: heroHintBottomInset
+            ) {
+                PaafektHintChip(
+                    systemImage: "hand.tap.fill",
+                    text: L10n.RoomViewer.heroActionsTeachingHint,
+                    maxWidth: 320
                 )
                 .transition(.opacity)
             }
@@ -224,20 +274,62 @@ struct PaafektViewerOnboardingLayer: View {
         .onChange(of: isReady) { _, ready in
             if ready, seenFirstRunCoach {
                 restartNavigationTeachingHint()
+                presentHeroActionsHintIfNeeded()
             }
+        }
+        .onChange(of: isChromeSummoned) { _, summoned in
+            if summoned, isReady, seenFirstRunCoach {
+                presentHeroActionsHintIfNeeded()
+            }
+        }
+        .onChange(of: replayTeachingHints) { _, replay in
+            guard replay else { return }
+            replayTeachingHints = false
+            restartNavigationTeachingHint(force: true)
+            presentHeroActionsHint(force: true)
         }
         .onDisappear {
             cancelNavigationTeachingHint()
+            cancelHeroActionsHint()
         }
     }
 
     private func dismissFirstRunCoachMark() {
         seenFirstRunCoach = true
-        restartNavigationTeachingHint()
+        restartNavigationTeachingHint(force: true)
+        presentHeroActionsHint(force: true)
     }
 
-    private func restartNavigationTeachingHint() {
+    private func presentHeroActionsHintIfNeeded() {
+        guard !seenHeroActionsHint else { return }
+        presentHeroActionsHint(force: false)
+    }
+
+    private func presentHeroActionsHint(force: Bool) {
+        guard isReady, isChromeSummoned else { return }
+        if !force, seenHeroActionsHint { return }
+
+        cancelHeroActionsHint()
+        heroActionsHintVisible = true
+        heroActionsHintDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            guard !Task.isCancelled else { return }
+            heroActionsHintVisible = false
+            if !force {
+                seenHeroActionsHint = true
+            }
+        }
+    }
+
+    private func cancelHeroActionsHint() {
+        heroActionsHintDismissTask?.cancel()
+        heroActionsHintDismissTask = nil
+        heroActionsHintVisible = false
+    }
+
+    private func restartNavigationTeachingHint(force: Bool = false) {
         cancelNavigationTeachingHint()
+        guard force || seenFirstRunCoach else { return }
         navigationTeachingVisible = true
         navigationTeachingDismissTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3.5))

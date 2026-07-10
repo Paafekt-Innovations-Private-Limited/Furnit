@@ -402,7 +402,8 @@
 "roomViewer.pinchGestureHintExplanation" = "Drag to look around · pinch to zoom";
 "roomViewer.navigationTeachingHint" = "Drag to look · pinch to zoom · two fingers to move";
 "roomViewer.firstRunCoachMarkTitle" = "Explore your room in 3D";
-"roomViewer.firstRunCoachMarkBody" = "Add furniture, measure, and save views.\nDrag to look around, pinch to zoom.";
+"roomViewer.firstRunCoachMarkBody" = "Use Fit to add furniture and Capture to save a view.\nDrag to look around, pinch to zoom.";
+"roomViewer.heroActionsTeachingHint" = "Tap Fit to add furniture · Capture to save a view";
 "roomViewer.firstRunGotIt" = "Got it";
 "roomViewer.heroFitFurniture" = "Fit Furniture";
 "roomViewer.heroCapture" = "Capture";

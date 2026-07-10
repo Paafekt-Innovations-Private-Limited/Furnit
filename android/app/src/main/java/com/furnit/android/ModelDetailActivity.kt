@@ -149,8 +149,9 @@ class ModelDetailActivity : AppCompatActivity() {
             firstRunCoachController.showIfNeeded(this) {
                 hintController.showBottomCentered(
                     this,
-                    R.drawable.ic_gesture_pinch,
-                    R.string.room_viewer_navigation_teaching_hint,
+                    R.drawable.ic_gesture_tap,
+                    R.string.room_viewer_hero_actions_teaching_hint,
+                    bottomMarginDp = 188,
                 )
             }
         }

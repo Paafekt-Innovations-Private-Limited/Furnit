@@ -56,10 +56,7 @@ struct ModelViewerView: View {
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var pinchHintExplanationVisible = false
     @State private var pinchHintHideTextTask: Task<Void, Never>?
-    @State private var brainHintExplanationVisible = false
-    @State private var brainHintHideTextTask: Task<Void, Never>?
-    @State private var snapshotHintExplanationVisible = false
-    @State private var snapshotHintHideTextTask: Task<Void, Never>?
+    @State private var replayTeachingHints = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
     @State private var arSizingHintExplanationVisible = false
@@ -454,8 +451,6 @@ struct ModelViewerView: View {
                 fullVideoToolbarHelperOverlay
                 topTrailingPinchAndSizingHintsOverlay
                 navigationTeachingHintBottomOverlay
-                brainGestureHintScreenOverlay
-                snapshotGestureHintScreenOverlay
                 fullVideoFurnitureTapBubbleOverlay
             }
             if suppressBuiltInTopChrome {
@@ -465,7 +460,12 @@ struct ModelViewerView: View {
             } else {
                 modelViewerImmersiveChromeOverlay
             }
-            PaafektViewerOnboardingLayer(isReady: true)
+            PaafektViewerOnboardingLayer(
+                isReady: true,
+                isChromeSummoned: suppressBuiltInTopChrome || immersiveChrome.isSummoned,
+                heroHintBottomInset: showingFurnitureFit ? 220 : 172,
+                replayTeachingHints: $replayTeachingHints
+            )
                 .zIndex(100_000)
                 .allowsHitTesting(true)
         }
@@ -515,8 +515,6 @@ struct ModelViewerView: View {
         manageARSessionForOverlays()
         if isOn {
             rtmdetService.ensureModelLoaded()
-            restartBrainGestureHint()
-            restartSnapshotGestureHint()
             updateRoomPlacementIntelligence()
             presentFullVideoSelectionHelperIfNeeded()
         } else {
@@ -571,15 +569,11 @@ struct ModelViewerView: View {
         } else {
             OrientationLockManager.shared.lockToPortrait()
         }
-        restartBrainGestureHint()
-        restartSnapshotGestureHint()
     }
 
     private func modelViewerPerformOnDisappear() {
         dismissFullVideoFurnitureTapHint()
         cancelPinchHintTasks()
-        cancelBrainHintTasks()
-        cancelSnapshotHintTasks()
         cancelRoomDimensionsHintTasks()
         cancelARSizingHintTasks()
         cancelFullVideoSelectionHelper()
@@ -797,34 +791,6 @@ struct ModelViewerView: View {
         .zIndex(101)
     }
 
-    private var brainGestureHintScreenOverlay: some View {
-        paafektBottomToolbarHintOverlay(isVisible: brainHintExplanationVisible) {
-            PaafektHintChip(
-                assetImage: "PaafektIconAI",
-                text: L10n.RoomViewer.brainGestureHintExplanation,
-                maxWidth: 220
-            )
-            .transition(.opacity)
-        }
-        .zIndex(102)
-    }
-
-    private var snapshotGestureHintScreenOverlay: some View {
-        paafektBottomToolbarHintOverlay(isVisible: snapshotHintExplanationVisible) {
-            PaafektHintChip(
-                assetImage: "PaafektIconSnapshot",
-                text: L10n.RoomViewer.snapshotGestureHintExplanation,
-                maxWidth: 220
-            )
-            .transition(.opacity)
-        }
-        .zIndex(102)
-    }
-
-    private var brainButtonWithHintAbove: some View { EmptyView() }
-
-    private var snapshotButtonWithHintAbove: some View { EmptyView() }
-
     private var pinchHintAccessibilityLabel: String {
         L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility
     }
@@ -897,9 +863,8 @@ struct ModelViewerView: View {
 
     private func displayAllGestureHelpers() {
         onRoomDimensionsRulerTapped()
+        replayTeachingHints = true
         restartPinchGestureHint()
-        restartBrainGestureHint()
-        restartSnapshotGestureHint()
         if canOfferBrainArAssist {
             showARSizingHint(requiresBrain: !showingFurnitureFit)
         }
@@ -945,46 +910,6 @@ struct ModelViewerView: View {
         if pinchHintExplanationVisible {
             schedulePinchHintTextAutoHide(seconds: 3)
         }
-    }
-
-    private func cancelBrainHintTasks() {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = nil
-    }
-
-    private func scheduleBrainHintTextAutoHide(seconds: UInt64 = 3) {
-        brainHintHideTextTask?.cancel()
-        brainHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            brainHintExplanationVisible = false
-        }
-    }
-
-    private func restartBrainGestureHint() {
-        cancelBrainHintTasks()
-        brainHintExplanationVisible = true
-        scheduleBrainHintTextAutoHide(seconds: 3)
-    }
-
-    private func cancelSnapshotHintTasks() {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = nil
-    }
-
-    private func scheduleSnapshotHintTextAutoHide(seconds: UInt64 = 3) {
-        snapshotHintHideTextTask?.cancel()
-        snapshotHintHideTextTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled else { return }
-            snapshotHintExplanationVisible = false
-        }
-    }
-
-    private func restartSnapshotGestureHint() {
-        cancelSnapshotHintTasks()
-        snapshotHintExplanationVisible = true
-        scheduleSnapshotHintTextAutoHide(seconds: 3)
     }
 
     private func cancelRoomDimensionsHintTasks() {

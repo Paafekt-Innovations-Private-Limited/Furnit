@@ -533,7 +533,8 @@
     <string name="room_viewer_pinch_hint">Drag to look around · pinch to zoom</string>
     <string name="room_viewer_navigation_teaching_hint">Drag to look · pinch to zoom · two fingers to move</string>
     <string name="room_viewer_first_run_title">Explore your room in 3D</string>
-    <string name="room_viewer_first_run_body">Add furniture, measure, and save views.\nDrag to look around, pinch to zoom.</string>
+    <string name="room_viewer_first_run_body">Use Fit to add furniture and Capture to save a view.\nDrag to look around, pinch to zoom.</string>
+    <string name="room_viewer_hero_actions_teaching_hint">Tap Fit to add furniture · Capture to save a view</string>
     <string name="room_viewer_first_run_got_it">Got it</string>
     <string name="room_viewer_hero_fit_furniture">Fit Furniture</string>
     <string name="room_viewer_hero_capture">Capture</string>
