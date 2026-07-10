@@ -11,7 +11,6 @@ import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.furnit.android.views.JoystickView
 import io.github.sceneview.SceneView
 import org.junit.Assert.*
 import org.junit.Before
@@ -24,7 +23,6 @@ import java.util.concurrent.TimeUnit
  * Tests for FurnitureFitFragment controls
  * Verifies:
  * - Progress bar shows during initialization
- * - Joystick is present and functional
  * - Screenshot button is present
  * - Room SceneView background is available
  * - Controls visibility state management
@@ -37,28 +35,6 @@ class FurnitureFitControlsTest {
     @Before
     fun setup() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-    }
-
-    @Test
-    fun testJoystickViewCanBeCreated() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val latch = CountDownLatch(1)
-        var joystickCreated = false
-
-        instrumentation.runOnMainSync {
-            try {
-                val joystick = JoystickView(context)
-                joystick.layoutParams = FrameLayout.LayoutParams(200, 200)
-                joystickCreated = true
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            latch.countDown()
-        }
-
-        latch.await(1, TimeUnit.SECONDS)
-        assertTrue("JoystickView should be created without exceptions", joystickCreated)
-        println("JoystickView creation test PASSED")
     }
 
     @Test
@@ -160,64 +136,6 @@ class FurnitureFitControlsTest {
     }
 
     @Test
-    fun testBottomControlsLayout() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var bottomControls: FrameLayout? = null
-        var joystickContainer: LinearLayout? = null
-        var screenshotButton: ImageButton? = null
-
-        instrumentation.runOnMainSync {
-            bottomControls = FrameLayout(context).apply {
-                val lp = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.gravity = Gravity.BOTTOM
-                lp.setMargins(20, 0, 20, 24)
-                layoutParams = lp
-            }
-
-            joystickContainer = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                val lp = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                layoutParams = lp
-            }
-
-            val joystick = JoystickView(context).apply {
-                val size = (100 * context.resources.displayMetrics.density).toInt()
-                layoutParams = LinearLayout.LayoutParams(size, size)
-            }
-            joystickContainer!!.addView(joystick)
-            bottomControls!!.addView(joystickContainer)
-
-            screenshotButton = ImageButton(context).apply {
-                setImageResource(android.R.drawable.ic_menu_camera)
-                val size = (56 * context.resources.displayMetrics.density).toInt()
-                val lp = FrameLayout.LayoutParams(size, size)
-                lp.gravity = Gravity.END or Gravity.BOTTOM
-                layoutParams = lp
-            }
-            bottomControls!!.addView(screenshotButton)
-        }
-
-        assertNotNull("Bottom controls should be created", bottomControls)
-        assertEquals("Bottom controls should have 2 children", 2, bottomControls!!.childCount)
-
-        val joystickParams = joystickContainer!!.layoutParams as FrameLayout.LayoutParams
-        assertEquals("Joystick should be centered", Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM, joystickParams.gravity)
-
-        val screenshotParams = screenshotButton!!.layoutParams as FrameLayout.LayoutParams
-        assertEquals("Screenshot should be at end", Gravity.END or Gravity.BOTTOM, screenshotParams.gravity)
-
-        println("Bottom controls layout test PASSED")
-    }
-
-    @Test
     fun testRoomBackgroundVisibilityLogic() {
         // Test the visibility logic for room background
         // Initially GONE, becomes VISIBLE when detections are found
@@ -262,42 +180,6 @@ class FurnitureFitControlsTest {
         assertTrue("hasFirstDetection should be true", hasFirstDetection)
 
         println("Progress hidden after first detection test PASSED")
-    }
-
-    @Test
-    fun testJoystickMoveCallback() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val callbackReceived = mutableListOf<Pair<Float, Float>>()
-
-        instrumentation.runOnMainSync {
-            val joystick = JoystickView(context).apply {
-                val spec = View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY)
-                measure(spec, spec)
-                layout(0, 0, 200, 200)
-
-                onJoystickMove = { x, y ->
-                    callbackReceived.add(Pair(x, y))
-                }
-            }
-
-            // Simulate touch
-            val downTime = System.currentTimeMillis()
-            val event = android.view.MotionEvent.obtain(
-                downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 150f, 100f, 0
-            )
-            joystick.dispatchTouchEvent(event)
-            event.recycle()
-        }
-
-        assertTrue("Callback should be received", callbackReceived.isNotEmpty())
-        val (x, y) = callbackReceived.first()
-        // Touch at (150, 100) in 200x200 view means offset of (50, 0) from center (100, 100)
-        // Normalized X should be positive (right of center)
-        assertTrue("X should be positive (right of center)", x > 0)
-        // Y should be near 0 (at center vertically)
-        assertTrue("Y should be near 0 (center vertically)", kotlin.math.abs(y) < 0.2f)
-
-        println("Joystick move callback test PASSED - received ${callbackReceived.size} callback(s)")
     }
 
     @Test
