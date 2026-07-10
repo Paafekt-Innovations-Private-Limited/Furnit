@@ -433,7 +433,7 @@ class GLBRoomActivity : AppCompatActivity() {
         }
         immersiveSummonButton?.layoutParams?.let { lp ->
             if (lp is FrameLayout.LayoutParams) {
-                lp.bottomMargin = bars.bottom + PaafektSpace.viewerBottomInset(this) + dpToPx(8)
+                lp.bottomMargin = bars.bottom + PaafektSpace.lg(this)
                 immersiveSummonButton?.layoutParams = lp
             }
         }
@@ -489,26 +489,14 @@ class GLBRoomActivity : AppCompatActivity() {
                 },
             )
 
-            val summonGold = ImageButton(this@GLBRoomActivity).apply {
-                setImageResource(R.drawable.ic_chevron_up)
-                imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(PaafektColors.accent)
-                }
-                contentDescription = getString(R.string.room_viewer_immersive_show_controls)
-                setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
-                setOnClickListener { immersiveChrome.summon() }
+            val summonGold = PaafektViewerToolbar.createGoldSummonButton(
+                this@GLBRoomActivity,
+                getString(R.string.room_viewer_immersive_show_controls),
+            ) {
+                immersiveChrome.summon()
             }
             immersiveSummonButton = summonGold
-            addView(
-                summonGold,
-                FrameLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
-                    gravity = Gravity.END or Gravity.BOTTOM
-                    bottomMargin = PaafektSpace.viewerBottomInset(this@GLBRoomActivity) + dpToPx(8)
-                    marginEnd = PaafektSpace.lg(this@GLBRoomActivity)
-                },
-            )
+            addView(summonGold)
         }
     }
 

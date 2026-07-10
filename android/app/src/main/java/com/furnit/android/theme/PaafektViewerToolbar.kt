@@ -1,10 +1,13 @@
 package com.furnit.android.theme
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -12,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import com.furnit.android.R
 
 /**
@@ -119,6 +123,49 @@ object PaafektViewerToolbar {
     fun createTopChromeRow(context: Context): FrameLayout {
         return FrameLayout(context).apply {
             setPadding(PaafektSpace.lg(context), PaafektSpace.viewerTopInset(context), PaafektSpace.lg(context), 0)
+        }
+    }
+
+    /**
+     * Resting summon affordance — mirrors iOS `PaafektImmersiveGoldSummonButton`:
+     * 46dp gold disk, 22dp chevron inset, dark glyph, drop shadow.
+     */
+    fun createGoldSummonButton(
+        context: Context,
+        contentDescription: CharSequence,
+        onClick: () -> Unit,
+    ): ImageButton {
+        val size = dp(context, 46)
+        val iconInset = dp(context, 12)
+        return ImageButton(context, null, 0).apply {
+            setImageResource(R.drawable.ic_chevron_up)
+            imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(PaafektColors.accent)
+            }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(iconInset, iconInset, iconInset, iconInset)
+            this.contentDescription = contentDescription
+            layoutParams = goldSummonButtonLayoutParams(context)
+            ViewCompat.setElevation(this, dp(context, 6).toFloat())
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            clipToOutline = false
+            minimumWidth = size
+            minimumHeight = size
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /** Bottom-right placement — iOS `.padding(.horizontal/.bottom, Theme.Space.lg)`. */
+    fun goldSummonButtonLayoutParams(
+        context: Context,
+        systemBarBottomInset: Int = 0,
+    ): FrameLayout.LayoutParams {
+        return FrameLayout.LayoutParams(dp(context, 46), dp(context, 46)).apply {
+            gravity = Gravity.END or Gravity.BOTTOM
+            bottomMargin = systemBarBottomInset + PaafektSpace.lg(context)
+            marginEnd = PaafektSpace.lg(context)
         }
     }
 

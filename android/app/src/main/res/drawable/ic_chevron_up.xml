@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Paafekt monoline chevron-up (512 viewBox); tint at runtime. -->
+<!-- Paafekt monoline chevron-up — matches iOS PaafektIconChevronUp (22pt template). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="22dp"
+    android:height="22dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
     <path
-        android:pathData="M150,330 L256,190 L362,330"
-        android:strokeWidth="34"
+        android:pathData="M148,332 L256,188 L364,332"
+        android:strokeWidth="36"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"

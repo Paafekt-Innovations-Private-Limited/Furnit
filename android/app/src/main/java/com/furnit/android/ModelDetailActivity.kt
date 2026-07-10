@@ -317,26 +317,13 @@ class ModelDetailActivity : AppCompatActivity() {
                 },
             )
 
-            val summonGold = ImageButton(this@ModelDetailActivity).apply {
-                setImageResource(R.drawable.ic_chevron_up)
-                imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(PaafektColors.accent)
-                }
-                contentDescription = getString(R.string.room_viewer_immersive_show_controls)
-                setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setOnClickListener { immersiveChrome.summon() }
+            val summonGold = PaafektViewerToolbar.createGoldSummonButton(
+                this@ModelDetailActivity,
+                getString(R.string.room_viewer_immersive_show_controls),
+            ) {
+                immersiveChrome.summon()
             }
-            addView(
-                summonGold,
-                FrameLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
-                    gravity = Gravity.END or Gravity.BOTTOM
-                    bottomMargin = PaafektSpace.viewerBottomInset(this@ModelDetailActivity) + dpToPx(8)
-                    marginEnd = PaafektSpace.lg(this@ModelDetailActivity)
-                },
-            )
+            addView(summonGold)
             installRestingChromeTouchPassthrough(this)
         }
     }
