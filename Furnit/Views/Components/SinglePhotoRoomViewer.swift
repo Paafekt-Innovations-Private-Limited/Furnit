@@ -1258,6 +1258,7 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
     @State private var showDiscardUnsavedAlert = false
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
 
     private var depthAnythingRoomDimensions: (width: Float, height: Float, depth: Float)? {
         let width = destination.roomWidthMeters
@@ -1345,9 +1346,10 @@ private struct DepthAnythingPreviewRoomView: View {
                 previewSceneAndFurnitureUnderlay
                     .ignoresSafeArea()
 
-                previewCameraButtonsOverlay
-                previewFullVideoToolbarHelperOverlay
-                previewFullVideoFurnitureTapBubbleOverlay
+                if immersiveChrome.isSummoned {
+                    previewFullVideoToolbarHelperOverlay
+                    previewFullVideoFurnitureTapBubbleOverlay
+                }
 
                 if let debugLine = destination.measurementDebugLine,
                    AppStateManager.shared.qualitySettings.debugMode {
@@ -1368,19 +1370,16 @@ private struct DepthAnythingPreviewRoomView: View {
                     saveRoomProgressOverlay
                 }
 
-                previewBottomHeroChrome
+                previewImmersiveChromeOverlay
                 PaafektViewerOnboardingLayer(isReady: !isSavingRoom)
                     .zIndex(100_000)
                     .allowsHitTesting(true)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            previewFullVideoModeFloatingButton
-        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbar { previewToolbarContent }
+        .toolbar(.hidden, for: .navigationBar)
         .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
             TextField(L10n.RoomViewer.roomName, text: $roomName)
                 .autocorrectionDisabled(true)
@@ -1449,148 +1448,113 @@ private struct DepthAnythingPreviewRoomView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var previewToolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: handleBackTap) {
-                Image(systemName: "chevron.left")
-            }
-            .accessibilityLabel(L10n.Common.back)
+    private var previewRestingMeasurementPillText: String? {
+        guard let dims = depthAnythingRoomDimensions else { return nil }
+        if dims.width > 0.05, dims.depth > 0.05, dims.width.isFinite, dims.depth.isFinite {
+            return String(format: "%.1f m × %.1f m", dims.width, dims.depth)
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            HStack(spacing: 14) {
-                Button {
-                    previewCameraOffset = .zero
-                    previewCameraZoom = 1
-                    shouldResetCamera = true
-                } label: {
-                    Image(systemName: "viewfinder")
-                        .font(.title3)
-                }
-                .accessibilityLabel(L10n.RoomViewer.recenterView)
-
-                Button {
-                    roomName = ""
-                    showRoomNameInput = true
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.title3)
-                }
-                .disabled(isSavingRoom)
-                .accessibilityLabel(L10n.RoomViewer.saveRoom)
-            }
+        if dims.height > 0.05, dims.height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(dims.height)
         }
+        return nil
     }
 
-    private var previewCameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            previewCameraDPadCluster
-                .padding(.leading, 12)
-                .padding(.top, destination.photoOrientation == .landscape ? 12 : 56)
-        }
-        .opacity(isSavingRoom ? 0 : 1)
-        .allowsHitTesting(!isSavingRoom)
-        .zIndex(100_000)
-    }
-
-    private var previewCameraDPadCluster: some View {
-        HStack(spacing: 8) {
-            previewCameraMoveButton(systemName: "arrow.left") {
-                nudgePreviewCamera(dx: -1, dy: 0)
-            }
-            VStack(spacing: 8) {
-                previewCameraMoveButton(systemName: "arrow.up") {
-                    nudgePreviewCamera(dx: 0, dy: 1)
+    private var previewImmersiveChromeOverlay: some View {
+        PaafektImmersiveViewerChromeStack(
+            chrome: immersiveChrome,
+            onBack: handleBackTap,
+            measurementText: previewRestingMeasurementPillText,
+            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isSavingRoom || isCapturingSnapshot
+        ) {
+            PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "viewfinder",
+                        accessibilityLabel: L10n.RoomViewer.recenterView
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        previewCameraOffset = .zero
+                        previewCameraZoom = 1
+                        shouldResetCamera = true
+                    }
+                    if !selectedFurnitureFitLabels.isEmpty {
+                        Button {
+                            immersiveChrome.noteChromeInteraction()
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("FurnitureFitClearSelectedObjects"),
+                                object: nil
+                            )
+                        } label: {
+                            Text(selectedFurnitureChipTitle)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Theme.Palette.viewerCapsuleFill))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showingFurnitureFit {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "text.viewfinder",
+                            isActive: showFullVideoWithIdentifications,
+                            accessibilityLabel: L10n.Settings.fullVideoWithIdentifications
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            togglePreviewFullVideoIdentifications()
+                        }
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.and.arrow.down",
+                        accessibilityLabel: L10n.RoomViewer.saveRoom
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        roomName = ""
+                        showRoomNameInput = true
+                    }
+                    .disabled(isSavingRoom)
                 }
-                previewCameraMoveButton(systemName: "arrow.down") {
-                    nudgePreviewCamera(dx: 0, dy: -1)
+            } heroContent: {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconAI",
+                        title: L10n.RoomViewer.immersiveFitShort,
+                        isActive: showingFurnitureFit,
+                        isDisabled: isSavingRoom
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        togglePreviewFurnitureFit()
+                    }
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconSnapshot",
+                        title: L10n.RoomViewer.immersiveCaptureShort,
+                        isDisabled: isSavingRoom || isCapturingSnapshot
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        savePreviewSnapshot()
+                    }
                 }
             }
-            previewCameraMoveButton(systemName: "arrow.right") {
-                nudgePreviewCamera(dx: 1, dy: 0)
-            }
-        }
-    }
-
-    private func previewCameraMoveButton(systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(Color.black.opacity(0.5)))
-        }
-        .buttonStyle(.plain)
-        .disabled(isSavingRoom)
-    }
-
-    private func nudgePreviewCamera(dx: CGFloat, dy: CGFloat) {
-        previewCameraOffset.width += dx
-        previewCameraOffset.height += dy
-    }
-
-    private var previewBottomHeroChrome: some View {
-        VStack {
-            Spacer()
-            ZStack(alignment: .bottom) {
-                VStack(spacing: 10) {
-                    previewSegmentModeToggleChrome
-                    previewHeroActionsBar
-                }
+        } summonedExtras: {
+            VStack(spacing: 10) {
+                previewSegmentModeToggleChrome
                 previewRoomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 56)
             }
             .padding(.horizontal, Theme.Space.lg)
-            .padding(.bottom, 20)
         }
-        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
         .zIndex(99_998)
-        .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
     }
 
-    private var previewHeroActionsBar: some View {
-        PaafektViewerHeroActionsBar(
-            fitActive: showingFurnitureFit,
-            captureDisabled: isCapturingSnapshot || isSavingRoom,
-            onFit: togglePreviewFurnitureFit,
-            onCapture: savePreviewSnapshot
-        )
+    private var selectedFurnitureChipTitle: String {
+        let labels = selectedFurnitureFitLabels
+        if labels.count == 1 { return labels[0] }
+        if labels.count == 2 { return "\(labels[0]), \(labels[1])" }
+        return "\(labels.count) selected"
     }
 
-    private var previewFullVideoModeFloatingButton: some View {
-        Group {
-            if showingFurnitureFit {
-                Button(action: togglePreviewFullVideoIdentifications) {
-                    Image(systemName: "text.viewfinder")
-                        .font(.system(size: 16, weight: .semibold))
-                        .symbolVariant(showFullVideoWithIdentifications ? .fill : .none)
-                        .foregroundStyle(Color.cyan)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.black.opacity(0.68)))
-                        .overlay(
-                            Circle().stroke(
-                                showFullVideoWithIdentifications ? Color.cyan.opacity(0.9) : Color.white.opacity(0.18),
-                                lineWidth: 1
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .contentShape(Circle())
-                .frame(width: 44, height: 44)
-                .padding(.top, 88)
-                .padding(.trailing, 8)
-                .accessibilityLabel(L10n.Settings.fullVideoWithIdentifications)
-                .accessibilityHint(L10n.Settings.fullVideoWithIdentificationsDescription)
-                .accessibilityAddTraits(showFullVideoWithIdentifications ? .isSelected : [])
-            }
-        }
-        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
-        .allowsHitTesting(showingFurnitureFit && !isSavingRoom && !isCapturingSnapshot)
-    }
-
+    @ViewBuilder
     private var previewSegmentModeToggleChrome: some View {
         Group {
             if showingFurnitureFit && showFullVideoWithIdentifications {
