@@ -72,8 +72,8 @@
 "roomLimit.message" = "You've reached the limit of %d rooms. Delete some rooms to create new ones.";
 
 // MARK: - Delete Room
-"deleteRoom.title" = "Delete Room?";
-"deleteRoom.message" = "Are you sure you want to delete '%@'? This action cannot be undone.";
+"deleteRoom.title" = "Delete this room?";
+"deleteRoom.message" = "This can't be undone.";
 
 // MARK: - Explore View
 "explore.title" = "Explore";
@@ -317,7 +317,8 @@
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
-"photoRoom.buildingRoom" = "Building your 3D room...";
+"photoRoom.buildingRoom" = "Building your room";
+"photoRoom.buildingRoomSubtext" = "This usually takes a few seconds.";
 "photoRoom.reconstructorReady" = "Ready";
 "photoRoom.reconstructorAnalyzingPhoto" = "Analyzing photo...";
 "photoRoom.reconstructorExtractingDepth" = "Extracting depth information...";
@@ -371,14 +372,16 @@
 "roomViewer.title" = "3D Room View";
 "roomViewer.controls" = "Use joystick to move • Pinch to zoom";
 "roomViewer.saveRoom" = "Save Room";
+"roomViewer.nameYourRoom" = "Name your room";
 "roomViewer.roomName" = "Room Name";
+"roomViewer.roomNamePlaceholder" = "e.g. Living Room";
 "roomViewer.enterName" = "Enter a name for your room";
 "roomViewer.savingRoom" = "Saving Room";
 "roomViewer.preparingModel" = "Preparing room model...";
 "roomViewer.exportingUSDZ" = "Exporting to USDZ format...";
 "roomViewer.savingToLibrary" = "Saving to library...";
 "roomViewer.almostDone" = "Almost done...";
-"roomViewer.saveSuccess" = "Room '%@' saved successfully!";
+"roomViewer.saveSuccess" = "'%@' saved to your rooms";
 "roomViewer.saveFailed" = "Failed to save room: %@";
 "roomViewer.roomSaveTitle" = "Room Save";
 "roomViewer.roomSavedAlertTitle" = "Room Saved";

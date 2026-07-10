@@ -108,9 +108,7 @@ enum L10n {
     // MARK: Delete Room
     enum DeleteRoom {
         static let title = "deleteRoom.title".localized
-        static func message(_ name: String) -> String {
-            "deleteRoom.message".localized(name)
-        }
+        static let message = "deleteRoom.message".localized
     }
 
     // MARK: Settings
@@ -291,6 +289,7 @@ enum L10n {
         static let manualSetup = "photoRoom.manualSetup".localized
         static let manualSetupDesc = "photoRoom.manualSetupDesc".localized
         static let buildingRoom = "photoRoom.buildingRoom".localized
+        static let buildingRoomSubtext = "photoRoom.buildingRoomSubtext".localized
         /// Manual single-photo room pipeline (`SinglePhotoRoomReconstructor`) status line on progress overlay.
         static let reconstructorReady = "photoRoom.reconstructorReady".localized
         static let reconstructorAnalyzingPhoto = "photoRoom.reconstructorAnalyzingPhoto".localized
@@ -343,7 +342,9 @@ enum L10n {
         static let title = "roomViewer.title".localized
         static let controls = "roomViewer.controls".localized
         static let saveRoom = "roomViewer.saveRoom".localized
+        static let nameYourRoom = "roomViewer.nameYourRoom".localized
         static let roomName = "roomViewer.roomName".localized
+        static let roomNamePlaceholder = "roomViewer.roomNamePlaceholder".localized
         static let enterName = "roomViewer.enterName".localized
         static let savingRoom = "roomViewer.savingRoom".localized
         static let preparingModel = "roomViewer.preparingModel".localized

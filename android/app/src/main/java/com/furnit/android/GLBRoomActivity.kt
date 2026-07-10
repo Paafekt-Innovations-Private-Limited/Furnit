@@ -15,7 +15,9 @@ import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektSnackbar
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektImmersiveChromeController
@@ -1698,35 +1700,19 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun showSaveDialog() {
-        val input = EditText(this).apply {
-            hint = "Enter room name"
-            setPadding(48, 32, 48, 32)
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Save Room")
-            .setMessage("Enter a name for your room")
-            .setView(input)
-            .setPositiveButton("Save", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val typedName = input.text.toString().trim()
-                if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
-                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                val name = if (typedName.isEmpty()) {
-                    ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
-                } else {
-                    typedName
-                }
-                saveRoom(name)
-                dialog.dismiss()
+        PaafektDialogs.showNameRoomDialog(this) { typedName, dismiss ->
+            if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
+                Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                return@showNameRoomDialog
             }
+            val name = if (typedName.isEmpty()) {
+                ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
+            } else {
+                typedName
+            }
+            saveRoom(name)
+            dismiss()
         }
-        dialog.show()
     }
 
     private fun saveRoom(name: String) {
@@ -1773,13 +1759,15 @@ class GLBRoomActivity : AppCompatActivity() {
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 
-                Toast.makeText(this, getString(R.string.glb_room_saved, name), Toast.LENGTH_SHORT).show()
+                PaafektSnackbar.showRoomSaved(rootLayout, name)
                 LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
 
-                val intent = Intent(this, ContentActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                startActivity(intent)
-                finish()
+                rootLayout.postDelayed({
+                    val intent = Intent(this, ContentActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                }, 1200)
             }
         } catch (e: Exception) {
             LogUtil.e(TAG, "Failed to save room", e)

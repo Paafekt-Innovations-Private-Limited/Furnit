@@ -33,7 +33,9 @@ import android.content.res.ColorStateList
 import android.view.GestureDetector
 import android.widget.ImageView
 import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektImmersiveChromeController
+import com.furnit.android.theme.PaafektSnackbar
 import com.furnit.android.models.ModelManager
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
@@ -597,47 +599,19 @@ class ModelDetailActivity : AppCompatActivity() {
     }
 
     private fun showSaveDialog() {
-        val input = EditText(this).apply {
-            hint = "Room Name"
-            setHintTextColor(0x80FFFFFF.toInt())
-            setTextColor(0xFFFFFFFF.toInt())
-            setBackgroundResource(R.drawable.edittext_border)
-            textSize = 16f
-        }
-
-        val container = LinearLayout(this@ModelDetailActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 0)
-            addView(input, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ))
-        }
-
-        val dialog = AlertDialog.Builder(this, R.style.DarkDialogTheme)
-            .setTitle("Save Room")
-            .setMessage("Enter a name for your room")
-            .setView(container)
-            .setPositiveButton("Save", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val typedName = input.text.toString().trim()
-                if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
-                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                val name = if (typedName.isEmpty()) {
-                    ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
-                } else {
-                    typedName
-                }
-                saveRoom(name)
-                dialog.dismiss()
+        PaafektDialogs.showNameRoomDialog(this) { typedName, dismiss ->
+            if (typedName.isNotEmpty() && !ModelManager.isRoomNameAvailable(this, typedName)) {
+                Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                return@showNameRoomDialog
             }
+            val name = if (typedName.isEmpty()) {
+                ModelManager.findAvailableRoomName(this, RoomDisplayName.myRoomWithTimestamp())
+            } else {
+                typedName
+            }
+            saveRoom(name)
+            dismiss()
         }
-        dialog.show()
     }
 
     private fun showUnsavedPreviewLeaveDialog() {
@@ -685,14 +659,15 @@ class ModelDetailActivity : AppCompatActivity() {
                 // Clean up preview directory
                 previewRoomFolder.parentFile?.deleteRecursively()
 
-                Toast.makeText(this, getString(R.string.room_viewer_save_success, name), Toast.LENGTH_SHORT).show()
+                PaafektSnackbar.showRoomSaved(viewerRootLayout, name)
                 LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
 
-                // Go to rooms list screen (ContentActivity)
-                val intent = Intent(this, ContentActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                startActivity(intent)
-                finish()
+                viewerRootLayout.postDelayed({
+                    val intent = Intent(this, ContentActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                }, 1200)
             } else {
                 Toast.makeText(this, getString(R.string.model_detail_failed_save), Toast.LENGTH_SHORT).show()
             }

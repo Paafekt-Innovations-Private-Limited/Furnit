@@ -133,3 +133,39 @@ Visual restyle only — **no logic/navigation/data changes.** Branch `cleanup/de
 - **Do NOT rename** the Xcode target, source folders, or bundle id — "Furnit" stays as the internal codename only.
 
 **Guardrails:** keep all accessibility labels; flag-don't-break anything dynamic or public; never touch the measurement/capture/export pipelines except surface styling.
+
+## 8. Viewer controls & helper copy
+
+**Action hierarchy (all four viewers):**
+
+- **Primary actions — Fit Furniture, Capture:** solid gold `#C9A24B` button with dark glyph **and a short label**. Larger, clearly the focal actions.
+- **Secondary nav — pan / rotate / zoom / layers:** small monoline off-white icons in the blurred-glass capsule toolbar. Quiet.
+- Icon files: `ic_ai` (sparkle → Fit/AI) and `ic_snapshot` (shutter → Capture) at 512/192/96 px. Monoline, off-white default, gold when active.
+
+**Hint chip:** frosted-glass capsule + gold monoline gesture icon + one caption line. Auto-dismiss ~3–4s.
+
+**First-run coach mark:** frosted rounded-20 card over dimmed scrim + gold "Got it".
+
+**Approved microcopy:** navigation "Drag to look · pinch to zoom · two fingers to move"; Fit/Capture purpose strings; first-open coach copy.
+
+## 9. Voice & microcopy
+
+**Voice:** calm, human, confident, concise. **Sentence case.** Verbs on buttons. No "successfully," no jargon. **Success is quiet** — transient snackbar, not blocking modal.
+
+**Rules:**
+
+- Sentence-case titles and body; short and warm.
+- Buttons: **Save, Done, Cancel, Delete.**
+- Confirmations/success → **snackbar** (reuse `PaafektRoomSavedSnackbar` / `PaafektSnackbar`), auto-dismiss. Modals for decisions and destructive actions only.
+- All dialogs use Paafekt tokens: surface `#1A1C20`, radius 20, hairline border, **gold primary + ghost secondary**, monoline gold icons.
+
+**Approved copy:**
+
+- **Generating:** title "Building your room", subtext "This usually takes a few seconds." — gold progress + gold monoline icon (not green download).
+- **Save success:** snackbar "'{name}' saved to your rooms" (auto-dismiss).
+- **Name room:** title "Name your room", placeholder "e.g. Living Room", **Cancel** (ghost) · **Save** (gold).
+- **Delete:** title "Delete this room?", body "This can't be undone." / **Delete** (danger) · **Cancel**.
+
+**Landscape:** dialogs keyboard-aware and compact — field + buttons stay above IME; iOS sheet detents; Android `adjustResize` + `ScrollView`.
+
+**UI mockups (implementation targets):** hint chip, hero actions + coach mark, immersive resting/summoned, restyled dialogs (Building / saved snackbar / landscape Name).

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDialogs
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.utils.LogUtil
@@ -785,60 +786,34 @@ class ContentActivity : AppCompatActivity() {
     }
 
     private fun showRenameRoomDialog(model: Model) {
-        val padding = dpToPx(24)
-        val input = EditText(this).apply {
-            setText(model.name)
-            setSelection(model.name.length)
-            setHint(R.string.home_rename_room_hint)
-        }
-        val container = FrameLayout(this).apply {
-            setPadding(padding, dpToPx(8), padding, 0)
-            addView(
-                input,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.home_rename_room_title)
-            .setView(container)
-            .setPositiveButton(R.string.common_save, null)
-            .setNegativeButton(R.string.common_cancel, null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val name = input.text?.toString()?.trim().orEmpty()
-                if (name.isEmpty()) {
-                    Toast.makeText(this, getString(R.string.home_rename_room_empty), Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                if (!modelManager.isRoomNameAvailable(name, excludeRoomId = model.id)) {
-                    Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                if (modelManager.renameUserRoom(model.id, name)) {
-                    Toast.makeText(this, getString(R.string.home_room_renamed, name), Toast.LENGTH_SHORT).show()
-                    refreshRoomsList()
-                    dialog.dismiss()
-                } else {
-                    Toast.makeText(this, getString(R.string.home_rename_room_failed), Toast.LENGTH_SHORT).show()
-                }
+        PaafektDialogs.showNameRoomDialog(
+            activity = this,
+            initialName = model.name,
+            title = getString(R.string.home_rename_room_title),
+            placeholder = getString(R.string.home_rename_room_hint),
+        ) { name, dismiss ->
+            if (name.isEmpty()) {
+                Toast.makeText(this, getString(R.string.home_rename_room_empty), Toast.LENGTH_SHORT).show()
+                return@showNameRoomDialog
+            }
+            if (!modelManager.isRoomNameAvailable(name, excludeRoomId = model.id)) {
+                Toast.makeText(this, getString(R.string.home_room_name_duplicate), Toast.LENGTH_SHORT).show()
+                return@showNameRoomDialog
+            }
+            if (modelManager.renameUserRoom(model.id, name)) {
+                Toast.makeText(this, getString(R.string.home_room_renamed, name), Toast.LENGTH_SHORT).show()
+                refreshRoomsList()
+                dismiss()
+            } else {
+                Toast.makeText(this, getString(R.string.home_rename_room_failed), Toast.LENGTH_SHORT).show()
             }
         }
-        dialog.show()
     }
 
     private fun showDeleteDialog(model: Model) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Room")
-            .setMessage("Are you sure you want to delete \"${model.name}\"?")
-            .setPositiveButton("Delete") { _, _ ->
-                deleteRoom(model)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        PaafektDialogs.showDeleteRoomDialog(this) {
+            deleteRoom(model)
+        }
     }
 
     private fun deleteRoom(model: Model) {

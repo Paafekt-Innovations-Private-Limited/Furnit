@@ -18,7 +18,7 @@
 
     <!-- Dark dialog theme matching iOS -->
     <style name="DarkDialogTheme" parent="Theme.MaterialComponents.Dialog.Alert">
-        <item name="android:background">@color/paafekt_surface_hi</item>
+        <item name="android:background">@color/paafekt_surface</item>
         <item name="android:textColor">@color/paafekt_text_primary</item>
         <item name="android:textColorPrimary">@color/paafekt_text_primary</item>
         <item name="android:textColorSecondary">@color/paafekt_text_secondary</item>

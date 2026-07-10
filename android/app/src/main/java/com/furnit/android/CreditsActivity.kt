@@ -1,20 +1,14 @@
 package com.furnit.android
 
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.theme.PaafektScreenViews
 
-/**
- * In-app credits / acknowledgements screen for development tools and platform references.
- * Keeps acknowledgements separate from open-source licenses for clearer legal structure.
- */
 class CreditsActivity : AppCompatActivity() {
 
     private val appleUrl = "https://www.apple.com/"
@@ -25,30 +19,11 @@ class CreditsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val scrollView = ScrollView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-            setPadding(24, 24, 24, 24)
-        }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        }
-
-        val titleView = TextView(this).apply {
-            text = getString(R.string.credits_title)
-            textSize = 20f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#333333"))
-            setPadding(0, 0, 0, 24)
-        }
-        layout.addView(titleView)
+        val layout = PaafektScreenViews.createScreenColumn(this)
+        layout.addView(
+            PaafektScreenViews.createBackButton(this, "‹ ${getString(R.string.common_back)}") { finish() },
+        )
+        layout.addView(PaafektScreenViews.createScreenTitle(this, getString(R.string.credits_title)))
 
         addSection(layout, getString(R.string.credits_intro), isBold = true)
         addSection(layout, getString(R.string.credits_disclaimer))
@@ -57,15 +32,10 @@ class CreditsActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.credits_anthropic_title), getString(R.string.credits_anthropic_body), anthropicUrl)
         addSection(layout, getString(R.string.credits_luma_title), getString(R.string.credits_luma_body), lumaUrl)
 
-        scrollView.addView(layout)
-        setContentView(scrollView)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        title = getString(R.string.credits_title)
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
+        PaafektScreenViews.createScreenScrollView(this).apply {
+            addView(layout)
+            setContentView(this)
+        }
     }
 
     private fun addSection(
@@ -75,45 +45,28 @@ class CreditsActivity : AppCompatActivity() {
         websiteUrl: String? = null,
         isBold: Boolean = false,
     ) {
-        val section = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 20)
-        }
-
-        val titleView = TextView(this).apply {
-            text = title
-            textSize = 16f
-            setTypeface(null, if (isBold) Typeface.BOLD else Typeface.NORMAL)
-            setTextColor(Color.parseColor("#333333"))
-            setPadding(0, 0, 0, 6)
-        }
-        section.addView(titleView)
-
+        val card = PaafektScreenViews.createSectionCard(this)
+        card.addView(
+            TextView(this).apply {
+                text = title
+                textSize = 16f
+                setTypeface(null, if (isBold) Typeface.BOLD else Typeface.NORMAL)
+                setTextColor(com.furnit.android.theme.PaafektColors.textPrimary)
+            },
+        )
         if (!body.isNullOrEmpty()) {
-            val bodyView = TextView(this).apply {
-                text = body
-                textSize = 14f
-                setTextColor(Color.parseColor("#666666"))
-            }
-            section.addView(bodyView)
+            card.addView(PaafektScreenViews.createSecondaryLabel(this, body))
         }
-
         if (!websiteUrl.isNullOrEmpty()) {
-            val linkView = TextView(this).apply {
-                text = getString(R.string.credits_visit_website)
-                textSize = 14f
-                setTextColor(Color.parseColor("#007AFF"))
-                setPadding(0, 6, 0, 0)
-                setOnClickListener {
+            card.addView(
+                PaafektScreenViews.createLinkLabel(this, getString(R.string.credits_visit_website)) {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl)))
                     } catch (_: Exception) {
                     }
-                }
-            }
-            section.addView(linkView)
+                },
+            )
         }
-
-        parent.addView(section)
+        parent.addView(card)
     }
 }

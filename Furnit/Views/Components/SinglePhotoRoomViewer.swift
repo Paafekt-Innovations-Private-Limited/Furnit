@@ -296,44 +296,10 @@ struct RoomBoundaryDetectionView: View {
 
     // MARK: - Progress Overlay
     private var progressOverlay: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.orange.opacity(0.3), lineWidth: 8)
-                        .frame(width: 60, height: 60)
-                    Circle()
-                        .trim(from: 0, to: CGFloat(reconstructor.progress))
-                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .frame(width: 60, height: 60)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
-                    Image(systemName: "cube.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.orange)
-                }
-
-                Text(reconstructor.statusMessage)
-                    .font(.headline)
-                    .foregroundColor(.white)
-
-                Text("\(Int(reconstructor.progress * 100))%")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.orange)
-
-                Text(L10n.PhotoRoom.buildingRoom)
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-            .padding(32)
-            .background(Color(.systemBackground).opacity(0.95))
-            .cornerRadius(16)
-            .shadow(radius: 10)
-        }
+        PaafektBuildingRoomOverlay(
+            progress: Double(reconstructor.progress),
+            statusMessage: reconstructor.statusMessage
+        )
     }
 
     // MARK: - Process Boundaries
@@ -1254,9 +1220,11 @@ private struct DepthAnythingPreviewRoomView: View {
     @State private var saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
     @State private var showRoomNameInput = false
     @State private var roomName = ""
-    @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showSaveSuccessSnackbar = false
+    @State private var saveSuccessSnackbarMessage = ""
+    @State private var showSaveErrorNotice = false
     @State private var showDiscardUnsavedAlert = false
     @StateObject private var immersiveChrome = PaafektViewerChromeController()
 
@@ -1380,27 +1348,25 @@ private struct DepthAnythingPreviewRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
-        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-            TextField(L10n.RoomViewer.roomName, text: $roomName)
-                .autocorrectionDisabled(true)
-            Button(L10n.Common.cancel, role: .cancel) {
-                roomName = ""
-            }
-            Button(L10n.Common.save) {
-                startSavingRoom()
-            }
-            .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        } message: {
-            Text(L10n.RoomViewer.enterName)
+        .sheet(isPresented: $showRoomNameInput) {
+            PaafektNameRoomSheet(
+                isPresented: $showRoomNameInput,
+                roomName: $roomName,
+                onSave: { startSavingRoom() }
+            )
         }
-        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
-            Button(L10n.Common.ok, role: .cancel) {
-                if saveWasSuccessful {
-                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-                }
+        .overlay {
+            if showSaveErrorNotice {
+                PaafektErrorNotice(isPresented: $showSaveErrorNotice, message: saveAlertMessage)
             }
-        } message: {
-            Text(saveAlertMessage)
+        }
+        .overlay(alignment: .bottom) {
+            if showSaveSuccessSnackbar {
+                PaafektRoomSavedSnackbar(
+                    message: saveSuccessSnackbarMessage,
+                    isShowing: $showSaveSuccessSnackbar
+                )
+            }
         }
         .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
             Button(L10n.RoomPreview.stay, role: .cancel) {}
@@ -2007,37 +1973,11 @@ private struct DepthAnythingPreviewRoomView: View {
     }
 
     private var saveRoomProgressOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.9)
-                .ignoresSafeArea()
-
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.2))
-                        .frame(width: 100, height: 100)
-
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 40))
-                        .foregroundColor(.green)
-                }
-
-                Text(saveProgressStatusText)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-
-                ProgressView(value: saveProgress)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                    .frame(width: 200)
-
-                Text("\(Int(saveProgress * 100))%")
-                    .font(.headline)
-                    .foregroundColor(.gray)
-            }
-        }
+        PaafektSavingRoomOverlay(
+            progress: saveProgress,
+            title: L10n.RoomViewer.savingRoom,
+            subtitle: saveProgressStatusText
+        )
     }
 
     private func handleBackTap() {
@@ -2054,14 +1994,14 @@ private struct DepthAnythingPreviewRoomView: View {
         guard !modelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
             saveAlertMessage = L10n.RoomViewer.duplicateRoomName
             saveWasSuccessful = false
-            showSaveAlert = true
+            showSaveErrorNotice = true
             return
         }
         let measurementImageURL = destination.measurementImageURL
         guard FileManager.default.fileExists(atPath: measurementImageURL.path) else {
             saveAlertMessage = L10n.RoomPreview.sourceImageUnavailable
             saveWasSuccessful = false
-            showSaveAlert = true
+            showSaveErrorNotice = true
             return
         }
         let photoOrientationRawValue = destination.photoOrientation.rawValue
@@ -2126,11 +2066,14 @@ private struct DepthAnythingPreviewRoomView: View {
                     withAnimation(.easeOut(duration: 0.3)) {
                         isSavingRoom = false
                     }
-                    saveAlertMessage = L10n.RoomViewer.saveSuccess(trimmedRoomName)
+                    saveSuccessSnackbarMessage = L10n.RoomViewer.saveSuccess(trimmedRoomName)
                     saveWasSuccessful = true
-                    showSaveAlert = true
+                    withAnimation { showSaveSuccessSnackbar = true }
                     roomName = ""
                     logDebug("✅ [DepthAnythingRoom] Saved room to \(savedURL.lastPathComponent)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -2139,7 +2082,7 @@ private struct DepthAnythingPreviewRoomView: View {
                     saveProgressStatusText = L10n.RoomViewer.savingRoomEllipsis
                     saveAlertMessage = error.localizedDescription
                     saveWasSuccessful = false
-                    showSaveAlert = true
+                    showSaveErrorNotice = true
                     logDebug("❌ [DepthAnythingRoom] Save failed: \(error.localizedDescription)")
                 }
             }
@@ -2454,39 +2397,10 @@ struct SinglePhotoRoomView: View {
             }
 
             if reconstructor.isProcessing {
-                VStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.orange.opacity(0.3), lineWidth: 8)
-                            .frame(width: 60, height: 60)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(reconstructor.progress))
-                            .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                            .frame(width: 60, height: 60)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
-                        Image(systemName: "cube.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.orange)
-                    }
-
-                    Text(reconstructor.statusMessage)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    Text("\(Int(reconstructor.progress * 100))%")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.orange)
-
-                    Text(L10n.PhotoRoom.buildingRoom)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(32)
-                .background(Color(.systemBackground).opacity(0.95))
-                .cornerRadius(16)
-                .shadow(radius: 10)
+                PaafektBuildingRoomOverlay(
+                    progress: Double(reconstructor.progress),
+                    statusMessage: reconstructor.statusMessage
+                )
             }
 
         }
@@ -3662,9 +3576,11 @@ struct SceneKitViewer: View {
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0.0
     @State private var savingTimer: Timer?
-    @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showSaveSuccessSnackbar = false
+    @State private var saveSuccessSnackbarMessage = ""
+    @State private var showSaveErrorNotice = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
 
@@ -3795,30 +3711,25 @@ struct SceneKitViewer: View {
                 }
             }
         }
-        // Room name input alert
-        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-            TextField(L10n.RoomViewer.roomName, text: $roomName)
-                .autocorrectionDisabled(true)
-            Button(L10n.Common.cancel, role: .cancel) {
-                roomName = ""
-            }
-            Button(L10n.Common.save) {
-                startSavingRoom()
-            }
-            .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        } message: {
-            Text(L10n.RoomViewer.enterName)
+        .sheet(isPresented: $showRoomNameInput) {
+            PaafektNameRoomSheet(
+                isPresented: $showRoomNameInput,
+                roomName: $roomName,
+                onSave: { startSavingRoom() }
+            )
         }
-        // Save result alert
-        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
-            Button(L10n.Common.ok, role: .cancel) {
-                if saveWasSuccessful {
-                    // Post notification to dismiss the entire photo room sheet
-                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-                }
+        .overlay {
+            if showSaveErrorNotice {
+                PaafektErrorNotice(isPresented: $showSaveErrorNotice, message: saveAlertMessage)
             }
-        } message: {
-            Text(saveAlertMessage)
+        }
+        .overlay(alignment: .bottom) {
+            if showSaveSuccessSnackbar {
+                PaafektRoomSavedSnackbar(
+                    message: saveSuccessSnackbarMessage,
+                    isShowing: $showSaveSuccessSnackbar
+                )
+            }
         }
         .onAppear {
             // Lock orientation based on photo orientation
@@ -3836,62 +3747,17 @@ struct SceneKitViewer: View {
 
     // MARK: - Save Room Progress Overlay
     private var saveRoomProgressOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.9)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 24) {
-                // Save icon with animation
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.2))
-                        .frame(width: 100, height: 100)
-                    
-                    Image(systemName: "square.and.arrow.down.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.green)
-                        .rotationEffect(.degrees(saveProgress < 0.5 ? 0 : 360))
-                        .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: saveProgress)
-                }
-                
-                VStack(spacing: 12) {
-                    Text(L10n.RoomViewer.savingRoom)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-
-                    Text(saveProgressMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                }
-                
-                // Progress bar
-                VStack(spacing: 8) {
-                    ProgressView(value: saveProgress, total: 1.0)
-                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                        .frame(width: 250)
-                    
-                    Text("\(Int(saveProgress * 100))%")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                
-                // Cancel button
-                Button(action: {
-                    cancelSavingRoom()
-                }) {
-                    Text(L10n.Common.cancel)
-                        .font(.body)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 12)
-                        .background(Color.red.opacity(0.8))
-                        .cornerRadius(25)
-                }
-                .padding(.top, 8)
+        PaafektSavingRoomOverlay(
+            progress: saveProgress,
+            title: L10n.RoomViewer.savingRoom,
+            subtitle: saveProgressMessage
+        )
+        .overlay(alignment: .bottom) {
+            Button(L10n.Common.cancel) {
+                cancelSavingRoom()
             }
+            .foregroundStyle(Theme.Palette.danger)
+            .padding(.bottom, Theme.Space.xxl)
         }
         .transition(.opacity)
     }
@@ -3922,7 +3788,7 @@ struct SceneKitViewer: View {
         if modelManager?.hasSavedRoomNameConflict(trimmedRoomName) == true {
             saveAlertMessage = L10n.RoomViewer.duplicateRoomName
             saveWasSuccessful = false
-            showSaveAlert = true
+            showSaveErrorNotice = true
             return
         }
 
@@ -3978,15 +3844,18 @@ struct SceneKitViewer: View {
                 // Show result based on actual save status
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     if saveSuccess {
-                        self.saveAlertMessage = L10n.RoomViewer.saveSuccess(savedName)
+                        self.saveSuccessSnackbarMessage = L10n.RoomViewer.saveSuccess(savedName)
                         self.saveWasSuccessful = true
-                        self.showSaveAlert = true
+                        withAnimation { self.showSaveSuccessSnackbar = true }
                         self.roomName = ""
                         logDebug("✅ [Viewer] Save complete!")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                        }
                     } else {
                         self.saveAlertMessage = L10n.RoomViewer.saveFailed(saveError ?? "Unknown error")
                         self.saveWasSuccessful = false
-                        self.showSaveAlert = true
+                        self.showSaveErrorNotice = true
                         logDebug("❌ [Viewer] Save failed!")
                     }
                 }

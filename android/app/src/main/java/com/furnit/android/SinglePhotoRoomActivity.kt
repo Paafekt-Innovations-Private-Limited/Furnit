@@ -1356,10 +1356,19 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
                 addView(TextView(this@SinglePhotoRoomActivity).apply {
                     text = getString(R.string.photo_room_building_room)
-                    textSize = 11f
-                    setTextColor(PaafektColors.textSecondary)
+                    textSize = 17f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(PaafektColors.textPrimary)
                     gravity = Gravity.CENTER
                     setPadding(0, (6 * density).toInt(), 0, 0)
+                })
+
+                addView(TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.photo_room_building_room_subtext)
+                    textSize = 13f
+                    setTextColor(PaafektColors.textSecondary)
+                    gravity = Gravity.CENTER
+                    setPadding(0, (8 * density).toInt(), 0, 0)
                 })
 
                 val ringFrame = FrameLayout(this@SinglePhotoRoomActivity).apply {

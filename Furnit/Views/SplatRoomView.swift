@@ -11,7 +11,7 @@ import simd
 private struct SplatRoomModalPauseToken: Equatable {
     var showRoomNameInput: Bool
     var isSavingRoom: Bool
-    var showSaveAlert: Bool
+    var showSaveErrorNotice: Bool
     var showDiscardUnsavedAlert: Bool
     var showCalibrationRejectAlert: Bool
     var showWallCalibration: Bool
@@ -216,9 +216,11 @@ struct SplatRoomView: View {
     @State private var savingTimer: Timer?
     @State private var roomMeasurementTask: Task<Void, Never>?
     @State private var backgroundRoomMeasurementTask: Task<Void, Never>?
-    @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showSaveSuccessSnackbar = false
+    @State private var saveSuccessSnackbarMessage = ""
+    @State private var showSaveErrorNotice = false
     @State private var showDiscardUnsavedAlert = false
     @State private var isDismissing = false
     @State private var showRoomNameInput = false
@@ -805,30 +807,30 @@ struct SplatRoomView: View {
 
     private var splatRoomAfterSaveRoomAlert: some View {
         splatRoomSheetAndLifecycleView
-            .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-                TextField(L10n.RoomViewer.roomName, text: $roomName)
-                    .autocorrectionDisabled(true)
-                Button(L10n.Common.cancel, role: .cancel) {
-                    roomName = ""
-                }
-                Button(L10n.Common.save) { startSavingRoom() }
-                    .disabled(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            } message: { Text(L10n.RoomViewer.enterName) }
+            .sheet(isPresented: $showRoomNameInput) {
+                PaafektNameRoomSheet(
+                    isPresented: $showRoomNameInput,
+                    roomName: $roomName,
+                    onSave: { startSavingRoom() }
+                )
+            }
     }
 
     private var splatRoomAfterSaveResultAlert: some View {
         splatRoomAfterSaveRoomAlert
-            .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
-                Button(L10n.Common.ok, role: .cancel) {
-                    if saveWasSuccessful {
-                        isDismissing = true
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            Thread.sleep(forTimeInterval: 0.1)
-                            DispatchQueue.main.async { NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil) }
-                        }
-                    }
+            .overlay {
+                if showSaveErrorNotice {
+                    PaafektErrorNotice(isPresented: $showSaveErrorNotice, message: saveAlertMessage)
                 }
-            } message: { Text(saveAlertMessage) }
+            }
+            .overlay(alignment: .bottom) {
+                if showSaveSuccessSnackbar {
+                    PaafektRoomSavedSnackbar(
+                        message: saveSuccessSnackbarMessage,
+                        isShowing: $showSaveSuccessSnackbar
+                    )
+                }
+            }
     }
 
     private var splatRoomAfterCalibrationRejectAlert: some View {
@@ -1529,7 +1531,7 @@ struct SplatRoomView: View {
         !showRoomNameInput &&
             !isSavingRoom &&
             !isMeasuringRoomDimensions &&
-            !showSaveAlert &&
+            !showSaveErrorNotice &&
             !showDiscardUnsavedAlert &&
             !showCalibrationRejectAlert &&
             !showWallCalibration &&
@@ -2256,40 +2258,17 @@ struct SplatRoomView: View {
 
     // MARK: - Save Room Progress Overlay
     private var saveRoomProgressOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.9)
-                .ignoresSafeArea()
-
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.2))
-                        .frame(width: 100, height: 100)
-
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 40))
-                        .foregroundColor(.green)
-                }
-
-                Text(saveProgressStatusText)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-
-                ProgressView(value: saveProgress)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                    .frame(width: 200)
-
-                Text("\(Int(saveProgress * 100))%")
-                    .font(.headline)
-                    .foregroundColor(.gray)
-
-                Button(L10n.Common.cancel) {
-                    cancelSavingRoom()
-                }
-                .foregroundColor(.red)
-                .padding(.top, 20)
+        PaafektSavingRoomOverlay(
+            progress: saveProgress,
+            title: saveProgressStatusText,
+            subtitle: saveOverlayRoomDimensionsLine
+        )
+        .overlay(alignment: .bottom) {
+            Button(L10n.Common.cancel) {
+                cancelSavingRoom()
             }
+            .foregroundStyle(Theme.Palette.danger)
+            .padding(.bottom, Theme.Space.xxl)
         }
     }
 
@@ -2343,7 +2322,7 @@ struct SplatRoomView: View {
         SplatRoomModalPauseToken(
             showRoomNameInput: showRoomNameInput,
             isSavingRoom: isSavingRoom,
-            showSaveAlert: showSaveAlert,
+            showSaveErrorNotice: showSaveErrorNotice,
             showDiscardUnsavedAlert: showDiscardUnsavedAlert,
             showCalibrationRejectAlert: showCalibrationRejectAlert,
             showWallCalibration: showWallCalibration,
@@ -2360,7 +2339,7 @@ struct SplatRoomView: View {
         let pause =
             showRoomNameInput ||
             isSavingRoom ||
-            showSaveAlert ||
+            showSaveErrorNotice ||
             showDiscardUnsavedAlert ||
             showCalibrationRejectAlert ||
             showWallCalibration ||
@@ -2377,7 +2356,7 @@ struct SplatRoomView: View {
         guard !modelManager.hasSavedRoomNameConflict(trimmedRoomName) else {
             saveAlertMessage = L10n.RoomViewer.duplicateRoomName
             saveWasSuccessful = false
-            showSaveAlert = true
+            showSaveErrorNotice = true
             return
         }
 
@@ -2494,13 +2473,18 @@ struct SplatRoomView: View {
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             if success {
-                                saveAlertMessage = L10n.RoomViewer.saveSuccess(savedName)
+                                saveSuccessSnackbarMessage = L10n.RoomViewer.saveSuccess(savedName)
                                 saveWasSuccessful = true
+                                withAnimation { showSaveSuccessSnackbar = true }
+                                isDismissing = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                                }
                             } else {
                                 saveAlertMessage = L10n.RoomViewer.saveFailed(error ?? L10n.RoomViewer.saveErrorUnknown)
                                 saveWasSuccessful = false
+                                showSaveErrorNotice = true
                             }
-                            showSaveAlert = true
                             roomName = ""
                         }
                         continuation.resume()

@@ -4,17 +4,11 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.view.Gravity
-import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.theme.PaafektScreenViews
 
-/**
- * In-app Licenses & Attributions screen.
- * Includes attributions for room generation, rendering, auth, and detection dependencies.
- */
 class LicensesActivity : AppCompatActivity() {
 
     private val urlMit = "https://opensource.org/licenses/MIT"
@@ -23,30 +17,11 @@ class LicensesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val scrollView = ScrollView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setPadding(24, 24, 24, 24)
-        }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val titleView = TextView(this).apply {
-            text = getString(R.string.licenses_title)
-            textSize = 20f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(android.graphics.Color.parseColor("#333333"))
-            setPadding(0, 0, 0, 24)
-        }
-        layout.addView(titleView)
+        val layout = PaafektScreenViews.createScreenColumn(this)
+        layout.addView(
+            PaafektScreenViews.createBackButton(this, "‹ ${getString(R.string.common_back)}") { finish() },
+        )
+        layout.addView(PaafektScreenViews.createScreenTitle(this, getString(R.string.licenses_title)))
 
         addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
         addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
@@ -56,15 +31,10 @@ class LicensesActivity : AppCompatActivity() {
         addSection(layout, getString(R.string.licenses_rtmdet_title), getString(R.string.licenses_rtmdet), licenseUrl = urlApache2)
         addSection(layout, getString(R.string.licenses_three_title), getString(R.string.licenses_three), licenseUrl = urlMit)
 
-        scrollView.addView(layout)
-        setContentView(scrollView)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        title = getString(R.string.licenses_title)
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
+        PaafektScreenViews.createScreenScrollView(this).apply {
+            addView(layout)
+            setContentView(this)
+        }
     }
 
     private fun addSection(
@@ -72,43 +42,30 @@ class LicensesActivity : AppCompatActivity() {
         title: String,
         body: String? = null,
         isBold: Boolean = false,
-        licenseUrl: String? = null
+        licenseUrl: String? = null,
     ) {
-        val section = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 20)
-        }
-        val titleView = TextView(this).apply {
-            text = title
-            textSize = 16f
-            setTypeface(null, if (isBold) Typeface.BOLD else Typeface.NORMAL)
-            setTextColor(android.graphics.Color.parseColor("#333333"))
-            setPadding(0, 0, 0, 6)
-        }
-        section.addView(titleView)
+        val card = PaafektScreenViews.createSectionCard(this)
+        card.addView(
+            TextView(this).apply {
+                text = title
+                textSize = 16f
+                setTypeface(null, if (isBold) Typeface.BOLD else Typeface.NORMAL)
+                setTextColor(com.furnit.android.theme.PaafektColors.textPrimary)
+            },
+        )
         if (!body.isNullOrEmpty()) {
-            val bodyView = TextView(this).apply {
-                text = body
-                textSize = 14f
-                setTextColor(android.graphics.Color.parseColor("#666666"))
-                setPadding(0, 0, 0, 0)
-            }
-            section.addView(bodyView)
+            card.addView(PaafektScreenViews.createSecondaryLabel(this, body))
         }
         if (!licenseUrl.isNullOrEmpty()) {
-            val linkView = TextView(this).apply {
-                text = getString(R.string.licenses_view_full_license)
-                textSize = 14f
-                setTextColor(android.graphics.Color.parseColor("#007AFF"))
-                setPadding(0, 6, 0, 0)
-                setOnClickListener {
+            card.addView(
+                PaafektScreenViews.createLinkLabel(this, getString(R.string.licenses_view_full_license)) {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(licenseUrl)))
-                    } catch (_: Exception) { }
-                }
-            }
-            section.addView(linkView)
+                    } catch (_: Exception) {
+                    }
+                },
+            )
         }
-        parent.addView(section)
+        parent.addView(card)
     }
 }

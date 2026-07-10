@@ -31,9 +31,11 @@ struct MeshRoomView: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var isSavingRoom = false
-    @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var showSaveSuccessSnackbar = false
+    @State private var saveSuccessSnackbarMessage = ""
+    @State private var showSaveErrorNotice = false
     @State private var showDiscardUnsavedAlert = false
 
     // Brain mode (furniture detection)
@@ -423,21 +425,25 @@ struct MeshRoomView: View {
 
     private var meshRoomWithSystemAlerts: some View {
         meshRoomAfterCalibrationObservers
-            .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
-                TextField("", text: $roomName, prompt: Text(L10n.RoomViewer.roomName))
-                    .autocorrectionDisabled(true)
-                Button(L10n.Common.cancel, role: .cancel) {
-                    roomName = ""
-                }
-                Button(L10n.Common.save) {
-                    requestGLBExport()
-                }
-                .disabled(roomName.isEmpty)
+            .sheet(isPresented: $showRoomNameInput) {
+                PaafektNameRoomSheet(
+                    isPresented: $showRoomNameInput,
+                    roomName: $roomName,
+                    onSave: { requestGLBExport() }
+                )
             }
-            .alert(L10n.RoomViewer.roomSavedAlertTitle, isPresented: $showSaveAlert) {
-                Button(L10n.Common.ok, role: .cancel) {}
-            } message: {
-                Text(saveAlertMessage)
+            .overlay {
+                if showSaveErrorNotice {
+                    PaafektErrorNotice(isPresented: $showSaveErrorNotice, message: saveAlertMessage)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if showSaveSuccessSnackbar {
+                    PaafektRoomSavedSnackbar(
+                        message: saveSuccessSnackbarMessage,
+                        isShowing: $showSaveSuccessSnackbar
+                    )
+                }
             }
             .alert(L10n.RoomPreview.unsavedTitle, isPresented: $showDiscardUnsavedAlert) {
                 Button(L10n.RoomPreview.stay, role: .cancel) {}
@@ -465,7 +471,8 @@ struct MeshRoomView: View {
     private var canPresentMeshRoomDimensionsAlert: Bool {
         !showRoomNameInput &&
             !isSavingRoom &&
-            !showSaveAlert &&
+            !showSaveSuccessSnackbar &&
+            !showSaveErrorNotice &&
             !showDiscardUnsavedAlert
     }
 
@@ -1478,7 +1485,7 @@ struct MeshRoomView: View {
                 DispatchQueue.main.async {
                     isSavingRoom = false
                     saveAlertMessage = L10n.RoomViewer.meshExportFailed
-                    showSaveAlert = true
+                    showSaveErrorNotice = true
                 }
             }
             // GLB data will come back via the message handler
@@ -1499,13 +1506,15 @@ struct MeshRoomView: View {
             saveWasSuccessful = success
 
             if success {
-                saveAlertMessage = L10n.RoomViewer.saveSuccess(roomName)
-                // Post notification to dismiss the sheet and refresh home view
-                NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                saveSuccessSnackbarMessage = L10n.RoomViewer.saveSuccess(roomName)
+                withAnimation { showSaveSuccessSnackbar = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                }
             } else {
                 saveAlertMessage = errorMessage ?? L10n.RoomViewer.meshSaveFailedGeneric
+                showSaveErrorNotice = true
             }
-            showSaveAlert = true
             roomName = ""
         }
     }

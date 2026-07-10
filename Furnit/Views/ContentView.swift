@@ -305,42 +305,40 @@ struct HomeTab: View {
             } message: {
                 Text(L10n.RoomLimit.message(limitManager.roomLimit))
             }
-            // Delete confirmation alert
-            .alert(L10n.DeleteRoom.title, isPresented: $showDeleteAlert) {
-                Button(L10n.Common.cancel, role: .cancel) {
-                    roomToDelete = nil
-                }
-                Button(L10n.Common.delete, role: .destructive) {
-                    if let room = roomToDelete {
-                        deleteRoom(room)
+            // Delete confirmation
+            .overlay {
+                if showDeleteAlert {
+                    PaafektDeleteRoomDialog(isPresented: $showDeleteAlert) {
+                        if let room = roomToDelete {
+                            deleteRoom(room)
+                        }
+                        roomToDelete = nil
                     }
                 }
-            } message: {
-                if let room = roomToDelete {
-                    Text(L10n.DeleteRoom.message(room.displayName))
-                }
             }
-            .alert(L10n.Home.renameRoom, isPresented: Binding(
+            .sheet(isPresented: Binding(
                 get: { renameTarget != nil },
                 set: { if !$0 { renameTarget = nil } }
             )) {
-                TextField(L10n.Home.roomNamePlaceholder, text: $renameDraft)
-                Button(L10n.Common.cancel, role: .cancel) {
-                    renameTarget = nil
-                }
-                Button(L10n.Common.save) {
-                    if let room = renameTarget {
-                        do {
-                            try modelManager.updateDisplayName(for: room, newName: renameDraft)
-                        } catch {
-                            renameErrorMessage = error.localizedDescription
-                            showRenameErrorAlert = true
+                PaafektNameRoomSheet(
+                    isPresented: Binding(
+                        get: { renameTarget != nil },
+                        set: { if !$0 { renameTarget = nil } }
+                    ),
+                    roomName: $renameDraft,
+                    title: L10n.RoomViewer.nameYourRoom,
+                    onSave: {
+                        if let room = renameTarget {
+                            do {
+                                try modelManager.updateDisplayName(for: room, newName: renameDraft)
+                            } catch {
+                                renameErrorMessage = error.localizedDescription
+                                showRenameErrorAlert = true
+                            }
                         }
+                        renameTarget = nil
                     }
-                    renameTarget = nil
-                }
-            } message: {
-                Text(L10n.Home.renameRoomMessage)
+                )
             }
             .alert("Rename Failed", isPresented: $showRenameErrorAlert) {
                 Button(L10n.Common.ok, role: .cancel) { }
