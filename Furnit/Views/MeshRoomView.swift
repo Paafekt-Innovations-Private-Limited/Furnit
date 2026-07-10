@@ -286,6 +286,10 @@ struct MeshRoomView: View {
             )
             .ignoresSafeArea()
             .allowsHitTesting(!isLoading)
+            .paafektImmersiveRoomSummonTap(
+                chrome: immersiveChrome,
+                enabled: !(showingFurnitureFit && showFullVideoWithIdentifications)
+            )
 
             meshRoomLoadingOverlay
             meshRoomSavingOverlay
@@ -1040,7 +1044,6 @@ struct MeshRoomView: View {
                 }
             },
             measurementText: meshRestingMeasurementPillText,
-            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
             hideForCapture: false
         ) {
             PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {

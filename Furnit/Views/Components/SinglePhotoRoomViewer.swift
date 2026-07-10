@@ -1306,6 +1306,11 @@ private struct DepthAnythingPreviewRoomView: View {
                 .zIndex(9000)
             }
         }
+        .paafektImmersiveRoomSummonTap(
+            chrome: immersiveChrome,
+            enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isSavingRoom || isCapturingSnapshot
+        )
     }
 
     var body: some View {
@@ -1430,7 +1435,6 @@ private struct DepthAnythingPreviewRoomView: View {
             chrome: immersiveChrome,
             onBack: handleBackTap,
             measurementText: previewRestingMeasurementPillText,
-            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
             hideForCapture: isSavingRoom || isCapturingSnapshot
         ) {
             PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {

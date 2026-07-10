@@ -925,6 +925,11 @@ struct SplatRoomView: View {
                 metalSplatterZoom = 1.0
             }
         }
+        .paafektImmersiveRoomSummonTap(
+            chrome: immersiveChrome,
+            enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isCapturingSnapshot
+        )
     }
 
     private func logSplatRoomDimensionApproaches(metalBounds _: RoomBounds) {
@@ -1142,7 +1147,6 @@ struct SplatRoomView: View {
             chrome: immersiveChrome,
             onBack: handleSplatRoomBackTap,
             measurementText: splatRestingMeasurementPillText,
-            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
             hideForCapture: isCapturingSnapshot
         ) {
             PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {

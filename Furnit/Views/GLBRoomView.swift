@@ -459,6 +459,10 @@ struct GLBRoomView: View {
             )
             .ignoresSafeArea()
             .allowsHitTesting(!isLoading)
+            .paafektImmersiveRoomSummonTap(
+                chrome: immersiveChrome,
+                enabled: !(showingFurnitureFit && showFullVideoWithIdentifications)
+            )
 
             glbRoomLoadingOverlay
             glbRoomErrorOverlay
@@ -1164,7 +1168,6 @@ struct GLBRoomView: View {
                 }
             },
             measurementText: glbRestingMeasurementPillText,
-            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
             hideForCapture: false
         ) {
             PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {

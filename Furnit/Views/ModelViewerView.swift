@@ -213,6 +213,11 @@ struct ModelViewerView: View {
             furnitureHeightEstimateOverlay
             Color.clear
         }
+        .paafektImmersiveRoomSummonTap(
+            chrome: immersiveChrome,
+            enabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isCapturingSnapshot
+        )
     }
 
     private var fullVideoFurnitureTapBubbleOverlay: some View {
@@ -345,7 +350,6 @@ struct ModelViewerView: View {
                 }
             },
             measurementText: modelViewerRestingMeasurementPillText,
-            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
             hideForCapture: isCapturingSnapshot
         ) {
             PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {

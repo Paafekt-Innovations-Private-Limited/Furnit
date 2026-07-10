@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // MARK: - Immersive viewer chrome (resting ↔ summoned)
 
@@ -181,54 +180,45 @@ struct PaafektImmersiveCompactHeroAction: View {
     }
 }
 
-// MARK: - Tap-to-summon (passthrough — does not block drag/pinch on the room)
+// MARK: - Tap-to-summon on room content (does not block orbit/pinch)
 
-/// UIKit tap recognizer with `cancelsTouchesInView = false` so WebGL/RealityKit gestures keep working.
-struct PaafektImmersiveRoomTapToSummonOverlay: UIViewRepresentable {
+/// Single-finger tap on the room layer summons chrome while resting; pinch/pan stay on the viewer below.
+struct PaafektImmersiveRoomSummonTapModifier: ViewModifier {
     @ObservedObject var chrome: PaafektViewerChromeController
     var enabled: Bool
+    var hideForCapture: Bool
 
-    func makeUIView(context: Context) -> PassthroughSummonTapView {
-        let view = PassthroughSummonTapView()
-        view.onTap = { chrome.summon() }
-        return view
-    }
-
-    func updateUIView(_ uiView: PassthroughSummonTapView, context: Context) {
-        uiView.isUserInteractionEnabled = enabled && chrome.isResting
-        uiView.onTap = { chrome.summon() }
-    }
-}
-
-final class PassthroughSummonTapView: UIView, UIGestureRecognizerDelegate {
-    var onTap: (() -> Void)?
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isMultipleTouchEnabled = false
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        tap.cancelsTouchesInView = false
-        tap.delegate = self
-        addGestureRecognizer(tap)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
-
-    @objc private func handleTap() {
-        onTap?()
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        true
+    func body(content: Content) -> some View {
+        if enabled, !hideForCapture {
+            content.simultaneousGesture(
+                TapGesture().onEnded {
+                    guard chrome.isResting else { return }
+                    chrome.summon()
+                }
+            )
+        } else {
+            content
+        }
     }
 }
 
-// MARK: - Tap-to-toggle layer (legacy — prefer passthrough summon overlay)
+extension View {
+    func paafektImmersiveRoomSummonTap(
+        chrome: PaafektViewerChromeController,
+        enabled: Bool = true,
+        hideForCapture: Bool = false
+    ) -> some View {
+        modifier(
+            PaafektImmersiveRoomSummonTapModifier(
+                chrome: chrome,
+                enabled: enabled,
+                hideForCapture: hideForCapture
+            )
+        )
+    }
+}
+
+// MARK: - Tap-to-toggle layer (legacy — prefer paafektImmersiveRoomSummonTap on room content)
 
 struct PaafektImmersiveTapToggleLayer: View {
     @ObservedObject var chrome: PaafektViewerChromeController
@@ -254,18 +244,12 @@ struct PaafektImmersiveViewerChromeStack<SummonedToolbar: View, SummonedExtras: 
 
     let onBack: () -> Void
     var measurementText: String? = nil
-    var tapToSummonEnabled: Bool = true
     var hideForCapture: Bool = false
     @ViewBuilder let summonedToolbar: () -> SummonedToolbar
     @ViewBuilder let summonedExtras: () -> SummonedExtras
 
     var body: some View {
         ZStack {
-            PaafektImmersiveRoomTapToSummonOverlay(
-                chrome: chrome,
-                enabled: tapToSummonEnabled && !hideForCapture
-            )
-
             VStack {
                 HStack {
                     PaafektImmersiveFaintBackButton(action: onBack)
