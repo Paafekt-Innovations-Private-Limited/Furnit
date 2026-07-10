@@ -91,10 +91,6 @@ class ModelDetailActivity : AppCompatActivity() {
     private var unsavedPreviewActive = false
     private lateinit var previewBackCallback: OnBackPressedCallback
 
-    // Touch-anywhere drag for camera control
-    private var lastTouchX = 0f
-    private var lastTouchY = 0f
-    private var isDragging = false
     private var glbPath: String? = null
     private var currentModelId: String? = null
     private var currentModelNode: ModelNode? = null
@@ -145,7 +141,6 @@ class ModelDetailActivity : AppCompatActivity() {
         // Help — accessible from long-press on toolbar tap icon if needed; hide legacy bar.
         helpButton.visibility = View.GONE
 
-        // Touch overlay is handled via dispatchTouchEvent override
         updateOrientationLabel()
 
         viewerRootLayout.post {
@@ -265,7 +260,7 @@ class ModelDetailActivity : AppCompatActivity() {
         immersiveTapDetector = GestureDetector(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapUp(e: MotionEvent): Boolean {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                     if (immersiveChrome.phase == PaafektImmersiveChromeController.Phase.RESTING) {
                         immersiveChrome.summon()
                     }
@@ -273,10 +268,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 }
             },
         )
-        findViewById<View>(R.id.touchOverlay).setOnTouchListener { _, event ->
-            immersiveTapDetector.onTouchEvent(event)
-            false
-        }
+        installSceneViewTapToSummon()
 
         immersiveChrome.onPhaseChanged = { refreshImmersiveChromeVisibility() }
         refreshImmersiveChromeVisibility(animate = false)
@@ -284,6 +276,8 @@ class ModelDetailActivity : AppCompatActivity() {
 
     private fun createImmersiveRestingChrome(): FrameLayout {
         return FrameLayout(this).apply {
+            isClickable = false
+            isFocusable = false
             val back = PaafektViewerToolbar.createFloatingBackButton(this@ModelDetailActivity) {
                 handleViewerBack()
             }.apply {
@@ -340,7 +334,51 @@ class ModelDetailActivity : AppCompatActivity() {
                     marginEnd = PaafektSpace.lg(this@ModelDetailActivity)
                 },
             )
+            installRestingChromeTouchPassthrough(this)
         }
+    }
+
+    /** SceneView/Filament: non-consuming tap detector; camera gestures stay on SceneView. */
+    private fun installSceneViewTapToSummon() {
+        sceneView.setOnTouchListener { _, event ->
+            if (immersiveChrome.phase == PaafektImmersiveChromeController.Phase.RESTING) {
+                immersiveTapDetector.onTouchEvent(event)
+            }
+            false
+        }
+    }
+
+    /** Forward drags/pinches through resting chrome to SceneView; buttons keep their clicks. */
+    private fun installRestingChromeTouchPassthrough(overlay: FrameLayout) {
+        overlay.setOnTouchListener { _, event ->
+            if (immersiveChrome.phase == PaafektImmersiveChromeController.Phase.RESTING) {
+                immersiveTapDetector.onTouchEvent(event)
+                if (!isTouchOnRestingChromeControl(overlay, event)) {
+                    sceneView.dispatchTouchEvent(event)
+                }
+            }
+            false
+        }
+    }
+
+    private fun isTouchOnRestingChromeControl(overlay: FrameLayout, event: MotionEvent): Boolean {
+        for (index in 0 until overlay.childCount) {
+            val child = overlay.getChildAt(index)
+            if (child.visibility != View.VISIBLE) continue
+            if (!child.isClickable && !child.isFocusable) continue
+            val locationOnScreen = IntArray(2)
+            child.getLocationOnScreen(locationOnScreen)
+            val touchX = event.rawX
+            val touchY = event.rawY
+            if (touchX >= locationOnScreen[0] &&
+                touchX < locationOnScreen[0] + child.width &&
+                touchY >= locationOnScreen[1] &&
+                touchY < locationOnScreen[1] + child.height
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun restingMeasurementPillText(): String {
@@ -758,47 +796,6 @@ class ModelDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleCameraDrag(event: MotionEvent) {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                lastTouchX = event.x
-                lastTouchY = event.y
-                isDragging = true
-                LogUtil.d(TAG, "Touch DOWN at ($lastTouchX, $lastTouchY)")
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (isDragging) {
-                    val deltaX = event.x - lastTouchX
-                    val deltaY = event.y - lastTouchY
-
-                    // Convert screen pixels to camera movement
-                    // Negative because dragging right should move camera left (pan effect)
-                    val sensitivity = 0.02f
-                    val camera = sceneView.cameraNode
-                    val position = camera.position
-
-                    val newX = position.x - deltaX * sensitivity
-                    val newZ = position.z - deltaY * sensitivity
-
-                    LogUtil.d(TAG, "Touch MOVE delta=($deltaX, $deltaY) -> camera ($newX, ${position.y}, $newZ)")
-
-                    camera.position = io.github.sceneview.math.Position(
-                        newX,
-                        position.y,
-                        newZ
-                    )
-
-                    lastTouchX = event.x
-                    lastTouchY = event.y
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isDragging = false
-                LogUtil.d(TAG, "Touch UP")
-            }
-        }
-    }
-
     private fun updateOrientationLabel() {
         val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val subtitleView = findViewById<TextView>(R.id.orientationSubtitle)
@@ -1026,23 +1023,4 @@ class ModelDetailActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        immersiveTapDetector.onTouchEvent(event)
-        // Handle camera drag for touches not on buttons
-        val touchOverlay = findViewById<View>(R.id.touchOverlay)
-        if (touchOverlay != null) {
-            val topBarBottom = if (summonedTopChrome.visibility == View.VISIBLE) summonedTopChrome.bottom else 0
-            val bottomControlsTop = if (summonedBottomChrome.visibility == View.VISIBLE) {
-                summonedBottomChrome.top
-            } else {
-                Int.MAX_VALUE
-            }
-
-            if (event.y > topBarBottom && event.y < bottomControlsTop) {
-                handleCameraDrag(event)
-            }
-        }
-
-        return super.dispatchTouchEvent(event)
-    }
 }
