@@ -395,8 +395,14 @@
 "roomViewer.calibrateWall" = "Calibrate Wall";
 "roomViewer.recenterView" = "Recenter View";
 "roomViewer.resetOverlayScale" = "Reset Overlay Scale";
-"roomViewer.pinchGestureHintAccessibility" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
-"roomViewer.pinchGestureHintExplanation" = "Pinch to zoom. With Furniture Fit on, pinch resizes the overlay.";
+"roomViewer.pinchGestureHintAccessibility" = "Drag to look around · pinch to zoom";
+"roomViewer.pinchGestureHintExplanation" = "Drag to look around · pinch to zoom";
+"roomViewer.navigationTeachingHint" = "Drag to look around · pinch to zoom";
+"roomViewer.firstRunCoachMarkTitle" = "Explore your room in 3D";
+"roomViewer.firstRunCoachMarkBody" = "Add furniture, measure, and save views.\nDrag to look around, pinch to zoom.";
+"roomViewer.firstRunGotIt" = "Got it";
+"roomViewer.heroFitFurniture" = "Fit Furniture";
+"roomViewer.heroCapture" = "Capture";
 "roomViewer.brainGestureHintExplanation" = "Tap 🧠 to identify furniture";
 "roomViewer.fullVideoFurnitureTapHint" = "Tap all objects which you want to check with room";
 "roomGeneration.runInBackground" = "Run in Background";

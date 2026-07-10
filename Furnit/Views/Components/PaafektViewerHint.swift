@@ -135,29 +135,120 @@ struct PaafektBottomScrimHint<Content: View>: View {
     }
 }
 
-// MARK: - First-run coach mark variant
+// MARK: - First-run coach mark (centered card over dimmed room)
 
-/// Glass chip plus a gold "Got it" dismiss button for explicit first-run acknowledgement.
-struct PaafektHintCoachMark: View {
-    let systemImage: String
-    let text: String
+enum PaafektViewerOnboarding {
+    static let firstRunCoachSeenKey = "paafekt_viewer_first_run_coach_seen"
+}
+
+/// Centered card over a dimmed scrim — one-time first open acknowledgement.
+struct PaafektViewerFirstRunCoachMark: View {
+    let title: String
+    let bodyText: String
     let confirmTitle: String
     let onConfirm: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            PaafektHintChip(systemImage: systemImage, text: text)
+        ZStack {
+            Theme.Palette.background.opacity(0.72)
+                .ignoresSafeArea()
 
-            Button(action: onConfirm) {
-                Text(confirmTitle)
-                    .font(Theme.Typo.headline())
-                    .foregroundStyle(Theme.Palette.accentText)
-                    .padding(.horizontal, Theme.Space.lg)
-                    .padding(.vertical, Theme.Space.sm)
-                    .background(Capsule().fill(Theme.Palette.accent))
+            VStack(spacing: Theme.Space.lg) {
+                Image("PaafektMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 56, height: 56)
+                    .foregroundStyle(Theme.Palette.accent)
+
+                Text(title)
+                    .font(Theme.Typo.title())
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text(bodyText)
+                    .font(Theme.Typo.body())
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: onConfirm) {
+                    Text(confirmTitle)
+                        .font(Theme.Typo.headline())
+                        .foregroundStyle(Theme.Palette.accentText)
+                        .padding(.horizontal, Theme.Space.xxl)
+                        .padding(.vertical, Theme.Space.md)
+                        .background(Capsule().fill(Theme.Palette.accent))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(confirmTitle)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(confirmTitle)
+            .padding(Theme.Space.xl)
+            .frame(maxWidth: 340)
+            .paafektCardSurface()
+            .padding(.horizontal, Theme.Space.xl)
         }
+    }
+}
+
+/// First-run coach mark + transient navigation teaching chip (shared across room viewers).
+struct PaafektViewerOnboardingLayer: View {
+    @AppStorage(PaafektViewerOnboarding.firstRunCoachSeenKey) private var seenFirstRunCoach = false
+    @State private var navigationTeachingVisible = false
+    @State private var navigationTeachingDismissTask: Task<Void, Never>?
+    let isReady: Bool
+
+    var body: some View {
+        ZStack {
+            if isReady, !seenFirstRunCoach {
+                PaafektViewerFirstRunCoachMark(
+                    title: L10n.RoomViewer.firstRunCoachMarkTitle,
+                    bodyText: L10n.RoomViewer.firstRunCoachMarkBody,
+                    confirmTitle: L10n.RoomViewer.firstRunGotIt,
+                    onConfirm: dismissFirstRunCoachMark
+                )
+                .transition(.opacity)
+            }
+
+            paafektBottomToolbarHintOverlay(
+                isVisible: isReady && seenFirstRunCoach && navigationTeachingVisible,
+                bottomInset: 120
+            ) {
+                PaafektHintChip(
+                    systemImage: "hand.draw.fill",
+                    text: L10n.RoomViewer.navigationTeachingHint
+                )
+                .transition(.opacity)
+            }
+        }
+        .onChange(of: isReady) { _, ready in
+            if ready, seenFirstRunCoach {
+                restartNavigationTeachingHint()
+            }
+        }
+        .onDisappear {
+            cancelNavigationTeachingHint()
+        }
+    }
+
+    private func dismissFirstRunCoachMark() {
+        seenFirstRunCoach = true
+        restartNavigationTeachingHint()
+    }
+
+    private func restartNavigationTeachingHint() {
+        cancelNavigationTeachingHint()
+        navigationTeachingVisible = true
+        navigationTeachingDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            guard !Task.isCancelled else { return }
+            navigationTeachingVisible = false
+        }
+    }
+
+    private func cancelNavigationTeachingHint() {
+        navigationTeachingDismissTask?.cancel()
+        navigationTeachingDismissTask = nil
+        navigationTeachingVisible = false
     }
 }

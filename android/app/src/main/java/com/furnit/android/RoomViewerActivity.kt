@@ -8,7 +8,9 @@ import android.graphics.Typeface
 import android.os.Bundle
 import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
+import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.MotionEvent
@@ -48,6 +50,7 @@ class RoomViewerActivity : AppCompatActivity() {
     private val imageMatrix = Matrix()
     private lateinit var rootLayout: FrameLayout
     private lateinit var hintController: PaafektHintController
+    private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -384,14 +387,17 @@ class RoomViewerActivity : AppCompatActivity() {
         )
 
         hintController = PaafektHintController(rootLayout)
+        firstRunCoachController = PaafektFirstRunCoachMarkController(rootLayout)
         setContentView(rootLayout)
 
         rootLayout.post {
-            hintController.show(
-                this,
-                R.drawable.ic_gesture_pinch,
-                R.string.room_viewer_pinch_hint,
-            )
+            firstRunCoachController.showIfNeeded(this) {
+                hintController.showBottomCentered(
+                    this,
+                    R.drawable.ic_gesture_pinch,
+                    R.string.room_viewer_navigation_teaching_hint,
+                )
+            }
         }
     }
 }

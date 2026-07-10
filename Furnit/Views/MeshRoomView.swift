@@ -200,6 +200,7 @@ struct MeshRoomView: View {
         if !isLoading {
             cameraButtonsOverlay
             topTrailingPinchTapAndSizingHintsOverlay
+            navigationTeachingHintBottomOverlay
         }
     }
 
@@ -312,6 +313,9 @@ struct MeshRoomView: View {
             fullVideoToolbarHelperOverlay
             meshRoomCalibrationGateOverlay
             meshRoomOrientationControls
+            PaafektViewerOnboardingLayer(isReady: !isLoading)
+                .zIndex(100_000)
+                .allowsHitTesting(true)
         }
     }
 
@@ -375,7 +379,6 @@ struct MeshRoomView: View {
             cancelARSizingHintTasks()
             cancelRoomDimensionsHintTasks()
         } else {
-            restartPinchGestureHint()
             restartBrainGestureHint()
             restartSnapshotGestureHint()
         }
@@ -855,34 +858,35 @@ struct MeshRoomView: View {
         .zIndex(106)
     }
 
-    /// Optional pinch / AR sizing hint copy sits below the top toolbar row when visible.
+    /// Optional AR sizing hint copy sits below the top toolbar row when visible.
     private var topTrailingPinchTapAndSizingHintsOverlay: some View {
-        paafektTopToolbarHintOverlay {
-            VStack(spacing: 6) {
-                if pinchHintExplanationVisible {
-                    PaafektHintChip(
-                        systemImage: "hand.pinch.fill",
-                        text: L10n.RoomViewer.pinchGestureHintExplanation
-                    )
-                    .transition(.opacity)
-                }
-                if canOfferBrainArAssist, arSizingHintExplanationVisible,
-                   showingFurnitureFit || arSizingHintRequiresBrain {
-                    PaafektHintChip(
-                        systemImage: "arrow.up.left.and.arrow.down.right",
-                        text: arSizingHintText,
-                        maxWidth: 220
-                    )
-                    .transition(.opacity)
-                }
-            }
+        paafektTopToolbarHintOverlay(
+            isVisible: canOfferBrainArAssist && arSizingHintExplanationVisible
+                && (showingFurnitureFit || arSizingHintRequiresBrain)
+        ) {
+            PaafektHintChip(
+                systemImage: "arrow.up.left.and.arrow.down.right",
+                text: arSizingHintText,
+                maxWidth: 220
+            )
+            .transition(.opacity)
         }
         .zIndex(101)
-        .onAppear { restartPinchGestureHint() }
         .onDisappear {
             cancelPinchHintTasks()
             cancelARSizingHintTasks()
         }
+    }
+
+    private var navigationTeachingHintBottomOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: pinchHintExplanationVisible) {
+            PaafektHintChip(
+                systemImage: "hand.draw.fill",
+                text: L10n.RoomViewer.navigationTeachingHint
+            )
+            .transition(.opacity)
+        }
+        .zIndex(101)
     }
 
     private var roomDimensionsHintOverlay: some View {
@@ -1131,32 +1135,52 @@ struct MeshRoomView: View {
         .zIndex(102)
     }
 
-    private var brainButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconAI",
-            isActive: showingFurnitureFit,
-            isDisabled: isLoading,
-            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
-            action: {
-                if showingFurnitureFit {
-                    dismissFullVideoFurnitureTapHint()
-                    cancelFullVideoSelectionHelper()
-                    showingFurnitureFit = false
-                } else {
-                    showFullVideoWithIdentifications = false
-                    furnitureFitInitialSegmentationDone = false
-                    // Brain default: auto-segment the highest-confidence detection (no tap needed).
-                    // The tap-to-select flow lives behind the full-video toolbar button.
-                    furnitureFitSegmentationMode = .segmentPrimary
-                    furnitureFitShowIdentifyLivePreview = true
-                    selectedFurnitureFitLabels = []
-                    showingFurnitureFit = true
-                    presentFullVideoSelectionHelperIfNeeded()
+    private var meshRoomBottomHeroChrome: some View {
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 10) {
+                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                    furnitureMeasurementPillContent(showTapHint: false)
                 }
+                segmentButton
+                meshViewerHeroActionsBar
             }
-        )
-        .frame(width: 76, height: 76)
+            if showingFurnitureFit {
+                roomIntelligencePlacementCardResetOnExit
+                    .padding(.bottom, 56)
+            }
+        }
+        .padding(.horizontal, Theme.Space.lg)
     }
+
+    private var meshViewerHeroActionsBar: some View {
+        PaafektViewerHeroActionsBar(
+            fitActive: showingFurnitureFit,
+            fitDisabled: isLoading,
+            captureDisabled: isLoading,
+            onFit: toggleMeshFurnitureFit,
+            onCapture: { takeScreenshot() }
+        )
+    }
+
+    private func toggleMeshFurnitureFit() {
+        if showingFurnitureFit {
+            dismissFullVideoFurnitureTapHint()
+            cancelFullVideoSelectionHelper()
+            showingFurnitureFit = false
+        } else {
+            showFullVideoWithIdentifications = false
+            furnitureFitInitialSegmentationDone = false
+            furnitureFitSegmentationMode = .segmentPrimary
+            furnitureFitShowIdentifyLivePreview = true
+            selectedFurnitureFitLabels = []
+            showingFurnitureFit = true
+            presentFullVideoSelectionHelperIfNeeded()
+        }
+    }
+
+    private var brainButtonWithHintAbove: some View { EmptyView() }
+
+    private var snapshotButtonWithHintAbove: some View { EmptyView() }
 
     private func displayAllGestureHelpers() {
         restartPinchGestureHint()
@@ -1188,16 +1212,6 @@ struct MeshRoomView: View {
         guard canSegmentSelectedFurniture else { return }
         furnitureFitSegmentationMode = .segmentSelected
         dismissFullVideoFurnitureTapHint()
-    }
-
-    private var snapshotButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconSnapshot",
-            isDisabled: isLoading,
-            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
-            action: { takeScreenshot() }
-        )
-        .frame(width: 76, height: 76)
     }
 
     private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {
@@ -1445,32 +1459,9 @@ struct MeshRoomView: View {
             .cornerRadius(8)
             .padding(.bottom, 12)
 
-            // Bottom controls: keep placement intelligence centered and below the height pill.
-            ZStack(alignment: .bottom) {
-                HStack {
-                    VStack(spacing: 10) {
-                        brainButtonWithHintAbove
-                    }
-                    .padding(.leading, 16)
-                    segmentButton
-                        .padding(.leading, 10)
-
-                    Spacer()
-
-                    VStack(spacing: 10) {
-                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                            furnitureMeasurementPillContent(showTapHint: false)
-                        }
-                        snapshotButtonWithHintAbove
-                    }
-                        .padding(.trailing, 16)
-                }
-                if showingFurnitureFit {
-                    roomIntelligencePlacementCardResetOnExit
-                        .padding(.bottom, 20)
-                }
-            }
-            .padding(.bottom, 20)
+            // Bottom controls: hero actions + placement intelligence overlay.
+            meshRoomBottomHeroChrome
+                .padding(.bottom, 20)
         }
         .zIndex(99998)
     }
@@ -1480,45 +1471,26 @@ struct MeshRoomView: View {
         VStack {
             Spacer()
 
-            // Horizontal bottom bar
-            HStack(spacing: 20) {
-                VStack(spacing: 10) {
-                    brainButtonWithHintAbove
-                }
-                segmentButton
-                if showingFurnitureFit {
-                    roomIntelligencePlacementCardResetOnExit
-                }
-
-                // Orientation label
-                HStack(spacing: 6) {
-                    Image(systemName: "iphone.landscape")
-                        .font(.caption)
-                    Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                        .font(.caption2)
-                    Text("-")
-                        .font(.caption2)
-                    Text(NSLocalizedString("orientation.landscape", comment: ""))
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                }
-                .foregroundColor(.white.opacity(0.9))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.5))
-                .cornerRadius(8)
-
-                Spacer()
-
-                VStack(spacing: 10) {
-                    if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                        furnitureMeasurementPillContent(showTapHint: false)
-                    }
-                    snapshotButtonWithHintAbove
-                }
+            HStack(spacing: 6) {
+                Image(systemName: "iphone.landscape")
+                    .font(.caption)
+                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
+                    .font(.caption2)
+                Text("-")
+                    .font(.caption2)
+                Text(NSLocalizedString("orientation.landscape", comment: ""))
+                    .font(.caption2)
+                    .fontWeight(.medium)
             }
-            .padding(.horizontal, 30)
-            .padding(.bottom, 20)
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.5))
+            .cornerRadius(8)
+            .padding(.bottom, 12)
+
+            meshRoomBottomHeroChrome
+                .padding(.bottom, 20)
         }
         .zIndex(99997)
     }

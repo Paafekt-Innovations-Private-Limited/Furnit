@@ -50,6 +50,12 @@ object PaafektDrawables {
         setColor(PaafektColors.accent)
     }
 
+    fun heroButton(isActive: Boolean = false): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = 999f
+        setColor(if (isActive) PaafektColors.accentPressed else PaafektColors.accent)
+    }
+
     fun secondaryButton(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = PaafektDimens.radiusControlDp

@@ -371,6 +371,12 @@ enum L10n {
         static let recenterView = "roomViewer.recenterView".localized
         static let resetOverlayScale = "roomViewer.resetOverlayScale".localized
         static let pinchGestureHintExplanation = "roomViewer.pinchGestureHintExplanation".localized
+        static let navigationTeachingHint = "roomViewer.navigationTeachingHint".localized
+        static let firstRunCoachMarkTitle = "roomViewer.firstRunCoachMarkTitle".localized
+        static let firstRunCoachMarkBody = "roomViewer.firstRunCoachMarkBody".localized
+        static let firstRunGotIt = "roomViewer.firstRunGotIt".localized
+        static let heroFitFurniture = "roomViewer.heroFitFurniture".localized
+        static let heroCapture = "roomViewer.heroCapture".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
         /// Shown at the top when full-video identifications are on and furniture fit starts; dismissed when Segment is tapped or furniture fit exits.
         static let fullVideoFurnitureTapHint = "roomViewer.fullVideoFurnitureTapHint".localized

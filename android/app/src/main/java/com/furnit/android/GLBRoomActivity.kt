@@ -15,7 +15,9 @@ import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
 import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
+import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -90,6 +92,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var brainProgressLabel: TextView
     private lateinit var brainProgressBar: ProgressBar
     private lateinit var hintController: PaafektHintController
+    private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private var boundPreview: Preview? = null
@@ -97,7 +100,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private val isBrainInferenceRunning = AtomicBoolean(false)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
-    private var brainButton: ImageButton? = null
+    private var brainButton: LinearLayout? = null
     private var brainSegmentButton: TextView? = null
     private var brainFullVideoButton: ImageButton? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
@@ -238,6 +241,7 @@ class GLBRoomActivity : AppCompatActivity() {
         ).apply { gravity = Gravity.TOP })
 
         hintController = PaafektHintController(rootLayout)
+        firstRunCoachController = PaafektFirstRunCoachMarkController(rootLayout)
 
         // Top-left camera D-pad (same handlers as iOS GLBRoomView / ModelViewerView).
         cameraDpadOverlay = createCameraDPadOverlay()
@@ -316,11 +320,13 @@ class GLBRoomActivity : AppCompatActivity() {
         ensureNavigationChromeOnTop()
 
         rootLayout.post {
-            hintController.show(
-                this,
-                R.drawable.ic_gesture_pinch,
-                R.string.room_viewer_pinch_hint,
-            )
+            firstRunCoachController.showIfNeeded(this) {
+                hintController.showBottomCentered(
+                    this,
+                    R.drawable.ic_gesture_pinch,
+                    R.string.room_viewer_navigation_teaching_hint,
+                )
+            }
         }
 
         // Load the WebGL viewer
@@ -341,6 +347,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainFullVideoButton?.takeIf { it.visibility == View.VISIBLE }?.let { rootLayout.bringChildToFront(it) }
         rootLayout.bringChildToFront(topBar)
         hintController.bringToFront()
+        firstRunCoachController.bringToFront()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -424,11 +431,15 @@ class GLBRoomActivity : AppCompatActivity() {
 
             principalControls.addView(createToolbarIconButton(R.drawable.ic_ruler) { showRoomDimensionsDialog() })
             principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_pinch) {
-                hintController.toggle(
-                    this@GLBRoomActivity,
-                    R.drawable.ic_gesture_pinch,
-                    R.string.room_viewer_pinch_hint,
-                )
+                if (hintController.isVisible) {
+                    hintController.hide()
+                } else {
+                    hintController.showBottomCentered(
+                        this@GLBRoomActivity,
+                        R.drawable.ic_gesture_pinch,
+                        R.string.room_viewer_navigation_teaching_hint,
+                    )
+                }
             })
             principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_tap) {
                 hintController.toggle(
@@ -541,67 +552,88 @@ class GLBRoomActivity : AppCompatActivity() {
         return FrameLayout(this).apply {
             setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
 
-            // Left: AI / Furniture Fit button
-            val brainBtn = createBottomIconButton(R.drawable.ic_ai, isActive = false) {
-                toggleInlineBrainSegmentation()
+            val column = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.BOTTOM
+                    bottomMargin = dpToPx(20)
+                }
             }
-            brainBtn.layoutParams = FrameLayout.LayoutParams(dpToPx(44), dpToPx(44)).apply {
-                gravity = Gravity.START or Gravity.BOTTOM
-                bottomMargin = dpToPx(20)
-            }
-            brainButton = brainBtn
-            addView(brainBtn)
 
-            // Center: Orientation label
+            val isLandscape = photoOrientation == "landscape"
             val orientationLabel = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
+                background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(8).toFloat()
                     setColor(Color.parseColor("#80000000"))
                 }
-                background = bg
                 setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(4))
-                layoutParams = FrameLayout.LayoutParams(
+                layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
+                    bottomMargin = dpToPx(12)
                 }
 
-                val isLandscape = photoOrientation == "landscape"
-                val line1 = TextView(this@GLBRoomActivity).apply {
+                addView(TextView(this@GLBRoomActivity).apply {
                     text = if (isLandscape) "held horizontally" else "held vertically"
                     textSize = 12f
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
-                }
-                addView(line1)
-
-                val line2 = TextView(this@GLBRoomActivity).apply {
+                })
+                addView(TextView(this@GLBRoomActivity).apply {
                     text = if (isLandscape) "Landscape" else "Portrait"
                     textSize = 14f
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
-                }
-                addView(line2)
+                })
             }
-            addView(orientationLabel)
+            column.addView(orientationLabel)
 
-            // Right: Snapshot button
-            val cameraBtn = createBottomIconButton(R.drawable.ic_snapshot) {
-                takeScreenshot()
-            }.apply {
-                val size = dpToPx(44)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.END or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
-                }
+            val heroRow = LinearLayout(this@GLBRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
             }
-            addView(cameraBtn)
+
+            val fitBtn = PaafektHintViews.createHeroButton(
+                this@GLBRoomActivity,
+                R.drawable.ic_ai,
+                getString(R.string.room_viewer_hero_fit_furniture),
+                isActive = false,
+            ) {
+                toggleInlineBrainSegmentation()
+            }
+            fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dpToPx(6)
+            }
+            brainButton = fitBtn
+            heroRow.addView(fitBtn)
+
+            val captureBtn = PaafektHintViews.createHeroButton(
+                this@GLBRoomActivity,
+                R.drawable.ic_snapshot,
+                getString(R.string.room_viewer_hero_capture),
+            ) {
+                takeScreenshot()
+            }
+            captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dpToPx(6)
+            }
+            heroRow.addView(captureBtn)
+
+            column.addView(heroRow)
+            addView(column)
         }
     }
 
@@ -1095,9 +1127,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun setBrainButtonActive(active: Boolean) {
-        brainButton?.imageTintList = ColorStateList.valueOf(
-            if (active) com.furnit.android.theme.PaafektColors.accent else Color.WHITE,
-        )
+        brainButton?.background = PaafektDrawables.heroButton(active)
     }
 
     private fun createLoadingOverlay(): FrameLayout {

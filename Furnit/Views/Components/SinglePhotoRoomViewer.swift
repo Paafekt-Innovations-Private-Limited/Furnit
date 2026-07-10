@@ -1368,8 +1368,10 @@ private struct DepthAnythingPreviewRoomView: View {
                     saveRoomProgressOverlay
                 }
 
-                previewBrainAndPlacementChrome
-                previewSnapshotChrome
+                previewBottomHeroChrome
+                PaafektViewerOnboardingLayer(isReady: !isSavingRoom)
+                    .zIndex(100_000)
+                    .allowsHitTesting(true)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -1530,22 +1532,18 @@ private struct DepthAnythingPreviewRoomView: View {
         previewCameraOffset.height += dy
     }
 
-    private var previewBrainAndPlacementChrome: some View {
+    private var previewBottomHeroChrome: some View {
         VStack {
             Spacer()
             ZStack(alignment: .bottom) {
-                HStack(alignment: .bottom) {
-                    HStack(alignment: .bottom, spacing: 10) {
-                        previewBrainButton
-                        previewSegmentModeToggleChrome
-                    }
-                    .padding(.leading, 16)
-                    Spacer()
+                VStack(spacing: 10) {
+                    previewSegmentModeToggleChrome
+                    previewHeroActionsBar
                 }
                 previewRoomIntelligencePlacementCardResetOnExit
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 0)
+                    .padding(.bottom, 56)
             }
+            .padding(.horizontal, Theme.Space.lg)
             .padding(.bottom, 20)
         }
         .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
@@ -1553,39 +1551,13 @@ private struct DepthAnythingPreviewRoomView: View {
         .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
     }
 
-    private var previewSnapshotChrome: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                previewSnapshotButton
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 20)
-            }
-        }
-        .opacity(isSavingRoom || isCapturingSnapshot ? 0 : 1)
-        .zIndex(99_996)
-        .allowsHitTesting(!isSavingRoom && !isCapturingSnapshot)
-    }
-
-    private var previewBrainButton: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconAI",
-            isActive: showingFurnitureFit,
-            accessibilityLabel: L10n.RoomViewer.segmentFurnitureAccessibility,
-            action: togglePreviewFurnitureFit
+    private var previewHeroActionsBar: some View {
+        PaafektViewerHeroActionsBar(
+            fitActive: showingFurnitureFit,
+            captureDisabled: isCapturingSnapshot || isSavingRoom,
+            onFit: togglePreviewFurnitureFit,
+            onCapture: savePreviewSnapshot
         )
-        .frame(width: 76, height: 76)
-    }
-
-    private var previewSnapshotButton: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconSnapshot",
-            isDisabled: isCapturingSnapshot,
-            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
-            action: savePreviewSnapshot
-        )
-        .frame(width: 76, height: 76)
     }
 
     private var previewFullVideoModeFloatingButton: some View {

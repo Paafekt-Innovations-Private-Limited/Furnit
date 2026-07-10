@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/viewerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
@@ -125,12 +126,13 @@
         android:clipChildren="false"
         android:elevation="8dp">
 
-        <!-- Brain icon (left) for FurnitureFit -->
+        <!-- Brain icon (left) for FurnitureFit — replaced at runtime by hero row -->
         <ImageButton
             android:id="@+id/brainButton"
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_gravity="start|bottom"
+            android:visibility="gone"
             android:src="@drawable/ic_ai"
             android:background="@drawable/circle_button_blue"
             android:scaleType="centerInside"
@@ -147,13 +149,14 @@
             android:orientation="vertical"
             android:gravity="center">
 
-            <!-- Drag hint -->
+            <!-- Drag hint (transient chip replaces this at runtime) -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/model_detail_drag_camera"
+                android:text="@string/room_viewer_navigation_teaching_hint"
                 android:textSize="12sp"
                 android:textColor="#AAFFFFFF"
+                android:visibility="gone"
                 android:shadowColor="#000000"
                 android:shadowDx="1"
                 android:shadowDy="1"
@@ -192,12 +195,13 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Camera/Screenshot icon (right) -->
+        <!-- Camera/Screenshot icon (right) — replaced at runtime by hero row -->
         <ImageButton
             android:id="@+id/screenshotButton"
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_gravity="end|bottom"
+            android:visibility="gone"
             android:src="@drawable/ic_snapshot"
             android:background="@drawable/circle_button_blue"
             android:scaleType="centerInside"

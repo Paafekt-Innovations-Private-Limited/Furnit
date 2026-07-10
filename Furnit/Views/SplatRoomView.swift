@@ -1211,50 +1211,49 @@ struct SplatRoomView: View {
 
     private var brainGestureHintScreenOverlay: some View {
         paafektBottomToolbarHintOverlay(isVisible: isHintVisible(.brainIdentify)) {
-            Group {
-                if forceShowHints {
-                    PaafektHintCoachMark(
-                        systemImage: "brain.head.profile",
-                        text: L10n.RoomViewer.brainGestureHintExplanation,
-                        confirmTitle: L10n.Common.ok,
-                        onConfirm: { markOnboardingHintSeen(.brainIdentify) }
-                    )
-                } else {
-                    PaafektHintChip(
-                        assetImage: "PaafektIconAI",
-                        text: L10n.RoomViewer.brainGestureHintExplanation,
-                        maxWidth: 220
-                    )
-                }
-            }
+            PaafektHintChip(
+                assetImage: "PaafektIconAI",
+                text: L10n.RoomViewer.brainGestureHintExplanation,
+                maxWidth: 220
+            )
             .transition(.opacity)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(102)
     }
 
-    @ViewBuilder
-    private var brainButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconAI",
-            isActive: showingFurnitureFit,
-            isDisabled: isLoading,
-            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
-            action: toggleFurnitureFit
+    private var splatRoomBottomHeroChrome: some View {
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 10) {
+                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                    furnitureMeasurementPillContent(showTapHint: false)
+                }
+                segmentButton
+                splatViewerHeroActionsBar
+            }
+            if showingFurnitureFit {
+                roomIntelligencePlacementCardResetOnExit
+                    .padding(.bottom, 56)
+            }
+        }
+        .padding(.horizontal, Theme.Space.lg)
+    }
+
+    private var splatViewerHeroActionsBar: some View {
+        PaafektViewerHeroActionsBar(
+            fitActive: showingFurnitureFit,
+            fitDisabled: isLoading,
+            captureDisabled: isLoading,
+            onFit: toggleFurnitureFit,
+            onCapture: { takeScreenshot() }
         )
-        .frame(width: 76, height: 76)
     }
 
     @ViewBuilder
-    private var snapshotButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconSnapshot",
-            isDisabled: isLoading,
-            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
-            action: { takeScreenshot() }
-        )
-        .frame(width: 76, height: 76)
-    }
+    private var brainButtonWithHintAbove: some View { EmptyView() }
+
+    @ViewBuilder
+    private var snapshotButtonWithHintAbove: some View { EmptyView() }
 
     @ViewBuilder
     private var segmentButton: some View {
@@ -2034,24 +2033,8 @@ struct SplatRoomView: View {
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
-                HStack(alignment: .bottom, spacing: 16) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        brainButtonWithHintAbove
-                    }
-                    segmentButton
-                    Spacer().allowsHitTesting(false)
-                    VStack(alignment: .trailing, spacing: 10) {
-                        if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                            furnitureMeasurementPillContent(showTapHint: false)
-                        }
-                        snapshotButtonWithHintAbove
-                    }
-                }
-                .padding(.horizontal, 30).padding(.bottom, 20)
-                if showingFurnitureFit {
-                    roomIntelligencePlacementCardResetOnExit
-                        .padding(.bottom, 40)
-                }
+                splatRoomBottomHeroChrome
+                    .padding(.bottom, 20)
             }
             .opacity(isCapturingSnapshot ? 0 : 1)
             .zIndex(99997)
@@ -2067,29 +2050,8 @@ struct SplatRoomView: View {
                 .background(Color.black.opacity(0.4)).cornerRadius(6)
                 .padding(.bottom, 12)
                 .allowsHitTesting(false)
-                ZStack(alignment: .bottom) {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        HStack(alignment: .bottom, spacing: 8) {
-                            brainButtonWithHintAbove
-                        }
-                            .padding(.leading, 16)
-                        segmentButton
-                            .padding(.leading, 10)
-                        Spacer(minLength: 4)
-                        VStack(spacing: 8) {
-                            if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
-                                furnitureMeasurementPillContent(showTapHint: false)
-                            }
-                            snapshotButtonWithHintAbove
-                        }
-                        .padding(.trailing, 16)
-                    }
-                    if showingFurnitureFit {
-                        roomIntelligencePlacementCardResetOnExit
-                            .padding(.bottom, 20)
-                    }
-                }
-                .padding(.bottom, 20)
+                splatRoomBottomHeroChrome
+                    .padding(.bottom, 20)
             }
             .opacity(isCapturingSnapshot ? 0 : 1)
             .zIndex(99998)
@@ -2120,6 +2082,9 @@ struct SplatRoomView: View {
                 wallCalibrationOverlay
             }
             bottomBarsOverlayView
+            PaafektViewerOnboardingLayer(isReady: !isLoading)
+                .zIndex(100_000)
+                .allowsHitTesting(true)
         }
     }
 

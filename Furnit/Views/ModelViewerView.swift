@@ -305,41 +305,32 @@ struct ModelViewerView: View {
         }
     }
 
-    private var modelViewerBrainAndPlacementChrome: some View {
+    private var modelViewerBottomHeroChrome: some View {
         VStack {
             Spacer()
             ZStack(alignment: .bottom) {
-                HStack(alignment: .bottom) {
-                    HStack(alignment: .bottom, spacing: 10) {
-                        brainButtonWithHintAbove
-                        segmentModeToggleChrome
-                    }
-                    .padding(.leading, 16)
-                    Spacer()
+                VStack(spacing: 10) {
+                    segmentModeToggleChrome
+                    viewerHeroActionsBar
                 }
                 roomIntelligencePlacementCardResetOnExit
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 0)
+                    .padding(.bottom, 56)
             }
+            .padding(.horizontal, Theme.Space.lg)
             .padding(.bottom, 20)
         }
         .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(99998) // SECOND HIGHEST Z-INDEX
+        .zIndex(99998)
         .allowsHitTesting(true)
     }
 
-    private var modelViewerSnapshotChrome: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                snapshotButtonWithHintAbove
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 20)
-            }
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(99996)
+    private var viewerHeroActionsBar: some View {
+        PaafektViewerHeroActionsBar(
+            fitActive: showingFurnitureFit,
+            captureDisabled: isCapturingSnapshot,
+            onFit: toggleFurnitureFit,
+            onCapture: saveFurnitureFitSnapshot
+        )
     }
 
     private var modelViewerInteractiveStack: some View {
@@ -349,13 +340,16 @@ struct ModelViewerView: View {
             modelViewerRoomDimensionsHintLayer
             fullVideoToolbarHelperOverlay
             topTrailingPinchAndSizingHintsOverlay
+            navigationTeachingHintBottomOverlay
             brainGestureHintScreenOverlay
             snapshotGestureHintScreenOverlay
             fullVideoFurnitureTapBubbleOverlay
             fullVideoModeFloatingButtonOverlay
             modelViewerTopChromeLayer
-            modelViewerBrainAndPlacementChrome
-            modelViewerSnapshotChrome
+            modelViewerBottomHeroChrome
+            PaafektViewerOnboardingLayer(isReady: true)
+                .zIndex(100_000)
+                .allowsHitTesting(true)
         }
     }
 
@@ -464,7 +458,6 @@ struct ModelViewerView: View {
             rtmdetService.ensureModelLoaded()
             restartBrainGestureHint()
             restartSnapshotGestureHint()
-            restartPinchGestureHint()
             updateRoomPlacementIntelligence()
             presentFullVideoSelectionHelperIfNeeded()
         } else {
@@ -521,7 +514,6 @@ struct ModelViewerView: View {
         }
         restartBrainGestureHint()
         restartSnapshotGestureHint()
-        restartPinchGestureHint()
     }
 
     private func modelViewerPerformOnDisappear() {
@@ -724,24 +716,24 @@ struct ModelViewerView: View {
     }
 
     private var topTrailingPinchAndSizingHintsOverlay: some View {
-        paafektTopToolbarHintOverlay {
-            VStack(spacing: 6) {
-                if pinchHintExplanationVisible {
-                    PaafektHintChip(
-                        systemImage: "hand.pinch.fill",
-                        text: L10n.RoomViewer.pinchGestureHintExplanation
-                    )
-                    .transition(.opacity)
-                }
-                if arSizingHintExplanationVisible, showingFurnitureFit || arSizingHintRequiresBrain {
-                    PaafektHintChip(
-                        systemImage: "arrow.up.left.and.arrow.down.right",
-                        text: arSizingHintText,
-                        maxWidth: 220
-                    )
-                    .transition(.opacity)
-                }
-            }
+        paafektTopToolbarHintOverlay(isVisible: arSizingHintExplanationVisible && (showingFurnitureFit || arSizingHintRequiresBrain)) {
+            PaafektHintChip(
+                systemImage: "arrow.up.left.and.arrow.down.right",
+                text: arSizingHintText,
+                maxWidth: 220
+            )
+            .transition(.opacity)
+        }
+        .zIndex(101)
+    }
+
+    private var navigationTeachingHintBottomOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: pinchHintExplanationVisible) {
+            PaafektHintChip(
+                systemImage: "hand.draw.fill",
+                text: L10n.RoomViewer.navigationTeachingHint
+            )
+            .transition(.opacity)
         }
         .zIndex(101)
     }
@@ -770,25 +762,9 @@ struct ModelViewerView: View {
         .zIndex(102)
     }
 
-    private var brainButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconAI",
-            isActive: showingFurnitureFit,
-            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
-            action: toggleFurnitureFit
-        )
-        .frame(width: 76, height: 76)
-    }
+    private var brainButtonWithHintAbove: some View { EmptyView() }
 
-    private var snapshotButtonWithHintAbove: some View {
-        PaafektViewerBottomActionButton(
-            assetName: "PaafektIconSnapshot",
-            isDisabled: isCapturingSnapshot,
-            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
-            action: saveFurnitureFitSnapshot
-        )
-        .frame(width: 76, height: 76)
-    }
+    private var snapshotButtonWithHintAbove: some View { EmptyView() }
 
     private var pinchHintAccessibilityLabel: String {
         L10n.RoomViewer.pinchGestureHintExplanation + " " + L10n.RoomViewer.gestureHintToggleAccessibility

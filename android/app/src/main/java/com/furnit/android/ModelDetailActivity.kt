@@ -25,8 +25,14 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import android.view.ViewGroup
+import android.view.Gravity
 import android.view.MotionEvent
 import com.furnit.android.models.ModelManager
+import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektFirstRunCoachMarkController
+import com.furnit.android.theme.PaafektHintController
+import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
@@ -61,6 +67,11 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var screenshotButton: ImageButton
     private lateinit var orientationLabel: LinearLayout
     private lateinit var boundaryManager: RoomBoundaryManager
+    private lateinit var viewerRootLayout: FrameLayout
+    private lateinit var hintController: PaafektHintController
+    private lateinit var firstRunCoachController: PaafektFirstRunCoachMarkController
+    private var heroFitButton: LinearLayout? = null
+    private var heroFitAction: () -> Unit = {}
     private var isPreviewMode = false
     /** True while showing an on-disk GLB preview that has not been saved to the library yet. */
     private var unsavedPreviewActive = false
@@ -97,6 +108,10 @@ class ModelDetailActivity : AppCompatActivity() {
         brainButton = findViewById(R.id.brainButton)
         screenshotButton = findViewById(R.id.screenshotButton)
         orientationLabel = findViewById(R.id.orientationLabel)
+        viewerRootLayout = findViewById(R.id.viewerRoot)
+        hintController = PaafektHintController(viewerRootLayout)
+        firstRunCoachController = PaafektFirstRunCoachMarkController(viewerRootLayout)
+        installHeroBottomControls()
 
         previewBackCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
@@ -117,15 +132,22 @@ class ModelDetailActivity : AppCompatActivity() {
         // Help button
         helpButton.setOnClickListener { showHelpDialog() }
 
-        // Screenshot button
-        screenshotButton.setOnClickListener { takeScreenshot() }
-
         // Touch overlay is handled via dispatchTouchEvent override
 
         // Update orientation label based on device orientation
         updateOrientationLabel()
 
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
+
+        viewerRootLayout.post {
+            firstRunCoachController.showIfNeeded(this) {
+                hintController.showBottomCentered(
+                    this,
+                    R.drawable.ic_gesture_pinch,
+                    R.string.room_viewer_navigation_teaching_hint,
+                )
+            }
+        }
 
         // Check for direct GLB path first (for preview mode)
         val directGlbPath = intent.getStringExtra(EXTRA_GLB_PATH)
@@ -144,19 +166,14 @@ class ModelDetailActivity : AppCompatActivity() {
             shareButton.visibility = View.GONE
 
             // Brain button prompts to save first in preview mode
-            brainButton.visibility = View.VISIBLE
-            brainButton.setOnClickListener {
+            brainButton.visibility = View.GONE
+            heroFitAction = {
                 LogUtil.d(TAG, "Brain button clicked in preview mode")
                 Toast.makeText(this, getString(R.string.model_detail_save_first), Toast.LENGTH_SHORT).show()
             }
 
             // Screenshot works in preview mode
-            screenshotButton.visibility = View.VISIBLE
-            screenshotButton.setOnClickListener {
-                LogUtil.d(TAG, "Screenshot button clicked in preview mode")
-                Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
-                takeScreenshot()
-            }
+            screenshotButton.visibility = View.GONE
 
             // Verify file exists before loading
             val glbFile = File(directGlbPath)
@@ -187,16 +204,14 @@ class ModelDetailActivity : AppCompatActivity() {
             shareButton.setOnClickListener { shareRoom() }
 
             // Brain button launches FurnitureFit segmentation with this room as background
-            brainButton.visibility = View.VISIBLE
-            brainButton.setOnClickListener {
+            brainButton.visibility = View.GONE
+            heroFitAction = {
                 val roomFolder = java.io.File(model.assetPath).let { f ->
                     if (f.isFile) f.parent else f.absolutePath
                 }
                 val defaultRoomWidth = model.roomWidth ?: RoomDefaults.widthMeters(this)
                 val defaultRoomHeight = model.roomHeight ?: RoomDefaults.heightMeters(this)
                 val defaultRoomDepth = model.roomDepth ?: RoomDefaults.depthMeters(this)
-                // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
-                // Bundled assets (bundled_rooms/vintage.glb) use a relative asset path — no room folder; omit ROOM_FOLDER to use ROOM_ID.
                 val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
                 LogUtil.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
                 val intent = Intent(this, FurnitureFitActivity::class.java)
@@ -212,6 +227,53 @@ class ModelDetailActivity : AppCompatActivity() {
 
             loadModel(model.assetPath, model.roomWidth, model.roomHeight, model.roomDepth)
         }
+    }
+
+    private fun installHeroBottomControls() {
+        brainButton.visibility = View.GONE
+        screenshotButton.visibility = View.GONE
+
+        val bottomContainer = findViewById<FrameLayout>(R.id.bottomControlsContainer)
+        val heroRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        val fitBtn = PaafektHintViews.createHeroButton(
+            this,
+            R.drawable.ic_ai,
+            getString(R.string.room_viewer_hero_fit_furniture),
+        ) {
+            heroFitAction()
+        }
+        fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginEnd = (6 * resources.displayMetrics.density).toInt()
+        }
+        heroFitButton = fitBtn
+        heroRow.addView(fitBtn)
+
+        val captureBtn = PaafektHintViews.createHeroButton(
+            this,
+            R.drawable.ic_snapshot,
+            getString(R.string.room_viewer_hero_capture),
+        ) {
+            Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
+            takeScreenshot()
+        }
+        captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = (6 * resources.displayMetrics.density).toInt()
+        }
+        heroRow.addView(captureBtn)
+
+        bottomContainer.addView(
+            heroRow,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.BOTTOM
+            },
+        )
     }
 
     private fun showHelpDialog() {
