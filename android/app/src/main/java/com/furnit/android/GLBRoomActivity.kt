@@ -14,9 +14,11 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.CrashReporter
+import com.furnit.android.theme.PaafektColors
 import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
+import com.furnit.android.theme.PaafektImmersiveChromeController
 import com.furnit.android.theme.PaafektHintViews
 import com.furnit.android.theme.PaafektSpace
 import com.furnit.android.theme.PaafektViewerToolbar
@@ -24,6 +26,7 @@ import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -87,6 +90,9 @@ class GLBRoomActivity : AppCompatActivity() {
     private lateinit var topBar: FrameLayout
     private lateinit var cameraDpadOverlay: FrameLayout
     private lateinit var bottomControls: FrameLayout
+    private lateinit var immersiveRestingChrome: FrameLayout
+    private val immersiveChrome = PaafektImmersiveChromeController()
+    private lateinit var immersiveTapDetector: GestureDetector
     private lateinit var brainDetectionOverlay: FrameLayout
     private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     private lateinit var brainCameraPreview: PreviewView
@@ -213,6 +219,24 @@ class GLBRoomActivity : AppCompatActivity() {
 
             // Add JavaScript interface for communication
             addJavascriptInterface(WebAppInterface(), "Android")
+
+            immersiveTapDetector = GestureDetector(
+                this@GLBRoomActivity,
+                object : GestureDetector.SimpleOnGestureListener() {
+                    override fun onSingleTapUp(e: MotionEvent): Boolean {
+                        if (immersiveChrome.phase == PaafektImmersiveChromeController.Phase.RESTING
+                            && !(inlineBrainFullVideoEnabled && inlineBrainMode == InlineBrainMode.IDENTIFY)
+                        ) {
+                            immersiveChrome.summon()
+                        }
+                        return false
+                    }
+                },
+            )
+            setOnTouchListener { _, event ->
+                immersiveTapDetector.onTouchEvent(event)
+                false
+            }
         }
         rootLayout.addView(webView, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -247,22 +271,28 @@ class GLBRoomActivity : AppCompatActivity() {
         hintController = PaafektHintController(rootLayout)
         firstRunCoachController = PaafektFirstRunCoachMarkController(rootLayout)
 
-        // Top-left camera D-pad (same handlers as iOS GLBRoomView / ModelViewerView).
-        cameraDpadOverlay = createCameraDPadOverlay()
+        // Gesture navigation only — no on-screen d-pad (immersive-first).
+        cameraDpadOverlay = FrameLayout(this)
+        cameraDpadOverlay.visibility = View.GONE
+
+        // Bottom controls (summoned chrome)
+        bottomControls = createBottomControls()
+        rootLayout.addView(bottomControls, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM })
+
+        immersiveRestingChrome = createImmersiveRestingChrome()
         rootLayout.addView(
-            cameraDpadOverlay,
+            immersiveRestingChrome,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
 
-        // Bottom controls
-        bottomControls = createBottomControls()
-        rootLayout.addView(bottomControls, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.BOTTOM })
+        immersiveChrome.onPhaseChanged = { refreshImmersiveChromeVisibility() }
+        refreshImmersiveChromeVisibility(animate = false)
 
         // Loading overlay
         loadingOverlay = createLoadingOverlay()
@@ -337,14 +367,94 @@ class GLBRoomActivity : AppCompatActivity() {
         loadWebGLViewer()
     }
 
-    /** Keep back / title / recenter / D-pad / bottom brain+camera above the WebView and brain overlay. */
+    private fun createImmersiveRestingChrome(): FrameLayout {
+        return FrameLayout(this).apply {
+            val back = PaafektViewerToolbar.createFloatingBackButton(this@GLBRoomActivity) {
+                handleBackNavigation()
+            }.apply {
+                alpha = 0.55f
+                contentDescription = getString(R.string.photo_room_back)
+            }
+            addView(
+                back,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.START or Gravity.TOP
+                    topMargin = PaafektSpace.viewerTopInset(this@GLBRoomActivity)
+                    marginStart = PaafektSpace.lg(this@GLBRoomActivity)
+                },
+            )
+
+            val measurementPill = TextView(this@GLBRoomActivity).apply {
+                text = restingMeasurementPillText()
+                textSize = 12f
+                setTextColor(PaafektColors.textSecondary)
+                setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+                background = PaafektDrawables.hintChip()
+            }
+            addView(
+                measurementPill,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                    bottomMargin = dpToPx(72)
+                },
+            )
+
+            val summonGold = ImageButton(this@GLBRoomActivity).apply {
+                setImageResource(R.drawable.ic_chevron_up)
+                imageTintList = ColorStateList.valueOf(PaafektColors.accentText)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(PaafektColors.accent)
+                }
+                contentDescription = getString(R.string.room_viewer_immersive_show_controls)
+                setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+                setOnClickListener { immersiveChrome.summon() }
+            }
+            addView(
+                summonGold,
+                FrameLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
+                    gravity = Gravity.END or Gravity.BOTTOM
+                    bottomMargin = PaafektSpace.viewerBottomInset(this@GLBRoomActivity) + dpToPx(8)
+                    marginEnd = PaafektSpace.lg(this@GLBRoomActivity)
+                },
+            )
+        }
+    }
+
+    private fun restingMeasurementPillText(): String {
+        return String.format("%.1f m × %.1f m", roomWidth, roomDepth)
+    }
+
+    private fun refreshImmersiveChromeVisibility(animate: Boolean = true) {
+        if (!::immersiveRestingChrome.isInitialized) return
+        immersiveChrome.applyPhase(
+            this,
+            restingViews = listOf(immersiveRestingChrome),
+            summonedViews = listOf(topBar, bottomControls),
+            animate = animate,
+        )
+        updateInlineBrainSegmentButton()
+        ensureNavigationChromeOnTop()
+    }
+
+    /** Keep back / title / recenter / bottom brain+camera above the WebView and brain overlay. */
     private fun ensureNavigationChromeOnTop() {
         topBar.elevation = 40f
-        cameraDpadOverlay.elevation = 39f
         brainFullVideoButton?.elevation = 38f
         bottomControls.elevation = 37f
+        if (::immersiveRestingChrome.isInitialized) {
+            immersiveRestingChrome.elevation = 36f
+        }
         rootLayout.bringChildToFront(bottomControls)
-        rootLayout.bringChildToFront(cameraDpadOverlay)
+        if (::immersiveRestingChrome.isInitialized) {
+            rootLayout.bringChildToFront(immersiveRestingChrome)
+        }
         if (::brainProgressOverlay.isInitialized && brainProgressOverlay.visibility == View.VISIBLE) {
             rootLayout.bringChildToFront(brainProgressOverlay)
         }
@@ -612,6 +722,16 @@ class GLBRoomActivity : AppCompatActivity() {
                 }
             }
 
+            val tapToHide = TextView(this@GLBRoomActivity).apply {
+                text = getString(R.string.room_viewer_immersive_tap_to_hide)
+                textSize = 11f
+                setTextColor(PaafektColors.textSecondary)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, PaafektSpace.sm(this@GLBRoomActivity))
+                setOnClickListener { immersiveChrome.immerse() }
+            }
+            column.addView(tapToHide)
+
             val heroRow = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -627,6 +747,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 getString(R.string.room_viewer_hero_fit_furniture),
                 isActive = false,
             ) {
+                immersiveChrome.noteChromeInteraction()
                 toggleInlineBrainSegmentation()
             }
             fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -640,6 +761,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 R.drawable.ic_snapshot,
                 getString(R.string.room_viewer_hero_capture),
             ) {
+                immersiveChrome.noteChromeInteraction()
                 takeScreenshot()
             }
             captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -932,6 +1054,10 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun updateInlineBrainSegmentButton() {
         val button = brainSegmentButton ?: return
         if (!inlineBrainFullVideoEnabled || brainDetectionOverlay.visibility != View.VISIBLE) {
+            button.visibility = View.GONE
+            return
+        }
+        if (immersiveChrome.phase != PaafektImmersiveChromeController.Phase.SUMMONED) {
             button.visibility = View.GONE
             return
         }
@@ -1301,16 +1427,20 @@ class GLBRoomActivity : AppCompatActivity() {
 
         // Orbit controls - matching iOS settings exactly
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.rotateSpeed = 3.0;     // Fast rotation for touch
+        controls.enableDamping = false;
+        controls.rotateSpeed = 0.7;
         controls.zoomSpeed = 2.5;       // Fast zoom
         controls.enableZoom = true;
-        controls.enablePan = false;
+        controls.enablePan = true;
+        controls.panSpeed = 1.5;
         controls.minDistance = 0.5;
         controls.maxDistance = 20;
+        controls.touches = {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+        };
 
-        let initialCameraPosition = null;
+        // D-pad removed from UI; moveCamera still used if needed — two-finger pan covers walk-through.
         let initialControlsTarget = null;
         let roomBoundsForClamping = null;
         let isFlatPhotoMesh = false;
@@ -1756,6 +1886,7 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        immersiveChrome.destroy()
         stopInlineBrainSegmentation()
         furnitureFitManager?.close()
         furnitureFitManager = null

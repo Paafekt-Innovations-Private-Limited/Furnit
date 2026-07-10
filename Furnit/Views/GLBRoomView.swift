@@ -274,6 +274,7 @@ struct GLBRoomView: View {
     @State private var arSizingHintRequiresBrain = false
     @State private var roomDimensionsHintVisible = false
     @State private var roomDimensionsHintHideTask: Task<Void, Never>?
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
     @State private var showFullVideoWithIdentifications = false
     @State private var fullVideoFurnitureTapHintVisible = false
     @State private var fullVideoSelectionHelperVisible = false
@@ -370,8 +371,7 @@ struct GLBRoomView: View {
 
     @ViewBuilder
     private var glbRoomCameraChromeWhenReady: some View {
-        if !isLoading {
-            cameraButtonsOverlay
+        if !isLoading, immersiveChrome.isSummoned {
             topTrailingPinchTapAndSizingHintsOverlay
             navigationTeachingHintBottomOverlay
         }
@@ -470,13 +470,15 @@ struct GLBRoomView: View {
             glbFurnitureFitCameraOverlay
 
             roomDimensionsHintOverlay
-            fullVideoFurnitureTapHintOverlay
-            brainGestureHintScreenOverlay
-            snapshotGestureHintScreenOverlay
-            fullVideoModeFloatingButtonOverlay
-            fullVideoToolbarHelperOverlay
+            if immersiveChrome.isSummoned {
+                fullVideoFurnitureTapHintOverlay
+                brainGestureHintScreenOverlay
+                snapshotGestureHintScreenOverlay
+                fullVideoModeFloatingButtonOverlay
+                fullVideoToolbarHelperOverlay
+            }
             glbRoomCalibrationGateOverlay
-            glbRoomOrientationControls
+            glbImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(isReady: !isLoading)
                 .zIndex(100_000)
                 .allowsHitTesting(true)
@@ -489,26 +491,7 @@ struct GLBRoomView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        if savedRoomModel == nil {
-                            showDiscardUnsavedAlert = true
-                        } else {
-                            dismiss()
-                        }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel(L10n.Common.back)
-                }
-                ToolbarItem(placement: .principal) {
-                    navigationBarRoomMeasurementPrincipal
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    navigationBarTrailingControls
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
     }
 
     private var glbRoomAfterAppearAndLoading: some View {
@@ -916,18 +899,7 @@ struct GLBRoomView: View {
     }
 
     private var fullVideoModeFloatingButtonOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            if showingFurnitureFit {
-                fullVideoIdentificationsFloatingButton
-                    .padding(.top, 54)
-                    .padding(.trailing, canOfferBrainArAssist ? 58 : 16)
-                    .transition(.opacity)
-            }
-        }
-        .zIndex(107)
+        EmptyView()
     }
 
     private var navigationBarARButton: some View {
@@ -1267,6 +1239,121 @@ struct GLBRoomView: View {
         .onAppear { restartSnapshotGestureHint() }
         .onDisappear { cancelSnapshotHintTasks() }
         .zIndex(102)
+    }
+
+    private var glbRestingMeasurementPillText: String? {
+        let width = calibratedRoomWidth ?? roomWidth
+        let depth = calibratedRoomDepth ?? roomDepth
+        if let width, let depth, width > 0.05, depth > 0.05, width.isFinite, depth.isFinite {
+            return String(format: "%.1f m × %.1f m", width, depth)
+        }
+        if let height = calibratedRoomHeight ?? roomHeight, height > 0.05, height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(height)
+        }
+        return nil
+    }
+
+    private var glbImmersiveChromeOverlay: some View {
+        PaafektImmersiveViewerChromeStack(
+            chrome: immersiveChrome,
+            onBack: {
+                if savedRoomModel == nil {
+                    showDiscardUnsavedAlert = true
+                } else {
+                    dismiss()
+                }
+            },
+            measurementText: glbRestingMeasurementPillText,
+            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: false
+        ) {
+            PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "viewfinder",
+                        accessibilityLabel: L10n.RoomViewer.recenterView
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        NotificationCenter.default.post(name: NSNotification.Name("RecenterGLBCamera"), object: nil)
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "ruler",
+                        accessibilityLabel: L10n.RoomViewer.checkMeasurement
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onGLBRoomDimensionsRulerTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "hand.pinch",
+                        accessibilityLabel: pinchHintAccessibilityLabel
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onPinchHintIconTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.stack.3d.up",
+                        accessibilityLabel: L10n.RoomViewer.displayAllHelpers
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        displayAllGestureHelpers()
+                    }
+                    if showingFurnitureFit {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "text.viewfinder",
+                            isActive: showFullVideoWithIdentifications,
+                            accessibilityLabel: L10n.Settings.fullVideoWithIdentifications
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            toggleFullVideoIdentifications()
+                        }
+                        if canOfferBrainArAssist {
+                            PaafektViewerToolbarIconButton(
+                                systemName: "arrow.up.left.and.arrow.down.right",
+                                isActive: brainArAssistedSizingEnabled,
+                                accessibilityLabel: brainArAssistedSizingEnabled
+                                    ? L10n.RoomViewer.arSizingDisable
+                                    : L10n.RoomViewer.arSizingEnable
+                            ) {
+                                immersiveChrome.noteChromeInteraction()
+                                toggleBrainArAssistedSizingOrShowHint()
+                            }
+                        }
+                    }
+                }
+            } heroContent: {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconAI",
+                        title: L10n.RoomViewer.immersiveFitShort,
+                        isActive: showingFurnitureFit,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        toggleGlbFurnitureFit()
+                    }
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconSnapshot",
+                        title: L10n.RoomViewer.immersiveCaptureShort,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        takeScreenshot()
+                    }
+                }
+            }
+        } summonedExtras: {
+            VStack(spacing: 10) {
+                if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
+                    furnitureMeasurementPillContent(showTapHint: false)
+                }
+                segmentButton
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                }
+            }
+            .padding(.horizontal, Theme.Space.lg)
+        }
+        .zIndex(99998)
     }
 
     private var glbRoomBottomHeroChrome: some View {
@@ -1981,11 +2068,16 @@ struct GLBWebGLView: UIViewRepresentable {
                 controls.rotateSpeed = 0.7;
                 controls.zoomSpeed = 2.5;       // Fast zoom
                 controls.enableZoom = true;
-                controls.enablePan = false;
+                controls.enablePan = true;
+                controls.panSpeed = 1.5;
                 controls.minDistance = 0.5;
                 controls.maxDistance = 20;
+                controls.touches = {
+                    ONE: THREE.TOUCH.ROTATE,
+                    TWO: THREE.TOUCH.DOLLY_PAN
+                };
 
-                // D-pad / Splat parity: walk on XZ, vertical Y (same as embedded Splat WebGL).
+                // D-pad parity (removed from UI): walk on XZ, vertical Y — also via two-finger pan above.
                 window.moveCamera = function(dx, dy) {
                     const moveSpeed = 0.03;
                     let newX = camera.position.x + dx * moveSpeed;

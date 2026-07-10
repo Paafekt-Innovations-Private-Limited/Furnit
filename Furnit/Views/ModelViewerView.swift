@@ -69,6 +69,7 @@ struct ModelViewerView: View {
     @State private var fullVideoSelectionHelperHideTask: Task<Void, Never>?
 
     @State private var isCapturingSnapshot = false
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
     @Environment(\.modelViewerSuppressBuiltInTopChrome) private var suppressBuiltInTopChrome
     @Environment(\.modelViewerExternalCameraReset) private var externalCameraReset
     @State private var shouldResetCamera = false
@@ -251,6 +252,7 @@ struct ModelViewerView: View {
         }
     }
 
+    /// Legacy top chrome when embedded with `modelViewerSuppressBuiltInTopChrome`.
     private var modelViewerTopChrome: some View {
         VStack {
             HStack {
@@ -324,6 +326,117 @@ struct ModelViewerView: View {
         .allowsHitTesting(true)
     }
 
+    private var modelViewerRestingMeasurementPillText: String? {
+        let dims = effectiveRoomDimensions
+        if dims.width > 0.05, dims.depth > 0.05, dims.width.isFinite, dims.depth.isFinite {
+            return String(format: "%.1f m × %.1f m", dims.width, dims.depth)
+        }
+        if dims.height > 0.05, dims.height.isFinite {
+            return L10n.RoomViewer.approximateRoomHeight(dims.height)
+        }
+        return nil
+    }
+
+    private var modelViewerImmersiveChromeOverlay: some View {
+        PaafektImmersiveViewerChromeStack(
+            chrome: immersiveChrome,
+            onBack: {
+                if #available(iOS 15.0, *) {
+                    dismiss()
+                } else {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            },
+            measurementText: modelViewerRestingMeasurementPillText,
+            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isCapturingSnapshot
+        ) {
+            PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "viewfinder",
+                        accessibilityLabel: L10n.RoomViewer.recenterView
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        cameraResetBinding.wrappedValue = true
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "ruler",
+                        accessibilityLabel: L10n.RoomViewer.checkMeasurement
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onRoomDimensionsRulerTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "hand.pinch",
+                        accessibilityLabel: pinchHintAccessibilityLabel
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onPinchHintIconTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.stack.3d.up",
+                        accessibilityLabel: L10n.RoomViewer.displayAllHelpers
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        displayAllGestureHelpers()
+                    }
+                    if showingFurnitureFit {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "text.viewfinder",
+                            isActive: showFullVideoWithIdentifications,
+                            accessibilityLabel: L10n.Settings.fullVideoWithIdentifications
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            toggleFullVideoIdentifications()
+                        }
+                        if canOfferBrainArAssist {
+                            PaafektViewerToolbarIconButton(
+                                systemName: "arrow.up.left.and.arrow.down.right",
+                                isActive: brainArAssistedSizingEnabled,
+                                accessibilityLabel: brainArAssistedSizingEnabled
+                                    ? L10n.RoomViewer.arSizingDisable
+                                    : L10n.RoomViewer.arSizingEnable
+                            ) {
+                                immersiveChrome.noteChromeInteraction()
+                                toggleBrainArAssistedSizingOrShowHint()
+                            }
+                        }
+                    }
+                }
+            } heroContent: {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconAI",
+                        title: L10n.RoomViewer.immersiveFitShort,
+                        isActive: showingFurnitureFit,
+                        isDisabled: isCapturingSnapshot
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        toggleFurnitureFit()
+                    }
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconSnapshot",
+                        title: L10n.RoomViewer.immersiveCaptureShort,
+                        isDisabled: isCapturingSnapshot
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        saveFurnitureFitSnapshot()
+                    }
+                }
+            }
+        } summonedExtras: {
+            VStack(spacing: 10) {
+                segmentModeToggleChrome
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                }
+            }
+            .padding(.horizontal, Theme.Space.lg)
+        }
+        .zIndex(99998)
+    }
+
     private var viewerHeroActionsBar: some View {
         PaafektViewerHeroActionsBar(
             fitActive: showingFurnitureFit,
@@ -336,81 +449,26 @@ struct ModelViewerView: View {
     private var modelViewerInteractiveStack: some View {
         ZStack {
             modelViewerRealityAndFurnitureUnderlay
-            cameraButtonsOverlay
             modelViewerRoomDimensionsHintLayer
-            fullVideoToolbarHelperOverlay
-            topTrailingPinchAndSizingHintsOverlay
-            navigationTeachingHintBottomOverlay
-            brainGestureHintScreenOverlay
-            snapshotGestureHintScreenOverlay
-            fullVideoFurnitureTapBubbleOverlay
-            fullVideoModeFloatingButtonOverlay
-            modelViewerTopChromeLayer
-            modelViewerBottomHeroChrome
+            if suppressBuiltInTopChrome || immersiveChrome.isSummoned {
+                fullVideoToolbarHelperOverlay
+                topTrailingPinchAndSizingHintsOverlay
+                navigationTeachingHintBottomOverlay
+                brainGestureHintScreenOverlay
+                snapshotGestureHintScreenOverlay
+                fullVideoFurnitureTapBubbleOverlay
+            }
+            if suppressBuiltInTopChrome {
+                fullVideoModeFloatingButtonOverlay
+                modelViewerTopChromeLayer
+                modelViewerBottomHeroChrome
+            } else {
+                modelViewerImmersiveChromeOverlay
+            }
             PaafektViewerOnboardingLayer(isReady: true)
                 .zIndex(100_000)
                 .allowsHitTesting(true)
         }
-    }
-
-    /// Top-left camera D-pad (same notifications as Splat / GLB / Mesh room viewers).
-    private var cameraDPadCluster: some View {
-        HStack(spacing: 8) {
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            VStack(spacing: 8) {
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var cameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
-                cameraDPadCluster
-                    .padding(.leading, 12)
-                    // Sit below the Back button in the top chrome.
-                    .padding(.top, suppressBuiltInTopChrome ? 12 : 56)
-                if model.photoOrientation == .landscape {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(100_000)
     }
 
     private var modelViewerInGeometry: some View {
@@ -430,6 +488,7 @@ struct ModelViewerView: View {
                     .navigationBarHidden(true)
                     .statusBarHidden(true)
                     .preferredColorScheme(.dark)
+                    .toolbar(.hidden, for: .navigationBar)
             }
         }
     }

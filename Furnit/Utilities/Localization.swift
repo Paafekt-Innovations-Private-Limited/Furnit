@@ -377,6 +377,10 @@ enum L10n {
         static let firstRunGotIt = "roomViewer.firstRunGotIt".localized
         static let heroFitFurniture = "roomViewer.heroFitFurniture".localized
         static let heroCapture = "roomViewer.heroCapture".localized
+        static let immersiveShowControls = "roomViewer.immersiveShowControls".localized
+        static let immersiveTapToHide = "roomViewer.immersiveTapToHide".localized
+        static let immersiveFitShort = "roomViewer.immersiveFitShort".localized
+        static let immersiveCaptureShort = "roomViewer.immersiveCaptureShort".localized
         static let brainGestureHintExplanation = "roomViewer.brainGestureHintExplanation".localized
         /// Shown at the top when full-video identifications are on and furniture fit starts; dismissed when Segment is tapped or furniture fit exits.
         static let fullVideoFurnitureTapHint = "roomViewer.fullVideoFurnitureTapHint".localized

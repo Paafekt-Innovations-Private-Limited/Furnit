@@ -528,12 +528,14 @@
     <string name="room_viewer_dimensions">Dimensions: %s</string>
     <string name="approximate_room_height">App. height - %.2f m</string>
     <string name="room_viewer_pinch_hint">Drag to look around · pinch to zoom</string>
-    <string name="room_viewer_navigation_teaching_hint">Drag to look around · pinch to zoom</string>
+    <string name="room_viewer_navigation_teaching_hint">Drag to look · pinch to zoom · two fingers to move</string>
     <string name="room_viewer_first_run_title">Explore your room in 3D</string>
     <string name="room_viewer_first_run_body">Add furniture, measure, and save views.\nDrag to look around, pinch to zoom.</string>
     <string name="room_viewer_first_run_got_it">Got it</string>
     <string name="room_viewer_hero_fit_furniture">Fit Furniture</string>
     <string name="room_viewer_hero_capture">Capture</string>
+    <string name="room_viewer_immersive_show_controls">Show controls</string>
+    <string name="room_viewer_immersive_tap_to_hide">Tap to hide</string>
     <string name="share">Share</string>
     <string name="room_viewer_recenter">Recenter view</string>
     <string name="room_viewer_display_all_helpers">Show gesture hints</string>
