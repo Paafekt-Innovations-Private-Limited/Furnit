@@ -470,6 +470,8 @@ struct GLBRoomView: View {
 
             roomDimensionsHintOverlay
             fullVideoFurnitureTapHintOverlay
+            brainGestureHintScreenOverlay
+            snapshotGestureHintScreenOverlay
             fullVideoModeFloatingButtonOverlay
             fullVideoToolbarHelperOverlay
             glbRoomCalibrationGateOverlay
@@ -975,8 +977,7 @@ struct GLBRoomView: View {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
                     text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220,
-                    alignment: .leading
+                    maxWidth: 220
                 )
                 .padding(.top, 6)
                 .padding(.trailing, canOfferBrainArAssist ? 62 : 20)
@@ -990,16 +991,12 @@ struct GLBRoomView: View {
 
     /// Optional pinch / AR sizing hint copy sits below the top toolbar row when visible.
     private var topTrailingPinchTapAndSizingHintsOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .trailing, spacing: 6) {
+        paafektTopToolbarHintOverlay {
+            VStack(spacing: 6) {
                 if pinchHintExplanationVisible {
                     PaafektHintChip(
                         systemImage: "hand.pinch.fill",
-                        text: L10n.RoomViewer.pinchGestureHintExplanation,
-                        alignment: .trailing
+                        text: L10n.RoomViewer.pinchGestureHintExplanation
                     )
                     .transition(.opacity)
                 }
@@ -1008,14 +1005,11 @@ struct GLBRoomView: View {
                     PaafektHintChip(
                         systemImage: "arrow.up.left.and.arrow.down.right",
                         text: arSizingHintText,
-                        maxWidth: 220,
-                        alignment: .center
+                        maxWidth: 220
                     )
                     .transition(.opacity)
                 }
             }
-            .padding(.top, 52)
-            .padding(.trailing, 16)
         }
         .zIndex(101)
         .onAppear { restartPinchGestureHint() }
@@ -1035,8 +1029,7 @@ struct GLBRoomView: View {
                     PaafektHintChip(
                         systemImage: "ruler.fill",
                         text: glbRoomDimensionsHintText,
-                        maxWidth: 240,
-                        alignment: .center
+                        maxWidth: 240
                     )
                     .transition(.opacity)
                 }
@@ -1057,8 +1050,7 @@ struct GLBRoomView: View {
                     PaafektHintChip(
                         systemImage: "hand.tap.fill",
                         text: L10n.RoomViewer.fullVideoFurnitureTapHint,
-                        maxWidth: 280,
-                        alignment: .center
+                        maxWidth: 280
                     )
                     .transition(.opacity)
                 }
@@ -1245,43 +1237,41 @@ struct GLBRoomView: View {
             : L10n.RoomViewer.arFurnitureSizingHint
     }
 
-    private var brainGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if brainHintExplanationVisible {
-                PaafektHintChip(
-                    systemImage: "brain.head.profile",
-                    text: L10n.RoomViewer.brainGestureHintExplanation,
-                    maxWidth: 220,
-                    alignment: .center
-                )
-                .transition(.opacity)
-            }
+    private var brainGestureHintScreenOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: brainHintExplanationVisible) {
+            PaafektHintChip(
+                assetImage: "PaafektIconAI",
+                text: L10n.RoomViewer.brainGestureHintExplanation,
+                maxWidth: 220
+            )
+            .transition(.opacity)
         }
         .onAppear { restartBrainGestureHint() }
         .onDisappear { cancelBrainHintTasks() }
+        .zIndex(102)
     }
 
-    private var snapshotGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if snapshotHintExplanationVisible {
-                PaafektHintChip(
-                    systemImage: "camera.fill",
-                    text: L10n.RoomViewer.snapshotGestureHintExplanation,
-                    maxWidth: 220,
-                    alignment: .center
-                )
-                .transition(.opacity)
-            }
+    private var snapshotGestureHintScreenOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: snapshotHintExplanationVisible) {
+            PaafektHintChip(
+                assetImage: "PaafektIconSnapshot",
+                text: L10n.RoomViewer.snapshotGestureHintExplanation,
+                maxWidth: 220
+            )
+            .transition(.opacity)
         }
         .onAppear { restartSnapshotGestureHint() }
         .onDisappear { cancelSnapshotHintTasks() }
+        .zIndex(102)
     }
 
     private var brainButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            brainGestureHintColumn
-                .offset(y: -72)
-            Button(action: {
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconAI",
+            isActive: showingFurnitureFit,
+            isDisabled: isLoading,
+            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
+            action: {
                 if showingFurnitureFit {
                     dismissFullVideoFurnitureTapHint()
                     cancelFullVideoSelectionHelper()
@@ -1297,16 +1287,9 @@ struct GLBRoomView: View {
                     showingFurnitureFit = true
                     presentFullVideoSelectionHelperIfNeeded()
                 }
-            }) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
             }
-            .disabled(isLoading)
-        }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        )
+        .frame(width: 76, height: 76)
     }
 
     private func restoreFullVideoIdentifyAfterSegmentPinsLost(oldLabels: [String], newLabels: [String]) {
@@ -1332,19 +1315,13 @@ struct GLBRoomView: View {
     }
 
     private var snapshotButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            snapshotGestureHintColumn
-                .offset(y: -72)
-            Button(action: { takeScreenshot() }) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(Color.blue).shadow(radius: 5))
-            }
-            .disabled(isLoading)
-        }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconSnapshot",
+            isDisabled: isLoading,
+            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
+            action: { takeScreenshot() }
+        )
+        .frame(width: 76, height: 76)
     }
 
     private func placementIntelligenceRingColor(fit: FitCheckResult?) -> Color {

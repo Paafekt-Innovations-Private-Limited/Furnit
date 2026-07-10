@@ -97,7 +97,7 @@ class GLBRoomActivity : AppCompatActivity() {
     private val isBrainInferenceRunning = AtomicBoolean(false)
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
-    private var brainButton: TextView? = null
+    private var brainButton: ImageButton? = null
     private var brainSegmentButton: TextView? = null
     private var brainFullVideoButton: ImageButton? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
@@ -320,7 +320,6 @@ class GLBRoomActivity : AppCompatActivity() {
                 this,
                 R.drawable.ic_gesture_pinch,
                 R.string.room_viewer_pinch_hint,
-                alignEnd = true,
             )
         }
 
@@ -429,15 +428,13 @@ class GLBRoomActivity : AppCompatActivity() {
                     this@GLBRoomActivity,
                     R.drawable.ic_gesture_pinch,
                     R.string.room_viewer_pinch_hint,
-                    alignEnd = true,
                 )
             })
             principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_tap) {
                 hintController.toggle(
                     this@GLBRoomActivity,
-                    R.drawable.ic_brain,
+                    R.drawable.ic_ai,
                     R.string.room_viewer_brain_gesture_hint_explanation,
-                    alignEnd = true,
                 )
             })
 
@@ -483,6 +480,23 @@ class GLBRoomActivity : AppCompatActivity() {
 
     private fun toolbarCircleDrawable(): GradientDrawable = PaafektDrawables.toolbarCircle()
 
+    private fun createBottomIconButton(
+        iconResId: Int,
+        isActive: Boolean = false,
+        onClick: () -> Unit,
+    ): ImageButton {
+        return ImageButton(this).apply {
+            setImageResource(iconResId)
+            imageTintList = ColorStateList.valueOf(
+                if (isActive) com.furnit.android.theme.PaafektColors.accent else Color.WHITE,
+            )
+            background = toolbarCircleDrawable()
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+            setOnClickListener { onClick() }
+        }
+    }
+
     private fun createToolbarIconButton(iconResId: Int, onClick: () -> Unit): ImageButton {
         return ImageButton(this).apply {
             setImageResource(iconResId)
@@ -527,22 +541,13 @@ class GLBRoomActivity : AppCompatActivity() {
         return FrameLayout(this).apply {
             setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
 
-            // Left: Brain/AI button
-            val brainBtn = TextView(this@GLBRoomActivity).apply {
-                text = "\uD83E\uDDE0"  // Brain emoji
-                textSize = 24f
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#007AFF"))
-                }
-                background = bg
-                val size = dpToPx(56)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.START or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
-                }
-                setOnClickListener { toggleInlineBrainSegmentation() }
+            // Left: AI / Furniture Fit button
+            val brainBtn = createBottomIconButton(R.drawable.ic_ai, isActive = false) {
+                toggleInlineBrainSegmentation()
+            }
+            brainBtn.layoutParams = FrameLayout.LayoutParams(dpToPx(44), dpToPx(44)).apply {
+                gravity = Gravity.START or Gravity.BOTTOM
+                bottomMargin = dpToPx(20)
             }
             brainButton = brainBtn
             addView(brainBtn)
@@ -586,22 +591,15 @@ class GLBRoomActivity : AppCompatActivity() {
             }
             addView(orientationLabel)
 
-            // Right: Camera/Screenshot button
-            val cameraBtn = TextView(this@GLBRoomActivity).apply {
-                text = "\uD83D\uDCF7"  // Camera emoji
-                textSize = 24f
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#007AFF"))
-                }
-                background = bg
-                val size = dpToPx(56)
+            // Right: Snapshot button
+            val cameraBtn = createBottomIconButton(R.drawable.ic_snapshot) {
+                takeScreenshot()
+            }.apply {
+                val size = dpToPx(44)
                 layoutParams = FrameLayout.LayoutParams(size, size).apply {
                     gravity = Gravity.END or Gravity.BOTTOM
                     bottomMargin = dpToPx(20)
                 }
-                setOnClickListener { takeScreenshot() }
             }
             addView(cameraBtn)
         }
@@ -1097,8 +1095,9 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun setBrainButtonActive(active: Boolean) {
-        val color = if (active) "#34C759" else "#007AFF"
-        (brainButton?.background as? GradientDrawable)?.setColor(Color.parseColor(color))
+        brainButton?.imageTintList = ColorStateList.valueOf(
+            if (active) com.furnit.android.theme.PaafektColors.accent else Color.WHITE,
+        )
     }
 
     private fun createLoadingOverlay(): FrameLayout {

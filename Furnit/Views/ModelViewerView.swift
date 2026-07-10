@@ -224,8 +224,7 @@ struct ModelViewerView: View {
                     PaafektHintChip(
                         systemImage: "hand.tap.fill",
                         text: L10n.RoomViewer.fullVideoFurnitureTapHint,
-                        maxWidth: 280,
-                        alignment: .center
+                        maxWidth: 280
                     )
                     .padding(.top, 12)
                     Spacer()
@@ -350,6 +349,8 @@ struct ModelViewerView: View {
             modelViewerRoomDimensionsHintLayer
             fullVideoToolbarHelperOverlay
             topTrailingPinchAndSizingHintsOverlay
+            brainGestureHintScreenOverlay
+            snapshotGestureHintScreenOverlay
             fullVideoFurnitureTapBubbleOverlay
             fullVideoModeFloatingButtonOverlay
             modelViewerTopChromeLayer
@@ -688,8 +689,7 @@ struct ModelViewerView: View {
                     PaafektHintChip(
                         systemImage: "ruler.fill",
                         text: roomDimensionsHintText,
-                        maxWidth: 240,
-                        alignment: .center
+                        maxWidth: 240
                     )
                     .transition(.opacity)
                 }
@@ -712,8 +712,7 @@ struct ModelViewerView: View {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
                     text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220,
-                    alignment: .leading
+                    maxWidth: 220
                 )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
@@ -725,16 +724,12 @@ struct ModelViewerView: View {
     }
 
     private var topTrailingPinchAndSizingHintsOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .trailing, spacing: 6) {
+        paafektTopToolbarHintOverlay {
+            VStack(spacing: 6) {
                 if pinchHintExplanationVisible {
                     PaafektHintChip(
                         systemImage: "hand.pinch.fill",
-                        text: L10n.RoomViewer.pinchGestureHintExplanation,
-                        alignment: .trailing
+                        text: L10n.RoomViewer.pinchGestureHintExplanation
                     )
                     .transition(.opacity)
                 }
@@ -742,78 +737,57 @@ struct ModelViewerView: View {
                     PaafektHintChip(
                         systemImage: "arrow.up.left.and.arrow.down.right",
                         text: arSizingHintText,
-                        maxWidth: 220,
-                        alignment: .center
+                        maxWidth: 220
                     )
                     .transition(.opacity)
                 }
             }
-            .padding(.top, 52)
-            .padding(.trailing, showingFurnitureFit ? 64 : 16)
         }
-        .allowsHitTesting(false)
         .zIndex(101)
     }
 
-    private var brainGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if brainHintExplanationVisible {
-                PaafektHintChip(
-                    systemImage: "brain.head.profile",
-                    text: L10n.RoomViewer.brainGestureHintExplanation,
-                    maxWidth: 220,
-                    alignment: .center
-                )
-                .transition(.opacity)
-            }
+    private var brainGestureHintScreenOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: brainHintExplanationVisible) {
+            PaafektHintChip(
+                assetImage: "PaafektIconAI",
+                text: L10n.RoomViewer.brainGestureHintExplanation,
+                maxWidth: 220
+            )
+            .transition(.opacity)
         }
+        .zIndex(102)
     }
 
-    private var snapshotGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if snapshotHintExplanationVisible {
-                PaafektHintChip(
-                    systemImage: "camera.fill",
-                    text: L10n.RoomViewer.snapshotGestureHintExplanation,
-                    maxWidth: 220,
-                    alignment: .center
-                )
-                .transition(.opacity)
-            }
+    private var snapshotGestureHintScreenOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: snapshotHintExplanationVisible) {
+            PaafektHintChip(
+                assetImage: "PaafektIconSnapshot",
+                text: L10n.RoomViewer.snapshotGestureHintExplanation,
+                maxWidth: 220
+            )
+            .transition(.opacity)
         }
+        .zIndex(102)
     }
 
     private var brainButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            brainGestureHintColumn
-                .offset(y: -72)
-            Button(action: toggleFurnitureFit) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-            }
-            .contentShape(Circle())
-            .frame(width: 76, height: 76)
-        }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconAI",
+            isActive: showingFurnitureFit,
+            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
+            action: toggleFurnitureFit
+        )
+        .frame(width: 76, height: 76)
     }
 
     private var snapshotButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            snapshotGestureHintColumn
-                .offset(y: -72)
-            Button(action: saveFurnitureFitSnapshot) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(Color.blue).shadow(radius: 5))
-            }
-            .disabled(isCapturingSnapshot)
-        }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconSnapshot",
+            isDisabled: isCapturingSnapshot,
+            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
+            action: saveFurnitureFitSnapshot
+        )
+        .frame(width: 76, height: 76)
     }
 
     private var pinchHintAccessibilityLabel: String {

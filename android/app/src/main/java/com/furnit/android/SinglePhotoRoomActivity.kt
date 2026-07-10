@@ -684,7 +684,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             controlsContent.addView(subtitle)
 
             val aiOption = createOptionCard(
-                iconResId = R.drawable.ic_brain,
+                iconResId = R.drawable.ic_ai,
                 title = getString(R.string.photo_room_ai_room),
                 subtitle = getString(R.string.single_photo_ai_room_subtitle_idle),
                 primary = true,

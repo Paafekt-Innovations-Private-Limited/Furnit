@@ -2,6 +2,7 @@ package com.furnit.android.theme
 
 import android.animation.AnimatorListenerAdapter
 import android.content.Context
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -17,7 +18,7 @@ import com.furnit.android.R
 
 /**
  * Glass-style hint chip for viewer overlays — matches iOS `PaafektHintChip`.
- * Single hint at a time; auto-dismiss after ~3.5s or first interaction.
+ * Screen-space overlay only; single hint at a time; auto-dismiss after ~3.5s or first interaction.
  */
 object PaafektHintViews {
     private fun dp(context: Context, value: Int): Int =
@@ -31,11 +32,16 @@ object PaafektHintViews {
             setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
             elevation = 8f
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
         }
 
         val icon = ImageView(context).apply {
             setImageResource(iconRes)
             imageTintList = ContextCompat.getColorStateList(context, R.color.paafekt_accent)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             layoutParams = LinearLayout.LayoutParams(dp(context, 22), dp(context, 22))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
@@ -46,6 +52,9 @@ object PaafektHintViews {
             textSize = 12f
             setTextColor(PaafektColors.textSecondary)
             setPadding(dp(context, 8), 0, 0, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
         }
         row.addView(
             label,
@@ -59,7 +68,7 @@ object PaafektHintViews {
 }
 
 /**
- * Manages one transient hint chip anchored below the viewer top toolbar.
+ * Manages one transient hint chip on the 2D screen overlay layer.
  */
 class PaafektHintController(
     private val host: FrameLayout,
@@ -74,23 +83,19 @@ class PaafektHintController(
         @DrawableRes iconRes: Int,
         @StringRes textRes: Int,
         durationMs: Long = 3500L,
-        alignEnd: Boolean = false,
     ) {
         hide(animated = false)
         val chip = PaafektHintViews.createChip(context, iconRes, context.getString(textRes))
         chip.alpha = 0f
 
-        val horizontalGravity = if (alignEnd) Gravity.END else Gravity.CENTER_HORIZONTAL
         val params = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply {
-            gravity = Gravity.TOP or horizontalGravity
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(context, topMarginDp)
-            if (alignEnd) marginEnd = dp(context, 16) else {
-                marginStart = dp(context, 16)
-                marginEnd = dp(context, 16)
-            }
+            marginStart = dp(context, 16)
+            marginEnd = dp(context, 16)
         }
 
         host.addView(chip, params)
@@ -108,18 +113,16 @@ class PaafektHintController(
         ensureInteractionDismiss(host)
     }
 
-    /** Toggle visibility; when shown, schedules auto-hide like iOS toolbar hint icons. */
     fun toggle(
         context: Context,
         @DrawableRes iconRes: Int,
         @StringRes textRes: Int,
         durationMs: Long = 3500L,
-        alignEnd: Boolean = false,
     ) {
         if (chipView != null) {
             hide(animated = areAnimationsEnabled(context))
         } else {
-            show(context, iconRes, textRes, durationMs, alignEnd)
+            show(context, iconRes, textRes, durationMs)
         }
     }
 

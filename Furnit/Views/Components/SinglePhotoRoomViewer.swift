@@ -1569,36 +1569,23 @@ private struct DepthAnythingPreviewRoomView: View {
     }
 
     private var previewBrainButton: some View {
-        Button(action: togglePreviewFurnitureFit) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 28))
-                .foregroundColor(.white)
-                .frame(width: 60, height: 60)
-                .background(
-                    Circle()
-                        .fill(showingFurnitureFit ? Color.green : Color.blue)
-                        .shadow(radius: 5)
-                )
-        }
-        .buttonStyle(.plain)
-        .contentShape(Circle())
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconAI",
+            isActive: showingFurnitureFit,
+            accessibilityLabel: L10n.RoomViewer.segmentFurnitureAccessibility,
+            action: togglePreviewFurnitureFit
+        )
         .frame(width: 76, height: 76)
-        .accessibilityLabel(L10n.RoomViewer.segmentFurnitureAccessibility)
     }
 
     private var previewSnapshotButton: some View {
-        Button(action: savePreviewSnapshot) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.white)
-                .frame(width: 60, height: 60)
-                .background(Circle().fill(Color.blue).shadow(radius: 5))
-        }
-        .buttonStyle(.plain)
-        .contentShape(Circle())
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconSnapshot",
+            isDisabled: isCapturingSnapshot,
+            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
+            action: savePreviewSnapshot
+        )
         .frame(width: 76, height: 76)
-        .disabled(isCapturingSnapshot)
-        .accessibilityLabel(L10n.RoomViewer.snapshotGestureHintExplanation)
     }
 
     private var previewFullVideoModeFloatingButton: some View {
@@ -1680,8 +1667,7 @@ private struct DepthAnythingPreviewRoomView: View {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
                     text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220,
-                    alignment: .leading
+                    maxWidth: 220
                 )
                 .padding(.top, 6)
                 .padding(.trailing, 54)
@@ -1699,8 +1685,7 @@ private struct DepthAnythingPreviewRoomView: View {
                     PaafektHintChip(
                         systemImage: "hand.tap.fill",
                         text: L10n.RoomViewer.fullVideoFurnitureTapHint,
-                        maxWidth: 280,
-                        alignment: .center
+                        maxWidth: 280
                     )
                     .padding(.top, 12)
                     Spacer()

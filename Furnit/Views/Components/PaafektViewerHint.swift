@@ -13,41 +13,99 @@ extension View {
     }
 }
 
+// MARK: - Screen-space hint anchors (2D overlay; never tied to 3D scene transforms)
+
+extension View {
+    /// Centers a hint chip below the top viewer toolbar row (screen-space).
+    func paafektTopToolbarHintOverlay<Content: View>(
+        isVisible: Bool = true,
+        topInset: CGFloat = 52,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            if isVisible {
+                content()
+                    .padding(.top, topInset)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+    }
+
+    /// Centers a hint chip just above the bottom viewer action bar (screen-space).
+    func paafektBottomToolbarHintOverlay<Content: View>(
+        isVisible: Bool = true,
+        bottomInset: CGFloat = 96,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            if isVisible {
+                content()
+                    .padding(.bottom, bottomInset)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Glass hint chip (primary viewer helper pattern)
 
-/// Glass capsule + gold monoline gesture icon + one short caption line.
-/// Anchor above the toolbar; pair with existing auto-dismiss task logic in each viewer.
+/// Glass capsule + gold monoline icon + one short caption line.
+/// Screen-space only: place inside a root overlay `ZStack`, not inside scene/3D views.
 struct PaafektHintChip: View {
-    let systemImage: String
+    private let systemImage: String?
+    private let assetImage: String?
     let text: String
-    var maxWidth: CGFloat = 260
-    var alignment: HorizontalAlignment = .leading
+    var maxWidth: CGFloat?
+
+    init(systemImage: String, text: String, maxWidth: CGFloat? = nil) {
+        self.systemImage = systemImage
+        self.assetImage = nil
+        self.text = text
+        self.maxWidth = maxWidth
+    }
+
+    init(assetImage: String, text: String, maxWidth: CGFloat? = nil) {
+        self.systemImage = nil
+        self.assetImage = assetImage
+        self.text = text
+        self.maxWidth = maxWidth
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Space.sm) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Theme.Palette.accent)
+            hintIcon
                 .frame(width: 22, height: 22)
 
             Text(text)
                 .font(Theme.Typo.caption())
                 .foregroundStyle(Theme.Palette.textPrimary)
-                .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .frame(maxWidth: maxWidth, alignment: frameAlignment)
+        .fixedSize(horizontal: maxWidth == nil, vertical: false)
+        .frame(maxWidth: maxWidth)
         .padding(.horizontal, Theme.Space.md)
         .padding(.vertical, Theme.Space.sm)
         .paafektGlassCapsuleSurface()
         .accessibilityElement(children: .combine)
     }
 
-    private var frameAlignment: Alignment {
-        switch alignment {
-        case .trailing: return .trailing
-        case .center: return .center
-        default: return .leading
+    @ViewBuilder
+    private var hintIcon: some View {
+        if let assetImage {
+            Image(assetImage)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(Theme.Palette.accent)
+        } else if let systemImage {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.Palette.accent)
         }
     }
 }

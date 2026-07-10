@@ -90,7 +90,9 @@ Replace floating grey caption boxes with on-brand hint chrome. Reuses the same g
 
 `add`, `settings`, `help`, `room`, `ai`, `measure`, `camera`, `gallery`, `back`, `snapshot`, `delete`, `home`, `share`, `edit`, `close`, `layers`
 
-- PNGs: `icons/png/<name>.png`
+- PNGs: `icons/png/<name>.png` — includes **`ai.png`**, **`snapshot.png`** (512×512 transparent, gold monoline; also exported at 96/192 for Android density buckets)
+- Android drawables: `ic_ai`, `ic_snapshot` in `drawable-mdpi` (96), `drawable-xhdpi` (192), `drawable-xxxhdpi` (512)
+- iOS imagesets: `PaafektIconAI`, `PaafektIconSnapshot` (template rendering, tint `#F4F3EF` / `#C9A24B` when active)
 - SVGs (algorithmically traced): `icons/svg/<name>.svg` (partial set in repo; use PNGs as source of truth for SF Symbols / vector drawables)
 - QA contact sheet: `icons/png/qa_contact_sheet.png`
 

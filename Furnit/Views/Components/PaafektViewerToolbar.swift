@@ -37,6 +37,33 @@ struct PaafektViewerToolbarIconButton: View {
     }
 }
 
+/// Bottom-bar AI / snapshot actions — Paafekt monoline assets, gold when active.
+struct PaafektViewerBottomActionButton: View {
+    let assetName: String
+    var isActive: Bool = false
+    var isDisabled: Bool = false
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(assetName)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(isActive ? Theme.Palette.accent : Theme.Palette.textPrimary)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Theme.Palette.viewerCapsuleFill))
+                .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
+                .opacity(isDisabled ? 0.5 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 struct PaafektViewerBackButton: View {
     let action: () -> Void
 

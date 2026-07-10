@@ -552,8 +552,7 @@ struct SplatRoomView: View {
                 PaafektHintChip(
                     systemImage: "text.viewfinder",
                     text: L10n.RoomViewer.fullVideoSelectionHelper,
-                    maxWidth: 220,
-                    alignment: .leading
+                    maxWidth: 220
                 )
                 .padding(.top, 6)
                 .padding(.trailing, 20)
@@ -612,8 +611,7 @@ struct SplatRoomView: View {
                         PaafektHintChip(
                             systemImage: "arrow.up.left.and.arrow.down.right",
                             text: L10n.RoomViewer.arFurnitureSizingRequiresBrainHint,
-                            maxWidth: 220,
-                            alignment: .center
+                            maxWidth: 220
                         )
                         .transition(.opacity)
                     }
@@ -632,22 +630,17 @@ struct SplatRoomView: View {
 
     /// Pinch-resize hint (A′) — shown only when coordinator says so.
     private var topTrailingPinchHintOverlay: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            if isHintVisible(.pinchResize) {
-                PaafektHintChip(
-                    systemImage: "hand.pinch.fill",
-                    text: L10n.RoomViewer.pinchGestureHintExplanation,
-                    alignment: .trailing
-                )
-                .transition(.opacity)
-                .padding(.top, 4)
-                .padding(.trailing, 16)
+        paafektTopToolbarHintOverlay {
+            VStack(spacing: 6) {
+                if isHintVisible(.pinchResize) {
+                    PaafektHintChip(
+                        systemImage: "hand.pinch.fill",
+                        text: L10n.RoomViewer.pinchGestureHintExplanation
+                    )
+                    .transition(.opacity)
+                }
             }
         }
-        .allowsHitTesting(false)
         .opacity(isCapturingSnapshot ? 0 : 1)
         .zIndex(101)
     }
@@ -1187,8 +1180,7 @@ struct SplatRoomView: View {
                 PaafektHintChip(
                     systemImage: "ruler.fill",
                     text: roomDimensionsHintText,
-                    maxWidth: 240,
-                    alignment: .leading
+                    maxWidth: 240
                 )
                 .padding(.top, 6)
                 .padding(.leading, 12)
@@ -1207,8 +1199,7 @@ struct SplatRoomView: View {
                 PaafektHintChip(
                     systemImage: "hand.tap.fill",
                     text: L10n.RoomViewer.fullVideoFurnitureTapHint,
-                    maxWidth: 280,
-                    alignment: .center
+                    maxWidth: 280
                 )
                 .padding(.top, activeRoomMetersDimensions != nil ? 36 : 12)
             }
@@ -1218,10 +1209,9 @@ struct SplatRoomView: View {
         .zIndex(105)
     }
 
-    /// Text + tap icon only; place in a ``VStack`` above the brain button so the helper sits just above the brain.
-    private var brainGestureHintColumn: some View {
-        VStack(alignment: .center, spacing: 6) {
-            if isHintVisible(.brainIdentify) {
+    private var brainGestureHintScreenOverlay: some View {
+        paafektBottomToolbarHintOverlay(isVisible: isHintVisible(.brainIdentify)) {
+            Group {
                 if forceShowHints {
                     PaafektHintCoachMark(
                         systemImage: "brain.head.profile",
@@ -1229,47 +1219,41 @@ struct SplatRoomView: View {
                         confirmTitle: L10n.Common.ok,
                         onConfirm: { markOnboardingHintSeen(.brainIdentify) }
                     )
-                    .transition(.opacity)
                 } else {
                     PaafektHintChip(
-                        systemImage: "brain.head.profile",
+                        assetImage: "PaafektIconAI",
                         text: L10n.RoomViewer.brainGestureHintExplanation,
-                        maxWidth: 220,
-                        alignment: .center
+                        maxWidth: 220
                     )
-                    .transition(.opacity)
                 }
             }
+            .transition(.opacity)
         }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(102)
     }
 
     @ViewBuilder
     private var brainButtonWithHintAbove: some View {
-        ZStack(alignment: .bottom) {
-            brainGestureHintColumn
-                .offset(y: -72)
-            Button(action: toggleFurnitureFit) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-            }
-            .disabled(isLoading)
-        }
-        .frame(width: 76, height: 120, alignment: .bottom)
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconAI",
+            isActive: showingFurnitureFit,
+            isDisabled: isLoading,
+            accessibilityLabel: L10n.RoomViewer.brainGestureHintExplanation,
+            action: toggleFurnitureFit
+        )
+        .frame(width: 76, height: 76)
     }
 
     @ViewBuilder
     private var snapshotButtonWithHintAbove: some View {
-        Button(action: { takeScreenshot() }) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.white)
-                .frame(width: 60, height: 60)
-                .background(Circle().fill(Color.blue).shadow(radius: 5))
-        }
-        .disabled(isLoading)
+        PaafektViewerBottomActionButton(
+            assetName: "PaafektIconSnapshot",
+            isDisabled: isLoading,
+            accessibilityLabel: L10n.RoomViewer.snapshotGestureHintExplanation,
+            action: { takeScreenshot() }
+        )
+        .frame(width: 76, height: 76)
     }
 
     @ViewBuilder
@@ -2117,6 +2101,7 @@ struct SplatRoomView: View {
             if !isLoading {
                 cameraButtonsOverlay
                 topTrailingPinchHintOverlay
+                brainGestureHintScreenOverlay
                 topTrailingActionButtonsOverlay
                 fullVideoModePillOverlay
                 fullVideoToolbarHelperOverlay
