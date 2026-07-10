@@ -400,16 +400,26 @@ struct GaussianSplatView: UIViewRepresentable {
         mtkView.isPaused                  = true
         mtkView.preferredFramesPerSecond  = 60
 
-        // Gesture recognisers
-        let pan   = UIPanGestureRecognizer(target: context.coordinator,
-                                           action: #selector(Coordinator.handlePan(_:)))
+        // Gesture recognisers — one-finger orbit, two-finger walk (d-pad parity), pinch zoom.
+        let orbitPan = UIPanGestureRecognizer(target: context.coordinator,
+                                              action: #selector(Coordinator.handlePan(_:)))
+        orbitPan.minimumNumberOfTouches = 1
+        orbitPan.maximumNumberOfTouches = 1
+        orbitPan.delegate = context.coordinator
+        let movePan = UIPanGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleMovePan(_:)))
+        movePan.minimumNumberOfTouches = 2
+        movePan.maximumNumberOfTouches = 2
+        movePan.delegate = context.coordinator
         let pinch = UIPinchGestureRecognizer(target: context.coordinator,
                                               action: #selector(Coordinator.handlePinch(_:)))
+        pinch.delegate = context.coordinator
         let tap = UITapGestureRecognizer(target: context.coordinator,
                                          action: #selector(Coordinator.handleTap(_:)))
         let rotation = UIRotationGestureRecognizer(target: context.coordinator,
                                                    action: #selector(Coordinator.handleRotation(_:)))
-        mtkView.addGestureRecognizer(pan)
+        mtkView.addGestureRecognizer(orbitPan)
+        mtkView.addGestureRecognizer(movePan)
         mtkView.addGestureRecognizer(pinch)
         mtkView.addGestureRecognizer(tap)
         mtkView.addGestureRecognizer(rotation)
@@ -445,7 +455,7 @@ struct GaussianSplatView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MTKViewDelegate, SplatDepthQueryable, SplatColorReadable {
+    final class Coordinator: NSObject, MTKViewDelegate, SplatDepthQueryable, SplatColorReadable, UIGestureRecognizerDelegate {
 
         // ── Bindings ──────────────────────────────────────────────────────────
         @Binding var isLoading: Bool
@@ -2004,6 +2014,23 @@ struct GaussianSplatView: UIViewRepresentable {
             cameraPitch  = min(max(cameraPitch, -maxPitch), maxPitch)
             gesture.setTranslation(.zero, in: gesture.view)
             view?.setNeedsDisplay()
+        }
+
+        /// Two-finger pan — replaces d-pad X / Y walk (``WebGLCameraMove*`` notifications).
+        @objc func handleMovePan(_ gesture: UIPanGestureRecognizer) {
+            let translation = gesture.translation(in: gesture.view)
+            let moveSensitivity: Float = 0.012
+            cameraOffset.x += Float(translation.x) * moveSensitivity
+            cameraOffset.y += Float(-translation.y) * moveSensitivity
+            gesture.setTranslation(.zero, in: gesture.view)
+            view?.setNeedsDisplay()
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {

@@ -355,6 +355,7 @@ struct SplatRoomView: View {
 
     @State private var showFullVideoWithIdentifications = false
     @State private var measuredRoomDimensions: MeasuredPlyRoomDimensions?
+    @StateObject private var immersiveChrome = PaafektViewerChromeController()
     var body: some View {
         splatRoomBody
     }
@@ -368,32 +369,34 @@ struct SplatRoomView: View {
         .background(Color.gray)
     }
 
+    private func onSplatRoomDimensionsRulerTapped() {
+        if let activeDimensions = activeRoomMetersDimensions {
+            logDebug(
+                "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
+                "SOURCE=\(activeRoomMetersDimensionsSource) " +
+                "W=\(String(format: "%.4f", activeDimensions.width)) " +
+                "H=\(String(format: "%.4f", activeDimensions.height)) " +
+                "D=\(String(format: "%.4f", activeDimensions.depth))"
+            )
+        } else {
+            logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
+        }
+        guard canPresentRoomDimensionsAlert else {
+            logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
+            return
+        }
+        if hasCalculatedRoomMeasurements {
+            logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
+        } else {
+            logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
+            startAsyncRoomMeasurementForRuler()
+        }
+    }
+
     @ViewBuilder
     private var navigationBarRoomMeasurementPrincipal: some View {
         HStack(spacing: 12) {
-            Button {
-                if let activeDimensions = activeRoomMetersDimensions {
-                    logDebug(
-                        "[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) " +
-                        "SOURCE=\(activeRoomMetersDimensionsSource) " +
-                        "W=\(String(format: "%.4f", activeDimensions.width)) " +
-                        "H=\(String(format: "%.4f", activeDimensions.height)) " +
-                        "D=\(String(format: "%.4f", activeDimensions.depth))"
-                    )
-                } else {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) SOURCE=\(activeRoomMetersDimensionsSource) unavailable")
-                }
-                guard canPresentRoomDimensionsAlert else {
-                    logDebug("[ROOM_DIMS][RULER] ALERT_SKIPPED file=\(viewerPlyURL.lastPathComponent) reason=other_modal_active")
-                    return
-                }
-                if hasCalculatedRoomMeasurements {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) USING_EXISTING source=\(activeRoomMetersDimensionsSource)")
-                } else {
-                    logDebug("[ROOM_DIMS][RULER] FILE=\(viewerPlyURL.lastPathComponent) FALLBACK=START_ASYNC_MEASURE source=\(activeRoomMetersDimensionsSource)")
-                    startAsyncRoomMeasurementForRuler()
-                }
-            } label: {
+            Button(action: onSplatRoomDimensionsRulerTapped) {
                 if let d = activeRoomMetersDimensions {
                     Text(L10n.RoomViewer.approximateRoomHeight(d.height))
                         .font(.system(size: 11, weight: .semibold))
@@ -660,13 +663,11 @@ struct SplatRoomView: View {
 
     private var splatRoomNavigationView: some View {
         splatRoomBaseLayer
-            .navigationBarHidden(isCapturingSnapshot)
+            .navigationBarHidden(true)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            // Always hide the system back: in landscape its touch target is often covered by the wide `.principal`
-            // toolbar title: explicit leading `Back` stays tappable (saved list + new room).
             .navigationBarBackButtonHidden(true)
-            .toolbar { splatRoomToolbarContent }
+            .toolbar(.hidden, for: .navigationBar)
     }
 
     private func splatRoomPerformOnAppear() {
@@ -1112,85 +1113,6 @@ struct SplatRoomView: View {
             appState.qualitySettings.furnitureFitARDepthCompanionRuntimeActive
     }
 
-    /// D-pad cluster only (same notifications as Metal/WebGL parity).
-    private var cameraDPadCluster: some View {
-        HStack(spacing: 8) {
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            VStack(spacing: 8) {
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    /// D-pad cluster (top-left). Pinch hint lives in ``topTrailingPinchHintOverlay``.
-    private var cameraButtonsOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 10) {
-                cameraDPadCluster
-                .padding(.leading, 12)
-                .padding(.top, 12)
-                if photoOrientation == .landscape {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(102)
-    }
-
-    /// H — permanent chip showing room dimensions whenever measurements exist.
-    private var roomDimensionsChipOverlay: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
-            if activeRoomMetersDimensions != nil {
-                PaafektHintChip(
-                    systemImage: "ruler.fill",
-                    text: roomDimensionsHintText,
-                    maxWidth: 240
-                )
-                .padding(.top, 6)
-                .padding(.leading, 12)
-            }
-        }
-        .allowsHitTesting(false)
-        .opacity(isCapturingSnapshot ? 0 : 1)
-        .zIndex(104)
-    }
-
     /// F — static mode pill shown whenever mode == fullVideo. No timer, no color cycling.
     private var fullVideoModePillOverlay: some View {
         ZStack(alignment: .top) {
@@ -1222,31 +1144,141 @@ struct SplatRoomView: View {
         .zIndex(102)
     }
 
-    private var splatRoomBottomHeroChrome: some View {
-        ZStack(alignment: .bottom) {
+    private var splatRestingMeasurementPillText: String? {
+        if let d = activeRoomMetersDimensions {
+            if d.width > 0.05, d.depth > 0.05, d.width.isFinite, d.depth.isFinite {
+                return String(format: "%.1f m × %.1f m", d.width, d.depth)
+            }
+            if d.height > 0.05, d.height.isFinite {
+                return L10n.RoomViewer.approximateRoomHeight(d.height)
+            }
+        }
+        return nil
+    }
+
+    private var splatImmersiveChromeOverlay: some View {
+        PaafektImmersiveViewerChromeStack(
+            chrome: immersiveChrome,
+            onBack: handleSplatRoomBackTap,
+            measurementText: splatRestingMeasurementPillText,
+            tapToSummonEnabled: !(showingFurnitureFit && showFullVideoWithIdentifications),
+            hideForCapture: isCapturingSnapshot
+        ) {
+            PaafektImmersiveSummonedToolbar(chrome: immersiveChrome) {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektViewerToolbarIconButton(
+                        systemName: "viewfinder",
+                        accessibilityLabel: L10n.RoomViewer.recenterView
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        splatMeasurementHost.recenterSplatRoomCamera()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "ruler",
+                        accessibilityLabel: L10n.RoomViewer.checkMeasurement
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        onSplatRoomDimensionsRulerTapped()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "hand.pinch",
+                        accessibilityLabel: L10n.RoomViewer.pinchGestureHintExplanation
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        showHintsOnDemand()
+                    }
+                    PaafektViewerToolbarIconButton(
+                        systemName: "square.stack.3d.up",
+                        accessibilityLabel: L10n.RoomViewer.displayAllHelpers
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        showHintsOnDemand()
+                    }
+                    if !selectedFurnitureFitLabels.isEmpty {
+                        Button {
+                            immersiveChrome.noteChromeInteraction()
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("FurnitureFitClearSelectedObjects"),
+                                object: nil
+                            )
+                        } label: {
+                            Text(selectedFurnitureChipTitle)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Theme.Palette.viewerCapsuleFill))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if showingFurnitureFit {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "text.viewfinder",
+                            isActive: showFullVideoWithIdentifications,
+                            accessibilityLabel: L10n.Settings.fullVideoWithIdentifications
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            toggleFullVideoIdentifications()
+                        }
+                        if canOfferBrainArAssist {
+                            PaafektViewerToolbarIconButton(
+                                systemName: "arrow.up.left.and.arrow.down.right",
+                                isActive: brainArAssistedSizingEnabled,
+                                accessibilityLabel: brainArAssistedSizingEnabled
+                                    ? L10n.RoomViewer.arSizingDisable
+                                    : L10n.RoomViewer.arSizingEnable
+                            ) {
+                                immersiveChrome.noteChromeInteraction()
+                                brainArAssistedSizingEnabled.toggle()
+                            }
+                        }
+                    }
+                    if allowSave {
+                        PaafektViewerToolbarIconButton(
+                            systemName: "square.and.arrow.down",
+                            accessibilityLabel: L10n.RoomViewer.saveRoom
+                        ) {
+                            immersiveChrome.noteChromeInteraction()
+                            roomName = ""
+                            showRoomNameInput = true
+                        }
+                    }
+                }
+            } heroContent: {
+                HStack(spacing: Theme.Space.sm) {
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconAI",
+                        title: L10n.RoomViewer.immersiveFitShort,
+                        isActive: showingFurnitureFit,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        toggleFurnitureFit()
+                    }
+                    PaafektImmersiveCompactHeroAction(
+                        assetName: "PaafektIconSnapshot",
+                        title: L10n.RoomViewer.immersiveCaptureShort,
+                        isDisabled: isLoading
+                    ) {
+                        immersiveChrome.noteChromeInteraction()
+                        takeScreenshot()
+                    }
+                }
+            }
+        } summonedExtras: {
             VStack(spacing: 10) {
                 if showingFurnitureFit, shouldShowArFurnitureMeasurementPill {
                     furnitureMeasurementPillContent(showTapHint: false)
                 }
                 segmentButton
-                splatViewerHeroActionsBar
+                if showingFurnitureFit {
+                    roomIntelligencePlacementCardResetOnExit
+                }
             }
-            if showingFurnitureFit {
-                roomIntelligencePlacementCardResetOnExit
-                    .padding(.bottom, 56)
-            }
+            .padding(.horizontal, Theme.Space.lg)
         }
-        .padding(.horizontal, Theme.Space.lg)
-    }
-
-    private var splatViewerHeroActionsBar: some View {
-        PaafektViewerHeroActionsBar(
-            fitActive: showingFurnitureFit,
-            fitDisabled: isLoading,
-            captureDisabled: isLoading,
-            onFit: toggleFurnitureFit,
-            onCapture: { takeScreenshot() }
-        )
+        .zIndex(99998)
     }
 
     @ViewBuilder
@@ -2027,41 +2059,9 @@ struct SplatRoomView: View {
             }
     }
 
-    @ViewBuilder private var bottomBarsOverlayView: some View {
-        if photoOrientation == .landscape {
-            ZStack(alignment: .bottom) {
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)
-                splatRoomBottomHeroChrome
-                    .padding(.bottom, 20)
-            }
-            .opacity(isCapturingSnapshot ? 0 : 1)
-            .zIndex(99997)
-        } else {
-            VStack {
-                Spacer().allowsHitTesting(false)
-                VStack(spacing: 1) {
-                    Text(NSLocalizedString("orientation.heldVertically", comment: "")).font(.caption2)
-                    Text(NSLocalizedString("orientation.portrait", comment: "")).font(.caption2).fontWeight(.medium)
-                }
-                .foregroundColor(.white.opacity(0.8))
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Color.black.opacity(0.4)).cornerRadius(6)
-                .padding(.bottom, 12)
-                .allowsHitTesting(false)
-                splatRoomBottomHeroChrome
-                    .padding(.bottom, 20)
-            }
-            .opacity(isCapturingSnapshot ? 0 : 1)
-            .zIndex(99998)
-        }
-    }
-
     @ViewBuilder private var allOverlaysLayer: some View {
         ZStack {
-            if !isLoading {
-                cameraButtonsOverlay
+            if !isLoading, immersiveChrome.isSummoned {
                 topTrailingPinchHintOverlay
                 brainGestureHintScreenOverlay
                 topTrailingActionButtonsOverlay
@@ -2081,7 +2081,7 @@ struct SplatRoomView: View {
             if showWallCalibration, supportsMetricFurnitureMeasurementUI {
                 wallCalibrationOverlay
             }
-            bottomBarsOverlayView
+            splatImmersiveChromeOverlay
             PaafektViewerOnboardingLayer(isReady: !isLoading)
                 .zIndex(100_000)
                 .allowsHitTesting(true)
