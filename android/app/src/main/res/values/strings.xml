@@ -534,6 +534,11 @@
     <string name="room_viewer_first_run_got_it">Got it</string>
     <string name="room_viewer_hero_fit_furniture">Fit Furniture</string>
     <string name="room_viewer_hero_capture">Capture</string>
+    <string name="share">Share</string>
+    <string name="room_viewer_recenter">Recenter view</string>
+    <string name="room_viewer_display_all_helpers">Show gesture hints</string>
+    <string name="room_viewer_ar_sizing_enable">Enable camera-assisted furniture sizing</string>
+    <string name="room_viewer_ar_sizing_disable">Disable camera-assisted furniture sizing</string>
     <string name="room_viewer_brain_gesture_hint_explanation">Tap the brain button to detect furniture.</string>
     <string name="room_viewer_saved_toast">Room saved!</string>
 

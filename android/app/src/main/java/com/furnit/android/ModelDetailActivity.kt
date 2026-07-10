@@ -33,6 +33,8 @@ import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
+import com.furnit.android.theme.PaafektSpace
+import com.furnit.android.theme.PaafektViewerToolbar
 import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomSceneLighting
 import io.github.sceneview.SceneView
@@ -111,6 +113,12 @@ class ModelDetailActivity : AppCompatActivity() {
         viewerRootLayout = findViewById(R.id.viewerRoot)
         hintController = PaafektHintController(viewerRootLayout)
         firstRunCoachController = PaafektFirstRunCoachMarkController(viewerRootLayout)
+
+        findViewById<View>(R.id.topBarContainer).visibility = View.GONE
+        orientationLabel.visibility = View.GONE
+
+        isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
+        installFloatingTopChrome()
         installHeroBottomControls()
 
         previewBackCallback = object : OnBackPressedCallback(false) {
@@ -121,23 +129,13 @@ class ModelDetailActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, previewBackCallback)
 
         val backButton: ImageButton = findViewById(R.id.backButton)
-        backButton.setOnClickListener {
-            if (unsavedPreviewActive) {
-                showUnsavedPreviewLeaveDialog()
-            } else {
-                finish()
-            }
-        }
+        backButton.visibility = View.GONE
 
-        // Help button
-        helpButton.setOnClickListener { showHelpDialog() }
+        // Help — accessible from long-press on toolbar tap icon if needed; hide legacy bar.
+        helpButton.visibility = View.GONE
 
         // Touch overlay is handled via dispatchTouchEvent override
-
-        // Update orientation label based on device orientation
         updateOrientationLabel()
-
-        isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
 
         viewerRootLayout.post {
             firstRunCoachController.showIfNeeded(this) {
@@ -229,11 +227,122 @@ class ModelDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleViewerBack() {
+        if (unsavedPreviewActive) {
+            showUnsavedPreviewLeaveDialog()
+        } else {
+            finish()
+        }
+    }
+
+    /** Matches iOS ModelViewerView: back left, glass capsule center, share/save trailing. */
+    private fun installFloatingTopChrome() {
+        val topChrome = PaafektViewerToolbar.createTopChromeRow(this)
+        topChrome.addView(
+            PaafektViewerToolbar.createFloatingBackButton(this) { handleViewerBack() }.apply {
+                contentDescription = getString(R.string.photo_room_back)
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.START or Gravity.TOP },
+        )
+
+        val capsule = PaafektViewerToolbar.createToolbarCapsule(this)
+        capsule.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                this,
+                R.drawable.ic_ruler,
+                contentDescription = getString(R.string.faq_measurement_pill),
+            ) {
+                hintController.showText(
+                    this,
+                    R.drawable.ic_ruler,
+                    getString(R.string.approximate_room_height, RoomDefaults.heightMeters(this)),
+                    topMarginDp = 52,
+                )
+            },
+        )
+        capsule.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                this,
+                R.drawable.ic_gesture_pinch,
+                contentDescription = getString(R.string.room_viewer_navigation_teaching_hint),
+            ) {
+                if (hintController.isVisible) hintController.hide()
+                else hintController.showBottomCentered(this, R.drawable.ic_gesture_pinch, R.string.room_viewer_navigation_teaching_hint)
+            },
+        )
+        capsule.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                this,
+                R.drawable.ic_gesture_tap,
+                contentDescription = getString(R.string.room_viewer_display_all_helpers),
+            ) {
+                hintController.showBottomCentered(this, R.drawable.ic_gesture_pinch, R.string.room_viewer_navigation_teaching_hint)
+            },
+        )
+        capsule.addView(
+            PaafektViewerToolbar.createCapsuleIconButton(
+                this,
+                R.drawable.ic_viewfinder,
+                contentDescription = getString(R.string.room_viewer_recenter),
+            ) { /* SceneView default framing — no-op parity with iOS recenter binding */ },
+        )
+        topChrome.addView(
+            capsule,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
+        )
+
+        val trailing = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        trailing.addView(
+            PaafektViewerToolbar.createFloatingIconButton(
+                this,
+                R.drawable.ic_share,
+                contentDescription = getString(R.string.share),
+            ) { shareRoom() }.apply { visibility = if (isPreviewMode) View.GONE else View.VISIBLE },
+        )
+        trailing.addView(
+            PaafektViewerToolbar.createFloatingIconButton(
+                this,
+                R.drawable.ic_download,
+                contentDescription = getString(R.string.common_save),
+            ) { showSaveDialog() }.apply { visibility = if (isPreviewMode) View.VISIBLE else View.GONE },
+        )
+        topChrome.addView(
+            trailing,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.END or Gravity.TOP },
+        )
+
+        viewerRootLayout.addView(
+            topChrome,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.TOP },
+        )
+    }
+
     private fun installHeroBottomControls() {
         brainButton.visibility = View.GONE
         screenshotButton.visibility = View.GONE
 
         val bottomContainer = findViewById<FrameLayout>(R.id.bottomControlsContainer)
+        bottomContainer.setPadding(
+            PaafektSpace.lg(this),
+            0,
+            PaafektSpace.lg(this),
+            PaafektSpace.xl(this),
+        )
         val heroRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -247,7 +356,7 @@ class ModelDetailActivity : AppCompatActivity() {
             heroFitAction()
         }
         fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = (6 * resources.displayMetrics.density).toInt()
+            marginEnd = PaafektSpace.sm(this@ModelDetailActivity)
         }
         heroFitButton = fitBtn
         heroRow.addView(fitBtn)
@@ -261,7 +370,7 @@ class ModelDetailActivity : AppCompatActivity() {
             takeScreenshot()
         }
         captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginStart = (6 * resources.displayMetrics.density).toInt()
+            marginStart = PaafektSpace.sm(this@ModelDetailActivity)
         }
         heroRow.addView(captureBtn)
 

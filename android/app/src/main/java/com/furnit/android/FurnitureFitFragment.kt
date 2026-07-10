@@ -40,7 +40,12 @@ import com.furnit.android.models.ModelManager
 import com.furnit.android.services.FurnitureFitManager
 import com.furnit.android.utils.RoomBoundaryManager
 import com.furnit.android.utils.RoomSceneLighting
+import com.furnit.android.theme.PaafektColors
+import com.furnit.android.theme.PaafektDrawables
+import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
+import com.furnit.android.theme.PaafektSpace
+import com.furnit.android.theme.PaafektViewerToolbar
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -112,6 +117,7 @@ class FurnitureFitFragment : Fragment() {
     private var calibrationPillContainer: View? = null
     private var calibrationPillLine1: TextView? = null
     private var lastOverlayScaleLogMs: Long = 0L
+    private var hintController: PaafektHintController? = null
 
     // For camera drag (when touching outside furniture)
     private var lastCameraTouchX = 0f
@@ -206,16 +212,18 @@ class FurnitureFitFragment : Fragment() {
         }
         progressContainer.addView(progressBar)
 
-        // Back button
-        val backButton = ImageButton(requireContext()).apply {
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            setBackgroundColor(0x80000000.toInt())
-            setPadding(16, 16, 16, 16)
-            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+        // Back — matches iOS PaafektViewerBackButton
+        val backButton = PaafektViewerToolbar.createFloatingBackButton(requireContext()) {
+            activity?.finish()
+        }.apply {
+            val lp = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            )
             lp.gravity = Gravity.TOP or Gravity.START
-            lp.setMargins(16, 48, 0, 0)
+            lp.setMargins(PaafektSpace.lg(requireContext()), PaafektSpace.viewerTopInset(requireContext()), 0, 0)
             layoutParams = lp
-            setOnClickListener { activity?.finish() }
+            contentDescription = getString(R.string.photo_room_back)
         }
 
         // Touch layer - passes all events to overlay for furniture manipulation
@@ -229,72 +237,66 @@ class FurnitureFitFragment : Fragment() {
             }
         }
 
-        // Bottom controls container
+        // Bottom controls — hero Capture only (matches iOS snapshot hero when in fit mode)
         val bottomControls = FrameLayout(requireContext()).apply {
-            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-            lp.gravity = Gravity.BOTTOM
-            lp.setMargins(20, 0, 20, 24)
-            layoutParams = lp
-        }
-
-        // Hint chip (center) — drag instruction, matches iOS PaafektHintChip
-        val hintChip = PaafektHintViews.createChip(
-            requireContext(),
-            R.drawable.ic_gesture_tap,
-            getString(R.string.smartypants_drag_hint),
-        ).apply {
             val lp = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             )
-            lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-            lp.setMargins(0, 0, 0, 8)
+            lp.gravity = Gravity.BOTTOM
+            lp.setMargins(
+                PaafektSpace.lg(requireContext()),
+                0,
+                PaafektSpace.lg(requireContext()),
+                PaafektSpace.xl(requireContext()),
+            )
             layoutParams = lp
         }
-        bottomControls.addView(hintChip)
 
-        // Passive measurement pill (center-bottom): Furn W×H once segmentation has a size estimate.
+        // Measurement pill — glass chip style, shown when segmentation has size (iOS pill parity)
         val pillContent = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24.dp, 12.dp, 24.dp, 12.dp)
             gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xE6333333.toInt())
-                cornerRadius = (24 * resources.displayMetrics.density)
-            }
+            background = PaafektDrawables.hintChip()
+            setPadding(PaafektSpace.lg(requireContext()), PaafektSpace.md(requireContext()), PaafektSpace.lg(requireContext()), PaafektSpace.md(requireContext()))
         }
         calibrationPillLine1 = TextView(requireContext()).apply {
             text = "Furn:"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 14f
-            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
+            setTextColor(PaafektColors.textPrimary)
+            textSize = 12f
+            gravity = Gravity.CENTER
         }
         pillContent.addView(calibrationPillLine1)
         val calibrationPill = FrameLayout(requireContext()).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
                 gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                setMargins(0, 0, 0, 52)
+                bottomMargin = PaafektSpace.viewerBottomInset(requireContext()) + 72.dp
             }
             addView(pillContent)
-            // Shown on first [updateCalibrationPill] once segmentation has run (this flow is only opened after brain).
             visibility = View.GONE
             isClickable = false
         }
         calibrationPillContainer = calibrationPill
         bottomControls.addView(calibrationPill)
 
-
-        // Screenshot button (right)
-        val screenshotButton = ImageButton(requireContext()).apply {
-            setImageResource(android.R.drawable.ic_menu_camera)
-            setBackgroundResource(android.R.drawable.btn_default)
-            val size = (56 * resources.displayMetrics.density).toInt()
-            val lp = FrameLayout.LayoutParams(size, size)
-            lp.gravity = Gravity.END or Gravity.BOTTOM
-            layoutParams = lp
-            setOnClickListener { takeScreenshot(root) }
+        val captureHero = PaafektHintViews.createHeroButton(
+            requireContext(),
+            R.drawable.ic_snapshot,
+            getString(R.string.room_viewer_hero_capture),
+        ) {
+            takeScreenshot(root)
         }
-        bottomControls.addView(screenshotButton)
+        captureHero.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.BOTTOM
+            bottomMargin = PaafektSpace.viewerBottomInset(requireContext())
+        }
+        bottomControls.addView(captureHero)
 
         // When opened from brain (room background): hide camera feed and show room from start so progress bar overlays room (not grey)
         val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
@@ -320,6 +322,16 @@ class FurnitureFitFragment : Fragment() {
         uiHost.addView(progressContainer)
         uiHost.addView(backButton)
         uiHost.addView(bottomControls)
+
+        hintController = PaafektHintController(root as FrameLayout, topMarginDp = 96)
+        root.post {
+            hintController?.showBottomCentered(
+                requireContext(),
+                R.drawable.ic_gesture_pinch,
+                R.string.room_viewer_navigation_teaching_hint,
+                bottomMarginDp = 120,
+            )
+        }
 
         if (!segmentationCompletedOnceThisSession) {
             setProgress(5, "Starting camera...")

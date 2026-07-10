@@ -195,6 +195,43 @@ class PaafektHintController(
         }
     }
 
+    /** Transient chip with pre-formatted text (e.g. room measurement pill copy). */
+    fun showText(
+        context: Context,
+        @DrawableRes iconRes: Int,
+        text: CharSequence,
+        gravity: Int = Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+        topMarginDp: Int = 96,
+        bottomMarginDp: Int = 0,
+        durationMs: Long = 3500L,
+    ) {
+        hide(animated = false)
+        val chip = PaafektHintViews.createChip(context, iconRes, text)
+        chip.alpha = 0f
+        val params = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            this.gravity = gravity
+            topMargin = dp(context, topMarginDp)
+            bottomMargin = dp(context, bottomMarginDp)
+            marginStart = dp(context, 16)
+            marginEnd = dp(context, 16)
+        }
+        host.addView(chip, params)
+        chipView = chip
+        host.bringChildToFront(chip)
+        val fadeMs = if (areAnimationsEnabled(context)) 200L else 0L
+        if (fadeMs > 0L) {
+            chip.animate().alpha(1f).setDuration(fadeMs).start()
+        } else {
+            chip.alpha = 1f
+        }
+        host.removeCallbacks(dismissRunnable)
+        host.postDelayed(dismissRunnable, durationMs)
+        ensureInteractionDismiss(host)
+    }
+
     fun hide(animated: Boolean = true) {
         host.removeCallbacks(dismissRunnable)
         val chip = chipView ?: return

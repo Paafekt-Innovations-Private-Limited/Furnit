@@ -18,6 +18,8 @@ import com.furnit.android.theme.PaafektDrawables
 import com.furnit.android.theme.PaafektFirstRunCoachMarkController
 import com.furnit.android.theme.PaafektHintController
 import com.furnit.android.theme.PaafektHintViews
+import com.furnit.android.theme.PaafektSpace
+import com.furnit.android.theme.PaafektViewerToolbar
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.RoomDisplayName
 import com.furnit.android.utils.RoomFolderMetadata
@@ -101,6 +103,8 @@ class GLBRoomActivity : AppCompatActivity() {
     private val brainSessionGeneration = AtomicInteger(0)
     private var brainAcceptingUpdates = false
     private var brainButton: LinearLayout? = null
+    private var trailingArSizingButton: ImageButton? = null
+    private var inlineBrainArAssistedSizingEnabled = false
     private var brainSegmentButton: TextView? = null
     private var brainFullVideoButton: ImageButton? = null
     @Volatile private var inlineBrainMode: InlineBrainMode = InlineBrainMode.DEFAULT_SEGMENT
@@ -295,7 +299,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply {
                 gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                bottomMargin = dpToPx(100)
+                bottomMargin = dpToPx(120)
             },
         )
         rootLayout.addView(
@@ -408,76 +412,98 @@ class GLBRoomActivity : AppCompatActivity() {
     }
 
     private fun createTopBar(): FrameLayout {
-        return FrameLayout(this).apply {
-            setPadding(dpToPx(16), dpToPx(48), dpToPx(16), 0)
-
-            val backBtn = createToolbarTextButton("‹") { handleBackNavigation() }.apply {
-                textSize = 24f
+        return PaafektViewerToolbar.createTopChromeRow(this).apply {
+            val backBtn = PaafektViewerToolbar.createFloatingBackButton(this@GLBRoomActivity) {
+                handleBackNavigation()
+            }.apply {
                 contentDescription = getString(R.string.photo_room_back)
             }
             addView(
                 backBtn,
-                FrameLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                    gravity = Gravity.START or Gravity.TOP
-                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { gravity = Gravity.START or Gravity.TOP },
             )
 
-            val principalControls = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = toolbarCapsuleDrawable()
-                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-            }
-
-            principalControls.addView(createToolbarIconButton(R.drawable.ic_ruler) { showRoomDimensionsDialog() })
-            principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_pinch) {
-                if (hintController.isVisible) {
-                    hintController.hide()
-                } else {
-                    hintController.showBottomCentered(
-                        this@GLBRoomActivity,
-                        R.drawable.ic_gesture_pinch,
-                        R.string.room_viewer_navigation_teaching_hint,
-                    )
-                }
-            })
-            principalControls.addView(createToolbarIconButton(R.drawable.ic_gesture_tap) {
-                hintController.toggle(
+            val principalControls = PaafektViewerToolbar.createToolbarCapsule(this@GLBRoomActivity)
+            principalControls.addView(
+                PaafektViewerToolbar.createCapsuleIconButton(
                     this@GLBRoomActivity,
-                    R.drawable.ic_ai,
-                    R.string.room_viewer_brain_gesture_hint_explanation,
-                )
-            })
+                    R.drawable.ic_ruler,
+                    contentDescription = getString(R.string.faq_measurement_pill),
+                ) { showRoomDimensionsHint() },
+            )
+            principalControls.addView(
+                PaafektViewerToolbar.createCapsuleIconButton(
+                    this@GLBRoomActivity,
+                    R.drawable.ic_gesture_pinch,
+                    contentDescription = getString(R.string.room_viewer_navigation_teaching_hint),
+                ) {
+                    if (hintController.isVisible) {
+                        hintController.hide()
+                    } else {
+                        hintController.showBottomCentered(
+                            this@GLBRoomActivity,
+                            R.drawable.ic_gesture_pinch,
+                            R.string.room_viewer_navigation_teaching_hint,
+                        )
+                    }
+                },
+            )
+            principalControls.addView(
+                PaafektViewerToolbar.createCapsuleIconButton(
+                    this@GLBRoomActivity,
+                    R.drawable.ic_gesture_tap,
+                    contentDescription = getString(R.string.room_viewer_display_all_helpers),
+                ) { showAllGestureHelpers() },
+            )
 
             addView(
                 principalControls,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                },
+                ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL },
             )
 
             val trailingControls = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            trailingControls.addView(createToolbarIconButton(R.drawable.ic_viewfinder) { recenterCamera() })
+            trailingControls.addView(
+                PaafektViewerToolbar.createFloatingIconButton(
+                    this@GLBRoomActivity,
+                    R.drawable.ic_viewfinder,
+                    contentDescription = getString(R.string.room_viewer_recenter),
+                ) { recenterCamera() },
+            )
             if (isPreviewMode) {
-                trailingControls.addView(createToolbarIconButton(R.drawable.ic_download) { showSaveDialog() })
+                trailingControls.addView(
+                    PaafektViewerToolbar.createFloatingIconButton(
+                        this@GLBRoomActivity,
+                        R.drawable.ic_download,
+                        contentDescription = getString(R.string.common_save),
+                    ) { showSaveDialog() },
+                )
             }
-            trailingControls.addView(createToolbarIconButton(R.drawable.ic_square_resize) {
-                openFurnitureFit(enableArAssistedSizing = true)
-            })
+            trailingArSizingButton = PaafektViewerToolbar.createFloatingIconButton(
+                this@GLBRoomActivity,
+                R.drawable.ic_square_resize,
+                contentDescription = getString(R.string.room_viewer_ar_sizing_enable),
+                isActive = inlineBrainArAssistedSizingEnabled,
+                activeFillColor = 0xE634C759.toInt(),
+            ) {
+                toggleInlineBrainArAssistedSizing()
+            }.also { trailingControls.addView(it) }
+            updateTrailingArSizingVisibility()
+
             addView(
                 trailingControls,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.END or Gravity.TOP
-                },
+                ).apply { gravity = Gravity.END or Gravity.TOP },
             )
 
             titleView = TextView(this@GLBRoomActivity).apply {
@@ -485,6 +511,43 @@ class GLBRoomActivity : AppCompatActivity() {
                 text = roomName
             }
         }
+    }
+
+    private fun updateTrailingArSizingVisibility() {
+        val brainActive = ::brainDetectionOverlay.isInitialized &&
+            brainDetectionOverlay.visibility == View.VISIBLE
+        trailingArSizingButton?.visibility = if (brainActive) View.VISIBLE else View.GONE
+    }
+
+    private fun toggleInlineBrainArAssistedSizing() {
+        inlineBrainArAssistedSizingEnabled = !inlineBrainArAssistedSizingEnabled
+        trailingArSizingButton?.background = if (inlineBrainArAssistedSizingEnabled) {
+            android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0xE634C759.toInt())
+            }
+        } else {
+            PaafektDrawables.toolbarCircle()
+        }
+    }
+
+    private fun showAllGestureHelpers() {
+        hintController.showBottomCentered(
+            this,
+            R.drawable.ic_gesture_pinch,
+            R.string.room_viewer_navigation_teaching_hint,
+            bottomMarginDp = 120,
+        )
+    }
+
+    private fun showRoomDimensionsHint() {
+        val heightLabel = getString(R.string.approximate_room_height, roomHeight)
+        hintController.showText(
+            this,
+            R.drawable.ic_ruler,
+            heightLabel,
+            topMarginDp = 52,
+        )
     }
 
     private fun toolbarCapsuleDrawable(): GradientDrawable = PaafektDrawables.toolbarCapsule()
@@ -533,24 +596,9 @@ class GLBRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun showRoomDimensionsDialog() {
-        val dimensions = String.format(
-            Locale.US,
-            "%.2f m × %.2f m × %.2f m",
-            roomWidth,
-            roomHeight,
-            roomDepth,
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.faq_measurement_pill)
-            .setMessage(getString(R.string.room_viewer_dimensions, dimensions))
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
     private fun createBottomControls(): FrameLayout {
         return FrameLayout(this).apply {
-            setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
+            setPadding(PaafektSpace.lg(this@GLBRoomActivity), 0, PaafektSpace.lg(this@GLBRoomActivity), PaafektSpace.xl(this@GLBRoomActivity))
 
             val column = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -560,42 +608,9 @@ class GLBRoomActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply {
                     gravity = Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
+                    bottomMargin = PaafektSpace.viewerBottomInset(this@GLBRoomActivity)
                 }
             }
-
-            val isLandscape = photoOrientation == "landscape"
-            val orientationLabel = LinearLayout(this@GLBRoomActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(8).toFloat()
-                    setColor(Color.parseColor("#80000000"))
-                }
-                setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(4))
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    bottomMargin = dpToPx(12)
-                }
-
-                addView(TextView(this@GLBRoomActivity).apply {
-                    text = if (isLandscape) "held horizontally" else "held vertically"
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                })
-                addView(TextView(this@GLBRoomActivity).apply {
-                    text = if (isLandscape) "Landscape" else "Portrait"
-                    textSize = 14f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                })
-            }
-            column.addView(orientationLabel)
 
             val heroRow = LinearLayout(this@GLBRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -615,7 +630,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 toggleInlineBrainSegmentation()
             }
             fitBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = dpToPx(6)
+                marginEnd = PaafektSpace.sm(this@GLBRoomActivity)
             }
             brainButton = fitBtn
             heroRow.addView(fitBtn)
@@ -628,7 +643,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 takeScreenshot()
             }
             captureBtn.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dpToPx(6)
+                marginStart = PaafektSpace.sm(this@GLBRoomActivity)
             }
             heroRow.addView(captureBtn)
 
@@ -856,6 +871,7 @@ class GLBRoomActivity : AppCompatActivity() {
         brainDetectionOverlayView.setIdentifySelectionState(inlineBrainFullVideoEnabled, inlineBrainSelectedPins)
         showBrainProgress(getString(R.string.detector_loading_model), 20)
         setBrainButtonActive(true)
+        updateTrailingArSizingVisibility()
         updateInlineBrainSegmentButton()
         ensureNavigationChromeOnTop()
 
@@ -1118,6 +1134,8 @@ class GLBRoomActivity : AppCompatActivity() {
             brainCameraPreview.visibility = View.GONE
         }
         setBrainButtonActive(false)
+        inlineBrainArAssistedSizingEnabled = false
+        updateTrailingArSizingVisibility()
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) {
